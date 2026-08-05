@@ -51,6 +51,13 @@ add_action(
 			elmercado_asset_version( '/assets/css/theme.css' )
 		);
 
+		wp_enqueue_style(
+			'elmercado-integrations',
+			ELMERCADO_THEME_URL . '/assets/css/integrations.css',
+			array( 'elmercado-theme' ),
+			elmercado_asset_version( '/assets/css/integrations.css' )
+		);
+
 		wp_enqueue_script(
 			'elmercado-theme',
 			ELMERCADO_THEME_URL . '/assets/js/theme.js',
