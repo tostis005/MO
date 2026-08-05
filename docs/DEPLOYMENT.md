@@ -6,74 +6,97 @@ El workflow `.github/workflows/deploy-development.yml` sincroniza únicamente la
 
 El servidor debe ofrecer:
 
-- Acceso SSH para un usuario de despliegue.
+- Acceso **SSH** mediante usuario y contraseña.
 - `rsync` instalado en el servidor.
-- Permisos de escritura exclusivamente sobre `wp-content/themes/elmercadodeorigen-child`.
+- Permisos de escritura sobre `wp-content/themes/elmercadodeorigen-child`.
 - El tema padre **Woostify** instalado en WordPress.
 
-Se recomienda crear un usuario SSH específico para despliegues y no utilizar `root`.
+`STAGING_PASSWORD` debe contener la contraseña del usuario SSH. No es la contraseña del administrador de WordPress. Una contraseña de FTP solo funcionará cuando el proveedor utilice las mismas credenciales para SSH.
 
-## 2. Crear una clave SSH de despliegue
-
-En tu ordenador:
-
-```bash
-ssh-keygen -t ed25519 -C "github-actions-elmercado" -f ./elmercado_deploy_key
-```
-
-- Añade el contenido de `elmercado_deploy_key.pub` al archivo `~/.ssh/authorized_keys` del usuario del servidor.
-- Guarda el contenido completo de `elmercado_deploy_key` como el secret `SSH_PRIVATE_KEY`.
-- No subas ninguno de estos archivos al repositorio.
-
-## 3. Obtener la huella del servidor
-
-Ejecuta, sustituyendo host y puerto:
-
-```bash
-ssh-keyscan -p 22 desarrollo.tudominio.com
-```
-
-Guarda la salida completa como `SSH_KNOWN_HOSTS`. Verifica la huella con tu proveedor de hosting antes de confiar en ella.
-
-## 4. Secrets necesarios en GitHub
+## 2. Secrets necesarios en GitHub
 
 En el repositorio, ve a **Settings → Secrets and variables → Actions → New repository secret** y crea:
 
 | Secret | Contenido |
 |---|---|
-| `SSH_HOST` | Host o IP del servidor de desarrollo |
-| `SSH_PORT` | Puerto SSH, normalmente `22` |
-| `SSH_USER` | Usuario SSH de despliegue |
-| `SSH_PRIVATE_KEY` | Clave privada completa, incluidas cabecera y cierre |
-| `SSH_KNOWN_HOSTS` | Salida verificada de `ssh-keyscan` |
-| `WP_THEME_PATH` | Ruta absoluta terminada en `/wp-content/themes/elmercadodeorigen-child` |
+| `STAGING_HOST` | Host o IP del servidor de desarrollo, sin `https://` |
+| `STAGING_PORT` | Puerto SSH, normalmente `22` |
+| `STAGING_USER` | Usuario SSH del servidor |
+| `STAGING_PASSWORD` | Contraseña del usuario SSH |
+| `STAGING_KNOWN_HOSTS` | Huella SSH verificada del servidor |
+| `STAGING_REMOTE_PATH` | Ruta absoluta terminada en `/wp-content/themes/elmercadodeorigen-child` |
 
-Ejemplo de `WP_THEME_PATH`:
+Ejemplo de `STAGING_HOST`:
+
+```text
+desarrollo.elmercadodeorigen.com
+```
+
+Ejemplo de `STAGING_REMOTE_PATH`:
 
 ```text
 /home/usuario/public_html/wp-content/themes/elmercadodeorigen-child
 ```
 
-La validación del workflow rechazará cualquier ruta que no termine exactamente en la carpeta esperada.
+La validación rechazará rutas relativas, rutas con caracteres de shell o cualquier destino que no termine exactamente en la carpeta esperada.
 
-## 5. Habilitar GitHub Actions
+## 3. Obtener `STAGING_KNOWN_HOSTS`
+
+Desde una terminal, ejecuta sustituyendo host y puerto por los del hosting:
+
+```bash
+ssh-keyscan -p 22 desarrollo.elmercadodeorigen.com
+```
+
+Copia toda la salida en el secret `STAGING_KNOWN_HOSTS`.
+
+Antes de guardarla, compara la huella con la que muestra el panel del hosting o solicítala al soporte. Esta comprobación evita que el workflow entregue la contraseña a un servidor suplantado.
+
+En Windows se puede ejecutar desde PowerShell cuando el cliente OpenSSH está instalado. También puede obtenerse conectando una primera vez por SSH y verificando la huella mostrada por el proveedor.
+
+## 4. Habilitar GitHub Actions
 
 Ve a **Settings → Actions → General**:
 
-1. Activa GitHub Actions para el repositorio.
+1. En **Actions permissions**, permite GitHub Actions para el repositorio.
 2. Permite las acciones creadas por GitHub; el proyecto utiliza `actions/checkout@v4`.
-3. En **Workflow permissions**, selecciona `Read repository contents permission`. Los workflows ya declaran `contents: read` y no necesitan permisos de escritura.
+3. En **Workflow permissions**, deja `Read repository contents permission`.
 
-## 6. Primer despliegue
+Los workflows no necesitan permiso de escritura sobre el repositorio.
 
-1. Fusiona el pull request en `main`.
-2. Abre la pestaña **Actions**.
-3. Entra en **Deploy child theme to development**.
-4. El workflow se ejecutará automáticamente por el cambio en `main`; también puede lanzarse con **Run workflow**.
-5. En WordPress, comprueba que Woostify está instalado y activa **El Mercado de Origen** como tema.
+## 5. Comprobaciones antes de fusionar
 
-Después del primer despliegue, cada cambio fusionado en `main` dentro del tema iniciará una nueva sincronización.
+- `STAGING_HOST` no debe incluir `https://`, barras ni una ruta.
+- `STAGING_PORT` debe ser el puerto SSH, no el puerto del panel de WordPress.
+- `STAGING_USER` debe poder iniciar sesión por SSH.
+- `STAGING_PASSWORD` debe ser la contraseña SSH.
+- `STAGING_REMOTE_PATH` debe ser la ruta absoluta del WordPress de staging, no una URL.
+- Woostify debe estar instalado en staging.
+
+Se recomienda probar esas credenciales desde un ordenador:
+
+```bash
+ssh -p 22 usuario@desarrollo.elmercadodeorigen.com
+```
+
+Después de entrar, comprueba la ruta:
+
+```bash
+ls -la /ruta/de/staging/wp-content/themes
+```
+
+## 6. Primera subida
+
+1. Añade el secret pendiente `STAGING_KNOWN_HOSTS`.
+2. Habilita Actions en **Settings → Actions → General**.
+3. Fusiona el pull request en `main`.
+4. Abre la pestaña **Actions** y entra en **Deploy child theme to staging**.
+5. Revisa que terminen correctamente `Test SSH connection` y `Deploy child theme with rsync`.
+6. En WordPress, comprueba que Woostify está instalado y activa **El Mercado de Origen** como tema.
+7. Vacía las cachés de WordPress, del plugin de optimización y del CDN si existe.
+
+Al fusionar cambios posteriores en `main`, solo se sincronizará el contenido del child theme.
 
 ## Producción
 
-No uses las mismas credenciales para desarrollo y producción. Cuando el diseño esté aprobado se añadirá un workflow separado, con secretos separados y, cuando el plan de GitHub lo permita, un environment protegido con aprobación manual.
+No reutilices las credenciales de staging en producción. Cuando el diseño esté aprobado se añadirá un workflow separado, con secretos separados y una aprobación manual antes de desplegar.
