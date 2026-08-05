@@ -1,0 +1,72 @@
+/*
+ * Ajustes finales tras la auditoría visual de las plantillas de plugins.
+ */
+
+/* WooCommerce oculta el H1 de la tienda en esta configuración de Woostify. */
+.elmercado-child-theme.woocommerce-shop .page-header .entry-title {
+	position: absolute !important;
+	width: 1px !important;
+	height: 1px !important;
+	margin: -1px !important;
+	padding: 0 !important;
+	clip: rect(0 0 0 0) !important;
+	clip-path: inset(50%) !important;
+	overflow: hidden !important;
+	white-space: nowrap !important;
+}
+
+.elmercado-child-theme.woocommerce-shop .page-header .woostify-container::before {
+	display: block;
+	color: var(--emo-forest-950);
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: clamp(2.4rem, 5vw, 4.5rem);
+	font-weight: 600;
+	letter-spacing: -0.04em;
+	line-height: 1;
+	content: "Tienda";
+}
+
+.elmercado-child-theme.woocommerce-shop .woostify-sorting .woocommerce-result-count {
+	display: block !important;
+	width: auto !important;
+	height: auto !important;
+	clip: auto !important;
+	clip-path: none !important;
+	visibility: visible !important;
+	opacity: 1 !important;
+}
+
+/*
+ * WCFM aplica desplazamientos alternos a los elementos de tres columnas.
+ * En nuestro grid no son necesarios y desalineaban la primera fila.
+ */
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) {
+	position: static !important;
+	top: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	left: auto !important;
+	clear: none !important;
+	grid-column: auto !important;
+	grid-row: auto !important;
+	margin: 0 !important;
+	transform: none !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
+	grid-auto-flow: row !important;
+	align-items: stretch !important;
+}
+
+@media (max-width: 767px) {
+	.elmercado-child-theme.woocommerce-shop .page-header .woostify-container::before {
+		font-size: clamp(2.2rem, 11vw, 3.2rem);
+	}
+
+	.elmercado-child-theme.woocommerce-shop .woostify-sorting .woocommerce-result-count {
+		max-width: 145px;
+		font-size: 0.7rem !important;
+		line-height: 1.35 !important;
+	}
+}
