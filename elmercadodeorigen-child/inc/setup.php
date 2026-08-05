@@ -126,25 +126,94 @@ add_action(
 );
 
 /**
- * Obtiene productos recientes para la composición visual de portada.
+ * Devuelve los productos con más unidades vendidas, respetando la visibilidad
+ * del catálogo y la configuración de productos sin existencias.
+ *
+ * @return int[]
+ */
+function elmercado_best_selling_product_ids( int $limit = 6 ): array {
+	if ( ! post_type_exists( 'product' ) ) {
+		return array();
+	}
+
+	$tax_query = array();
+
+	if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+		$visibility = wc_get_product_visibility_term_ids();
+		$excluded   = array_filter(
+			array(
+				$visibility['exclude-from-catalog'] ?? 0,
+				'yes' === get_option( 'woocommerce_hide_out_of_stock_items' ) ? ( $visibility['outofstock'] ?? 0 ) : 0,
+			)
+		);
+
+		if ( ! empty( $excluded ) ) {
+			$tax_query[] = array(
+				'taxonomy' => 'product_visibility',
+				'field'    => 'term_taxonomy_id',
+				'terms'    => array_map( 'absint', $excluded ),
+				'operator' => 'NOT IN',
+			);
+		}
+	}
+
+	$args = array(
+		'post_type'           => 'product',
+		'post_status'         => 'publish',
+		'posts_per_page'      => max( 1, $limit ),
+		'fields'              => 'ids',
+		'no_found_rows'       => true,
+		'ignore_sticky_posts' => true,
+		'meta_key'            => 'total_sales',
+		'orderby'             => array(
+			'meta_value_num' => 'DESC',
+			'date'           => 'DESC',
+		),
+	);
+
+	if ( ! empty( $tax_query ) ) {
+		$args['tax_query'] = $tax_query;
+	}
+
+	$query = new WP_Query( $args );
+	$ids   = array_values( array_filter( array_map( 'absint', $query->posts ) ) );
+
+	if ( ! empty( $ids ) ) {
+		return $ids;
+	}
+
+	return get_posts(
+		array(
+			'post_type'      => 'product',
+			'post_status'    => 'publish',
+			'posts_per_page' => max( 1, $limit ),
+			'fields'         => 'ids',
+			'orderby'        => 'date',
+			'order'          => 'DESC',
+		)
+	);
+}
+
+/**
+ * Obtiene los superventas para la composición visual de portada.
  *
  * @return WC_Product[]
  */
 function elmercado_home_visual_products(): array {
-	if ( ! function_exists( 'wc_get_products' ) ) {
+	if ( ! function_exists( 'wc_get_product' ) ) {
 		return array();
 	}
 
-	$products = wc_get_products(
-		array(
-			'limit'   => 4,
-			'status'  => 'publish',
-			'orderby' => 'date',
-			'order'   => 'DESC',
+	$products = array_map( 'wc_get_product', elmercado_best_selling_product_ids( 4 ) );
+
+	return array_values(
+		array_filter(
+			$products,
+			static function ( $product ): bool {
+				return $product instanceof WC_Product;
+			}
 		)
 	);
-
-	return is_array( $products ) ? $products : array();
 }
 
 /**
@@ -157,7 +226,7 @@ function elmercado_render_home_visual(): string {
 		return '<div class="emo-hero__placeholder" aria-hidden="true"><span></span><span></span><span></span></div>';
 	}
 
-	$html = '<div class="emo-hero__visual" aria-label="Selección reciente de productos">';
+	$html = '<div class="emo-hero__visual" aria-label="Productos favoritos de nuestros clientes">';
 
 	foreach ( $products as $index => $product ) {
 		if ( ! $product instanceof WC_Product ) {
@@ -183,7 +252,7 @@ function elmercado_render_home_visual(): string {
 			(int) $index + 1,
 			esc_url( $product->get_permalink() ),
 			$image,
-			esc_html__( 'Recién llegado', 'elmercadodeorigen' ),
+			esc_html__( 'Favorito del mercado', 'elmercadodeorigen' ),
 			esc_html( $product->get_name() )
 		);
 	}
@@ -244,30 +313,27 @@ function elmercado_render_home_categories(): string {
 }
 
 /**
- * Productos destacados o, si no existen, novedades.
+ * Renderiza los productos con más ventas acumuladas en WooCommerce.
  */
 function elmercado_render_home_products(): string {
-	if ( ! function_exists( 'wc_get_products' ) ) {
+	if ( ! function_exists( 'wc_get_page_permalink' ) ) {
 		return '';
 	}
 
-	$featured = wc_get_products(
-		array(
-			'featured' => true,
-			'limit'    => 1,
-			'return'   => 'ids',
-			'status'   => 'publish',
-		)
+	$product_ids = elmercado_best_selling_product_ids( 6 );
+
+	if ( empty( $product_ids ) ) {
+		return '';
+	}
+
+	$shortcode = sprintf(
+		'[products ids="%s" limit="6" columns="3" orderby="post__in"]',
+		esc_attr( implode( ',', array_map( 'absint', $product_ids ) ) )
 	);
-
-	$shortcode = ! empty( $featured )
-		? '[products limit="8" columns="4" visibility="featured"]'
-		: '[products limit="8" columns="4" orderby="date" order="DESC"]';
-
 	$shop_url = wc_get_page_permalink( 'shop' );
 
 	return '<section class="emo-section emo-featured-products"><div class="emo-shell">'
-		. '<div class="emo-section-heading"><div><span class="emo-kicker">' . esc_html__( 'Selección del mercado', 'elmercadodeorigen' ) . '</span><h2>' . esc_html__( 'Productos que merece la pena conocer', 'elmercadodeorigen' ) . '</h2></div><a class="emo-text-link" href="' . esc_url( $shop_url ) . '">' . esc_html__( 'Ver todo el mercado', 'elmercadodeorigen' ) . '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>'
+		. '<div class="emo-section-heading"><div><span class="emo-kicker">' . esc_html__( 'Los más elegidos', 'elmercadodeorigen' ) . '</span><h2>' . esc_html__( 'Los favoritos de nuestros clientes', 'elmercadodeorigen' ) . '</h2><p>' . esc_html__( 'Una selección viva que se ordena automáticamente según las ventas reales del mercado.', 'elmercadodeorigen' ) . '</p></div><a class="emo-text-link" href="' . esc_url( $shop_url ) . '">' . esc_html__( 'Ver todo el mercado', 'elmercadodeorigen' ) . '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>'
 		. do_shortcode( $shortcode )
 		. '</div></section>';
 }
