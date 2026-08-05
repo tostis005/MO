@@ -40,7 +40,10 @@ function elmercado_asset_url_from_tag( string $tag, string $attribute ): string 
 		return '';
 	}
 
-	$url = html_entity_decode( (string) ( $matches[1] ?? $matches[2] ?? '' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	$value = isset( $matches[1] ) && '' !== $matches[1]
+		? (string) $matches[1]
+		: (string) ( $matches[2] ?? '' );
+	$url   = html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 
 	if ( str_starts_with( $url, '//' ) ) {
 		$url = 'https:' . $url;
@@ -61,7 +64,10 @@ function elmercado_normalize_lazy_image( array $matches ): string {
 		return $tag;
 	}
 
-	$source = esc_url_raw( html_entity_decode( (string) ( $src_match[1] ?? $src_match[2] ?? '' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+	$value  = isset( $src_match[1] ) && '' !== $src_match[1]
+		? (string) $src_match[1]
+		: (string) ( $src_match[2] ?? '' );
+	$source = esc_url_raw( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 
 	if ( '' === $source ) {
 		return $tag;
