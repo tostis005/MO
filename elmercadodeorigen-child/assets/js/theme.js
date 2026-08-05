@@ -26,6 +26,18 @@
 	};
 
 	/**
+	 * Retira las capas de hover heredadas de Woostify. El botón inferior de la
+	 * tarjeta mantiene toda la funcionalidad de compra sin duplicar controles.
+	 */
+	const removeProductHoverArtifacts = (root = document) => {
+		root.querySelectorAll?.([
+			'.product-loop-hover-image',
+			'.product-loop-action',
+			'.loop-add-to-cart-on-image'
+		].join(',')).forEach((element) => element.remove());
+	};
+
+	/**
 	 * El JavaScript personalizado antiguo fijaba la cabecera, añadía un bumper
 	 * y escribía márgenes inline. Ese archivo ya no se carga; esta limpieza se
 	 * conserva al iniciar por si algún caché entrega temporalmente su marcado.
@@ -59,6 +71,7 @@
 
 	body.classList.add('emo-js-ready');
 	cleanLegacyHeaderArtifacts();
+	removeProductHoverArtifacts();
 	updateScrollState();
 	window.addEventListener('scroll', requestScrollUpdate, { passive: true });
 	window.addEventListener('load', cleanLegacyHeaderArtifacts, { once: true });
@@ -196,6 +209,7 @@
 		}
 
 		mutationFrame = window.requestAnimationFrame(() => {
+			removeProductHoverArtifacts();
 			labelWishlistLinks();
 			repairHustleDialogs();
 			mutationFrame = 0;
