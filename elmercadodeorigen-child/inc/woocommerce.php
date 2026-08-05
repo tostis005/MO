@@ -113,6 +113,44 @@ add_filter(
 );
 
 /**
+ * En la selección comercial de la portada mostramos los seis superventas que
+ * se pueden comprar ahora. La consulta se mantiene dinámica y no requiere
+ * seleccionar productos manualmente ni guardar ajustes de diseño en la BBDD.
+ *
+ * @param array<string, mixed> $query_args Argumentos de WP_Query.
+ * @param array<string, mixed> $attributes Atributos normalizados del shortcode.
+ * @return array<string, mixed>
+ */
+add_filter(
+	'woocommerce_shortcode_products_query',
+	static function ( array $query_args, array $attributes ): array {
+		if ( ! is_front_page() || empty( $attributes['ids'] ) || 6 !== (int) ( $attributes['limit'] ?? 0 ) ) {
+			return $query_args;
+		}
+
+		$query_args['posts_per_page'] = 6;
+		$query_args['meta_key']       = 'total_sales';
+		$query_args['orderby']        = 'meta_value_num';
+		$query_args['order']          = 'DESC';
+		$query_args['post__in']       = array();
+
+		if ( ! isset( $query_args['meta_query'] ) || ! is_array( $query_args['meta_query'] ) ) {
+			$query_args['meta_query'] = array();
+		}
+
+		$query_args['meta_query'][] = array(
+			'key'     => '_stock_status',
+			'value'   => 'instock',
+			'compare' => '=',
+		);
+
+		return $query_args;
+	},
+	30,
+	2
+);
+
+/**
  * Texto de botón más claro para productos simples.
  */
 add_filter(
