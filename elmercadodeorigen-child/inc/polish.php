@@ -47,6 +47,13 @@ add_action(
 			array( 'elmercado-integrations' ),
 			elmercado_asset_version( '/assets/css/polish.css' )
 		);
+
+		wp_enqueue_style(
+			'elmercado-final',
+			ELMERCADO_THEME_URL . '/assets/css/final.css',
+			array( 'elmercado-polish' ),
+			elmercado_asset_version( '/assets/css/final.css' )
+		);
 	},
 	9999
 );
