@@ -1,0 +1,176 @@
+name: Release storefront audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-audit.yml'
+      - 'elmercadodeorigen-child/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-release-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for release marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://dev.elmercadodeorigen.com/?emo-release=${GITHUB_SHA}"
+          for attempt in {1..35}; do
+            if curl -fsSL --max-time 25 "$URL" -o /tmp/home.html \
+              && grep -q 'elmercado-release-one' /tmp/home.html; then
+              exit 0
+            fi
+            sleep 6
+          done
+          exit 1
+
+      - name: Inspect release UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+          cat > release-audit.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const suffix = `emo-release=${process.env.GITHUB_SHA}`;
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const rect = (node) => {
+            if (!node) return null;
+            const value = node.getBoundingClientRect();
+            return { x: value.x, y: value.y, width: value.width, height: value.height, top: value.top, bottom: value.bottom };
+          };
+
+          const styleInfo = (node) => {
+            if (!node) return null;
+            const style = getComputedStyle(node);
+            return {
+              position: style.position,
+              top: style.top,
+              bottom: style.bottom,
+              left: style.left,
+              right: style.right,
+              transform: style.transform,
+              translate: style.translate,
+              marginTop: style.marginTop,
+              marginBottom: style.marginBottom,
+              alignSelf: style.alignSelf,
+              display: style.display,
+              height: style.height,
+              minHeight: style.minHeight
+            };
+          };
+
+          async function prepare(page, url) {
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}' });
+            await sleep(1000);
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const report = {};
+
+            const home = await browser.newPage();
+            await home.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+            await prepare(home, `${base}/?${suffix}`);
+            report.home = await home.evaluate(() => {
+              const container = document.querySelector('.site-header-inner > .woostify-container');
+              const branding = document.querySelector('.site-header .site-branding');
+              const navigation = document.querySelector('.site-header .main-navigation');
+              const tools = document.querySelector('.site-header .site-tools');
+              const chain = (node) => {
+                const result = [];
+                let current = node;
+                while (current && result.length < 6) {
+                  result.push({
+                    tag: current.tagName,
+                    id: current.id,
+                    className: typeof current.className === 'string' ? current.className : '',
+                    rect: rect(current),
+                    style: styleInfo(current)
+                  });
+                  current = current.parentElement;
+                }
+                return result;
+              };
+              return {
+                container: { rect: rect(container), style: styleInfo(container) },
+                branding: { rect: rect(branding), style: styleInfo(branding), chain: chain(branding) },
+                navigation: { rect: rect(navigation), style: styleInfo(navigation), chain: chain(navigation) },
+                tools: { rect: rect(tools), style: styleInfo(tools), chain: chain(tools) },
+                recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"]').length,
+                wishlist: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter((node) => getComputedStyle(node).display !== 'none').length,
+                waitlist: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-modal,.xoo-wl-btn-container')].filter((node) => getComputedStyle(node).display !== 'none').length,
+                h1: document.querySelector('.emo-hero h1')?.innerText || '',
+                categoryHeading: document.querySelector('.emo-categories h2')?.innerText || ''
+              };
+            });
+            await home.screenshot({ path: 'release-audit/home-header.png' });
+            await home.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            await sleep(700);
+            await home.screenshot({ path: 'release-audit/home-footer.png' });
+            await home.close();
+
+            const shop = await browser.newPage();
+            await shop.setViewport({ width: 1440, height: 1200, deviceScaleFactor: 1 });
+            await prepare(shop, `${base}/tienda/?${suffix}`);
+            report.shop = await shop.evaluate(() => {
+              const controls = [...document.querySelectorAll('.woostify-sorting button,.woostify-sorting a,.woostify-sorting [role="button"]')].map((node) => ({
+                text: (node.textContent || '').trim(),
+                className: typeof node.className === 'string' ? node.className : '',
+                display: getComputedStyle(node).display,
+                visibility: getComputedStyle(node).visibility
+              }));
+              const sidebar = document.querySelector('#secondary');
+              const widgets = [...document.querySelectorAll('#secondary .widget')].map((node) => ({
+                className: typeof node.className === 'string' ? node.className : '',
+                display: getComputedStyle(node).display,
+                background: getComputedStyle(node).backgroundColor,
+                borderRadius: getComputedStyle(node).borderRadius,
+                boxShadow: getComputedStyle(node).boxShadow
+              }));
+              return {
+                controls,
+                sidebar: sidebar ? { background: getComputedStyle(sidebar).backgroundColor, borderRadius: getComputedStyle(sidebar).borderRadius, boxShadow: getComputedStyle(sidebar).boxShadow } : null,
+                widgets,
+                wishlistVisible: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter((node) => getComputedStyle(node).display !== 'none').length,
+                waitlistVisible: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-modal,.xoo-wl-btn-container')].filter((node) => getComputedStyle(node).display !== 'none').length,
+                recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"]').length,
+                tagWidgetVisible: [...document.querySelectorAll('#secondary .widget_product_tag_cloud')].filter((node) => getComputedStyle(node).display !== 'none').length
+              };
+            });
+            await shop.screenshot({ path: 'release-audit/shop.png', fullPage: true });
+            await shop.close();
+
+            fs.writeFileSync('release-audit/report.json', JSON.stringify(report, null, 2));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+          node release-audit.cjs
+          cat release-audit/report.json
+
+      - name: Upload release audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-storefront-audit
+          path: release-audit/
+          retention-days: 7
