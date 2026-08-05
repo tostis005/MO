@@ -1,0 +1,374 @@
+/*
+ * Refinamiento final de interacción, cabecera, navegación móvil y accesibilidad.
+ */
+
+:root {
+	--emo-mobile-panel: min(88vw, 390px);
+}
+
+/* Evita descargar la fuente Inter de WooCommerce: la interfaz usa la pila local. */
+body.elmercado-child-theme,
+.elmercado-child-theme button,
+.elmercado-child-theme input,
+.elmercado-child-theme select,
+.elmercado-child-theme textarea {
+	font-family: Aptos, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+/* Cabecera: todos los controles comparten caja, centro óptico y área táctil. */
+.elmercado-child-theme .site-tools {
+	min-height: 44px;
+	align-items: center !important;
+}
+
+.elmercado-child-theme .site-tools > a.tools-icon,
+.elmercado-child-theme .site-tools > .header-search-icon,
+.elmercado-child-theme .site-tools > .my-account > a.tools-icon {
+	display: grid !important;
+	width: 44px !important;
+	height: 44px !important;
+	min-width: 44px;
+	min-height: 44px;
+	padding: 0 !important;
+	margin: 0 !important;
+	place-items: center !important;
+	line-height: 1 !important;
+}
+
+.elmercado-child-theme .site-tools .woostify-svg-icon,
+.elmercado-child-theme .site-tools .woostify-svg-icon svg {
+	display: block;
+	width: 19px !important;
+	height: 19px !important;
+	margin: 0 !important;
+}
+
+.elmercado-child-theme .site-tools .woostify-svg-icon svg path {
+	fill: currentColor !important;
+}
+
+/* FiboSearch está dentro del último elemento del menú principal. */
+@media (min-width: 992px) {
+	.elmercado-child-theme .site-header .main-navigation .primary-navigation > li > .dgwt-wcas-search-wrapp {
+		display: grid !important;
+		width: 44px !important;
+		min-width: 44px !important;
+		height: 44px !important;
+		margin-left: 0.45rem !important;
+		place-items: center !important;
+		line-height: 1 !important;
+	}
+
+	.elmercado-child-theme .site-header .dgwt-wcas-search-icon {
+		position: static !important;
+		display: grid !important;
+		width: 44px !important;
+		height: 44px !important;
+		padding: 0 !important;
+		margin: 0 !important;
+		place-items: center !important;
+		background: transparent !important;
+		border: 1px solid transparent;
+		border-radius: 999px;
+		cursor: pointer;
+	}
+
+	.elmercado-child-theme .site-header .dgwt-wcas-search-icon:hover,
+	.elmercado-child-theme .site-header .dgwt-wcas-search-icon:focus-visible {
+		background: var(--emo-forest-100) !important;
+		border-color: rgba(24, 54, 44, 0.08);
+	}
+
+	.elmercado-child-theme .site-header .dgwt-wcas-ico-magnifier-handler {
+		display: block !important;
+		width: 19px !important;
+		height: 19px !important;
+		margin: auto !important;
+		fill: var(--emo-forest-950) !important;
+	}
+}
+
+/*
+ * Tarjetas estables: se desactivan la segunda imagen, la máscara y el botón
+ * circular heredado que aparecían simultáneamente y provocaban el parpadeo.
+ */
+.elmercado-child-theme .product-loop-hover-image,
+.elmercado-child-theme .product-loop-action,
+.elmercado-child-theme .loop-add-to-cart-on-image {
+	display: none !important;
+	opacity: 0 !important;
+	visibility: hidden !important;
+	pointer-events: none !important;
+	transform: none !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product:hover .product-loop-image,
+.elmercado-child-theme .woocommerce ul.products li.product:hover .product-loop-image {
+	opacity: 1 !important;
+	visibility: visible !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product a img,
+.elmercado-child-theme .woocommerce ul.products li.product a img {
+	will-change: auto;
+	transition: filter 220ms ease, transform 300ms ease !important;
+}
+
+/* Corazón de favoritos legible y estable donde el plugin esté activo. */
+.elmercado-child-theme li.product .yith-wcwl-add-to-wishlist {
+	top: 14px !important;
+	left: 14px !important;
+	width: 42px;
+	height: 42px;
+	margin: 0 !important;
+	background: rgba(255, 255, 255, 0.94);
+	border: 1px solid rgba(13, 33, 27, 0.1);
+	border-radius: 999px;
+	box-shadow: 0 8px 24px rgba(13, 33, 27, 0.1);
+	backdrop-filter: blur(10px);
+}
+
+.elmercado-child-theme li.product .yith-wcwl-add-to-wishlist a {
+	display: grid !important;
+	width: 100%;
+	height: 100%;
+	place-items: center;
+	text-decoration: none !important;
+}
+
+/* Menú móvil reconstruido como panel editorial accesible. */
+.emo-mobile-menu-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 198;
+	background: rgba(7, 22, 17, 0.68);
+	backdrop-filter: blur(4px);
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 220ms ease, visibility 220ms ease;
+}
+
+html.sidebar-menu-open .emo-mobile-menu-overlay {
+	opacity: 1;
+	visibility: visible;
+}
+
+@media (max-width: 991px) {
+	html.sidebar-menu-open,
+	html.sidebar-menu-open body {
+		overflow: hidden !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu {
+		display: flex !important;
+		width: var(--emo-mobile-panel) !important;
+		max-width: 390px !important;
+		height: 100dvh !important;
+		padding: 20px 18px 24px !important;
+		flex-direction: column;
+		background: var(--emo-paper) !important;
+		border-right: 1px solid rgba(13, 33, 27, 0.08);
+		border-radius: 0 24px 24px 0;
+		box-shadow: 28px 0 80px rgba(5, 20, 15, 0.28);
+		overflow-x: hidden !important;
+		overflow-y: auto !important;
+		overscroll-behavior: contain;
+		scrollbar-width: thin;
+	}
+
+	.elmercado-child-theme .sidebar-menu .site-search {
+		width: 100% !important;
+		margin: 0 0 20px !important;
+		padding: 0 !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu .widget,
+	.elmercado-child-theme .sidebar-menu .woocommerce-product-search {
+		position: relative;
+		width: 100%;
+		margin: 0 !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu .woocommerce-product-search .search-field {
+		height: 52px !important;
+		min-height: 52px !important;
+		padding: 0 52px 0 18px !important;
+		background: #fff !important;
+		border: 1px solid rgba(13, 33, 27, 0.11) !important;
+		border-radius: 999px !important;
+		box-shadow: 0 8px 26px rgba(13, 33, 27, 0.06);
+		font-size: 0.95rem;
+	}
+
+	.elmercado-child-theme .sidebar-menu .woocommerce-product-search button {
+		position: absolute !important;
+		top: 4px !important;
+		right: 4px !important;
+		display: grid !important;
+		width: 44px !important;
+		height: 44px !important;
+		min-height: 44px !important;
+		padding: 0 !important;
+		place-items: center;
+		background: transparent !important;
+		border: 0 !important;
+		box-shadow: none !important;
+		font-size: 0 !important;
+		transform: none !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu .search-form-icon {
+		position: absolute !important;
+		top: 50% !important;
+		right: 17px !important;
+		display: block !important;
+		width: 18px;
+		height: 18px;
+		margin: 0 !important;
+		pointer-events: none;
+		transform: translateY(-50%);
+	}
+
+	.elmercado-child-theme .sidebar-menu .search-form-icon svg {
+		display: block;
+		width: 18px !important;
+		height: 18px !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu .site-navigation,
+	.elmercado-child-theme .sidebar-menu .main-navigation {
+		width: 100% !important;
+		margin: 0 !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu .primary-navigation {
+		display: flex !important;
+		width: 100%;
+		margin: 0 !important;
+		padding: 0 !important;
+		flex-direction: column;
+		list-style: none;
+	}
+
+	.elmercado-child-theme .sidebar-menu .primary-navigation > li {
+		width: 100%;
+		margin: 0 !important;
+		padding: 0 !important;
+		border-bottom: 1px solid rgba(13, 33, 27, 0.1);
+	}
+
+	.elmercado-child-theme .sidebar-menu .primary-navigation > li > a {
+		display: flex !important;
+		width: 100%;
+		min-height: 54px;
+		align-items: center;
+		margin: 0 !important;
+		padding: 14px 6px !important;
+		color: var(--emo-forest-950) !important;
+		font-family: inherit;
+		font-size: 1rem;
+		font-weight: 760;
+		letter-spacing: 0;
+		line-height: 1.3 !important;
+		text-decoration: none;
+	}
+
+	.elmercado-child-theme .sidebar-menu .primary-navigation > li > a:hover,
+	.elmercado-child-theme .sidebar-menu .primary-navigation > li > a:focus-visible {
+		padding-left: 12px !important;
+		background: var(--emo-forest-100);
+		border-radius: 12px;
+	}
+
+	.elmercado-child-theme .sidebar-menu .primary-navigation > li > a::after {
+		display: none !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu .emo-duplicate-search-item,
+	.elmercado-child-theme .sidebar-menu .primary-navigation > li:has(> .dgwt-wcas-search-wrapp) {
+		display: none !important;
+	}
+
+	.elmercado-child-theme .sidebar-menu-bottom {
+		width: 100%;
+		margin-top: auto !important;
+		padding: 22px 0 0 !important;
+		border-top: 1px solid rgba(13, 33, 27, 0.1);
+	}
+
+	.elmercado-child-theme .sidebar-menu-bottom ul {
+		margin: 0 !important;
+		padding: 0 !important;
+		list-style: none;
+	}
+
+	.elmercado-child-theme .sidebar-menu-bottom a {
+		display: flex;
+		min-height: 48px;
+		align-items: center;
+		justify-content: center;
+		padding: 0.75rem 1rem;
+		background: var(--emo-forest-800);
+		border-radius: 999px;
+		color: #fff !important;
+		font-size: 0.9rem;
+		font-weight: 800;
+		text-decoration: none;
+	}
+
+	html.sidebar-menu-open .toggle-sidebar-menu-btn {
+		position: fixed !important;
+		top: 15px !important;
+		left: min(calc(88vw - 57px), 333px) !important;
+		z-index: 202 !important;
+		display: flex !important;
+		width: 42px !important;
+		height: 42px !important;
+		align-items: center;
+		justify-content: center;
+		background: var(--emo-forest-950) !important;
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		border-radius: 999px;
+		box-shadow: 0 10px 30px rgba(5, 20, 15, 0.24);
+	}
+
+	html.sidebar-menu-open .toggle-sidebar-menu-btn::before,
+	html.sidebar-menu-open .toggle-sidebar-menu-btn::after,
+	html.sidebar-menu-open .toggle-sidebar-menu-btn > span,
+	html.sidebar-menu-open .toggle-sidebar-menu-btn > span::before,
+	html.sidebar-menu-open .toggle-sidebar-menu-btn > span::after {
+		background-color: #fff !important;
+	}
+}
+
+/* Newsletter: nombre accesible por JS y contraste suficiente en el campo. */
+.elmercado-child-theme .hustle-ui .hustle-input-label,
+.elmercado-child-theme .hustle-ui .hustle-input-label span {
+	color: #26342e !important;
+	opacity: 1 !important;
+}
+
+.elmercado-child-theme .hustle-ui .hustle-input {
+	color: #18221e !important;
+	background: #fff !important;
+}
+
+/* El contenido fuera de pantalla puede omitir trabajo de renderizado inicial. */
+.elmercado-premium-home .emo-categories,
+.elmercado-premium-home .emo-featured-products,
+.elmercado-premium-home .emo-story,
+.elmercado-premium-home .emo-vendor-cta,
+.elmercado-premium-home .site-footer {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 900px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.emo-mobile-menu-overlay,
+	.elmercado-child-theme .sidebar-menu,
+	.elmercado-child-theme .sidebar-menu a,
+	.elmercado-child-theme ul.products li.product,
+	.elmercado-child-theme ul.products li.product img {
+		transition: none !important;
+	}
+}
