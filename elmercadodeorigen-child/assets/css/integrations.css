@@ -1,0 +1,596 @@
+/*
+ * Compatibilidad con plugins y reglas funcionales heredadas.
+ *
+ * Este archivo conserva únicamente reglas estables o decisiones de negocio
+ * que no deben mezclarse con el sistema visual principal del tema.
+ */
+
+/* Utilidades de contenido existentes */
+.elmercado-child-theme .oculta,
+.elmercado-child-theme .wcfm_pdf_invoice_dummy,
+.elmercado-child-theme .wcfmmp_become_vendor_link,
+.elmercado-child-theme .wcfmmp_shipment_processing_display,
+.elmercado-child-theme .variation-Discount,
+.elmercado-child-theme .mini-cart-product-qty {
+	display: none !important;
+}
+
+.elmercado-child-theme span.fecha {
+	display: inline-block;
+	width: 150px;
+	max-width: 100%;
+}
+
+.elmercado-child-theme span.indice {
+	display: block;
+}
+
+.elmercado-child-theme a.nivel1 {
+	display: inline-block;
+	margin-top: 10px;
+	text-transform: uppercase;
+}
+
+.elmercado-child-theme a.nivel2 {
+	margin-left: 15px;
+}
+
+.elmercado-child-theme .enlaceIndice {
+	position: relative;
+	top: -110px;
+}
+
+.elmercado-child-theme .metodosPago {
+	width: auto;
+	height: 40px;
+	margin-top: 20px;
+}
+
+.elmercado-child-theme ul.liBlack {
+	padding-left: 0;
+	font-size: 1.05rem;
+	font-weight: 700;
+	list-style: none;
+}
+
+.elmercado-child-theme ul.liBlack ul {
+	margin-top: 5px;
+	padding-left: 10px;
+	font-size: 1rem;
+	font-weight: 400;
+	list-style: none;
+}
+
+/* WCFM: panel de vendedores */
+.elmercado-child-theme #wcfm-main-contentainer table {
+	margin-top: 0 !important;
+}
+
+.elmercado-child-theme #wcfm-main-contentainer table .factura {
+	display: inline-block;
+	width: 130px;
+	max-width: 100%;
+	text-align: center;
+}
+
+.elmercado-child-theme #wcfm-main-contentainer table .factura input[type="checkbox"] {
+	appearance: auto !important;
+	-webkit-appearance: checkbox !important;
+}
+
+.elmercado-child-theme #wcfm-orders td {
+	text-align: left;
+}
+
+.elmercado-child-theme div#wcfm-main-contentainer [class*=" fa-"],
+.elmercado-child-theme div#wcfm-main-contentainer [class*=fa-],
+.elmercado-child-theme div#wcfm-main-contentainer [class^=fa-]::before,
+.elmercado-child-theme div#wcfm-main-contentainer [class*=" fa-"]::before,
+.elmercado-child-theme div.wcfm_buttons [class*=" fa-"],
+.elmercado-child-theme div.wcfm_buttons [class*=fa-] {
+	width: 25px;
+	text-align: center;
+}
+
+.elmercado-child-theme .wcfm_ele_wrapper {
+	position: relative;
+	display: inline-block;
+	clear: both;
+}
+
+.elmercado-child-theme .wcfm_mark_as_recived {
+	padding: 0.55rem 0.85rem;
+}
+
+/* WCFM Marketplace: tienda y directorio */
+.elmercado-child-theme #wcfmmp-store {
+	box-shadow: none !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .left_sidebar,
+.elmercado-child-theme #wcfmmp-stores-lists .left_sidebar {
+	padding: 15px !important;
+	background: #fff !important;
+	border: 1px solid var(--emo-border) !important;
+	border-radius: var(--emo-radius-md);
+}
+
+.elmercado-child-theme #wcfmmp-store .sidebar_heading {
+	margin-bottom: 0 !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .sidebar_heading h4 {
+	font-size: 1rem;
+	line-height: 1.5;
+	text-transform: none !important;
+}
+
+.elmercado-child-theme #wcfmmp-store ul {
+	padding-left: 0 !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .wcfm_policies_description ul {
+	padding-left: 30px !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .wcfm_policies_description ul li {
+	padding: 0 0 10px 10px !important;
+	list-style: disc !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links {
+	margin-bottom: 20px !important;
+	padding-bottom: 1px !important;
+	border-bottom-color: var(--emo-green-800) !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li {
+	min-width: 150px;
+	margin-top: -1px !important;
+	margin-right: 4px !important;
+	border-color: var(--emo-green-800) !important;
+	border-bottom-width: 0 !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li.active {
+	border-top-color: var(--emo-green-800) !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li::after {
+	background: var(--emo-green-800) !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li a {
+	display: block;
+	width: 100% !important;
+	padding: 10px 0 !important;
+	color: var(--emo-green-950) !important;
+	text-align: center;
+}
+
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li:hover a,
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li.active a,
+.elmercado-child-theme .wcfm_dashboard_item_title,
+.elmercado-child-theme .wcfmmp_sold_by_wrapper a,
+.elmercado-child-theme .wcfmmp_store_hours .wcfmmp-store-hours-day {
+	color: var(--emo-green-800) !important;
+}
+
+.elmercado-child-theme .wcfm_dashboard_item_title,
+.elmercado-child-theme .wcfmmp_sold_by_wrapper a.wcfm_dashboard_item_title {
+	text-decoration: underline !important;
+	text-underline-offset: 0.15em;
+}
+
+.elmercado-child-theme .wcfmmp_sold_by_wrapper img.wcfmmp_sold_by_logo,
+.elmercado-child-theme .wcfmmp_sold_by_logo,
+.elmercado-child-theme .store-avatar {
+	display: none !important;
+}
+
+.elmercado-child-theme .vendor_rating .wcfmmp-store-rating,
+.elmercado-child-theme .wcfmmp_sold_by_container .wcfmmp-store-rating {
+	display: inline-block !important;
+}
+
+.elmercado-child-theme .vendor_rating .wcfmmp-store-rating::before,
+.elmercado-child-theme .wcfmmp_sold_by_container .wcfmmp-store-rating::before {
+	position: relative !important;
+	float: none !important;
+	text-align: center !important;
+}
+
+.elmercado-child-theme .wcfmmp_sold_by_container_advanced .wcfmmp-store-rating span::before,
+.elmercado-child-theme .wcfmmp_store_info .wcfmmp-store-rating span::before,
+.elmercado-child-theme .wcfmmp_sold_by_container .wcfmmp-store-rating span::before {
+	width: 100% !important;
+	text-align: center !important;
+}
+
+.elmercado-child-theme #wcfmmp-store ins {
+	background: transparent !important;
+}
+
+.elmercado-child-theme .wcfmmp-store-search-form input#search,
+.elmercado-child-theme #wcfmmp_store_orderby,
+.elmercado-child-theme .select2-selection--single {
+	height: 42px !important;
+	padding: 5px 12px !important;
+	background: #fff;
+	border: 1px solid var(--emo-border) !important;
+	border-radius: var(--emo-radius-sm) !important;
+	text-align: left;
+}
+
+.elmercado-child-theme #wcfmmp_store_orderby {
+	width: auto !important;
+}
+
+.elmercado-child-theme .wcfmmp-store-search-form .select2-container {
+	border: 0 !important;
+}
+
+.elmercado-child-theme .wcfmmp-store-search-form .select2-selection__rendered,
+.elmercado-child-theme .select2-container .select2-selection--single .select2-selection__rendered {
+	height: inherit !important;
+	padding: 0 !important;
+	line-height: inherit !important;
+}
+
+.elmercado-child-theme .select2-container--default .select2-selection--single .select2-selection__arrow {
+	top: 50% !important;
+	transform: translateY(-50%);
+}
+
+.elmercado-child-theme .wcfmmp-store-search,
+.elmercado-child-theme .select2-container--default .select2-selection--single .select2-selection__placeholder {
+	color: var(--emo-muted) !important;
+}
+
+.elmercado-child-theme #wcfmmp-store .add_review button,
+.elmercado-child-theme #wcfmmp-store .user_rated,
+.elmercado-child-theme #wcfmmp-store .bd_icon_box .follow,
+.elmercado-child-theme #wcfmmp-store .bd_icon_box .wcfm_store_enquiry,
+.elmercado-child-theme #wcfmmp-store .bd_icon_box .wcfm_store_chatnow,
+.elmercado-child-theme a.wcfm_catalog_enquiry,
+.elmercado-child-theme a.wcfm_chat_now_button,
+.elmercado-child-theme a.wcfm_follow_me,
+.elmercado-child-theme .wcfm_popup_wrapper .wcfm_popup_button {
+	background-color: var(--emo-green-800) !important;
+	border-color: var(--emo-green-800) !important;
+	color: #fff !important;
+}
+
+.elmercado-child-theme div.wcfm_popup_wrapper h2,
+.elmercado-child-theme form.wcfm_popup_wrapper h2 {
+	color: var(--emo-green-950) !important;
+	font-style: normal !important;
+}
+
+.elmercado-child-theme #wcfm_enquiry_form > br {
+	display: none !important;
+}
+
+.elmercado-child-theme #wcfm_enquiry_form .wcfm-message br {
+	display: inline !important;
+}
+
+.elmercado-child-theme .wcfm-error {
+	padding-left: 10px !important;
+}
+
+/* Colorbox utilizado por consultas de WCFM */
+.elmercado-child-theme #cboxOverlay,
+.elmercado-child-theme #cboxWrapper,
+.elmercado-child-theme #colorbox {
+	z-index: 10002 !important;
+}
+
+.elmercado-child-theme #colorbox {
+	position: fixed !important;
+	top: 5% !important;
+	left: 5% !important;
+	width: 90% !important;
+	max-width: 920px;
+	height: auto !important;
+}
+
+.elmercado-child-theme #cboxWrapper,
+.elmercado-child-theme #cboxContent,
+.elmercado-child-theme #cboxLoadedContent {
+	width: 100% !important;
+	height: auto !important;
+}
+
+.elmercado-child-theme #cboxLoadedContent {
+	margin: 0 !important;
+	padding: 18px !important;
+	box-shadow: none !important;
+}
+
+.elmercado-child-theme #cboxTopLeft,
+.elmercado-child-theme #cboxTopCenter,
+.elmercado-child-theme #cboxTopRight,
+.elmercado-child-theme #cboxBottomLeft,
+.elmercado-child-theme #cboxBottomCenter,
+.elmercado-child-theme #cboxBottomRight,
+.elmercado-child-theme #cboxMiddleRight,
+.elmercado-child-theme #cboxMiddleLeft {
+	display: none !important;
+}
+
+.elmercado-child-theme #cboxContent {
+	border-radius: var(--emo-radius-md) !important;
+}
+
+.elmercado-child-theme #cboxClose {
+	top: 15px !important;
+	right: 15px !important;
+}
+
+/* WooCommerce: variaciones, ordenación y carrito */
+.elmercado-child-theme .variations select,
+.elmercado-child-theme .yith-wapo-option-value {
+	position: static !important;
+	display: block;
+	clear: both;
+	width: 100% !important;
+	min-height: 42px;
+	padding: 5px 10px !important;
+	background-color: #fff;
+}
+
+.elmercado-child-theme .variations {
+	margin-bottom: 0;
+}
+
+.elmercado-child-theme .variations .label,
+.elmercado-child-theme .single_variation_wrap h6 {
+	width: auto !important;
+	margin: 5px 0;
+	padding: 10px 20px 5px 10px;
+	font-size: 0.9rem;
+	line-height: 1.2;
+	vertical-align: top !important;
+}
+
+.elmercado-child-theme .variations label {
+	word-break: normal !important;
+}
+
+.elmercado-child-theme .variations .reset_variations {
+	margin-top: 10px !important;
+	margin-left: 0 !important;
+}
+
+.elmercado-child-theme .woocommerce-ordering {
+	min-width: min(250px, 100%);
+}
+
+.elmercado-child-theme .woocommerce .woocommerce-ordering select {
+	width: 100%;
+	background-color: #fff;
+}
+
+.elmercado-child-theme .form-row .input-text {
+	height: auto !important;
+	padding: 0.65rem 0.8rem;
+	border-radius: var(--emo-radius-sm);
+}
+
+.elmercado-child-theme .woocommerce-mini-cart__buttons .checkout {
+	display: none !important;
+}
+
+.elmercado-child-theme .woocommerce-mini-cart__buttons .button {
+	background-color: var(--emo-green-800) !important;
+	border-radius: 999px !important;
+	color: #fff !important;
+}
+
+.elmercado-child-theme .woocommerce-mini-cart__buttons .button:hover {
+	background-color: var(--emo-green-100) !important;
+	border-color: var(--emo-green-800) !important;
+	color: var(--emo-green-950) !important;
+}
+
+.elmercado-child-theme a.remove {
+	width: auto !important;
+	height: auto !important;
+	font-size: 2rem !important;
+	text-decoration: none !important;
+}
+
+.elmercado-child-theme .woocommerce-checkout-review-order-table th {
+	white-space: normal !important;
+}
+
+.elmercado-child-theme .checkout-button br,
+.elmercado-child-theme .product-quantity .quantity br {
+	display: none !important;
+}
+
+/* YITH Wishlist */
+.elmercado-child-theme li.product .yith-wcwl-add-to-wishlist {
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	z-index: 5;
+	font-size: 1.6rem;
+}
+
+.elmercado-child-theme .product-page-container .yith-wcwl-add-to-wishlist {
+	float: right;
+	width: 42px;
+	font-size: 1.8rem;
+}
+
+.elmercado-child-theme .yith-wcwl-wishlistaddedbrowse a,
+.elmercado-child-theme .yith-wcwl-wishlistexistsbrowse a {
+	display: none !important;
+}
+
+.elmercado-child-theme .wishlist_table tr {
+	margin-bottom: 30px;
+}
+
+/* YITH Product Bundles y Product Add-ons */
+.elmercado-child-theme .yith-wcpb-product-bundled-item-data__title {
+	font-size: 1.05rem !important;
+	font-weight: 750 !important;
+}
+
+.elmercado-child-theme .yith-wcpb-product-bundled-item-data__quantity::before {
+	content: "Cantidad: ";
+	font-size: 1rem;
+	font-weight: 700;
+}
+
+.elmercado-child-theme .yith-wcpb-product-bundled-item .bundled_item_cart_details,
+.elmercado-child-theme .yith-wcpb-product-bundled-item .variations {
+	display: none !important;
+}
+
+.elmercado-child-theme table.yith-wcpb-product-bundled-items td.yith-wcpb-product-bundled-item-image {
+	width: 100px;
+	padding-top: 10px !important;
+	padding-left: 10px !important;
+}
+
+.elmercado-child-theme .yith-wcpb-bundled-optional-wrapper {
+	font-size: 1rem;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.elmercado-child-theme .yith-wcpb-bundled-optional-wrapper input {
+	width: 18px;
+	height: 18px;
+}
+
+.elmercado-child-theme .yith-wcpb-product-bundled-item-data__description a.masInfo {
+	display: block !important;
+	width: max-content;
+	margin: 0.75rem 0 0 auto;
+	padding: 0.55rem 0.8rem;
+	background: var(--emo-green-800) !important;
+	border-radius: 999px;
+	color: #fff !important;
+	text-align: center !important;
+	text-decoration: none !important;
+}
+
+.elmercado-child-theme .yith-wcpb-product-bundled-item-data__description a.masInfo:hover {
+	background: var(--emo-green-100) !important;
+	color: var(--emo-green-950) !important;
+}
+
+.elmercado-child-theme .panelMasInfo {
+	display: none;
+	margin: 10px;
+	padding: 14px;
+	background: #f2f4f1;
+	border-radius: var(--emo-radius-sm);
+	overflow: hidden;
+}
+
+.elmercado-child-theme .panelMasInfo p {
+	margin-bottom: 12px !important;
+}
+
+.elmercado-child-theme .yith-wapo-container,
+.elmercado-child-theme .options-container .options {
+	width: 100% !important;
+}
+
+.elmercado-child-theme .wapo-total-order th {
+	display: none !important;
+}
+
+.elmercado-child-theme td#wapo-total-order-price,
+.elmercado-child-theme table.only_final {
+	border: 0 !important;
+}
+
+/* FiboSearch / AJAX Search for WooCommerce */
+.elmercado-child-theme .dgwt-wcas-search-wrapp {
+	width: auto !important;
+	margin: 0 !important;
+}
+
+.elmercado-child-theme .dgwt-wcas-has-desc .dgwt-wcas-sp > *,
+.elmercado-child-theme .dgwt-wcas-has-img .dgwt-wcas-sp > * {
+	display: initial !important;
+}
+
+.elmercado-child-theme .dgwt-wcas-sp {
+	white-space: nowrap !important;
+}
+
+.elmercado-child-theme .dgwt-wcas-suggestions-wrapp {
+	max-height: min(70vh, 620px) !important;
+}
+
+/* Contact Form 7 */
+.elmercado-child-theme .wpcf7 {
+	max-width: 700px;
+	margin-inline: auto;
+}
+
+.elmercado-child-theme .wpcf7 label {
+	font-size: 1rem;
+}
+
+.elmercado-child-theme .wpcf7 input[type="submit"] {
+	min-width: 120px;
+}
+
+.elmercado-child-theme .wpcf7-not-valid-tip,
+.elmercado-child-theme .wpcf7-validation-errors {
+	font-size: 0.88rem;
+}
+
+/* Etiquetas de producto de BeRocket */
+.elmercado-child-theme .br_alabel_better_compatibility span {
+	width: auto !important;
+	padding: 7px 10px !important;
+	background-color: var(--emo-green-800) !important;
+	font-size: 0.9rem !important;
+	line-height: 1.35 !important;
+}
+
+.elmercado-child-theme .br_alabel b {
+	color: #fff !important;
+}
+
+/* Vídeo responsive */
+.elmercado-child-theme .wp-video,
+.elmercado-child-theme .wp-video-shortcode video,
+.elmercado-child-theme video.wp-video-shortcode {
+	width: 100% !important;
+	height: auto !important;
+}
+
+@media (max-width: 767px) {
+	.elmercado-child-theme #wcfmmp-store .tab_area .tab_links {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 4px;
+	}
+
+	.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li {
+		width: auto !important;
+		min-width: 0 !important;
+		margin: 0 !important;
+	}
+
+	.elmercado-child-theme #colorbox {
+		top: 3% !important;
+		left: 3% !important;
+		width: 94% !important;
+	}
+
+	.elmercado-child-theme .enlaceIndice {
+		top: -80px;
+	}
+}
