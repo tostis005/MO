@@ -19,12 +19,12 @@ add_action(
 			'woocommerce',
 			array(
 				'thumbnail_image_width' => 720,
-				'single_image_width'    => 1100,
+				'single_image_width'    => 1200,
 				'product_grid'          => array(
 					'default_rows'    => 4,
 					'min_rows'        => 1,
 					'max_rows'        => 8,
-					'default_columns' => 4,
+					'default_columns' => 3,
 					'min_columns'     => 1,
 					'max_columns'     => 4,
 				),
@@ -39,7 +39,7 @@ add_action(
 add_filter(
 	'loop_shop_columns',
 	static function (): int {
-		return 4;
+		return 3;
 	},
 	20
 );
@@ -47,16 +47,69 @@ add_filter(
 add_filter(
 	'loop_shop_per_page',
 	static function (): int {
-		return 16;
+		return 15;
 	},
 	20
 );
 
+/**
+ * La rebaja queda visible en el precio; evitamos pegatinas superpuestas.
+ */
 add_filter(
 	'woocommerce_sale_flash',
 	static function (): string {
-		return '<span class="onsale">' . esc_html__( 'Oferta', 'elmercadodeorigen' ) . '</span>';
-	}
+		return '';
+	},
+	30
+);
+
+/**
+ * Relacionados y ventas adicionales con tarjetas grandes y legibles.
+ *
+ * @param array<string, mixed> $args Argumentos de la consulta.
+ * @return array<string, mixed>
+ */
+add_filter(
+	'woocommerce_output_related_products_args',
+	static function ( array $args ): array {
+		$args['posts_per_page'] = 3;
+		$args['columns']        = 3;
+
+		return $args;
+	},
+	30
+);
+
+add_filter(
+	'woocommerce_upsells_columns',
+	static function (): int {
+		return 3;
+	},
+	30
+);
+
+add_filter(
+	'woocommerce_upsells_total',
+	static function (): int {
+		return 3;
+	},
+	30
+);
+
+add_filter(
+	'woocommerce_cross_sells_columns',
+	static function (): int {
+		return 3;
+	},
+	30
+);
+
+add_filter(
+	'woocommerce_cross_sells_total',
+	static function (): int {
+		return 3;
+	},
+	30
 );
 
 /**
