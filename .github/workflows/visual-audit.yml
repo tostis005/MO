@@ -24,8 +24,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          URL="https://dev.elmercadodeorigen.com/?emo-audit=${GITHUB_SHA}"
           for attempt in {1..18}; do
-            if curl -fsSL --max-time 20 https://dev.elmercadodeorigen.com/ -o /tmp/home.html; then
+            if curl -fsSL --max-time 20 "$URL" -o /tmp/home.html; then
               break
             fi
             sleep 5
@@ -38,18 +39,91 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          URL="https://dev.elmercadodeorigen.com/?emo-audit=${GITHUB_SHA}"
           mkdir -p visual-audit
           google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
             --window-size=1440,2200 \
             --screenshot=visual-audit/home-desktop.png \
-            https://dev.elmercadodeorigen.com/
+            "$URL"
           google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
             --window-size=390,1600 \
             --user-agent='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' \
             --screenshot=visual-audit/home-mobile.png \
-            https://dev.elmercadodeorigen.com/
+            "$URL"
           cp /tmp/home.html visual-audit/home.html
+          curl -fsSL 'https://dev.elmercadodeorigen.com/wp-content/uploads/custom-css-js/6585.css?v=6476' \
+            -o visual-audit/legacy-6585.css || true
           file visual-audit/*.png
+
+      - name: Inspect computed branding styles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > /tmp/inspect-branding.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: '/usr/bin/google-chrome',
+              headless: true,
+              args: ['--no-sandbox', '--disable-gpu']
+            });
+            const page = await browser.newPage();
+            await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+            await page.goto(`https://dev.elmercadodeorigen.com/?emo-audit=${process.env.GITHUB_SHA}`, {
+              waitUntil: 'networkidle2',
+              timeout: 60000
+            });
+
+            const result = await page.evaluate(() => {
+              const target = document.querySelector('.site-branding .site-title a');
+              const serialize = (node, pseudo = null) => {
+                if (!node) return null;
+                const css = getComputedStyle(node, pseudo);
+                const rect = node.getBoundingClientRect();
+                return {
+                  text: node.textContent,
+                  html: node.outerHTML,
+                  rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                  style: {
+                    display: css.display,
+                    position: css.position,
+                    color: css.color,
+                    fontFamily: css.fontFamily,
+                    fontSize: css.fontSize,
+                    lineHeight: css.lineHeight,
+                    whiteSpace: css.whiteSpace,
+                    textShadow: css.textShadow,
+                    content: css.content,
+                    opacity: css.opacity,
+                    transform: css.transform
+                  }
+                };
+              };
+
+              const matching = [...document.querySelectorAll('body *')]
+                .filter((node) => node.children.length === 0 && node.textContent.trim() === 'El Mercado de Origen')
+                .map((node) => serialize(node));
+
+              return {
+                target: serialize(target),
+                before: serialize(target, '::before'),
+                after: serialize(target, '::after'),
+                matching
+              };
+            });
+
+            fs.writeFileSync('visual-audit/branding-computed.json', JSON.stringify(result, null, 2));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+          node /tmp/inspect-branding.cjs
+          cat visual-audit/branding-computed.json
 
       - name: Upload visual audit
         uses: actions/upload-artifact@v4
