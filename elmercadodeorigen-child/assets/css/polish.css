@@ -1,0 +1,197 @@
+/*
+ * Última capa de reconciliación visual.
+ * Se carga después de plugins y hojas personalizadas heredadas.
+ */
+
+/* La nueva barra editorial sustituye la antigua barra telefónica. */
+.elmercado-child-theme .topbar,
+.elmercado-child-theme #topbar,
+.elmercado-child-theme .site-topbar {
+	display: none !important;
+}
+
+/* Cabecera limpia y una sola marca visible. */
+.elmercado-child-theme .site-header,
+.elmercado-child-theme .site-header-inner,
+.elmercado-child-theme .site-header-inner .woostify-container {
+	background: rgba(255, 255, 255, 0.97) !important;
+}
+
+.elmercado-child-theme .site-branding,
+.elmercado-child-theme .site-branding .beta.site-title,
+.elmercado-child-theme .site-branding .site-title,
+.elmercado-child-theme .site-branding .site-title a {
+	position: relative !important;
+	display: block !important;
+	width: auto !important;
+	height: auto !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	color: var(--emo-forest-950) !important;
+	font-family: Georgia, "Times New Roman", serif !important;
+	font-size: clamp(1.08rem, 2vw, 1.5rem) !important;
+	font-weight: 600 !important;
+	letter-spacing: -0.035em !important;
+	line-height: 1.1 !important;
+	text-decoration: none !important;
+	text-shadow: none !important;
+}
+
+.elmercado-child-theme .site-branding .site-title::before,
+.elmercado-child-theme .site-branding .site-title::after,
+.elmercado-child-theme .site-branding .site-title a::before,
+.elmercado-child-theme .site-branding .site-title a::after {
+	display: none !important;
+	content: none !important;
+}
+
+.elmercado-child-theme .site-branding .site-description {
+	display: none !important;
+}
+
+/* Los CTA de la nueva portada no heredan colores antiguos. */
+.elmercado-child-theme .emo-button,
+.elmercado-child-theme .emo-button:visited,
+.elmercado-child-theme .emo-button:hover,
+.elmercado-child-theme .emo-button:focus {
+	color: #fff !important;
+	text-decoration: none !important;
+}
+
+.elmercado-child-theme .emo-button--accent,
+.elmercado-child-theme .emo-button--accent:visited {
+	background: var(--emo-clay) !important;
+	border-color: var(--emo-clay) !important;
+}
+
+.elmercado-child-theme .emo-button--accent:hover,
+.elmercado-child-theme .emo-button--accent:focus {
+	background: #e07c50 !important;
+	border-color: #e07c50 !important;
+}
+
+.elmercado-child-theme .emo-button--ghost,
+.elmercado-child-theme .emo-button--ghost:visited {
+	background: transparent !important;
+	border-color: rgba(255, 255, 255, 0.38) !important;
+	color: #fff !important;
+}
+
+.elmercado-child-theme .emo-button--ghost:hover,
+.elmercado-child-theme .emo-button--ghost:focus {
+	background: rgba(255, 255, 255, 0.1) !important;
+	border-color: rgba(255, 255, 255, 0.68) !important;
+}
+
+.elmercado-child-theme .emo-button--dark,
+.elmercado-child-theme .emo-button--dark:visited {
+	background: var(--emo-forest-950) !important;
+	border-color: var(--emo-forest-950) !important;
+}
+
+/* La parrilla se adapta al número real de categorías. */
+.elmercado-child-theme .emo-category-grid {
+	grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
+}
+
+/* Aviso de cookies convertido en una tarjeta compacta y legible. */
+.elmercado-child-theme #cookie-law-info-bar {
+	right: auto !important;
+	bottom: 18px !important;
+	left: 50% !important;
+	width: min(760px, calc(100% - 32px)) !important;
+	max-width: 760px !important;
+	padding: 14px 16px !important;
+	background: rgba(255, 255, 255, 0.97) !important;
+	border: 1px solid rgba(13, 33, 27, 0.12) !important;
+	border-radius: 16px !important;
+	box-shadow: 0 22px 65px rgba(13, 33, 27, 0.2) !important;
+	color: var(--emo-ink) !important;
+	font-size: 0.78rem !important;
+	line-height: 1.55 !important;
+	text-align: left !important;
+	transform: translateX(-50%) !important;
+	backdrop-filter: blur(16px);
+}
+
+.elmercado-child-theme #cookie-law-info-bar > span {
+	display: flex !important;
+	align-items: center;
+	gap: 12px;
+}
+
+.elmercado-child-theme #cookie-law-info-bar .cli-plugin-main-link {
+	flex: 0 0 auto;
+	color: var(--emo-forest-800) !important;
+	font-weight: 750 !important;
+	white-space: nowrap;
+}
+
+.elmercado-child-theme #cookie_action_close_header {
+	flex: 0 0 auto;
+	min-height: 40px !important;
+	margin: 0 0 0 auto !important;
+	padding: 0.65rem 1.1rem !important;
+	background: var(--emo-forest-900) !important;
+	border: 1px solid var(--emo-forest-900) !important;
+	border-radius: 999px !important;
+	color: #fff !important;
+	font-size: 0.75rem !important;
+	font-weight: 800 !important;
+	text-decoration: none !important;
+}
+
+.elmercado-child-theme #cookie_action_close_header:hover {
+	background: var(--emo-clay) !important;
+	border-color: var(--emo-clay) !important;
+}
+
+.elmercado-child-theme #ht-ctc-chat {
+	bottom: 100px !important;
+	left: 16px !important;
+}
+
+@media (max-width: 767px) {
+	.elmercado-child-theme .site-header,
+	.elmercado-child-theme .site-header-inner,
+	.elmercado-child-theme .site-header-inner .woostify-container {
+		background: #fff !important;
+	}
+
+	.elmercado-child-theme .site-branding .beta.site-title,
+	.elmercado-child-theme .site-branding .site-title,
+	.elmercado-child-theme .site-branding .site-title a {
+		max-width: 150px;
+		font-size: 1rem !important;
+		line-height: 1.05 !important;
+	}
+
+	.elmercado-child-theme #cookie-law-info-bar {
+		bottom: 10px !important;
+		width: calc(100% - 20px) !important;
+		padding: 13px !important;
+		border-radius: 14px !important;
+		font-size: 0.73rem !important;
+		line-height: 1.45 !important;
+	}
+
+	.elmercado-child-theme #cookie-law-info-bar > span {
+		align-items: flex-start;
+		flex-wrap: wrap;
+		gap: 8px 10px;
+	}
+
+	.elmercado-child-theme #cookie-law-info-bar .cli-plugin-main-link {
+		white-space: normal;
+	}
+
+	.elmercado-child-theme #cookie_action_close_header {
+		min-height: 38px !important;
+		margin-left: auto !important;
+	}
+
+	.elmercado-child-theme #ht-ctc-chat {
+		bottom: 150px !important;
+		left: 12px !important;
+	}
+}
