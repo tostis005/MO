@@ -1,4 +1,4 @@
-name: Deploy child theme to development
+name: Deploy child theme to staging
 
 on:
   push:
@@ -12,19 +12,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: elmercado-development-deploy
+  group: elmercado-staging-deploy
   cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PORT: ${{ secrets.SSH_PORT }}
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-      WP_THEME_PATH: ${{ secrets.WP_THEME_PATH }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
 
     steps:
       - name: Checkout repository
@@ -36,6 +37,8 @@ jobs:
           set -euo pipefail
           test -f elmercadodeorigen-child/style.css
           test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/assets/css/theme.css
+          test -f elmercadodeorigen-child/assets/css/integrations.css
           grep -q '^Template: woostify$' elmercadodeorigen-child/style.css
           find elmercadodeorigen-child -type f -name '*.php' -print0 \
             | xargs -0 -n1 php -l
@@ -44,43 +47,88 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          : "${SSH_HOST:?Missing SSH_HOST secret}"
-          : "${SSH_USER:?Missing SSH_USER secret}"
-          : "${SSH_PRIVATE_KEY:?Missing SSH_PRIVATE_KEY secret}"
-          : "${SSH_KNOWN_HOSTS:?Missing SSH_KNOWN_HOSTS secret}"
-          : "${WP_THEME_PATH:?Missing WP_THEME_PATH secret}"
+          : "${STAGING_HOST:?Missing STAGING_HOST secret}"
+          : "${STAGING_USER:?Missing STAGING_USER secret}"
+          : "${STAGING_PASSWORD:?Missing STAGING_PASSWORD secret}"
+          : "${STAGING_KNOWN_HOSTS:?Missing STAGING_KNOWN_HOSTS secret}"
+          : "${STAGING_REMOTE_PATH:?Missing STAGING_REMOTE_PATH secret}"
 
-          case "${WP_THEME_PATH%/}" in
-            */wp-content/themes/elmercadodeorigen-child) ;;
-            *)
-              echo "WP_THEME_PATH must end in /wp-content/themes/elmercadodeorigen-child"
-              exit 1
-              ;;
-          esac
+          PORT="${STAGING_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || {
+            echo "STAGING_PORT must be a valid numeric port"
+            exit 1
+          }
 
-      - name: Configure SSH
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/wp-content/themes/elmercadodeorigen-child/?$ ]] || {
+            echo "STAGING_REMOTE_PATH must be an absolute path ending in /wp-content/themes/elmercadodeorigen-child"
+            echo "Spaces and shell metacharacters are intentionally rejected."
+            exit 1
+          }
+
+      - name: Install deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Configure SSH host verification
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 700 ~/.ssh
-          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy with rsync
+      - name: Test SSH connection
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          PORT="${SSH_PORT:-22}"
-          TARGET="${WP_THEME_PATH%/}/"
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh \
+            -o BatchMode=no \
+            -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no \
+            -o StrictHostKeyChecking=yes \
+            -p "$PORT" \
+            "$STAGING_USER@$STAGING_HOST" \
+            'printf "SSH connection successful\n"'
 
-          ssh -i ~/.ssh/id_ed25519 -p "$PORT" "$SSH_USER@$SSH_HOST" \
-            "mkdir -p '$TARGET'"
+      - name: Deploy child theme with rsync
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          TARGET="${STAGING_REMOTE_PATH%/}/"
 
-          rsync -az --delete \
+          sshpass -e ssh \
+            -o BatchMode=no \
+            -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no \
+            -o StrictHostKeyChecking=yes \
+            -p "$PORT" \
+            "$STAGING_USER@$STAGING_HOST" \
+            "mkdir -p -- '$TARGET'"
+
+          sshpass -e rsync -az --delete \
             --exclude='.DS_Store' \
             --exclude='*.map' \
-            -e "ssh -i ~/.ssh/id_ed25519 -p $PORT" \
+            -e "ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT" \
             elmercadodeorigen-child/ \
-            "$SSH_USER@$SSH_HOST:$TARGET"
+            "$STAGING_USER@$STAGING_HOST:$TARGET"
+
+      - name: Deployment summary
+        shell: bash
+        run: |
+          {
+            echo '### Staging deployment completed'
+            echo ''
+            echo '- Theme: `elmercadodeorigen-child`'
+            echo '- Destination: staging WordPress themes directory'
+            echo '- Database, uploads and plugins were not modified.'
+          } >> "$GITHUB_STEP_SUMMARY"
