@@ -85,13 +85,18 @@
 		return;
 	}
 
+	/*
+	 * Las tarjetas de producto no usan reveal: WooCommerce y varios plugins
+	 * cargan imágenes y filas de forma diferida, y ocultarlas hasta observarlas
+	 * podía dejar productos invisibles en cargas lentas. Se mantiene el efecto
+	 * únicamente en bloques editoriales no transaccionales.
+	 */
 	const revealElements = document.querySelectorAll([
 		'.emo-section-heading',
 		'.emo-category-card',
 		'.emo-trust article',
 		'.emo-story__values article',
 		'.emo-vendor-cta__inner',
-		'.woocommerce ul.products li.product',
 		'.entry-content > .wp-block-group',
 		'.emo-reveal'
 	].join(','));
