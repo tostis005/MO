@@ -87,7 +87,7 @@ jobs:
           raw="${1%/}"
           wp_dir=""
 
-          check_root() {
+          check_installation() {
             candidate="$1"
             if [ -f "$candidate/wp-config.php" ] && [ -d "$candidate/wp-content/themes" ]; then
               wp_dir="$candidate"
@@ -98,16 +98,16 @@ jobs:
 
           case "$raw" in
             */wp-content/themes/elmercadodeorigen-child)
-              check_root "$(dirname "$(dirname "$(dirname "$raw")")")" || true
+              check_installation "$(dirname "$(dirname "$(dirname "$raw")")")" || true
               ;;
             */wp-content/themes)
-              check_root "$(dirname "$(dirname "$raw")")" || true
+              check_installation "$(dirname "$(dirname "$raw")")" || true
               ;;
             */wp-content)
-              check_root "$(dirname "$raw")" || true
+              check_installation "$(dirname "$raw")" || true
               ;;
             *)
-              check_root "$raw" || true
+              check_installation "$raw" || true
               ;;
           esac
 
@@ -149,14 +149,19 @@ jobs:
               count="$(wc -l < "$tmp.sorted" | tr -d ' ')"
             fi
 
-            if [ "$count" -ne 1 ]; then
-              echo "Could not identify exactly one WordPress installation."
+            preferred="$(grep '/dev\.elmercadodeorigen\.com/wp-config\.php$' "$tmp.sorted" || true)"
+            preferred_count="$(printf '%s\n' "$preferred" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+            if [ "$preferred_count" -eq 1 ]; then
+              wp_dir="$(dirname "$(printf '%s\n' "$preferred" | head -n 1)")"
+            elif [ "$count" -eq 1 ]; then
+              wp_dir="$(dirname "$(head -n 1 "$tmp.sorted")")"
+            else
+              echo "Could not select the staging WordPress installation."
               echo "wp-config.php candidates found: $count"
               cat "$tmp.sorted"
               exit 1
             fi
-
-            wp_dir="$(dirname "$(head -n 1 "$tmp.sorted")")"
           fi
 
           [ -f "$wp_dir/wp-config.php" ]
@@ -197,7 +202,7 @@ jobs:
             "test -f '$TARGET/style.css' && \
              test -f '$TARGET/functions.php' && \
              grep -q '^Template: woostify$' '$TARGET/style.css' && \
-             printf 'Child theme verified inside WordPress themes.\n'"
+             printf 'Child theme verified inside dev.elmercadodeorigen.com themes.\n'"
 
       - name: Deployment summary
-        run: echo "Child theme deployed and verified in staging."
+        run: echo "Child theme deployed and verified in dev.elmercadodeorigen.com."
