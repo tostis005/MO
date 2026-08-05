@@ -35,6 +35,7 @@
 	line-height: 1.1 !important;
 	text-decoration: none !important;
 	text-shadow: none !important;
+	white-space: nowrap !important;
 }
 
 .elmercado-child-theme .site-branding .site-title::before,
@@ -162,8 +163,16 @@
 	.elmercado-child-theme .site-branding .site-title,
 	.elmercado-child-theme .site-branding .site-title a {
 		max-width: 150px;
-		font-size: 1rem !important;
+		font-size: 0.94rem !important;
 		line-height: 1.05 !important;
+	}
+
+	.elmercado-child-theme .emo-announcement__inner {
+		justify-content: center;
+	}
+
+	.elmercado-child-theme .emo-announcement__inner > span:not(:first-child) {
+		display: none !important;
 	}
 
 	.elmercado-child-theme #cookie-law-info-bar {
@@ -191,7 +200,7 @@
 	}
 
 	.elmercado-child-theme #ht-ctc-chat {
-		bottom: 150px !important;
+		bottom: 185px !important;
 		left: 12px !important;
 	}
 }
