@@ -18,138 +18,69 @@ concurrency:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
+    env:
+      BASE_URL: https://dev.elmercadodeorigen.com
+      PRODUCT_PATH: /producto/jamon-de-de-cebo-de-campo-100-iberico-con-dop-los-pedroches-en-sobres-de/
+
     steps:
-      - name: Wait for staging
+      - name: Wait for the deployed child theme
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://dev.elmercadodeorigen.com/?emo-audit=${GITHUB_SHA}"
-          for attempt in {1..18}; do
+          URL="${BASE_URL}/?emo-audit=${GITHUB_SHA}"
+          for attempt in {1..24}; do
             if curl -fsSL --max-time 20 "$URL" -o /tmp/home.html; then
-              break
+              if grep -q 'elmercado-child-theme' /tmp/home.html && grep -q 'emo-hero' /tmp/home.html; then
+                exit 0
+              fi
             fi
             sleep 5
           done
-          test -s /tmp/home.html
-          grep -q 'elmercado-child-theme' /tmp/home.html
-          grep -q 'emo-hero' /tmp/home.html
+          echo 'Staging did not expose the expected child-theme markup in time.' >&2
+          exit 1
 
-      - name: Capture desktop and mobile
+      - name: Capture representative pages
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://dev.elmercadodeorigen.com/?emo-audit=${GITHUB_SHA}"
           mkdir -p visual-audit
-          google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
-            --window-size=1440,2200 \
-            --screenshot=visual-audit/home-desktop.png \
-            "$URL"
-          google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
-            --window-size=390,1600 \
-            --user-agent='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' \
-            --screenshot=visual-audit/home-mobile.png \
-            "$URL"
-          cp /tmp/home.html visual-audit/home.html
-          curl -fsSL 'https://dev.elmercadodeorigen.com/wp-content/uploads/custom-css-js/6585.css?v=6476' \
-            -o visual-audit/legacy-6585.css || true
-          curl -fsSL 'https://dev.elmercadodeorigen.com/wp-content/uploads/custom-css-js/1341.js?v=3469' \
-            -o visual-audit/legacy-1341.js || true
+
+          capture() {
+            name="$1"
+            path="$2"
+            url="${BASE_URL}${path}?emo-audit=${GITHUB_SHA}"
+
+            curl -fsSL --max-time 30 "$url" -o "visual-audit/${name}.html"
+            grep -q 'elmercado-child-theme' "visual-audit/${name}.html"
+
+            google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
+              --window-size=1440,2200 \
+              --screenshot="visual-audit/${name}-desktop.png" \
+              "$url"
+
+            google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
+              --window-size=390,1600 \
+              --user-agent='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' \
+              --screenshot="visual-audit/${name}-mobile.png" \
+              "$url"
+          }
+
+          capture home '/'
+          capture shop '/tienda/'
+          capture product "$PRODUCT_PATH"
+          capture producers '/productores/'
+
           file visual-audit/*.png
 
-      - name: Inspect computed header styles
+      - name: Verify key interfaces
         shell: bash
         run: |
           set -euo pipefail
-          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-          cat > inspect-header.cjs <<'NODE'
-          const fs = require('fs');
-          const puppeteer = require('puppeteer-core');
-
-          (async () => {
-            const browser = await puppeteer.launch({
-              executablePath: '/usr/bin/google-chrome',
-              headless: true,
-              args: ['--no-sandbox', '--disable-gpu']
-            });
-            const page = await browser.newPage();
-            await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-            await page.goto(`https://dev.elmercadodeorigen.com/?emo-audit=${process.env.GITHUB_SHA}`, {
-              waitUntil: 'networkidle2',
-              timeout: 60000
-            });
-
-            const result = await page.evaluate(() => {
-              const serialize = (node, pseudo = null) => {
-                if (!node) return null;
-                const css = getComputedStyle(node, pseudo);
-                const rect = node.getBoundingClientRect();
-                return {
-                  selectorHint: node.id ? `#${node.id}` : `.${[...node.classList].join('.')}`,
-                  text: node.textContent.trim().slice(0, 100),
-                  html: node.outerHTML.slice(0, 1200),
-                  rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-                  style: {
-                    display: css.display,
-                    visibility: css.visibility,
-                    position: css.position,
-                    color: css.color,
-                    fontFamily: css.fontFamily,
-                    fontSize: css.fontSize,
-                    lineHeight: css.lineHeight,
-                    whiteSpace: css.whiteSpace,
-                    textShadow: css.textShadow,
-                    content: css.content,
-                    opacity: css.opacity,
-                    transform: css.transform,
-                    flex: css.flex,
-                    flexGrow: css.flexGrow,
-                    flexShrink: css.flexShrink,
-                    flexBasis: css.flexBasis,
-                    order: css.order,
-                    overflow: css.overflow,
-                    zIndex: css.zIndex
-                  }
-                };
-              };
-
-              const target = document.querySelector('.site-branding .site-title a');
-              const container = document.querySelector('.site-header-inner .woostify-container');
-              const selectors = {
-                container: '.site-header-inner .woostify-container',
-                mobileTrigger: '.wrap-toggle-sidebar-menu',
-                mobileButton: '.toggle-sidebar-menu-btn',
-                branding: '.site-branding',
-                title: '.site-branding .site-title',
-                titleLink: '.site-branding .site-title a',
-                navigation: '.site-navigation',
-                mainNavigation: '.main-navigation',
-                siteTools: '.site-tools',
-                headerSearch: '.site-tools .header-search-icon',
-                account: '.site-tools .my-account',
-                cart: '.site-tools .shopping-bag-button'
-              };
-
-              return {
-                target: serialize(target),
-                before: serialize(target, '::before'),
-                after: serialize(target, '::after'),
-                elements: Object.fromEntries(
-                  Object.entries(selectors).map(([key, selector]) => [key, serialize(document.querySelector(selector))])
-                ),
-                containerChildren: container ? [...container.children].map((node) => serialize(node)) : []
-              };
-            });
-
-            fs.writeFileSync('visual-audit/header-computed.json', JSON.stringify(result, null, 2));
-            await browser.close();
-          })().catch((error) => {
-            console.error(error);
-            process.exit(1);
-          });
-          NODE
-          node inspect-header.cjs
-          cat visual-audit/header-computed.json
+          grep -q 'emo-category-grid' visual-audit/home.html
+          grep -Eq 'products|woocommerce' visual-audit/shop.html
+          grep -Eq 'single-product|product_title' visual-audit/product.html
+          grep -Eq 'wcfmmp|store' visual-audit/producers.html
 
       - name: Upload visual audit
         if: always()
