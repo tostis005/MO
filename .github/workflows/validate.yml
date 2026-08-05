@@ -1,0 +1,41 @@
+name: Validate child theme
+
+on:
+  pull_request:
+    paths:
+      - 'elmercadodeorigen-child/**'
+      - '.github/workflows/validate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/**'
+      - '.github/workflows/validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/style.css
+          test -f elmercadodeorigen-child/functions.php
+          grep -q '^Template: woostify$' elmercadodeorigen-child/style.css
+
+      - name: Lint PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find elmercadodeorigen-child -type f -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+      - name: Check whitespace errors
+        run: git diff --check HEAD~1 HEAD || git diff --check

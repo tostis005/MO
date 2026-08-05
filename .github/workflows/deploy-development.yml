@@ -1,0 +1,129 @@
+name: Deploy child theme to staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/**'
+      - '.github/workflows/deploy-development.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-staging-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate theme
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/style.css
+          test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/assets/css/theme.css
+          test -f elmercadodeorigen-child/assets/css/integrations.css
+          grep -q '^Template: woostify$' elmercadodeorigen-child/style.css
+          find elmercadodeorigen-child -type f -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?Missing STAGING_HOST secret}"
+          : "${STAGING_USER:?Missing STAGING_USER secret}"
+          : "${STAGING_PASSWORD:?Missing STAGING_PASSWORD secret}"
+          : "${STAGING_REMOTE_PATH:?Missing STAGING_REMOTE_PATH secret}"
+
+          PORT="${STAGING_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || {
+            echo "STAGING_PORT must be a valid numeric port"
+            exit 1
+          }
+
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/wp-content/themes/elmercadodeorigen-child/?$ ]] || {
+            echo "STAGING_REMOTE_PATH must be an absolute path ending in /wp-content/themes/elmercadodeorigen-child"
+            echo "Spaces and shell metacharacters are intentionally rejected."
+            exit 1
+          }
+
+      - name: Install deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Register SSH host key
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Test SSH connection
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh \
+            -o BatchMode=no \
+            -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no \
+            -o StrictHostKeyChecking=yes \
+            -p "$PORT" \
+            "$STAGING_USER@$STAGING_HOST" \
+            'printf "SSH connection successful\n"'
+
+      - name: Deploy child theme with rsync
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          TARGET="${STAGING_REMOTE_PATH%/}/"
+
+          sshpass -e ssh \
+            -o BatchMode=no \
+            -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no \
+            -o StrictHostKeyChecking=yes \
+            -p "$PORT" \
+            "$STAGING_USER@$STAGING_HOST" \
+            "mkdir -p -- '$TARGET'"
+
+          sshpass -e rsync -az --delete \
+            --exclude='.DS_Store' \
+            --exclude='*.map' \
+            -e "ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT" \
+            elmercadodeorigen-child/ \
+            "$STAGING_USER@$STAGING_HOST:$TARGET"
+
+      - name: Deployment summary
+        shell: bash
+        run: |
+          echo "Child theme deployed to staging."
+          echo "Remote path: ${STAGING_REMOTE_PATH%/}/"
