@@ -1,0 +1,166 @@
+name: Storefront release acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-acceptance.yml'
+      - 'elmercadodeorigen-child/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-release-acceptance
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for final release layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://dev.elmercadodeorigen.com/?emo-acceptance=${GITHUB_SHA}"
+          for attempt in {1..35}; do
+            if curl -fsSL --max-time 25 "$URL" -o /tmp/home.html \
+              && grep -q 'elmercado-release-one-finish' /tmp/home.html \
+              && grep -q 'Del productor' /tmp/home.html; then
+              exit 0
+            fi
+            sleep 6
+          done
+          exit 1
+
+      - name: Verify final storefront
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-acceptance
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+          cat > acceptance.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const suffix = `emo-acceptance=${process.env.GITHUB_SHA}`;
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          async function prepare(page, url) {
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}' });
+            await sleep(900);
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: '/usr/bin/google-chrome',
+              headless: true,
+              args: ['--no-sandbox', '--disable-gpu']
+            });
+            const report = {};
+            const failures = [];
+
+            const home = await browser.newPage();
+            await home.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+            await prepare(home, `${base}/?${suffix}`);
+            report.home = await home.evaluate(() => {
+              const rect = (selector) => {
+                const node = document.querySelector(selector);
+                if (!node) return null;
+                const value = node.getBoundingClientRect();
+                return { top: value.top, bottom: value.bottom, height: value.height };
+              };
+              const visible = (selector) => [...document.querySelectorAll(selector)].filter((node) => {
+                const style = getComputedStyle(node);
+                const bounds = node.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' && bounds.width > 0 && bounds.height > 0;
+              }).length;
+              return {
+                header: rect('.site-header-inner > .woostify-container'),
+                branding: rect('.site-header .site-branding'),
+                navigation: rect('.site-header .main-navigation'),
+                tools: rect('.site-header .site-tools'),
+                heading: document.querySelector('.emo-hero h1')?.innerText.trim() || '',
+                text: document.querySelector('.emo-home')?.innerText || '',
+                recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"],script[src*="recaptcha.net"]').length,
+                wishlist: visible('.yith-wcwl-add-to-wishlist,a.add_to_wishlist'),
+                waitlist: visible('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-modal,.xoo-wl-btn-container,.xoo-wl-waitlist-button')
+              };
+            });
+            await home.screenshot({ path: 'release-acceptance/home.png' });
+            await home.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            await sleep(500);
+            await home.screenshot({ path: 'release-acceptance/home-footer.png' });
+            await home.close();
+
+            const shop = await browser.newPage();
+            await shop.setViewport({ width: 1440, height: 1200, deviceScaleFactor: 1 });
+            await prepare(shop, `${base}/tienda/?${suffix}`);
+            report.shop = await shop.evaluate(() => {
+              const visible = (node) => {
+                const style = getComputedStyle(node);
+                const bounds = node.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' && bounds.width > 0 && bounds.height > 0;
+              };
+              const filterControls = [...document.querySelectorAll('.woostify-sorting .filter,.woostify-sorting button,.woostify-sorting a,.woostify-sorting [role="button"]')]
+                .filter((node) => {
+                  const label = `${node.textContent || ''} ${node.getAttribute('aria-label') || ''}`.trim().toLocaleLowerCase('es');
+                  return (node.matches('.filter') || /^(filtro|filter|filtrar productos)(\s|$)/i.test(label)) && visible(node);
+                });
+              const sidebar = document.querySelector('#secondary');
+              const sidebarStyle = sidebar ? getComputedStyle(sidebar) : null;
+              return {
+                visibleFilterControls: filterControls.length,
+                filterLabels: filterControls.map((node) => (node.textContent || '').trim()),
+                recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"],script[src*="recaptcha.net"]').length,
+                wishlist: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter(visible).length,
+                waitlist: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-modal,.xoo-wl-btn-container,.xoo-wl-waitlist-button')].filter(visible).length,
+                tagCloud: [...document.querySelectorAll('#secondary .widget_product_tag_cloud')].filter(visible).length,
+                sidebar: sidebarStyle ? {
+                  background: sidebarStyle.backgroundColor,
+                  radius: sidebarStyle.borderRadius,
+                  shadow: sidebarStyle.boxShadow
+                } : null
+              };
+            });
+            await shop.screenshot({ path: 'release-acceptance/shop.png', fullPage: true });
+            await shop.close();
+
+            const inside = (child, parent) => child && parent && child.top >= parent.top - 1 && child.bottom <= parent.bottom + 1;
+            if (!inside(report.home.branding, report.home.header)) failures.push('La marca se sale de la cabecera.');
+            if (!inside(report.home.navigation, report.home.header)) failures.push('La navegación se sale de la cabecera.');
+            if (!inside(report.home.tools, report.home.header)) failures.push('Los iconos se salen de la cabecera.');
+            if (!report.home.heading.includes('Del productor') || !report.home.heading.includes('directo a tu casa')) failures.push('El mensaje principal no es el aprobado.');
+            if (/despensa/i.test(report.home.text)) failures.push('La portada todavía contiene la palabra despensa.');
+            if (report.home.recaptcha || report.shop.recaptcha) failures.push('reCAPTCHA sigue presente.');
+            if (report.home.wishlist || report.shop.wishlist) failures.push('La wishlist sigue visible.');
+            if (report.home.waitlist || report.shop.waitlist) failures.push('El formulario de aviso sigue visible.');
+            if (report.shop.visibleFilterControls) failures.push(`Quedan ${report.shop.visibleFilterControls} controles de filtro vacíos visibles.`);
+            if (report.shop.tagCloud) failures.push('La nube de etiquetas sigue visible.');
+            if (!report.shop.sidebar || report.shop.sidebar.radius === '0px') failures.push('El lateral de filtros no tiene la composición final.');
+
+            fs.writeFileSync('release-acceptance/report.json', JSON.stringify(report, null, 2));
+            fs.writeFileSync('release-acceptance/assertions.txt', failures.length ? failures.join('\n') : 'All storefront release assertions passed.\n');
+            await browser.close();
+            if (failures.length) throw new Error(failures.join('\n'));
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+          node acceptance.cjs
+          cat release-acceptance/report.json
+          cat release-acceptance/assertions.txt
+
+      - name: Upload acceptance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storefront-release-acceptance
+          path: release-acceptance/
+          retention-days: 14
