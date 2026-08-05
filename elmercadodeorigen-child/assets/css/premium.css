@@ -1,0 +1,389 @@
+/*
+ * Pasada premium — catálogo, producto y contenido comercial.
+ * Se carga como última capa para corregir selectores heredados sin sobrescribir
+ * plantillas de WooCommerce ni guardar diseño en la base de datos.
+ */
+
+:root {
+	--emo-commerce-shell: 1580px;
+	--emo-product-media: #f1eee7;
+	--emo-product-media-soft: #f8f6f1;
+}
+
+/* Contenedores comerciales más generosos. */
+.elmercado-child-theme.woocommerce-shop #content > .woostify-container,
+.elmercado-child-theme.single-product .site-content > .woostify-container,
+.elmercado-child-theme.single-product .product-page-container > .woostify-container,
+.elmercado-child-theme.single-product div.product > .woostify-container {
+	width: min(calc(100% - 32px), var(--emo-commerce-shell)) !important;
+	max-width: var(--emo-commerce-shell) !important;
+}
+
+/*
+ * El selector principal anterior también alcanzaba section.related.products.
+ * Las secciones vuelven a ser bloques completos; solo ul.products es parrilla.
+ */
+.elmercado-child-theme.woocommerce section.products,
+.elmercado-child-theme .woocommerce section.products,
+.elmercado-child-theme.woocommerce section.related,
+.elmercado-child-theme.woocommerce section.upsells {
+	display: block !important;
+	width: 100% !important;
+	max-width: none !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products,
+.elmercado-child-theme .woocommerce ul.products {
+	display: grid !important;
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+	gap: clamp(1.35rem, 2vw, 2rem) !important;
+	width: 100% !important;
+}
+
+/* Tienda: más superficie para el producto y una barra lateral contenida. */
+@media (min-width: 1100px) {
+	.elmercado-child-theme.woocommerce-shop #content > .woostify-container {
+		display: grid !important;
+		grid-template-columns: minmax(0, 1fr) 248px;
+		align-items: start;
+		gap: clamp(1.6rem, 2.4vw, 2.5rem);
+	}
+
+	.elmercado-child-theme.woocommerce-shop #primary,
+	.elmercado-child-theme.woocommerce-shop #secondary {
+		float: none !important;
+		width: auto !important;
+		max-width: none !important;
+		margin: 0 !important;
+		padding: 0 !important;
+	}
+
+	.elmercado-child-theme.woocommerce-shop #secondary {
+		position: sticky;
+		top: 128px;
+	}
+}
+
+.elmercado-child-theme.woocommerce-shop .woostify-sorting {
+	margin-bottom: clamp(1.4rem, 2.5vw, 2.2rem);
+	padding: 1rem 1.15rem;
+	border-radius: 16px;
+	box-shadow: 0 12px 36px rgba(13, 33, 27, 0.06);
+}
+
+.elmercado-child-theme.woocommerce-shop #secondary .widget {
+	padding: 1.15rem;
+	border-radius: 16px;
+	box-shadow: 0 12px 35px rgba(13, 33, 27, 0.05);
+}
+
+/* Tarjetas de producto: fotografía completa en formato editorial 3:4. */
+.elmercado-child-theme.woocommerce ul.products li.product,
+.elmercado-child-theme .woocommerce ul.products li.product {
+	padding-bottom: 1.3rem !important;
+	border-radius: 24px !important;
+	box-shadow: 0 12px 34px rgba(13, 33, 27, 0.07) !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product:hover,
+.elmercado-child-theme .woocommerce ul.products li.product:hover {
+	box-shadow: 0 26px 65px rgba(13, 33, 27, 0.15) !important;
+	transform: translateY(-8px) !important;
+}
+
+.elmercado-child-theme .product-loop-image-wrapper {
+	position: relative;
+	aspect-ratio: 3 / 4;
+	background:
+		radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.94), transparent 48%),
+		var(--emo-product-media);
+	overflow: hidden;
+}
+
+.elmercado-child-theme .product-loop-image-wrapper > a,
+.elmercado-child-theme .product-loop-image-wrapper .woocommerce-LoopProduct-link {
+	display: grid !important;
+	height: 100% !important;
+	place-items: center;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product a img,
+.elmercado-child-theme .woocommerce ul.products li.product a img,
+.elmercado-child-theme .product-loop-image-wrapper img {
+	width: 100% !important;
+	height: 100% !important;
+	aspect-ratio: auto !important;
+	margin: 0 !important;
+	padding: clamp(1rem, 1.8vw, 1.75rem) !important;
+	background: transparent !important;
+	object-fit: contain !important;
+	object-position: center !important;
+}
+
+.elmercado-child-theme .product-loop-hover-image {
+	inset: 0 !important;
+	width: 100% !important;
+	height: 100% !important;
+	background-color: var(--emo-product-media) !important;
+	background-position: center !important;
+	background-repeat: no-repeat !important;
+	background-size: contain !important;
+	transform: scale(0.88);
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product:hover a img,
+.elmercado-child-theme .woocommerce ul.products li.product:hover a img {
+	filter: saturate(1.025) contrast(1.015);
+	transform: scale(1.018) !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .woocommerce-loop-product__title,
+.elmercado-child-theme .woocommerce ul.products li.product .woocommerce-loop-product__title,
+.elmercado-child-theme.woocommerce ul.products li.product h2,
+.elmercado-child-theme .woocommerce ul.products li.product h2 {
+	min-height: 2.65em;
+	padding: 1.25rem 1.25rem 0 !important;
+	font-size: clamp(0.98rem, 1.15vw, 1.12rem) !important;
+	line-height: 1.32 !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .star-rating,
+.elmercado-child-theme .woocommerce ul.products li.product .star-rating {
+	margin: 0.65rem 1.25rem 0 !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .price,
+.elmercado-child-theme .woocommerce ul.products li.product .price {
+	padding: 0.85rem 1.25rem 0 !important;
+	font-size: 1.12rem !important;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .button,
+.elmercado-child-theme .woocommerce ul.products li.product .button {
+	width: calc(100% - 2.5rem) !important;
+	min-height: 46px !important;
+	margin: 1rem 1.25rem 0 !important;
+}
+
+/* Sin pegatinas de oferta: el precio rebajado ya comunica el descuento. */
+.elmercado-child-theme .onsale,
+.elmercado-child-theme .berocket_better_labels_image,
+.elmercado-child-theme .berocket_better_labels_position {
+	display: none !important;
+}
+
+/* Portada: seis superventas en tres columnas con verdadero protagonismo. */
+.elmercado-child-theme .emo-featured-products .emo-shell {
+	width: min(calc(100% - 40px), 1460px);
+}
+
+.elmercado-child-theme .emo-featured-products ul.products {
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.elmercado-child-theme .emo-featured-products {
+	background:
+		linear-gradient(180deg, #fff 0%, #fff 72%, var(--emo-paper) 100%);
+}
+
+/* Ficha individual: galería protagonista, compra clara y menos aire lateral. */
+@media (min-width: 1100px) {
+	.elmercado-child-theme.single-product .product-page-container > .woostify-container {
+		display: grid !important;
+		grid-template-columns: minmax(0, 1.24fr) minmax(430px, 0.76fr);
+		align-items: start;
+		gap: clamp(2.5rem, 4.5vw, 5.5rem) !important;
+	}
+
+	.elmercado-child-theme.single-product .product-gallery,
+	.elmercado-child-theme.single-product .product-summary,
+	.elmercado-child-theme.single-product .summary {
+		float: none !important;
+		width: auto !important;
+		max-width: none !important;
+		margin-right: 0 !important;
+		margin-left: 0 !important;
+	}
+}
+
+.elmercado-child-theme.single-product .product-gallery {
+	min-width: 0;
+}
+
+.elmercado-child-theme.single-product .product-images-container .image-item {
+	background:
+		radial-gradient(circle at 50% 38%, #fff, transparent 55%),
+		var(--emo-product-media-soft);
+	border: 1px solid rgba(13, 33, 27, 0.07);
+	border-radius: 28px;
+	overflow: hidden;
+}
+
+.elmercado-child-theme.single-product .product-images-container .image-item > a {
+	display: grid !important;
+	min-height: clamp(600px, 58vw, 820px);
+	aspect-ratio: 4 / 5;
+	padding: clamp(1.5rem, 3.5vw, 3.5rem);
+	place-items: center;
+}
+
+.elmercado-child-theme.single-product .product-images-container .image-item img {
+	width: 100% !important;
+	height: 100% !important;
+	max-height: 760px;
+	background: transparent !important;
+	object-fit: contain !important;
+	object-position: center !important;
+}
+
+.elmercado-child-theme.single-product .product-thumbnail-images .thumbnail-item,
+.elmercado-child-theme.single-product .product-thumbnail-images img {
+	border-radius: 12px;
+}
+
+.elmercado-child-theme.single-product div.product .summary {
+	padding: clamp(1.7rem, 3vw, 3.1rem) !important;
+	border-radius: 30px !important;
+	box-shadow: 0 24px 70px rgba(13, 33, 27, 0.11) !important;
+}
+
+.elmercado-child-theme.single-product .product_title {
+	font-size: clamp(2.25rem, 3.7vw, 4.25rem) !important;
+	line-height: 0.99 !important;
+}
+
+.elmercado-child-theme.single-product .woocommerce-product-details__short-description {
+	font-size: 1rem;
+	line-height: 1.65;
+}
+
+.elmercado-child-theme.single-product .woocommerce-tabs {
+	margin-top: clamp(2rem, 4vw, 4rem);
+	padding: clamp(1.6rem, 3.8vw, 3.5rem) !important;
+	border-radius: 30px !important;
+}
+
+/* Relacionados y ventas adicionales ocupan todo el ancho disponible. */
+.elmercado-child-theme.single-product section.related.products,
+.elmercado-child-theme.single-product section.upsells.products {
+	margin-top: clamp(4rem, 7vw, 7rem) !important;
+}
+
+.elmercado-child-theme.single-product section.related.products > h2,
+.elmercado-child-theme.single-product section.upsells.products > h2 {
+	margin-bottom: clamp(1.8rem, 3.5vw, 3rem);
+	font-size: clamp(2rem, 3.6vw, 3.6rem);
+}
+
+.elmercado-child-theme.single-product section.related.products > ul.products,
+.elmercado-child-theme.single-product section.upsells.products > ul.products {
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+/* Páginas y flujos de compra: coherencia de superficies y respiración. */
+.elmercado-child-theme .woocommerce-cart-form,
+.elmercado-child-theme .cart_totals,
+.elmercado-child-theme .woocommerce-checkout-review-order,
+.elmercado-child-theme .woocommerce-MyAccount-navigation,
+.elmercado-child-theme .woocommerce-MyAccount-content,
+.elmercado-child-theme .wpcf7 form {
+	border-radius: 22px;
+}
+
+.elmercado-child-theme .woocommerce table.shop_table {
+	border-radius: 22px;
+}
+
+.elmercado-child-theme .post,
+.elmercado-child-theme .type-post {
+	border-radius: 26px;
+	box-shadow: 0 18px 55px rgba(13, 33, 27, 0.08);
+}
+
+@media (max-width: 1099px) {
+	.elmercado-child-theme.woocommerce ul.products,
+	.elmercado-child-theme .woocommerce ul.products,
+	.elmercado-child-theme .emo-featured-products ul.products,
+	.elmercado-child-theme.single-product section.related.products > ul.products,
+	.elmercado-child-theme.single-product section.upsells.products > ul.products {
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+	}
+
+	.elmercado-child-theme.single-product .product-images-container .image-item > a {
+		min-height: 540px;
+	}
+}
+
+@media (max-width: 767px) {
+	.elmercado-child-theme.woocommerce-shop #content > .woostify-container,
+	.elmercado-child-theme.single-product .site-content > .woostify-container,
+	.elmercado-child-theme.single-product .product-page-container > .woostify-container,
+	.elmercado-child-theme.single-product div.product > .woostify-container {
+		width: calc(100% - 24px) !important;
+	}
+
+	.elmercado-child-theme .emo-featured-products .emo-shell {
+		width: calc(100% - 28px);
+	}
+
+	.elmercado-child-theme .product-loop-image-wrapper {
+		aspect-ratio: 4 / 5;
+	}
+
+	.elmercado-child-theme.woocommerce ul.products li.product a img,
+	.elmercado-child-theme .woocommerce ul.products li.product a img,
+	.elmercado-child-theme .product-loop-image-wrapper img {
+		padding: 0.8rem !important;
+	}
+
+	.elmercado-child-theme.single-product .product-images-container .image-item > a {
+		min-height: auto;
+		aspect-ratio: 4 / 5;
+		padding: 1rem;
+	}
+
+	.elmercado-child-theme.single-product div.product .summary {
+		padding: 1.45rem !important;
+		border-radius: 22px !important;
+	}
+
+	.elmercado-child-theme.single-product .product_title {
+		font-size: clamp(2rem, 10vw, 3rem) !important;
+	}
+}
+
+@media (max-width: 520px) {
+	.elmercado-child-theme.woocommerce ul.products,
+	.elmercado-child-theme .woocommerce ul.products,
+	.elmercado-child-theme .emo-featured-products ul.products,
+	.elmercado-child-theme.single-product section.related.products > ul.products,
+	.elmercado-child-theme.single-product section.upsells.products > ul.products {
+		grid-template-columns: 1fr !important;
+		gap: 1rem !important;
+	}
+
+	.elmercado-child-theme.woocommerce ul.products li.product .woocommerce-loop-product__title,
+	.elmercado-child-theme .woocommerce ul.products li.product .woocommerce-loop-product__title,
+	.elmercado-child-theme.woocommerce ul.products li.product h2,
+	.elmercado-child-theme .woocommerce ul.products li.product h2 {
+		padding: 1rem 1rem 0 !important;
+		font-size: 1rem !important;
+	}
+
+	.elmercado-child-theme.woocommerce ul.products li.product .price,
+	.elmercado-child-theme .woocommerce ul.products li.product .price,
+	.elmercado-child-theme.woocommerce ul.products li.product .star-rating,
+	.elmercado-child-theme .woocommerce ul.products li.product .star-rating {
+		margin-right: 1rem !important;
+		margin-left: 1rem !important;
+		padding-right: 0 !important;
+		padding-left: 0 !important;
+	}
+
+	.elmercado-child-theme.woocommerce ul.products li.product .button,
+	.elmercado-child-theme .woocommerce ul.products li.product .button {
+		width: calc(100% - 2rem) !important;
+		margin-right: 1rem !important;
+		margin-left: 1rem !important;
+	}
+}
