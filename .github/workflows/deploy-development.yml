@@ -42,7 +42,7 @@ jobs:
           find elmercadodeorigen-child -type f -name '*.php' -print0 \
             | xargs -0 -n1 php -l
 
-      - name: Validate deployment secrets
+      - name: Validate secrets and resolve theme path
         shell: bash
         run: |
           set -euo pipefail
@@ -57,11 +57,33 @@ jobs:
             exit 1
           }
 
-          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/wp-content/themes/elmercadodeorigen-child/?$ ]] || {
-            echo "STAGING_REMOTE_PATH must be an absolute path ending in /wp-content/themes/elmercadodeorigen-child"
-            echo "Spaces and shell metacharacters are intentionally rejected."
+          RAW_PATH="${STAGING_REMOTE_PATH%/}"
+          [[ "$RAW_PATH" == /* ]] || {
+            echo "STAGING_REMOTE_PATH must be an absolute server path"
             exit 1
           }
+          [[ "$RAW_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || {
+            echo "STAGING_REMOTE_PATH contains unsupported characters"
+            exit 1
+          }
+
+          case "$RAW_PATH" in
+            */wp-content/themes/elmercadodeorigen-child)
+              THEME_PATH="$RAW_PATH"
+              ;;
+            */wp-content/themes)
+              THEME_PATH="$RAW_PATH/elmercadodeorigen-child"
+              ;;
+            */wp-content)
+              THEME_PATH="$RAW_PATH/themes/elmercadodeorigen-child"
+              ;;
+            *)
+              THEME_PATH="$RAW_PATH/wp-content/themes/elmercadodeorigen-child"
+              ;;
+          esac
+
+          echo "STAGING_THEME_PATH=$THEME_PATH" >> "$GITHUB_ENV"
+          echo "Resolved child-theme destination safely."
 
       - name: Install deployment tools
         shell: bash
@@ -104,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
-          TARGET="${STAGING_REMOTE_PATH%/}/"
+          TARGET="${STAGING_THEME_PATH%/}/"
 
           sshpass -e ssh \
             -o BatchMode=no \
@@ -126,4 +148,4 @@ jobs:
         shell: bash
         run: |
           echo "Child theme deployed to staging."
-          echo "Remote path: ${STAGING_REMOTE_PATH%/}/"
+          echo "Remote path: ${STAGING_THEME_PATH%/}/"
