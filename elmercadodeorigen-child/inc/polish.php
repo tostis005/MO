@@ -54,6 +54,21 @@ add_action(
 add_action( 'wp_print_styles', 'elmercado_remove_legacy_custom_css', 9999 );
 
 /**
+ * Algunas herramientas de CSS personalizado imprimen su etiqueta después del
+ * encolado normal. Este filtro evita que la hoja migrada llegue al HTML.
+ */
+add_filter(
+	'style_loader_tag',
+	static function ( string $html, string $handle, string $href ): string {
+		unset( $handle );
+
+		return str_contains( $href, '/custom-css-js/6585.css' ) ? '' : $html;
+	},
+	PHP_INT_MAX,
+	3
+);
+
+/**
  * Evita categorías vacías en la selección de portada aunque otro plugin
  * altere el comportamiento de hide_empty.
  *
