@@ -17,3 +17,7 @@ require_once ELMERCADO_THEME_PATH . '/inc/setup.php';
 require_once ELMERCADO_THEME_PATH . '/inc/woocommerce.php';
 require_once ELMERCADO_THEME_PATH . '/inc/polish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/performance.php';
+
+/* La optimización se ejecuta una sola vez, al final del encolado normal. */
+remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );
+remove_action( 'wp_print_footer_scripts', 'elmercado_optimize_home_assets', 0 );
