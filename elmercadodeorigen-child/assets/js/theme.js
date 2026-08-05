@@ -6,10 +6,28 @@
 	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	let scrollFrame = 0;
 
+	/**
+	 * El JavaScript personalizado antiguo intentaba fijar la cabecera con la
+	 * clase .fija, añadía un bumper vacío y escribía márgenes inline en #content.
+	 * La nueva cabecera usa position: sticky; retiramos únicamente esos efectos.
+	 */
+	const cleanLegacyHeaderArtifacts = () => {
+		const headerInner = document.querySelector('.site-header-inner');
+		const oldTopbar = document.querySelector('.topbar');
+		const content = document.querySelector('#content');
+
+		headerInner?.classList.remove('fija');
+		headerInner?.style.removeProperty('top');
+		oldTopbar?.classList.remove('fija');
+		content?.style.removeProperty('margin-top');
+		document.querySelectorAll('.site-header-inner + .bumper').forEach((bumper) => bumper.remove());
+	};
+
 	const updateScrollState = () => {
 		const scrolled = window.scrollY > 12;
 		body.classList.toggle('is-scrolled', scrolled);
 		header?.classList.toggle('is-scrolled', scrolled);
+		cleanLegacyHeaderArtifacts();
 		scrollFrame = 0;
 	};
 
@@ -18,17 +36,21 @@
 			return;
 		}
 
+		/* Se ejecuta después de los handlers síncronos del script heredado. */
 		scrollFrame = window.requestAnimationFrame(updateScrollState);
 	};
 
 	body.classList.add('emo-js-ready');
 	updateScrollState();
 	window.addEventListener('scroll', requestScrollUpdate, { passive: true });
+	window.addEventListener('load', cleanLegacyHeaderArtifacts, { once: true });
+	window.setTimeout(cleanLegacyHeaderArtifacts, 300);
+	window.setTimeout(cleanLegacyHeaderArtifacts, 1500);
 
 	/*
-	 * Un JavaScript personalizado heredado inserta una segunda .site-title
-	 * dentro del enlace de marca. Conservamos el script por compatibilidad,
-	 * pero retiramos únicamente ese nodo inválido cuando aparece.
+	 * El mismo JavaScript heredado inserta una segunda .site-title dentro del
+	 * enlace de marca. Conservamos sus funciones comerciales, pero retiramos
+	 * únicamente ese nodo inválido cuando aparece.
 	 */
 	const brandingLink = document.querySelector('.site-branding > .site-title > a');
 	const cleanDuplicatedBrand = () => {
