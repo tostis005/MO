@@ -25,6 +25,28 @@
 	updateScrollState();
 	window.addEventListener('scroll', requestScrollUpdate, { passive: true });
 
+	/*
+	 * Un JavaScript personalizado heredado inserta una segunda .site-title
+	 * dentro del enlace de marca. Conservamos el script por compatibilidad,
+	 * pero retiramos únicamente ese nodo inválido cuando aparece.
+	 */
+	const brandingLink = document.querySelector('.site-branding > .site-title > a');
+	const cleanDuplicatedBrand = () => {
+		brandingLink?.querySelectorAll(':scope > .site-title').forEach((duplicate) => duplicate.remove());
+	};
+
+	if (brandingLink) {
+		cleanDuplicatedBrand();
+
+		const brandingObserver = new MutationObserver(cleanDuplicatedBrand);
+		brandingObserver.observe(brandingLink, { childList: true });
+		window.addEventListener('load', cleanDuplicatedBrand, { once: true });
+		window.setTimeout(() => {
+			cleanDuplicatedBrand();
+			brandingObserver.disconnect();
+		}, 5000);
+	}
+
 	const mobileMenuTrigger = document.querySelector('#mobile-trigger, .toggle-sidebar-menu');
 	mobileMenuTrigger?.setAttribute('aria-label', 'Abrir menú de navegación');
 
