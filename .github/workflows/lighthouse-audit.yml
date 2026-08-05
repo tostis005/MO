@@ -18,94 +18,127 @@ concurrency:
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Wait for the optimized staging homepage
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://dev.elmercadodeorigen.com/?emo-lighthouse=${GITHUB_SHA}"
+          CHECK_URL="https://dev.elmercadodeorigen.com/?emo-lighthouse=${GITHUB_SHA}"
           for attempt in {1..35}; do
-            if curl -fsSL --max-time 25 "$URL" -o /tmp/home.html \
+            if curl -fsSL --max-time 25 "$CHECK_URL" -o /tmp/home.html \
               && grep -q -- '--emo-mobile-panel' /tmp/home.html \
               && grep -q 'Los favoritos de nuestros clientes' /tmp/home.html; then
-              exit 0
+              break
             fi
             sleep 6
           done
-          exit 1
 
-      - name: Run Lighthouse 13 mobile audit
+          # Lighthouse debe medir exactamente la URL que analiza PageSpeed.
+          for attempt in 1 2 3; do
+            curl -fsSL --max-time 30 https://dev.elmercadodeorigen.com/ -o /dev/null
+            sleep 2
+          done
+
+      - name: Run three Lighthouse 13 mobile audits
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p lighthouse
           npm install --no-save --no-package-lock lighthouse@13.4.1 >/dev/null 2>&1
 
-          npx lighthouse "https://dev.elmercadodeorigen.com/?emo-lighthouse=${GITHUB_SHA}" \
-            --quiet \
-            --chrome-flags="--headless --no-sandbox --disable-gpu" \
-            --output=json \
-            --output-path=lighthouse/mobile.json \
-            --only-categories=performance,accessibility,best-practices,seo \
-            --form-factor=mobile \
-            --screenEmulation.mobile=true \
-            --throttling-method=simulate
+          for run in 1 2 3; do
+            npx lighthouse "https://dev.elmercadodeorigen.com/" \
+              --quiet \
+              --chrome-flags="--headless --no-sandbox --disable-gpu" \
+              --output=json \
+              --output-path="lighthouse/mobile-${run}.json" \
+              --only-categories=performance,accessibility,best-practices,seo \
+              --form-factor=mobile \
+              --screenEmulation.mobile=true \
+              --throttling-method=simulate
+            sleep 3
+          done
 
           node <<'NODE'
           const fs = require('fs');
-          const report = JSON.parse(fs.readFileSync('lighthouse/mobile.json', 'utf8'));
-          const audit = (id) => report.audits[id] || {};
-          const score = (id) => Math.round((report.categories[id]?.score || 0) * 100);
-          const result = {
-            generatedAt: report.fetchTime,
-            lighthouseVersion: report.lighthouseVersion,
+          const files = [1, 2, 3].map((run) => `lighthouse/mobile-${run}.json`);
+          const reports = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
+          const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+          const score = (report, id) => Math.round((report.categories[id]?.score || 0) * 100);
+          const numeric = (report, id) => Number(report.audits[id]?.numericValue || 0);
+
+          const runs = reports.map((report, index) => ({
+            run: index + 1,
             scores: {
-              performance: score('performance'),
-              accessibility: score('accessibility'),
-              bestPractices: score('best-practices'),
-              seo: score('seo')
+              performance: score(report, 'performance'),
+              accessibility: score(report, 'accessibility'),
+              bestPractices: score(report, 'best-practices'),
+              seo: score(report, 'seo')
             },
             metrics: {
-              fcp: audit('first-contentful-paint').displayValue,
-              lcp: audit('largest-contentful-paint').displayValue,
-              tbt: audit('total-blocking-time').displayValue,
-              cls: audit('cumulative-layout-shift').displayValue,
-              speedIndex: audit('speed-index').displayValue
+              fcpMs: Math.round(numeric(report, 'first-contentful-paint')),
+              lcpMs: Math.round(numeric(report, 'largest-contentful-paint')),
+              tbtMs: Math.round(numeric(report, 'total-blocking-time')),
+              cls: Number(numeric(report, 'cumulative-layout-shift').toFixed(3)),
+              speedIndexMs: Math.round(numeric(report, 'speed-index')),
+              ttfbMs: Math.round(numeric(report, 'server-response-time'))
             },
             diagnostics: {
-              requests: audit('network-requests').details?.items?.length || 0,
-              transferSize: audit('total-byte-weight').displayValue,
-              mainThreadWork: audit('mainthread-work-breakdown').displayValue,
-              javascriptExecution: audit('bootup-time').displayValue,
-              renderBlockingSavings: audit('render-blocking-resources').details?.overallSavingsMs || 0,
-              unusedCssSavings: audit('unused-css-rules').details?.overallSavingsBytes || 0,
-              unusedJavascriptSavings: audit('unused-javascript').details?.overallSavingsBytes || 0
-            },
-            opportunities: Object.values(report.audits)
-              .filter((item) => item.details?.type === 'opportunity' && Number(item.details.overallSavingsMs) > 0)
-              .map((item) => ({
-                id: item.id,
-                title: item.title,
-                savingsMs: Math.round(item.details.overallSavingsMs || 0),
-                savingsBytes: Math.round(item.details.overallSavingsBytes || 0)
-              }))
-              .sort((a, b) => b.savingsMs - a.savingsMs)
-              .slice(0, 12)
+              requests: report.audits['network-requests']?.details?.items?.length || 0,
+              transferBytes: Math.round(numeric(report, 'total-byte-weight')),
+              mainThreadMs: Math.round(numeric(report, 'mainthread-work-breakdown')),
+              javascriptExecutionMs: Math.round(numeric(report, 'bootup-time'))
+            }
+          }));
+
+          const result = {
+            generatedAt: reports[0].fetchTime,
+            lighthouseVersion: reports[0].lighthouseVersion,
+            url: 'https://dev.elmercadodeorigen.com/',
+            runs,
+            median: {
+              scores: {
+                performance: median(runs.map((run) => run.scores.performance)),
+                accessibility: median(runs.map((run) => run.scores.accessibility)),
+                bestPractices: median(runs.map((run) => run.scores.bestPractices)),
+                seo: median(runs.map((run) => run.scores.seo))
+              },
+              metrics: {
+                fcpMs: median(runs.map((run) => run.metrics.fcpMs)),
+                lcpMs: median(runs.map((run) => run.metrics.lcpMs)),
+                tbtMs: median(runs.map((run) => run.metrics.tbtMs)),
+                cls: median(runs.map((run) => run.metrics.cls)),
+                speedIndexMs: median(runs.map((run) => run.metrics.speedIndexMs)),
+                ttfbMs: median(runs.map((run) => run.metrics.ttfbMs))
+              },
+              diagnostics: {
+                requests: median(runs.map((run) => run.diagnostics.requests)),
+                transferBytes: median(runs.map((run) => run.diagnostics.transferBytes)),
+                mainThreadMs: median(runs.map((run) => run.diagnostics.mainThreadMs)),
+                javascriptExecutionMs: median(runs.map((run) => run.diagnostics.javascriptExecutionMs))
+              }
+            }
           };
+
+          const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
+          const kb = (bytes) => `${Math.round(bytes / 1024)} KiB`;
           fs.writeFileSync('lighthouse/summary.json', JSON.stringify(result, null, 2));
           fs.writeFileSync('lighthouse/summary.txt', [
-            `Performance: ${result.scores.performance}`,
-            `Accessibility: ${result.scores.accessibility}`,
-            `Best practices: ${result.scores.bestPractices}`,
-            `SEO: ${result.scores.seo}`,
-            `FCP: ${result.metrics.fcp}`,
-            `LCP: ${result.metrics.lcp}`,
-            `TBT: ${result.metrics.tbt}`,
-            `CLS: ${result.metrics.cls}`,
-            `Speed Index: ${result.metrics.speedIndex}`,
-            `Requests: ${result.diagnostics.requests}`,
-            `Transfer: ${result.diagnostics.transferSize}`
+            `Performance median: ${result.median.scores.performance}`,
+            `Accessibility median: ${result.median.scores.accessibility}`,
+            `Best practices median: ${result.median.scores.bestPractices}`,
+            `SEO median: ${result.median.scores.seo}`,
+            `FCP median: ${seconds(result.median.metrics.fcpMs)}`,
+            `LCP median: ${seconds(result.median.metrics.lcpMs)}`,
+            `TBT median: ${result.median.metrics.tbtMs} ms`,
+            `CLS median: ${result.median.metrics.cls}`,
+            `Speed Index median: ${seconds(result.median.metrics.speedIndexMs)}`,
+            `TTFB median: ${result.median.metrics.ttfbMs} ms`,
+            `Requests median: ${result.median.diagnostics.requests}`,
+            `Transfer median: ${kb(result.median.diagnostics.transferBytes)}`,
+            '',
+            ...runs.map((run) => `Run ${run.run}: performance ${run.scores.performance}, LCP ${seconds(run.metrics.lcpMs)}, TBT ${run.metrics.tbtMs} ms, TTFB ${run.metrics.ttfbMs} ms`)
           ].join('\n') + '\n');
           NODE
 
