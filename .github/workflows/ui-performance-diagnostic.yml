@@ -1,0 +1,219 @@
+name: UI and performance diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ui-performance-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-ui-performance-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Inspect current staging UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostic
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+          cat > diagnostic.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+
+          const base = 'https://dev.elmercadodeorigen.com';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const rect = (value) => value ? {
+            x: Math.round(value.x), y: Math.round(value.y),
+            width: Math.round(value.width), height: Math.round(value.height)
+          } : null;
+
+          async function open(page, url) {
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: `
+              #cookie-law-info-bar, #cookie-law-info-again, #ht-ctc-chat,
+              .grecaptcha-badge, .hustle-ui { display:none !important; }
+            ` });
+            await sleep(800);
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: '/usr/bin/google-chrome',
+              headless: true,
+              args: ['--no-sandbox', '--disable-gpu']
+            });
+            const report = {};
+
+            const desktop = await browser.newPage();
+            await desktop.setViewport({ width: 1440, height: 1100, deviceScaleFactor: 1 });
+            await open(desktop, `${base}/?emo-diagnostic=${process.env.GITHUB_SHA}`);
+
+            report.headerDesktop = await desktop.evaluate(() => {
+              const read = (selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return null;
+                const style = getComputedStyle(element);
+                return {
+                  rect: element.getBoundingClientRect(),
+                  display: style.display,
+                  alignItems: style.alignItems,
+                  justifyContent: style.justifyContent,
+                  lineHeight: style.lineHeight,
+                  padding: style.padding,
+                  margin: style.margin,
+                  position: style.position
+                };
+              };
+              return {
+                tools: read('.site-tools'),
+                search: read('.site-tools > .header-search-icon'),
+                account: read('.site-tools .my-account-icon'),
+                cart: read('.site-tools .shopping-cart')
+              };
+            });
+
+            const card = await desktop.$('ul.products li.product');
+            if (card) {
+              await card.scrollIntoView();
+              await sleep(500);
+              await card.screenshot({ path: 'diagnostic/product-before-hover.png' });
+              report.hoverBefore = await desktop.evaluate(() => {
+                const product = document.querySelector('ul.products li.product');
+                const selectors = [
+                  '.product-loop-hover-image', '.loop-add-to-cart-on-image',
+                  '.product-loop-action', '.yith-wcwl-add-to-wishlist',
+                  '.berocket_better_labels_image'
+                ];
+                return Object.fromEntries(selectors.map((selector) => {
+                  const element = product?.querySelector(selector);
+                  if (!element) return [selector, null];
+                  const style = getComputedStyle(element);
+                  return [selector, {
+                    rect: element.getBoundingClientRect(), display: style.display,
+                    opacity: style.opacity, visibility: style.visibility,
+                    transform: style.transform, position: style.position,
+                    zIndex: style.zIndex
+                  }];
+                }));
+              });
+              await card.hover();
+              await sleep(900);
+              await card.screenshot({ path: 'diagnostic/product-after-hover.png' });
+              report.hoverAfter = await desktop.evaluate(() => {
+                const product = document.querySelector('ul.products li.product');
+                const selectors = [
+                  '.product-loop-hover-image', '.loop-add-to-cart-on-image',
+                  '.product-loop-action', '.yith-wcwl-add-to-wishlist',
+                  '.berocket_better_labels_image'
+                ];
+                return Object.fromEntries(selectors.map((selector) => {
+                  const element = product?.querySelector(selector);
+                  if (!element) return [selector, null];
+                  const style = getComputedStyle(element);
+                  return [selector, {
+                    rect: element.getBoundingClientRect(), display: style.display,
+                    opacity: style.opacity, visibility: style.visibility,
+                    transform: style.transform, position: style.position,
+                    zIndex: style.zIndex
+                  }];
+                }));
+              });
+            }
+            await desktop.close();
+
+            const mobile = await browser.newPage();
+            await mobile.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+            await mobile.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+            await open(mobile, `${base}/?emo-diagnostic=${process.env.GITHUB_SHA}`);
+            await mobile.screenshot({ path: 'diagnostic/mobile-header-closed.png' });
+
+            report.mobileBefore = await mobile.evaluate(() => {
+              const read = (selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return null;
+                const style = getComputedStyle(element);
+                return {
+                  rect: element.getBoundingClientRect(), display: style.display,
+                  transform: style.transform, left: style.left, right: style.right,
+                  top: style.top, width: style.width, height: style.height,
+                  overflow: style.overflow, zIndex: style.zIndex
+                };
+              };
+              return {
+                bodyClass: document.body.className,
+                htmlClass: document.documentElement.className,
+                toggle: read('.toggle-sidebar-menu-btn'),
+                sidebar: read('.sidebar-menu'),
+                headerSearch: read('.site-tools > .header-search-icon')
+              };
+            });
+
+            await mobile.click('.toggle-sidebar-menu-btn');
+            await sleep(900);
+            await mobile.screenshot({ path: 'diagnostic/mobile-menu-open.png' });
+            report.mobileAfter = await mobile.evaluate(() => {
+              const read = (selector) => {
+                const element = document.querySelector(selector);
+                if (!element) return null;
+                const style = getComputedStyle(element);
+                return {
+                  rect: element.getBoundingClientRect(), display: style.display,
+                  transform: style.transform, left: style.left, right: style.right,
+                  top: style.top, width: style.width, height: style.height,
+                  overflow: style.overflow, zIndex: style.zIndex,
+                  background: style.backgroundColor
+                };
+              };
+              return {
+                bodyClass: document.body.className,
+                htmlClass: document.documentElement.className,
+                sidebarClass: document.querySelector('.sidebar-menu')?.className || '',
+                toggleClass: document.querySelector('.toggle-sidebar-menu-btn')?.className || '',
+                sidebar: read('.sidebar-menu'),
+                sidebarSearch: read('.sidebar-menu .site-search'),
+                navigation: read('.sidebar-menu .site-navigation'),
+                firstLink: read('.sidebar-menu .primary-navigation > li > a')
+              };
+            });
+            await mobile.close();
+
+            const normalize = (value) => {
+              if (Array.isArray(value)) return value.map(normalize);
+              if (value && typeof value === 'object') {
+                const result = {};
+                for (const [key, item] of Object.entries(value)) {
+                  result[key] = key === 'rect' && item ? rect(item) : normalize(item);
+                }
+                return result;
+              }
+              return value;
+            };
+
+            fs.writeFileSync('diagnostic/report.json', JSON.stringify(normalize(report), null, 2));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+          node diagnostic.cjs
+          cat diagnostic/report.json
+
+      - name: Upload diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-performance-diagnostic
+          path: diagnostic/
+          retention-days: 3
