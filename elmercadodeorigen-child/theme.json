@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/theme.json",
+  "version": 3,
+  "settings": {
+    "appearanceTools": true,
+    "color": {
+      "defaultPalette": false,
+      "palette": [
+        { "slug": "green-950", "name": "Verde bosque", "color": "#10291f" },
+        { "slug": "green-800", "name": "Verde origen", "color": "#20513d" },
+        { "slug": "green-100", "name": "Verde suave", "color": "#e8f1ec" },
+        { "slug": "gold", "name": "Oro", "color": "#c99b4a" },
+        { "slug": "cream", "name": "Crema", "color": "#fbf8f1" },
+        { "slug": "white", "name": "Blanco", "color": "#ffffff" }
+      ]
+    },
+    "layout": {
+      "contentSize": "760px",
+      "wideSize": "1240px"
+    },
+    "spacing": {
+      "blockGap": true,
+      "units": ["px", "rem", "em", "%", "vw"]
+    },
+    "typography": {
+      "fluid": true,
+      "fontFamilies": [
+        {
+          "fontFamily": "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          "name": "Sans del sistema",
+          "slug": "sans"
+        },
+        {
+          "fontFamily": "Georgia, 'Times New Roman', serif",
+          "name": "Serif editorial",
+          "slug": "serif"
+        }
+      ]
+    }
+  },
+  "styles": {
+    "color": {
+      "background": "#fbf8f1",
+      "text": "#17201c"
+    },
+    "typography": {
+      "fontFamily": "var:preset|font-family|sans",
+      "lineHeight": "1.7"
+    },
+    "elements": {
+      "heading": {
+        "color": { "text": "#10291f" },
+        "typography": {
+          "fontFamily": "var:preset|font-family|serif",
+          "fontWeight": "650",
+          "lineHeight": "1.12"
+        }
+      },
+      "link": {
+        "color": { "text": "#2d6a4f" }
+      }
+    }
+  }
+}

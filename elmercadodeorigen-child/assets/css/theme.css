@@ -1,0 +1,608 @@
+/*
+ * El Mercado de Origen — sistema visual inicial.
+ * La capa se apoya en Woostify y prioriza selectores estables de WordPress/WooCommerce.
+ */
+
+:root {
+	--emo-green-950: #10291f;
+	--emo-green-900: #173c2d;
+	--emo-green-800: #20513d;
+	--emo-green-700: #2d6a4f;
+	--emo-green-100: #e8f1ec;
+	--emo-olive: #81905b;
+	--emo-gold: #c99b4a;
+	--emo-gold-soft: #f3e8d3;
+	--emo-cream: #fbf8f1;
+	--emo-surface: #ffffff;
+	--emo-ink: #17201c;
+	--emo-muted: #647069;
+	--emo-border: #dfe6e1;
+	--emo-danger: #b83b35;
+	--emo-radius-sm: 10px;
+	--emo-radius-md: 18px;
+	--emo-radius-lg: 28px;
+	--emo-shadow-sm: 0 8px 26px rgba(16, 41, 31, 0.08);
+	--emo-shadow-md: 0 18px 55px rgba(16, 41, 31, 0.13);
+	--emo-container: 1240px;
+	--emo-transition: 180ms ease;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body.elmercado-child-theme {
+	background: var(--emo-cream);
+	color: var(--emo-ink);
+	font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	font-size: 16px;
+	line-height: 1.7;
+	-webkit-font-smoothing: antialiased;
+}
+
+body.elmercado-child-theme::selection {
+	background: var(--emo-gold-soft);
+	color: var(--emo-green-950);
+}
+
+.elmercado-child-theme h1,
+.elmercado-child-theme h2,
+.elmercado-child-theme h3,
+.elmercado-child-theme h4,
+.elmercado-child-theme h5,
+.elmercado-child-theme h6 {
+	color: var(--emo-green-950);
+	font-family: Georgia, "Times New Roman", serif;
+	font-weight: 650;
+	letter-spacing: -0.025em;
+	line-height: 1.12;
+	text-wrap: balance;
+}
+
+.elmercado-child-theme h1 { font-size: clamp(2.35rem, 5vw, 4.8rem); }
+.elmercado-child-theme h2 { font-size: clamp(2rem, 3.8vw, 3.45rem); }
+.elmercado-child-theme h3 { font-size: clamp(1.45rem, 2.2vw, 2rem); }
+
+.elmercado-child-theme p,
+.elmercado-child-theme li {
+	text-wrap: pretty;
+}
+
+.elmercado-child-theme a {
+	color: var(--emo-green-700);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.18em;
+	transition: color var(--emo-transition), opacity var(--emo-transition);
+}
+
+.elmercado-child-theme a:hover,
+.elmercado-child-theme a:focus-visible {
+	color: var(--emo-green-950);
+}
+
+.elmercado-child-theme img {
+	height: auto;
+}
+
+.elmercado-child-theme :focus-visible {
+	outline: 3px solid rgba(201, 155, 74, 0.58);
+	outline-offset: 3px;
+}
+
+.elmercado-child-theme .site-content,
+.elmercado-child-theme .site-main,
+.elmercado-child-theme #content {
+	min-width: 0;
+}
+
+.elmercado-child-theme .container,
+.elmercado-child-theme .site-content > .container,
+.elmercado-child-theme .wp-block-group__inner-container {
+	max-width: var(--emo-container);
+}
+
+/* Cabecera */
+.elmercado-child-theme .site-header {
+	position: relative;
+	z-index: 100;
+	background: rgba(255, 255, 255, 0.94);
+	border-bottom: 1px solid rgba(23, 60, 45, 0.09);
+	box-shadow: 0 1px 0 rgba(16, 41, 31, 0.03);
+	backdrop-filter: blur(16px);
+	transition: box-shadow var(--emo-transition), background var(--emo-transition);
+}
+
+.elmercado-child-theme.is-scrolled .site-header,
+.elmercado-child-theme .site-header.is-scrolled {
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.elmercado-child-theme .site-branding img,
+.elmercado-child-theme .custom-logo {
+	max-height: 64px;
+	width: auto;
+}
+
+.elmercado-child-theme .main-navigation a,
+.elmercado-child-theme .primary-navigation a {
+	color: var(--emo-green-950);
+	font-size: 0.94rem;
+	font-weight: 650;
+	letter-spacing: 0.015em;
+}
+
+.elmercado-child-theme .main-navigation a:hover,
+.elmercado-child-theme .main-navigation .current-menu-item > a,
+.elmercado-child-theme .primary-navigation a:hover {
+	color: var(--emo-green-700);
+}
+
+.elmercado-child-theme .main-navigation ul ul,
+.elmercado-child-theme .primary-navigation ul ul {
+	background: var(--emo-surface);
+	border: 1px solid var(--emo-border);
+	border-radius: var(--emo-radius-sm);
+	box-shadow: var(--emo-shadow-md);
+	overflow: hidden;
+}
+
+/* Botones y formularios */
+.elmercado-child-theme button,
+.elmercado-child-theme input[type="button"],
+.elmercado-child-theme input[type="submit"],
+.elmercado-child-theme .button,
+.elmercado-child-theme .wp-element-button,
+.elmercado-child-theme .wp-block-button__link,
+.elmercado-child-theme .woocommerce a.button,
+.elmercado-child-theme .woocommerce button.button,
+.elmercado-child-theme .woocommerce input.button {
+	min-height: 46px;
+	padding: 0.78rem 1.25rem;
+	background: var(--emo-green-800);
+	border: 1px solid var(--emo-green-800);
+	border-radius: 999px;
+	box-shadow: none;
+	color: #fff;
+	font-size: 0.94rem;
+	font-weight: 750;
+	line-height: 1.2;
+	text-decoration: none;
+	transition: transform var(--emo-transition), background var(--emo-transition), border-color var(--emo-transition), box-shadow var(--emo-transition);
+}
+
+.elmercado-child-theme button:hover,
+.elmercado-child-theme input[type="submit"]:hover,
+.elmercado-child-theme .button:hover,
+.elmercado-child-theme .wp-element-button:hover,
+.elmercado-child-theme .wp-block-button__link:hover,
+.elmercado-child-theme .woocommerce a.button:hover,
+.elmercado-child-theme .woocommerce button.button:hover,
+.elmercado-child-theme .woocommerce input.button:hover {
+	background: var(--emo-green-950);
+	border-color: var(--emo-green-950);
+	box-shadow: 0 10px 24px rgba(16, 41, 31, 0.18);
+	color: #fff;
+	transform: translateY(-1px);
+}
+
+.elmercado-child-theme input[type="text"],
+.elmercado-child-theme input[type="email"],
+.elmercado-child-theme input[type="tel"],
+.elmercado-child-theme input[type="password"],
+.elmercado-child-theme input[type="search"],
+.elmercado-child-theme input[type="number"],
+.elmercado-child-theme select,
+.elmercado-child-theme textarea {
+	width: 100%;
+	min-height: 48px;
+	padding: 0.78rem 0.95rem;
+	background: #fff;
+	border: 1px solid var(--emo-border);
+	border-radius: var(--emo-radius-sm);
+	color: var(--emo-ink);
+	box-shadow: 0 1px 0 rgba(16, 41, 31, 0.02);
+	transition: border-color var(--emo-transition), box-shadow var(--emo-transition);
+}
+
+.elmercado-child-theme textarea {
+	min-height: 150px;
+	resize: vertical;
+}
+
+.elmercado-child-theme input:focus,
+.elmercado-child-theme select:focus,
+.elmercado-child-theme textarea:focus {
+	border-color: var(--emo-green-700);
+	box-shadow: 0 0 0 4px rgba(45, 106, 79, 0.11);
+	outline: 0;
+}
+
+/* Bloques editoriales */
+.elmercado-child-theme .entry-content > .wp-block-group,
+.elmercado-child-theme .entry-content > .wp-block-cover,
+.elmercado-child-theme .entry-content > .wp-block-columns,
+.elmercado-child-theme .elementor-section {
+	margin-bottom: clamp(2.5rem, 6vw, 6rem);
+}
+
+.elmercado-child-theme .wp-block-cover,
+.elmercado-child-theme .elementor-background-overlay + .elementor-container {
+	border-radius: var(--emo-radius-lg);
+	overflow: hidden;
+}
+
+.elmercado-child-theme .wp-block-image img,
+.elmercado-child-theme .entry-content .elementor-widget-image img {
+	border-radius: var(--emo-radius-md);
+}
+
+.elmercado-child-theme .wp-block-quote {
+	margin: 2rem 0;
+	padding: 1.6rem 1.8rem;
+	background: var(--emo-green-100);
+	border: 0;
+	border-left: 5px solid var(--emo-green-700);
+	border-radius: 0 var(--emo-radius-md) var(--emo-radius-md) 0;
+}
+
+/* Avisos y migas */
+.elmercado-child-theme .woocommerce-breadcrumb,
+.elmercado-child-theme .breadcrumbs {
+	margin-bottom: 1.5rem;
+	color: var(--emo-muted);
+	font-size: 0.86rem;
+}
+
+.elmercado-child-theme .woocommerce-message,
+.elmercado-child-theme .woocommerce-info,
+.elmercado-child-theme .woocommerce-error {
+	padding: 1rem 1.2rem 1rem 3.1rem;
+	background: #fff;
+	border: 1px solid var(--emo-border);
+	border-top: 0;
+	border-left: 4px solid var(--emo-green-700);
+	border-radius: var(--emo-radius-sm);
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.elmercado-child-theme .woocommerce-error {
+	border-left-color: var(--emo-danger);
+}
+
+/* Catálogo */
+.elmercado-child-theme.woocommerce .products,
+.elmercado-child-theme .woocommerce .products {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: clamp(1.1rem, 2.2vw, 2rem);
+	margin: 0;
+}
+
+.elmercado-child-theme.woocommerce ul.products::before,
+.elmercado-child-theme.woocommerce ul.products::after,
+.elmercado-child-theme .woocommerce ul.products::before,
+.elmercado-child-theme .woocommerce ul.products::after {
+	display: none;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product,
+.elmercado-child-theme .woocommerce ul.products li.product {
+	position: relative;
+	float: none;
+	width: auto;
+	margin: 0;
+	padding: 0 0 1.15rem;
+	background: var(--emo-surface);
+	border: 1px solid rgba(23, 60, 45, 0.1);
+	border-radius: var(--emo-radius-md);
+	box-shadow: 0 8px 28px rgba(16, 41, 31, 0.06);
+	overflow: hidden;
+	transition: transform var(--emo-transition), box-shadow var(--emo-transition), border-color var(--emo-transition);
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product:hover,
+.elmercado-child-theme .woocommerce ul.products li.product:hover {
+	border-color: rgba(45, 106, 79, 0.24);
+	box-shadow: var(--emo-shadow-md);
+	transform: translateY(-5px);
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product a img,
+.elmercado-child-theme .woocommerce ul.products li.product a img {
+	width: 100%;
+	aspect-ratio: 1 / 0.84;
+	margin: 0 0 1rem;
+	background: #f2f2ed;
+	object-fit: cover;
+	transition: transform 320ms ease;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product:hover a img,
+.elmercado-child-theme .woocommerce ul.products li.product:hover a img {
+	transform: scale(1.025);
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .woocommerce-loop-product__title,
+.elmercado-child-theme .woocommerce ul.products li.product .woocommerce-loop-product__title {
+	min-height: 2.7em;
+	padding: 0 1.1rem;
+	color: var(--emo-green-950);
+	font-family: inherit;
+	font-size: 1.02rem;
+	font-weight: 720;
+	letter-spacing: -0.01em;
+	line-height: 1.35;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .star-rating,
+.elmercado-child-theme .woocommerce ul.products li.product .star-rating {
+	margin: 0.35rem 1.1rem;
+	color: var(--emo-gold);
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .price,
+.elmercado-child-theme .woocommerce ul.products li.product .price {
+	padding: 0 1.1rem;
+	color: var(--emo-green-800);
+	font-size: 1.05rem;
+	font-weight: 800;
+}
+
+.elmercado-child-theme.woocommerce ul.products li.product .button,
+.elmercado-child-theme .woocommerce ul.products li.product .button {
+	margin: 0.8rem 1.1rem 0;
+}
+
+.elmercado-child-theme .onsale {
+	top: 0.8rem;
+	left: 0.8rem;
+	min-width: auto;
+	min-height: auto;
+	padding: 0.43rem 0.72rem;
+	background: var(--emo-gold);
+	border-radius: 999px;
+	color: var(--emo-green-950);
+	font-size: 0.74rem;
+	font-weight: 850;
+	letter-spacing: 0.06em;
+	line-height: 1;
+	text-transform: uppercase;
+}
+
+.elmercado-child-theme .woocommerce-result-count,
+.elmercado-child-theme .woocommerce-ordering {
+	margin-bottom: 1.8rem;
+}
+
+/* Producto individual */
+.elmercado-child-theme.single-product div.product {
+	padding-top: clamp(1rem, 3vw, 3rem);
+}
+
+.elmercado-child-theme.single-product div.product .woocommerce-product-gallery,
+.elmercado-child-theme.single-product div.product .summary {
+	margin-bottom: clamp(2rem, 5vw, 4.5rem);
+}
+
+.elmercado-child-theme.single-product .woocommerce-product-gallery__wrapper,
+.elmercado-child-theme.single-product .woocommerce-product-gallery__image img {
+	border-radius: var(--emo-radius-md);
+}
+
+.elmercado-child-theme.single-product div.product .summary {
+	padding: clamp(1.35rem, 3vw, 2.5rem);
+	background: #fff;
+	border: 1px solid var(--emo-border);
+	border-radius: var(--emo-radius-lg);
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.elmercado-child-theme.single-product .product_title {
+	font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+.elmercado-child-theme.single-product div.product p.price,
+.elmercado-child-theme.single-product div.product span.price {
+	color: var(--emo-green-800);
+	font-size: clamp(1.35rem, 2.5vw, 1.85rem);
+	font-weight: 850;
+}
+
+.elmercado-child-theme.single-product .quantity .qty {
+	width: 74px;
+	border-radius: 999px;
+}
+
+.elmercado-child-theme .woocommerce-tabs {
+	padding: clamp(1.2rem, 3vw, 2.4rem);
+	background: #fff;
+	border: 1px solid var(--emo-border);
+	border-radius: var(--emo-radius-lg);
+}
+
+.elmercado-child-theme .woocommerce div.product .woocommerce-tabs ul.tabs {
+	padding: 0;
+}
+
+.elmercado-child-theme .woocommerce div.product .woocommerce-tabs ul.tabs li {
+	background: transparent;
+	border: 0;
+}
+
+.elmercado-child-theme .woocommerce div.product .woocommerce-tabs ul.tabs li.active a {
+	color: var(--emo-green-800);
+}
+
+/* Carrito, checkout y cuenta */
+.elmercado-child-theme .woocommerce table.shop_table,
+.elmercado-child-theme .woocommerce-checkout-review-order,
+.elmercado-child-theme .woocommerce form.checkout_coupon,
+.elmercado-child-theme .woocommerce form.login,
+.elmercado-child-theme .woocommerce form.register,
+.elmercado-child-theme .woocommerce-MyAccount-navigation,
+.elmercado-child-theme .woocommerce-MyAccount-content {
+	background: #fff;
+	border: 1px solid var(--emo-border);
+	border-radius: var(--emo-radius-md);
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.elmercado-child-theme .woocommerce table.shop_table {
+	border-collapse: separate;
+	overflow: hidden;
+}
+
+.elmercado-child-theme .woocommerce table.shop_table th,
+.elmercado-child-theme .woocommerce table.shop_table td {
+	padding: 1rem;
+	border-color: var(--emo-border);
+}
+
+.elmercado-child-theme .cart_totals,
+.elmercado-child-theme .woocommerce-checkout #payment {
+	padding: 1.4rem;
+	background: var(--emo-green-100);
+	border-radius: var(--emo-radius-md);
+}
+
+.elmercado-child-theme .woocommerce-MyAccount-navigation ul {
+	margin: 0;
+	padding: 0.65rem;
+	list-style: none;
+}
+
+.elmercado-child-theme .woocommerce-MyAccount-navigation li a {
+	display: block;
+	padding: 0.8rem 0.95rem;
+	border-radius: 8px;
+	font-weight: 650;
+	text-decoration: none;
+}
+
+.elmercado-child-theme .woocommerce-MyAccount-navigation li.is-active a,
+.elmercado-child-theme .woocommerce-MyAccount-navigation li a:hover {
+	background: var(--emo-green-100);
+}
+
+.elmercado-child-theme .woocommerce-MyAccount-content {
+	padding: clamp(1.2rem, 3vw, 2rem);
+}
+
+/* Blog */
+.elmercado-child-theme .post,
+.elmercado-child-theme .type-post {
+	background: #fff;
+	border: 1px solid var(--emo-border);
+	border-radius: var(--emo-radius-md);
+	box-shadow: var(--emo-shadow-sm);
+	overflow: hidden;
+}
+
+.elmercado-child-theme .post .entry-header,
+.elmercado-child-theme .post .entry-content,
+.elmercado-child-theme .post .entry-footer {
+	padding-right: clamp(1.2rem, 3vw, 2.2rem);
+	padding-left: clamp(1.2rem, 3vw, 2.2rem);
+}
+
+/* Pie */
+.elmercado-child-theme .site-footer {
+	margin-top: clamp(3rem, 7vw, 7rem);
+	background: var(--emo-green-950);
+	color: rgba(255, 255, 255, 0.76);
+}
+
+.elmercado-child-theme .site-footer h2,
+.elmercado-child-theme .site-footer h3,
+.elmercado-child-theme .site-footer h4,
+.elmercado-child-theme .site-footer a {
+	color: #fff;
+}
+
+.elmercado-child-theme .site-footer a:hover {
+	color: var(--emo-gold-soft);
+}
+
+/* Utilidades del tema */
+.emo-eyebrow {
+	color: var(--emo-green-700);
+	font-size: 0.78rem;
+	font-weight: 850;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+}
+
+.emo-panel {
+	padding: clamp(1.3rem, 3vw, 2.4rem);
+	background: #fff;
+	border: 1px solid var(--emo-border);
+	border-radius: var(--emo-radius-md);
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.emo-panel--green {
+	background: var(--emo-green-900);
+	border-color: var(--emo-green-900);
+	color: #fff;
+}
+
+.emo-panel--green h2,
+.emo-panel--green h3 {
+	color: #fff;
+}
+
+.emo-reveal {
+	opacity: 0;
+	transform: translateY(16px);
+	transition: opacity 520ms ease, transform 520ms ease;
+}
+
+.emo-reveal.is-visible {
+	opacity: 1;
+	transform: none;
+}
+
+@media (max-width: 991px) {
+	.elmercado-child-theme.woocommerce .products,
+	.elmercado-child-theme .woocommerce .products {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.elmercado-child-theme .site-branding img,
+	.elmercado-child-theme .custom-logo {
+		max-height: 54px;
+	}
+}
+
+@media (max-width: 640px) {
+	body.elmercado-child-theme {
+		font-size: 15px;
+	}
+
+	.elmercado-child-theme.woocommerce .products,
+	.elmercado-child-theme .woocommerce .products {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 1rem;
+	}
+
+	.elmercado-child-theme.woocommerce ul.products li.product a img,
+	.elmercado-child-theme .woocommerce ul.products li.product a img {
+		aspect-ratio: 1 / 0.78;
+	}
+
+	.elmercado-child-theme .woocommerce table.shop_table_responsive tr,
+	.elmercado-child-theme .woocommerce-page table.shop_table_responsive tr {
+		padding: 0.8rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html { scroll-behavior: auto; }
+	*, *::before, *::after {
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+	}
+	.emo-reveal { opacity: 1; transform: none; }
+}

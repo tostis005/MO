@@ -1,0 +1,86 @@
+name: Deploy child theme to development
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/**'
+      - '.github/workflows/deploy-development.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-development-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      WP_THEME_PATH: ${{ secrets.WP_THEME_PATH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate theme
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/style.css
+          test -f elmercadodeorigen-child/functions.php
+          grep -q '^Template: woostify$' elmercadodeorigen-child/style.css
+          find elmercadodeorigen-child -type f -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?Missing SSH_HOST secret}"
+          : "${SSH_USER:?Missing SSH_USER secret}"
+          : "${SSH_PRIVATE_KEY:?Missing SSH_PRIVATE_KEY secret}"
+          : "${SSH_KNOWN_HOSTS:?Missing SSH_KNOWN_HOSTS secret}"
+          : "${WP_THEME_PATH:?Missing WP_THEME_PATH secret}"
+
+          case "${WP_THEME_PATH%/}" in
+            */wp-content/themes/elmercadodeorigen-child) ;;
+            *)
+              echo "WP_THEME_PATH must end in /wp-content/themes/elmercadodeorigen-child"
+              exit 1
+              ;;
+          esac
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Deploy with rsync
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          TARGET="${WP_THEME_PATH%/}/"
+
+          ssh -i ~/.ssh/id_ed25519 -p "$PORT" "$SSH_USER@$SSH_HOST" \
+            "mkdir -p '$TARGET'"
+
+          rsync -az --delete \
+            --exclude='.DS_Store' \
+            --exclude='*.map' \
+            -e "ssh -i ~/.ssh/id_ed25519 -p $PORT" \
+            elmercadodeorigen-child/ \
+            "$SSH_USER@$SSH_HOST:$TARGET"
