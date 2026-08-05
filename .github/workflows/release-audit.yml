@@ -48,32 +48,6 @@ jobs:
           const suffix = `emo-release=${process.env.GITHUB_SHA}`;
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          const rect = (node) => {
-            if (!node) return null;
-            const value = node.getBoundingClientRect();
-            return { x: value.x, y: value.y, width: value.width, height: value.height, top: value.top, bottom: value.bottom };
-          };
-
-          const styleInfo = (node) => {
-            if (!node) return null;
-            const style = getComputedStyle(node);
-            return {
-              position: style.position,
-              top: style.top,
-              bottom: style.bottom,
-              left: style.left,
-              right: style.right,
-              transform: style.transform,
-              translate: style.translate,
-              marginTop: style.marginTop,
-              marginBottom: style.marginBottom,
-              alignSelf: style.alignSelf,
-              display: style.display,
-              height: style.height,
-              minHeight: style.minHeight
-            };
-          };
-
           async function prepare(page, url) {
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
             await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}' });
@@ -88,10 +62,30 @@ jobs:
             await home.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
             await prepare(home, `${base}/?${suffix}`);
             report.home = await home.evaluate(() => {
-              const container = document.querySelector('.site-header-inner > .woostify-container');
-              const branding = document.querySelector('.site-header .site-branding');
-              const navigation = document.querySelector('.site-header .main-navigation');
-              const tools = document.querySelector('.site-header .site-tools');
+              const rect = (node) => {
+                if (!node) return null;
+                const value = node.getBoundingClientRect();
+                return { x: value.x, y: value.y, width: value.width, height: value.height, top: value.top, bottom: value.bottom };
+              };
+              const styleInfo = (node) => {
+                if (!node) return null;
+                const style = getComputedStyle(node);
+                return {
+                  position: style.position,
+                  top: style.top,
+                  bottom: style.bottom,
+                  left: style.left,
+                  right: style.right,
+                  transform: style.transform,
+                  translate: style.translate,
+                  marginTop: style.marginTop,
+                  marginBottom: style.marginBottom,
+                  alignSelf: style.alignSelf,
+                  display: style.display,
+                  height: style.height,
+                  minHeight: style.minHeight
+                };
+              };
               const chain = (node) => {
                 const result = [];
                 let current = node;
@@ -107,6 +101,10 @@ jobs:
                 }
                 return result;
               };
+              const container = document.querySelector('.site-header-inner > .woostify-container');
+              const branding = document.querySelector('.site-header .site-branding');
+              const navigation = document.querySelector('.site-header .main-navigation');
+              const tools = document.querySelector('.site-header .site-tools');
               return {
                 container: { rect: rect(container), style: styleInfo(container) },
                 branding: { rect: rect(branding), style: styleInfo(branding), chain: chain(branding) },
