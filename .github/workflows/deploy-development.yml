@@ -18,7 +18,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate theme
+      - name: Validate theme and secrets
         shell: bash
         run: |
           set -euo pipefail
@@ -39,42 +39,23 @@ jobs:
           test -f elmercadodeorigen-child/assets/css/theme.css
           test -f elmercadodeorigen-child/assets/css/integrations.css
           grep -q '^Template: woostify$' elmercadodeorigen-child/style.css
-          find elmercadodeorigen-child -type f -name '*.php' -print0 \
-            | xargs -0 -n1 php -l
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 
-      - name: Validate deployment secrets
-        shell: bash
-        run: |
-          set -euo pipefail
           : "${STAGING_HOST:?Missing STAGING_HOST secret}"
           : "${STAGING_USER:?Missing STAGING_USER secret}"
           : "${STAGING_PASSWORD:?Missing STAGING_PASSWORD secret}"
           : "${STAGING_REMOTE_PATH:?Missing STAGING_REMOTE_PATH secret}"
 
           PORT="${STAGING_PORT:-22}"
-          [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || {
-            echo "STAGING_PORT must be a valid numeric port"
-            exit 1
-          }
-
-          RAW_PATH="${STAGING_REMOTE_PATH%/}"
-          [[ "$RAW_PATH" == /* ]] || {
-            echo "STAGING_REMOTE_PATH must be an absolute server path"
-            exit 1
-          }
-          [[ "$RAW_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || {
-            echo "STAGING_REMOTE_PATH contains unsupported characters"
-            exit 1
-          }
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || exit 1
+          [[ "$STAGING_REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+/?$ ]] || exit 1
 
       - name: Install deployment tools
-        shell: bash
         run: |
-          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends rsync sshpass
 
-      - name: Register SSH host key
+      - name: Configure SSH
         shell: bash
         run: |
           set -euo pipefail
@@ -85,23 +66,7 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Test SSH connection
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          sshpass -e ssh \
-            -o BatchMode=no \
-            -o PreferredAuthentications=password,keyboard-interactive \
-            -o PubkeyAuthentication=no \
-            -o StrictHostKeyChecking=yes \
-            -p "$PORT" \
-            "$STAGING_USER@$STAGING_HOST" \
-            'printf "SSH connection successful\n"'
-
-      - name: Locate the real WordPress installation
+      - name: Locate WordPress installation
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -110,98 +75,106 @@ jobs:
           PORT="${STAGING_PORT:-22}"
 
           set +e
-          REMOTE_OUTPUT="$({
-            sshpass -e ssh \
-              -o BatchMode=no \
-              -o PreferredAuthentications=password,keyboard-interactive \
-              -o PubkeyAuthentication=no \
-              -o StrictHostKeyChecking=yes \
-              -p "$PORT" \
-              "$STAGING_USER@$STAGING_HOST" \
-              "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE_SCRIPT'
+          OUTPUT="$(sshpass -e ssh \
+            -o BatchMode=no \
+            -o PreferredAuthentications=password,keyboard-interactive \
+            -o PubkeyAuthentication=no \
+            -o StrictHostKeyChecking=yes \
+            -p "$PORT" \
+            "$STAGING_USER@$STAGING_HOST" \
+            "sh -s -- '$STAGING_REMOTE_PATH'" 2>&1 <<'REMOTE'
           set -eu
-
           raw="${1%/}"
-          theme_name="elmercadodeorigen-child"
-          wp_root=""
+          wp_dir=""
+
+          check_root() {
+            candidate="$1"
+            if [ -f "$candidate/wp-config.php" ] && [ -d "$candidate/wp-content/themes" ]; then
+              wp_dir="$candidate"
+              return 0
+            fi
+            return 1
+          }
 
           case "$raw" in
             */wp-content/themes/elmercadodeorigen-child)
-              candidate="$(dirname "$(dirname "$(dirname "$raw")")")"
-              [ -f "$candidate/wp-config.php" ] && wp_root="$candidate"
+              check_root "$(dirname "$(dirname "$(dirname "$raw")")")" || true
               ;;
             */wp-content/themes)
-              candidate="$(dirname "$(dirname "$raw")")"
-              [ -f "$candidate/wp-config.php" ] && wp_root="$candidate"
+              check_root "$(dirname "$(dirname "$raw")")" || true
               ;;
             */wp-content)
-              candidate="$(dirname "$raw")"
-              [ -f "$candidate/wp-config.php" ] && wp_root="$candidate"
+              check_root "$(dirname "$raw")" || true
               ;;
             *)
-              [ -f "$raw/wp-config.php" ] && [ -d "$raw/wp-content/themes" ] && wp_root="$raw"
+              check_root "$raw" || true
               ;;
           esac
 
-          find_wordpress() {
-            base="$1"
-            [ -d "$base" ] || return 0
-            find "$base" -maxdepth 7 -type f -name wp-config.php \
-              ! -path '*/.cache/*' \
-              ! -path '*/cache/*' \
-              ! -path '*/backup/*' \
-              ! -path '*/backups/*' \
-              2>/dev/null | head -n 5
-          }
+          if [ -z "$wp_dir" ]; then
+            tmp="$(mktemp)"
+            trap 'rm -f "$tmp" "$tmp.sorted"' EXIT
 
-          if [ -z "$wp_root" ]; then
-            configs="$(find_wordpress "$raw")"
-            count="$(printf '%s\n' "$configs" | sed '/^$/d' | wc -l | tr -d ' ')"
+            search_base() {
+              base="$1"
+              [ -d "$base" ] || return 0
+              find "$base" -maxdepth 9 -type f -name wp-config.php \
+                ! -path '*/.cache/*' \
+                ! -path '*/cache/*' \
+                ! -path '*/backup/*' \
+                ! -path '*/backups/*' \
+                ! -path '*/node_modules/*' \
+                2>/dev/null >> "$tmp" || true
+            }
+
+            search_base "$raw"
+            search_base "$HOME"
+            search_base /var/www
+            search_base /home
+            search_base /srv
+            search_base /opt
+            search_base /data
+            search_base /web
+            search_base /www
+            search_base /usr/local/www
+
+            sort -u "$tmp" | head -n 20 > "$tmp.sorted"
+            count="$(wc -l < "$tmp.sorted" | tr -d ' ')"
 
             if [ "$count" -eq 0 ]; then
-              configs="$(find_wordpress "$HOME")"
-              count="$(printf '%s\n' "$configs" | sed '/^$/d' | wc -l | tr -d ' ')"
+              timeout 35 find / -xdev -type f -name wp-config.php \
+                ! -path '/proc/*' ! -path '/sys/*' ! -path '/dev/*' ! -path '/run/*' \
+                ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
+                2>/dev/null | head -n 20 > "$tmp.sorted" || true
+              count="$(wc -l < "$tmp.sorted" | tr -d ' ')"
             fi
 
             if [ "$count" -ne 1 ]; then
-              echo "Could not identify exactly one WordPress installation." >&2
-              echo "wp-config.php candidates found: $count" >&2
-              printf '%s\n' "$configs" >&2
+              echo "Could not identify exactly one WordPress installation."
+              echo "wp-config.php candidates found: $count"
+              cat "$tmp.sorted"
               exit 1
             fi
 
-            config="$(printf '%s\n' "$configs" | sed '/^$/d' | head -n 1)"
-            wp_root="$(dirname "$config")"
+            wp_dir="$(dirname "$(head -n 1 "$tmp.sorted")")"
           fi
 
-          [ -f "$wp_root/wp-config.php" ] || {
-            echo "Resolved directory is not a WordPress root." >&2
-            exit 1
-          }
-          [ -d "$wp_root/wp-content/themes" ] || {
-            echo "The WordPress themes directory does not exist." >&2
-            exit 1
-          }
-
-          theme_path="$wp_root/wp-content/themes/$theme_name"
-          printf '__THEME_PATH__=%s\n' "$theme_path"
-          REMOTE_SCRIPT
-          } 2>&1)"
-          REMOTE_STATUS=$?
+          [ -f "$wp_dir/wp-config.php" ]
+          [ -d "$wp_dir/wp-content/themes" ]
+          printf '__THEME_PATH__=%s\n' "$wp_dir/wp-content/themes/elmercadodeorigen-child"
+          REMOTE
+          )"
+          STATUS=$?
           set -e
 
-          printf '%s\n' "$REMOTE_OUTPUT"
-          if [ "$REMOTE_STATUS" -ne 0 ]; then
-            exit "$REMOTE_STATUS"
-          fi
+          printf '%s\n' "$OUTPUT"
+          [ "$STATUS" -eq 0 ] || exit "$STATUS"
 
-          THEME_PATH="$(printf '%s\n' "$REMOTE_OUTPUT" | sed -n 's/^__THEME_PATH__=//p' | tail -n 1)"
-          : "${THEME_PATH:?Could not resolve the remote WordPress theme path}"
-
+          THEME_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__THEME_PATH__=//p' | tail -n 1)"
+          : "${THEME_PATH:?Could not resolve the WordPress theme path}"
           echo "STAGING_THEME_PATH=$THEME_PATH" >> "$GITHUB_ENV"
-          echo "The WordPress installation and themes directory were located."
 
-      - name: Deploy child theme with rsync
+      - name: Deploy and verify child theme
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -209,45 +182,22 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           TARGET="${STAGING_THEME_PATH%/}/"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
 
-          sshpass -e ssh \
-            -o BatchMode=no \
-            -o PreferredAuthentications=password,keyboard-interactive \
-            -o PubkeyAuthentication=no \
-            -o StrictHostKeyChecking=yes \
-            -p "$PORT" \
-            "$STAGING_USER@$STAGING_HOST" \
-            "mkdir -p -- '$TARGET'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p -- '$TARGET'"
 
           sshpass -e rsync -az --delete \
             --exclude='.DS_Store' \
             --exclude='*.map' \
-            -e "ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT" \
+            -e "ssh $SSH_OPTIONS" \
             elmercadodeorigen-child/ \
             "$STAGING_USER@$STAGING_HOST:$TARGET"
 
-      - name: Verify deployment in WordPress themes
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          TARGET="${STAGING_THEME_PATH%/}"
-
-          sshpass -e ssh \
-            -o BatchMode=no \
-            -o PreferredAuthentications=password,keyboard-interactive \
-            -o PubkeyAuthentication=no \
-            -o StrictHostKeyChecking=yes \
-            -p "$PORT" \
-            "$STAGING_USER@$STAGING_HOST" \
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" \
             "test -f '$TARGET/style.css' && \
              test -f '$TARGET/functions.php' && \
              grep -q '^Template: woostify$' '$TARGET/style.css' && \
-             printf 'Verified child theme files in the WordPress themes directory.\n'"
+             printf 'Child theme verified inside WordPress themes.\n'"
 
       - name: Deployment summary
-        shell: bash
-        run: |
-          echo "Child theme deployed and verified in the staging WordPress installation."
+        run: echo "Child theme deployed and verified in staging."
