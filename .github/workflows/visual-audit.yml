@@ -18,25 +18,25 @@ concurrency:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
-      - name: Wait for the premium child theme
+      - name: Wait for the optimized child theme
         shell: bash
         run: |
           set -euo pipefail
           URL="https://dev.elmercadodeorigen.com/?emo-audit=${GITHUB_SHA}"
-          for attempt in {1..30}; do
+          for attempt in {1..35}; do
             if curl -fsSL --max-time 25 "$URL" -o /tmp/home.html \
-              && grep -q 'elmercado-premium-css' /tmp/home.html \
+              && grep -q -- '--emo-mobile-panel' /tmp/home.html \
               && grep -q 'Los favoritos de nuestros clientes' /tmp/home.html; then
               exit 0
             fi
             sleep 6
           done
-          echo 'The premium staging version was not detected in time.' >&2
+          echo 'The optimized staging version was not detected in time.' >&2
           exit 1
 
-      - name: Capture loaded interfaces and measurements
+      - name: Capture interfaces resources and measurements
         shell: bash
         run: |
           set -euo pipefail
@@ -50,6 +50,13 @@ jobs:
           const base = 'https://dev.elmercadodeorigen.com';
           const suffix = `emo-audit=${process.env.GITHUB_SHA}`;
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const serialize = (value) => value ? {
+            x: Math.round(value.x),
+            y: Math.round(value.y),
+            width: Math.round(value.width),
+            height: Math.round(value.height)
+          } : null;
 
           async function prepare(page, url) {
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
@@ -67,20 +74,11 @@ jobs:
               const distance = Math.max(450, Math.round(window.innerHeight * 0.75));
               for (let y = 0; y < document.body.scrollHeight; y += distance) {
                 window.scrollTo(0, y);
-                await delay(110);
+                await delay(90);
               }
               window.scrollTo(0, 0);
             });
-            await sleep(1200);
-          }
-
-          function serialize(rect) {
-            return rect ? {
-              x: Math.round(rect.x),
-              y: Math.round(rect.y),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height)
-            } : null;
+            await sleep(900);
           }
 
           (async () => {
@@ -106,9 +104,79 @@ jobs:
               const homeUrl = `${base}/?${suffix}`;
               await prepare(page, homeUrl);
               await page.screenshot({ path: `visual-audit/home-${mode.name}.png` });
+
               const bestSellers = await page.$('.emo-featured-products');
               if (bestSellers) {
                 await bestSellers.screenshot({ path: `visual-audit/home-bestsellers-${mode.name}.png` });
+              }
+
+              report[`home_${mode.name}`] = await page.evaluate(() => {
+                const urls = performance.getEntriesByType('resource').map((entry) => entry.name);
+                const bannedFragments = [
+                  '/plugins/elementor/',
+                  '/plugins/contact-form-7/',
+                  '/recaptcha/',
+                  'google.com/recaptcha',
+                  '/plugins/slide-anything/',
+                  '/plugins/wc-frontend-manager/',
+                  '/plugins/yith-woocommerce-wishlist/',
+                  '/plugins/waitlist-woocommerce/',
+                  '/custom-css-js/6585.css',
+                  '/custom-css-js/1341.js',
+                  'Inter-VariableFont'
+                ];
+                const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href);
+                const scripts = [...document.querySelectorAll('script[src]')].map((script) => script.src);
+                const hoverImage = document.querySelector('ul.products li.product .product-loop-hover-image');
+                const hoverButton = document.querySelector('ul.products li.product .loop-add-to-cart-on-image');
+                const childStyleLinks = styles.filter((url) => url.includes('/elmercadodeorigen-child/assets/css/'));
+                const woostifyLinks = styles.filter((url) => url.includes('/themes/woostify/style.css'));
+
+                return {
+                  resources: urls.length,
+                  styles: styles.length,
+                  scripts: scripts.length,
+                  childStyleLinks,
+                  woostifyLinks,
+                  bannedResources: urls.filter((url) => bannedFragments.some((fragment) => url.includes(fragment))),
+                  hoverImageDisplay: hoverImage ? getComputedStyle(hoverImage).display : null,
+                  hoverButtonDisplay: hoverButton ? getComputedStyle(hoverButton).display : null,
+                  accountLabel: document.querySelector('.site-tools .my-account-icon')?.getAttribute('aria-label') || '',
+                  cartLabel: document.querySelector('.site-tools .shopping-cart')?.getAttribute('aria-label') || '',
+                  navigationId: document.querySelector('.site-header .main-navigation')?.id || '',
+                  dialogNames: [...document.querySelectorAll('[role="dialog"]')].map((dialog) => dialog.getAttribute('aria-label') || dialog.getAttribute('aria-labelledby') || '')
+                };
+              });
+
+              const firstHomeCard = await page.$('.emo-featured-products ul.products li.product');
+              if (firstHomeCard) {
+                await firstHomeCard.hover();
+                await sleep(500);
+                await firstHomeCard.screenshot({ path: `visual-audit/home-product-hover-${mode.name}.png` });
+              }
+
+              if (mode.mobile) {
+                await page.evaluate(() => window.scrollTo(0, 0));
+                await page.click('.toggle-sidebar-menu-btn');
+                await sleep(500);
+                await page.screenshot({ path: 'visual-audit/mobile-menu-open.png' });
+                report.mobileMenu = await page.evaluate(() => {
+                  const menu = document.querySelector('.sidebar-menu');
+                  const duplicateSearch = document.querySelector('.sidebar-menu .emo-duplicate-search-item');
+                  const trigger = document.querySelector('.toggle-sidebar-menu-btn');
+                  return {
+                    open: document.documentElement.classList.contains('sidebar-menu-open'),
+                    menuRect: menu?.getBoundingClientRect() || null,
+                    menuBackground: menu ? getComputedStyle(menu).backgroundColor : null,
+                    duplicateSearchDisplay: duplicateSearch ? getComputedStyle(duplicateSearch).display : null,
+                    triggerExpanded: trigger?.getAttribute('aria-expanded') || '',
+                    triggerLabel: trigger?.getAttribute('aria-label') || '',
+                    menuHidden: menu?.getAttribute('aria-hidden') || ''
+                  };
+                });
+                if (report.mobileMenu.menuRect) {
+                  report.mobileMenu.menuRect = serialize(report.mobileMenu.menuRect);
+                }
               }
 
               const shopUrl = `${base}/tienda/?${suffix}`;
@@ -123,19 +191,29 @@ jobs:
               }
 
               report[`shop_${mode.name}`] = await page.evaluate(() => {
-                const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() || null;
+                const readRect = (selector) => document.querySelector(selector)?.getBoundingClientRect() || null;
                 const card = document.querySelector('ul.products li.product');
                 const media = document.querySelector('.product-loop-image-wrapper');
+                const hoverImage = document.querySelector('.product-loop-hover-image');
+                const hoverButton = document.querySelector('.loop-add-to-cart-on-image');
                 return {
-                  container: rect('#content > .woostify-container'),
-                  primary: rect('#primary'),
-                  secondary: rect('#secondary'),
+                  container: readRect('#content > .woostify-container'),
+                  primary: readRect('#primary'),
+                  secondary: readRect('#secondary'),
                   card: card?.getBoundingClientRect() || null,
                   media: media?.getBoundingClientRect() || null,
                   saleBadges: document.querySelectorAll('.onsale, .berocket_better_labels_image').length,
-                  columns: getComputedStyle(document.querySelector('ul.products')).gridTemplateColumns
+                  columns: getComputedStyle(document.querySelector('ul.products')).gridTemplateColumns,
+                  hoverImageDisplay: hoverImage ? getComputedStyle(hoverImage).display : null,
+                  hoverButtonDisplay: hoverButton ? getComputedStyle(hoverButton).display : null
                 };
-              }).then((data) => Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value && typeof value.x === 'number' ? serialize(value) : value])));
+              });
+
+              for (const key of ['container', 'primary', 'secondary', 'card', 'media']) {
+                if (report[`shop_${mode.name}`][key]) {
+                  report[`shop_${mode.name}`][key] = serialize(report[`shop_${mode.name}`][key]);
+                }
+              }
 
               const producersUrl = `${base}/store-listing/?${suffix}`;
               await prepare(page, producersUrl);
@@ -149,18 +227,18 @@ jobs:
                 const related = await page.$('section.related.products');
                 if (related) {
                   await related.evaluate((element) => element.scrollIntoView({ block: 'start' }));
-                  await sleep(900);
+                  await sleep(700);
                   await related.screenshot({ path: `visual-audit/product-related-${mode.name}.png` });
                 }
 
                 report[`product_${mode.name}`] = await page.evaluate(() => {
-                  const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() || null;
+                  const readRect = (selector) => document.querySelector(selector)?.getBoundingClientRect() || null;
                   const relatedSection = document.querySelector('section.related.products');
                   const relatedList = relatedSection?.querySelector('ul.products');
                   const relatedCard = relatedList?.querySelector('li.product');
                   return {
-                    gallery: rect('.product-gallery'),
-                    summary: rect('.product-summary'),
+                    gallery: readRect('.product-gallery'),
+                    summary: readRect('.product-summary'),
                     relatedSection: relatedSection?.getBoundingClientRect() || null,
                     relatedList: relatedList?.getBoundingClientRect() || null,
                     relatedCard: relatedCard?.getBoundingClientRect() || null,
@@ -168,15 +246,37 @@ jobs:
                     relatedColumns: relatedList ? getComputedStyle(relatedList).gridTemplateColumns : null,
                     saleBadges: document.querySelectorAll('.onsale, .berocket_better_labels_image').length
                   };
-                }).then((data) => Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value && typeof value.x === 'number' ? serialize(value) : value])));
+                });
+
+                for (const key of ['gallery', 'summary', 'relatedSection', 'relatedList', 'relatedCard']) {
+                  if (report[`product_${mode.name}`][key]) {
+                    report[`product_${mode.name}`][key] = serialize(report[`product_${mode.name}`][key]);
+                  }
+                }
               }
 
               await page.close();
             }
 
+            const failures = [];
+            if (report.home_desktop.bannedResources.length) failures.push(`Banned homepage resources: ${report.home_desktop.bannedResources.join(', ')}`);
+            if (report.home_desktop.childStyleLinks.length) failures.push(`Child CSS still linked externally: ${report.home_desktop.childStyleLinks.join(', ')}`);
+            if (report.home_desktop.woostifyLinks.length !== 1) failures.push(`Expected one Woostify stylesheet, found ${report.home_desktop.woostifyLinks.length}`);
+            if (report.home_desktop.hoverImageDisplay !== 'none') failures.push('Secondary product image is still active on the homepage.');
+            if (report.home_desktop.hoverButtonDisplay !== 'none') failures.push('Legacy circular hover button is still active on the homepage.');
+            if (!report.home_desktop.accountLabel || !report.home_desktop.cartLabel) failures.push('Header icon accessible labels are missing.');
+            if (report.home_desktop.navigationId !== 'site-navigation') failures.push('The navigation skip target is missing.');
+            if (!report.mobileMenu?.open || report.mobileMenu.duplicateSearchDisplay !== 'none') failures.push('The mobile menu or duplicate mobile search is not fixed.');
+            if (report.mobileMenu?.triggerExpanded !== 'true' || report.mobileMenu?.menuHidden !== 'false') failures.push('Mobile menu ARIA state is incorrect.');
+
             fs.copyFileSync('/tmp/home.html', 'visual-audit/home.html');
             fs.writeFileSync('visual-audit/layout-report.json', JSON.stringify(report, null, 2));
+            fs.writeFileSync('visual-audit/assertions.txt', failures.length ? failures.join('\n') : 'All visual and resource assertions passed.\n');
             await browser.close();
+
+            if (failures.length) {
+              throw new Error(failures.join('\n'));
+            }
           })().catch((error) => {
             console.error(error);
             process.exit(1);
@@ -185,19 +285,22 @@ jobs:
 
           node visual-audit.cjs
           cat visual-audit/layout-report.json
+          cat visual-audit/assertions.txt
 
-      - name: Verify key premium interfaces
+      - name: Verify key interfaces
         shell: bash
         run: |
           set -euo pipefail
           test -s visual-audit/home-desktop.png
           test -s visual-audit/home-bestsellers-desktop.png
+          test -s visual-audit/home-product-hover-desktop.png
+          test -s visual-audit/mobile-menu-open.png
           test -s visual-audit/shop-desktop.png
           test -s visual-audit/product-desktop.png
           test -s visual-audit/product-related-desktop.png
           test -s visual-audit/producers-desktop.png
-          grep -q 'elmercado-premium-css' visual-audit/home.html
-          grep -q 'Los favoritos de nuestros clientes' visual-audit/home.html
+          grep -q -- '--emo-mobile-panel' visual-audit/home.html
+          grep -q 'All visual and resource assertions passed' visual-audit/assertions.txt
 
       - name: Upload visual audit
         if: always()
