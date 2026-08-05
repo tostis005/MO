@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-          cat > /tmp/inspect-branding.cjs <<'NODE'
+          cat > inspect-branding.cjs <<'NODE'
           const fs = require('fs');
           const puppeteer = require('puppeteer-core');
 
@@ -122,10 +122,11 @@ jobs:
             process.exit(1);
           });
           NODE
-          node /tmp/inspect-branding.cjs
+          node inspect-branding.cjs
           cat visual-audit/branding-computed.json
 
       - name: Upload visual audit
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: staging-visual-audit
