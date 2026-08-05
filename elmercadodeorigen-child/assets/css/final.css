@@ -2,6 +2,13 @@
  * Ajustes finales tras la auditoría visual de las plantillas de plugins.
  */
 
+/* Una sola búsqueda y una sola acción de cuenta en la cabecera. */
+.elmercado-child-theme .site-tools .header-search-icon,
+.elmercado-child-theme .site-header .site-search,
+.elmercado-child-theme .site-tools .my-account .subbox {
+	display: none !important;
+}
+
 /* WooCommerce oculta el H1 de la tienda en esta configuración de Woostify. */
 .elmercado-child-theme.woocommerce-shop .page-header .entry-title {
 	position: absolute !important;
@@ -37,16 +44,17 @@
 }
 
 /*
- * WCFM aplica desplazamientos alternos a los elementos de tres columnas.
- * Flexbox controla aquí el orden secuencial y evita su colocación explícita.
+ * Con dos productores, una composición editorial horizontal resulta más
+ * intencionada que forzar el grid irregular de WCFM.
  */
 .elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
 	display: flex !important;
-	width: 100% !important;
+	width: min(100%, 1040px) !important;
 	align-items: stretch !important;
-	flex-wrap: wrap !important;
+	flex-direction: column !important;
+	flex-wrap: nowrap !important;
 	gap: 1.35rem !important;
-	margin: 0 !important;
+	margin: 0 auto !important;
 	padding: 0 !important;
 }
 
@@ -59,17 +67,38 @@
 	left: auto !important;
 	float: none !important;
 	clear: none !important;
-	width: calc(50% - 0.675rem) !important;
-	max-width: calc(50% - 0.675rem) !important;
+	width: 100% !important;
+	max-width: 100% !important;
 	min-width: 0 !important;
 	margin: 0 !important;
 	padding: 0 !important;
-	flex: 0 0 calc(50% - 0.675rem) !important;
+	flex: 0 0 auto !important;
 	transform: none !important;
 }
 
 .elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > .wcfm-clearfix {
 	display: none !important;
+}
+
+@media (min-width: 768px) {
+	.elmercado-child-theme #wcfmmp-stores-wrap .store-wrapper {
+		display: grid !important;
+		grid-template-columns: minmax(320px, 0.88fr) minmax(0, 1.12fr) !important;
+		min-height: 330px !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .store-content {
+		height: 100% !important;
+		min-height: 330px !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .store-footer {
+		min-height: 330px !important;
+		align-content: center !important;
+		align-items: center !important;
+		border-top: 0 !important;
+		border-left: 1px solid var(--emo-line) !important;
+	}
 }
 
 @media (max-width: 767px) {
@@ -83,10 +112,7 @@
 		line-height: 1.35 !important;
 	}
 
-	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
-	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) {
+	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
 		width: 100% !important;
-		max-width: 100% !important;
-		flex-basis: 100% !important;
 	}
 }
