@@ -1,0 +1,59 @@
+name: Visual audit staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/visual-audit.yml'
+      - 'elmercadodeorigen-child/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-visual-audit
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Wait for staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..18}; do
+            if curl -fsSL --max-time 20 https://dev.elmercadodeorigen.com/ -o /tmp/home.html; then
+              break
+            fi
+            sleep 5
+          done
+          test -s /tmp/home.html
+          grep -q 'elmercado-child-theme' /tmp/home.html
+          grep -q 'emo-hero' /tmp/home.html
+
+      - name: Capture desktop and mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p visual-audit
+          google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
+            --window-size=1440,2200 \
+            --screenshot=visual-audit/home-desktop.png \
+            https://dev.elmercadodeorigen.com/
+          google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
+            --window-size=390,1600 \
+            --user-agent='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' \
+            --screenshot=visual-audit/home-mobile.png \
+            https://dev.elmercadodeorigen.com/
+          cp /tmp/home.html visual-audit/home.html
+          file visual-audit/*.png
+
+      - name: Upload visual audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-visual-audit
+          path: visual-audit/
+          retention-days: 7
