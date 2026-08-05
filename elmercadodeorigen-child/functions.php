@@ -9,10 +9,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.3.0' );
+define( 'ELMERCADO_THEME_VERSION', '0.4.0' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
 require_once ELMERCADO_THEME_PATH . '/inc/setup.php';
 require_once ELMERCADO_THEME_PATH . '/inc/woocommerce.php';
 require_once ELMERCADO_THEME_PATH . '/inc/polish.php';
+require_once ELMERCADO_THEME_PATH . '/inc/performance.php';
