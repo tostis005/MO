@@ -19,68 +19,185 @@ jobs:
   capture:
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    env:
-      BASE_URL: https://dev.elmercadodeorigen.com
-      PRODUCT_PATH: /producto/jamon-de-de-cebo-de-campo-100-iberico-con-dop-los-pedroches-en-sobres-de/
-
     steps:
-      - name: Wait for the deployed child theme
+      - name: Wait for the premium child theme
         shell: bash
         run: |
           set -euo pipefail
-          URL="${BASE_URL}/?emo-audit=${GITHUB_SHA}"
-          for attempt in {1..24}; do
-            if curl -fsSL --max-time 20 "$URL" -o /tmp/home.html; then
-              if grep -q 'elmercado-child-theme' /tmp/home.html && grep -q 'emo-hero' /tmp/home.html; then
-                exit 0
-              fi
+          URL="https://dev.elmercadodeorigen.com/?emo-audit=${GITHUB_SHA}"
+          for attempt in {1..30}; do
+            if curl -fsSL --max-time 25 "$URL" -o /tmp/home.html \
+              && grep -q 'elmercado-premium-css' /tmp/home.html \
+              && grep -q 'Los favoritos de nuestros clientes' /tmp/home.html; then
+              exit 0
             fi
-            sleep 5
+            sleep 6
           done
-          echo 'Staging did not expose the expected child-theme markup in time.' >&2
+          echo 'The premium staging version was not detected in time.' >&2
           exit 1
 
-      - name: Capture representative pages
+      - name: Capture loaded interfaces and measurements
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p visual-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
 
-          capture() {
-            name="$1"
-            path="$2"
-            url="${BASE_URL}${path}?emo-audit=${GITHUB_SHA}"
+          cat > visual-audit.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
 
-            curl -fsSL --max-time 30 "$url" -o "visual-audit/${name}.html"
-            grep -q 'elmercado-child-theme' "visual-audit/${name}.html"
+          const base = 'https://dev.elmercadodeorigen.com';
+          const suffix = `emo-audit=${process.env.GITHUB_SHA}`;
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-            google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
-              --window-size=1440,2200 \
-              --screenshot="visual-audit/${name}-desktop.png" \
-              "$url"
+          async function prepare(page, url) {
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({
+              content: `
+                #cookie-law-info-bar,
+                #cookie-law-info-again,
+                #ht-ctc-chat,
+                .grecaptcha-badge { display: none !important; }
+              `
+            });
 
-            google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
-              --window-size=390,1600 \
-              --user-agent='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1' \
-              --screenshot="visual-audit/${name}-mobile.png" \
-              "$url"
+            await page.evaluate(async () => {
+              const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const distance = Math.max(450, Math.round(window.innerHeight * 0.75));
+              for (let y = 0; y < document.body.scrollHeight; y += distance) {
+                window.scrollTo(0, y);
+                await delay(110);
+              }
+              window.scrollTo(0, 0);
+            });
+            await sleep(1200);
           }
 
-          capture home '/'
-          capture shop '/tienda/'
-          capture product "$PRODUCT_PATH"
-          capture producers '/productores/'
+          function serialize(rect) {
+            return rect ? {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height)
+            } : null;
+          }
 
-          file visual-audit/*.png
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: '/usr/bin/google-chrome',
+              headless: true,
+              args: ['--no-sandbox', '--disable-gpu']
+            });
 
-      - name: Verify key interfaces
+            const report = {};
+            let productUrl = '';
+
+            for (const mode of [
+              { name: 'desktop', width: 1440, height: 2200, mobile: false },
+              { name: 'mobile', width: 390, height: 1600, mobile: true }
+            ]) {
+              const page = await browser.newPage();
+              await page.setViewport({ width: mode.width, height: mode.height, deviceScaleFactor: 1, isMobile: mode.mobile });
+              if (mode.mobile) {
+                await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+              }
+
+              const homeUrl = `${base}/?${suffix}`;
+              await prepare(page, homeUrl);
+              await page.screenshot({ path: `visual-audit/home-${mode.name}.png` });
+              const bestSellers = await page.$('.emo-featured-products');
+              if (bestSellers) {
+                await bestSellers.screenshot({ path: `visual-audit/home-bestsellers-${mode.name}.png` });
+              }
+
+              const shopUrl = `${base}/tienda/?${suffix}`;
+              await prepare(page, shopUrl);
+              await page.screenshot({ path: `visual-audit/shop-${mode.name}.png` });
+
+              if (!productUrl) {
+                productUrl = await page.evaluate(() => {
+                  const link = document.querySelector('ul.products li.product a.woocommerce-LoopProduct-link, ul.products li.product a.woocommerce-loop-product__link');
+                  return link ? link.href : '';
+                });
+              }
+
+              report[`shop_${mode.name}`] = await page.evaluate(() => {
+                const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() || null;
+                const card = document.querySelector('ul.products li.product');
+                const media = document.querySelector('.product-loop-image-wrapper');
+                return {
+                  container: rect('#content > .woostify-container'),
+                  primary: rect('#primary'),
+                  secondary: rect('#secondary'),
+                  card: card?.getBoundingClientRect() || null,
+                  media: media?.getBoundingClientRect() || null,
+                  saleBadges: document.querySelectorAll('.onsale, .berocket_better_labels_image').length,
+                  columns: getComputedStyle(document.querySelector('ul.products')).gridTemplateColumns
+                };
+              }).then((data) => Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value && typeof value.x === 'number' ? serialize(value) : value])));
+
+              const producersUrl = `${base}/store-listing/?${suffix}`;
+              await prepare(page, producersUrl);
+              await page.screenshot({ path: `visual-audit/producers-${mode.name}.png` });
+
+              if (productUrl) {
+                const url = productUrl.includes('?') ? `${productUrl}&${suffix}` : `${productUrl}?${suffix}`;
+                await prepare(page, url);
+                await page.screenshot({ path: `visual-audit/product-${mode.name}.png` });
+
+                const related = await page.$('section.related.products');
+                if (related) {
+                  await related.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+                  await sleep(900);
+                  await related.screenshot({ path: `visual-audit/product-related-${mode.name}.png` });
+                }
+
+                report[`product_${mode.name}`] = await page.evaluate(() => {
+                  const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() || null;
+                  const relatedSection = document.querySelector('section.related.products');
+                  const relatedList = relatedSection?.querySelector('ul.products');
+                  const relatedCard = relatedList?.querySelector('li.product');
+                  return {
+                    gallery: rect('.product-gallery'),
+                    summary: rect('.product-summary'),
+                    relatedSection: relatedSection?.getBoundingClientRect() || null,
+                    relatedList: relatedList?.getBoundingClientRect() || null,
+                    relatedCard: relatedCard?.getBoundingClientRect() || null,
+                    relatedDisplay: relatedSection ? getComputedStyle(relatedSection).display : null,
+                    relatedColumns: relatedList ? getComputedStyle(relatedList).gridTemplateColumns : null,
+                    saleBadges: document.querySelectorAll('.onsale, .berocket_better_labels_image').length
+                  };
+                }).then((data) => Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value && typeof value.x === 'number' ? serialize(value) : value])));
+              }
+
+              await page.close();
+            }
+
+            fs.copyFileSync('/tmp/home.html', 'visual-audit/home.html');
+            fs.writeFileSync('visual-audit/layout-report.json', JSON.stringify(report, null, 2));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+          node visual-audit.cjs
+          cat visual-audit/layout-report.json
+
+      - name: Verify key premium interfaces
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'emo-category-grid' visual-audit/home.html
-          grep -Eq 'products|woocommerce' visual-audit/shop.html
-          grep -Eq 'single-product|product_title' visual-audit/product.html
-          grep -Eq 'wcfmmp|store' visual-audit/producers.html
+          test -s visual-audit/home-desktop.png
+          test -s visual-audit/home-bestsellers-desktop.png
+          test -s visual-audit/shop-desktop.png
+          test -s visual-audit/product-desktop.png
+          test -s visual-audit/product-related-desktop.png
+          test -s visual-audit/producers-desktop.png
+          grep -q 'elmercado-premium-css' visual-audit/home.html
+          grep -q 'Los favoritos de nuestros clientes' visual-audit/home.html
 
       - name: Upload visual audit
         if: always()
