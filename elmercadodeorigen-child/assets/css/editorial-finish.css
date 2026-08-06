@@ -1,0 +1,100 @@
+/* Ajustes finales de la versión editorial 0.6.1. */
+
+/*
+ * La optimización anterior posponía el renderizado de bloques inferiores.
+ * En páginas largas podía dejar huecos visibles hasta que el navegador decidía
+ * pintar el contenido. La portada final debe ser completa desde la primera
+ * composición, especialmente para navegación, capturas y tecnologías de apoyo.
+ */
+.elmercado-premium-home .emo-categories,
+.elmercado-premium-home .emo-featured-products,
+.elmercado-premium-home .emo-story,
+.elmercado-premium-home .emo-vendor-cta,
+.elmercado-premium-home .site-footer {
+	content-visibility: visible !important;
+	contain-intrinsic-size: none !important;
+}
+
+.elmercado-premium-home .emo-story__grid,
+.elmercado-premium-home .emo-story__panel,
+.elmercado-premium-home .emo-story__values,
+.elmercado-premium-home .emo-story__values article,
+.elmercado-premium-home .emo-vendor-cta__inner,
+.elmercado-premium-home .emo-vendor-cta__inner > * {
+	opacity: 1 !important;
+	visibility: visible !important;
+	transform: none !important;
+}
+
+/* Título comercial real para la tienda, independiente de la cabecera del padre. */
+.emo-shop-title-block {
+	margin: 0 0 1.1rem;
+	padding: 0.1rem 0.15rem;
+}
+
+.emo-shop-title-block .emo-kicker {
+	margin-bottom: 0.5rem;
+}
+
+.emo-shop-title-block h1 {
+	max-width: 840px;
+	margin: 0;
+	font-size: clamp(3rem, 6vw, 5.5rem);
+	letter-spacing: -0.06em;
+	line-height: 0.98;
+}
+
+.emo-shop-lead {
+	padding-top: 0.25rem;
+	border-top: 1px solid rgba(13, 33, 27, 0.1);
+}
+
+/*
+ * WCFM asignaba márgenes y posiciones alternas a cada tienda. Flex elimina la
+ * colocación interna del plugin y mantiene una cuadrícula editorial predecible.
+ */
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
+	display: flex !important;
+	width: 100% !important;
+	align-items: stretch !important;
+	gap: 1.25rem !important;
+	flex-wrap: wrap !important;
+	grid-template-columns: none !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) {
+	position: relative !important;
+	top: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	left: auto !important;
+	display: block !important;
+	width: calc(50% - 0.625rem) !important;
+	max-width: calc(50% - 0.625rem) !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	clear: none !important;
+	float: none !important;
+	flex: 1 1 calc(50% - 0.625rem) !important;
+	grid-column: auto !important;
+	grid-row: auto !important;
+	transform: none !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap .store-wrapper {
+	height: 100% !important;
+}
+
+@media (max-width: 767px) {
+	.emo-shop-title-block h1 {
+		font-size: clamp(2.8rem, 14vw, 4.2rem);
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
+	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) {
+		width: 100% !important;
+		max-width: 100% !important;
+		flex-basis: 100% !important;
+	}
+}
