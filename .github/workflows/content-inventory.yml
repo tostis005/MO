@@ -1,0 +1,39 @@
+name: Content inventory
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/content-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch WordPress content map
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p content-inventory
+          curl -fsSL --max-time 45 'https://dev.elmercadodeorigen.com/wp-json/wp/v2/pages?per_page=100&_fields=id,link,slug,title,template' -o content-inventory/pages.json
+          curl -fsSL --max-time 45 'https://dev.elmercadodeorigen.com/wp-json/wp/v2/posts?per_page=20&_fields=id,link,slug,title,date,featured_media,categories' -o content-inventory/posts.json
+          curl -fsSL --max-time 45 'https://dev.elmercadodeorigen.com/wp-json/wp/v2/categories?per_page=100&_fields=id,link,slug,name,count' -o content-inventory/categories.json
+          python - <<'PY'
+          import json
+          for name in ('pages','posts','categories'):
+              data=json.load(open(f'content-inventory/{name}.json'))
+              print('\n##',name)
+              for item in data:
+                  title=item.get('title',{}).get('rendered') if isinstance(item.get('title'),dict) else item.get('name','')
+                  print(item.get('id'), item.get('slug'), title, item.get('link'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wordpress-content-inventory
+          path: content-inventory/
+          retention-days: 7
