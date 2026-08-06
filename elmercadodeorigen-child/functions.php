@@ -34,7 +34,11 @@ require_once ELMERCADO_THEME_PATH . '/inc/performance-release.php';
 require_once ELMERCADO_THEME_PATH . '/inc/semantic-polish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/global-finish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/professional-finish.php';
-require_once ELMERCADO_THEME_PATH . '/inc/vendor-storefront.php';
+
+$elmercado_vendor_storefront = ELMERCADO_THEME_PATH . '/inc/vendor-storefront.php';
+if ( is_readable( $elmercado_vendor_storefront ) ) {
+	require_once $elmercado_vendor_storefront;
+}
 
 /* La optimización se ejecuta una sola vez, al final del encolado normal. */
 remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );
