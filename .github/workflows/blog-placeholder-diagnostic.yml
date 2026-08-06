@@ -1,0 +1,44 @@
+name: Blog placeholder diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-placeholder-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect fallback card
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > inspect.cjs <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
+            const page=await browser.newPage();
+            await page.setViewport({width:1440,height:1000});
+            await page.goto(`https://dev.elmercadodeorigen.com/blog/?placeholder=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
+            await new Promise(r=>setTimeout(r,1500));
+            const result=await page.evaluate(()=>{
+              const cards=[...document.querySelectorAll('.emo-article-card')];
+              const card=cards.find(c=>!c.querySelector('.emo-article-card__media img'));
+              const media=card?.querySelector('.emo-article-card__media');
+              const children=media?[...media.children]:[];
+              const detail=(n)=>{if(!n)return null;const s=getComputedStyle(n),b=getComputedStyle(n,'::before'),a=getComputedStyle(n,'::after'),r=n.getBoundingClientRect();return{tag:n.tagName,className:n.className,id:n.id,html:n.outerHTML.slice(0,8000),rect:{x:r.x,y:r.y,width:r.width,height:r.height},style:{display:s.display,position:s.position,width:s.width,height:s.height,minHeight:s.minHeight,background:s.background,backgroundColor:s.backgroundColor,color:s.color,overflow:s.overflow},before:{content:b.content,display:b.display,color:b.color,fontSize:b.fontSize},after:{content:a.content,display:a.display,color:a.color,fontSize:a.fontSize}}};
+              const sheets=[...document.styleSheets].map(s=>{try{return{href:s.href,rules:[...s.cssRules].filter(r=>r.cssText.includes('emo-article-card__placeholder')).map(r=>r.cssText)}}catch(e){return{href:s.href,error:String(e)}}}).filter(x=>x.rules?.length);
+              return{body:document.body.className,card:detail(card),media:detail(media),children:children.map(detail),sheets};
+            });
+            console.log(JSON.stringify(result,null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node inspect.cjs
