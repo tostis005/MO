@@ -4,6 +4,9 @@
 	const configuration = window.elMercadoCommerce || {};
 	const menu = document.querySelector('#mobile-navigation, .sidebar-menu');
 	const root = document.documentElement;
+	const productSurface = document.body.classList.contains('woocommerce-shop')
+		|| document.body.classList.contains('single-product')
+		|| document.body.classList.contains('post-type-archive-product');
 
 	const updateMenuInertState = () => {
 		if (!menu) {
@@ -26,10 +29,6 @@
 		});
 	}
 
-	/**
-	 * El contador visible forma parte del nombre accesible para que el texto y el
-	 * aria-label no describan acciones distintas.
-	 */
 	const updateCartAccessibleName = () => {
 		const cartButton = document.querySelector('.shopping-bag-button.shopping-cart, a.shopping-cart');
 		if (!cartButton) {
@@ -74,6 +73,10 @@
 	})[character]);
 
 	const showToast = (productName = '') => {
+		if (!productSurface) {
+			return;
+		}
+
 		removeToast();
 
 		const toast = document.createElement('div');
@@ -103,7 +106,7 @@
 		closeTimer = window.setTimeout(removeToast, 8000);
 	};
 
-	if (window.jQuery) {
+	if (productSurface && window.jQuery) {
 		window.jQuery(document.body).on('added_to_cart', (_event, _fragments, _cartHash, button) => {
 			const element = button?.get?.(0) || button?.[0] || null;
 			const product = element?.closest('li.product, .product');
@@ -113,9 +116,6 @@
 		});
 	}
 
-	const productSurface = document.body.classList.contains('woocommerce-shop')
-		|| document.body.classList.contains('single-product')
-		|| document.body.classList.contains('post-type-archive-product');
 	const reloadMessage = productSurface ? document.querySelector('.woocommerce-message') : null;
 
 	if (reloadMessage?.textContent?.match(/añadid|carrito/i)) {
