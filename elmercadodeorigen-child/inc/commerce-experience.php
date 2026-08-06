@@ -9,9 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Indica si la vista necesita la capa visual transaccional completa.
- */
 function elmercado_is_commerce_surface(): bool {
 	if ( ! function_exists( 'is_woocommerce' ) ) {
 		return is_front_page();
@@ -24,9 +21,6 @@ function elmercado_is_commerce_surface(): bool {
 		|| is_account_page();
 }
 
-/**
- * Minificación conservadora para CSS insertado en la portada.
- */
 function elmercado_compact_css( string $css ): string {
 	$css = (string) preg_replace( '!/\*.*?\*/!s', '', $css );
 	$css = (string) preg_replace( '/\s+/', ' ', $css );
@@ -38,26 +32,43 @@ function elmercado_compact_css( string $css ): string {
 add_action(
 	'wp_enqueue_scripts',
 	static function (): void {
-		$css_relative = '/assets/css/commerce.css';
-		$css_file     = ELMERCADO_THEME_PATH . $css_relative;
+		$styles = array(
+			'elmercado-commerce'        => '/assets/css/commerce.css',
+			'elmercado-commerce-finish' => '/assets/css/commerce-finish.css',
+		);
 
-		if ( elmercado_is_commerce_surface() && is_readable( $css_file ) ) {
+		if ( elmercado_is_commerce_surface() ) {
 			if ( function_exists( 'elmercado_is_optimized_home' ) && elmercado_is_optimized_home() ) {
 				$parent_handle = wp_style_is( 'woostify-parent-style', 'registered' )
 					? 'woostify-parent-style'
 					: ( wp_style_is( 'woostify-parent', 'registered' ) ? 'woostify-parent' : '' );
-				$content       = file_get_contents( $css_file );
 
-				if ( '' !== $parent_handle && false !== $content ) {
-					wp_add_inline_style( $parent_handle, elmercado_compact_css( $content ) );
+				foreach ( $styles as $relative ) {
+					$file    = ELMERCADO_THEME_PATH . $relative;
+					$content = is_readable( $file ) ? file_get_contents( $file ) : false;
+
+					if ( '' !== $parent_handle && false !== $content ) {
+						wp_add_inline_style( $parent_handle, elmercado_compact_css( $content ) );
+					}
 				}
 			} else {
-				wp_enqueue_style(
-					'elmercado-commerce',
-					ELMERCADO_THEME_URL . $css_relative,
-					array( 'elmercado-editorial' ),
-					elmercado_asset_version( $css_relative )
-				);
+				$dependency = 'elmercado-editorial';
+
+				foreach ( $styles as $handle => $relative ) {
+					$file = ELMERCADO_THEME_PATH . $relative;
+
+					if ( ! is_readable( $file ) ) {
+						continue;
+					}
+
+					wp_enqueue_style(
+						$handle,
+						ELMERCADO_THEME_URL . $relative,
+						array( $dependency ),
+						elmercado_asset_version( $relative )
+					);
+					$dependency = $handle;
+				}
 			}
 		}
 
@@ -82,9 +93,6 @@ add_action(
 	10120
 );
 
-/**
- * Introducción del carrito y contenedor de dos columnas.
- */
 add_action(
 	'woocommerce_before_cart',
 	static function (): void {
@@ -123,9 +131,6 @@ add_action(
 	}
 );
 
-/**
- * Introducción al checkout. No altera campos, pagos ni validaciones.
- */
 add_action(
 	'woocommerce_before_checkout_form',
 	static function (): void {
