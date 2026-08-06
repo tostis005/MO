@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.8.0' );
+define( 'ELMERCADO_THEME_VERSION', '0.8.1' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -36,6 +36,7 @@ require_once ELMERCADO_THEME_PATH . '/inc/global-finish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/professional-finish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/vendor-storefront.php';
 require_once ELMERCADO_THEME_PATH . '/inc/premium-qa.php';
+require_once ELMERCADO_THEME_PATH . '/inc/interaction-finish.php';
 
 /* La optimización se ejecuta una sola vez, al final del encolado normal. */
 remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );
