@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.4' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.5' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -55,6 +55,7 @@ $elmercado_modules = array(
 	'inc/mobile-commerce-finish.php',
 	'inc/product-card-carousel-finish.php',
 	'inc/cart-count-visibility.php',
+	'inc/integral-audit-fixes-0105.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
