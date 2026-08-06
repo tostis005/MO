@@ -50,6 +50,102 @@
 		});
 	}
 
+	/**
+	 * Normaliza el carrito lateral que Woostify reconstruye mediante fragmentos.
+	 * Elimina la representación duplicada del cierre, muestra la cantidad completa
+	 * y mantiene un único camino hacia la página de carrito.
+	 */
+	const polishMiniCart = (scope = document) => {
+		const panel = scope.matches?.('#shop-cart-sidebar')
+			? scope
+			: scope.querySelector?.('#shop-cart-sidebar') || document.querySelector('#shop-cart-sidebar');
+
+		if (!panel) {
+			return;
+		}
+
+		panel.setAttribute('role', 'dialog');
+		panel.setAttribute('aria-modal', 'true');
+		panel.setAttribute('aria-label', 'Carrito de la compra');
+
+		const closeButton = panel.querySelector('#close-cart-sidebar-btn');
+		closeButton?.setAttribute('aria-label', 'Cerrar carrito');
+		closeButton?.setAttribute('title', 'Cerrar carrito');
+
+		panel.querySelectorAll('.woocommerce-mini-cart-item, .mini_cart_item').forEach((item) => {
+			item.classList.add('emo-mini-cart-item');
+
+			const productLink = [...item.querySelectorAll(':scope > a')].find((link) => !link.matches('.remove, .remove_from_cart_button'));
+			const productName = productLink?.textContent?.trim().replace(/\s+/g, ' ') || 'producto';
+			productLink?.classList.add('emo-mini-cart-product-link');
+
+			const removeLinks = [...item.querySelectorAll(':scope > a.remove, :scope > a.remove_from_cart_button')];
+			removeLinks.slice(1).forEach((duplicate) => duplicate.remove());
+
+			const removeLink = removeLinks[0];
+			if (removeLink) {
+				[...removeLink.childNodes].forEach((node) => {
+					if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().match(/^[×x]$/i)) {
+						node.remove();
+					}
+				});
+				removeLink.setAttribute('aria-label', `Eliminar ${productName} del carrito`);
+				removeLink.setAttribute('title', `Eliminar ${productName}`);
+				removeLink.querySelectorAll('svg, .woostify-svg-icon').forEach((icon) => {
+					icon.setAttribute('aria-hidden', 'true');
+					icon.setAttribute('focusable', 'false');
+				});
+			}
+
+			const quantity = item.querySelector('.mini-cart-quantity');
+			const input = quantity?.querySelector('input.qty');
+			if (quantity) {
+				quantity.setAttribute('role', 'group');
+				quantity.setAttribute('aria-label', `Cantidad de ${productName}`);
+			}
+			if (input) {
+				input.setAttribute('aria-label', `Cantidad de ${productName}`);
+				input.setAttribute('title', `Cantidad de ${productName}`);
+				input.setAttribute('inputmode', 'numeric');
+			}
+
+			quantity?.querySelector('[data-qty="minus"]')?.setAttribute('aria-label', `Reducir cantidad de ${productName}`);
+			quantity?.querySelector('[data-qty="plus"]')?.setAttribute('aria-label', `Aumentar cantidad de ${productName}`);
+		});
+
+		/* El flujo aprobado pasa primero por el carrito completo. */
+		panel.querySelectorAll('.woocommerce-mini-cart__buttons a.checkout').forEach((checkout) => checkout.remove());
+
+		const cartLink = panel.querySelector('.woocommerce-mini-cart__buttons a:not(.checkout)');
+		if (cartLink) {
+			cartLink.textContent = 'Ver carrito';
+			cartLink.setAttribute('aria-label', 'Ir a la página del carrito');
+		}
+	};
+
+	polishMiniCart();
+	let miniCartFrame = 0;
+	const miniCartObserver = new MutationObserver((mutations) => {
+		if (!mutations.some((mutation) => [...mutation.addedNodes].some((node) => node.nodeType === Node.ELEMENT_NODE))) {
+			return;
+		}
+		if (miniCartFrame) {
+			return;
+		}
+		miniCartFrame = window.requestAnimationFrame(() => {
+			polishMiniCart();
+			updateCartAccessibleName();
+			miniCartFrame = 0;
+		});
+	});
+	miniCartObserver.observe(document.body, { childList: true, subtree: true });
+
+	if (window.jQuery) {
+		window.jQuery(document.body).on('wc_fragments_loaded wc_fragments_refreshed added_to_cart removed_from_cart', () => {
+			window.requestAnimationFrame(() => polishMiniCart());
+		});
+	}
+
 	let closeTimer = 0;
 
 	const removeToast = () => {
