@@ -26,10 +26,10 @@ jobs:
           set -euo pipefail
           HOME_URL="https://dev.elmercadodeorigen.com/?emo-editorial=${GITHUB_SHA}"
           BLOG_URL="https://dev.elmercadodeorigen.com/blog/?emo-editorial=${GITHUB_SHA}"
-          for attempt in {1..40}; do
+          for attempt in {1..45}; do
             if curl -fsSL --max-time 25 "$HOME_URL" -o /tmp/home.html \
               && curl -fsSL --max-time 25 "$BLOG_URL" -o /tmp/blog.html \
-              && grep -q 'Productos con origen, directos de sus productores' /tmp/home.html \
+              && grep -qi 'Productos con origen, directos de sus productores' /tmp/home.html \
               && grep -q 'Conocer el origen cambia la forma de elegir' /tmp/blog.html; then
               exit 0
             fi
@@ -64,7 +64,7 @@ jobs:
                 return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
               };
             });
-            await sleep(850);
+            await sleep(900);
           }
 
           async function captureDesktop(browser, path, filename, evaluator) {
@@ -85,16 +85,22 @@ jobs:
             report.home = await captureDesktop(browser, '/', 'home-desktop.png', () => {
               const kicker = document.querySelector('.emo-hero .emo-kicker')?.innerText?.trim() || '';
               const categoryHeading = document.querySelector('.emo-categories h2')?.innerText?.trim() || '';
-              const allReveal = [...document.querySelectorAll('.emo-reveal')];
+              const contentVisibility = (node) => node ? getComputedStyle(node).contentVisibility : null;
               return {
                 h1: document.querySelector('.emo-hero h1')?.innerText?.trim() || '',
                 kicker,
                 categoryHeading,
                 oldConcreteCopy: /Aceites, jamones, paletas ibéricas y naranjas/i.test(kicker) || /Aceite, ibéricos y fruta/i.test(categoryHeading),
-                hiddenReveal: allReveal.filter((node) => !visible(node)).length,
-                editorialExternalStyles: [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => link.href.includes('/assets/css/editorial.css')).length,
-                storyVisible: visible(document.querySelector('.emo-story')),
-                producerCtaVisible: visible(document.querySelector('.emo-vendor-cta'))
+                hiddenReveal: [...document.querySelectorAll('.emo-reveal')].filter((node) => !visible(node)).length,
+                editorialExternalStyles: [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => link.href.includes('/assets/css/editorial.css') || link.href.includes('/assets/css/editorial-finish.css')).length,
+                storySection: visible(document.querySelector('.emo-story')),
+                storyGrid: visible(document.querySelector('.emo-story__grid')),
+                storyPanel: visible(document.querySelector('.emo-story__panel')),
+                vendorSection: visible(document.querySelector('.emo-vendor-cta')),
+                vendorInner: visible(document.querySelector('.emo-vendor-cta__inner')),
+                storyContentVisibility: contentVisibility(document.querySelector('.emo-story')),
+                vendorContentVisibility: contentVisibility(document.querySelector('.emo-vendor-cta')),
+                footerVisible: visible(document.querySelector('.site-footer'))
               };
             });
 
@@ -134,16 +140,19 @@ jobs:
 
             report.producers = await captureDesktop(browser, '/productores/', 'producers-desktop.png', () => {
               const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].filter(visible);
+              const rects = cards.map((node) => node.getBoundingClientRect());
               return {
                 introVisible: visible(document.querySelector('.emo-producers-intro')),
                 cards: cards.length,
-                cardWidths: cards.map((node) => Math.round(node.getBoundingClientRect().width)),
-                wrapperColumns: getComputedStyle(document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap') || document.body).gridTemplateColumns
+                cardWidths: rects.map((rect) => Math.round(rect.width)),
+                cardTops: rects.map((rect) => Math.round(rect.top)),
+                display: getComputedStyle(document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap') || document.body).display
               };
             });
 
             report.shop = await captureDesktop(browser, '/tienda/', 'shop-desktop.png', () => ({
-              h1: document.querySelector('.page-header .entry-title,h1')?.innerText?.trim() || '',
+              h1: document.querySelector('.emo-shop-title-block h1,.page-header .entry-title,h1')?.innerText?.trim() || '',
+              titleVisible: visible(document.querySelector('.emo-shop-title-block h1')),
               leadVisible: visible(document.querySelector('.emo-shop-lead')),
               filterButtons: [...document.querySelectorAll('#toggle-sidebar-mobile-button,.filter-button,.woostify-filter-button,.toggle-sidebar-shop')].filter(visible).length,
               wishlist: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter(visible).length,
@@ -175,17 +184,22 @@ jobs:
             await mobile.screenshot({ path: 'editorial-acceptance/blog-mobile.png', fullPage: true });
             await mobile.close();
 
-            if (!report.home.kicker.includes('Productos con origen')) failures.push('Homepage editorial proposition was not rendered.');
-            if (report.home.oldConcreteCopy) failures.push('Concrete catalogue copy remains in the homepage headings.');
-            if (report.home.hiddenReveal || !report.home.storyVisible || !report.home.producerCtaVisible) failures.push('Homepage contains hidden editorial sections.');
+            const producerTopSpread = report.producers.cardTops.length > 1
+              ? Math.max(...report.producers.cardTops) - Math.min(...report.producers.cardTops)
+              : 0;
+
+            if (!report.home.kicker.toLowerCase().includes('productos con origen')) failures.push('Homepage editorial proposition was not rendered.');
+            if (report.home.oldConcreteCopy) failures.push('Concrete catalogue copy remains in homepage headings.');
+            if (report.home.hiddenReveal || !report.home.storySection || !report.home.storyGrid || !report.home.storyPanel || !report.home.vendorSection || !report.home.vendorInner || !report.home.footerVisible) failures.push('Homepage contains hidden editorial sections.');
+            if (report.home.storyContentVisibility !== 'visible' || report.home.vendorContentVisibility !== 'visible') failures.push('Homepage lower sections still use deferred content visibility.');
             if (report.home.editorialExternalStyles) failures.push('Homepage editorial CSS is not inlined.');
             if (report.blog.h1 !== 'Conocer el origen cambia la forma de elegir.') failures.push('Blog hero copy is incorrect.');
             if (report.blog.cards < 3 || report.blog.featuredCards !== 1 || report.blog.sidebarVisible || report.blog.genericPosts || !report.blog.listingVisible) failures.push('Blog archive composition is incomplete.');
             if (!report.article.heroVisible || !report.article.contentVisible || report.article.sidebarVisible || report.article.commentsVisible || report.article.contentWidth < 760) failures.push('Single article layout is incomplete.');
             if (!report.about.layout || !report.about.introVisible || report.about.values !== 3 || !report.about.storyVisible) failures.push('About page layout is incomplete.');
             if (!report.contact.layout || !report.contact.asideVisible || !report.contact.formVisible || report.contact.recaptcha) failures.push('Contact layout or recaptcha cleanup failed.');
-            if (!report.producers.introVisible || report.producers.cards < 1) failures.push('Producer directory editorial layout is incomplete.');
-            if (report.shop.h1 !== 'Productos' || !report.shop.leadVisible || report.shop.filterButtons || report.shop.wishlist || report.shop.productCards < 1) failures.push('Shop editorial cleanup is incomplete.');
+            if (!report.producers.introVisible || report.producers.cards < 1 || producerTopSpread > 20 || report.producers.display !== 'flex') failures.push('Producer directory alignment is incomplete.');
+            if (report.shop.h1 !== 'Productos' || !report.shop.titleVisible || !report.shop.leadVisible || report.shop.filterButtons || report.shop.wishlist || report.shop.productCards < 1) failures.push('Shop editorial cleanup is incomplete.');
             if (!report.account.formVisible || !report.cart.mainVisible || report.cart.waitlist) failures.push('Transactional templates regressed.');
             if (report.blogMobile.overflow || report.blogMobile.sidebarVisible || report.blogMobile.cards < 3) failures.push('Mobile blog layout regressed.');
 
