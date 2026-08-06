@@ -29,7 +29,6 @@
 	margin-bottom: 0;
 }
 
-/* El texto de métodos y términos vive sobre el resumen oscuro. */
 .elmercado-child-theme.woocommerce-checkout #payment .payment_methods > li > label,
 .elmercado-child-theme.woocommerce-checkout #payment .woocommerce-terms-and-conditions-checkbox-text,
 .elmercado-child-theme.woocommerce-checkout #payment .woocommerce-privacy-policy-text,
@@ -43,7 +42,6 @@
 	font-weight: 800;
 }
 
-/* Las explicaciones de cada pasarela son tarjetas claras dentro del panel. */
 .elmercado-child-theme.woocommerce-checkout #payment .payment_box {
 	padding: 1rem !important;
 	background: #fff !important;
@@ -69,4 +67,13 @@
 .elmercado-child-theme.woocommerce-checkout #order_review .product-total,
 .elmercado-child-theme.woocommerce-checkout #order_review .amount {
 	color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Contraste AA en las tarjetas editoriales claras de la portada. */
+.elmercado-premium-home .emo-story__values article > span {
+	color: #7a4b00 !important;
+}
+
+.elmercado-premium-home .emo-vendor-cta__inner p {
+	color: #46554e !important;
 }
