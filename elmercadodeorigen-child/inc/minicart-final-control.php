@@ -31,12 +31,16 @@ add_action(
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > span::before,
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > span::after,
 			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty::before,
-			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty::after {
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty::after,
+			html body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:first-of-type::before,
+			html body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:last-of-type::before,
+			html body.elmercado-child-theme #shop-cart-sidebar .quantity > .mini-cart-product-qty:first-of-type::before,
+			html body.elmercado-child-theme #shop-cart-sidebar .quantity > .mini-cart-product-qty:last-of-type::before {
 				content: none !important;
 				display: none !important;
 			}
-			body.elmercado-child-theme #shop-cart-sidebar .quantity > span:first-child::after,
-			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:first-child::after {
+			html body.elmercado-child-theme #shop-cart-sidebar .quantity > span:first-child::after,
+			html body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:first-child::after {
 				content: "−" !important;
 				display: block !important;
 				font-family: Arial, sans-serif !important;
@@ -46,8 +50,8 @@ add_action(
 				text-align: center !important;
 				color: #173f32 !important;
 			}
-			body.elmercado-child-theme #shop-cart-sidebar .quantity > span:last-child::after,
-			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:last-child::after {
+			html body.elmercado-child-theme #shop-cart-sidebar .quantity > span:last-child::after,
+			html body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:last-child::after {
 				content: "+" !important;
 				display: block !important;
 				font-family: Arial, sans-serif !important;
