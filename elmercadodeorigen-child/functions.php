@@ -27,6 +27,7 @@ require_once ELMERCADO_THEME_PATH . '/inc/home-header-normalize.php';
 require_once ELMERCADO_THEME_PATH . '/inc/release-one.php';
 require_once ELMERCADO_THEME_PATH . '/inc/release-one-finish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/editorial-system.php';
+require_once ELMERCADO_THEME_PATH . '/inc/editorial-performance.php';
 
 /* La optimización se ejecuta una sola vez, al final del encolado normal. */
 remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );
