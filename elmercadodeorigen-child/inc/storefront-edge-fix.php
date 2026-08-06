@@ -17,7 +17,6 @@ add_action(
 		}
 		?>
 		<style id="elmercado-storefront-edge-fix">
-			/* Remove every inherited pseudo-icon first, then draw only the two real controls. */
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > *::before,
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > *::after,
 			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > *::before,
@@ -43,13 +42,15 @@ add_action(
 				line-height: 1 !important;
 				color: #173f32 !important;
 			}
-			body.elmercado-child-theme #shop-cart-sidebar input.qty::before,
-			body.elmercado-child-theme #shop-cart-sidebar input.qty::after {
-				content: none !important;
-				display: none !important;
+			body.elmercado-child-theme #shop-cart-sidebar input.qty {
+				font-family: Arial, sans-serif !important;
+				font-variant-numeric: tabular-nums !important;
+				text-indent: 0 !important;
+				background-image: none !important;
+				-webkit-appearance: none !important;
+				appearance: none !important;
 			}
 
-			/* Product imagery sits flush against the card with no beige/white inner frame. */
 			body.elmercado-child-theme ul.products li.product {
 				border: 0 !important;
 				background: #fff !important;
@@ -84,7 +85,6 @@ add_action(
 				background: linear-gradient(180deg,rgba(255,255,255,0),#fff 94%) !important;
 			}
 
-			/* One complete six-product row on the desktop home page. */
 			@media (min-width: 1280px) {
 				body.home .emo-featured-products ul.products,
 				body.home .emo-products ul.products {
@@ -105,6 +105,51 @@ add_action(
 				}
 			}
 		</style>
+		<?php
+	},
+	PHP_INT_MAX
+);
+
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() ) {
+			return;
+		}
+		?>
+		<script id="elmercado-normalize-minicart-quantity">
+		(() => {
+			'use strict';
+			let frame = 0;
+			const normalize = () => {
+				document.querySelectorAll('#shop-cart-sidebar .quantity, #shop-cart-sidebar .mini-cart-quantity').forEach((control) => {
+					const input = control.querySelector('input.qty');
+					if (!input) return;
+					const children = [...control.children];
+					const buttons = children.filter((child) => child !== input && !child.contains(input));
+					if (buttons.length < 2) return;
+					const minus = buttons[0];
+					const plus = buttons[buttons.length - 1];
+					buttons.slice(1, -1).forEach((extra) => extra.remove());
+					minus.textContent = '−';
+					plus.textContent = '+';
+					minus.setAttribute('aria-label', 'Reducir cantidad');
+					plus.setAttribute('aria-label', 'Aumentar cantidad');
+					input.style.setProperty('font-family', 'Arial, sans-serif', 'important');
+					input.style.setProperty('background-image', 'none', 'important');
+				});
+				frame = 0;
+			};
+			const requestNormalize = () => {
+				if (frame) return;
+				frame = requestAnimationFrame(normalize);
+			};
+			normalize();
+			new MutationObserver(requestNormalize).observe(document.body, { childList: true, subtree: true });
+			document.body.addEventListener('wc_fragments_refreshed', requestNormalize);
+			document.body.addEventListener('updated_wc_div', requestNormalize);
+		})();
+		</script>
 		<?php
 	},
 	PHP_INT_MAX
