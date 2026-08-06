@@ -9,35 +9,42 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.7.9' );
+define( 'ELMERCADO_THEME_VERSION', '0.8.3' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
-require_once ELMERCADO_THEME_PATH . '/inc/setup.php';
-require_once ELMERCADO_THEME_PATH . '/inc/woocommerce.php';
-require_once ELMERCADO_THEME_PATH . '/inc/polish.php';
-require_once ELMERCADO_THEME_PATH . '/inc/performance.php';
-require_once ELMERCADO_THEME_PATH . '/inc/home-cache.php';
-require_once ELMERCADO_THEME_PATH . '/inc/output-optimization.php';
-require_once ELMERCADO_THEME_PATH . '/inc/final-performance.php';
-require_once ELMERCADO_THEME_PATH . '/inc/header-finish.php';
-require_once ELMERCADO_THEME_PATH . '/inc/home-navigation.php';
-require_once ELMERCADO_THEME_PATH . '/inc/home-refresh.php';
-require_once ELMERCADO_THEME_PATH . '/inc/home-header-normalize.php';
-require_once ELMERCADO_THEME_PATH . '/inc/release-one.php';
-require_once ELMERCADO_THEME_PATH . '/inc/release-one-finish.php';
-require_once ELMERCADO_THEME_PATH . '/inc/editorial-system.php';
-require_once ELMERCADO_THEME_PATH . '/inc/editorial-performance.php';
-require_once ELMERCADO_THEME_PATH . '/inc/editorial-finish.php';
-require_once ELMERCADO_THEME_PATH . '/inc/commerce-experience.php';
-require_once ELMERCADO_THEME_PATH . '/inc/performance-release.php';
-require_once ELMERCADO_THEME_PATH . '/inc/semantic-polish.php';
-require_once ELMERCADO_THEME_PATH . '/inc/global-finish.php';
-require_once ELMERCADO_THEME_PATH . '/inc/professional-finish.php';
+$elmercado_modules = array(
+	'inc/setup.php',
+	'inc/woocommerce.php',
+	'inc/polish.php',
+	'inc/performance.php',
+	'inc/home-cache.php',
+	'inc/output-optimization.php',
+	'inc/final-performance.php',
+	'inc/header-finish.php',
+	'inc/home-navigation.php',
+	'inc/home-refresh.php',
+	'inc/home-header-normalize.php',
+	'inc/release-one.php',
+	'inc/release-one-finish.php',
+	'inc/editorial-system.php',
+	'inc/editorial-performance.php',
+	'inc/editorial-finish.php',
+	'inc/commerce-experience.php',
+	'inc/performance-release.php',
+	'inc/semantic-polish.php',
+	'inc/global-finish.php',
+	'inc/professional-finish.php',
+	'inc/header-search-finish.php',
+	'inc/vendor-store-finish.php',
+	'inc/premium-qa.php',
+);
 
-$elmercado_vendor_storefront = ELMERCADO_THEME_PATH . '/inc/vendor-storefront.php';
-if ( is_readable( $elmercado_vendor_storefront ) ) {
-	require_once $elmercado_vendor_storefront;
+foreach ( $elmercado_modules as $elmercado_module ) {
+	$elmercado_module_path = ELMERCADO_THEME_PATH . '/' . $elmercado_module;
+	if ( is_readable( $elmercado_module_path ) ) {
+		require_once $elmercado_module_path;
+	}
 }
 
 /* La optimización se ejecuta una sola vez, al final del encolado normal. */
