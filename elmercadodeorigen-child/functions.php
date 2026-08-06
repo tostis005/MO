@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.9.5' );
+define( 'ELMERCADO_THEME_VERSION', '0.9.6' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -49,6 +49,7 @@ $elmercado_modules = array(
 	'inc/visual-correction-093.php',
 	'inc/storefront-edge-fix.php',
 	'inc/minicart-final-control.php',
+	'inc/layout-consistency-096.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
