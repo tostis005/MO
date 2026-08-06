@@ -10,21 +10,30 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Añade los últimos ajustes sin crear otra petición CSS. En la portada se
- * insertan junto a la hoja base; en el resto del sitio, junto a editorial.css.
+ * Añade los últimos ajustes sin crear peticiones CSS adicionales. En la portada
+ * se insertan junto a la hoja base; en el resto del sitio, junto a editorial.css.
  */
 add_action(
 	'wp_enqueue_scripts',
 	static function (): void {
-		$stylesheet = ELMERCADO_THEME_PATH . '/assets/css/editorial-finish.css';
+		$stylesheets = array(
+			ELMERCADO_THEME_PATH . '/assets/css/editorial-finish.css',
+			ELMERCADO_THEME_PATH . '/assets/css/ux-polish.css',
+		);
+		$contents = array();
 
-		if ( ! is_readable( $stylesheet ) ) {
-			return;
+		foreach ( $stylesheets as $stylesheet ) {
+			if ( ! is_readable( $stylesheet ) ) {
+				continue;
+			}
+
+			$content = file_get_contents( $stylesheet );
+			if ( false !== $content && '' !== trim( $content ) ) {
+				$contents[] = $content;
+			}
 		}
 
-		$content = file_get_contents( $stylesheet );
-
-		if ( false === $content || '' === trim( $content ) ) {
+		if ( empty( $contents ) ) {
 			return;
 		}
 
@@ -36,7 +45,7 @@ add_action(
 				: ( wp_style_is( 'woostify-parent', 'registered' ) ? 'woostify-parent' : $handle );
 		}
 
-		wp_add_inline_style( $handle, (string) preg_replace( '!/\*.*?\*/!s', '', $content ) );
+		wp_add_inline_style( $handle, (string) preg_replace( '!/\*.*?\*/!s', '', implode( "\n", $contents ) ) );
 	},
 	10100
 );
