@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.8.2' );
+define( 'ELMERCADO_THEME_VERSION', '0.7.9' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -35,12 +35,6 @@ require_once ELMERCADO_THEME_PATH . '/inc/semantic-polish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/global-finish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/professional-finish.php';
 require_once ELMERCADO_THEME_PATH . '/inc/vendor-storefront.php';
-require_once ELMERCADO_THEME_PATH . '/inc/premium-qa.php';
-
-$elmercado_optional_finish = ELMERCADO_THEME_PATH . '/inc/header-search-finish.php';
-if ( is_readable( $elmercado_optional_finish ) ) {
-	require_once $elmercado_optional_finish;
-}
 
 /* La optimización se ejecuta una sola vez, al final del encolado normal. */
 remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );
