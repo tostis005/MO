@@ -1,0 +1,92 @@
+name: Home critical CSS audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-critical-css-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Extract first-view stylesheet coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p critical-css-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > coverage.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const mergeRanges = (ranges) => {
+            const sorted = [...ranges].sort((a,b) => a.start-b.start);
+            const merged = [];
+            for (const range of sorted) {
+              const last = merged[merged.length-1];
+              if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+              else merged.push({start:range.start,end:range.end});
+            }
+            return merged;
+          };
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath:'/usr/bin/google-chrome', headless:true, args:['--no-sandbox','--disable-gpu'] });
+            const page = await browser.newPage();
+            await page.setViewport({width:390,height:844,isMobile:true,deviceScaleFactor:1});
+            await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+            await page.coverage.startCSSCoverage({resetOnNavigation:false});
+            await page.goto(`${base}/?critical-css=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:90000});
+            await sleep(1200);
+            const coverage = await page.coverage.stopCSSCoverage();
+            const report = [];
+            let critical = '';
+
+            for (const entry of coverage) {
+              const ranges = mergeRanges(entry.ranges || []);
+              const used = ranges.reduce((sum,range)=>sum+(range.end-range.start),0);
+              report.push({url:entry.url,totalBytes:entry.text.length,usedBytes:used,percent:entry.text.length?Math.round((used/entry.text.length)*1000)/10:0,ranges:ranges.length});
+              if (/\/themes\/woostify\/style\.css/.test(entry.url)) {
+                critical = ranges.map((range)=>entry.text.slice(range.start,range.end)).join('\n');
+              }
+            }
+
+            fs.writeFileSync('critical-css-audit/report.json',JSON.stringify(report,null,2));
+            fs.writeFileSync('critical-css-audit/woostify-critical-mobile.css',critical);
+            await page.screenshot({path:'critical-css-audit/mobile-first-view.png',fullPage:false});
+
+            const desktop = await browser.newPage();
+            await desktop.setViewport({width:1440,height:1000,deviceScaleFactor:1});
+            await desktop.coverage.startCSSCoverage({resetOnNavigation:false});
+            await desktop.goto(`${base}/?critical-css-desktop=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:90000});
+            await sleep(1200);
+            const desktopCoverage = await desktop.coverage.stopCSSCoverage();
+            let desktopCritical='';
+            for(const entry of desktopCoverage){
+              if(/\/themes\/woostify\/style\.css/.test(entry.url)){
+                const ranges=mergeRanges(entry.ranges||[]);
+                desktopCritical=ranges.map((range)=>entry.text.slice(range.start,range.end)).join('\n');
+              }
+            }
+            fs.writeFileSync('critical-css-audit/woostify-critical-desktop.css',desktopCritical);
+            fs.writeFileSync('critical-css-audit/woostify-critical-combined.css',`${critical}\n${desktopCritical}`);
+            await desktop.screenshot({path:'critical-css-audit/desktop-first-view.png',fullPage:false});
+            console.log(JSON.stringify(report,null,2));
+            await browser.close();
+          })().catch((error)=>{console.error(error);process.exit(1);});
+          NODE
+          node coverage.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-critical-css-audit
+          path: critical-css-audit/
+          retention-days: 7
