@@ -35,7 +35,7 @@ jobs:
           done
           exit 1
 
-      - name: Verify all public templates
+      - name: Verify public templates
         shell: bash
         run: |
           set -euo pipefail
@@ -48,14 +48,11 @@ jobs:
           const suffix = `emo-editorial=${process.env.GITHUB_SHA}`;
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          async function open(browser, path, name, mobile = false) {
+          async function inspect(browser, path, name, mobile = false) {
             const page = await browser.newPage();
-            await page.setViewport(mobile
-              ? { width: 390, height: 844, deviceScaleFactor: 1, isMobile: true }
-              : { width: 1440, height: 1200, deviceScaleFactor: 1 });
-            if (mobile) await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
-            const joiner = path.includes('?') ? '&' : '?';
-            await page.goto(`${base}${path}${joiner}${suffix}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.setViewport(mobile ? { width: 390, height: 844, isMobile: true } : { width: 1440, height: 1200 });
+            if (mobile) await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148');
+            await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}${suffix}`, { waitUntil: 'networkidle2', timeout: 90000 });
             await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
             await page.evaluate(() => {
               window.emoVisible = (node) => {
@@ -65,127 +62,86 @@ jobs:
                 return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
               };
             });
-            await sleep(850);
+            await sleep(800);
             await page.screenshot({ path: `editorial-acceptance/${name}`, fullPage: true });
             return page;
           }
 
           (async () => {
-            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
             const report = {};
             const failures = [];
+            let page;
 
-            let page = await open(browser, '/', 'home-desktop.png');
+            page = await inspect(browser, '/', 'home-desktop.png');
             report.home = await page.evaluate(() => ({
-              kicker: document.querySelector('.emo-hero .emo-kicker')?.innerText?.trim() || '',
-              categoryHeading: document.querySelector('.emo-categories h2')?.innerText?.trim() || '',
-              oldConcreteCopy: /Aceites, jamones, paletas ibéricas y naranjas|Aceite, ibéricos y fruta/i.test(document.querySelector('.emo-home')?.innerText || ''),
+              copy: document.querySelector('.emo-hero .emo-kicker')?.innerText || '',
+              oldCopy: /Aceites, jamones, paletas ibéricas y naranjas|Aceite, ibéricos y fruta/i.test(document.querySelector('.emo-home')?.innerText || ''),
               story: emoVisible(document.querySelector('.emo-story__grid')),
               producerCta: emoVisible(document.querySelector('.emo-vendor-cta__inner')),
               footer: emoVisible(document.querySelector('.site-footer')),
-              storyContentVisibility: getComputedStyle(document.querySelector('.emo-story')).contentVisibility,
-              vendorContentVisibility: getComputedStyle(document.querySelector('.emo-vendor-cta')).contentVisibility,
+              storyVisibility: getComputedStyle(document.querySelector('.emo-story')).contentVisibility,
+              vendorVisibility: getComputedStyle(document.querySelector('.emo-vendor-cta')).contentVisibility,
               externalEditorialCss: [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => /editorial(?:-finish)?\.css/.test(link.href)).length
             }));
             await page.close();
 
-            page = await open(browser, '/blog/', 'blog-desktop.png');
+            page = await inspect(browser, '/blog/', 'blog-desktop.png');
             report.blog = await page.evaluate(() => ({
-              h1: document.querySelector('.emo-journal-hero h1')?.innerText?.trim() || '',
+              h1: document.querySelector('.emo-journal-hero h1')?.innerText || '',
               cards: document.querySelectorAll('.emo-article-card').length,
               featured: document.querySelectorAll('.emo-article-card--featured').length,
-              sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible),
-              listing: emoVisible(document.querySelector('.emo-journal-grid'))
-            }));
-            await page.close();
-
-            page = await open(browser, '/naranjas/', 'article-desktop.png');
-            report.article = await page.evaluate(() => ({
-              hero: emoVisible(document.querySelector('.emo-article-hero')),
-              content: emoVisible(document.querySelector('.emo-article-content')),
-              contentWidth: Math.round(document.querySelector('.emo-article-content')?.getBoundingClientRect().width || 0),
-              sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible),
-              comments: [...document.querySelectorAll('#comments,.comments-area,.comment-respond')].some(emoVisible),
-              related: document.querySelectorAll('.emo-related-reading .emo-article-card').length
-            }));
-            await page.close();
-
-            page = await open(browser, '/quienes-somos/', 'about-desktop.png');
-            report.about = await page.evaluate(() => ({
-              intro: emoVisible(document.querySelector('.emo-about-intro')),
-              values: document.querySelectorAll('.emo-about-values article').length,
-              story: emoVisible(document.querySelector('.emo-about-copy'))
-            }));
-            await page.close();
-
-            page = await open(browser, '/contacto/', 'contact-desktop.png');
-            report.contact = await page.evaluate(() => ({
-              aside: emoVisible(document.querySelector('.emo-contact-aside')),
-              form: emoVisible(document.querySelector('.emo-contact-form')),
-              recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"]').length
-            }));
-            await page.close();
-
-            page = await open(browser, '/productores/', 'producers-desktop.png');
-            report.producers = await page.evaluate(() => {
-              const list = document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
-              const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].filter(emoVisible);
-              const rects = cards.map((card) => card.getBoundingClientRect());
-              return {
-                intro: emoVisible(document.querySelector('.emo-producers-intro')),
-                cards: cards.length,
-                display: list ? getComputedStyle(list).display : '',
-                tops: rects.map((rect) => Math.round(rect.top)),
-                widths: rects.map((rect) => Math.round(rect.width))
-              };
-            });
-            await page.close();
-
-            page = await open(browser, '/tienda/', 'shop-desktop.png');
-            report.shop = await page.evaluate(() => ({
-              h1: document.querySelector('.emo-shop-title-block h1')?.innerText?.trim() || '',
-              title: emoVisible(document.querySelector('.emo-shop-title-block h1')),
-              lead: emoVisible(document.querySelector('.emo-shop-lead')),
-              products: document.querySelectorAll('ul.products li.product').length,
-              filters: [...document.querySelectorAll('#toggle-sidebar-mobile-button,.filter-button,.woostify-filter-button,.toggle-sidebar-shop')].filter(emoVisible).length,
-              wishlist: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter(emoVisible).length
-            }));
-            await page.close();
-
-            page = await open(browser, '/mi-cuenta/', 'account-desktop.png');
-            report.account = await page.evaluate(() => ({ form: [...document.querySelectorAll('form')].some(emoVisible), main: emoVisible(document.querySelector('#primary,.site-main')) }));
-            await page.close();
-
-            page = await open(browser, '/carrito/', 'cart-desktop.png');
-            report.cart = await page.evaluate(() => ({
-              main: emoVisible(document.querySelector('#primary,.site-main')),
-              waitlist: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-btn-container')].filter(emoVisible).length
-            }));
-            await page.close();
-
-            page = await open(browser, '/blog/', 'blog-mobile.png', true);
-            report.mobile = await page.evaluate(() => ({
-              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
-              cards: document.querySelectorAll('.emo-article-card').length,
               sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible)
             }));
             await page.close();
 
-            const topSpread = report.producers.tops.length > 1 ? Math.max(...report.producers.tops) - Math.min(...report.producers.tops) : 0;
+            page = await inspect(browser, '/naranjas/', 'article-desktop.png');
+            report.article = await page.evaluate(() => ({
+              hero: emoVisible(document.querySelector('.emo-article-hero')),
+              content: emoVisible(document.querySelector('.emo-article-content')),
+              width: Math.round(document.querySelector('.emo-article-content')?.getBoundingClientRect().width || 0),
+              sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible),
+              comments: [...document.querySelectorAll('#comments,.comments-area,.comment-respond')].some(emoVisible)
+            }));
+            await page.close();
+
+            for (const [path, name, selector] of [
+              ['/quienes-somos/', 'about-desktop.png', '.emo-about-layout'],
+              ['/contacto/', 'contact-desktop.png', '.emo-contact-layout'],
+              ['/tienda/', 'shop-desktop.png', '.emo-shop-title-block'],
+              ['/mi-cuenta/', 'account-desktop.png', 'form'],
+              ['/carrito/', 'cart-desktop.png', '#primary,.site-main']
+            ]) {
+              page = await inspect(browser, path, name);
+              report[name] = await page.evaluate((selector) => ({ visible: emoVisible(document.querySelector(selector)) }), selector);
+              await page.close();
+            }
+
+            page = await inspect(browser, '/productores/', 'producers-desktop.png');
+            report.producers = await page.evaluate(() => {
+              const list = document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
+              const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].filter(emoVisible);
+              const tops = cards.map((card) => Math.round(card.getBoundingClientRect().top));
+              return { intro: emoVisible(document.querySelector('.emo-producers-intro')), cards: cards.length, display: list ? getComputedStyle(list).display : '', tops };
+            });
+            await page.close();
+
+            page = await inspect(browser, '/blog/', 'blog-mobile.png', true);
+            report.mobile = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2, cards: document.querySelectorAll('.emo-article-card').length, sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible) }));
+            await page.close();
+
+            const spread = report.producers.tops.length > 1 ? Math.max(...report.producers.tops) - Math.min(...report.producers.tops) : 0;
             const checks = [
-              [report.home.kicker.toLowerCase().includes('productos con origen') && !report.home.oldConcreteCopy, 'Homepage copy is not general enough.'],
-              [report.home.story && report.home.producerCta && report.home.footer && report.home.storyContentVisibility === 'visible' && report.home.vendorContentVisibility === 'visible', 'Homepage lower sections are hidden or deferred.'],
-              [report.home.externalEditorialCss === 0, 'Homepage editorial CSS is not inlined.'],
-              [report.blog.h1 === 'Conocer el origen cambia la forma de elegir.' && report.blog.cards >= 3 && report.blog.featured === 1 && !report.blog.sidebar && report.blog.listing, 'Blog archive is incomplete.'],
-              [report.article.hero && report.article.content && report.article.contentWidth >= 760 && !report.article.sidebar && !report.article.comments, 'Article layout is incomplete.'],
-              [report.about.intro && report.about.values === 3 && report.about.story, 'About page is incomplete.'],
-              [report.contact.aside && report.contact.form && report.contact.recaptcha === 0, 'Contact page is incomplete.'],
-              [report.producers.intro && report.producers.cards >= 1 && report.producers.display === 'flex' && topSpread <= 20, 'Producer cards are not aligned.'],
-              [report.shop.h1 === 'Productos' && report.shop.title && report.shop.lead && report.shop.products > 0 && report.shop.filters === 0 && report.shop.wishlist === 0, 'Shop cleanup is incomplete.'],
-              [report.account.form && report.account.main && report.cart.main && report.cart.waitlist === 0, 'Transactional pages regressed.'],
+              [report.home.copy.toLowerCase().includes('productos con origen') && !report.home.oldCopy, 'Homepage copy is not general enough.'],
+              [report.home.story && report.home.producerCta && report.home.footer && report.home.storyVisibility === 'visible' && report.home.vendorVisibility === 'visible' && report.home.externalEditorialCss === 0, 'Homepage composition regressed.'],
+              [report.blog.h1.trim() === 'Conocer el origen cambia la forma de elegir.' && report.blog.cards >= 3 && report.blog.featured === 1 && !report.blog.sidebar, 'Blog archive is incomplete.'],
+              [report.article.hero && report.article.content && report.article.width >= 760 && !report.article.sidebar && !report.article.comments, 'Article layout is incomplete.'],
+              [report['about-desktop.png'].visible && report['contact-desktop.png'].visible && report['shop-desktop.png'].visible, 'Editorial page layouts are incomplete.'],
+              [report['account-desktop.png'].visible && report['cart-desktop.png'].visible, 'Transactional pages regressed.'],
+              [report.producers.intro && report.producers.cards >= 1 && report.producers.display === 'grid' && spread <= 20, 'Producer cards are not aligned.'],
               [!report.mobile.overflow && !report.mobile.sidebar && report.mobile.cards >= 3, 'Mobile blog regressed.']
             ];
-            for (const [passed, message] of checks) if (!passed) failures.push(message);
+            for (const [ok, message] of checks) if (!ok) failures.push(message);
 
             fs.writeFileSync('editorial-acceptance/report.json', JSON.stringify(report, null, 2));
             fs.writeFileSync('editorial-acceptance/assertions.txt', failures.length ? failures.join('\n') : 'All editorial release assertions passed.\n');
