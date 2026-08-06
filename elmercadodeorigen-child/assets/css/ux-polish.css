@@ -83,4 +83,55 @@
 		grid-template-columns: 62px minmax(0, 1fr) !important;
 		gap: 0.75rem !important;
 	}
+
+	/* WCFM reservaba más de 250 px vacíos dentro de cada pie de productor. */
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store,
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-wrapper {
+		height: auto !important;
+		min-height: 0 !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-content,
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-info {
+		min-height: 205px !important;
+		height: 205px !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-footer {
+		display: flex !important;
+		flex-direction: column !important;
+		align-items: center !important;
+		justify-content: center !important;
+		gap: 1rem !important;
+		height: auto !important;
+		min-height: 0 !important;
+		padding: 1.15rem !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-avatar,
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .bd_rating,
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-footer > .spacer,
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .wcfm-clearfix {
+		display: none !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-data-container,
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-data {
+		width: 100% !important;
+		min-height: 0 !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		text-align: center !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store .store-data h2 {
+		margin: 0 !important;
+		line-height: 1.15 !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .wcfmmp-single-store a.wcfmmp-visit-store {
+		width: auto !important;
+		min-width: 112px !important;
+		margin: 0 !important;
+	}
 }
