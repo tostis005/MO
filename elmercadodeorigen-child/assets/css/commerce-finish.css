@@ -9,11 +9,6 @@
 	display: none !important;
 }
 
-/*
- * La página histórica del carrito contiene bloques promocionales después del
- * shortcode de WooCommerce. En una superficie transaccional se conserva solo el
- * proceso de compra y se evita que esos módulos alarguen o distraigan la página.
- */
 .elmercado-child-theme.woocommerce-cart .entry-content > .woocommerce ~ *,
 .elmercado-child-theme.woocommerce-checkout .entry-content > .woocommerce ~ * {
 	display: none !important;
@@ -32,4 +27,46 @@
 .elmercado-child-theme.woocommerce-cart .woocommerce > *:last-child,
 .elmercado-child-theme.woocommerce-checkout .woocommerce > *:last-child {
 	margin-bottom: 0;
+}
+
+/* El texto de métodos y términos vive sobre el resumen oscuro. */
+.elmercado-child-theme.woocommerce-checkout #payment .payment_methods > li > label,
+.elmercado-child-theme.woocommerce-checkout #payment .woocommerce-terms-and-conditions-checkbox-text,
+.elmercado-child-theme.woocommerce-checkout #payment .woocommerce-privacy-policy-text,
+.elmercado-child-theme.woocommerce-checkout #payment .woocommerce-privacy-policy-text p,
+.elmercado-child-theme.woocommerce-checkout #payment .form-row label {
+	color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.elmercado-child-theme.woocommerce-checkout #payment a {
+	color: #f1cb82 !important;
+	font-weight: 800;
+}
+
+/* Las explicaciones de cada pasarela son tarjetas claras dentro del panel. */
+.elmercado-child-theme.woocommerce-checkout #payment .payment_box {
+	padding: 1rem !important;
+	background: #fff !important;
+	border: 1px solid rgba(255, 255, 255, 0.3) !important;
+	border-radius: 12px !important;
+	color: #173f32 !important;
+}
+
+.elmercado-child-theme.woocommerce-checkout #payment .payment_box::before {
+	border-bottom-color: #fff !important;
+}
+
+.elmercado-child-theme.woocommerce-checkout #payment .payment_box,
+.elmercado-child-theme.woocommerce-checkout #payment .payment_box p,
+.elmercado-child-theme.woocommerce-checkout #payment .payment_box label,
+.elmercado-child-theme.woocommerce-checkout #payment .payment_box span {
+	color: #173f32 !important;
+}
+
+.elmercado-child-theme.woocommerce-checkout #order_review .shop_table th,
+.elmercado-child-theme.woocommerce-checkout #order_review .shop_table td,
+.elmercado-child-theme.woocommerce-checkout #order_review .product-name,
+.elmercado-child-theme.woocommerce-checkout #order_review .product-total,
+.elmercado-child-theme.woocommerce-checkout #order_review .amount {
+	color: rgba(255, 255, 255, 0.9) !important;
 }
