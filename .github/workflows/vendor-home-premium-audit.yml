@@ -1,0 +1,101 @@
+name: Vendor and home premium audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-home-premium-audit.yml'
+      - 'elmercadodeorigen-child/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vendor-home-premium-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Inspect Hidalgo storefront, home contrast and cart
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p premium-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 lighthouse@12 >/dev/null 2>&1
+          cat > audit.cjs <<'NODE'
+          const fs=require('fs');
+          const puppeteer=require('puppeteer-core');
+          const base='https://dev.elmercadodeorigen.com';
+          const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+          const visible=(el)=>{if(!el)return false;const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0};
+          async function prep(page,url,viewport){await page.setViewport(viewport);await page.goto(url,{waitUntil:'networkidle2',timeout:90000});await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}'});await sleep(1200)}
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-gpu']});
+            const context=await browser.createBrowserContext();
+            const report={consoleErrors:[]};
+            const vp={width:1440,height:1100};
+            const page=await context.newPage();
+            page.on('console',m=>{if(m.type()==='error')report.consoleErrors.push(m.text())});
+            await prep(page,`${base}/tienda/hidalgo-de-la-jara/?premium=${Date.now()}`,vp);
+            report.vendor=await page.evaluate(()=>{
+              const visible=(el)=>{if(!el)return false;const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0};
+              const info=(el)=>{if(!el)return null;const s=getComputedStyle(el),r=el.getBoundingClientRect();return{tag:el.tagName,id:el.id,className:el.className,text:(el.innerText||'').trim().replace(/\s+/g,' ').slice(0,1200),rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)},display:s.display,position:s.position,background:s.backgroundColor,color:s.color,html:el.outerHTML.slice(0,12000)}};
+              return{
+                body:document.body.className,
+                store:info(document.querySelector('#wcfmmp-store')),
+                banner:info(document.querySelector('#wcfmmp-store .banner_area,#wcfmmp-store .store_info_parallal,#wcfmmp-store .store_info')),
+                tabs:info(document.querySelector('#wcfmmp-store .tab_area')),
+                tabLinks:[...document.querySelectorAll('#wcfmmp-store .tab_links a')].filter(visible).map(info),
+                filters:[...document.querySelectorAll('#wcfmmp-store .left_sidebar,#wcfmmp-store .widget-area,#wcfmmp-store [class*="filter"]')].filter(visible).map(info),
+                result:info(document.querySelector('#wcfmmp-store .woocommerce-result-count')),
+                products:info(document.querySelector('#wcfmmp-store ul.products')),
+                soldBy:[...document.querySelectorAll('body *')].filter(el=>visible(el)&&/^Vendido por/i.test((el.textContent||'').trim())&&(el.children.length<5)).slice(0,12).map(info),
+                overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2
+              };
+            });
+            await page.screenshot({path:'premium-audit/vendor-desktop.png',fullPage:true});
+
+            const products=await fetch(`${base}/wp-json/wc/store/v1/products?per_page=100`).then(r=>r.json());
+            const product=products.find(p=>p.is_purchasable&&p.is_in_stock&&p.type==='simple')||products.find(p=>p.is_purchasable&&p.is_in_stock);
+            await prep(page,`${base}/tienda/hidalgo-de-la-jara/?add-to-cart=${product.id}&premium=${Date.now()}`,vp);
+            const cartTrigger=await page.$('.site-tools .shopping-cart,.site-tools .shopping-bag-button,a.shopping-cart,a.shopping-bag-button');
+            if(cartTrigger){await cartTrigger.click();await sleep(1600)}
+            report.cart=await page.evaluate(()=>{
+              const visible=(el)=>{if(!el)return false;const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0};
+              const info=(el)=>{if(!el)return null;const s=getComputedStyle(el),r=el.getBoundingClientRect();return{tag:el.tagName,className:el.className,text:(el.value||el.innerText||el.textContent||'').trim(),rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)},lineHeight:s.lineHeight,display:s.display,position:s.position,transform:s.transform}};
+              const panel=[...document.querySelectorAll('#shop-cart-sidebar,.cart-sidebar')].find(visible);
+              return{panel:info(panel),quantities:[...panel.querySelectorAll('.mini-cart-product-qty,input.qty,.quantity')].filter(visible).map(info),prices:[...panel.querySelectorAll('.amount')].filter(visible).map(info),overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2};
+            });
+            await page.screenshot({path:'premium-audit/vendor-cart-desktop.png',fullPage:true});
+
+            await prep(page,`${base}/?premium=${Date.now()}`,vp);
+            report.home=await page.evaluate(()=>{
+              const needle='Acortamos la distancia entre quienes producen y quienes quieren elegir mejor';
+              const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_ELEMENT);
+              let target=null;while(walker.nextNode()){const el=walker.currentNode;if((el.textContent||'').includes(needle)){target=el;for(let i=0;i<5&&target.parentElement;i++){if(target.getBoundingClientRect().width>500)break;target=target.parentElement;}break;}}
+              const chain=[];let el=target;for(let i=0;i<6&&el;i++,el=el.parentElement){const s=getComputedStyle(el),r=el.getBoundingClientRect();chain.push({tag:el.tagName,id:el.id,className:el.className,text:(el.innerText||'').trim().replace(/\s+/g,' ').slice(0,1000),rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)},background:s.backgroundColor,color:s.color,html:el.outerHTML.slice(0,10000)})}return{chain};
+            });
+            await page.screenshot({path:'premium-audit/home-desktop.png',fullPage:true});
+            fs.writeFileSync('premium-audit/report.json',JSON.stringify(report,null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node audit.cjs
+
+      - name: Run Lighthouse mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx lighthouse 'https://dev.elmercadodeorigen.com/?premium-lh=1' --chrome-flags='--headless --no-sandbox' --only-categories=performance,accessibility,best-practices,seo --output=json --output-path=premium-audit/lighthouse-home.json --quiet
+          npx lighthouse 'https://dev.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/?premium-lh=1' --chrome-flags='--headless --no-sandbox' --only-categories=performance,accessibility,best-practices,seo --output=json --output-path=premium-audit/lighthouse-vendor.json --quiet
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vendor-home-premium-audit
+          path: premium-audit/
+          retention-days: 14
