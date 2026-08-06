@@ -1,0 +1,85 @@
+name: Interaction regression audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/interaction-regression-audit.yml'
+      - 'elmercadodeorigen-child/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: interaction-regression-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Test menus, search, forms and commerce controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > audit.cjs <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const base='https://dev.elmercadodeorigen.com';
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const visible=async(page,sel)=>page.$$eval(sel,els=>els.some(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&+s.opacity>0&&r.width>0&&r.height>0})).catch(()=>false);
+          const rect=async(page,sel)=>page.$eval(sel,e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:s.display,fontSize:s.fontSize,lineHeight:s.lineHeight,color:s.color,background:s.backgroundColor}}).catch(()=>null);
+          async function prep(page,path,vp={width:1440,height:1000}){await page.setViewport(vp);await page.goto(`${base}${path}${path.includes('?')?'&':'?'}qa=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}'});await sleep(700)}
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-gpu']});
+            const context=await browser.createBrowserContext();
+            const report={failures:[],consoleErrors:[],tests:{}};
+            const products=await fetch(`${base}/wp-json/wc/store/v1/products?per_page=100`).then(r=>r.json());
+            const product=products.find(p=>p.is_purchasable&&p.is_in_stock&&p.type==='simple')||products.find(p=>p.is_purchasable&&p.is_in_stock);
+
+            const mobile=await context.newPage();mobile.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'mobile',text:m.text()})});
+            await prep(mobile,'/contacto/',{width:390,height:844,isMobile:true,deviceScaleFactor:1});
+            const menuTrigger=await mobile.$('.menu-toggle,.mobile-menu-toggle,.toggle-sidebar-menu,.site-menu-toggle,[aria-controls="site-navigation"]');
+            if(menuTrigger){await menuTrigger.click();await sleep(500)}
+            report.tests.mobileMenu={trigger:!!menuTrigger,open:await visible(mobile,'.mobile-menu,.site-navigation.active,.main-navigation.toggled,.sidebar-menu,.offcanvas-menu')};
+            if(!menuTrigger)report.failures.push('mobile menu trigger missing');
+            const searchTrigger=await mobile.$('.header-search-icon,.search-icon,.site-search-toggle,[aria-label*="Buscar" i]');
+            if(searchTrigger){await searchTrigger.click();await sleep(500)}
+            report.tests.mobileSearch={trigger:!!searchTrigger,field:await visible(mobile,'input[type="search"]')};
+            if(!searchTrigger)report.failures.push('mobile search trigger missing');
+            await mobile.close();
+
+            const shop=await context.newPage();shop.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'shop',text:m.text()})});await prep(shop,'/tienda/');
+            report.tests.shop={grid:await shop.$eval('ul.products',e=>({columns:getComputedStyle(e).gridTemplateColumns.split(' ').filter(Boolean).length,rect:(()=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,w:r.width,h:r.height}})()})).catch(()=>null),slider:await shop.evaluate(()=>{const rail=document.querySelector('.widget_price_filter .price_slider,.price_slider_wrapper .ui-slider-horizontal');const hs=[...document.querySelectorAll('.widget_price_filter .ui-slider-handle')];if(!rail||hs.length<2)return null;const rr=rail.getBoundingClientRect();return{railY:Math.round(rr.y+rr.height/2),handles:hs.map(h=>{const r=h.getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),w:Math.round(r.width),h:Math.round(r.height)}})}})};
+            if(report.tests.shop.grid?.columns!==4)report.failures.push(`shop columns ${report.tests.shop.grid?.columns}`);
+            if(report.tests.shop.slider&&report.tests.shop.slider.handles.some(h=>Math.abs(h.y-report.tests.shop.slider.railY)>2))report.failures.push('price slider handles not centered');
+            await shop.close();
+
+            const vendor=await context.newPage();vendor.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'vendor',text:m.text()})});await prep(vendor,'/tienda/hidalgo-de-la-jara/');
+            report.tests.vendor=await vendor.evaluate(()=>{const tabs=document.querySelector('#tab_links_area,.tab_area'),r=document.querySelector('.woocommerce-result-count'),o=document.querySelector('.woocommerce-ordering'),toolbar=r?.parentElement;const box=e=>{if(!e)return null;const x=e.getBoundingClientRect();return{x:Math.round(x.x),y:Math.round(x.y),w:Math.round(x.width),h:Math.round(x.height)}};return{tabs:box(tabs),result:box(r),ordering:box(o),toolbar:box(toolbar),gap:tabs&&toolbar?Math.round(toolbar.getBoundingClientRect().top-tabs.getBoundingClientRect().bottom):null}});
+            if(!report.tests.vendor.result||!report.tests.vendor.ordering)report.failures.push('vendor toolbar controls missing');
+            else if(Math.abs(report.tests.vendor.result.y-report.tests.vendor.ordering.y)>2)report.failures.push('vendor result/order y mismatch');
+            if(report.tests.vendor.gap!==null&&report.tests.vendor.gap<20)report.failures.push(`vendor tabs gap ${report.tests.vendor.gap}`);
+            await vendor.close();
+
+            if(product){
+              const cart=await context.newPage();cart.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'cart',text:m.text()})});
+              await prep(cart,`/contacto/?add-to-cart=${product.id}`);await prep(cart,'/contacto/');
+              const cartTrigger=await cart.$('.site-tools .shopping-cart,.site-tools .shopping-bag-button,a.shopping-cart,a.shopping-bag-button');if(cartTrigger){await cartTrigger.click();await sleep(700)}
+              report.tests.minicart=await cart.evaluate(()=>{const panel=[...document.querySelectorAll('#shop-cart-sidebar,.cart-sidebar')].find(e=>e.getBoundingClientRect().width>0);if(!panel)return null;const btns=[...panel.querySelectorAll('.mini-cart-product-qty')];const input=panel.querySelector('input.qty,.quantity input');const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),text:(e.value||e.textContent||'').trim()}};const sold=panel.querySelector('.variation-Vendidopor,.wcfmmp_sold_by_label');const vendor=sold?.nextElementSibling||sold?.querySelector('a');return{buttons:btns.map(box),input:box(input),sold:box(sold),vendor:box(vendor)}});
+              const mc=report.tests.minicart;if(!mc)report.failures.push('minicart did not open');else{if(mc.buttons.length<2||!mc.input)report.failures.push('minicart quantity controls incomplete');if(mc.input&&mc.buttons.some(b=>Math.abs((b.y+b.h/2)-(mc.input.y+mc.input.h/2))>2))report.failures.push('minicart controls vertically misaligned');if(mc.sold&&mc.vendor&&mc.vendor.x-mc.sold.x-mc.sold.w<5)report.failures.push('minicart sold-by gap too small');}
+              await prep(cart,'/carrito/');const coupon=await cart.$('input[name="coupon_code"]');if(coupon){await coupon.type('CUPON-INVALIDO-XYZ');const apply=await cart.$('button[name="apply_coupon"]');if(apply){await apply.click();await sleep(1200)}}report.tests.invalidCoupon={field:!!coupon,error:await visible(cart,'.woocommerce-error,.woocommerce-notices-wrapper .woocommerce-error')};if(coupon&&!report.tests.invalidCoupon.error)report.failures.push('invalid coupon error not visible');
+              await cart.close();
+            }
+
+            const contact=await context.newPage();contact.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'contact',text:m.text()})});await prep(contact,'/contacto/');const submit=await contact.$('.wpcf7-form input[type="submit"],.wpcf7-form button[type="submit"]');if(submit){await submit.click();await sleep(1200)}report.tests.contactValidation={submit:!!submit,errors:await contact.$$eval('.wpcf7-not-valid-tip,.wpcf7-response-output',els=>els.filter(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'}).map(e=>(e.textContent||'').trim()))};if(submit&&!report.tests.contactValidation.errors.length)report.failures.push('contact validation messages missing');await contact.close();
+
+            const normalizedErrors=report.consoleErrors.filter(e=>!e.text.includes('google-analytics')&&!e.text.includes('ERR_BLOCKED_BY_CLIENT'));
+            if(normalizedErrors.length)report.failures.push(`console errors ${normalizedErrors.length}`);
+            console.log('INTERACTION_REPORT_START');console.log(JSON.stringify(report,null,2));console.log('INTERACTION_REPORT_END');
+            await browser.close();if(report.failures.length)process.exit(1);
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node audit.cjs
