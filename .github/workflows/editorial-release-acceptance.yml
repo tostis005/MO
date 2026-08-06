@@ -1,0 +1,210 @@
+name: Editorial release acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editorial-release-acceptance.yml'
+      - 'elmercadodeorigen-child/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-editorial-release
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for editorial release
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOME_URL="https://dev.elmercadodeorigen.com/?emo-editorial=${GITHUB_SHA}"
+          BLOG_URL="https://dev.elmercadodeorigen.com/blog/?emo-editorial=${GITHUB_SHA}"
+          for attempt in {1..40}; do
+            if curl -fsSL --max-time 25 "$HOME_URL" -o /tmp/home.html \
+              && curl -fsSL --max-time 25 "$BLOG_URL" -o /tmp/blog.html \
+              && grep -q 'Productos con origen, directos de sus productores' /tmp/home.html \
+              && grep -q 'Conocer el origen cambia la forma de elegir' /tmp/blog.html; then
+              exit 0
+            fi
+            sleep 6
+          done
+          echo 'Editorial release was not detected in staging.' >&2
+          exit 1
+
+      - name: Verify editorial templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p editorial-acceptance
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+          cat > editorial-acceptance.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const suffix = `emo-editorial=${process.env.GITHUB_SHA}`;
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const visible = (node) => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
+          };
+
+          async function prepare(page, path) {
+            const joiner = path.includes('?') ? '&' : '?';
+            await page.goto(`${base}${path}${joiner}${suffix}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
+            await sleep(850);
+          }
+
+          async function captureDesktop(browser, path, filename, evaluator) {
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1440, height: 1200, deviceScaleFactor: 1 });
+            await prepare(page, path);
+            const data = await page.evaluate(evaluator);
+            await page.screenshot({ path: `editorial-acceptance/${filename}`, fullPage: true });
+            await page.close();
+            return data;
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const report = {};
+            const failures = [];
+
+            report.home = await captureDesktop(browser, '/', 'home-desktop.png', () => {
+              const kicker = document.querySelector('.emo-hero .emo-kicker')?.innerText?.trim() || '';
+              const categoryHeading = document.querySelector('.emo-categories h2')?.innerText?.trim() || '';
+              const allReveal = [...document.querySelectorAll('.emo-reveal')];
+              return {
+                h1: document.querySelector('.emo-hero h1')?.innerText?.trim() || '',
+                kicker,
+                categoryHeading,
+                oldConcreteCopy: /Aceites, jamones, paletas ibéricas y naranjas/i.test(kicker) || /Aceite, ibéricos y fruta/i.test(categoryHeading),
+                hiddenReveal: allReveal.filter((node) => !visible(node)).length,
+                editorialExternalStyles: [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => link.href.includes('/assets/css/editorial.css')).length,
+                storyVisible: visible(document.querySelector('.emo-story')),
+                producerCtaVisible: visible(document.querySelector('.emo-vendor-cta'))
+              };
+            });
+
+            report.blog = await captureDesktop(browser, '/blog/', 'blog-desktop.png', () => ({
+              h1: document.querySelector('.emo-journal-hero h1')?.innerText?.trim() || '',
+              cards: document.querySelectorAll('.emo-article-card').length,
+              featuredCards: document.querySelectorAll('.emo-article-card--featured').length,
+              sidebarVisible: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(visible),
+              genericPosts: document.querySelectorAll('main > article.post, #primary > article.post').length,
+              heroVisible: visible(document.querySelector('.emo-journal-hero')),
+              listingVisible: visible(document.querySelector('.emo-journal-grid'))
+            }));
+
+            report.article = await captureDesktop(browser, '/naranjas/', 'article-desktop.png', () => ({
+              h1: document.querySelector('.emo-article-hero h1')?.innerText?.trim() || '',
+              contentWidth: Math.round(document.querySelector('.emo-article-content')?.getBoundingClientRect().width || 0),
+              sidebarVisible: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(visible),
+              commentsVisible: [...document.querySelectorAll('#comments,.comments-area,.comment-respond')].some(visible),
+              heroVisible: visible(document.querySelector('.emo-article-hero')),
+              contentVisible: visible(document.querySelector('.emo-article-content')),
+              relatedCards: document.querySelectorAll('.emo-related-reading .emo-article-card').length
+            }));
+
+            report.about = await captureDesktop(browser, '/quienes-somos/', 'about-desktop.png', () => ({
+              layout: Boolean(document.querySelector('.emo-about-layout')),
+              introVisible: visible(document.querySelector('.emo-about-intro')),
+              values: document.querySelectorAll('.emo-about-values article').length,
+              storyVisible: visible(document.querySelector('.emo-about-copy'))
+            }));
+
+            report.contact = await captureDesktop(browser, '/contacto/', 'contact-desktop.png', () => ({
+              layout: Boolean(document.querySelector('.emo-contact-layout')),
+              asideVisible: visible(document.querySelector('.emo-contact-aside')),
+              formVisible: visible(document.querySelector('.emo-contact-form')),
+              recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"]').length
+            }));
+
+            report.producers = await captureDesktop(browser, '/productores/', 'producers-desktop.png', () => {
+              const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].filter(visible);
+              return {
+                introVisible: visible(document.querySelector('.emo-producers-intro')),
+                cards: cards.length,
+                cardWidths: cards.map((node) => Math.round(node.getBoundingClientRect().width)),
+                wrapperColumns: getComputedStyle(document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap') || document.body).gridTemplateColumns
+              };
+            });
+
+            report.shop = await captureDesktop(browser, '/tienda/', 'shop-desktop.png', () => ({
+              h1: document.querySelector('.page-header .entry-title,h1')?.innerText?.trim() || '',
+              leadVisible: visible(document.querySelector('.emo-shop-lead')),
+              filterButtons: [...document.querySelectorAll('#toggle-sidebar-mobile-button,.filter-button,.woostify-filter-button,.toggle-sidebar-shop')].filter(visible).length,
+              wishlist: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter(visible).length,
+              productCards: document.querySelectorAll('ul.products li.product').length
+            }));
+
+            report.account = await captureDesktop(browser, '/mi-cuenta/', 'account-desktop.png', () => ({
+              h1: document.querySelector('h1')?.innerText?.trim() || '',
+              formVisible: [...document.querySelectorAll('form')].some(visible),
+              contentWidth: Math.round(document.querySelector('#primary,.site-main')?.getBoundingClientRect().width || 0)
+            }));
+
+            report.cart = await captureDesktop(browser, '/carrito/', 'cart-desktop.png', () => ({
+              h1: document.querySelector('h1')?.innerText?.trim() || '',
+              mainVisible: visible(document.querySelector('#primary,.site-main')),
+              waitlist: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-btn-container')].filter(visible).length
+            }));
+
+            const mobile = await browser.newPage();
+            await mobile.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+            await mobile.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+            await prepare(mobile, '/blog/');
+            report.blogMobile = await mobile.evaluate(() => ({
+              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+              columns: getComputedStyle(document.querySelector('.emo-journal-grid')).gridTemplateColumns,
+              cards: document.querySelectorAll('.emo-article-card').length,
+              sidebarVisible: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(visible)
+            }));
+            await mobile.screenshot({ path: 'editorial-acceptance/blog-mobile.png', fullPage: true });
+            await mobile.close();
+
+            if (!report.home.kicker.includes('Productos con origen')) failures.push('Homepage editorial proposition was not rendered.');
+            if (report.home.oldConcreteCopy) failures.push('Concrete catalogue copy remains in the homepage headings.');
+            if (report.home.hiddenReveal || !report.home.storyVisible || !report.home.producerCtaVisible) failures.push('Homepage contains hidden editorial sections.');
+            if (report.home.editorialExternalStyles) failures.push('Homepage editorial CSS is not inlined.');
+            if (report.blog.h1 !== 'Conocer el origen cambia la forma de elegir.') failures.push('Blog hero copy is incorrect.');
+            if (report.blog.cards < 3 || report.blog.featuredCards !== 1 || report.blog.sidebarVisible || report.blog.genericPosts || !report.blog.listingVisible) failures.push('Blog archive composition is incomplete.');
+            if (!report.article.heroVisible || !report.article.contentVisible || report.article.sidebarVisible || report.article.commentsVisible || report.article.contentWidth < 760) failures.push('Single article layout is incomplete.');
+            if (!report.about.layout || !report.about.introVisible || report.about.values !== 3 || !report.about.storyVisible) failures.push('About page layout is incomplete.');
+            if (!report.contact.layout || !report.contact.asideVisible || !report.contact.formVisible || report.contact.recaptcha) failures.push('Contact layout or recaptcha cleanup failed.');
+            if (!report.producers.introVisible || report.producers.cards < 1) failures.push('Producer directory editorial layout is incomplete.');
+            if (report.shop.h1 !== 'Productos' || !report.shop.leadVisible || report.shop.filterButtons || report.shop.wishlist || report.shop.productCards < 1) failures.push('Shop editorial cleanup is incomplete.');
+            if (!report.account.formVisible || !report.cart.mainVisible || report.cart.waitlist) failures.push('Transactional templates regressed.');
+            if (report.blogMobile.overflow || report.blogMobile.sidebarVisible || report.blogMobile.cards < 3) failures.push('Mobile blog layout regressed.');
+
+            fs.writeFileSync('editorial-acceptance/report.json', JSON.stringify(report, null, 2));
+            fs.writeFileSync('editorial-acceptance/assertions.txt', failures.length ? failures.join('\n') : 'All editorial release assertions passed.\n');
+            await browser.close();
+            if (failures.length) throw new Error(failures.join('\n'));
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+          node editorial-acceptance.cjs
+          cat editorial-acceptance/report.json
+          cat editorial-acceptance/assertions.txt
+
+      - name: Upload editorial acceptance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editorial-release-acceptance
+          path: editorial-acceptance/
+          retention-days: 14
