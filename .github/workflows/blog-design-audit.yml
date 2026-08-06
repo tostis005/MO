@@ -1,0 +1,97 @@
+name: Blog design audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-design-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Capture blog views
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p blog-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > blog-audit.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const urls = [
+            `${base}/blog/`,
+            `${base}/naranjas/`,
+            `${base}/jamon-iberico/`,
+            `${base}/aceite-de-oliva-virgen-extra/`
+          ];
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const name = (url) => url.replace(base, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'blog';
+
+          async function prepare(page, url) {
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
+            await sleep(800);
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const report = {};
+            for (const url of urls) {
+              const page = await browser.newPage();
+              await page.setViewport({ width: 1440, height: 1200, deviceScaleFactor: 1 });
+              await prepare(page, url);
+              report[url] = await page.evaluate(() => {
+                const main = document.querySelector('main,#primary,.site-main');
+                const articles = [...document.querySelectorAll('article')];
+                return {
+                  title: document.title,
+                  bodyClass: document.body.className,
+                  h1: document.querySelector('h1')?.innerText?.trim() || '',
+                  headings: [...document.querySelectorAll('h2,h3')].slice(0, 12).map((node) => node.innerText.trim()),
+                  mainText: (main?.innerText || '').trim().slice(0, 2500),
+                  mainWidth: Math.round(main?.getBoundingClientRect().width || 0),
+                  articles: articles.map((article) => ({
+                    className: article.className,
+                    title: article.querySelector('h1,h2,h3')?.innerText?.trim() || '',
+                    width: Math.round(article.getBoundingClientRect().width),
+                    image: article.querySelector('img')?.src || '',
+                    text: (article.innerText || '').trim().slice(0, 500)
+                  })),
+                  sidebarText: (document.querySelector('#secondary,.widget-area,.sidebar')?.innerText || '').trim().slice(0, 1000)
+                };
+              });
+              await page.screenshot({ path: `blog-audit/${name(url)}-desktop.png`, fullPage: true });
+              await page.close();
+            }
+
+            for (const url of [urls[0], urls[1]]) {
+              const page = await browser.newPage();
+              await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+              await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+              await prepare(page, url);
+              await page.screenshot({ path: `blog-audit/${name(url)}-mobile.png`, fullPage: true });
+              await page.close();
+            }
+
+            fs.writeFileSync('blog-audit/report.json', JSON.stringify(report, null, 2));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+          node blog-audit.cjs
+          cat blog-audit/report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blog-design-audit
+          path: blog-audit/
+          retention-days: 7
