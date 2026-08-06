@@ -1,4 +1,4 @@
-/* Ajustes finales de la versión editorial 0.6.4. */
+/* Ajustes finales de la versión editorial 0.6.5. */
 
 .elmercado-premium-home .emo-categories,
 .elmercado-premium-home .emo-featured-products,
@@ -48,6 +48,14 @@
 	grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 	align-items: stretch !important;
 	gap: 1.25rem !important;
+}
+
+/* Los clearfix y pseudo-elementos de WCFM cuentan como celdas de grid. */
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap::before,
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap::after,
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > .wcfm-clearfix {
+	display: none !important;
+	content: none !important;
 }
 
 .elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
