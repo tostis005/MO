@@ -79,9 +79,13 @@ add_filter(
 			return $tag;
 		}
 
+		/*
+		 * jQuery se conserva síncrono porque varios plugins imprimen inicializadores
+		 * inline en la cabecera. Diferir la biblioteca genera errores y concentra el
+		 * trabajo de JavaScript tras el primer pintado. Los scripts independientes sí
+		 * pueden salir de la ruta crítica.
+		 */
 		$deferred_fragments = array(
-			'/wp-includes/js/jquery/jquery.min.js',
-			'/wp-includes/js/jquery/jquery-migrate.min.js',
 			'/cookie-law-info-public.js',
 			'/ajax-search-for-woocommerce/assets/js/search.min.js',
 			'/woocommerce/assets/js/sourcebuster/',
