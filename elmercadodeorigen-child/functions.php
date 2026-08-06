@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.8.3' );
+define( 'ELMERCADO_THEME_VERSION', '0.8.4' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -38,6 +38,7 @@ $elmercado_modules = array(
 	'inc/header-search-finish.php',
 	'inc/vendor-store-finish.php',
 	'inc/premium-qa.php',
+	'inc/premium-visual-finish.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
