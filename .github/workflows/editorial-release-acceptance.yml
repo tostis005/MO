@@ -51,17 +51,19 @@ jobs:
           const base = 'https://dev.elmercadodeorigen.com';
           const suffix = `emo-editorial=${process.env.GITHUB_SHA}`;
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-          const visible = (node) => {
-            if (!node) return false;
-            const style = getComputedStyle(node);
-            const rect = node.getBoundingClientRect();
-            return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
-          };
 
           async function prepare(page, path) {
             const joiner = path.includes('?') ? '&' : '?';
             await page.goto(`${base}${path}${joiner}${suffix}`, { waitUntil: 'networkidle2', timeout: 90000 });
             await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
+            await page.evaluate(() => {
+              window.visible = (node) => {
+                if (!node) return false;
+                const style = getComputedStyle(node);
+                const rect = node.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
+              };
+            });
             await sleep(850);
           }
 
