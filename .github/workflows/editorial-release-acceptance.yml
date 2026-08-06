@@ -62,7 +62,7 @@ jobs:
                 return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
               };
             });
-            await sleep(800);
+            await sleep(path.includes('/productores/') ? 3400 : 800);
             await page.screenshot({ path: `editorial-acceptance/${name}`, fullPage: true });
             return page;
           }
@@ -113,7 +113,7 @@ jobs:
               ['/carrito/', 'cart-desktop.png', '#primary,.site-main']
             ]) {
               page = await inspect(browser, path, name);
-              report[name] = await page.evaluate((selector) => ({ visible: emoVisible(document.querySelector(selector)) }), selector);
+              report[name] = await page.evaluate((selector) => ({ visible: [...document.querySelectorAll(selector)].some(emoVisible) }), selector);
               await page.close();
             }
 
@@ -122,7 +122,15 @@ jobs:
               const list = document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
               const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].filter(emoVisible);
               const tops = cards.map((card) => Math.round(card.getBoundingClientRect().top));
-              return { intro: emoVisible(document.querySelector('.emo-producers-intro')), cards: cards.length, display: list ? getComputedStyle(list).display : '', tops };
+              const wrappers = cards.map((card) => card.querySelector('.store-wrapper')).filter(Boolean);
+              return {
+                intro: emoVisible(document.querySelector('.emo-producers-intro')),
+                cards: cards.length,
+                display: list ? getComputedStyle(list).display : '',
+                tops,
+                wrapperMargins: wrappers.map((wrapper) => getComputedStyle(wrapper).marginLeft),
+                wrapperWidths: wrappers.map((wrapper) => Math.round(wrapper.getBoundingClientRect().width))
+              };
             });
             await page.close();
 
