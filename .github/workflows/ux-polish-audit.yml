@@ -1,0 +1,194 @@
+name: UX polish audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ux-polish-audit.yml'
+      - 'elmercadodeorigen-child/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-ux-polish-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Audit shared storefront UX
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ux-polish-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > audit.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const paths = {
+            home: '/',
+            shop: '/tienda/',
+            blog: '/blog/',
+            producers: '/productores/',
+            contact: '/contacto/',
+            about: '/quienes-somos/',
+            account: '/mi-cuenta/'
+          };
+
+          async function prepare(page, path, viewport = {width:1440,height:1100}) {
+            await page.setViewport(viewport);
+            await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}ux-polish=${Date.now()}`, {waitUntil:'networkidle2',timeout:90000});
+            await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}'});
+            await sleep(1200);
+          }
+
+          async function sharedReport(page) {
+            return page.evaluate(() => {
+              const visible = (node) => {
+                if (!node) return false;
+                const s=getComputedStyle(node), r=node.getBoundingClientRect();
+                return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0;
+              };
+              const rect = (node) => {
+                const r=node.getBoundingClientRect();
+                return {x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)};
+              };
+              const multiline = [...document.querySelectorAll('a,button')].filter(visible).map((node) => {
+                const s=getComputedStyle(node), r=node.getBoundingClientRect();
+                const line=parseFloat(s.lineHeight)||parseFloat(s.fontSize)*1.2||16;
+                return {text:(node.innerText||node.textContent||'').trim().replace(/\s+/g,' ').slice(0,160),className:node.className,rect:rect(node),lineHeight:line,lines:Math.round((r.height/line)*10)/10};
+              }).filter((item)=>item.text&&item.lines>1.45&&item.rect.width>30).slice(0,30);
+              const ids=[...document.querySelectorAll('[id]')].map(n=>n.id).filter(Boolean);
+              const duplicateIds=[...new Set(ids.filter((id,index)=>ids.indexOf(id)!==index))];
+              return {
+                title:document.title,
+                bodyClasses:document.body.className,
+                h1:[...document.querySelectorAll('h1')].filter(visible).map(n=>n.innerText.trim()),
+                overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2,
+                scrollWidth:document.documentElement.scrollWidth,
+                clientWidth:document.documentElement.clientWidth,
+                duplicateIds,
+                multiline,
+                visibleDialogs:[...document.querySelectorAll('[role="dialog"],.sidebar-menu,#shop-cart-sidebar,.cart-sidebar')].filter(visible).map(n=>({id:n.id,className:n.className,text:(n.innerText||'').trim().slice(0,500),rect:rect(n)}))
+              };
+            });
+          }
+
+          async function inspectMiniCart(page, productId, viewport, label) {
+            await prepare(page, `/contacto/?add-to-cart=${productId}`, viewport);
+            await prepare(page, '/contacto/', viewport);
+            const selector = '.site-tools .shopping-cart,.site-tools .shopping-bag-button,a.shopping-cart,a.shopping-bag-button';
+            const trigger = await page.$(selector);
+            if (!trigger) throw new Error(`Cart trigger not found for ${label}`);
+            await trigger.click();
+            await sleep(1800);
+            const data = await page.evaluate(() => {
+              const visible = (node) => {
+                if (!node) return false;
+                const s=getComputedStyle(node),r=node.getBoundingClientRect();
+                return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0;
+              };
+              const detail=(node)=>{
+                if(!node)return null;
+                const s=getComputedStyle(node),r=node.getBoundingClientRect();
+                return {tag:node.tagName,id:node.id,className:node.className,text:(node.innerText||node.textContent||'').trim().replace(/\s+/g,' ').slice(0,1800),html:node.outerHTML.slice(0,12000),visible:visible(node),display:s.display,color:s.color,background:s.backgroundColor,width:Math.round(r.width),height:Math.round(r.height)};
+              };
+              const candidates=[...document.querySelectorAll('#shop-cart-sidebar,.cart-sidebar,.cart-sidebar-content,.widget_shopping_cart,.woocommerce-mini-cart')];
+              const panel=candidates.find(visible)||candidates[0]||null;
+              const scope=panel||document;
+              const items=[...scope.querySelectorAll('.woocommerce-mini-cart-item,.mini_cart_item,li')].filter((node)=>node.querySelector('a.remove,.remove_from_cart_button,[class*="remove"]')).map((node)=>({
+                detail:detail(node),
+                remove:[...node.querySelectorAll('a.remove,.remove_from_cart_button,[class*="remove"]')].map(detail),
+                quantities:[...node.querySelectorAll('.quantity,.mini-cart-product-qty,[class*="qty"],input.qty')].map(detail),
+                prices:[...node.querySelectorAll('.amount,.woocommerce-Price-amount')].map(detail),
+                links:[...node.querySelectorAll('a')].map((a)=>({text:(a.innerText||a.textContent||'').trim(),className:a.className,href:a.href,visible:visible(a)}))
+              }));
+              return {
+                htmlClasses:document.documentElement.className,
+                bodyClasses:document.body.className,
+                panel:detail(panel),
+                candidates:candidates.map(detail),
+                items,
+                visibleRemoveButtons:[...scope.querySelectorAll('a.remove,.remove_from_cart_button,[class*="remove"]')].filter(visible).map(detail),
+                visibleQuantities:[...scope.querySelectorAll('.quantity,.mini-cart-product-qty,[class*="qty"],input.qty')].filter(visible).map(detail),
+                footerButtons:[...scope.querySelectorAll('.woocommerce-mini-cart__buttons a,.buttons a')].filter(visible).map(detail),
+                overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2
+              };
+            });
+            await page.screenshot({path:`ux-polish-audit/mini-cart-${label}.png`,fullPage:true});
+            return data;
+          }
+
+          async function inspectProducers(page, viewport, label) {
+            await prepare(page, '/productores/', viewport);
+            const data=await page.evaluate(()=>{
+              const visible=(node)=>{if(!node)return false;const s=getComputedStyle(node),r=node.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0;};
+              const rect=(node)=>{const r=node.getBoundingClientRect();return{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)};};
+              const detail=(node)=>{const s=getComputedStyle(node),r=node.getBoundingClientRect(),line=parseFloat(s.lineHeight)||parseFloat(s.fontSize)*1.2||16;return{text:(node.innerText||node.textContent||'').trim().replace(/\s+/g,' ').slice(0,300),tag:node.tagName,className:node.className,href:node.href||'',rect:rect(node),display:s.display,whiteSpace:s.whiteSpace,lineHeight:line,lines:Math.round((r.height/line)*10)/10,visible:visible(node),html:node.outerHTML.slice(0,3000)};};
+              const cards=[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store,#wcfmmp-stores-wrap .store-wrapper')].filter((n)=>n.matches('li.wcfmmp-single-store')||!n.closest('li.wcfmmp-single-store')).map((card)=>({
+                rect:rect(card),
+                className:card.className,
+                text:(card.innerText||'').trim().replace(/\s+/g,' ').slice(0,1200),
+                controls:[...card.querySelectorAll('a,button')].filter(visible).map(detail),
+                html:card.outerHTML.slice(0,12000)
+              }));
+              return {
+                cards,
+                allControls:[...document.querySelectorAll('#wcfmmp-stores-wrap a,#wcfmmp-stores-wrap button')].filter(visible).map(detail),
+                inquiry:[...document.querySelectorAll('#wcfmmp-stores-wrap a,#wcfmmp-stores-wrap button')].filter((n)=>/consulta|inquiry|pregunta|contact/i.test((n.innerText||n.textContent||'')+' '+n.className)).map(detail),
+                visit:[...document.querySelectorAll('#wcfmmp-stores-wrap a,#wcfmmp-stores-wrap button')].filter((n)=>/visitar|visit/i.test((n.innerText||n.textContent||'')+' '+n.className)).map(detail),
+                overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2
+              };
+            });
+            await page.screenshot({path:`ux-polish-audit/producers-${label}.png`,fullPage:true});
+            return data;
+          }
+
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-gpu']});
+            const context=await browser.createBrowserContext();
+            const report={pages:{},miniCart:{},producers:{},consoleErrors:[]};
+            const products=await fetch(`${base}/wp-json/wc/store/v1/products?per_page=100`).then(r=>r.ok?r.json():[]);
+            const product=products.find(p=>p.is_purchasable&&p.is_in_stock&&p.type==='simple')||products.find(p=>p.is_purchasable&&p.is_in_stock);
+            if(!product)throw new Error('No purchasable product available.');
+            report.product={id:product.id,name:product.name,type:product.type};
+
+            for(const [name,path] of Object.entries(paths)){
+              const page=await context.newPage();
+              page.on('console',(msg)=>{if(msg.type()==='error')report.consoleErrors.push({page:name,text:msg.text()});});
+              await prepare(page,path);
+              report.pages[name]=await sharedReport(page);
+              await page.screenshot({path:`ux-polish-audit/page-${name}.png`,fullPage:true});
+              await page.close();
+            }
+
+            const desktop=await context.newPage();
+            report.miniCart.desktop=await inspectMiniCart(desktop,product.id,{width:1440,height:1100},'desktop');
+            report.producers.desktop=await inspectProducers(desktop,{width:1440,height:1100},'desktop');
+            await desktop.close();
+
+            const mobile=await context.newPage();
+            report.miniCart.mobile=await inspectMiniCart(mobile,product.id,{width:390,height:844,isMobile:true},'mobile');
+            report.producers.mobile=await inspectProducers(mobile,{width:390,height:844,isMobile:true},'mobile');
+            await mobile.close();
+
+            fs.writeFileSync('ux-polish-audit/report.json',JSON.stringify(report,null,2));
+            console.log(JSON.stringify(report,null,2));
+            await browser.close();
+          })().catch((error)=>{console.error(error);process.exit(1);});
+          NODE
+          node audit.cjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ux-polish-audit
+          path: ux-polish-audit/
+          retention-days: 14
