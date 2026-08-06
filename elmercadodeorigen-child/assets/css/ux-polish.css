@@ -1,0 +1,47 @@
+/* Correcciones finales compartidas de interfaz. */
+
+.elmercado-child-theme #shop-cart-sidebar .woocommerce-mini-cart-item > a.remove,
+.elmercado-child-theme #shop-cart-sidebar .woocommerce-mini-cart-item > a.remove_from_cart_button {
+	opacity: 1 !important;
+	visibility: visible !important;
+	pointer-events: auto !important;
+	z-index: 4 !important;
+}
+
+.elmercado-child-theme #shop-cart-sidebar .woocommerce-mini-cart-item > a.emo-mini-cart-product-link {
+	display: grid !important;
+	grid-template-columns: 72px minmax(0, 1fr) !important;
+	grid-template-rows: auto !important;
+	align-items: center !important;
+	gap: 0.9rem !important;
+	overflow: visible !important;
+}
+
+.elmercado-child-theme #shop-cart-sidebar .emo-mini-cart-product-link > img {
+	grid-column: 1 !important;
+	grid-row: 1 !important;
+}
+
+.elmercado-child-theme #shop-cart-sidebar .emo-mini-cart-product-name {
+	grid-column: 2 !important;
+	grid-row: 1 !important;
+	display: block !important;
+	min-width: 0 !important;
+	max-width: none !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	color: #173f32 !important;
+	font: inherit !important;
+	line-height: 1.28 !important;
+	overflow: visible !important;
+	overflow-wrap: anywhere !important;
+	text-overflow: clip !important;
+	white-space: normal !important;
+}
+
+@media (max-width: 767px) {
+	.elmercado-child-theme #shop-cart-sidebar .woocommerce-mini-cart-item > a.emo-mini-cart-product-link {
+		grid-template-columns: 62px minmax(0, 1fr) !important;
+		gap: 0.75rem !important;
+	}
+}
