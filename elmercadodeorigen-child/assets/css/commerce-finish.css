@@ -9,6 +9,16 @@
 	display: none !important;
 }
 
+/*
+ * La página histórica del carrito contiene bloques promocionales después del
+ * shortcode de WooCommerce. En una superficie transaccional se conserva solo el
+ * proceso de compra y se evita que esos módulos alarguen o distraigan la página.
+ */
+.elmercado-child-theme.woocommerce-cart .entry-content > .woocommerce ~ *,
+.elmercado-child-theme.woocommerce-checkout .entry-content > .woocommerce ~ * {
+	display: none !important;
+}
+
 .elmercado-child-theme.woocommerce-cart .entry-content,
 .elmercado-child-theme.woocommerce-checkout .entry-content {
 	max-width: none !important;
