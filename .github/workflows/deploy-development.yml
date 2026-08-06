@@ -143,10 +143,10 @@ jobs:
             php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
           fi
           [ -x "$php_bin" ] || { echo 'No usable PHP CLI binary found.' >&2; exit 1; }
-          "$php_bin" "$wp_bin" theme activate elmercadodeorigen-child --path="$wp_path"
-          active="$("$php_bin" "$wp_bin" option get stylesheet --path="$wp_path" --skip-plugins --skip-themes)"
+          "$php_bin" "$wp_bin" theme activate elmercadodeorigen-child --path="$wp_path" --allow-root
+          active="$("$php_bin" "$wp_bin" option get stylesheet --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
           [ "$active" = 'elmercadodeorigen-child' ]
-          "$php_bin" "$wp_bin" cache flush --path="$wp_path" || true
+          "$php_bin" "$wp_bin" cache flush --path="$wp_path" --allow-root || true
           REMOTE
 
       - name: Verify the public staging URL
