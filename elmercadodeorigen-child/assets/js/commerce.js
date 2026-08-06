@@ -77,7 +77,24 @@
 
 			const productLink = [...item.querySelectorAll(':scope > a')].find((link) => !link.matches('.remove, .remove_from_cart_button'));
 			const productName = productLink?.textContent?.trim().replace(/\s+/g, ' ') || 'producto';
-			productLink?.classList.add('emo-mini-cart-product-link');
+
+			if (productLink) {
+				productLink.classList.add('emo-mini-cart-product-link');
+
+				let nameNode = productLink.querySelector('.emo-mini-cart-product-name');
+				if (!nameNode) {
+					const directTextNodes = [...productLink.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE);
+					const directName = directTextNodes.map((node) => node.textContent).join(' ').trim().replace(/\s+/g, ' ');
+
+					if (directName) {
+						nameNode = document.createElement('span');
+						nameNode.className = 'emo-mini-cart-product-name';
+						nameNode.textContent = directName;
+						directTextNodes.forEach((node) => node.remove());
+						productLink.append(nameNode);
+					}
+				}
+			}
 
 			const removeLinks = [...item.querySelectorAll(':scope > a.remove, :scope > a.remove_from_cart_button')];
 			removeLinks.slice(1).forEach((duplicate) => duplicate.remove());
