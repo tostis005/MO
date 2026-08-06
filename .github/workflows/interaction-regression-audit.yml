@@ -29,8 +29,10 @@ jobs:
           const puppeteer=require('puppeteer-core');
           const base='https://dev.elmercadodeorigen.com';
           const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-          const visible=async(page,sel)=>page.$$eval(sel,els=>els.some(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&+s.opacity>0&&r.width>0&&r.height>0})).catch(()=>false);
-          const rect=async(page,sel)=>page.$eval(sel,e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:s.display,fontSize:s.fontSize,lineHeight:s.lineHeight,color:s.color,background:s.backgroundColor}}).catch(()=>null);
+          const isVisible=e=>{if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&+s.opacity>0&&r.width>0&&r.height>0};
+          const visible=async(page,sel)=>page.$$eval(sel,els=>els.some(isVisible)).catch(()=>false);
+          const visibleHandle=async(page,sel)=>{const els=await page.$$(sel);for(const el of els){if(await el.evaluate(isVisible))return el}return null};
+          const clickVisible=async(page,sel)=>{const el=await visibleHandle(page,sel);if(!el)return false;await el.evaluate(e=>e.scrollIntoView({block:'center',inline:'center'}));await sleep(100);await el.click();return true};
           async function prep(page,path,vp={width:1440,height:1000}){await page.setViewport(vp);await page.goto(`${base}${path}${path.includes('?')?'&':'?'}qa=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}'});await sleep(700)}
           (async()=>{
             const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-gpu']});
@@ -41,14 +43,14 @@ jobs:
 
             const mobile=await context.newPage();mobile.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'mobile',text:m.text()})});
             await prep(mobile,'/contacto/',{width:390,height:844,isMobile:true,deviceScaleFactor:1});
-            const menuTrigger=await mobile.$('.menu-toggle,.mobile-menu-toggle,.toggle-sidebar-menu,.site-menu-toggle,[aria-controls="site-navigation"]');
-            if(menuTrigger){await menuTrigger.click();await sleep(500)}
-            report.tests.mobileMenu={trigger:!!menuTrigger,open:await visible(mobile,'.mobile-menu,.site-navigation.active,.main-navigation.toggled,.sidebar-menu,.offcanvas-menu')};
-            if(!menuTrigger)report.failures.push('mobile menu trigger missing');
-            const searchTrigger=await mobile.$('.header-search-icon,.search-icon,.site-search-toggle,[aria-label*="Buscar" i]');
-            if(searchTrigger){await searchTrigger.click();await sleep(500)}
-            report.tests.mobileSearch={trigger:!!searchTrigger,field:await visible(mobile,'input[type="search"]')};
-            if(!searchTrigger)report.failures.push('mobile search trigger missing');
+            const menuClicked=await clickVisible(mobile,'.menu-toggle,.mobile-menu-toggle,.toggle-sidebar-menu,.site-menu-toggle,[aria-controls="site-navigation"]');
+            if(menuClicked)await sleep(500);
+            report.tests.mobileMenu={trigger:menuClicked,open:await visible(mobile,'.mobile-menu,.site-navigation.active,.main-navigation.toggled,.sidebar-menu,.offcanvas-menu')};
+            if(!menuClicked)report.failures.push('mobile menu trigger missing');
+            const searchClicked=await clickVisible(mobile,'.header-search-icon,.search-icon,.site-search-toggle,[aria-label*="Buscar" i]');
+            if(searchClicked)await sleep(500);
+            report.tests.mobileSearch={trigger:searchClicked,field:await visible(mobile,'input[type="search"]')};
+            if(!searchClicked)report.failures.push('mobile search trigger missing');
             await mobile.close();
 
             const shop=await context.newPage();shop.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'shop',text:m.text()})});await prep(shop,'/tienda/');
@@ -67,14 +69,14 @@ jobs:
             if(product){
               const cart=await context.newPage();cart.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'cart',text:m.text()})});
               await prep(cart,`/contacto/?add-to-cart=${product.id}`);await prep(cart,'/contacto/');
-              const cartTrigger=await cart.$('.site-tools .shopping-cart,.site-tools .shopping-bag-button,a.shopping-cart,a.shopping-bag-button');if(cartTrigger){await cartTrigger.click();await sleep(700)}
-              report.tests.minicart=await cart.evaluate(()=>{const panel=[...document.querySelectorAll('#shop-cart-sidebar,.cart-sidebar')].find(e=>e.getBoundingClientRect().width>0);if(!panel)return null;const btns=[...panel.querySelectorAll('.mini-cart-product-qty')];const input=panel.querySelector('input.qty,.quantity input');const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),text:(e.value||e.textContent||'').trim()}};const sold=panel.querySelector('.variation-Vendidopor,.wcfmmp_sold_by_label');const vendor=sold?.nextElementSibling||sold?.querySelector('a');return{buttons:btns.map(box),input:box(input),sold:box(sold),vendor:box(vendor)}});
+              const cartClicked=await clickVisible(cart,'.site-tools .shopping-cart,.site-tools .shopping-bag-button,a.shopping-cart,a.shopping-bag-button');if(cartClicked)await sleep(700);
+              report.tests.minicart=await cart.evaluate(()=>{const panel=[...document.querySelectorAll('#shop-cart-sidebar,.cart-sidebar')].find(e=>isVisible(e));if(!panel)return null;const btns=[...panel.querySelectorAll('.mini-cart-product-qty')].filter(isVisible);const input=[...panel.querySelectorAll('input.qty,.quantity input')].find(isVisible);const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),text:(e.value||e.textContent||'').trim()}};const sold=panel.querySelector('.variation-Vendidopor,.wcfmmp_sold_by_label');const vendor=sold?.nextElementSibling||sold?.querySelector('a');return{buttons:btns.map(box),input:box(input),sold:box(sold),vendor:box(vendor)}});
               const mc=report.tests.minicart;if(!mc)report.failures.push('minicart did not open');else{if(mc.buttons.length<2||!mc.input)report.failures.push('minicart quantity controls incomplete');if(mc.input&&mc.buttons.some(b=>Math.abs((b.y+b.h/2)-(mc.input.y+mc.input.h/2))>2))report.failures.push('minicart controls vertically misaligned');if(mc.sold&&mc.vendor&&mc.vendor.x-mc.sold.x-mc.sold.w<5)report.failures.push('minicart sold-by gap too small');}
-              await prep(cart,'/carrito/');const coupon=await cart.$('input[name="coupon_code"]');if(coupon){await coupon.type('CUPON-INVALIDO-XYZ');const apply=await cart.$('button[name="apply_coupon"]');if(apply){await apply.click();await sleep(1200)}}report.tests.invalidCoupon={field:!!coupon,error:await visible(cart,'.woocommerce-error,.woocommerce-notices-wrapper .woocommerce-error')};if(coupon&&!report.tests.invalidCoupon.error)report.failures.push('invalid coupon error not visible');
+              await prep(cart,'/carrito/');const coupon=await visibleHandle(cart,'input[name="coupon_code"]');if(coupon){await coupon.type('CUPON-INVALIDO-XYZ');const applied=await clickVisible(cart,'button[name="apply_coupon"]');if(applied)await sleep(1200)}report.tests.invalidCoupon={field:!!coupon,error:await visible(cart,'.woocommerce-error,.woocommerce-notices-wrapper .woocommerce-error')};if(coupon&&!report.tests.invalidCoupon.error)report.failures.push('invalid coupon error not visible');
               await cart.close();
             }
 
-            const contact=await context.newPage();contact.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'contact',text:m.text()})});await prep(contact,'/contacto/');const submit=await contact.$('.wpcf7-form input[type="submit"],.wpcf7-form button[type="submit"]');if(submit){await submit.click();await sleep(1200)}report.tests.contactValidation={submit:!!submit,errors:await contact.$$eval('.wpcf7-not-valid-tip,.wpcf7-response-output',els=>els.filter(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'}).map(e=>(e.textContent||'').trim()))};if(submit&&!report.tests.contactValidation.errors.length)report.failures.push('contact validation messages missing');await contact.close();
+            const contact=await context.newPage();contact.on('console',m=>{if(m.type()==='error')report.consoleErrors.push({page:'contact',text:m.text()})});await prep(contact,'/contacto/');const submitClicked=await clickVisible(contact,'.wpcf7-form input[type="submit"],.wpcf7-form button[type="submit"]');if(submitClicked)await sleep(1200);report.tests.contactValidation={submit:submitClicked,errors:await contact.$$eval('.wpcf7-not-valid-tip,.wpcf7-response-output',els=>els.filter(isVisible).map(e=>(e.textContent||'').trim()))};if(submitClicked&&!report.tests.contactValidation.errors.length)report.failures.push('contact validation messages missing');await contact.close();
 
             const normalizedErrors=report.consoleErrors.filter(e=>!e.text.includes('google-analytics')&&!e.text.includes('ERR_BLOCKED_BY_CLIENT'));
             if(normalizedErrors.length)report.failures.push(`console errors ${normalizedErrors.length}`);
