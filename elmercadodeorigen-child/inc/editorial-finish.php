@@ -113,11 +113,37 @@ add_action(
 						important(wrapper, 'float', 'none');
 						important(wrapper, 'transform', 'none');
 					}
+
+					/* La consulta pertenece al plugin de vendedor y no forma parte del directorio público. */
+					card.querySelectorAll('.store-enquiry, .wcfm_catalog_enquiry').forEach((control) => {
+						const container = control.closest('.store-enquiry');
+						(container || control).remove();
+					});
+
+					const producerName = card.querySelector('.store-data h2, .store-data h2 a')?.textContent?.trim() || 'el productor';
+					const visitButton = card.querySelector('a.wcfmmp-visit-store');
+
+					if (visitButton) {
+						visitButton.textContent = 'Visitar';
+						visitButton.setAttribute('aria-label', `Visitar la tienda de ${producerName}`);
+						visitButton.setAttribute('title', `Visitar la tienda de ${producerName}`);
+						important(visitButton, 'display', 'inline-flex');
+						important(visitButton, 'align-items', 'center');
+						important(visitButton, 'justify-content', 'center');
+						important(visitButton, 'white-space', 'nowrap');
+						important(visitButton, 'line-height', '1');
+						important(visitButton, 'min-height', '44px');
+					}
 				});
 			};
 
+			const observer = new MutationObserver(() => window.requestAnimationFrame(normalize));
+			const root = document.querySelector('#wcfmmp-stores-wrap');
+			if (root) observer.observe(root, { childList: true, subtree: true });
+
 			[0, 300, 900, 1800, 3000].forEach((delay) => window.setTimeout(normalize, delay));
 			window.addEventListener('resize', normalize, { passive: true });
+			window.setTimeout(() => observer.disconnect(), 6000);
 		})();
 		</script>
 		<?php
