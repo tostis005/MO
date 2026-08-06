@@ -80,6 +80,8 @@ add_filter(
 		}
 
 		$deferred_fragments = array(
+			'/wp-includes/js/jquery/jquery.min.js',
+			'/wp-includes/js/jquery/jquery-migrate.min.js',
 			'/cookie-law-info-public.js',
 			'/ajax-search-for-woocommerce/assets/js/search.min.js',
 			'/woocommerce/assets/js/sourcebuster/',
