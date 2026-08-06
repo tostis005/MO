@@ -1,0 +1,98 @@
+name: Cart distraction diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cart-distraction-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect visible cart distractions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cart-diagnostic
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > diagnostic.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          (async () => {
+            const browser = await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
+            const context = await browser.createBrowserContext();
+            const page = await context.newPage();
+            await page.setViewport({width:1440,height:1200});
+            await page.goto(`${base}/tienda/?add-to-cart=5348&diagnostic=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
+            await page.goto(`${base}/carrito/?diagnostic=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
+            await sleep(3500);
+
+            const report = await page.evaluate(() => {
+              const visible = (node) => {
+                if (!node) return false;
+                const s=getComputedStyle(node),r=node.getBoundingClientRect();
+                return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0;
+              };
+              const describe = (node) => {
+                const s=getComputedStyle(node),r=node.getBoundingClientRect();
+                return {
+                  tag:node.tagName,
+                  id:node.id,
+                  className:typeof node.className==='string'?node.className:'',
+                  role:node.getAttribute('role'),
+                  ariaHidden:node.getAttribute('aria-hidden'),
+                  style:node.getAttribute('style'),
+                  position:s.position,
+                  zIndex:s.zIndex,
+                  display:s.display,
+                  visibility:s.visibility,
+                  opacity:s.opacity,
+                  rect:{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)},
+                  text:(node.innerText||node.textContent||'').trim().slice(0,600)
+                };
+              };
+              const chain = (node) => {
+                const result=[];
+                let current=node;
+                for(let i=0;current&&i<7;i++,current=current.parentElement) result.push(describe(current));
+                return result;
+              };
+              const all=[...document.querySelectorAll('body *')];
+              const fixed=all.filter((node)=>visible(node)&&['fixed','sticky'].includes(getComputedStyle(node).position)).map(describe);
+              const popupText=all.find((node)=>visible(node)&&/5% DE DESCUENTO EN TU PRIMERA COMPRA/i.test(node.innerText||''));
+              const trustText=all.find((node)=>visible(node)&&/Trustpilot/i.test(node.innerText||''));
+              const googleText=all.find((node)=>visible(node)&&/214 evaluaciones/i.test(node.innerText||''));
+              const entry=document.querySelector('.entry-content');
+              return {
+                bodyClass:document.body.className,
+                fixed,
+                popupChain:popupText?chain(popupText):[],
+                trustChain:trustText?chain(trustText):[],
+                googleChain:googleText?chain(googleText):[],
+                entryChildren:entry?[...entry.children].map(describe):[],
+                wooAncestors:document.querySelector('.entry-content .woocommerce')?chain(document.querySelector('.entry-content .woocommerce')):[],
+                scripts:[...document.querySelectorAll('script[src]')].map((node)=>node.src).filter((src)=>/hustle|popup|trust|review|mail|newsletter/i.test(src))
+              };
+            });
+            fs.writeFileSync('cart-diagnostic/report.json',JSON.stringify(report,null,2));
+            await page.screenshot({path:'cart-diagnostic/cart.png',fullPage:true});
+            console.log(JSON.stringify(report,null,2));
+            await browser.close();
+          })().catch((error)=>{console.error(error);process.exit(1);});
+          NODE
+          node diagnostic.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cart-distraction-diagnostic
+          path: cart-diagnostic/
+          retention-days: 7
