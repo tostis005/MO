@@ -30,6 +30,35 @@ add_action(
 				});
 			}
 
+			/* Los SVG repetidos del logotipo conservan referencias internas únicas. */
+			const seenIds = new Set();
+			let duplicateIndex = 0;
+			document.querySelectorAll('[id]').forEach((element) => {
+				const originalId = element.id;
+				if (!seenIds.has(originalId)) {
+					seenIds.add(originalId);
+					return;
+				}
+
+				const svg = element.closest('svg');
+				if (!svg) {
+					return;
+				}
+
+				duplicateIndex += 1;
+				const replacementId = `${originalId}-emo-${duplicateIndex}`;
+				element.id = replacementId;
+
+				svg.querySelectorAll('*').forEach((node) => {
+					[...node.attributes].forEach((attribute) => {
+						const updated = attribute.value
+							.replaceAll(`#${originalId}`, `#${replacementId}`)
+							.replaceAll(`url(${originalId})`, `url(${replacementId})`);
+						if (updated !== attribute.value) node.setAttribute(attribute.name, updated);
+					});
+				});
+			});
+
 			/* En el archivo del blog el nombre del sitio no debe competir con el H1 editorial. */
 			const visibleHeadingOne = [...document.querySelectorAll('h1')].filter((heading) => {
 				const style = getComputedStyle(heading);
@@ -45,6 +74,21 @@ add_action(
 				replacement.append(...brandingHeading.childNodes);
 				brandingHeading.replaceWith(replacement);
 			}
+
+			/* Cualquier tarjeta editorial sin imagen recibe el acabado de marca. */
+			document.querySelectorAll('.emo-article-card__media').forEach((media) => {
+				if (media.querySelector('img')) {
+					return;
+				}
+
+				let placeholder = media.querySelector('.emo-article-card__placeholder');
+				if (!placeholder) {
+					placeholder = media.querySelector(':scope > span') || document.createElement('span');
+					if (!placeholder.isConnected) media.append(placeholder);
+				}
+				placeholder.classList.add('emo-article-card__placeholder');
+				placeholder.setAttribute('aria-hidden', 'true');
+			});
 
 			/* Los SVG de los controles son decorativos; el enlace aporta el nombre. */
 			document.querySelectorAll('.site-tools svg, .emo-announcement svg, #shop-cart-sidebar a.remove svg').forEach((icon) => {
