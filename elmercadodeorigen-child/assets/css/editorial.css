@@ -1,0 +1,877 @@
+/*
+ * Capa editorial global de El Mercado de Origen.
+ * Refuerza una identidad basada en producto, origen y relación directa.
+ */
+
+/* El contenido nunca depende de JavaScript para ser visible. */
+.elmercado-child-theme .emo-reveal,
+.elmercado-child-theme .emo-reveal.is-visible {
+	opacity: 1 !important;
+	transform: none !important;
+	transition-delay: 0ms !important;
+}
+
+/* Cabeceras interiores más compactas y consistentes. */
+.elmercado-child-theme:not(.elmercado-premium-home) .page-header {
+	padding-block: clamp(2.6rem, 5vw, 4.8rem) !important;
+	background:
+		radial-gradient(circle at 82% 18%, rgba(201, 109, 69, 0.1), transparent 23%),
+		linear-gradient(135deg, #f3ecdf, #f8f5ee) !important;
+	border-bottom: 1px solid rgba(13, 33, 27, 0.08);
+}
+
+.elmercado-child-theme:not(.elmercado-premium-home) .page-header .entry-title {
+	font-size: clamp(2.8rem, 6vw, 5.4rem) !important;
+	letter-spacing: -0.055em !important;
+}
+
+.elmercado-child-theme:not(.elmercado-premium-home) .page-header .breadcrumbs,
+.elmercado-child-theme:not(.elmercado-premium-home) .page-header .woocommerce-breadcrumb {
+	font-size: 0.78rem !important;
+	font-weight: 700;
+}
+
+/* Portada: lenguaje visual estable y secciones sin huecos de animación. */
+.elmercado-premium-home .emo-categories,
+.elmercado-premium-home .emo-featured-products,
+.elmercado-premium-home .emo-story,
+.elmercado-premium-home .emo-vendor-cta {
+	min-height: 0 !important;
+}
+
+.elmercado-premium-home .emo-categories .emo-category-grid,
+.elmercado-premium-home .emo-story__grid,
+.elmercado-premium-home .emo-vendor-cta__inner {
+	opacity: 1 !important;
+	visibility: visible !important;
+	transform: none !important;
+}
+
+/* Introducción de tienda. */
+.elmercado-child-theme.woocommerce-shop .page-header .entry-title {
+	font-size: clamp(3rem, 6vw, 5.2rem) !important;
+}
+
+.emo-shop-lead {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 2rem;
+	margin: 0 0 1.25rem;
+	padding: 0.2rem 0.15rem;
+}
+
+.emo-shop-lead .emo-kicker {
+	margin: 0;
+}
+
+.emo-shop-lead p {
+	max-width: 560px;
+	margin: 0;
+	color: var(--emo-muted);
+	font-size: 0.96rem;
+	line-height: 1.65;
+	text-align: right;
+}
+
+/* Páginas de historia y proyecto. */
+.elmercado-about-page .site-content {
+	padding-block: clamp(3.5rem, 7vw, 7rem) !important;
+}
+
+.emo-about-layout {
+	width: min(100%, 1180px);
+	margin-inline: auto;
+}
+
+.emo-about-intro {
+	display: grid;
+	grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.72fr);
+	align-items: end;
+	gap: clamp(2rem, 7vw, 7rem);
+	margin-bottom: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.emo-about-intro h2 {
+	max-width: 720px;
+	margin: 0;
+	font-size: clamp(2.6rem, 5vw, 4.8rem);
+}
+
+.emo-about-intro > p {
+	margin: 0 0 0.35rem;
+	color: var(--emo-muted);
+	font-size: clamp(1.02rem, 1.5vw, 1.2rem);
+	line-height: 1.75;
+}
+
+.emo-about-values {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 1rem;
+	margin-bottom: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.emo-about-values article {
+	padding: clamp(1.45rem, 3vw, 2.2rem);
+	background: var(--emo-forest-950);
+	border-radius: var(--emo-radius-md);
+	box-shadow: var(--emo-shadow-sm);
+	color: rgba(255, 255, 255, 0.78);
+}
+
+.emo-about-values article > span {
+	display: block;
+	margin-bottom: 2.5rem;
+	color: var(--emo-honey);
+	font-size: 0.72rem;
+	font-weight: 800;
+	letter-spacing: 0.14em;
+}
+
+.emo-about-values h3 {
+	margin-bottom: 0.65rem;
+	color: #fff;
+	font-size: clamp(1.45rem, 2.2vw, 2rem);
+}
+
+.emo-about-values p {
+	margin: 0;
+	color: rgba(255, 255, 255, 0.72);
+}
+
+.emo-about-copy {
+	max-width: 900px;
+	margin-inline: auto;
+	padding: clamp(2rem, 5vw, 4.5rem);
+	background: #fff;
+	border: 1px solid rgba(13, 33, 27, 0.08);
+	border-radius: var(--emo-radius-lg);
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.emo-about-copy > p {
+	margin-bottom: 1.25rem;
+	color: #35413b;
+	font-size: 1.02rem;
+	line-height: 1.8;
+}
+
+.emo-about-copy > p:first-of-type {
+	color: var(--emo-forest-950);
+	font-size: clamp(1.2rem, 2vw, 1.48rem);
+	font-weight: 600;
+	line-height: 1.55;
+}
+
+/* Contacto: contenido y formulario como una única composición. */
+.elmercado-contact-page .site-content {
+	padding-block: clamp(3.5rem, 7vw, 7rem) !important;
+}
+
+.emo-contact-layout {
+	display: grid;
+	grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.28fr);
+	gap: clamp(1rem, 3vw, 2rem);
+	width: min(100%, 1120px);
+	margin-inline: auto;
+}
+
+.emo-contact-aside,
+.emo-contact-form {
+	border-radius: var(--emo-radius-lg);
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.emo-contact-aside {
+	align-self: start;
+	padding: clamp(2rem, 5vw, 4rem);
+	background:
+		radial-gradient(circle at 90% 8%, rgba(215, 168, 79, 0.2), transparent 28%),
+		var(--emo-forest-950);
+	color: rgba(255, 255, 255, 0.76);
+}
+
+.emo-contact-aside h2 {
+	margin-bottom: 1.25rem;
+	color: #fff;
+	font-size: clamp(2.3rem, 4.5vw, 4rem);
+}
+
+.emo-contact-aside > p {
+	margin-bottom: 2rem;
+	color: rgba(255, 255, 255, 0.74);
+	font-size: 1.02rem;
+	line-height: 1.75;
+}
+
+.emo-contact-points {
+	display: grid;
+	gap: 0.8rem;
+}
+
+.emo-contact-points span {
+	display: flex;
+	align-items: center;
+	gap: 0.7rem;
+	font-size: 0.86rem;
+	font-weight: 700;
+}
+
+.emo-contact-points span::before {
+	width: 8px;
+	height: 8px;
+	background: var(--emo-honey);
+	border-radius: 999px;
+	content: "";
+}
+
+.emo-contact-form {
+	padding: clamp(1.7rem, 4vw, 3.5rem);
+	background: #fff;
+	border: 1px solid rgba(13, 33, 27, 0.08);
+}
+
+.emo-contact-form h2,
+.emo-contact-form h3 {
+	margin-bottom: 1.5rem;
+	font-size: clamp(2rem, 3vw, 3rem);
+}
+
+.emo-contact-form form {
+	margin: 0 !important;
+}
+
+.emo-contact-form label {
+	color: var(--emo-forest-950);
+	font-size: 0.78rem;
+	font-weight: 800;
+}
+
+.emo-contact-form input:not([type="submit"]),
+.emo-contact-form textarea,
+.emo-contact-form select {
+	width: 100%;
+	background: #faf9f5 !important;
+	border-color: rgba(13, 33, 27, 0.12) !important;
+	border-radius: var(--emo-radius-sm) !important;
+}
+
+.emo-contact-form textarea {
+	min-height: 220px;
+}
+
+/* Productores: introducción de marca y tarjetas más compactas. */
+.emo-producers-intro {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(300px, 0.72fr);
+	align-items: end;
+	gap: clamp(2rem, 7vw, 7rem);
+	width: min(100%, 1180px);
+	margin: 0 auto clamp(2rem, 5vw, 4rem);
+}
+
+.emo-producers-intro h2 {
+	margin: 0;
+	font-size: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.emo-producers-intro > p {
+	margin: 0 0 0.35rem;
+	color: var(--emo-muted);
+	font-size: 1.04rem;
+	line-height: 1.75;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
+	display: grid !important;
+	grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+	gap: 1.25rem !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap li.wcfmmp-single-store {
+	width: auto !important;
+	max-width: none !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap .store-wrapper {
+	display: grid !important;
+	grid-template-columns: minmax(180px, 0.92fr) minmax(0, 1.08fr) !important;
+	min-height: 260px !important;
+	border-radius: var(--emo-radius-md) !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap .store-content {
+	height: 100% !important;
+	min-height: 260px !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap .store-footer {
+	min-height: 0 !important;
+	align-content: center !important;
+	padding: 1.5rem !important;
+	border-top: 0 !important;
+	border-left: 1px solid var(--emo-line) !important;
+}
+
+.elmercado-child-theme #wcfmmp-stores-wrap .store-footer h2,
+.elmercado-child-theme #wcfmmp-stores-wrap .store-footer h2 a {
+	font-size: clamp(1.5rem, 2.4vw, 2.1rem) !important;
+}
+
+/* Estado vacío o integración no disponible. */
+.emo-empty-state {
+	max-width: 760px;
+	margin: 2rem auto 5rem;
+	padding: clamp(2rem, 5vw, 4rem);
+	background: #fff;
+	border: 1px solid var(--emo-line);
+	border-radius: var(--emo-radius-lg);
+	box-shadow: var(--emo-shadow-sm);
+	text-align: center;
+}
+
+.emo-empty-state h2 {
+	margin-bottom: 1rem;
+}
+
+.emo-empty-state p {
+	max-width: 520px;
+	margin: 0 auto 1.6rem;
+	color: var(--emo-muted);
+}
+
+/* =============================
+   Cuaderno editorial / Blog
+   ============================= */
+.elmercado-editorial-content .page-header,
+body.blog .page-header,
+body.single-post .page-header,
+body.category .page-header,
+body.tag .page-header,
+body.date .page-header,
+body.author .page-header {
+	display: none !important;
+}
+
+.emo-journal,
+.emo-article-page {
+	background: var(--emo-paper);
+}
+
+.emo-journal-hero,
+.emo-article-hero {
+	position: relative;
+	overflow: hidden;
+	background:
+		radial-gradient(circle at 82% 22%, rgba(215, 168, 79, 0.2), transparent 24%),
+		radial-gradient(circle at 8% 88%, rgba(201, 109, 69, 0.16), transparent 27%),
+		var(--emo-forest-950);
+	color: #fff;
+}
+
+.emo-journal-hero::after,
+.emo-article-hero::after {
+	position: absolute;
+	right: -7rem;
+	bottom: -10rem;
+	width: 28rem;
+	height: 28rem;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 50%;
+	box-shadow: 0 0 0 4rem rgba(255, 255, 255, 0.025), 0 0 0 8rem rgba(255, 255, 255, 0.018);
+	content: "";
+}
+
+.emo-journal-hero__inner,
+.emo-article-hero__inner {
+	position: relative;
+	z-index: 1;
+	padding-block: clamp(4.5rem, 9vw, 8.5rem);
+}
+
+.emo-journal-hero h1,
+.emo-article-hero h1 {
+	max-width: 940px;
+	margin-bottom: 1.25rem;
+	color: #fff;
+	font-size: clamp(3.2rem, 8vw, 7.2rem);
+	letter-spacing: -0.06em;
+}
+
+.emo-journal-hero p,
+.emo-article-hero__lead {
+	max-width: 680px;
+	margin: 0;
+	color: rgba(255, 255, 255, 0.72);
+	font-size: clamp(1.02rem, 1.8vw, 1.24rem);
+	line-height: 1.75;
+}
+
+.emo-journal-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1.5rem;
+	margin-bottom: 2rem;
+}
+
+.emo-journal-toolbar h2 {
+	margin: 0;
+	font-size: clamp(2.1rem, 4vw, 3.8rem);
+}
+
+.emo-journal-categories {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+.emo-journal-categories a {
+	display: inline-flex;
+	min-height: 38px;
+	align-items: center;
+	padding: 0.55rem 0.9rem;
+	background: rgba(255, 255, 255, 0.78);
+	border: 1px solid rgba(13, 33, 27, 0.1);
+	border-radius: 999px;
+	color: var(--emo-forest-900);
+	font-size: 0.75rem;
+	font-weight: 800;
+	text-decoration: none;
+}
+
+.emo-journal-categories a:hover,
+.emo-journal-categories a:focus-visible {
+	background: var(--emo-forest-900);
+	border-color: var(--emo-forest-900);
+	color: #fff;
+}
+
+.emo-journal-listing {
+	padding-block: clamp(3.5rem, 7vw, 7rem);
+}
+
+.emo-journal-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: clamp(1rem, 2.5vw, 1.6rem);
+}
+
+.emo-article-card {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	background: #fff;
+	border: 1px solid rgba(13, 33, 27, 0.09);
+	border-radius: var(--emo-radius-md);
+	box-shadow: var(--emo-shadow-xs);
+	overflow: hidden;
+	transition: transform var(--emo-normal), box-shadow var(--emo-normal), border-color var(--emo-normal);
+}
+
+.emo-article-card:hover {
+	border-color: rgba(47, 102, 80, 0.22);
+	box-shadow: var(--emo-shadow-md);
+	transform: translateY(-6px);
+}
+
+.emo-article-card--featured {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: minmax(0, 1.12fr) minmax(360px, 0.88fr);
+	min-height: 460px;
+}
+
+.emo-article-card__media {
+	display: block;
+	min-height: 280px;
+	background: var(--emo-paper-deep);
+	overflow: hidden;
+}
+
+.emo-article-card--featured .emo-article-card__media {
+	min-height: 100%;
+}
+
+.emo-article-card__media img,
+.emo-article-card__placeholder {
+	display: block;
+	width: 100%;
+	height: 100%;
+	min-height: inherit;
+	object-fit: cover;
+	transition: transform 700ms var(--emo-ease);
+}
+
+.emo-article-card__placeholder {
+	background:
+		linear-gradient(135deg, rgba(47, 102, 80, 0.18), rgba(201, 109, 69, 0.13)),
+		var(--emo-paper-deep);
+}
+
+.emo-article-card:hover .emo-article-card__media img {
+	transform: scale(1.035);
+}
+
+.emo-article-card__body {
+	display: flex;
+	min-width: 0;
+	flex: 1;
+	flex-direction: column;
+	padding: clamp(1.35rem, 3vw, 2.3rem);
+}
+
+.emo-article-card--featured .emo-article-card__body {
+	justify-content: center;
+	padding: clamp(2rem, 5vw, 4rem);
+}
+
+.emo-article-card__meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.45rem 0.8rem;
+	margin-bottom: 1rem;
+	color: var(--emo-muted);
+	font-size: 0.72rem;
+	font-weight: 700;
+}
+
+.emo-article-card__category {
+	color: var(--emo-clay-dark) !important;
+	font-weight: 850;
+	letter-spacing: 0.08em;
+	text-decoration: none;
+	text-transform: uppercase;
+}
+
+.emo-article-card h2 {
+	margin-bottom: 0.9rem;
+	font-size: clamp(1.75rem, 3.2vw, 3rem);
+}
+
+.emo-article-card h2 a {
+	color: var(--emo-forest-950);
+	text-decoration: none;
+}
+
+.emo-article-card p {
+	margin-bottom: 1.4rem;
+	color: var(--emo-muted);
+	line-height: 1.72;
+}
+
+.emo-article-card__link {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-top: auto;
+	color: var(--emo-forest-900) !important;
+	font-size: 0.82rem;
+	font-weight: 850;
+	text-decoration: none;
+}
+
+.emo-article-card__link span {
+	font-size: 1.15rem;
+	transition: transform var(--emo-fast);
+}
+
+.emo-article-card__link:hover span {
+	transform: translateX(4px);
+}
+
+.emo-journal-pagination {
+	margin-top: 2.5rem;
+}
+
+.emo-journal-pagination .nav-links {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.45rem;
+}
+
+.emo-journal-pagination .page-numbers {
+	display: grid;
+	width: 42px;
+	height: 42px;
+	place-items: center;
+	background: #fff;
+	border: 1px solid var(--emo-line);
+	border-radius: 999px;
+	font-size: 0.8rem;
+	font-weight: 800;
+	text-decoration: none;
+}
+
+.emo-journal-pagination .current {
+	background: var(--emo-forest-900);
+	border-color: var(--emo-forest-900);
+	color: #fff;
+}
+
+/* Artículo individual. */
+.emo-article-hero__meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.65rem 1rem;
+	margin-bottom: 1.3rem;
+	color: rgba(255, 255, 255, 0.66);
+	font-size: 0.76rem;
+	font-weight: 750;
+}
+
+.emo-article-hero__meta a {
+	color: #efc6ae;
+	font-weight: 850;
+	letter-spacing: 0.08em;
+	text-decoration: none;
+	text-transform: uppercase;
+}
+
+.emo-article-main {
+	padding-block: clamp(2.5rem, 6vw, 6rem);
+}
+
+.emo-article-featured {
+	width: min(100%, 1180px);
+	margin: 0 auto clamp(2rem, 5vw, 4rem);
+	border-radius: var(--emo-radius-lg);
+	box-shadow: var(--emo-shadow-md);
+	overflow: hidden;
+}
+
+.emo-article-featured img {
+	display: block;
+	width: 100%;
+	max-height: 680px;
+	object-fit: cover;
+}
+
+.emo-article-content {
+	width: min(100%, 900px);
+	margin-inline: auto;
+	padding: clamp(1.6rem, 5vw, 4.6rem);
+	background: #fff;
+	border: 1px solid rgba(13, 33, 27, 0.08);
+	border-radius: var(--emo-radius-lg);
+	box-shadow: var(--emo-shadow-sm);
+}
+
+.emo-article-content > p,
+.emo-article-content > ul,
+.emo-article-content > ol,
+.emo-article-content > blockquote {
+	font-size: clamp(1rem, 1.35vw, 1.12rem);
+	line-height: 1.86;
+}
+
+.emo-article-content > p:first-of-type {
+	color: var(--emo-forest-950);
+	font-size: clamp(1.18rem, 2vw, 1.45rem);
+	font-weight: 560;
+	line-height: 1.65;
+}
+
+.emo-article-content h2 {
+	margin-top: clamp(2.8rem, 6vw, 5rem);
+	margin-bottom: 1rem;
+	font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+.emo-article-content h3 {
+	margin-top: 2.4rem;
+	margin-bottom: 0.8rem;
+	font-size: clamp(1.5rem, 2.6vw, 2.25rem);
+}
+
+.emo-article-content blockquote {
+	margin: 2.5rem 0;
+	padding: 1.5rem 0 1.5rem 1.5rem;
+	border-left: 4px solid var(--emo-clay);
+	color: var(--emo-forest-900);
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: clamp(1.35rem, 2.5vw, 2rem);
+}
+
+.emo-article-content .woocommerce,
+.emo-article-content ul.products {
+	width: min(1180px, calc(100vw - 40px));
+	max-width: none !important;
+	margin-right: calc(50% - 50vw + 20px) !important;
+	margin-left: calc(50% - 50vw + 20px) !important;
+}
+
+.emo-article-content ul.products {
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+	margin-top: 2rem !important;
+	margin-bottom: 2rem !important;
+}
+
+.emo-article-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	width: min(100%, 900px);
+	margin: 1.2rem auto 0;
+	padding: 1rem 0;
+}
+
+.emo-article-back,
+.emo-article-navigation a {
+	color: var(--emo-forest-900);
+	font-size: 0.8rem;
+	font-weight: 850;
+	text-decoration: none;
+}
+
+.emo-article-navigation {
+	display: flex;
+	gap: 1rem;
+}
+
+.emo-related-reading {
+	padding-block: clamp(3.5rem, 7vw, 7rem);
+	background: #efe8dc;
+}
+
+.emo-related-reading__heading {
+	display: flex;
+	align-items: end;
+	justify-content: space-between;
+	gap: 2rem;
+	margin-bottom: 2rem;
+}
+
+.emo-related-reading__heading h2 {
+	margin: 0;
+	font-size: clamp(2.3rem, 5vw, 4.3rem);
+}
+
+.emo-related-reading .emo-journal-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Páginas legales y transaccionales: mejor lectura, sin alterar funciones. */
+.elmercado-child-theme.privacy-policy .entry-content,
+.elmercado-child-theme.page-id-1391 .entry-content,
+.elmercado-child-theme.page-id-1640 .entry-content,
+.elmercado-child-theme.page-id-3736 .entry-content {
+	max-width: 900px;
+	margin-inline: auto;
+	padding: clamp(1.5rem, 4vw, 3.5rem);
+	background: #fff;
+	border: 1px solid var(--emo-line);
+	border-radius: var(--emo-radius-md);
+	box-shadow: var(--emo-shadow-xs);
+}
+
+.elmercado-child-theme.privacy-policy .entry-content h2,
+.elmercado-child-theme.page-id-1391 .entry-content h2,
+.elmercado-child-theme.page-id-1640 .entry-content h2,
+.elmercado-child-theme.page-id-3736 .entry-content h2 {
+	margin-top: 2.4rem;
+	font-size: clamp(1.7rem, 3vw, 2.5rem);
+}
+
+@media (max-width: 991px) {
+	.emo-about-intro,
+	.emo-contact-layout,
+	.emo-producers-intro {
+		grid-template-columns: 1fr;
+	}
+
+	.emo-about-values {
+		grid-template-columns: 1fr;
+	}
+
+	.emo-contact-aside {
+		position: static;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .store-wrapper {
+		grid-template-columns: 1fr !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .store-content {
+		min-height: 230px !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap .store-footer {
+		border-top: 1px solid var(--emo-line) !important;
+		border-left: 0 !important;
+	}
+
+	.emo-article-card--featured {
+		grid-template-columns: 1fr;
+		min-height: 0;
+	}
+
+	.emo-article-card--featured .emo-article-card__media {
+		min-height: 360px;
+	}
+
+	.emo-related-reading .emo-journal-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 767px) {
+	.emo-shop-lead,
+	.emo-journal-toolbar,
+	.emo-related-reading__heading,
+	.emo-article-footer {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	.emo-shop-lead p {
+		text-align: left;
+	}
+
+	.emo-about-copy,
+	.emo-contact-aside,
+	.emo-contact-form,
+	.emo-article-content {
+		border-radius: var(--emo-radius-md);
+	}
+
+	.emo-journal-hero__inner,
+	.emo-article-hero__inner {
+		padding-block: 3.6rem 4.2rem;
+	}
+
+	.emo-journal-grid,
+	.emo-related-reading .emo-journal-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.emo-journal-categories {
+		justify-content: flex-start;
+	}
+
+	.emo-article-card__media,
+	.emo-article-card--featured .emo-article-card__media {
+		min-height: 250px;
+	}
+
+	.emo-article-content .woocommerce,
+	.emo-article-content ul.products {
+		width: 100%;
+		margin-right: 0 !important;
+		margin-left: 0 !important;
+	}
+
+	.emo-article-content ul.products {
+		grid-template-columns: 1fr !important;
+	}
+
+	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
+		grid-template-columns: 1fr !important;
+	}
+}
