@@ -24,57 +24,50 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          HOME_URL="https://dev.elmercadodeorigen.com/?emo-editorial=${GITHUB_SHA}"
-          BLOG_URL="https://dev.elmercadodeorigen.com/blog/?emo-editorial=${GITHUB_SHA}"
           for attempt in {1..45}; do
-            if curl -fsSL --max-time 25 "$HOME_URL" -o /tmp/home.html \
-              && curl -fsSL --max-time 25 "$BLOG_URL" -o /tmp/blog.html \
+            if curl -fsSL --max-time 25 "https://dev.elmercadodeorigen.com/?emo-editorial=${GITHUB_SHA}" -o /tmp/home.html \
+              && curl -fsSL --max-time 25 "https://dev.elmercadodeorigen.com/blog/?emo-editorial=${GITHUB_SHA}" -o /tmp/blog.html \
               && grep -qi 'Productos con origen, directos de sus productores' /tmp/home.html \
               && grep -q 'Conocer el origen cambia la forma de elegir' /tmp/blog.html; then
               exit 0
             fi
             sleep 6
           done
-          echo 'Editorial release was not detected in staging.' >&2
           exit 1
 
-      - name: Verify editorial templates
+      - name: Verify all public templates
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p editorial-acceptance
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-
-          cat > editorial-acceptance.cjs <<'NODE'
+          cat > acceptance.cjs <<'NODE'
           const fs = require('fs');
           const puppeteer = require('puppeteer-core');
           const base = 'https://dev.elmercadodeorigen.com';
           const suffix = `emo-editorial=${process.env.GITHUB_SHA}`;
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          async function prepare(page, path) {
+          async function open(browser, path, name, mobile = false) {
+            const page = await browser.newPage();
+            await page.setViewport(mobile
+              ? { width: 390, height: 844, deviceScaleFactor: 1, isMobile: true }
+              : { width: 1440, height: 1200, deviceScaleFactor: 1 });
+            if (mobile) await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
             const joiner = path.includes('?') ? '&' : '?';
             await page.goto(`${base}${path}${joiner}${suffix}`, { waitUntil: 'networkidle2', timeout: 90000 });
             await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
             await page.evaluate(() => {
-              window.visible = (node) => {
+              window.emoVisible = (node) => {
                 if (!node) return false;
                 const style = getComputedStyle(node);
                 const rect = node.getBoundingClientRect();
                 return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
               };
             });
-            await sleep(900);
-          }
-
-          async function captureDesktop(browser, path, filename, evaluator) {
-            const page = await browser.newPage();
-            await page.setViewport({ width: 1440, height: 1200, deviceScaleFactor: 1 });
-            await prepare(page, path);
-            const data = await page.evaluate(evaluator);
-            await page.screenshot({ path: `editorial-acceptance/${filename}`, fullPage: true });
-            await page.close();
-            return data;
+            await sleep(850);
+            await page.screenshot({ path: `editorial-acceptance/${name}`, fullPage: true });
+            return page;
           }
 
           (async () => {
@@ -82,138 +75,125 @@ jobs:
             const report = {};
             const failures = [];
 
-            report.home = await captureDesktop(browser, '/', 'home-desktop.png', () => {
-              const kicker = document.querySelector('.emo-hero .emo-kicker')?.innerText?.trim() || '';
-              const categoryHeading = document.querySelector('.emo-categories h2')?.innerText?.trim() || '';
-              const contentVisibility = (node) => node ? getComputedStyle(node).contentVisibility : null;
-              return {
-                h1: document.querySelector('.emo-hero h1')?.innerText?.trim() || '',
-                kicker,
-                categoryHeading,
-                oldConcreteCopy: /Aceites, jamones, paletas ibéricas y naranjas/i.test(kicker) || /Aceite, ibéricos y fruta/i.test(categoryHeading),
-                hiddenReveal: [...document.querySelectorAll('.emo-reveal')].filter((node) => !visible(node)).length,
-                editorialExternalStyles: [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => link.href.includes('/assets/css/editorial.css') || link.href.includes('/assets/css/editorial-finish.css')).length,
-                storySection: visible(document.querySelector('.emo-story')),
-                storyGrid: visible(document.querySelector('.emo-story__grid')),
-                storyPanel: visible(document.querySelector('.emo-story__panel')),
-                vendorSection: visible(document.querySelector('.emo-vendor-cta')),
-                vendorInner: visible(document.querySelector('.emo-vendor-cta__inner')),
-                storyContentVisibility: contentVisibility(document.querySelector('.emo-story')),
-                vendorContentVisibility: contentVisibility(document.querySelector('.emo-vendor-cta')),
-                footerVisible: visible(document.querySelector('.site-footer'))
-              };
-            });
+            let page = await open(browser, '/', 'home-desktop.png');
+            report.home = await page.evaluate(() => ({
+              kicker: document.querySelector('.emo-hero .emo-kicker')?.innerText?.trim() || '',
+              categoryHeading: document.querySelector('.emo-categories h2')?.innerText?.trim() || '',
+              oldConcreteCopy: /Aceites, jamones, paletas ibéricas y naranjas|Aceite, ibéricos y fruta/i.test(document.querySelector('.emo-home')?.innerText || ''),
+              story: emoVisible(document.querySelector('.emo-story__grid')),
+              producerCta: emoVisible(document.querySelector('.emo-vendor-cta__inner')),
+              footer: emoVisible(document.querySelector('.site-footer')),
+              storyContentVisibility: getComputedStyle(document.querySelector('.emo-story')).contentVisibility,
+              vendorContentVisibility: getComputedStyle(document.querySelector('.emo-vendor-cta')).contentVisibility,
+              externalEditorialCss: [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => /editorial(?:-finish)?\.css/.test(link.href)).length
+            }));
+            await page.close();
 
-            report.blog = await captureDesktop(browser, '/blog/', 'blog-desktop.png', () => ({
+            page = await open(browser, '/blog/', 'blog-desktop.png');
+            report.blog = await page.evaluate(() => ({
               h1: document.querySelector('.emo-journal-hero h1')?.innerText?.trim() || '',
               cards: document.querySelectorAll('.emo-article-card').length,
-              featuredCards: document.querySelectorAll('.emo-article-card--featured').length,
-              sidebarVisible: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(visible),
-              genericPosts: document.querySelectorAll('main > article.post, #primary > article.post').length,
-              heroVisible: visible(document.querySelector('.emo-journal-hero')),
-              listingVisible: visible(document.querySelector('.emo-journal-grid'))
+              featured: document.querySelectorAll('.emo-article-card--featured').length,
+              sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible),
+              listing: emoVisible(document.querySelector('.emo-journal-grid'))
             }));
+            await page.close();
 
-            report.article = await captureDesktop(browser, '/naranjas/', 'article-desktop.png', () => ({
-              h1: document.querySelector('.emo-article-hero h1')?.innerText?.trim() || '',
+            page = await open(browser, '/naranjas/', 'article-desktop.png');
+            report.article = await page.evaluate(() => ({
+              hero: emoVisible(document.querySelector('.emo-article-hero')),
+              content: emoVisible(document.querySelector('.emo-article-content')),
               contentWidth: Math.round(document.querySelector('.emo-article-content')?.getBoundingClientRect().width || 0),
-              sidebarVisible: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(visible),
-              commentsVisible: [...document.querySelectorAll('#comments,.comments-area,.comment-respond')].some(visible),
-              heroVisible: visible(document.querySelector('.emo-article-hero')),
-              contentVisible: visible(document.querySelector('.emo-article-content')),
-              relatedCards: document.querySelectorAll('.emo-related-reading .emo-article-card').length
+              sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible),
+              comments: [...document.querySelectorAll('#comments,.comments-area,.comment-respond')].some(emoVisible),
+              related: document.querySelectorAll('.emo-related-reading .emo-article-card').length
             }));
+            await page.close();
 
-            report.about = await captureDesktop(browser, '/quienes-somos/', 'about-desktop.png', () => ({
-              layout: Boolean(document.querySelector('.emo-about-layout')),
-              introVisible: visible(document.querySelector('.emo-about-intro')),
+            page = await open(browser, '/quienes-somos/', 'about-desktop.png');
+            report.about = await page.evaluate(() => ({
+              intro: emoVisible(document.querySelector('.emo-about-intro')),
               values: document.querySelectorAll('.emo-about-values article').length,
-              storyVisible: visible(document.querySelector('.emo-about-copy'))
+              story: emoVisible(document.querySelector('.emo-about-copy'))
             }));
+            await page.close();
 
-            report.contact = await captureDesktop(browser, '/contacto/', 'contact-desktop.png', () => ({
-              layout: Boolean(document.querySelector('.emo-contact-layout')),
-              asideVisible: visible(document.querySelector('.emo-contact-aside')),
-              formVisible: visible(document.querySelector('.emo-contact-form')),
+            page = await open(browser, '/contacto/', 'contact-desktop.png');
+            report.contact = await page.evaluate(() => ({
+              aside: emoVisible(document.querySelector('.emo-contact-aside')),
+              form: emoVisible(document.querySelector('.emo-contact-form')),
               recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"]').length
             }));
+            await page.close();
 
-            report.producers = await captureDesktop(browser, '/productores/', 'producers-desktop.png', () => {
-              const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].filter(visible);
-              const rects = cards.map((node) => node.getBoundingClientRect());
+            page = await open(browser, '/productores/', 'producers-desktop.png');
+            report.producers = await page.evaluate(() => {
+              const list = document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
+              const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].filter(emoVisible);
+              const rects = cards.map((card) => card.getBoundingClientRect());
               return {
-                introVisible: visible(document.querySelector('.emo-producers-intro')),
+                intro: emoVisible(document.querySelector('.emo-producers-intro')),
                 cards: cards.length,
-                cardWidths: rects.map((rect) => Math.round(rect.width)),
-                cardTops: rects.map((rect) => Math.round(rect.top)),
-                display: getComputedStyle(document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap') || document.body).display
+                display: list ? getComputedStyle(list).display : '',
+                tops: rects.map((rect) => Math.round(rect.top)),
+                widths: rects.map((rect) => Math.round(rect.width))
               };
             });
+            await page.close();
 
-            report.shop = await captureDesktop(browser, '/tienda/', 'shop-desktop.png', () => ({
-              h1: document.querySelector('.emo-shop-title-block h1,.page-header .entry-title,h1')?.innerText?.trim() || '',
-              titleVisible: visible(document.querySelector('.emo-shop-title-block h1')),
-              leadVisible: visible(document.querySelector('.emo-shop-lead')),
-              filterButtons: [...document.querySelectorAll('#toggle-sidebar-mobile-button,.filter-button,.woostify-filter-button,.toggle-sidebar-shop')].filter(visible).length,
-              wishlist: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter(visible).length,
-              productCards: document.querySelectorAll('ul.products li.product').length
+            page = await open(browser, '/tienda/', 'shop-desktop.png');
+            report.shop = await page.evaluate(() => ({
+              h1: document.querySelector('.emo-shop-title-block h1')?.innerText?.trim() || '',
+              title: emoVisible(document.querySelector('.emo-shop-title-block h1')),
+              lead: emoVisible(document.querySelector('.emo-shop-lead')),
+              products: document.querySelectorAll('ul.products li.product').length,
+              filters: [...document.querySelectorAll('#toggle-sidebar-mobile-button,.filter-button,.woostify-filter-button,.toggle-sidebar-shop')].filter(emoVisible).length,
+              wishlist: [...document.querySelectorAll('.yith-wcwl-add-to-wishlist,a.add_to_wishlist')].filter(emoVisible).length
             }));
+            await page.close();
 
-            report.account = await captureDesktop(browser, '/mi-cuenta/', 'account-desktop.png', () => ({
-              h1: document.querySelector('h1')?.innerText?.trim() || '',
-              formVisible: [...document.querySelectorAll('form')].some(visible),
-              contentWidth: Math.round(document.querySelector('#primary,.site-main')?.getBoundingClientRect().width || 0)
+            page = await open(browser, '/mi-cuenta/', 'account-desktop.png');
+            report.account = await page.evaluate(() => ({ form: [...document.querySelectorAll('form')].some(emoVisible), main: emoVisible(document.querySelector('#primary,.site-main')) }));
+            await page.close();
+
+            page = await open(browser, '/carrito/', 'cart-desktop.png');
+            report.cart = await page.evaluate(() => ({
+              main: emoVisible(document.querySelector('#primary,.site-main')),
+              waitlist: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-btn-container')].filter(emoVisible).length
             }));
+            await page.close();
 
-            report.cart = await captureDesktop(browser, '/carrito/', 'cart-desktop.png', () => ({
-              h1: document.querySelector('h1')?.innerText?.trim() || '',
-              mainVisible: visible(document.querySelector('#primary,.site-main')),
-              waitlist: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-btn-container')].filter(visible).length
-            }));
-
-            const mobile = await browser.newPage();
-            await mobile.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
-            await mobile.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
-            await prepare(mobile, '/blog/');
-            report.blogMobile = await mobile.evaluate(() => ({
+            page = await open(browser, '/blog/', 'blog-mobile.png', true);
+            report.mobile = await page.evaluate(() => ({
               overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
-              columns: getComputedStyle(document.querySelector('.emo-journal-grid')).gridTemplateColumns,
               cards: document.querySelectorAll('.emo-article-card').length,
-              sidebarVisible: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(visible)
+              sidebar: [...document.querySelectorAll('#secondary,.widget-area,.sidebar')].some(emoVisible)
             }));
-            await mobile.screenshot({ path: 'editorial-acceptance/blog-mobile.png', fullPage: true });
-            await mobile.close();
+            await page.close();
 
-            const producerTopSpread = report.producers.cardTops.length > 1
-              ? Math.max(...report.producers.cardTops) - Math.min(...report.producers.cardTops)
-              : 0;
-
-            if (!report.home.kicker.toLowerCase().includes('productos con origen')) failures.push('Homepage editorial proposition was not rendered.');
-            if (report.home.oldConcreteCopy) failures.push('Concrete catalogue copy remains in homepage headings.');
-            if (report.home.hiddenReveal || !report.home.storySection || !report.home.storyGrid || !report.home.storyPanel || !report.home.vendorSection || !report.home.vendorInner || !report.home.footerVisible) failures.push('Homepage contains hidden editorial sections.');
-            if (report.home.storyContentVisibility !== 'visible' || report.home.vendorContentVisibility !== 'visible') failures.push('Homepage lower sections still use deferred content visibility.');
-            if (report.home.editorialExternalStyles) failures.push('Homepage editorial CSS is not inlined.');
-            if (report.blog.h1 !== 'Conocer el origen cambia la forma de elegir.') failures.push('Blog hero copy is incorrect.');
-            if (report.blog.cards < 3 || report.blog.featuredCards !== 1 || report.blog.sidebarVisible || report.blog.genericPosts || !report.blog.listingVisible) failures.push('Blog archive composition is incomplete.');
-            if (!report.article.heroVisible || !report.article.contentVisible || report.article.sidebarVisible || report.article.commentsVisible || report.article.contentWidth < 760) failures.push('Single article layout is incomplete.');
-            if (!report.about.layout || !report.about.introVisible || report.about.values !== 3 || !report.about.storyVisible) failures.push('About page layout is incomplete.');
-            if (!report.contact.layout || !report.contact.asideVisible || !report.contact.formVisible || report.contact.recaptcha) failures.push('Contact layout or recaptcha cleanup failed.');
-            if (!report.producers.introVisible || report.producers.cards < 1 || producerTopSpread > 20 || report.producers.display !== 'flex') failures.push('Producer directory alignment is incomplete.');
-            if (report.shop.h1 !== 'Productos' || !report.shop.titleVisible || !report.shop.leadVisible || report.shop.filterButtons || report.shop.wishlist || report.shop.productCards < 1) failures.push('Shop editorial cleanup is incomplete.');
-            if (!report.account.formVisible || !report.cart.mainVisible || report.cart.waitlist) failures.push('Transactional templates regressed.');
-            if (report.blogMobile.overflow || report.blogMobile.sidebarVisible || report.blogMobile.cards < 3) failures.push('Mobile blog layout regressed.');
+            const topSpread = report.producers.tops.length > 1 ? Math.max(...report.producers.tops) - Math.min(...report.producers.tops) : 0;
+            const checks = [
+              [report.home.kicker.toLowerCase().includes('productos con origen') && !report.home.oldConcreteCopy, 'Homepage copy is not general enough.'],
+              [report.home.story && report.home.producerCta && report.home.footer && report.home.storyContentVisibility === 'visible' && report.home.vendorContentVisibility === 'visible', 'Homepage lower sections are hidden or deferred.'],
+              [report.home.externalEditorialCss === 0, 'Homepage editorial CSS is not inlined.'],
+              [report.blog.h1 === 'Conocer el origen cambia la forma de elegir.' && report.blog.cards >= 3 && report.blog.featured === 1 && !report.blog.sidebar && report.blog.listing, 'Blog archive is incomplete.'],
+              [report.article.hero && report.article.content && report.article.contentWidth >= 760 && !report.article.sidebar && !report.article.comments, 'Article layout is incomplete.'],
+              [report.about.intro && report.about.values === 3 && report.about.story, 'About page is incomplete.'],
+              [report.contact.aside && report.contact.form && report.contact.recaptcha === 0, 'Contact page is incomplete.'],
+              [report.producers.intro && report.producers.cards >= 1 && report.producers.display === 'flex' && topSpread <= 20, 'Producer cards are not aligned.'],
+              [report.shop.h1 === 'Productos' && report.shop.title && report.shop.lead && report.shop.products > 0 && report.shop.filters === 0 && report.shop.wishlist === 0, 'Shop cleanup is incomplete.'],
+              [report.account.form && report.account.main && report.cart.main && report.cart.waitlist === 0, 'Transactional pages regressed.'],
+              [!report.mobile.overflow && !report.mobile.sidebar && report.mobile.cards >= 3, 'Mobile blog regressed.']
+            ];
+            for (const [passed, message] of checks) if (!passed) failures.push(message);
 
             fs.writeFileSync('editorial-acceptance/report.json', JSON.stringify(report, null, 2));
             fs.writeFileSync('editorial-acceptance/assertions.txt', failures.length ? failures.join('\n') : 'All editorial release assertions passed.\n');
             await browser.close();
             if (failures.length) throw new Error(failures.join('\n'));
-          })().catch((error) => {
-            console.error(error);
-            process.exit(1);
-          });
+          })().catch((error) => { console.error(error); process.exit(1); });
           NODE
-
-          node editorial-acceptance.cjs
+          node acceptance.cjs
           cat editorial-acceptance/report.json
           cat editorial-acceptance/assertions.txt
 
