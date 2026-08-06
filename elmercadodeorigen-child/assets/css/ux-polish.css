@@ -39,6 +39,45 @@
 	white-space: normal !important;
 }
 
+/* Una entrada sin imagen no debe parecer una tarjeta sin terminar. */
+.elmercado-editorial-content .emo-article-card__placeholder {
+	position: relative;
+	display: flex !important;
+	align-items: flex-end;
+	justify-content: flex-start;
+	padding: clamp(1.5rem, 4vw, 2.6rem);
+	background:
+		radial-gradient(circle at 84% 22%, transparent 0 17%, rgba(241, 203, 130, 0.16) 17.3% 17.8%, transparent 18.1% 25%, rgba(241, 203, 130, 0.11) 25.3% 25.8%, transparent 26.1%),
+		linear-gradient(135deg, #173f32 0%, #0d2b22 72%, #21483a 100%) !important;
+	overflow: hidden;
+}
+
+.elmercado-editorial-content .emo-article-card__placeholder::before {
+	content: "El cuaderno de origen";
+	position: relative;
+	z-index: 1;
+	max-width: 12ch;
+	color: #fffdf8;
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: clamp(1.4rem, 3vw, 2.25rem);
+	font-weight: 700;
+	letter-spacing: -0.035em;
+	line-height: 1.02;
+}
+
+.elmercado-editorial-content .emo-article-card__placeholder::after {
+	content: "Historias · producto · origen";
+	position: absolute;
+	top: clamp(1.5rem, 4vw, 2.6rem);
+	left: clamp(1.5rem, 4vw, 2.6rem);
+	color: #f1cb82;
+	font-size: 0.65rem;
+	font-weight: 900;
+	letter-spacing: 0.14em;
+	line-height: 1.2;
+	text-transform: uppercase;
+}
+
 @media (max-width: 767px) {
 	.elmercado-child-theme #shop-cart-sidebar .woocommerce-mini-cart-item > a.emo-mini-cart-product-link {
 		grid-template-columns: 62px minmax(0, 1fr) !important;
