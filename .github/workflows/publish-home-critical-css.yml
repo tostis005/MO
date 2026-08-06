@@ -23,63 +23,88 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate critical parent CSS
+      - name: Generate valid critical parent CSS
         shell: bash
         run: |
           set -euo pipefail
-          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          npm install --no-save --no-package-lock puppeteer-core@24 postcss@8 cssnano@7 >/dev/null 2>&1
           cat > generate-critical.cjs <<'NODE'
           const fs = require('fs');
+          const path = require('path');
           const puppeteer = require('puppeteer-core');
+          const postcss = require('postcss');
+          const cssnano = require('cssnano');
           const base = 'https://dev.elmercadodeorigen.com';
           const output = 'elmercadodeorigen-child/assets/css/critical-woostify-home.min.css';
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          const merge = (ranges) => {
-            const sorted = [...ranges].sort((a,b) => a.start-b.start);
-            const result = [];
+          const mergeRanges = (ranges) => {
+            const sorted = [...ranges].sort((a, b) => a.start - b.start);
+            const merged = [];
             for (const range of sorted) {
-              const last = result[result.length-1];
+              const last = merged[merged.length - 1];
               if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
-              else result.push({start:range.start,end:range.end});
+              else merged.push({ start: range.start, end: range.end });
             }
-            return result;
+            return merged;
           };
 
-          const minify = (css) => css
-            .replace(/\/\*[\s\S]*?\*\//g,'')
-            .replace(/\s+/g,' ')
-            .replace(/\s*([{}:;,>+~])\s*/g,'$1')
-            .replace(/;}/g,'}')
-            .trim();
+          const intersects = (node, ranges) => {
+            const start = node.source?.start?.offset;
+            const end = node.source?.end?.offset;
+            if (!Number.isInteger(start) || !Number.isInteger(end)) return false;
+            return ranges.some((range) => range.start <= end + 1 && range.end >= start);
+          };
+
+          const filterContainer = (container, ranges) => {
+            const clone = container.clone({ nodes: [] });
+            for (const child of container.nodes || []) {
+              if (child.type === 'atrule' && Array.isArray(child.nodes)) {
+                const nested = filterContainer(child, ranges);
+                if ((nested.nodes || []).length || intersects(child, ranges)) clone.append(nested);
+                continue;
+              }
+              if (child.type === 'rule') {
+                if (intersects(child, ranges) || (child.nodes || []).some((node) => intersects(node, ranges))) clone.append(child.clone());
+                continue;
+              }
+              if (intersects(child, ranges)) clone.append(child.clone());
+            }
+            return clone;
+          };
 
           async function collect(browser, viewport, userAgent = '') {
             const page = await browser.newPage();
             await page.setViewport(viewport);
             if (userAgent) await page.setUserAgent(userAgent);
-            await page.coverage.startCSSCoverage({resetOnNavigation:false});
-            await page.goto(`${base}/?critical-publish=${Date.now()}`, {waitUntil:'domcontentloaded',timeout:90000});
-            await sleep(1300);
+            await page.coverage.startCSSCoverage({ resetOnNavigation: false });
+            await page.goto(`${base}/?critical-publish=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
+            await sleep(1400);
             const entries = await page.coverage.stopCSSCoverage();
             await page.close();
             return entries.find((entry) => /\/themes\/woostify\/style\.css/.test(entry.url)) || null;
           }
 
           (async () => {
-            const browser = await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-gpu']});
-            const mobile = await collect(browser,{width:390,height:844,isMobile:true,deviceScaleFactor:1},'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
-            const desktop = await collect(browser,{width:1440,height:1000,deviceScaleFactor:1});
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const mobile = await collect(browser, { width: 390, height: 844, isMobile: true, deviceScaleFactor: 1 }, 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+            const desktop = await collect(browser, { width: 1440, height: 1000, deviceScaleFactor: 1 });
             await browser.close();
 
             const source = mobile?.text || desktop?.text || '';
             if (!source) throw new Error('Woostify stylesheet coverage was not found.');
-            const ranges = merge([...(mobile?.ranges||[]),...(desktop?.ranges||[])]);
-            const critical = minify(ranges.map((range)=>source.slice(range.start,range.end)).join('\n'));
-            if (!critical || critical.length < 5000) throw new Error(`Critical CSS is unexpectedly small: ${critical.length} bytes.`);
-            fs.mkdirSync(require('path').dirname(output),{recursive:true});
-            fs.writeFileSync(output,`/* Generated from first-view mobile and desktop coverage. */\n${critical}\n`);
-            console.log(JSON.stringify({sourceBytes:source.length,criticalBytes:critical.length,coveragePercent:Math.round((critical.length/source.length)*1000)/10,ranges:ranges.length},null,2));
-          })().catch((error)=>{console.error(error);process.exit(1);});
+            const ranges = mergeRanges([...(mobile?.ranges || []), ...(desktop?.ranges || [])]);
+            const root = postcss.parse(source);
+            const filtered = filterContainer(root, ranges);
+            const result = await postcss([cssnano({ preset: 'default' })]).process(filtered.toString(), { from: undefined });
+            const critical = result.css.trim();
+
+            if (!critical || critical.length < 7000) throw new Error(`Critical CSS is unexpectedly small: ${critical.length} bytes.`);
+            postcss.parse(critical);
+            fs.mkdirSync(path.dirname(output), { recursive: true });
+            fs.writeFileSync(output, `/* Generated from valid first-view mobile and desktop rules. */\n${critical}\n`);
+            console.log(JSON.stringify({ sourceBytes: source.length, criticalBytes: critical.length, coveragePercent: Math.round((critical.length / source.length) * 1000) / 10, ranges: ranges.length }, null, 2));
+          })().catch((error) => { console.error(error); process.exit(1); });
           NODE
           node generate-critical.cjs
 
@@ -87,12 +112,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- elmercadodeorigen-child/assets/css/critical-woostify-home.min.css; then
+          TARGET='elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+          if [ -z "$(git status --porcelain -- "$TARGET")" ]; then
             echo 'Critical CSS is already current.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+          git add "$TARGET"
           git commit -m 'perf: publish critical Woostify CSS'
           git push
