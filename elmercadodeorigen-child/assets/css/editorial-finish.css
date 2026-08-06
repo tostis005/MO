@@ -1,11 +1,5 @@
-/* Ajustes finales de la versión editorial 0.6.3. */
+/* Ajustes finales de la versión editorial 0.6.4. */
 
-/*
- * La optimización anterior posponía el renderizado de bloques inferiores.
- * En páginas largas podía dejar huecos visibles hasta que el navegador decidía
- * pintar el contenido. La portada final debe ser completa desde la primera
- * composición, especialmente para navegación, capturas y tecnologías de apoyo.
- */
 .elmercado-premium-home .emo-categories,
 .elmercado-premium-home .emo-featured-products,
 .elmercado-premium-home .emo-story,
@@ -26,7 +20,6 @@
 	transform: none !important;
 }
 
-/* Título comercial real para la tienda, independiente de la cabecera del padre. */
 .emo-shop-title-block {
 	margin: 0 0 1.1rem;
 	padding: 0.1rem 0.15rem;
@@ -49,11 +42,6 @@
 	border-top: 1px solid rgba(13, 33, 27, 0.1);
 }
 
-/*
- * WCFM asigna anchos, márgenes y posiciones alternas a las tiendas. Una rejilla
- * explícita permite que el navegador calcule cada columna sin depender de los
- * porcentajes ni del redondeo interno del plugin.
- */
 .elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
 	display: grid !important;
 	width: 100% !important;
@@ -83,8 +71,20 @@
 	transform: none !important;
 }
 
-.elmercado-child-theme #wcfmmp-stores-wrap .store-wrapper {
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store .store-wrapper,
+.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) .store-wrapper {
+	position: relative !important;
+	top: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	left: auto !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	max-width: none !important;
 	height: 100% !important;
+	margin: 0 !important;
+	float: none !important;
+	transform: none !important;
 }
 
 @media (max-width: 767px) {
@@ -94,12 +94,5 @@
 
 	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
 		grid-template-columns: 1fr !important;
-	}
-
-	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
-	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) {
-		width: auto !important;
-		min-width: 0 !important;
-		max-width: none !important;
 	}
 }
