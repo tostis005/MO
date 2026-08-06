@@ -60,3 +60,67 @@ add_action(
 	},
 	2
 );
+
+/**
+ * WCFM recalcula las tarjetas después del renderizado y añade desplazamientos en
+ * zigzag. Esta normalización se ejecuta únicamente en el directorio público de
+ * productores y vuelve a aplicar la composición editorial tras esos cálculos.
+ */
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( ! is_page( 'productores' ) ) {
+			return;
+		}
+		?>
+		<script id="elmercado-producer-layout-normalizer">
+		(() => {
+			const important = (element, property, value) => {
+				if (element) element.style.setProperty(property, value, 'important');
+			};
+
+			const normalize = () => {
+				const list = document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
+				if (!list) return;
+
+				important(list, 'display', 'grid');
+				important(list, 'width', '100%');
+				important(list, 'grid-template-columns', matchMedia('(max-width: 767px)').matches ? '1fr' : 'repeat(2, minmax(0, 1fr))');
+				important(list, 'gap', '1.25rem');
+
+				list.querySelectorAll(':scope > li.wcfmmp-single-store').forEach((card) => {
+					['top', 'right', 'bottom', 'left'].forEach((property) => important(card, property, 'auto'));
+					important(card, 'position', 'relative');
+					important(card, 'display', 'block');
+					important(card, 'width', 'auto');
+					important(card, 'min-width', '0');
+					important(card, 'max-width', 'none');
+					important(card, 'margin', '0');
+					important(card, 'float', 'none');
+					important(card, 'grid-column', 'auto');
+					important(card, 'grid-row', 'auto');
+					important(card, 'transform', 'none');
+
+					const wrapper = card.querySelector('.store-wrapper');
+					if (wrapper) {
+						['top', 'right', 'bottom', 'left'].forEach((property) => important(wrapper, property, 'auto'));
+						important(wrapper, 'position', 'relative');
+						important(wrapper, 'width', '100%');
+						important(wrapper, 'min-width', '0');
+						important(wrapper, 'max-width', 'none');
+						important(wrapper, 'height', '100%');
+						important(wrapper, 'margin', '0');
+						important(wrapper, 'float', 'none');
+						important(wrapper, 'transform', 'none');
+					}
+				});
+			};
+
+			[0, 300, 900, 1800, 3000].forEach((delay) => window.setTimeout(normalize, delay));
+			window.addEventListener('resize', normalize, { passive: true });
+		})();
+		</script>
+		<?php
+	},
+	PHP_INT_MAX
+);
