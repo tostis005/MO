@@ -26,6 +26,31 @@
 		});
 	}
 
+	/**
+	 * El contador visible forma parte del nombre accesible para que el texto y el
+	 * aria-label no describan acciones distintas.
+	 */
+	const updateCartAccessibleName = () => {
+		const cartButton = document.querySelector('.shopping-bag-button.shopping-cart, a.shopping-cart');
+		if (!cartButton) {
+			return;
+		}
+
+		const countNode = cartButton.querySelector('.shop-cart-count, .cart-count, .count');
+		const count = countNode?.textContent?.trim() || '';
+		cartButton.setAttribute('aria-label', count ? `Ver carrito, ${count}` : 'Ver carrito');
+	};
+
+	updateCartAccessibleName();
+	const cartButton = document.querySelector('.shopping-bag-button.shopping-cart, a.shopping-cart');
+	if (cartButton) {
+		new MutationObserver(updateCartAccessibleName).observe(cartButton, {
+			childList: true,
+			characterData: true,
+			subtree: true
+		});
+	}
+
 	let closeTimer = 0;
 
 	const removeToast = () => {
@@ -83,6 +108,7 @@
 			const element = button?.get?.(0) || button?.[0] || null;
 			const product = element?.closest('li.product, .product');
 			const name = product?.querySelector('.woocommerce-loop-product__title, .product_title, h2, h3')?.textContent || '';
+			updateCartAccessibleName();
 			showToast(name);
 		});
 	}
