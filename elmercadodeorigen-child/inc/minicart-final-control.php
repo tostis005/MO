@@ -19,12 +19,14 @@ add_action(
 		<style id="elmercado-minicart-final-control">
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > span,
 			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty {
-				font-family: Arial, sans-serif !important;
-				font-size: 21px !important;
-				font-weight: 700 !important;
-				line-height: 38px !important;
-				text-align: center !important;
-				color: #173f32 !important;
+				position: relative !important;
+				font-size: 0 !important;
+				line-height: 0 !important;
+				color: transparent !important;
+			}
+			body.elmercado-child-theme #shop-cart-sidebar .quantity > span *,
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty * {
+				display: none !important;
 			}
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > span::before,
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > span::after,
@@ -32,6 +34,28 @@ add_action(
 			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty::after {
 				content: none !important;
 				display: none !important;
+			}
+			body.elmercado-child-theme #shop-cart-sidebar .quantity > span:first-child::after,
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:first-child::after {
+				content: "−" !important;
+				display: block !important;
+				font-family: Arial, sans-serif !important;
+				font-size: 21px !important;
+				font-weight: 700 !important;
+				line-height: 38px !important;
+				text-align: center !important;
+				color: #173f32 !important;
+			}
+			body.elmercado-child-theme #shop-cart-sidebar .quantity > span:last-child::after,
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:last-child::after {
+				content: "+" !important;
+				display: block !important;
+				font-family: Arial, sans-serif !important;
+				font-size: 21px !important;
+				font-weight: 700 !important;
+				line-height: 38px !important;
+				text-align: center !important;
+				color: #173f32 !important;
 			}
 			body.elmercado-child-theme #shop-cart-sidebar input.qty {
 				font-family: Arial, sans-serif !important;
