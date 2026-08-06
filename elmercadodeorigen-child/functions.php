@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.0' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.1' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -52,7 +52,7 @@ $elmercado_modules = array(
 	'inc/layout-consistency-096.php',
 	'inc/layout-consistency-098.php',
 	'inc/header-exact-consistency.php',
-	'inc/mobile-ux-010.php',
+	'inc/mobile-commerce-finish.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
