@@ -9,10 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Comprueba que el CSS crítico generado es utilizable antes de cambiar la carga
- * de la hoja completa del tema padre.
- */
 function elmercado_home_critical_css(): string {
 	static $critical = null;
 
@@ -33,16 +29,13 @@ function elmercado_home_critical_css(): string {
 	return $critical;
 }
 
-/**
- * Convierte una hoja secundaria en no bloqueante y conserva noscript.
- */
 function elmercado_async_stylesheet_tag( string $href, string $id, string $media = 'all' ): string {
 	$href  = esc_url( $href );
 	$id    = esc_attr( $id );
 	$media = esc_attr( $media );
 
 	return sprintf(
-		'<link rel="preload" as="style" id="%1$s" href="%2$s" onload="this.onload=null;this.rel=\'stylesheet\';this.media=\'%3$s\'" media="print">' .
+		'<link rel="preload" as="style" id="%1$s" href="%2$s" onload="this.onload=null;this.rel=\'stylesheet\';this.media=\'%3$s\'">' .
 		'<noscript><link rel="stylesheet" id="%1$s-noscript" href="%2$s" media="%3$s"></noscript>',
 		$id,
 		$href,
@@ -57,7 +50,7 @@ add_filter(
 			return $html;
 		}
 
-		$critical = elmercado_home_critical_css();
+		$critical  = elmercado_home_critical_css();
 		$is_parent = in_array( $handle, array( 'woostify-parent', 'woostify-parent-style', 'woostify-style' ), true )
 			|| str_contains( $href, '/themes/woostify/style.css' );
 
@@ -79,10 +72,6 @@ add_filter(
 	4
 );
 
-/**
- * Los scripts necesarios para interacción dejan de bloquear el primer pintado.
- * Se conserva el orden de ejecución con defer.
- */
 add_filter(
 	'script_loader_tag',
 	static function ( string $tag, string $handle, string $src ): string {
@@ -116,11 +105,6 @@ add_filter(
 	3
 );
 
-/**
- * jQuery y sus scripts inline asociados pasan al pie en la portada. WordPress
- * mantiene el orden de dependencias, a diferencia de añadir defer a mano a la
- * biblioteca mientras quedan scripts inline en la cabecera.
- */
 add_action(
 	'wp_enqueue_scripts',
 	static function (): void {
@@ -138,10 +122,6 @@ add_action(
 	PHP_INT_MAX
 );
 
-/**
- * Evita que el navegador espere a interacción para conocer la prioridad de la
- * primera composición; las imágenes posteriores siguen siendo diferidas.
- */
 add_filter(
 	'wp_get_attachment_image_attributes',
 	static function ( array $attributes ): array {
