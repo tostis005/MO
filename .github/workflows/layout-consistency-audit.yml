@@ -1,0 +1,70 @@
+name: Layout consistency audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/layout-consistency-audit.yml'
+      - 'elmercadodeorigen-child/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: layout-consistency-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Capture header, shop and vendor layouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p layout-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > layout-audit.cjs <<'NODE'
+          const fs=require('fs');
+          const puppeteer=require('puppeteer-core');
+          const base='https://dev.elmercadodeorigen.com';
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const pages=[['home','/'],['contact','/contacto/'],['shop','/tienda/'],['vendor','/tienda/hidalgo-de-la-jara/']];
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-gpu']});
+            const page=await browser.newPage();
+            await page.setViewport({width:1440,height:1000,deviceScaleFactor:1});
+            const report={};
+            for(const [name,path] of pages){
+              await page.goto(`${base}${path}?layout=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
+              await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}'});
+              await sleep(900);
+              report[name]=await page.evaluate(()=>{
+                const rect=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:s.display,justify:s.justifyContent,align:s.alignItems,margin:s.margin,gap:s.gap,className:e.className,id:e.id}};
+                const header=document.querySelector('.site-header');
+                const nav=document.querySelector('.site-header .primary-navigation,.site-header .main-navigation,.site-header nav');
+                const logo=document.querySelector('.site-header .site-branding,.site-header .site-logo');
+                const tools=document.querySelector('.site-header .site-tools,.site-header .header-right');
+                const products=document.querySelector('ul.products');
+                const slider=document.querySelector('.widget_price_filter .price_slider,.price_slider_wrapper .ui-slider-horizontal');
+                const handles=[...document.querySelectorAll('.widget_price_filter .ui-slider-handle')].map(rect);
+                const sorting=document.querySelector('#wcfmmp-store .woostify-sorting');
+                const result=document.querySelector('#wcfmmp-store .woocommerce-result-count');
+                const ordering=document.querySelector('#wcfmmp-store .woocommerce-ordering');
+                return{body:document.body.className,header:rect(header),headerChildren:header?[...header.querySelectorAll(':scope > *, :scope > * > *')].slice(0,20).map(rect):[],logo:rect(logo),nav:rect(nav),tools:rect(tools),products:rect(products),productCount:products?[...products.children].filter(e=>e.matches('li.product')).length:0,productColumns:products?getComputedStyle(products).gridTemplateColumns:null,slider:rect(slider),handles,sorting:rect(sorting),result:rect(result),ordering:rect(ordering),overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2};
+              });
+              await page.screenshot({path:`layout-audit/${name}.png`,fullPage:true});
+            }
+            fs.writeFileSync('layout-audit/report.json',JSON.stringify(report,null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node layout-audit.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: layout-consistency-audit
+          path: layout-audit/
+          retention-days: 14
