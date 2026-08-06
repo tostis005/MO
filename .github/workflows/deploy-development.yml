@@ -63,7 +63,7 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Locate the WordPress instance serving dev
+      - name: Resolve configured WordPress path
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -72,52 +72,41 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
 
-          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_URL'" <<'REMOTE'
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
           set -eu
           raw="${1%/}"
-          expected="${2%/}"
-          command -v wp >/dev/null 2>&1 || { echo 'WP-CLI is required to identify the correct staging installation.' >&2; exit 1; }
-
-          candidates="$(mktemp)"
-          trap 'rm -f "$candidates"' EXIT
-
-          add_candidate() {
-            candidate="${1%/}"
-            [ -f "$candidate/wp-config.php" ] && printf '%s\n' "$candidate" >> "$candidates"
-          }
-
+          wp_path=""
           case "$raw" in
-            */wp-content/themes/elmercadodeorigen-child) add_candidate "$(dirname "$(dirname "$(dirname "$raw")")")" ;;
-            */wp-content/themes) add_candidate "$(dirname "$(dirname "$raw")")" ;;
-            */wp-content) add_candidate "$(dirname "$raw")" ;;
-            *) add_candidate "$raw" ;;
+            */wp-content/themes/elmercadodeorigen-child) wp_path="$(dirname "$(dirname "$(dirname "$raw")")")" ;;
+            */wp-content/themes) wp_path="$(dirname "$(dirname "$raw")")" ;;
+            */wp-content) wp_path="$(dirname "$raw")" ;;
+            *) wp_path="$raw" ;;
           esac
 
-          for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www /usr/local/www; do
-            [ -d "$base" ] || continue
-            find "$base" -maxdepth 9 -type f -name wp-config.php \
-              ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
-              2>/dev/null | while IFS= read -r config; do dirname "$config"; done >> "$candidates" || true
-          done
-
-          selected=""
-          for candidate in $(sort -u "$candidates"); do
-            home="$(wp option get home --path="$candidate" --skip-plugins --skip-themes 2>/dev/null || true)"
-            siteurl="$(wp option get siteurl --path="$candidate" --skip-plugins --skip-themes 2>/dev/null || true)"
-            home="${home%/}"
-            siteurl="${siteurl%/}"
-            if [ "$home" = "$expected" ] || [ "$siteurl" = "$expected" ]; then
-              if [ -n "$selected" ] && [ "$selected" != "$candidate" ]; then
-                echo 'More than one WordPress installation matches the staging URL.' >&2
-                exit 1
-              fi
-              selected="$candidate"
+          if [ ! -f "$wp_path/wp-config.php" ] || [ ! -d "$wp_path/wp-content/themes" ]; then
+            candidates="$(mktemp)"
+            trap 'rm -f "$candidates"' EXIT
+            for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www; do
+              [ -d "$base" ] || continue
+              find "$base" -maxdepth 9 -type f -name wp-config.php \
+                ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
+                2>/dev/null >> "$candidates" || true
+            done
+            preferred="$(grep '/dev\.elmercadodeorigen\.com/wp-config\.php$' "$candidates" | head -n 1 || true)"
+            if [ -n "$preferred" ]; then
+              wp_path="$(dirname "$preferred")"
+            else
+              unique="$(sort -u "$candidates")"
+              count="$(printf '%s\n' "$unique" | sed '/^$/d' | wc -l | tr -d ' ')"
+              [ "$count" -eq 1 ] || { echo 'Configured staging path is not a unique WordPress installation.' >&2; exit 1; }
+              wp_path="$(dirname "$(printf '%s\n' "$unique" | head -n 1)")"
             fi
-          done
+          fi
 
-          [ -n "$selected" ] || { echo 'No WordPress installation matches https://dev.elmercadodeorigen.com.' >&2; exit 1; }
-          printf '__WP_PATH__=%s\n' "$selected"
-          printf '__THEME_PATH__=%s\n' "$selected/wp-content/themes/elmercadodeorigen-child"
+          [ -f "$wp_path/wp-config.php" ]
+          [ -d "$wp_path/wp-content/themes" ]
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          printf '__THEME_PATH__=%s\n' "$wp_path/wp-content/themes/elmercadodeorigen-child"
           REMOTE
           )"
 
@@ -129,7 +118,7 @@ jobs:
           echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
           echo "STAGING_THEME_PATH=$THEME_PATH" >> "$GITHUB_ENV"
 
-      - name: Deploy, activate and clear caches
+      - name: Deploy and activate child theme
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -149,13 +138,15 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_WP_PATH'" <<'REMOTE'
           set -eu
           wp_path="$1"
-          wp theme is-installed elmercadodeorigen-child --path="$wp_path"
-          wp theme activate elmercadodeorigen-child --path="$wp_path"
-          active="$(wp option get stylesheet --path="$wp_path" --skip-plugins --skip-themes)"
-          [ "$active" = 'elmercadodeorigen-child' ]
-          wp cache flush --path="$wp_path" || true
-          if wp plugin is-active litespeed-cache --path="$wp_path" 2>/dev/null; then
-            wp litespeed-purge all --path="$wp_path" || true
+          test -f "$wp_path/wp-content/themes/elmercadodeorigen-child/functions.php"
+          if command -v wp >/dev/null 2>&1; then
+            wp theme activate elmercadodeorigen-child --path="$wp_path"
+            active="$(wp option get stylesheet --path="$wp_path" --skip-plugins --skip-themes)"
+            [ "$active" = 'elmercadodeorigen-child' ]
+            wp cache flush --path="$wp_path" || true
+          else
+            echo 'WP-CLI is unavailable; cannot safely activate and verify the child theme.' >&2
+            exit 1
           fi
           REMOTE
 
