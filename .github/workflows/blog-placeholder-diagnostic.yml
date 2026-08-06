@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Inspect fallback card
+      - name: Inspect editorial media
         shell: bash
         run: |
           set -euo pipefail
@@ -26,16 +26,26 @@ jobs:
             const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
             const page=await browser.newPage();
             await page.setViewport({width:1440,height:1000});
-            await page.goto(`https://dev.elmercadodeorigen.com/blog/?placeholder=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
+            await page.goto(`https://dev.elmercadodeorigen.com/blog/?media=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
             await new Promise(r=>setTimeout(r,1500));
             const result=await page.evaluate(()=>{
-              const cards=[...document.querySelectorAll('.emo-article-card')];
-              const card=cards.find(c=>!c.querySelector('.emo-article-card__media img'));
-              const media=card?.querySelector('.emo-article-card__media');
-              const children=media?[...media.children]:[];
-              const detail=(n)=>{if(!n)return null;const s=getComputedStyle(n),b=getComputedStyle(n,'::before'),a=getComputedStyle(n,'::after'),r=n.getBoundingClientRect();return{tag:n.tagName,className:n.className,id:n.id,html:n.outerHTML.slice(0,8000),rect:{x:r.x,y:r.y,width:r.width,height:r.height},style:{display:s.display,position:s.position,width:s.width,height:s.height,minHeight:s.minHeight,background:s.background,backgroundColor:s.backgroundColor,color:s.color,overflow:s.overflow},before:{content:b.content,display:b.display,color:b.color,fontSize:b.fontSize},after:{content:a.content,display:a.display,color:a.color,fontSize:a.fontSize}}};
-              const sheets=[...document.styleSheets].map(s=>{try{return{href:s.href,rules:[...s.cssRules].filter(r=>r.cssText.includes('emo-article-card__placeholder')).map(r=>r.cssText)}}catch(e){return{href:s.href,error:String(e)}}}).filter(x=>x.rules?.length);
-              return{body:document.body.className,card:detail(card),media:detail(media),children:children.map(detail),sheets};
+              const visible=(n)=>{const s=getComputedStyle(n),r=n.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0};
+              const candidates=[...document.querySelectorAll('article, .post, .emo-article-card')].filter(visible).map((card)=>{
+                const image=card.querySelector('img');
+                const media=card.querySelector('.emo-article-card__media, .post-thumbnail, .entry-image, figure, a:has(> img)');
+                const title=card.querySelector('h1,h2,h3')?.textContent?.trim().replace(/\s+/g,' ')||'';
+                const r=(media||card).getBoundingClientRect();
+                return{
+                  title,
+                  cardClass:card.className,
+                  mediaClass:media?.className||'',
+                  rect:{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)},
+                  image:image?{src:image.currentSrc||image.src,alt:image.alt,naturalWidth:image.naturalWidth,naturalHeight:image.naturalHeight,width:image.width,height:image.height,className:image.className,style:{objectFit:getComputedStyle(image).objectFit,background:getComputedStyle(image).background}}:null,
+                  mediaHtml:media?.outerHTML.slice(0,6000)||'',
+                  cardHtml:card.outerHTML.slice(0,12000)
+                };
+              });
+              return{body:document.body.className,candidates};
             });
             console.log(JSON.stringify(result,null,2));
             await browser.close();
