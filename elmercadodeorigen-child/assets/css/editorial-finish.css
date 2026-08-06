@@ -1,4 +1,4 @@
-/* Ajustes finales de la versión editorial 0.6.2. */
+/* Ajustes finales de la versión editorial 0.6.3. */
 
 /*
  * La optimización anterior posponía el renderizado de bloques inferiores.
@@ -50,16 +50,16 @@
 }
 
 /*
- * WCFM asignaba márgenes y posiciones alternas a cada tienda. Flex elimina la
- * colocación interna del plugin y mantiene una cuadrícula editorial predecible.
+ * WCFM asigna anchos, márgenes y posiciones alternas a las tiendas. Una rejilla
+ * explícita permite que el navegador calcule cada columna sin depender de los
+ * porcentajes ni del redondeo interno del plugin.
  */
 .elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
-	display: flex !important;
+	display: grid !important;
 	width: 100% !important;
+	grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 	align-items: stretch !important;
 	gap: 1.25rem !important;
-	flex-wrap: wrap !important;
-	grid-template-columns: none !important;
 }
 
 .elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
@@ -70,7 +70,7 @@
 	bottom: auto !important;
 	left: auto !important;
 	display: block !important;
-	width: 0 !important;
+	width: auto !important;
 	min-width: 0 !important;
 	max-width: none !important;
 	margin: 0 !important;
@@ -78,7 +78,6 @@
 	box-sizing: border-box !important;
 	clear: none !important;
 	float: none !important;
-	flex: 1 1 0 !important;
 	grid-column: auto !important;
 	grid-row: auto !important;
 	transform: none !important;
@@ -93,11 +92,14 @@
 		font-size: clamp(2.8rem, 14vw, 4.2rem);
 	}
 
+	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap {
+		grid-template-columns: 1fr !important;
+	}
+
 	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
 	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) {
-		width: 100% !important;
-		min-width: 100% !important;
-		max-width: 100% !important;
-		flex: 0 0 100% !important;
+		width: auto !important;
+		min-width: 0 !important;
+		max-width: none !important;
 	}
 }
