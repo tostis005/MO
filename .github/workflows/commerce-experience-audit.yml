@@ -1,0 +1,254 @@
+name: Commerce experience audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/commerce-experience-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Audit purchase journey and critical assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p commerce-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > commerce-audit.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const visible = (node) => {
+            if (!node) return false;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
+          };
+
+          const styleData = (node) => {
+            if (!node) return null;
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return {
+              text: (node.innerText || node.textContent || '').trim().slice(0, 800),
+              color: style.color,
+              backgroundColor: style.backgroundColor,
+              borderColor: style.borderColor,
+              opacity: style.opacity,
+              display: style.display,
+              visibility: style.visibility,
+              fontSize: style.fontSize,
+              lineHeight: style.lineHeight,
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              visible: visible(node)
+            };
+          };
+
+          async function prepare(page, url, viewport = { width: 1440, height: 1200 }) {
+            await page.setViewport(viewport);
+            await page.goto(`${url}${url.includes('?') ? '&' : '?'}commerce-audit=${Date.now()}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
+            await page.evaluate(() => {
+              window.auditVisible = ${visible.toString()};
+              window.auditStyle = ${styleData.toString()};
+            });
+            await sleep(900);
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const context = await browser.createBrowserContext();
+            const page = await context.newPage();
+            const requests = [];
+            page.on('response', (response) => {
+              const request = response.request();
+              if (['stylesheet', 'script', 'font', 'image', 'document', 'xhr', 'fetch'].includes(request.resourceType())) {
+                const headers = response.headers();
+                requests.push({
+                  url: response.url(),
+                  type: request.resourceType(),
+                  status: response.status(),
+                  cacheControl: headers['cache-control'] || '',
+                  contentType: headers['content-type'] || '',
+                  fromCache: response.fromCache(),
+                  fromServiceWorker: response.fromServiceWorker()
+                });
+              }
+            });
+
+            const report = { shop: {}, addToCart: {}, cart: {}, checkout: {}, homePerformance: {}, requests: [] };
+
+            await prepare(page, `${base}/tienda/`);
+            report.shop = await page.evaluate(() => ({
+              h1: document.querySelector('.emo-shop-title-block h1,h1')?.innerText?.trim() || '',
+              products: [...document.querySelectorAll('ul.products li.product')].map((item) => ({
+                title: item.querySelector('.woocommerce-loop-product__title,h2,h3')?.innerText?.trim() || '',
+                buttonText: item.querySelector('a.add_to_cart_button,button.add_to_cart_button')?.innerText?.trim() || '',
+                buttonClass: item.querySelector('a.add_to_cart_button,button.add_to_cart_button')?.className || '',
+                productId: item.querySelector('[data-product_id]')?.getAttribute('data-product_id') || ''
+              })).slice(0, 12),
+              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
+            }));
+
+            const target = await page.evaluate(() => {
+              const buttons = [...document.querySelectorAll('a.add_to_cart_button.ajax_add_to_cart[data-product_id],button.add_to_cart_button.ajax_add_to_cart[data-product_id]')]
+                .filter((button) => !button.classList.contains('product_type_variable') && !button.classList.contains('disabled') && button.getClientRects().length > 0);
+              const button = buttons[0];
+              if (!button) return null;
+              return { selector: `[data-product_id="${button.getAttribute('data-product_id')}"]`, productId: button.getAttribute('data-product_id'), text: button.innerText.trim() };
+            });
+
+            if (!target) throw new Error('No purchasable AJAX product was found in the shop.');
+
+            await page.click(target.selector);
+            await Promise.race([
+              page.waitForFunction(() => document.querySelector('.added_to_cart') || document.querySelector('.woocommerce-message') || document.body.classList.contains('woocommerce-cart'), { timeout: 12000 }).catch(() => null),
+              sleep(5000)
+            ]);
+            await sleep(1200);
+
+            report.addToCart = await page.evaluate((productId) => {
+              const selectors = [
+                '.woocommerce-notices-wrapper', '.woocommerce-message', '.woocommerce-info', '.woocommerce-error',
+                '.added_to_cart', `.add_to_cart_button[data-product_id="${productId}"]`,
+                '.cart-sidebar', '.mini-cart', '.widget_shopping_cart', '.site-header .shopping-cart'
+              ];
+              return {
+                bodyText: document.body.innerText.slice(0, 5000),
+                nodes: selectors.map((selector) => ({ selector, data: [...document.querySelectorAll(selector)].map(auditStyle) })),
+                cartCountText: document.querySelector('.cart-contents-count,.shopping-cart .count,.cart-count')?.innerText?.trim() || '',
+                overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
+              };
+            }, target.productId);
+            await page.screenshot({ path: 'commerce-audit/shop-after-add.png', fullPage: true });
+
+            await prepare(page, `${base}/carrito/`);
+            report.cart.before = await page.evaluate(() => {
+              const quantity = document.querySelector('.woocommerce-cart-form input.qty');
+              return {
+                bodyClass: document.body.className,
+                empty: Boolean(document.querySelector('.cart-empty,.wc-empty-cart-message')),
+                form: auditStyle(document.querySelector('.woocommerce-cart-form')),
+                totals: auditStyle(document.querySelector('.cart_totals')),
+                rows: document.querySelectorAll('.woocommerce-cart-form__cart-item').length,
+                productNames: [...document.querySelectorAll('.product-name')].map(auditStyle),
+                prices: [...document.querySelectorAll('.product-price,.product-subtotal,.cart-subtotal,.order-total')].map(auditStyle),
+                notices: [...document.querySelectorAll('.woocommerce-notices-wrapper,.woocommerce-message,.woocommerce-info,.woocommerce-error')].map(auditStyle),
+                quantity: quantity ? quantity.value : null,
+                updateButton: auditStyle(document.querySelector('button[name="update_cart"]')),
+                checkoutButton: auditStyle(document.querySelector('.checkout-button')),
+                waitlistVisible: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-btn-container')].some(auditVisible),
+                overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
+              };
+            });
+            await page.screenshot({ path: 'commerce-audit/cart-desktop-before.png', fullPage: true });
+
+            const quantityChanged = await page.evaluate(() => {
+              const input = document.querySelector('.woocommerce-cart-form input.qty');
+              const button = document.querySelector('button[name="update_cart"]');
+              if (!input || !button) return false;
+              const max = Number(input.max || 99);
+              const current = Number(input.value || 1);
+              if (current >= max) return false;
+              input.value = String(current + 1);
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              button.disabled = false;
+              button.removeAttribute('disabled');
+              button.click();
+              return true;
+            });
+
+            if (quantityChanged) {
+              await Promise.race([
+                page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => null),
+                page.waitForFunction(() => document.querySelector('.woocommerce-message')?.innerText.includes('actualizado'), { timeout: 15000 }).catch(() => null),
+                sleep(7000)
+              ]);
+              await sleep(1000);
+            }
+
+            report.cart.after = await page.evaluate(() => ({
+              quantity: document.querySelector('.woocommerce-cart-form input.qty')?.value || null,
+              totalsText: document.querySelector('.cart_totals')?.innerText?.trim().slice(0, 1600) || '',
+              notice: [...document.querySelectorAll('.woocommerce-message,.woocommerce-info,.woocommerce-error')].map(auditStyle),
+              checkoutButton: auditStyle(document.querySelector('.checkout-button')),
+              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
+            }));
+            await page.screenshot({ path: 'commerce-audit/cart-desktop-after.png', fullPage: true });
+
+            await prepare(page, `${base}/finalizar-compra/`);
+            report.checkout = await page.evaluate(() => ({
+              form: auditStyle(document.querySelector('form.checkout,.wc-block-checkout')),
+              fields: document.querySelectorAll('.woocommerce-billing-fields input,.woocommerce-shipping-fields input,.wc-block-components-text-input input').length,
+              orderReview: auditStyle(document.querySelector('#order_review,.wc-block-components-order-summary')),
+              payment: auditStyle(document.querySelector('#payment,.wc-block-checkout__payment-method')),
+              placeOrder: auditStyle(document.querySelector('#place_order,.wc-block-components-checkout-place-order-button')),
+              notices: [...document.querySelectorAll('.woocommerce-notices-wrapper,.woocommerce-info,.woocommerce-error')].map(auditStyle),
+              recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"]').length,
+              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
+            }));
+            await page.screenshot({ path: 'commerce-audit/checkout-desktop.png', fullPage: true });
+
+            const mobile = await context.newPage();
+            await prepare(mobile, `${base}/carrito/`, { width: 390, height: 844, isMobile: true });
+            report.cart.mobile = await mobile.evaluate(() => ({
+              form: auditStyle(document.querySelector('.woocommerce-cart-form')),
+              totals: auditStyle(document.querySelector('.cart_totals')),
+              checkoutButton: auditStyle(document.querySelector('.checkout-button')),
+              rows: document.querySelectorAll('.woocommerce-cart-form__cart-item').length,
+              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+              bodyWidth: document.body.getBoundingClientRect().width,
+              scrollWidth: document.documentElement.scrollWidth
+            }));
+            await mobile.screenshot({ path: 'commerce-audit/cart-mobile.png', fullPage: true });
+            await mobile.close();
+
+            const perf = await context.newPage();
+            const homeResponses = [];
+            perf.on('response', (response) => {
+              const request = response.request();
+              if (['document', 'stylesheet', 'script', 'font', 'image'].includes(request.resourceType())) {
+                const headers = response.headers();
+                homeResponses.push({ url: response.url(), type: request.resourceType(), status: response.status(), cacheControl: headers['cache-control'] || '', fromCache: response.fromCache() });
+              }
+            });
+            await prepare(perf, `${base}/`);
+            report.homePerformance = await perf.evaluate(() => ({
+              stylesheets: [...document.querySelectorAll('link[rel="stylesheet"],link[rel="preload"][as="style"]')].map((link) => ({ href: link.href, rel: link.rel, media: link.media, onload: Boolean(link.onload) })),
+              scripts: [...document.querySelectorAll('script[src]')].map((script) => ({ src: script.src, defer: script.defer, async: script.async, type: script.type })),
+              fonts: performance.getEntriesByType('resource').filter((entry) => /\.(woff2?|ttf)(\?|$)/i.test(entry.name)).map((entry) => ({ name: entry.name, duration: entry.duration, transferSize: entry.transferSize })),
+              resources: performance.getEntriesByType('resource').map((entry) => ({ name: entry.name, duration: Math.round(entry.duration), transferSize: entry.transferSize, initiatorType: entry.initiatorType })).filter((entry) => entry.transferSize > 0).sort((a,b) => b.duration-a.duration).slice(0,40),
+              lcpText: document.querySelector('.emo-hero p')?.innerText?.trim() || '',
+              mobileNavigationInert: document.querySelector('#mobile-navigation')?.inert ?? null,
+              mobileNavigationHidden: document.querySelector('#mobile-navigation')?.getAttribute('aria-hidden') || null
+            }));
+            report.homePerformance.responses = homeResponses;
+            await perf.screenshot({ path: 'commerce-audit/home-performance.png', fullPage: true });
+            await perf.close();
+
+            report.requests = requests;
+            fs.writeFileSync('commerce-audit/report.json', JSON.stringify(report, null, 2));
+            console.log(JSON.stringify(report, null, 2));
+            await browser.close();
+          })().catch((error) => { console.error(error); process.exit(1); });
+          NODE
+          node commerce-audit.cjs
+
+      - name: Upload commerce audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commerce-experience-audit
+          path: commerce-audit/
+          retention-days: 14
