@@ -1,6 +1,6 @@
 name: Deploy child theme to staging
 
-# Queue refresh: deploy and validate storefront refinements 0.10.4.
+# Temporary fallback: integration-created commits do not emit a push workflow run.
 on:
   push:
     branches: [main]
@@ -8,6 +8,8 @@ on:
       - 'elmercadodeorigen-child/**'
       - '.github/workflows/deploy-development.yml'
   workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
   contents: read
