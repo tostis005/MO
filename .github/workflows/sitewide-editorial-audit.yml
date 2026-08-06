@@ -1,0 +1,167 @@
+name: Sitewide editorial audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sitewide-editorial-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-sitewide-editorial-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Capture public templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sitewide-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+          cat > sitewide-audit.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const slugify = (value) => value.replace(/^https?:\/\/[^/]+/i, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 70) || 'home';
+
+          async function json(url) {
+            try {
+              const response = await fetch(url, { headers: { 'user-agent': 'ElMercadoEditorialAudit/1.0' } });
+              return response.ok ? await response.json() : [];
+            } catch (_) {
+              return [];
+            }
+          }
+
+          async function prepare(page, url) {
+            const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
+            await sleep(900);
+            return response;
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const pagesApi = await json(`${base}/wp-json/wp/v2/pages?per_page=100&_fields=link,slug,title`);
+            const postsApi = await json(`${base}/wp-json/wp/v2/posts?per_page=5&_fields=link,slug,title,date`);
+
+            const seeds = [
+              `${base}/`, `${base}/tienda/`, `${base}/store-listing/`, `${base}/blog/`, `${base}/noticias/`,
+              `${base}/carrito/`, `${base}/finalizar-compra/`, `${base}/mi-cuenta/`, `${base}/contacto/`, `${base}/nosotros/`
+            ];
+            for (const item of pagesApi) if (item?.link) seeds.push(item.link);
+            for (const item of postsApi) if (item?.link) seeds.push(item.link);
+
+            const discovery = await browser.newPage();
+            await discovery.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+            await prepare(discovery, `${base}/`);
+            const links = await discovery.evaluate(() => [...document.querySelectorAll('a[href]')].map((a) => a.href).filter((href) => href.startsWith(location.origin)));
+            await discovery.close();
+            seeds.push(...links.filter((href) => /blog|noticia|actualidad|receta|consejo|productor|tienda|carrito|cuenta|contacto|nosotros/i.test(href)));
+
+            const unique = [...new Set(seeds.map((url) => url.split('#')[0]))].slice(0, 45);
+            const report = { pagesApi, postsApi, inspected: [] };
+            let productUrl = '';
+
+            for (const url of unique) {
+              const page = await browser.newPage();
+              await page.setViewport({ width: 1440, height: 1400, deviceScaleFactor: 1 });
+              let response;
+              try {
+                response = await prepare(page, url);
+              } catch (error) {
+                report.inspected.push({ url, error: String(error) });
+                await page.close();
+                continue;
+              }
+
+              const data = await page.evaluate(() => {
+                const visible = (node) => node && getComputedStyle(node).display !== 'none' && getComputedStyle(node).visibility !== 'hidden';
+                const main = document.querySelector('main, #primary, .site-main');
+                const articleCards = [...document.querySelectorAll('article, .post, .blog-post, .entry')].filter(visible);
+                const productCards = [...document.querySelectorAll('ul.products li.product')].filter(visible);
+                return {
+                  title: document.title,
+                  bodyClass: document.body.className,
+                  h1: document.querySelector('h1')?.innerText?.trim() || '',
+                  h2: [...document.querySelectorAll('h2')].slice(0, 6).map((node) => node.innerText.trim()),
+                  mainText: (main?.innerText || '').trim().slice(0, 1600),
+                  articleCount: articleCards.length,
+                  productCount: productCards.length,
+                  sidebarVisible: [...document.querySelectorAll('#secondary,.sidebar,.widget-area')].some(visible),
+                  newsletterVisible: [...document.querySelectorAll('form,.hustle-ui,.xoo-wl-form-wrapper')].filter(visible).some((node) => /suscrib|newsletter|avisa|disponible/i.test(node.innerText || '')),
+                  contentWidth: main ? Math.round(main.getBoundingClientRect().width) : null,
+                  headerHeight: Math.round(document.querySelector('.site-header')?.getBoundingClientRect().height || 0),
+                  footerText: (document.querySelector('footer')?.innerText || '').trim().slice(0, 600),
+                  firstProduct: document.querySelector('ul.products li.product a.woocommerce-LoopProduct-link, ul.products li.product a.woocommerce-loop-product__link')?.href || ''
+                };
+              });
+
+              if (!productUrl && data.firstProduct) productUrl = data.firstProduct;
+              const status = response?.status() || 0;
+              const meaningful = status < 400 && !/page-template-404|error404/.test(data.bodyClass);
+              report.inspected.push({ url, status, meaningful, ...data });
+              if (meaningful) await page.screenshot({ path: `sitewide-audit/${slugify(url)}-desktop.png`, fullPage: true });
+              await page.close();
+            }
+
+            if (productUrl && !report.inspected.some((item) => item.url === productUrl)) {
+              const product = await browser.newPage();
+              await product.setViewport({ width: 1440, height: 1400, deviceScaleFactor: 1 });
+              await prepare(product, productUrl);
+              const data = await product.evaluate(() => ({
+                title: document.title,
+                bodyClass: document.body.className,
+                h1: document.querySelector('h1')?.innerText?.trim() || '',
+                h2: [...document.querySelectorAll('h2')].slice(0, 8).map((node) => node.innerText.trim()),
+                mainText: (document.querySelector('main,#primary,.site-main')?.innerText || '').trim().slice(0, 1600),
+                articleCount: document.querySelectorAll('article').length,
+                productCount: document.querySelectorAll('ul.products li.product').length,
+                sidebarVisible: false,
+                newsletterVisible: false,
+                contentWidth: Math.round(document.querySelector('main,#primary,.site-main')?.getBoundingClientRect().width || 0),
+                headerHeight: Math.round(document.querySelector('.site-header')?.getBoundingClientRect().height || 0),
+                footerText: (document.querySelector('footer')?.innerText || '').trim().slice(0, 600)
+              }));
+              report.inspected.push({ url: productUrl, status: 200, meaningful: true, ...data });
+              await product.screenshot({ path: 'sitewide-audit/product-desktop.png', fullPage: true });
+              await product.close();
+            }
+
+            const preferredMobile = report.inspected.filter((item) => item.meaningful && (/blog|noticia|actualidad/.test(item.bodyClass.toLowerCase()) || item.url === `${base}/` || item.url.includes('/tienda/'))).slice(0, 5);
+            for (const item of preferredMobile) {
+              const page = await browser.newPage();
+              await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true });
+              await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+              await prepare(page, item.url);
+              await page.screenshot({ path: `sitewide-audit/${slugify(item.url)}-mobile.png`, fullPage: true });
+              await page.close();
+            }
+
+            fs.writeFileSync('sitewide-audit/report.json', JSON.stringify(report, null, 2));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+          node sitewide-audit.cjs
+          cat sitewide-audit/report.json
+
+      - name: Upload sitewide audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitewide-editorial-audit
+          path: sitewide-audit/
+          retention-days: 7
