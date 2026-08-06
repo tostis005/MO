@@ -26,6 +26,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
       STAGING_URL: https://dev.elmercadodeorigen.com
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
 
     steps:
       - name: Checkout repository
@@ -72,9 +73,10 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
 
-          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
           set -eu
           raw="${1%/}"
+          domain="$2"
           wp_path=""
           case "$raw" in
             */wp-content/themes/elmercadodeorigen-child) wp_path="$(dirname "$(dirname "$(dirname "$raw")")")" ;;
@@ -92,17 +94,12 @@ jobs:
                 ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
                 2>/dev/null >> "$candidates" || true
             done
-            preferred="$(grep '/dev\.elmercadodeorigen\.com/wp-config\.php$' "$candidates" | head -n 1 || true)"
-            if [ -n "$preferred" ]; then
-              wp_path="$(dirname "$preferred")"
-            else
-              unique="$(sort -u "$candidates")"
-              count="$(printf '%s\n' "$unique" | sed '/^$/d' | wc -l | tr -d ' ')"
-              [ "$count" -eq 1 ] || { echo 'Configured staging path is not a unique WordPress installation.' >&2; exit 1; }
-              wp_path="$(dirname "$(printf '%s\n' "$unique" | head -n 1)")"
-            fi
+            preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+            [ -n "$preferred" ] || { echo "No WordPress installation found for ${domain}." >&2; exit 1; }
+            wp_path="$(dirname "$preferred")"
           fi
 
+          [ "$(basename "$wp_path")" = "$domain" ] || { echo "Resolved path does not match ${domain}." >&2; exit 1; }
           [ -f "$wp_path/wp-config.php" ]
           [ -d "$wp_path/wp-content/themes" ]
           printf '__WP_PATH__=%s\n' "$wp_path"
@@ -139,15 +136,17 @@ jobs:
           set -eu
           wp_path="$1"
           test -f "$wp_path/wp-content/themes/elmercadodeorigen-child/functions.php"
-          if command -v wp >/dev/null 2>&1; then
-            wp theme activate elmercadodeorigen-child --path="$wp_path"
-            active="$(wp option get stylesheet --path="$wp_path" --skip-plugins --skip-themes)"
-            [ "$active" = 'elmercadodeorigen-child' ]
-            wp cache flush --path="$wp_path" || true
-          else
-            echo 'WP-CLI is unavailable; cannot safely activate and verify the child theme.' >&2
-            exit 1
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI is unavailable.' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
           fi
+          [ -x "$php_bin" ] || { echo 'No usable PHP CLI binary found.' >&2; exit 1; }
+          "$php_bin" "$wp_bin" theme activate elmercadodeorigen-child --path="$wp_path"
+          active="$("$php_bin" "$wp_bin" option get stylesheet --path="$wp_path" --skip-plugins --skip-themes)"
+          [ "$active" = 'elmercadodeorigen-child' ]
+          "$php_bin" "$wp_bin" cache flush --path="$wp_path" || true
           REMOTE
 
       - name: Verify the public staging URL
