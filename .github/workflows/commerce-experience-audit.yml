@@ -27,179 +27,129 @@ jobs:
           const base = 'https://dev.elmercadodeorigen.com';
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          async function prepare(page, url, viewport = { width: 1440, height: 1200 }) {
+          async function prepare(page, path, viewport = { width: 1440, height: 1200 }) {
             await page.setViewport(viewport);
-            await page.goto(`${url}${url.includes('?') ? '&' : '?'}commerce-audit=${Date.now()}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}commerce-audit=${Date.now()}`, { waitUntil: 'networkidle2', timeout: 90000 });
             await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat,.grecaptcha-badge{display:none!important}' });
             await page.evaluate(() => {
               window.auditVisible = (node) => {
                 if (!node) return false;
-                const style = getComputedStyle(node);
-                const rect = node.getBoundingClientRect();
-                return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
+                const s = getComputedStyle(node), r = node.getBoundingClientRect();
+                return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0 && r.width > 0 && r.height > 0;
               };
               window.auditStyle = (node) => {
                 if (!node) return null;
-                const style = getComputedStyle(node);
-                const rect = node.getBoundingClientRect();
-                return {
-                  text: (node.innerText || node.textContent || '').trim().slice(0, 900),
-                  color: style.color,
-                  backgroundColor: style.backgroundColor,
-                  borderColor: style.borderColor,
-                  opacity: style.opacity,
-                  display: style.display,
-                  visibility: style.visibility,
-                  fontSize: style.fontSize,
-                  lineHeight: style.lineHeight,
-                  width: Math.round(rect.width),
-                  height: Math.round(rect.height),
-                  visible: window.auditVisible(node)
-                };
+                const s = getComputedStyle(node), r = node.getBoundingClientRect();
+                return { text:(node.innerText||node.textContent||'').trim().slice(0,1000), color:s.color, background:s.backgroundColor, border:s.borderColor, opacity:s.opacity, display:s.display, visibility:s.visibility, width:Math.round(r.width), height:Math.round(r.height), visible:window.auditVisible(node) };
               };
             });
-            await sleep(900);
+            await sleep(1000);
           }
 
           (async () => {
-            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+            const browser = await puppeteer.launch({ executablePath:'/usr/bin/google-chrome', headless:true, args:['--no-sandbox','--disable-gpu'] });
             const context = await browser.createBrowserContext();
             const page = await context.newPage();
-            const report = { shop: {}, addToCart: {}, cart: {}, checkout: {}, homePerformance: {} };
+            const report = { product:null, shop:{}, addToCart:{}, cart:{}, checkout:{}, homePerformance:{} };
 
-            await prepare(page, `${base}/tienda/`);
+            const products = await fetch(`${base}/wp-json/wc/store/v1/products?per_page=100`).then((response) => response.ok ? response.json() : []);
+            const product = products.find((item) => item.is_purchasable && item.is_in_stock && item.type === 'simple')
+              || products.find((item) => item.is_purchasable && item.is_in_stock && item.add_to_cart?.url);
+            if (!product) throw new Error('No purchasable product was returned by WooCommerce Store API.');
+            report.product = { id:product.id, name:product.name, type:product.type, addUrl:product.add_to_cart?.url || '' };
+
+            await prepare(page, '/tienda/');
             report.shop = await page.evaluate(() => ({
-              h1: document.querySelector('.emo-shop-title-block h1,h1')?.innerText?.trim() || '',
-              products: [...document.querySelectorAll('ul.products li.product')].map((item) => ({
-                title: item.querySelector('.woocommerce-loop-product__title,h2,h3')?.innerText?.trim() || '',
-                buttonText: item.querySelector('a.add_to_cart_button,button.add_to_cart_button')?.innerText?.trim() || '',
-                buttonClass: item.querySelector('a.add_to_cart_button,button.add_to_cart_button')?.className || '',
-                productId: item.querySelector('[data-product_id]')?.getAttribute('data-product_id') || ''
-              })).slice(0, 12),
+              title: document.querySelector('.emo-shop-title-block h1,h1')?.innerText?.trim() || '',
+              cards: document.querySelectorAll('ul.products li.product').length,
+              buttons: [...document.querySelectorAll('ul.products li.product a,ul.products li.product button')].filter(window.auditVisible).map((node) => ({ text:node.innerText.trim(), className:node.className, href:node.href||'', productId:node.dataset.product_id||'' })).slice(0,40),
               overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
             }));
 
-            const target = await page.evaluate(() => {
-              const button = [...document.querySelectorAll('a.add_to_cart_button.ajax_add_to_cart[data-product_id],button.add_to_cart_button.ajax_add_to_cart[data-product_id]')]
-                .find((item) => !item.classList.contains('product_type_variable') && !item.classList.contains('disabled') && item.getClientRects().length > 0);
-              return button ? { productId: button.getAttribute('data-product_id') } : null;
+            const matchingButton = await page.$(`[data-product_id="${product.id}"]`);
+            if (matchingButton) {
+              await matchingButton.click();
+              await Promise.race([page.waitForNavigation({waitUntil:'networkidle2',timeout:12000}).catch(()=>null), page.waitForFunction(() => document.querySelector('.added_to_cart,.woocommerce-message'),{timeout:12000}).catch(()=>null), sleep(5000)]);
+            } else {
+              await page.goto(`${base}/tienda/?add-to-cart=${product.id}&commerce-audit=${Date.now()}`, { waitUntil:'networkidle2', timeout:90000 });
+            }
+            await page.evaluate(() => {
+              window.auditVisible = (node) => { if(!node)return false; const s=getComputedStyle(node),r=node.getBoundingClientRect(); return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0; };
+              window.auditStyle = (node) => { if(!node)return null; const s=getComputedStyle(node),r=node.getBoundingClientRect(); return {text:(node.innerText||node.textContent||'').trim().slice(0,1000),color:s.color,background:s.backgroundColor,border:s.borderColor,opacity:s.opacity,display:s.display,visibility:s.visibility,width:Math.round(r.width),height:Math.round(r.height),visible:window.auditVisible(node)}; };
             });
-            if (!target) throw new Error('No purchasable AJAX product was found.');
+            await sleep(1500);
+            report.addToCart = await page.evaluate(() => ({
+              notices: [...document.querySelectorAll('.woocommerce-notices-wrapper,.woocommerce-message,.woocommerce-info,.woocommerce-error')].map(window.auditStyle),
+              forwardLinks: [...document.querySelectorAll('.added_to_cart,.wc-forward')].map(window.auditStyle),
+              cartCount: document.querySelector('.cart-contents-count,.shopping-cart .count,.cart-count')?.innerText?.trim() || '',
+              miniCart: window.auditStyle(document.querySelector('.cart-sidebar,.mini-cart,.widget_shopping_cart')),
+              bodyText: document.body.innerText.slice(0,6000),
+              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
+            }));
+            await page.screenshot({path:'commerce-audit/shop-after-add.png',fullPage:true});
 
-            await page.click(`[data-product_id="${target.productId}"]`);
-            await Promise.race([
-              page.waitForFunction(() => document.querySelector('.added_to_cart') || document.querySelector('.woocommerce-message'), { timeout: 12000 }).catch(() => null),
-              sleep(5000)
-            ]);
-            await sleep(1200);
-            report.addToCart = await page.evaluate((productId) => {
-              const selectors = ['.woocommerce-notices-wrapper','.woocommerce-message','.woocommerce-info','.woocommerce-error','.added_to_cart',`.add_to_cart_button[data-product_id="${productId}"]`,'.cart-sidebar','.mini-cart','.widget_shopping_cart','.site-header .shopping-cart'];
-              return {
-                nodes: selectors.map((selector) => ({ selector, data: [...document.querySelectorAll(selector)].map(window.auditStyle) })),
-                cartCountText: document.querySelector('.cart-contents-count,.shopping-cart .count,.cart-count')?.innerText?.trim() || '',
-                bodyText: document.body.innerText.slice(0, 5000),
-                overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
-              };
-            }, target.productId);
-            await page.screenshot({ path: 'commerce-audit/shop-after-add.png', fullPage: true });
-
-            await prepare(page, `${base}/carrito/`);
+            await prepare(page, '/carrito/');
             report.cart.before = await page.evaluate(() => ({
               empty: Boolean(document.querySelector('.cart-empty,.wc-empty-cart-message')),
               form: window.auditStyle(document.querySelector('.woocommerce-cart-form')),
               totals: window.auditStyle(document.querySelector('.cart_totals')),
               rows: document.querySelectorAll('.woocommerce-cart-form__cart-item').length,
-              productNames: [...document.querySelectorAll('.product-name')].map(window.auditStyle),
+              names: [...document.querySelectorAll('.product-name')].map(window.auditStyle),
               prices: [...document.querySelectorAll('.product-price,.product-subtotal,.cart-subtotal,.order-total')].map(window.auditStyle),
-              notices: [...document.querySelectorAll('.woocommerce-notices-wrapper,.woocommerce-message,.woocommerce-info,.woocommerce-error')].map(window.auditStyle),
-              quantity: document.querySelector('.woocommerce-cart-form input.qty')?.value || null,
-              updateButton: window.auditStyle(document.querySelector('button[name="update_cart"]')),
-              checkoutButton: window.auditStyle(document.querySelector('.checkout-button')),
-              waitlistVisible: [...document.querySelectorAll('.xoo-wl-form-wrapper,.xoo-wl-form,.xoo-wl-btn-container')].some(window.auditVisible),
+              quantity: document.querySelector('input.qty')?.value || null,
+              update: window.auditStyle(document.querySelector('button[name="update_cart"]')),
+              checkout: window.auditStyle(document.querySelector('.checkout-button')),
+              notices: [...document.querySelectorAll('.woocommerce-message,.woocommerce-info,.woocommerce-error')].map(window.auditStyle),
               overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
             }));
-            await page.screenshot({ path: 'commerce-audit/cart-desktop-before.png', fullPage: true });
+            await page.screenshot({path:'commerce-audit/cart-desktop-before.png',fullPage:true});
 
             const changed = await page.evaluate(() => {
-              const input = document.querySelector('.woocommerce-cart-form input.qty');
-              const button = document.querySelector('button[name="update_cart"]');
-              if (!input || !button) return false;
-              const current = Number(input.value || 1);
-              const max = Number(input.max || 99);
-              if (current >= max) return false;
-              input.value = String(current + 1);
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-              button.disabled = false;
-              button.removeAttribute('disabled');
-              button.click();
-              return true;
+              const input=document.querySelector('input.qty'), button=document.querySelector('button[name="update_cart"]');
+              if(!input||!button)return false; const current=Number(input.value||1),max=Number(input.max||99); if(current>=max)return false;
+              input.value=String(current+1); input.dispatchEvent(new Event('input',{bubbles:true})); input.dispatchEvent(new Event('change',{bubbles:true})); button.disabled=false; button.removeAttribute('disabled'); button.click(); return true;
             });
-            if (changed) {
-              await Promise.race([page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => null), sleep(8000)]);
-              await sleep(900);
-            }
-            report.cart.after = await page.evaluate(() => ({
-              quantity: document.querySelector('.woocommerce-cart-form input.qty')?.value || null,
-              totalsText: document.querySelector('.cart_totals')?.innerText?.trim().slice(0, 1600) || '',
-              notice: [...document.querySelectorAll('.woocommerce-message,.woocommerce-info,.woocommerce-error')].map(window.auditStyle),
-              checkoutButton: window.auditStyle(document.querySelector('.checkout-button')),
-              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
-            }));
-            await page.screenshot({ path: 'commerce-audit/cart-desktop-after.png', fullPage: true });
+            if(changed){ await Promise.race([page.waitForNavigation({waitUntil:'networkidle2',timeout:15000}).catch(()=>null),sleep(8000)]); await sleep(1000); }
+            report.cart.after = await page.evaluate(() => ({ quantity:document.querySelector('input.qty')?.value||null, totals:document.querySelector('.cart_totals')?.innerText?.trim().slice(0,1800)||'', notice:[...document.querySelectorAll('.woocommerce-message,.woocommerce-info,.woocommerce-error')].map(window.auditStyle), checkout:window.auditStyle(document.querySelector('.checkout-button')), overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2 }));
+            await page.screenshot({path:'commerce-audit/cart-desktop-after.png',fullPage:true});
 
-            await prepare(page, `${base}/finalizar-compra/`);
+            await prepare(page, '/finalizar-compra/');
             report.checkout = await page.evaluate(() => ({
               form: window.auditStyle(document.querySelector('form.checkout,.wc-block-checkout')),
               fields: document.querySelectorAll('.woocommerce-billing-fields input,.woocommerce-shipping-fields input,.wc-block-components-text-input input').length,
-              orderReview: window.auditStyle(document.querySelector('#order_review,.wc-block-components-order-summary')),
+              review: window.auditStyle(document.querySelector('#order_review,.wc-block-components-order-summary')),
               payment: window.auditStyle(document.querySelector('#payment,.wc-block-checkout__payment-method')),
               placeOrder: window.auditStyle(document.querySelector('#place_order,.wc-block-components-checkout-place-order-button')),
-              notices: [...document.querySelectorAll('.woocommerce-notices-wrapper,.woocommerce-info,.woocommerce-error')].map(window.auditStyle),
-              recaptcha: document.querySelectorAll('.grecaptcha-badge,script[src*="recaptcha"],script[src*="google.com/recaptcha"]').length,
               overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
             }));
-            await page.screenshot({ path: 'commerce-audit/checkout-desktop.png', fullPage: true });
+            await page.screenshot({path:'commerce-audit/checkout-desktop.png',fullPage:true});
 
             const mobile = await context.newPage();
-            await prepare(mobile, `${base}/carrito/`, { width: 390, height: 844, isMobile: true });
-            report.cart.mobile = await mobile.evaluate(() => ({
-              form: window.auditStyle(document.querySelector('.woocommerce-cart-form')),
-              totals: window.auditStyle(document.querySelector('.cart_totals')),
-              checkoutButton: window.auditStyle(document.querySelector('.checkout-button')),
-              rows: document.querySelectorAll('.woocommerce-cart-form__cart-item').length,
-              overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
-              scrollWidth: document.documentElement.scrollWidth
-            }));
-            await mobile.screenshot({ path: 'commerce-audit/cart-mobile.png', fullPage: true });
+            await prepare(mobile, '/carrito/', {width:390,height:844,isMobile:true});
+            report.cart.mobile = await mobile.evaluate(() => ({ form:window.auditStyle(document.querySelector('.woocommerce-cart-form')), totals:window.auditStyle(document.querySelector('.cart_totals')), checkout:window.auditStyle(document.querySelector('.checkout-button')), rows:document.querySelectorAll('.woocommerce-cart-form__cart-item').length, overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2, scrollWidth:document.documentElement.scrollWidth }));
+            await mobile.screenshot({path:'commerce-audit/cart-mobile.png',fullPage:true});
             await mobile.close();
 
             const perf = await context.newPage();
-            const responses = [];
-            perf.on('response', (response) => {
-              const type = response.request().resourceType();
-              if (['document','stylesheet','script','font','image'].includes(type)) {
-                responses.push({ url: response.url(), type, status: response.status(), cacheControl: response.headers()['cache-control'] || '', fromCache: response.fromCache() });
-              }
-            });
-            await prepare(perf, `${base}/`);
+            const responses=[];
+            perf.on('response',(response)=>{const type=response.request().resourceType();if(['document','stylesheet','script','font','image'].includes(type))responses.push({url:response.url(),type,status:response.status(),cacheControl:response.headers()['cache-control']||'',fromCache:response.fromCache()});});
+            await prepare(perf, '/');
             report.homePerformance = await perf.evaluate(() => ({
-              stylesheets: [...document.querySelectorAll('link[rel="stylesheet"],link[rel="preload"][as="style"]')].map((link) => ({ href: link.href, rel: link.rel, media: link.media, onload: Boolean(link.onload) })),
-              scripts: [...document.querySelectorAll('script[src]')].map((script) => ({ src: script.src, defer: script.defer, async: script.async, type: script.type })),
-              fonts: performance.getEntriesByType('resource').filter((entry) => /\.(woff2?|ttf)(\?|$)/i.test(entry.name)).map((entry) => ({ name: entry.name, duration: Math.round(entry.duration), transferSize: entry.transferSize })),
-              resources: performance.getEntriesByType('resource').map((entry) => ({ name: entry.name, duration: Math.round(entry.duration), transferSize: entry.transferSize, initiatorType: entry.initiatorType })).filter((entry) => entry.transferSize > 0).sort((a,b) => b.duration-a.duration).slice(0,40),
-              lcpText: document.querySelector('.emo-hero p')?.innerText?.trim() || '',
-              mobileNavigationInert: document.querySelector('#mobile-navigation')?.inert ?? null,
-              mobileNavigationHidden: document.querySelector('#mobile-navigation')?.getAttribute('aria-hidden') || null
+              stylesheets:[...document.querySelectorAll('link[rel="stylesheet"],link[rel="preload"][as="style"]')].map((link)=>({href:link.href,rel:link.rel,media:link.media,onload:Boolean(link.onload)})),
+              scripts:[...document.querySelectorAll('script[src]')].map((script)=>({src:script.src,defer:script.defer,async:script.async,type:script.type})),
+              fonts:performance.getEntriesByType('resource').filter((entry)=>/\.(woff2?|ttf)(\?|$)/i.test(entry.name)).map((entry)=>({name:entry.name,duration:Math.round(entry.duration),transferSize:entry.transferSize})),
+              resources:performance.getEntriesByType('resource').map((entry)=>({name:entry.name,duration:Math.round(entry.duration),transferSize:entry.transferSize,initiatorType:entry.initiatorType})).filter((entry)=>entry.transferSize>0).sort((a,b)=>b.duration-a.duration).slice(0,50),
+              navigationInert:document.querySelector('#mobile-navigation')?.inert??null,
+              navigationHidden:document.querySelector('#mobile-navigation')?.getAttribute('aria-hidden')||null
             }));
-            report.homePerformance.responses = responses;
-            await perf.screenshot({ path: 'commerce-audit/home-performance.png', fullPage: true });
+            report.homePerformance.responses=responses;
+            await perf.screenshot({path:'commerce-audit/home-performance.png',fullPage:true});
             await perf.close();
 
-            fs.writeFileSync('commerce-audit/report.json', JSON.stringify(report, null, 2));
-            console.log(JSON.stringify(report, null, 2));
+            fs.writeFileSync('commerce-audit/report.json',JSON.stringify(report,null,2));
+            console.log(JSON.stringify(report,null,2));
             await browser.close();
-          })().catch((error) => { console.error(error); process.exit(1); });
+          })().catch((error)=>{console.error(error);process.exit(1);});
           NODE
           node commerce-audit.cjs
 
