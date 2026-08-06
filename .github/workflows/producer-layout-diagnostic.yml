@@ -1,0 +1,84 @@
+name: Producer layout diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/producer-layout-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect computed producer layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p producer-diagnostic
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > diagnostic.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1440, height: 1200 });
+            await page.goto(`https://dev.elmercadodeorigen.com/productores/?producer-diagnostic=${process.env.GITHUB_SHA}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}' });
+            await sleep(4000);
+            const report = await page.evaluate(() => {
+              const rect = (node) => {
+                const value = node.getBoundingClientRect();
+                return { x: value.x, y: value.y, width: value.width, height: value.height, top: value.top, left: value.left };
+              };
+              const style = (node) => {
+                const value = getComputedStyle(node);
+                return {
+                  display: value.display,
+                  position: value.position,
+                  width: value.width,
+                  maxWidth: value.maxWidth,
+                  margin: value.margin,
+                  float: value.float,
+                  transform: value.transform,
+                  gridTemplateColumns: value.gridTemplateColumns,
+                  gridAutoFlow: value.gridAutoFlow,
+                  gridColumn: value.gridColumn,
+                  gridColumnStart: value.gridColumnStart,
+                  gridColumnEnd: value.gridColumnEnd,
+                  gridRow: value.gridRow,
+                  gridRowStart: value.gridRowStart,
+                  gridRowEnd: value.gridRowEnd,
+                  justifySelf: value.justifySelf,
+                  alignSelf: value.alignSelf
+                };
+              };
+              const list = document.querySelector('#wcfmmp-stores-wrap ul.wcfmmp-store-wrap');
+              const cards = [...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')];
+              return {
+                bodyClasses: document.body.className,
+                list: list ? { rect: rect(list), style: style(list), inlineStyle: list.getAttribute('style'), className: list.className, childCount: list.children.length } : null,
+                children: [...(list?.children || [])].map((node, index) => ({ index, tag: node.tagName, className: node.className, inlineStyle: node.getAttribute('style'), rect: rect(node), style: style(node), wrapper: node.querySelector('.store-wrapper') ? { rect: rect(node.querySelector('.store-wrapper')), style: style(node.querySelector('.store-wrapper')), inlineStyle: node.querySelector('.store-wrapper').getAttribute('style') } : null })),
+                cards: cards.map((node, index) => ({ index, className: node.className, inlineStyle: node.getAttribute('style'), rect: rect(node), style: style(node), parentTag: node.parentElement?.tagName, parentClass: node.parentElement?.className }))
+              };
+            });
+            fs.writeFileSync('producer-diagnostic/report.json', JSON.stringify(report, null, 2));
+            await page.screenshot({ path: 'producer-diagnostic/producers.png', fullPage: true });
+            console.log(JSON.stringify(report, null, 2));
+            await browser.close();
+          })().catch((error) => { console.error(error); process.exit(1); });
+          NODE
+          node diagnostic.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: producer-layout-diagnostic
+          path: producer-diagnostic/
+          retention-days: 7
