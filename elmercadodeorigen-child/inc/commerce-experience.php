@@ -149,3 +149,94 @@ add_action(
 	},
 	4
 );
+
+/**
+ * Devuelve productores con productos publicados para el filtro de la tienda.
+ *
+ * @return WP_User[]
+ */
+function elmercado_get_shop_vendors(): array {
+	$author_ids = get_posts(
+		array(
+			'post_type'              => 'product',
+			'post_status'            => 'publish',
+			'posts_per_page'         => -1,
+			'fields'                 => 'ids',
+			'orderby'                => 'author',
+			'order'                  => 'ASC',
+			'no_found_rows'          => true,
+			'update_post_meta_cache' => false,
+			'update_post_term_cache' => false,
+		)
+	);
+
+	if ( empty( $author_ids ) ) {
+		return array();
+	}
+
+	$vendor_ids = array();
+	foreach ( $author_ids as $product_id ) {
+		$author_id = (int) get_post_field( 'post_author', $product_id );
+		if ( $author_id > 0 ) {
+			$vendor_ids[ $author_id ] = $author_id;
+		}
+	}
+
+	if ( empty( $vendor_ids ) ) {
+		return array();
+	}
+
+	return get_users(
+		array(
+			'include' => array_values( $vendor_ids ),
+			'orderby' => 'display_name',
+			'order'   => 'ASC',
+		)
+	);
+}
+
+add_action(
+	'woocommerce_before_shop_loop',
+	static function (): void {
+		if ( ! is_shop() ) {
+			return;
+		}
+
+		$vendors = elmercado_get_shop_vendors();
+		if ( empty( $vendors ) ) {
+			return;
+		}
+
+		$selected_vendor = isset( $_GET['productor'] ) ? absint( wp_unslash( $_GET['productor'] ) ) : 0;
+		?>
+		<form class="emo-vendor-filter" method="get" action="<?php echo esc_url( wc_get_page_permalink( 'shop' ) ); ?>">
+			<label for="emo-vendor-filter-select"><?php esc_html_e( 'Productor', 'elmercadodeorigen' ); ?></label>
+			<select id="emo-vendor-filter-select" name="productor" onchange="this.form.submit()">
+				<option value=""><?php esc_html_e( 'Todos los productores', 'elmercadodeorigen' ); ?></option>
+				<?php foreach ( $vendors as $vendor ) : ?>
+					<option value="<?php echo esc_attr( (string) $vendor->ID ); ?>" <?php selected( $selected_vendor, (int) $vendor->ID ); ?>>
+						<?php echo esc_html( $vendor->display_name ); ?>
+					</option>
+				<?php endforeach; ?>
+			</select>
+			<noscript><button type="submit"><?php esc_html_e( 'Filtrar', 'elmercadodeorigen' ); ?></button></noscript>
+		</form>
+		<?php
+	},
+	14
+);
+
+add_action(
+	'pre_get_posts',
+	static function ( WP_Query $query ): void {
+		if ( is_admin() || ! $query->is_main_query() || ! function_exists( 'is_shop' ) || ! is_shop() ) {
+			return;
+		}
+
+		$vendor_id = isset( $_GET['productor'] ) ? absint( wp_unslash( $_GET['productor'] ) ) : 0;
+		if ( $vendor_id > 0 ) {
+			$query->set( 'author', $vendor_id );
+		}
+	},
+	20
+);
