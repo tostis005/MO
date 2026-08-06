@@ -1,4 +1,4 @@
-/* Ajustes finales de la versión editorial 0.6.1. */
+/* Ajustes finales de la versión editorial 0.6.2. */
 
 /*
  * La optimización anterior posponía el renderizado de bloques inferiores.
@@ -70,13 +70,15 @@
 	bottom: auto !important;
 	left: auto !important;
 	display: block !important;
-	width: calc(50% - 0.625rem) !important;
-	max-width: calc(50% - 0.625rem) !important;
+	width: 0 !important;
+	min-width: 0 !important;
+	max-width: none !important;
 	margin: 0 !important;
 	padding: 0 !important;
+	box-sizing: border-box !important;
 	clear: none !important;
 	float: none !important;
-	flex: 1 1 calc(50% - 0.625rem) !important;
+	flex: 1 1 0 !important;
 	grid-column: auto !important;
 	grid-row: auto !important;
 	transform: none !important;
@@ -94,7 +96,8 @@
 	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store,
 	.elmercado-child-theme #wcfmmp-stores-wrap ul.wcfmmp-store-wrap > li.wcfmmp-single-store:nth-child(n) {
 		width: 100% !important;
+		min-width: 100% !important;
 		max-width: 100% !important;
-		flex-basis: 100% !important;
+		flex: 0 0 100% !important;
 	}
 }
