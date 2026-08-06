@@ -1,0 +1,98 @@
+name: Publish home critical CSS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-home-critical-css.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: elmercado-critical-css-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate critical parent CSS
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > generate-critical.cjs <<'NODE'
+          const fs = require('fs');
+          const puppeteer = require('puppeteer-core');
+          const base = 'https://dev.elmercadodeorigen.com';
+          const output = 'elmercadodeorigen-child/assets/css/critical-woostify-home.min.css';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const merge = (ranges) => {
+            const sorted = [...ranges].sort((a,b) => a.start-b.start);
+            const result = [];
+            for (const range of sorted) {
+              const last = result[result.length-1];
+              if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+              else result.push({start:range.start,end:range.end});
+            }
+            return result;
+          };
+
+          const minify = (css) => css
+            .replace(/\/\*[\s\S]*?\*\//g,'')
+            .replace(/\s+/g,' ')
+            .replace(/\s*([{}:;,>+~])\s*/g,'$1')
+            .replace(/;}/g,'}')
+            .trim();
+
+          async function collect(browser, viewport, userAgent = '') {
+            const page = await browser.newPage();
+            await page.setViewport(viewport);
+            if (userAgent) await page.setUserAgent(userAgent);
+            await page.coverage.startCSSCoverage({resetOnNavigation:false});
+            await page.goto(`${base}/?critical-publish=${Date.now()}`, {waitUntil:'domcontentloaded',timeout:90000});
+            await sleep(1300);
+            const entries = await page.coverage.stopCSSCoverage();
+            await page.close();
+            return entries.find((entry) => /\/themes\/woostify\/style\.css/.test(entry.url)) || null;
+          }
+
+          (async () => {
+            const browser = await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-gpu']});
+            const mobile = await collect(browser,{width:390,height:844,isMobile:true,deviceScaleFactor:1},'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+            const desktop = await collect(browser,{width:1440,height:1000,deviceScaleFactor:1});
+            await browser.close();
+
+            const source = mobile?.text || desktop?.text || '';
+            if (!source) throw new Error('Woostify stylesheet coverage was not found.');
+            const ranges = merge([...(mobile?.ranges||[]),...(desktop?.ranges||[])]);
+            const critical = minify(ranges.map((range)=>source.slice(range.start,range.end)).join('\n'));
+            if (!critical || critical.length < 5000) throw new Error(`Critical CSS is unexpectedly small: ${critical.length} bytes.`);
+            fs.mkdirSync(require('path').dirname(output),{recursive:true});
+            fs.writeFileSync(output,`/* Generated from first-view mobile and desktop coverage. */\n${critical}\n`);
+            console.log(JSON.stringify({sourceBytes:source.length,criticalBytes:critical.length,coveragePercent:Math.round((critical.length/source.length)*1000)/10,ranges:ranges.length},null,2));
+          })().catch((error)=>{console.error(error);process.exit(1);});
+          NODE
+          node generate-critical.cjs
+
+      - name: Commit generated critical CSS
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- elmercadodeorigen-child/assets/css/critical-woostify-home.min.css; then
+            echo 'Critical CSS is already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+          git commit -m 'perf: publish critical Woostify CSS'
+          git push
