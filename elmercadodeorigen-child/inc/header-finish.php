@@ -90,21 +90,58 @@ add_action(
 					grid-column: 3 !important;
 					align-items: center !important;
 					justify-content: flex-end !important;
-					gap: 0.2rem !important;
+					gap: 0.5rem !important;
 					margin: 0 !important;
+					overflow: visible !important;
 				}
 
-				body.elmercado-child-theme .site-header .site-tools > .header-search-icon,
+				body.elmercado-child-theme .site-header .site-tools .header-search-icon,
+				body.elmercado-child-theme .site-header .site-tools .search-icon,
+				body.elmercado-child-theme .site-header .site-tools .site-search-toggle,
 				body.elmercado-child-theme .site-header .site-tools > a.tools-icon,
-				body.elmercado-child-theme .site-header .site-tools > .my-account > a.tools-icon {
+				body.elmercado-child-theme .site-header .site-tools .my-account > a.tools-icon {
 					display: grid !important;
+					visibility: visible !important;
+					opacity: 1 !important;
 					width: 44px !important;
 					height: 44px !important;
 					min-width: 44px !important;
+					margin: 0 !important;
 					padding: 0 !important;
 					place-items: center !important;
 					line-height: 1 !important;
+					pointer-events: auto !important;
 				}
+			}
+
+			/* El contador debe permanecer visible incluso cuando WooCommerce lo deja a cero. */
+			body.elmercado-child-theme .site-header .site-tools :is(.shopping-cart,.shopping-bag-button,.cart-contents) {
+				position: relative !important;
+				overflow: visible !important;
+			}
+
+			body.elmercado-child-theme .site-header .site-tools :is(.shopping-cart,.shopping-bag-button,.cart-contents) :is(.shop-cart-count,.cart-count,.count),
+			body.elmercado-child-theme .site-header .site-tools > :is(.shop-cart-count,.cart-count) {
+				position: absolute !important;
+				top: 1px !important;
+				right: 0 !important;
+				display: inline-flex !important;
+				visibility: visible !important;
+				opacity: 1 !important;
+				min-width: 18px !important;
+				height: 18px !important;
+				align-items: center !important;
+				justify-content: center !important;
+				padding: 0 4px !important;
+				border: 2px solid #fffdf8 !important;
+				border-radius: 999px !important;
+				background: #1f674b !important;
+				color: #fff !important;
+				font-size: 10px !important;
+				font-weight: 800 !important;
+				line-height: 14px !important;
+				transform: none !important;
+				z-index: 5 !important;
 			}
 
 			@media (max-width: 991px) {
@@ -116,8 +153,18 @@ add_action(
 					display: flex !important;
 				}
 
-				body.elmercado-child-theme .site-header .site-tools > .header-search-icon {
-					display: none !important;
+				/* El buscador debe estar disponible también en la portada móvil. */
+				body.elmercado-child-theme .site-header .site-tools .header-search-icon,
+				body.elmercado-child-theme .site-header .site-tools .search-icon,
+				body.elmercado-child-theme .site-header .site-tools .site-search-toggle {
+					display: grid !important;
+					visibility: visible !important;
+					opacity: 1 !important;
+					width: 40px !important;
+					height: 40px !important;
+					min-width: 40px !important;
+					place-items: center !important;
+					pointer-events: auto !important;
 				}
 			}
 
