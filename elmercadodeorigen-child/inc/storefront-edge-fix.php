@@ -17,6 +17,17 @@ add_action(
 		}
 		?>
 		<style id="elmercado-storefront-edge-fix">
+			body.elmercado-child-theme #shop-cart-sidebar .quantity,
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity {
+				display: grid !important;
+				grid-template-columns: 38px 46px 38px !important;
+				width: 122px !important;
+				min-width: 122px !important;
+				height: 40px !important;
+				align-items: center !important;
+				justify-items: center !important;
+				gap: 0 !important;
+			}
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > *::before,
 			body.elmercado-child-theme #shop-cart-sidebar .quantity > *::after,
 			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > *::before,
@@ -24,31 +35,59 @@ add_action(
 				content: none !important;
 				display: none !important;
 			}
-			body.elmercado-child-theme #shop-cart-sidebar .quantity > span:first-child::after,
-			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:first-child::after {
-				content: "−" !important;
-				display: block !important;
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-product-qty {
+				position: static !important;
+				display: flex !important;
+				width: 38px !important;
+				height: 38px !important;
+				margin: 0 !important;
+				padding: 0 !important;
+				align-items: center !important;
+				justify-content: center !important;
+				font-family: Arial,sans-serif !important;
 				font-size: 21px !important;
 				font-weight: 700 !important;
-				line-height: 1 !important;
+				line-height: 38px !important;
 				color: #173f32 !important;
+				text-indent: 0 !important;
+				transform: none !important;
 			}
-			body.elmercado-child-theme #shop-cart-sidebar .quantity > span:last-child::after,
-			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity > .mini-cart-product-qty:last-child::after {
-				content: "+" !important;
-				display: block !important;
-				font-size: 21px !important;
-				font-weight: 700 !important;
-				line-height: 1 !important;
-				color: #173f32 !important;
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-product-qty:first-child {
+				grid-column: 1 !important;
 			}
 			body.elmercado-child-theme #shop-cart-sidebar input.qty {
-				font-family: Arial, sans-serif !important;
+				position: static !important;
+				grid-column: 2 !important;
+				display: block !important;
+				width: 46px !important;
+				height: 36px !important;
+				margin: 0 !important;
+				padding: 0 !important;
+				border: 0 !important;
+				border-inline: 1px solid rgba(23,63,50,.12) !important;
+				font-family: Arial,sans-serif !important;
+				font-size: 16px !important;
+				font-weight: 700 !important;
 				font-variant-numeric: tabular-nums !important;
+				line-height: 36px !important;
+				text-align: center !important;
 				text-indent: 0 !important;
+				background: #fff !important;
 				background-image: none !important;
+				color: #173f32 !important;
 				-webkit-appearance: none !important;
+				-moz-appearance: textfield !important;
 				appearance: none !important;
+				transform: none !important;
+			}
+			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-product-qty:last-child {
+				grid-column: 3 !important;
+			}
+			body.elmercado-child-theme #shop-cart-sidebar input.qty::-webkit-inner-spin-button,
+			body.elmercado-child-theme #shop-cart-sidebar input.qty::-webkit-outer-spin-button {
+				-webkit-appearance: none !important;
+				display: none !important;
+				margin: 0 !important;
 			}
 
 			body.elmercado-child-theme ul.products li.product {
@@ -135,8 +174,10 @@ add_action(
 					plus.textContent = '+';
 					minus.setAttribute('aria-label', 'Reducir cantidad');
 					plus.setAttribute('aria-label', 'Aumentar cantidad');
-					input.style.setProperty('font-family', 'Arial, sans-serif', 'important');
-					input.style.setProperty('background-image', 'none', 'important');
+					input.type = 'text';
+					input.inputMode = 'numeric';
+					input.setAttribute('pattern', '[0-9]*');
+					input.setAttribute('aria-label', 'Cantidad');
 				});
 				frame = 0;
 			};
