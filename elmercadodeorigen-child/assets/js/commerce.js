@@ -5,9 +5,6 @@
 	const menu = document.querySelector('#mobile-navigation, .sidebar-menu');
 	const root = document.documentElement;
 
-	/**
-	 * Los controles de un panel cerrado no deben permanecer en el árbol de foco.
-	 */
 	const updateMenuInertState = () => {
 		if (!menu) {
 			return;
@@ -43,6 +40,14 @@
 		window.setTimeout(() => toast.remove(), 190);
 	};
 
+	const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({
+		'&': '&amp;',
+		'<': '&lt;',
+		'>': '&gt;',
+		"'": '&#039;',
+		'"': '&quot;'
+	})[character]);
+
 	const showToast = (productName = '') => {
 		removeToast();
 
@@ -50,7 +55,7 @@
 		const cartUrl = configuration.cartUrl
 			|| document.querySelector('.site-header a.cart-contents, .site-header .shopping-cart a')?.href
 			|| `${window.location.origin}/carrito/`;
-		const safeName = productName.trim();
+		const safeName = escapeHtml(productName.trim());
 
 		toast.className = 'emo-cart-toast';
 		toast.setAttribute('role', 'status');
@@ -62,7 +67,7 @@
 				<span>${safeName || 'Tu selección se ha guardado correctamente.'}</span>
 			</span>
 			<span class="emo-cart-toast__actions">
-				<a class="emo-cart-toast__link" href="${cartUrl}">Ver carrito</a>
+				<a class="emo-cart-toast__link" href="${escapeHtml(cartUrl)}">Ver carrito</a>
 				<button class="emo-cart-toast__close" type="button" aria-label="Cerrar confirmación">×</button>
 			</span>
 		`;
@@ -82,9 +87,12 @@
 		});
 	}
 
-	/* Confirmación para adiciones con recarga completa. */
-	if (document.querySelector('.woocommerce-message')?.textContent?.match(/añadid|carrito/i)) {
-		const message = document.querySelector('.woocommerce-message')?.textContent || '';
-		showToast(message.replace(/ver carrito/gi, '').trim().slice(0, 120));
+	const productSurface = document.body.classList.contains('woocommerce-shop')
+		|| document.body.classList.contains('single-product')
+		|| document.body.classList.contains('post-type-archive-product');
+	const reloadMessage = productSurface ? document.querySelector('.woocommerce-message') : null;
+
+	if (reloadMessage?.textContent?.match(/añadid|carrito/i)) {
+		showToast(reloadMessage.textContent.replace(/ver carrito/gi, '').trim().slice(0, 120));
 	}
 })();
