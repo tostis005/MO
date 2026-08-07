@@ -34,7 +34,6 @@ jobs:
           const routes=[['home','/'],['shop','/tienda/'],['vendor','/tienda/hidalgo-de-la-jara/'],['contact','/contacto/']];
           const viewports=[['desktop',{width:1440,height:1000,deviceScaleFactor:1,isMobile:false,hasTouch:false}],['mobile',{width:390,height:844,deviceScaleFactor:1,isMobile:true,hasTouch:true}]];
           const report={errors:[],pages:{}};
-          const rect=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:s.display,visibility:s.visibility,opacity:s.opacity,margin:s.margin,gap:s.gap}};
           (async()=>{
             const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',timeout:60000,protocolTimeout:90000,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--window-size=1440,1000']});
             for(const [vpName,vp] of viewports){
@@ -58,7 +57,8 @@ jobs:
                   const products=document.querySelector('ul.products');
                   const titles=[...document.querySelectorAll('ul.products li.product .woocommerce-loop-product__title,ul.products li.product .elmercado-product-title-link')].slice(0,8).map(e=>({text:(e.textContent||'').trim(),rect:R(e),lineHeight:getComputedStyle(e).lineHeight,overflow:getComputedStyle(e).overflow}));
                   const producer=[...document.querySelectorAll('select')].find(s=>[...s.options].some(o=>/(todos los productores|todos los vendedores)/i.test(o.textContent||'')));
-                  const producerWrap=producer?.closest('.wcfmmp-product-filter-wrap,.product-filter,.filter-item,.form-row,.woostify-toolbar-left > *,label,div')||producer;
+                  const producerRect=producer?producer.getBoundingClientRect():null;
+                  const producerVisible=!!producer && producer.getClientRects().length>0 && producerRect.width>0 && producerRect.height>0;
                   const result=document.querySelector('.woocommerce-result-count');
                   const ordering=document.querySelector('.woocommerce-ordering select');
                   const slider=document.querySelector('.widget_price_filter .price_slider,.price_slider_wrapper .ui-slider-horizontal');
@@ -69,7 +69,7 @@ jobs:
                   const next=document.querySelector('.emo-featured-products .emo-carousel-control--next');
                   const mobileMenu=document.querySelector('.toggle-sidebar-menu-btn');
                   const doc=document.documentElement;
-                  return {vpName,url:location.href,body:document.body.className,header:R(header),logo:R(logo),nav:R(nav),tools:R(tools),cartCount:cartCount?{text:(cartCount.textContent||'').trim(),rect:R(cartCount),className:cartCount.className}:null,products:R(products),productCount:products?[...products.children].filter(e=>e.matches('li.product')).length:0,titles,producerFilter:producerWrap?R(producerWrap):null,result:result?{text:(result.textContent||'').replace(/\s+/g,' ').trim(),rect:R(result)}:null,ordering:ordering?R(ordering):null,orderingBorders:ordering?{top:getComputedStyle(ordering).borderTopWidth,bottom:getComputedStyle(ordering).borderBottomWidth}:null,slider:R(slider),tabs:R(tabs),tabsNext:R(tabsNext),carousel:R(carousel),prev:R(prev),next:R(next),mobileMenu:R(mobileMenu),overflow:doc.scrollWidth>doc.clientWidth+2};
+                  return {vpName,url:location.href,body:document.body.className,header:R(header),logo:R(logo),nav:R(nav),tools:R(tools),cartCount:cartCount?{text:(cartCount.textContent||'').trim(),rect:R(cartCount),className:cartCount.className}:null,products:R(products),productCount:products?[...products.children].filter(e=>e.matches('li.product')).length:0,titles,producerVisible,producerFilter:producer?R(producer):null,result:result?{text:(result.textContent||'').replace(/\s+/g,' ').trim(),rect:R(result)}:null,ordering:ordering?R(ordering):null,orderingBorders:ordering?{top:getComputedStyle(ordering).borderTopWidth,bottom:getComputedStyle(ordering).borderBottomWidth}:null,slider:R(slider),tabs:R(tabs),tabsNext:R(tabsNext),carousel:R(carousel),prev:R(prev),next:R(next),mobileMenu:R(mobileMenu),overflow:doc.scrollWidth>doc.clientWidth+2};
                 },vpName);
                 await page.screenshot({path:`layout-audit/${key}.png`,fullPage:true});
               }
@@ -81,10 +81,11 @@ jobs:
               if(!v||key.startsWith('runtime-'))continue;
               if(v.overflow)report.errors.push(`${key}: horizontal overflow`);
               if(v.cartCount && /^0$/.test(v.cartCount.text) && v.cartCount.rect && v.cartCount.rect.display!=='none' && v.cartCount.rect.visibility!=='hidden' && Number(v.cartCount.rect.opacity)>0)report.errors.push(`${key}: zero cart count visible`);
-              if(key.startsWith('shop-') && v.producerFilter && v.producerFilter.display!=='none')report.errors.push(`${key}: producer filter visible`);
+              if(key.startsWith('shop-') && v.producerVisible)report.errors.push(`${key}: producer filter visible`);
               if(v.ordering && (v.orderingBorders?.top==='0px'||v.orderingBorders?.bottom==='0px'))report.errors.push(`${key}: ordering border incomplete`);
               if(v.result && /\d(de)\d/i.test(v.result.text))report.errors.push(`${key}: result count spacing malformed`);
-              if(key.startsWith('home-mobile') && v.carousel && (!v.prev||!v.next))report.errors.push(`${key}: carousel arrows missing`);
+              if(key==='home-mobile' && v.carousel && (!v.prev||!v.next))report.errors.push(`${key}: carousel arrows missing`);
+              if(key==='home-mobile' && v.header && v.tools && Math.abs((v.tools.y+v.tools.h/2)-(v.header.y+v.header.h/2))>6)report.errors.push(`${key}: utility icons not vertically centered in header`);
             }
             fs.writeFileSync('layout-audit/report.json',JSON.stringify(report,null,2));
             await browser.close();
