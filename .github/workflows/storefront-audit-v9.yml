@@ -30,8 +30,10 @@ jobs:
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
           node --check .github/scripts/storefront-audit-v10.cjs
           node --check .github/scripts/mobile-ui-check.cjs
+          node --check .github/scripts/mobile-menu-visual-check.cjs
           node .github/scripts/storefront-audit-v10.cjs
           node .github/scripts/mobile-ui-check.cjs
+          node .github/scripts/mobile-menu-visual-check.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

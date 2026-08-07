@@ -63,6 +63,7 @@ $elmercado_modules = array(
 	'inc/header-unified-final.php',
 	'inc/sitewide-visual-harmony-final.php',
 	'inc/cart-toast-guard-final.php',
+	'inc/mobile-menu-visual-final.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
