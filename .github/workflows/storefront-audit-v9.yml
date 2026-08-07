@@ -36,6 +36,23 @@ jobs:
               "const closeSel = '.sidebar-menu .close-sidebar-menu-btn,.sidebar-menu .close-sidebar-menu,.sidebar-menu [class*=\"close-sidebar\"]';",
               "const closeSel = '.sidebar-menu .elmercado-mobile-menu-close,.sidebar-menu .close-sidebar-menu-btn,.sidebar-menu .close-sidebar-menu,.sidebar-menu [class*=\"close-sidebar\"]';"
           )
+          old_click = """async function clickVisible(page, selector) {
+            const el = await visibleHandle(page, selector);
+            if (!el) return false;
+            await el.click();
+            return true;
+          }"""
+          new_click = """async function clickVisible(page, selector) {
+            const el = await visibleHandle(page, selector);
+            if (!el) return false;
+            try {
+              await el.click();
+            } catch (_) {
+              await el.evaluate((node) => (node.closest('a,button,[role=\"button\"]') || node).click());
+            }
+            return true;
+          }"""
+          text = text.replace(old_click, new_click)
           old = """    const stillOpen = await page.evaluate(() => {
               const e = document.querySelector('.sidebar-menu');
               if (!e) return false;
