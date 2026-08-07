@@ -59,6 +59,7 @@ $elmercado_modules = array(
 	'inc/vendor-toolbar-mobile-final.php',
 	'inc/storefront-second-review-final.php',
 	'inc/cart-counter-visibility-final.php',
+	'inc/mobile-catalog-interactions-final.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
