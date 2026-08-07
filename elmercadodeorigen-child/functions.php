@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.49' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.50' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -78,6 +78,7 @@ $elmercado_modules = array(
 	'inc/premium-release-01045.php',
 	'inc/premium-release-01046.php',
 	'inc/premium-visual-system-01048.php',
+	'inc/interaction-layer-01050.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
