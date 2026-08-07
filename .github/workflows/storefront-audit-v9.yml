@@ -71,10 +71,12 @@ jobs:
           node --check .github/scripts/comprehensive-storefront-audit.cjs
           node --check .github/scripts/mobile-ui-check.cjs
           node --check .github/scripts/mobile-menu-visual-check.cjs
+          node --check .github/scripts/vendor-resize-stability.cjs
           node .github/scripts/storefront-audit-v10.cjs
           node .github/scripts/comprehensive-storefront-audit.cjs
           node .github/scripts/mobile-ui-check.cjs
           node .github/scripts/mobile-menu-visual-check.cjs
+          node .github/scripts/vendor-resize-stability.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
