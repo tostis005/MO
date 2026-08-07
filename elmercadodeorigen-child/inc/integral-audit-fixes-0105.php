@@ -17,13 +17,11 @@ add_action(
 		}
 		?>
 		<style id="elmercado-integral-audit-fixes-0105">
-			/* El número del carrito sólo existe visualmente cuando es mayor que cero. */
 			body.elmercado-child-theme .elmercado-cart-direct-count[data-empty="true"],
 			body.elmercado-child-theme .site-header .elmercado-cart-count-empty {
 				display: none !important;
 			}
 
-			/* El enlace que contiene el título, no sólo un h2 opcional, ocupa dos líneas completas. */
 			body.elmercado-child-theme ul.products li.product > a.woocommerce-loop-product__link:not(:has(img)),
 			body.elmercado-child-theme ul.products li.product .elmercado-product-title-link,
 			body.elmercado-child-theme ul.products li.product .woocommerce-loop-product__title {
@@ -43,9 +41,9 @@ add_action(
 				text-overflow: ellipsis !important;
 			}
 
-			/* Al retirar productor, resultado y ordenación ocupan los extremos del toolbar. */
 			body.elmercado-child-theme .elmercado-vendor-filter-hidden {
 				display: none !important;
+				visibility: hidden !important;
 			}
 
 			body.elmercado-child-theme :is(.woostify-sorting,.wcfmmp-store-content .woostify-sorting,.wcfm_store_content .woostify-sorting) {
@@ -65,7 +63,6 @@ add_action(
 				border-bottom: 1px solid rgba(23,63,50,.22) !important;
 			}
 
-			/* Las flechas pertenecen al área de fichas, no al encabezado de la sección. */
 			@media (max-width: 991px) {
 				body.elmercado-premium-home .emo-featured-products .elmercado-carousel-stage {
 					position: relative !important;
@@ -90,7 +87,6 @@ add_action(
 				}
 			}
 
-			/* Aire equivalente al resto de pestañas/secciones de la tienda del productor. */
 			body.elmercado-child-theme :is(.wcfmmp-store-tabs,.wcfm_store_tabs,.store-tabs,.wcfmmp-store-tab) + *,
 			body.elmercado-child-theme :is(.wcfmmp-store-tabs,.wcfm_store_tabs,.store-tabs,.wcfmmp-store-tab) ~ :is(.wcfmmp-store-content,.wcfm_store_content) {
 				margin-top: 24px !important;
@@ -149,9 +145,17 @@ add_action(
 				document.querySelectorAll('select').forEach((select) => {
 					const text = [...select.options].map((option) => option.textContent || '').join(' ').toLowerCase();
 					if (!/(todos los productores|todos los vendedores)/.test(text)) return;
-					const field = select.closest('.wcfmmp-product-filter-wrap,.product-filter,.filter-item,.form-row,.woostify-toolbar-left > *,label,div') || select;
+
+					let field = select;
+					while (field.parentElement) {
+						const parent = field.parentElement;
+						if (parent.querySelector('.woocommerce-result-count, .woocommerce-ordering')) break;
+						field = parent;
+					}
+
 					field.classList.add('elmercado-vendor-filter-hidden');
 					field.setAttribute('aria-hidden', 'true');
+					select.disabled = true;
 				});
 			};
 
@@ -184,19 +188,18 @@ add_action(
 				positionCarouselControls();
 			};
 
-			document.addEventListener('DOMContentLoaded', () => {
-				refresh();
-				setTimeout(refresh, 300);
-				setTimeout(refresh, 1200);
-				new MutationObserver(() => requestAnimationFrame(refresh)).observe(document.body, {
-					subtree: true,
-					childList: true,
-					characterData: true
-				});
-				if (window.jQuery) {
-					window.jQuery(document.body).on('added_to_cart removed_from_cart wc_fragments_refreshed wc_fragments_loaded', refresh);
-				}
+			refresh();
+			document.addEventListener('DOMContentLoaded', refresh, { once: true });
+			setTimeout(refresh, 300);
+			setTimeout(refresh, 1200);
+			new MutationObserver(() => requestAnimationFrame(refresh)).observe(document.body, {
+				subtree: true,
+				childList: true,
+				characterData: true
 			});
+			if (window.jQuery) {
+				window.jQuery(document.body).on('added_to_cart removed_from_cart wc_fragments_refreshed wc_fragments_loaded', refresh);
+			}
 		})();
 		</script>
 		<?php
