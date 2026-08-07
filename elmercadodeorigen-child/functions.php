@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.47' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.48' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -77,6 +77,7 @@ $elmercado_modules = array(
 	'inc/shop-filter-breakpoint-final-01044.php',
 	'inc/premium-release-01045.php',
 	'inc/premium-release-01046.php',
+	'inc/premium-visual-system-01048.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
