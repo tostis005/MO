@@ -1,0 +1,230 @@
+name: Comprehensive storefront audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/comprehensive-storefront-audit.yml'
+      - 'elmercadodeorigen-child/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comprehensive-storefront-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Exercise storefront safely in desktop and mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p comprehensive-audit
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > comprehensive-audit.cjs <<'NODE'
+          const fs=require('fs');
+          const puppeteer=require('puppeteer-core');
+          const base='https://dev.elmercadodeorigen.com';
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const report={errors:[],warnings:[],checks:{},runtime:{}};
+          const ignoreFailure=u=>/google-analytics|googletagmanager|doubleclick|notification\.mp3|facebook|clarity/i.test(u);
+          const visible=async(page,sel)=>page.$eval(sel,e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0}).catch(()=>false);
+          const text=async(page,sel)=>page.$eval(sel,e=>(e.textContent||'').replace(/\s+/g,' ').trim()).catch(()=>null);
+          const shot=async(page,name)=>page.screenshot({path:`comprehensive-audit/${name}.png`,fullPage:true});
+          const goto=async(page,path,name)=>{
+            const url=path.startsWith('http')?path:`${base}${path}`;
+            const response=await page.goto(`${url}${url.includes('?')?'&':'?'}qa=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
+            await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}'}).catch(()=>{});
+            await sleep(650);
+            if(!response||response.status()>=400)report.errors.push(`${name}: HTTP ${response?.status()||'no response'}`);
+            const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth+2);
+            if(overflow)report.errors.push(`${name}: horizontal overflow`);
+            return response;
+          };
+          const hookRuntime=(page,key)=>{
+            const ce=[],rf=[];
+            page.on('console',m=>{if(m.type()==='error')ce.push(m.text())});
+            page.on('requestfailed',r=>{if(!ignoreFailure(r.url()))rf.push(`${r.url()} :: ${r.failure()?.errorText||'failed'}`)});
+            report.runtime[key]={consoleErrors:ce,requestFailures:rf};
+          };
+          const cartCount=async page=>page.evaluate(()=>{
+            const nodes=[...document.querySelectorAll('.site-header .shop-cart-count,.site-header .cart-count,.site-header .count,.site-header .elmercado-cart-direct-count')];
+            const node=nodes.find(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0});
+            if(!node)return 0; const m=(node.textContent||'').match(/\d+/); return m?Number(m[0]):0;
+          });
+          const findLink=async(page,rx)=>page.evaluate(src=>{
+            const r=new RegExp(src,'i');
+            const a=[...document.querySelectorAll('a[href]')].find(x=>r.test(`${x.textContent||''} ${x.getAttribute('href')||''}`));
+            return a?.href||null;
+          },rx.source);
+          const closeOverlays=async page=>page.evaluate(()=>{
+            document.querySelectorAll('#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat').forEach(e=>e.style.display='none');
+          });
+
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',timeout:60000,protocolTimeout:120000,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+
+            // Empty-cart and unauthenticated-account checks in a clean session.
+            {
+              const ctx=await browser.createBrowserContext();
+              const page=await ctx.newPage(); hookRuntime(page,'clean-desktop');
+              await page.setViewport({width:1440,height:1000});
+              await goto(page,'/carrito/','empty cart');
+              const empty=await page.evaluate(()=>/carrito.*vac[ií]o|tu carrito est[aá] vac[ií]o|return to shop|volver a la tienda/i.test(document.body.innerText));
+              report.checks.emptyCart=empty; if(!empty)report.errors.push('empty cart: empty state not detected');
+              await goto(page,'/mi-cuenta/','account logged out');
+              const login=await page.evaluate(()=>!!document.querySelector('form.woocommerce-form-login,input[name="username"],input[name="password"]'));
+              report.checks.accountLoggedOut=login; if(!login)report.warnings.push('account: logged-out login form not detected (session may already be authenticated)');
+              await ctx.close();
+            }
+
+            for(const [mode,vp] of [['desktop',{width:1440,height:1000}],['mobile',{width:390,height:844,isMobile:true,hasTouch:true}]]){
+              const ctx=await browser.createBrowserContext();
+              const page=await ctx.newPage(); hookRuntime(page,mode);
+              await page.setViewport(vp);
+
+              await goto(page,'/',`home ${mode}`); await closeOverlays(page); await shot(page,`home-${mode}`);
+              const zero=await cartCount(page); report.checks[`zeroCart-${mode}`]=zero===0; if(zero!==0)report.errors.push(`home ${mode}: empty cart badge shows ${zero}`);
+              const header=await visible(page,'.site-header'); if(!header)report.errors.push(`home ${mode}: header missing`);
+
+              // Keyboard focus should enter an interactive header control.
+              await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+              const focused=await page.evaluate(()=>{const e=document.activeElement;return e&&e!==document.body&&['A','BUTTON','INPUT'].includes(e.tagName)});
+              if(!focused)report.warnings.push(`home ${mode}: keyboard focus did not reach an interactive control quickly`);
+
+              // Mobile menu open/close.
+              if(mode==='mobile'){
+                const toggle='.site-header .toggle-sidebar-menu-btn';
+                if(await visible(page,toggle)){
+                  await page.click(toggle); await sleep(350);
+                  const open=await page.evaluate(()=>{
+                    const e=document.querySelector('.sidebar-menu'); if(!e)return false; const r=e.getBoundingClientRect(),s=getComputedStyle(e); return r.width>0&&r.height>0&&s.visibility!=='hidden';
+                  });
+                  if(!open)report.errors.push('mobile menu: did not open');
+                  const closeSel='.sidebar-menu .close-sidebar-menu-btn,.sidebar-menu .close-sidebar-menu,.sidebar-menu [class*="close-sidebar"]';
+                  if(await visible(page,closeSel)){await page.click(closeSel); await sleep(350)} else report.errors.push('mobile menu: close control missing');
+                } else report.errors.push('mobile menu: toggle missing');
+              }
+
+              // Search UI, product search with results, and no-result search.
+              const searchToggle='.site-header .header-search-icon,.site-header .search-icon,.site-header .site-search-toggle';
+              if(await visible(page,searchToggle)){
+                await page.click(searchToggle); await sleep(500);
+                const inputSel='input.dgwt-wcas-search-input,input[type="search"]';
+                if(await visible(page,inputSel)){
+                  await page.click(inputSel); await page.keyboard.type('aceite'); await sleep(1000);
+                  const suggestion=await page.evaluate(()=>!!document.querySelector('.dgwt-wcas-suggestion,.dgwt-wcas-suggestions-wrapp a'));
+                  report.checks[`searchSuggestions-${mode}`]=suggestion;
+                } else report.errors.push(`search ${mode}: search input did not open`);
+              } else report.errors.push(`search ${mode}: search toggle missing`);
+              await goto(page,'/?s=aceite&post_type=product',`search results ${mode}`);
+              const hasSearchProducts=await page.evaluate(()=>document.querySelectorAll('li.product').length>0 || /resultados|resultados de b[uú]squeda/i.test(document.body.innerText));
+              if(!hasSearchProducts)report.errors.push(`search ${mode}: known query has no detectable results`);
+              await goto(page,'/?s=zzzz-no-existe-qa-987654&post_type=product',`search no results ${mode}`);
+              const noResults=await page.evaluate(()=>/no se encontraron|sin resultados|no products|no hay productos/i.test(document.body.innerText) || document.querySelectorAll('li.product').length===0);
+              if(!noResults)report.errors.push(`search ${mode}: impossible query did not show no-result state`);
+
+              // Shop and product cards.
+              await goto(page,'/tienda/',`shop ${mode}`); await closeOverlays(page); await shot(page,`shop-${mode}`);
+              const producerVisible=await page.evaluate(()=>[...document.querySelectorAll('select')].some(s=>{if(![...s.options].some(o=>/(todos los productores|todos los vendedores)/i.test(o.textContent||'')))return false;const r=s.getBoundingClientRect(),cs=getComputedStyle(s);return r.width>0&&r.height>0&&cs.display!=='none'&&cs.visibility!=='hidden'}));
+              if(producerVisible)report.errors.push(`shop ${mode}: producer filter visible`);
+              const orderBorders=await page.evaluate(()=>{const e=document.querySelector('.woocommerce-ordering select');if(!e)return null;const s=getComputedStyle(e);return[s.borderTopWidth,s.borderBottomWidth]});
+              if(orderBorders && orderBorders.includes('0px'))report.errors.push(`shop ${mode}: ordering border incomplete`);
+              const rc=await text(page,'.woocommerce-result-count'); if(rc&&/\d(de)\d/i.test(rc))report.errors.push(`shop ${mode}: malformed result spacing`);
+              const titleHeights=await page.$$eval('ul.products li.product .woocommerce-loop-product__title,ul.products li.product .elmercado-product-title-link',els=>els.slice(0,8).map(e=>({h:e.getBoundingClientRect().height,lh:parseFloat(getComputedStyle(e).lineHeight)})));
+              if(titleHeights.some(x=>x.h+1 < x.lh*1.9))report.errors.push(`shop ${mode}: product title does not reserve two lines`);
+
+              // Discover and inspect first product.
+              const productHref=await page.$eval('li.product a.woocommerce-LoopProduct-link,li.product a.woocommerce-loop-product__link',a=>a.href).catch(()=>null);
+              if(productHref){
+                await goto(page,productHref,`product ${mode}`); await closeOverlays(page); await shot(page,`product-${mode}`);
+                const productForm=await page.evaluate(()=>!!document.querySelector('form.cart,.single_add_to_cart_button,.out-of-stock'));
+                if(!productForm)report.errors.push(`product ${mode}: purchase/out-of-stock state missing`);
+                const selects=await page.$$('form.variations_form select');
+                for(const s of selects){
+                  const val=await s.evaluate(e=>[...e.options].find(o=>o.value&&!o.disabled)?.value||'');
+                  if(val)await s.select(val);
+                }
+                if(selects.length)await sleep(500);
+              } else report.errors.push(`shop ${mode}: no product link found`);
+
+              // Fresh shop state: add a simple product to cart when available.
+              await goto(page,'/tienda/',`shop add-to-cart ${mode}`);
+              const addSel='a.add_to_cart_button.ajax_add_to_cart:not(.product_type_variable),a.ajax_add_to_cart[data-product_id]';
+              if(await visible(page,addSel)){
+                const before=await cartCount(page);
+                await page.click(addSel); await sleep(1600);
+                const after=await cartCount(page);
+                report.checks[`cartCountAfterAdd-${mode}`]={before,after};
+                if(after<1)report.errors.push(`cart ${mode}: header count did not become positive after add`);
+
+                // Mini-cart / cart panel should expose the added item when opened.
+                const cartBtn='.site-header .shopping-cart,.site-header .shopping-bag-button,.site-header a.cart-contents';
+                if(await visible(page,cartBtn)){await page.click(cartBtn);await sleep(500);const mini=await page.evaluate(()=>!!document.querySelector('.mini_cart_item,.woocommerce-mini-cart-item')); if(!mini)report.warnings.push(`minicart ${mode}: item not detected after opening`)};
+
+                await goto(page,'/carrito/',`cart with item ${mode}`); await shot(page,`cart-${mode}`);
+                const qty=await page.$('input.qty'); if(!qty)report.errors.push(`cart ${mode}: quantity input missing`);
+                if(qty){await qty.click({clickCount:3});await qty.type('2');const update='button[name="update_cart"],input[name="update_cart"]';if(await visible(page,update)){await page.click(update);await sleep(1200)}}
+                const coupon='input#coupon_code,input[name="coupon_code"]';
+                if(await visible(page,coupon)){
+                  await page.type(coupon,'QA-CUPON-INVALIDO-987654'); const apply='button[name="apply_coupon"],input[name="apply_coupon"]'; if(await visible(page,apply)){await page.click(apply);await sleep(1000);const notice=await page.evaluate(()=>/cup[oó]n|coupon/i.test(document.body.innerText)&&!!document.querySelector('.woocommerce-error,.woocommerce-notices-wrapper,.woocommerce-message'));if(!notice)report.warnings.push(`cart ${mode}: invalid coupon feedback not detected`)}
+                }
+                await goto(page,'/finalizar-compra/',`checkout ${mode}`); await shot(page,`checkout-${mode}`);
+                const checkout=await page.evaluate(()=>!!document.querySelector('form.checkout,#customer_details,.woocommerce-checkout')); if(!checkout)report.errors.push(`checkout ${mode}: checkout form missing with item in cart`);
+              } else report.warnings.push(`shop ${mode}: no AJAX simple product available for safe add-to-cart test`);
+
+              // Contact form invalid submission only; never send valid data.
+              await goto(page,'/contacto/',`contact ${mode}`); await shot(page,`contact-${mode}`);
+              const contactForm=await page.$('form.wpcf7-form,form[id*="contact"],.elementor-form');
+              if(contactForm){
+                const submit=await contactForm.$('button[type="submit"],input[type="submit"]');
+                if(submit){await submit.click();await sleep(700);const invalid=await page.evaluate(()=>!!document.querySelector('.wpcf7-not-valid-tip,.elementor-message-danger,[aria-invalid="true"],.error'));if(!invalid)report.warnings.push(`contact ${mode}: invalid-form feedback not detected`)}
+              } else report.warnings.push(`contact ${mode}: contact form not found`);
+
+              // Blog and first article, if the site exposes them.
+              await goto(page,'/',`home link discovery ${mode}`);
+              let blogHref=await findLink(page,/blog|actualidad|historias/);
+              if(!blogHref)blogHref=`${base}/blog/`;
+              const blogResp=await goto(page,blogHref,`blog ${mode}`);
+              if(blogResp?.status()<400){
+                const article=await page.$eval('article a[href],.post a[href],h2 a[href]',a=>a.href).catch(()=>null);
+                if(article)await goto(page,article,`blog article ${mode}`); else report.warnings.push(`blog ${mode}: no article link detected`);
+              }
+
+              // Legal/footer pages that are actually linked.
+              await goto(page,'/',`footer discovery ${mode}`);
+              const legalLinks=await page.evaluate(()=>[...document.querySelectorAll('footer a[href],.site-footer a[href]')].filter(a=>/privacidad|cookies|aviso legal|t[eé]rminos|condiciones/i.test(`${a.textContent||''} ${a.href}`)).map(a=>a.href).filter((v,i,a)=>a.indexOf(v)===i).slice(0,5));
+              for(let i=0;i<legalLinks.length;i++)await goto(page,legalLinks[i],`legal ${mode} ${i+1}`);
+              if(!legalLinks.length)report.warnings.push(`footer ${mode}: no legal links discovered`);
+
+              // Vendor storefront and tabs/policies spacing.
+              await goto(page,'/tienda/hidalgo-de-la-jara/',`vendor ${mode}`); await shot(page,`vendor-${mode}`);
+              const tabGap=await page.evaluate(()=>{const t=document.querySelector('.wcfmmp-store-tabs,.wcfm_store_tabs,.store-tabs,.wcfmmp-store-tab');if(!t)return null;const n=t.nextElementSibling;if(!n)return null;return Math.round(n.getBoundingClientRect().top-t.getBoundingClientRect().bottom)});
+              if(tabGap!==null&&tabGap<16)report.errors.push(`vendor ${mode}: tabs/content spacing too small (${tabGap}px)`);
+
+              await ctx.close();
+            }
+
+            for(const [key,v] of Object.entries(report.runtime)){
+              const ce=[...new Set(v.consoleErrors)].filter(x=>!/favicon|third.party|deprecated/i.test(x));
+              const rf=[...new Set(v.requestFailures)];
+              if(ce.length)report.warnings.push(`${key}: console errors: ${ce.slice(0,3).join(' | ')}`);
+              if(rf.length)report.warnings.push(`${key}: request failures: ${rf.slice(0,3).join(' | ')}`);
+            }
+            fs.writeFileSync('comprehensive-audit/report.json',JSON.stringify(report,null,2));
+            await browser.close();
+            if(report.errors.length){console.error(report.errors.join('\n'));process.exit(2)}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node comprehensive-audit.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comprehensive-storefront-audit
+          path: comprehensive-audit/
+          retention-days: 14
