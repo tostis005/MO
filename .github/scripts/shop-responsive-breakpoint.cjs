@@ -78,6 +78,25 @@ async function metrics(page) {
 
     await page.setViewport({ width: 1024, height: 900, deviceScaleFactor: 1 });
     await go(page, '/tienda/');
+    const hit = await page.evaluate(() => {
+      const toggle = document.querySelector('.emo-mobile-filter-toggle');
+      if (!toggle) return null;
+      const r = toggle.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      const stack = document.elementsFromPoint(x, y).slice(0, 6).map(el => ({
+        tag: el.tagName,
+        id: el.id,
+        cls: typeof el.className === 'string' ? el.className : '',
+        text: (el.textContent || '').trim().slice(0, 60),
+        pointerEvents: getComputedStyle(el).pointerEvents,
+        zIndex: getComputedStyle(el).zIndex,
+        position: getComputedStyle(el).position,
+      }));
+      return { rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)}, center:{x:Math.round(x),y:Math.round(y)}, stack, canonical: toggle.id === 'emo-premium-filter-toggle' };
+    });
+    console.log(`FILTER_HIT_DIAGNOSTIC ${JSON.stringify(hit)}`);
+
     const toggle = await page.$('.emo-mobile-filter-toggle');
     if (!toggle) failures.push('1024px: filter toggle missing for interaction');
     else {
@@ -93,8 +112,9 @@ async function metrics(page) {
           const s = getComputedStyle(el);
           return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
         };
-        return { shell: vis(shell), sidebar: vis(sidebar), close: vis(close), title: shell?.querySelector('.emo-mobile-filter-title')?.textContent?.trim() || '' };
+        return { shell: vis(shell), sidebar: vis(sidebar), close: vis(close), title: shell?.querySelector('.emo-mobile-filter-title')?.textContent?.trim() || '', expanded: document.querySelector('.emo-mobile-filter-toggle')?.getAttribute('aria-expanded') || '' };
       });
+      console.log(`FILTER_DRAWER_DIAGNOSTIC ${JSON.stringify(drawer)}`);
       if (!drawer.shell || !drawer.sidebar || !drawer.close) failures.push(`1024px: filter drawer incomplete ${JSON.stringify(drawer)}`);
       if (drawer.title.toLowerCase() !== 'filtros') failures.push(`1024px: drawer title not compact (${drawer.title})`);
     }
