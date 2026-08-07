@@ -57,6 +57,7 @@ $elmercado_modules = array(
 	'inc/home-mobile-header-final.php',
 	'inc/runtime-stability-final.php',
 	'inc/vendor-toolbar-mobile-final.php',
+	'inc/storefront-second-review-final.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
