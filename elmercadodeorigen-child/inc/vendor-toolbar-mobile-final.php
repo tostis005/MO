@@ -92,11 +92,7 @@ add_action(
 					pointer-events: none !important;
 				}
 
-				/*
-				 * Woostify sigue dibujando una X blanca propia fuera del panel mediante
-				 * su capa de navegación. Usamos esa única X como referencia visual y
-				 * superponemos nuestro botón accesible, transparente y clicable.
-				 */
+				/* Un único cierre visible, fuera del borde del panel y plenamente accesible. */
 				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu {
 					overflow: visible !important;
 				}
@@ -110,10 +106,11 @@ add_action(
 					min-width: 44px !important;
 					margin: 0 !important;
 					padding: 0 !important;
+					place-items: center !important;
 					border: 0 !important;
-					border-radius: 0 !important;
-					background: transparent !important;
-					box-shadow: none !important;
+					border-radius: 50% !important;
+					background: #173f32 !important;
+					box-shadow: 0 6px 20px rgba(8,27,22,.24) !important;
 					color: transparent !important;
 					visibility: visible !important;
 					opacity: 1 !important;
@@ -122,11 +119,21 @@ add_action(
 				}
 				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close::before,
 				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close::after {
-					content: none !important;
-					display: none !important;
+					content: "" !important;
+					position: absolute !important;
+					width: 19px !important;
+					height: 2px !important;
+					border-radius: 999px !important;
+					background: #fff !important;
+				}
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close::before {
+					transform: rotate(45deg) !important;
+				}
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close::after {
+					transform: rotate(-45deg) !important;
 				}
 				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close:focus-visible {
-					outline: 2px solid #ffffff !important;
+					outline: 2px solid #fff !important;
 					outline-offset: 2px !important;
 				}
 
@@ -144,6 +151,7 @@ add_action(
 					justify-items: center !important;
 					justify-content: end !important;
 				}
+				html body.elmercadodeorigen-child-theme .site-header .site-tools > *,
 				html body.elmercado-child-theme .site-header .site-tools > *,
 				html body.elmercado-child-theme .site-header .site-tools > * > a {
 					position: static !important;
@@ -195,15 +203,7 @@ add_action(
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-sorting-normalized {
 					margin: 0 !important;
 					padding-top: 0 !important;
-				}
-			/* Espaciador de flujo: no colapsa y deja 16px reales entre tabs y toolbar. */
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-sorting-normalized::before {
-					content: "" !important;
-					display: block !important;
-					width: 100% !important;
-					height: 16px !important;
-					flex: 0 0 16px !important;
-				}
+			}
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar {
 					margin: 0 0 14px !important;
 				}
@@ -249,6 +249,56 @@ add_action(
 				}
 			}
 		</style>
+		<?php
+	},
+	PHP_INT_MAX
+);
+
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() ) {
+			return;
+		}
+		?>
+		<script id="elmercado-vendor-toolbar-rhythm-final">
+		(() => {
+			'use strict';
+			const store = document.querySelector('#wcfmmp-store');
+			if (!store) return;
+
+			let frame = 0;
+			const sync = () => {
+				if (frame) cancelAnimationFrame(frame);
+				frame = requestAnimationFrame(() => {
+					frame = 0;
+					const toolbar = store.querySelector('.elmercado-vendor-toolbar');
+					const tabs = store.querySelector('.tab_links');
+					if (!toolbar || !tabs) return;
+
+					toolbar.style.setProperty('transform', 'none', 'important');
+					toolbar.style.setProperty('margin-bottom', '14px', 'important');
+					if (!window.matchMedia('(max-width: 991px)').matches) return;
+
+					requestAnimationFrame(() => {
+						const tabRect = tabs.getBoundingClientRect();
+						const toolbarRect = toolbar.getBoundingClientRect();
+						const gap = Math.round(toolbarRect.top - tabRect.bottom);
+						const shift = Math.max(0, 16 - gap);
+						toolbar.style.setProperty('transform', `translateY(${shift}px)`, 'important');
+						toolbar.style.setProperty('margin-bottom', `${14 + shift}px`, 'important');
+						toolbar.dataset.elmercadoTabGap = String(gap + shift);
+					});
+				});
+			};
+
+			sync();
+			setTimeout(sync, 350);
+			setTimeout(sync, 1000);
+			window.addEventListener('load', sync, { once: true });
+			window.addEventListener('resize', sync, { passive: true });
+		})();
+		</script>
 		<?php
 	},
 	PHP_INT_MAX
