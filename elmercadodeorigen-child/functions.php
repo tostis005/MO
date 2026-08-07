@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.8' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.9' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -58,6 +58,7 @@ $elmercado_modules = array(
 	'inc/integral-audit-fixes-0105.php',
 	'inc/header-final-audit.php',
 	'inc/shop-producer-filter-final.php',
+	'inc/home-mobile-header-final.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
