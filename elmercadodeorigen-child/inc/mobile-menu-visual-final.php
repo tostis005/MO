@@ -112,13 +112,34 @@ add_action(
 					pointer-events: auto !important;
 				}
 
+				/* Algunos cierres/iconos de Woostify se pintan como pseudo-elementos del panel. */
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu::before,
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu::after,
+				html.sidebar-menu-open body.elmercado-child-theme .emo-mobile-menu-overlay::before,
+				html.sidebar-menu-open body.elmercado-child-theme .emo-mobile-menu-overlay::after,
+				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn::before,
+				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn::after,
+				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn *::before,
+				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn *::after {
+					content: none !important;
+					display: none !important;
+			}
+
 				/* Nunca se muestra una segunda lupa independiente del campo completo. */
-				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .emo-menu-search-artifact-hidden {
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .emo-menu-search-artifact-hidden,
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .emo-empty-menu-artifact-hidden {
 					display: none !important;
 					visibility: hidden !important;
 					opacity: 0 !important;
 					pointer-events: none !important;
 				}
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .emo-empty-menu-artifact-hidden::before,
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .emo-empty-menu-artifact-hidden::after,
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .emo-empty-menu-artifact-hidden *::before,
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .emo-empty-menu-artifact-hidden *::after {
+					content: none !important;
+					display: none !important;
+			}
 			}
 		</style>
 		<?php
@@ -180,6 +201,24 @@ add_action(
 					node.classList.add('emo-menu-search-artifact-hidden');
 					node.setAttribute('aria-hidden', 'true');
 				});
+
+				/* El icono suelto de búsqueda llega como un ítem sin campo real. */
+				const navRoot = menu.querySelector('.primary-navigation,.primary-menu,ul.menu');
+				if (navRoot) {
+					[...navRoot.children].forEach((item) => {
+						if (!(item instanceof Element)) return;
+						if (item.contains(searchRoot)) return;
+						if (item.querySelector('input,textarea,select,form')) return;
+						const text = (item.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+						const control = item.querySelector(':scope > a,:scope > button');
+						const accessible = `${control?.getAttribute('aria-label') || ''} ${control?.getAttribute('title') || ''}`.trim().toLowerCase();
+						const empty = text === '' && accessible === '';
+						const searchOnly = /^(buscar|search|escribe para buscar|type to search)$/.test(text || accessible);
+						if (!empty && !searchOnly) return;
+						item.classList.add('emo-empty-menu-artifact-hidden');
+						item.setAttribute('aria-hidden', 'true');
+					});
+				}
 			};
 
 			let timers = [];
