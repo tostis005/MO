@@ -54,28 +54,37 @@ add_action(
 			}
 			@media (max-width: 600px) {
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar {
+					display: grid !important;
+					grid-template-columns: minmax(0, 1fr) 132px !important;
+					align-items: center !important;
+					justify-content: stretch !important;
 					gap: 8px !important;
 				}
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar .woocommerce-result-count {
-					flex: 1 1 0 !important;
-					width: 0 !important;
+					grid-column: 1 !important;
+					grid-row: 1 !important;
+					display: flex !important;
+					width: 100% !important;
 					min-width: 0 !important;
 					min-height: 44px !important;
-					display: flex !important;
 					align-items: center !important;
 					font-size: 11px !important;
 					line-height: 1.25 !important;
+					white-space: normal !important;
 				}
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar .woocommerce-ordering {
-					flex: 0 0 145px !important;
-					width: 145px !important;
-					min-height: 44px !important;
+					grid-column: 2 !important;
+					grid-row: 1 !important;
 					display: flex !important;
+					width: 132px !important;
+					min-width: 132px !important;
+					min-height: 44px !important;
 					align-items: center !important;
 				}
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar .woocommerce-ordering select {
 					height: 44px !important;
 					min-height: 44px !important;
+					font-size: 11px !important;
 				}
 			}
 		</style>

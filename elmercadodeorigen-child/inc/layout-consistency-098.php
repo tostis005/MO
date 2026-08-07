@@ -53,23 +53,25 @@ add_action(
 				}
 			}
 
-			/* Evita la segunda línea duplicada de marca que aparece en algunas
-			 * plantillas móviles de Woostify/WCFM. */
+			/* Algunas plantillas móviles imprimen de nuevo el nombre dentro del
+			 * propio título. Conservamos solo el título exterior. */
 			@media (max-width: 991px) {
+				body.elmercado-child-theme .site-header .site-branding .site-title .site-title,
 				body.elmercado-child-theme .site-header .site-branding > .site-title ~ .site-title,
 				body.elmercado-child-theme .site-header .site-branding .site-description {
 					display: none !important;
 				}
 			}
 
-			/* El acceso flotante a WhatsApp no debe invadir buscadores, filtros o
-			 * controles del directorio en pantallas estrechas. */
+			/* WhatsApp queda disponible abajo a la derecha, pero con un z-index
+			 * inferior al consentimiento para no tapar su texto ni sus controles. */
 			@media (max-width: 767px) {
 				body.elmercado-child-theme #ht-ctc-chat,
 				body.elmercado-child-theme .ht-ctc-chat {
 					left: auto !important;
 					right: 12px !important;
-					bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+					bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+					z-index: 20 !important;
 				}
 			}
 		</style>
