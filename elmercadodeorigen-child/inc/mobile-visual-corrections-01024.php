@@ -1,6 +1,6 @@
 <?php
 /**
- * Correcciones visuales 0.10.30: drawer móvil, copy genérico y estabilidad de home.
+ * Correcciones visuales 0.10.31: drawer móvil, copy genérico y estabilidad de home.
  *
  * @package ElMercadoDeOrigen
  */
@@ -27,7 +27,7 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<style id="elmercado-mobile-visual-corrections-01030">
+		<style id="elmercado-mobile-visual-corrections-01031">
 			@media (max-width: 991px) {
 				html body.elmercado-child-theme .sidebar-menu { overflow-x: hidden !important; }
 				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search,
@@ -115,7 +115,7 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<script id="elmercado-mobile-visual-corrections-01030-js">
+		<script id="elmercado-mobile-visual-corrections-01031-js">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
@@ -127,16 +127,21 @@ add_action(
 				if (primary && !primary.classList.contains('search-form')) primary.classList.add('search-form');
 				return primary;
 			};
+			const suppressNode = (node) => {
+				if (!node || node.closest('.sidebar-menu')) return;
+				node.dataset.emoMenuSuppressed = '1';
+				node.style.setProperty('display', 'none', 'important');
+				node.style.setProperty('visibility', 'hidden', 'important');
+				node.style.setProperty('opacity', '0', 'important');
+				node.style.setProperty('pointer-events', 'none', 'important');
+				node.setAttribute('aria-hidden', 'true');
+			};
 			const suppressGlobalSearch = () => {
-				document.querySelectorAll('.site-dialog-search,.woostify-search-wrap').forEach((node) => {
-					if (node.closest('.sidebar-menu')) return;
-					node.dataset.emoMenuSuppressed = '1';
-					node.style.setProperty('display', 'none', 'important');
-					node.style.setProperty('visibility', 'hidden', 'important');
-					node.style.setProperty('opacity', '0', 'important');
-					node.style.setProperty('pointer-events', 'none', 'important');
-					node.setAttribute('aria-hidden', 'true');
-				});
+				document.querySelectorAll('.site-dialog-search,.woostify-search-wrap').forEach(suppressNode);
+				/* Woostify puede sacar el botón de cierre fuera del diálogo. Ocultamos sólo
+				 * sus cierres globales mientras el drawer está abierto; el cierre propio del
+				 * drawer vive dentro de .sidebar-menu y queda excluido arriba. */
+				document.querySelectorAll('.woostify-svg-icon.icon-close').forEach(suppressNode);
 			};
 			const restoreGlobalSearch = () => {
 				document.querySelectorAll('[data-emo-menu-suppressed="1"]').forEach((node) => {
