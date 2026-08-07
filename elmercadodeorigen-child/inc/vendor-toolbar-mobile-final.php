@@ -52,10 +52,21 @@ add_action(
 				width: 100% !important;
 				margin: 0 !important;
 			}
+
+			@media (max-width: 991px) {
+				/* Woostify transforma el trigger original en una X externa. Durante el
+				 * drawer lo ocultamos y conservamos solo el cierre del propio panel. */
+				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn {
+					visibility: hidden !important;
+					opacity: 0 !important;
+					pointer-events: none !important;
+				}
+			}
+
 			@media (max-width: 600px) {
 				/* El padding del host crea una separación real, sin colapso de márgenes. */
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-sorting-normalized {
-					padding-top: 16px !important;
+					padding-top: 28px !important;
 				}
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar {
 					display: grid !important;

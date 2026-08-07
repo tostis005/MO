@@ -53,7 +53,7 @@ const visibleCount = async (page, selector) => page.evaluate((query) => [...docu
 
 		await page.click('.site-header .toggle-sidebar-menu-btn');
 		await sleep(250);
-		const closeCount = await visibleCount(page, '.sidebar-menu .elmercado-mobile-menu-close,html.sidebar-menu-open body .close-sidebar-menu-btn,html.sidebar-menu-open body .close-sidebar-menu,html.sidebar-menu-open body [class*="close-sidebar"]');
+		const closeCount = await visibleCount(page, '.sidebar-menu .elmercado-mobile-menu-close,.site-header .toggle-sidebar-menu-btn,html.sidebar-menu-open body .close-sidebar-menu-btn,html.sidebar-menu-open body .close-sidebar-menu,html.sidebar-menu-open body [class*="close-sidebar"]');
 		if (closeCount !== 1) throw new Error(`mobile menu shows ${closeCount} visible close controls`);
 		await page.screenshot({ path: 'qa/v10-menu-mobile.png', fullPage: false });
 		await page.click('.sidebar-menu .elmercado-mobile-menu-close');
