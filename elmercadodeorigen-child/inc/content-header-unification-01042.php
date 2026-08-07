@@ -1,6 +1,6 @@
 <?php
 /**
- * Unificación de cabeceras interiores, gutters y metadatos editoriales 0.10.42.
+ * Unificación de cabeceras interiores, gutters y metadatos editoriales 0.10.43.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,28 +16,54 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-content-header-unification-01042">
+		<style id="elmercado-content-header-unification-01043">
 			body.elmercado-child-theme {
 				--emo-page-gutter: clamp(16px, 2.5vw, 32px);
 				--emo-content-max: 1180px;
 				--emo-content-card-radius: 20px;
 			}
 
-			/* Mismo margen lateral para las páginas interiores principales. */
-			body.elmercado-child-theme:not(.home) .site-content > .woostify-container,
-			body.elmercado-child-theme:not(.home) #content > .woostify-container {
+			/* Un único gutter común en páginas interiores. */
+			body.elmercado-child-theme:not(.home):not(.elmercado-editorial-content) .site-content > .woostify-container,
+			body.elmercado-child-theme:not(.home):not(.elmercado-editorial-content) #content > .woostify-container {
 				width: 100% !important;
 				max-width: calc(var(--emo-content-max) + (2 * var(--emo-page-gutter))) !important;
 				margin-inline: auto !important;
 				padding-inline: var(--emo-page-gutter) !important;
 			}
 
-			/* Blog, Productores y Contacto comparten exactamente el mismo ancho exterior. */
-			body.elmercado-child-theme .emo-journal-hero__inner,
-			body.elmercado-child-theme .emo-journal-listing > .emo-shell,
+			/* El blog necesita un lienzo completo; el gutter vive en sus shells interiores. */
+			body.elmercado-child-theme.elmercado-editorial-content .site-content > .woostify-container,
+			body.elmercado-child-theme.elmercado-editorial-content #content > .woostify-container {
+				width: 100% !important;
+				max-width: none !important;
+				margin-inline: 0 !important;
+				padding-inline: 0 !important;
+			}
+			body.elmercado-child-theme.elmercado-editorial-content :is(#primary,.content-area,.site-main) {
+				width: 100% !important;
+				max-width: none !important;
+				margin-inline: 0 !important;
+				float: none !important;
+			}
+
+			/* Blog y artículos: mismo ancho útil y mismo margen lateral. */
+			body.elmercado-child-theme :is(
+				.emo-journal-hero__inner,
+				.emo-journal-listing > .emo-shell,
+				.emo-article-hero__inner,
+				.emo-article-main > .emo-shell,
+				.emo-related-reading > .emo-shell
+			) {
+				width: min(var(--emo-content-max), calc(100% - (2 * var(--emo-page-gutter)))) !important;
+				max-width: var(--emo-content-max) !important;
+				margin-inline: auto !important;
+			}
+
+			/* Productores y Contacto ya viven dentro del gutter exterior: no sumar otro. */
 			body.elmercado-child-theme .emo-producers-intro,
 			body.elmercado-child-theme .emo-contact-layout {
-				width: min(var(--emo-content-max), calc(100% - (2 * var(--emo-page-gutter)))) !important;
+				width: 100% !important;
 				max-width: var(--emo-content-max) !important;
 				margin-inline: auto !important;
 			}
@@ -138,7 +164,7 @@ add_action(
 			@media (max-width: 767px) {
 				body.elmercado-child-theme {
 					--emo-page-gutter: 16px;
-			}
+				}
 				body.elmercado-child-theme .emo-journal-hero,
 				body.elmercado-child-theme .emo-producers-intro,
 				body.elmercado-child-theme .emo-contact-layout {
