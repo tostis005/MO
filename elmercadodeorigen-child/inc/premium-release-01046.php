@@ -1,6 +1,6 @@
 <?php
 /**
- * Control canónico de filtros y cierre editorial 0.10.46.
+ * Control canónico de filtros y cierre editorial 0.10.47.
  *
  * @package ElMercadoDeOrigen
  */
@@ -56,7 +56,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-canonical-shop-filter-01046">
+		<style id="elmercado-canonical-shop-filter-01047">
 			#emo-premium-filter-toggle { visibility: visible !important; opacity: 1 !important; transform: none !important; }
 			#emo-premium-filter-shell[hidden] { display: none !important; }
 			#emo-premium-filter-shell:not([hidden]) { display: block !important; }
@@ -83,10 +83,24 @@ add_action(
 				}
 				#emo-premium-filter-toggle .emo-filter-label { margin-right:auto !important; }
 				#emo-premium-filter-toggle .emo-filter-chevron { font-size:16px !important; line-height:1 !important; }
+				#emo-premium-filter-shell .emo-mobile-filter-panel,
+				#emo-premium-filter-shell .emo-mobile-filter-content,
+				#emo-premium-filter-shell .widget-area {
+					visibility:visible !important;
+					opacity:1 !important;
+					transform:none !important;
+				}
 			}
 			@media (min-width:1101px) {
 				#emo-premium-filter-toggle,
 				#emo-premium-filter-shell { display:none !important; }
+				body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) #secondary.widget-area,
+				body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) .shop-widget-area {
+					display:block !important;
+					visibility:visible !important;
+					opacity:1 !important;
+					transform:none !important;
+				}
 			}
 		</style>
 		<?php
@@ -101,7 +115,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-canonical-shop-filter-controller-01046">
+		<script id="elmercado-canonical-shop-filter-controller-01047">
 		(() => {
 			'use strict';
 			const body = document.body;
@@ -109,23 +123,17 @@ add_action(
 			const compact = () => matchMedia('(max-width:1100px)').matches;
 			const primary = document.querySelector('#primary,.content-area');
 			const root = document.querySelector('.site-content > .woostify-container,#content > .woostify-container') || primary?.parentElement;
-
-			/* Capturamos el único sidebar real antes de retirar interfaces heredadas. */
 			let sidebar = document.querySelector('.emo-mobile-filter-content #secondary.widget-area,.emo-mobile-filter-content .shop-widget-area,.emo-mobile-filter-content .widget-area,#secondary.widget-area,.shop-widget-area,.content-area + .widget-area');
-			if (!sidebar || !root) return;
+			if (!sidebar || !root || !primary) return;
 			if (sidebar.id !== 'secondary' && document.querySelector('#secondary.widget-area')) sidebar = document.querySelector('#secondary.widget-area');
 
-			/* Sacamos temporalmente el sidebar para poder eliminar cualquier drawer antiguo. */
+			/* Conservamos un punto de retorno real junto al catálogo antes de retirar drawers heredados. */
+			const marker = document.createComment('emo-premium-filter-home-01047');
+			primary.parentNode?.insertBefore(marker, primary.nextSibling);
 			const parking = document.createDocumentFragment();
 			parking.append(sidebar);
 			document.querySelectorAll('.emo-mobile-filter-toggle').forEach((node) => node.remove());
 			document.querySelectorAll('.emo-mobile-filter-shell').forEach((node) => node.remove());
-
-			const marker = document.createElement('span');
-			marker.id = 'emo-premium-filter-home';
-			marker.hidden = true;
-			if (primary?.parentNode === root) primary.insertAdjacentElement('afterend', marker);
-			else root.append(marker);
 
 			const anchor = document.querySelector('.woostify-sorting') || document.querySelector('.woocommerce-ordering')?.parentElement || primary;
 			const toggle = document.createElement('button');
@@ -136,7 +144,7 @@ add_action(
 			toggle.setAttribute('aria-controls','emo-mobile-filter-panel');
 			toggle.innerHTML = '<span class="emo-filter-label">Filtros</span><span class="emo-filter-chevron" aria-hidden="true">⌄</span>';
 			if (anchor && anchor !== primary) anchor.insertAdjacentElement('afterend', toggle);
-			else primary?.prepend(toggle);
+			else primary.prepend(toggle);
 
 			const shell = document.createElement('div');
 			shell.id = 'emo-premium-filter-shell';
@@ -161,12 +169,20 @@ add_action(
 					toggle.style.setProperty('display','none','important');
 				}
 			};
-			const moveIn = () => { if (sidebar.parentElement !== content) content.append(sidebar); };
+			const normalizeSidebar = () => {
+				sidebar.style.setProperty('display','block','important');
+				sidebar.style.setProperty('visibility','visible','important');
+				sidebar.style.setProperty('opacity','1','important');
+				sidebar.style.setProperty('transform','none','important');
+			};
+			const moveIn = () => {
+				if (sidebar.parentElement !== content) content.append(sidebar);
+				normalizeSidebar();
+			};
 			const moveOut = () => {
-				if (sidebar.parentElement === content) {
-					if (marker.parentNode) marker.parentNode.insertBefore(sidebar, marker.nextSibling);
-					else root.append(sidebar);
-				}
+				if (marker.parentNode) marker.parentNode.insertBefore(sidebar, marker.nextSibling);
+				else root.append(sidebar);
+				normalizeSidebar();
 			};
 			const shut = (restoreFocus = false) => {
 				shell.hidden = true;
@@ -181,6 +197,8 @@ add_action(
 				moveIn();
 				shell.hidden = false;
 				shell.style.setProperty('display','block','important');
+				shell.style.setProperty('visibility','visible','important');
+				shell.style.setProperty('opacity','1','important');
 				toggle.setAttribute('aria-expanded','true');
 				document.documentElement.classList.add('emo-shop-filter-open');
 				body.classList.add('emo-shop-filter-open');
@@ -192,9 +210,13 @@ add_action(
 				else { shut(false); moveOut(); }
 			};
 
-			toggle.addEventListener('click', () => toggle.getAttribute('aria-expanded') === 'true' ? shut(true) : open());
-			close?.addEventListener('click', () => shut(true));
-			shell.addEventListener('click', (event) => { if (event.target === shell) shut(true); });
+			toggle.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				toggle.getAttribute('aria-expanded') === 'true' ? shut(true) : open();
+			});
+			close?.addEventListener('click', (event) => { event.preventDefault(); event.stopImmediatePropagation(); shut(true); });
+			shell.addEventListener('click', (event) => { if (event.target === shell) { event.stopImmediatePropagation(); shut(true); } });
 			document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !shell.hidden) { event.preventDefault(); shut(true); } });
 			window.addEventListener('resize', () => requestAnimationFrame(sync), {passive:true});
 			sync();
@@ -202,7 +224,7 @@ add_action(
 			setTimeout(sync, 500);
 		})();
 		</script>
-		<script id="elmercado-final-public-copy-01046">
+		<script id="elmercado-final-public-copy-01047">
 		(() => {
 			const shopLead = document.querySelector('body.woocommerce-shop .emo-shop-lead p');
 			if (shopLead) shopLead.textContent = 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.';
