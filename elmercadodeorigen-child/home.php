@@ -19,8 +19,8 @@ $categories = get_categories(
 	<section class="emo-journal-hero">
 		<div class="emo-shell emo-journal-hero__inner">
 			<span class="emo-kicker emo-kicker--light"><?php esc_html_e( 'El cuaderno de origen', 'elmercadodeorigen' ); ?></span>
-			<h1><?php esc_html_e( 'Conocer el origen cambia la forma de elegir.', 'elmercadodeorigen' ); ?></h1>
-			<p><?php esc_html_e( 'Historias y guías para entender mejor cómo se cultiva, se elabora y se disfruta cada producto, y para poner en valor a las personas que hay detrás.', 'elmercadodeorigen' ); ?></p>
+			<h1><?php esc_html_e( 'Historias para elegir con más criterio.', 'elmercadodeorigen' ); ?></h1>
+			<p><?php esc_html_e( 'Ideas, procesos y personas para entender qué hay detrás de un producto y por qué su origen importa.', 'elmercadodeorigen' ); ?></p>
 		</div>
 	</section>
 
@@ -29,7 +29,7 @@ $categories = get_categories(
 			<header class="emo-journal-toolbar">
 				<div>
 					<span class="emo-kicker"><?php esc_html_e( 'Últimas historias', 'elmercadodeorigen' ); ?></span>
-					<h2><?php esc_html_e( 'Ideas para disfrutar y elegir mejor', 'elmercadodeorigen' ); ?></h2>
+					<h2><?php esc_html_e( 'Conocer mejor para elegir mejor', 'elmercadodeorigen' ); ?></h2>
 				</div>
 				<?php if ( ! empty( $categories ) ) : ?>
 					<nav class="emo-journal-categories" aria-label="<?php esc_attr_e( 'Categorías del blog', 'elmercadodeorigen' ); ?>">
@@ -67,7 +67,7 @@ $categories = get_categories(
 				<section class="emo-empty-state">
 					<span class="emo-kicker"><?php esc_html_e( 'Próximamente', 'elmercadodeorigen' ); ?></span>
 					<h2><?php esc_html_e( 'Estamos preparando nuevas historias.', 'elmercadodeorigen' ); ?></h2>
-					<p><?php esc_html_e( 'Muy pronto encontrarás aquí contenidos para conocer mejor los productos y a quienes los hacen posibles.', 'elmercadodeorigen' ); ?></p>
+					<p><?php esc_html_e( 'Muy pronto encontrarás aquí nuevas formas de conocer el origen, los productos y a quienes los hacen posibles.', 'elmercadodeorigen' ); ?></p>
 				</section>
 			<?php endif; ?>
 		</div>
