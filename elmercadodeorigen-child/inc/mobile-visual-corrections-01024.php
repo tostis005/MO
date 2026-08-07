@@ -1,6 +1,6 @@
 <?php
 /**
- * Correcciones visuales 0.10.28: drawer móvil y copy genérico de tienda.
+ * Correcciones visuales 0.10.29: drawer móvil, copy genérico y estabilidad de home.
  *
  * @package ElMercadoDeOrigen
  */
@@ -27,11 +27,9 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<style id="elmercado-mobile-visual-corrections-01028">
+		<style id="elmercado-mobile-visual-corrections-01029">
 			@media (max-width: 991px) {
-				html body.elmercado-child-theme .sidebar-menu {
-					overflow-x: hidden !important;
-				}
+				html body.elmercado-child-theme .sidebar-menu { overflow-x: hidden !important; }
 				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search,
 				html.sidebar-menu-open body.elmercado-child-theme .woostify-search-wrap,
 				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search .woostify-svg-icon.icon-close,
@@ -43,10 +41,7 @@ add_action(
 				}
 				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search .woostify-svg-icon.icon-close,
 				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search > .icon-close,
-				html.sidebar-menu-open body.elmercado-child-theme .woostify-search-wrap .icon-close {
-					display: none !important;
-				}
-
+				html.sidebar-menu-open body.elmercado-child-theme .woostify-search-wrap .icon-close { display: none !important; }
 				html body.elmercado-child-theme .sidebar-menu .emo-duplicate-search-item,
 				html body.elmercado-child-theme .sidebar-menu li.menu-item .dgwt-wcas-search-wrapp {
 					display: none !important;
@@ -54,7 +49,6 @@ add_action(
 					opacity: 0 !important;
 					pointer-events: none !important;
 				}
-
 				html body.elmercado-child-theme .sidebar-menu form.woocommerce-product-search.search-form {
 					position: relative !important;
 					left: auto !important;
@@ -104,7 +98,6 @@ add_action(
 					background: transparent !important;
 					box-shadow: none !important;
 				}
-
 				html body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close {
 					top: 14px !important;
 					right: 14px !important;
@@ -122,7 +115,7 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<script id="elmercado-mobile-visual-corrections-01028-js">
+		<script id="elmercado-mobile-visual-corrections-01029-js">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
@@ -131,7 +124,7 @@ add_action(
 				if (!menu) return null;
 				const forms = [...menu.querySelectorAll('form.woocommerce-product-search')];
 				const primary = forms.find((form) => !form.closest('.emo-duplicate-search-item')) || forms[0] || null;
-				if (primary) primary.classList.add('search-form');
+				if (primary && !primary.classList.contains('search-form')) primary.classList.add('search-form');
 				return primary;
 			};
 			const clean = () => {
@@ -149,14 +142,9 @@ add_action(
 					node.style.setProperty('display', 'none', 'important');
 				});
 			};
-			new MutationObserver(clean).observe(document.documentElement, {
-				attributes: true,
-				childList: true,
-				subtree: true,
-				attributeFilter: ['class']
-			});
-			normalizePrimarySearch();
-			[0, 40, 100, 220, 450].forEach((delay) => setTimeout(clean, delay));
+			new MutationObserver(clean).observe(root, { attributes: true, attributeFilter: ['class'] });
+			document.addEventListener('DOMContentLoaded', normalizePrimarySearch, { once: true });
+			[0, 80, 220].forEach((delay) => setTimeout(normalizePrimarySearch, delay));
 		})();
 		</script>
 		<?php
