@@ -19,6 +19,7 @@ async function metrics(page) {
       return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
     };
     const primary = document.querySelector('#primary,.content-area');
+    const container = primary?.closest('.woostify-container') || document.querySelector('#content > .woostify-container,.site-content > .woostify-container');
     const sidebar = document.querySelector('#secondary.widget-area,.shop-widget-area,.emo-mobile-filter-content .widget-area');
     const toggle = document.querySelector('.emo-mobile-filter-toggle');
     const shell = document.querySelector('.emo-mobile-filter-shell');
@@ -26,6 +27,7 @@ async function metrics(page) {
     const title = product?.querySelector('.woocommerce-loop-product__title,.product-title,h2,h3');
     const price = product?.querySelector('.price');
     const pr = primary?.getBoundingClientRect();
+    const cr = container?.getBoundingClientRect();
     const tr = title?.getBoundingClientRect();
     const rr = price?.getBoundingClientRect();
     const ts = title ? getComputedStyle(title) : null;
@@ -33,6 +35,7 @@ async function metrics(page) {
       viewport: window.innerWidth,
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 3,
       primaryRatio: pr ? pr.width / document.documentElement.clientWidth : 0,
+      primaryContainerRatio: pr && cr ? pr.width / cr.width : 0,
       sidebarVisible: visible(sidebar),
       sidebarInDrawer: !!sidebar?.closest('.emo-mobile-filter-content'),
       sidebarInSiteContent: !!sidebar?.closest('.site-content'),
@@ -66,7 +69,7 @@ async function metrics(page) {
         if (!m.toggleVisible) failures.push(`${width}px: filter toggle not visible`);
         if (!m.sidebarInDrawer) failures.push(`${width}px: sidebar not moved into drawer`);
         if (m.sidebarInSiteContent) failures.push(`${width}px: sidebar still reserves site-content space`);
-        if (m.primaryRatio < 0.94) failures.push(`${width}px: catalog not full width (${m.primaryRatio.toFixed(2)})`);
+        if (m.primaryContainerRatio < 0.98) failures.push(`${width}px: catalog does not fill its gutter container (${m.primaryContainerRatio.toFixed(2)})`);
       }
       if (m.titleLineHeight && m.titleHeight < m.titleLineHeight * 1.95) {
         failures.push(`${width}px: product title box too short (${m.titleHeight}/${m.titleLineHeight})`);
