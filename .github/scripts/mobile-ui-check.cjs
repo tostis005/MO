@@ -114,7 +114,7 @@ const go = async (page, path, delay = 700) => {
 				chevronVisible: visible(chevron)
 			};
 		});
-		if (!shopInitial.lead || !/aceites|ibéricos|fruta/i.test(shopInitial.leadText)) throw new Error(`shop lead invalid (${JSON.stringify(shopInitial)})`);
+		if (!shopInitial.lead || !/productos|origen|procedencia/i.test(shopInitial.leadText)) throw new Error(`shop lead invalid (${JSON.stringify(shopInitial)})`);
 		if (shopInitial.oldLeadVisible) throw new Error('legacy shop lead still visible');
 		if (shopInitial.toastVisible) throw new Error('stale add-to-cart toast visible on shop load');
 		if (shopInitial.chevronVisible) throw new Error('mobile filter chevron still visible');
