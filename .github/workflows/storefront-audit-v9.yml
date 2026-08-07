@@ -66,6 +66,14 @@ jobs:
               "else { await input.evaluate((node) => { node.focus(); node.click(); }); await input.type('aceite'); report.checks[`searchOpen-${mode}`] = true; }"
           )
           path.write_text(text)
+
+          mobile = Path('.github/scripts/mobile-ui-check.cjs')
+          mobile_text = mobile.read_text()
+          mobile_text = mobile_text.replace(
+              "if (!shopInitial.lead || !/aceites|ibéricos|fruta/i.test(shopInitial.leadText)) throw new Error(`shop lead invalid (${JSON.stringify(shopInitial)})`);",
+              "if (!shopInitial.lead || !/productos|origen|procedencia/i.test(shopInitial.leadText)) throw new Error(`shop lead invalid (${JSON.stringify(shopInitial)})`);"
+          )
+          mobile.write_text(mobile_text)
           PY
           node --check .github/scripts/storefront-audit-v10.cjs
           node --check .github/scripts/comprehensive-storefront-audit.cjs
