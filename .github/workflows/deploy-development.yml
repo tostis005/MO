@@ -1,6 +1,5 @@
 name: Deploy child theme to staging
 
-# Temporary fallback: deploy the current main tip even when integration pushes are delayed.
 on:
   push:
     branches: [main]
@@ -8,8 +7,6 @@ on:
       - 'elmercadodeorigen-child/**'
       - '.github/workflows/deploy-development.yml'
   workflow_dispatch:
-  schedule:
-    - cron: '*/5 * * * *'
 
 permissions:
   contents: read

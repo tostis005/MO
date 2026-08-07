@@ -5,22 +5,17 @@ on:
     workflows: ["Deploy child theme to staging"]
     types: [completed]
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/storefront-audit-v9.yml'
-      - '.github/scripts/storefront-audit-v9.cjs'
 
 permissions:
   contents: read
 
 concurrency:
   group: storefront-audit-v9
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   audit:
-    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'schedule') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
