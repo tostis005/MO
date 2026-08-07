@@ -16,13 +16,19 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-store-vendor-layout-final-01037">
+		<style id="elmercado-store-vendor-layout-final-01038">
 			/*
-			 * Tienda de productor: el espacio pertenece al flujo normal.
-			 * No se corrige la posición con transformaciones dependientes del viewport.
+			 * Tienda de productor: todo el espaciado pertenece al flujo normal.
+			 * La separación se aplica al nodo que realmente precede a la toolbar
+			 * para no depender de la estructura interna de .tab_area.
 			 */
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .tab_area {
-				margin-bottom: 20px !important;
+				margin-bottom: 0 !important;
+			}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .tab_area .tab_links,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .tab_links {
+				margin: 0 0 20px !important;
+				padding-bottom: 0 !important;
 			}
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .body_area {
 				margin-top: 0 !important;
@@ -133,7 +139,8 @@ add_action(
 			}
 
 			@media (max-width: 991px) {
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .tab_area {
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .tab_area .tab_links,
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .tab_links {
 					margin-bottom: 16px !important;
 				}
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar {
@@ -155,7 +162,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-vendor-static-rhythm-01037">
+		<script id="elmercado-vendor-static-rhythm-01038">
 		(() => {
 			'use strict';
 			const store = document.querySelector('#wcfmmp-store');
@@ -166,11 +173,14 @@ add_action(
 				if (frame) cancelAnimationFrame(frame);
 				frame = requestAnimationFrame(() => requestAnimationFrame(() => {
 					frame = 0;
+					const tabs = store.querySelector('.tab_links');
 					const toolbar = store.querySelector('.elmercado-vendor-toolbar');
 					const products = store.querySelector('ul.products');
+					const compact = window.matchMedia('(max-width: 991px)').matches;
+					if (tabs) tabs.style.setProperty('margin-bottom', compact ? '16px' : '20px', 'important');
 					if (toolbar) {
 						toolbar.style.setProperty('transform', 'none', 'important');
-						toolbar.style.setProperty('margin-bottom', window.matchMedia('(max-width: 991px)').matches ? '14px' : '18px', 'important');
+						toolbar.style.setProperty('margin-bottom', compact ? '14px' : '18px', 'important');
 						delete toolbar.dataset.elmercadoTabGap;
 					}
 					if (products) {
