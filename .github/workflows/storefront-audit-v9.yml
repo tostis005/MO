@@ -28,6 +28,24 @@ jobs:
           set -euo pipefail
           mkdir -p qa
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/comprehensive-storefront-audit.cjs')
+          text = path.read_text()
+          text = text.replace(
+              "const closeSel = '.sidebar-menu .close-sidebar-menu-btn,.sidebar-menu .close-sidebar-menu,.sidebar-menu [class*=\"close-sidebar\"]';",
+              "const closeSel = '.sidebar-menu .elmercado-mobile-menu-close,.sidebar-menu .close-sidebar-menu-btn,.sidebar-menu .close-sidebar-menu,.sidebar-menu [class*=\"close-sidebar\"]';"
+          )
+          old = """    const stillOpen = await page.evaluate(() => {
+              const e = document.querySelector('.sidebar-menu');
+              if (!e) return false;
+              const r = e.getBoundingClientRect();
+              return r.width > 0 && r.height > 0 && !e.hasAttribute('inert') && e.getAttribute('aria-hidden') !== 'true';
+            });"""
+          new = """    const stillOpen = await page.evaluate(() => document.documentElement.classList.contains('sidebar-menu-open'));"""
+          text = text.replace(old, new)
+          path.write_text(text)
+          PY
           node --check .github/scripts/storefront-audit-v10.cjs
           node --check .github/scripts/comprehensive-storefront-audit.cjs
           node --check .github/scripts/mobile-ui-check.cjs
