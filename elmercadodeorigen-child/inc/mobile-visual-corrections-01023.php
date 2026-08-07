@@ -36,7 +36,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-mobile-visual-corrections-01023">
+		<style id="elmercado-mobile-visual-corrections-01032">
 			@media (max-width: 991px) {
 				/* El drawer no debe sacar controles fuera de su propio ancho. */
 				html body.elmercado-child-theme .sidebar-menu {
@@ -133,7 +133,7 @@ add_action(
 					outline-offset: 2px !important;
 				}
 
-				/* Títulos de producto: dos líneas completas, sin cortar la segunda por altura insuficiente. */
+				/* Títulos: reserva dos líneas, pero no corta nombres que necesiten una tercera. */
 				html body.elmercado-child-theme ul.products li.product :is(
 					.woocommerce-loop-product__title,
 					.woostify-loop-product__title,
@@ -141,16 +141,17 @@ add_action(
 					h2,
 					h3
 				) {
-					display: -webkit-box !important;
-					-webkit-box-orient: vertical !important;
-					-webkit-line-clamp: 2 !important;
-					overflow: hidden !important;
+					display: block !important;
+					-webkit-box-orient: initial !important;
+					-webkit-line-clamp: unset !important;
+					overflow: visible !important;
 					height: auto !important;
 					min-height: calc(2 * 1.4em + 2px) !important;
-					max-height: calc(2 * 1.4em + 2px) !important;
+					max-height: none !important;
 					padding-block: 0 2px !important;
 					line-height: 1.4 !important;
-					text-overflow: ellipsis !important;
+					text-overflow: clip !important;
+					white-space: normal !important;
 				}
 
 				/* Títulos de widgets dentro del panel de filtros: centrados y sin invadir el borde. */
@@ -195,7 +196,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-mobile-visual-corrections-01023-js">
+		<script id="elmercado-mobile-visual-corrections-01032-js">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
@@ -240,8 +241,10 @@ add_action(
 				if (event.key === 'Escape' && root.classList.contains('sidebar-menu-open')) closeMenu();
 			});
 
-			new MutationObserver(normalizeMenu).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-			normalizeMenu();
+			/* No observar todo el DOM: Elementor y los carruseles mutan continuamente. */
+			new MutationObserver(normalizeMenu).observe(root, { attributes: true, attributeFilter: ['class'] });
+			document.addEventListener('DOMContentLoaded', normalizeMenu, { once: true });
+			[0, 100, 300].forEach((delay) => setTimeout(normalizeMenu, delay));
 		})();
 		</script>
 		<?php
