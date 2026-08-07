@@ -61,6 +61,7 @@ $elmercado_modules = array(
 	'inc/cart-counter-visibility-final.php',
 	'inc/mobile-catalog-interactions-final.php',
 	'inc/header-unified-final.php',
+	'inc/sitewide-visual-harmony-final.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {

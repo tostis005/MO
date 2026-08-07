@@ -3,10 +3,10 @@ const puppeteer = require('puppeteer-core');
 const BASE = 'https://dev.elmercadodeorigen.com';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const go = async (page, path) => {
+const go = async (page, path, delay = 700) => {
 	const url = `${BASE}${path}${path.includes('?') ? '&' : '?'}mobile-ui=${Date.now()}`;
 	await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-	await sleep(650);
+	await sleep(delay);
 };
 
 (async () => {
@@ -33,20 +33,16 @@ const go = async (page, path) => {
 				const rect = node.getBoundingClientRect();
 				return rect.width > 0 && rect.height > 0;
 			});
-			const yCenters = children.map((node) => {
-				const rect = node.getBoundingClientRect();
-				return rect.top + rect.height / 2;
-			});
-			const xCenters = children.map((node) => {
-				const rect = node.getBoundingClientRect();
-				return rect.left + rect.width / 2;
-			});
+			const rects = children.map((node) => node.getBoundingClientRect());
+			const yCenters = rects.map((rect) => rect.top + rect.height / 2);
+			const xCenters = rects.map((rect) => rect.left + rect.width / 2);
 			const horizontalSteps = xCenters.slice(1).map((value, index) => value - xCenters[index]);
 			return {
 				brandGap: Math.round(b.left - m.right),
 				toolCenterSpread: yCenters.length ? Math.round(Math.max(...yCenters) - Math.min(...yCenters)) : 99,
 				toolStepSpread: horizontalSteps.length > 1 ? Math.round(Math.max(...horizontalSteps) - Math.min(...horizontalSteps)) : 99,
 				toolSteps: horizontalSteps.map(Math.round),
+				toolWidths: rects.map((rect) => Math.round(rect.width)),
 				tools: children.length
 			};
 		});
@@ -55,32 +51,74 @@ const go = async (page, path) => {
 		if (header.toolCenterSpread > 3) throw new Error(`header tools vertically scattered (${header.toolCenterSpread}px)`);
 		if (header.toolStepSpread > 3) throw new Error(`header tools unevenly spaced (${JSON.stringify(header.toolSteps)})`);
 		if (header.tools < 3) throw new Error(`expected 3 mobile header tools, found ${header.tools}`);
+		if (header.toolSteps.some((step) => step < 31 || step > 37)) throw new Error(`header tool steps out of range (${JSON.stringify(header.toolSteps)})`);
 
 		await page.click('.site-header .toggle-sidebar-menu-btn');
-		await sleep(250);
-		const closeState = await page.evaluate(() => {
-			const isVisible = (node) => {
+		await sleep(300);
+		const menuState = await page.evaluate(() => {
+			const visible = (node) => {
 				if (!node) return false;
 				const rect = node.getBoundingClientRect();
 				const style = getComputedStyle(node);
 				return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
 			};
-			const custom = document.querySelector('.sidebar-menu .elmercado-mobile-menu-close');
+			const drawer = document.querySelector('.sidebar-menu');
+			const custom = drawer?.querySelector('.elmercado-mobile-menu-close');
 			const trigger = document.querySelector('.site-header .toggle-sidebar-menu-btn');
+			const tools = document.querySelector('.site-header .site-tools');
+			const search = [...(drawer?.querySelectorAll('.dgwt-wcas-search-wrapp,.aws-container,.search-form') || [])].find(visible) || null;
 			const natives = [...document.querySelectorAll('.close-sidebar-menu-btn,.close-sidebar-menu,[class*="close-sidebar"]')]
-				.filter((node) => node !== custom && isVisible(node));
-			return { custom: isVisible(custom), trigger: isVisible(trigger), nativeCount: natives.length };
+				.filter((node) => node !== custom && visible(node));
+			if (!drawer || !custom) return null;
+			const d = drawer.getBoundingClientRect();
+			const c = custom.getBoundingClientRect();
+			const s = search?.getBoundingClientRect();
+			return {
+				custom: visible(custom),
+				trigger: visible(trigger),
+				tools: visible(tools),
+				nativeCount: natives.length,
+				closeInside: c.left >= d.left && c.right <= d.right && c.top >= d.top && c.bottom <= d.bottom,
+				searchVisible: Boolean(s && s.width > 0),
+				searchInside: Boolean(s && s.left >= d.left + 4 && s.right <= d.right - 4)
+			};
 		});
-		if (!closeState.custom || closeState.trigger || closeState.nativeCount) {
-			throw new Error(`mobile menu close state invalid (${JSON.stringify(closeState)})`);
+		if (!menuState) throw new Error('mobile menu state missing');
+		if (!menuState.custom || menuState.trigger || menuState.tools || menuState.nativeCount || !menuState.closeInside || !menuState.searchVisible || !menuState.searchInside) {
+			throw new Error(`mobile menu containment invalid (${JSON.stringify(menuState)})`);
 		}
 		await page.screenshot({ path: 'qa/v10-menu-mobile.png', fullPage: false });
 		await page.click('.sidebar-menu .elmercado-mobile-menu-close');
-		await sleep(300);
-		const menuStillOpen = await page.evaluate(() => document.documentElement.classList.contains('sidebar-menu-open'));
-		if (menuStillOpen) throw new Error('explicit mobile menu close did not dismiss drawer');
+		await sleep(250);
+		if (await page.evaluate(() => document.documentElement.classList.contains('sidebar-menu-open'))) {
+			throw new Error('explicit mobile menu close did not dismiss drawer');
+		}
 
-		await go(page, '/tienda/');
+		await go(page, '/tienda/', 950);
+		const shopInitial = await page.evaluate(() => {
+			const visible = (node) => {
+				if (!node) return false;
+				const rect = node.getBoundingClientRect();
+				const style = getComputedStyle(node);
+				return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+			};
+			const lead = document.querySelector('.emo-shop-lead--final');
+			const oldLead = [...document.querySelectorAll('.emo-shop-lead:not(.emo-shop-lead--final)')].find(visible) || null;
+			const toast = [...document.querySelectorAll('.emo-cart-toast')].find(visible) || null;
+			const chevron = document.querySelector('.emo-mobile-filter-toggle .emo-filter-chevron');
+			return {
+				lead: visible(lead),
+				leadText: lead?.textContent?.trim() || '',
+				oldLeadVisible: Boolean(oldLead),
+				toastVisible: Boolean(toast),
+				chevronVisible: visible(chevron)
+			};
+		});
+		if (!shopInitial.lead || !/aceites|ibéricos|fruta/i.test(shopInitial.leadText)) throw new Error(`shop lead invalid (${JSON.stringify(shopInitial)})`);
+		if (shopInitial.oldLeadVisible) throw new Error('legacy shop lead still visible');
+		if (shopInitial.toastVisible) throw new Error('stale add-to-cart toast visible on shop load');
+		if (shopInitial.chevronVisible) throw new Error('mobile filter chevron still visible');
+
 		const filterToggle = await page.$('.emo-mobile-filter-toggle');
 		if (!filterToggle) throw new Error('mobile shop filter toggle missing');
 		const positions = await page.evaluate(() => {
@@ -92,6 +130,7 @@ const go = async (page, path) => {
 			return { buttonBelowToolbar: b.top >= a.bottom - 1, gap: Math.round(b.top - a.bottom) };
 		});
 		if (!positions?.buttonBelowToolbar) throw new Error('mobile filter control is not below result/order toolbar');
+		await page.screenshot({ path: 'qa/v10-shop-mobile.png', fullPage: false });
 		await filterToggle.click();
 		await sleep(250);
 		const drawer = await page.evaluate(() => {
@@ -110,6 +149,60 @@ const go = async (page, path) => {
 		await page.click('.emo-mobile-filter-close');
 		await sleep(200);
 
+		await go(page, '/productores/', 1300);
+		const producers = await page.evaluate(() => {
+			const visible = (node) => {
+				if (!node) return false;
+				const rect = node.getBoundingClientRect();
+				const style = getComputedStyle(node);
+				return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+			};
+			const intro = document.querySelector('.emo-producers-intro');
+			const sortSelects = [...document.querySelectorAll('#wcfmmp-stores-wrap select')].filter((select) => {
+				const signature = `${select.name || ''} ${select.id || ''} ${select.textContent || ''}`.toLowerCase();
+				return visible(select) && /(orderby|order|antig|newest|oldest)/.test(signature);
+			});
+			const style = intro ? getComputedStyle(intro) : null;
+			return {
+				introVisible: visible(intro),
+				introRadius: style ? parseFloat(style.borderTopLeftRadius) || 0 : 0,
+				introBackground: style?.backgroundColor || '',
+				visibleSorting: sortSelects.length,
+				storesRoot: Boolean(document.querySelector('#wcfmmp-stores-wrap'))
+			};
+		});
+		if (!producers.storesRoot || !producers.introVisible || producers.introRadius < 16 || producers.visibleSorting > 0) {
+			throw new Error(`producer surface invalid (${JSON.stringify(producers)})`);
+		}
+		await page.screenshot({ path: 'qa/v10-producers-mobile.png', fullPage: false });
+
+		await go(page, '/blog/', 800);
+		const blog = await page.evaluate(() => {
+			const primary = document.querySelector('#primary.emo-journal');
+			const secondary = document.querySelector('#secondary');
+			const hero = document.querySelector('.emo-journal-hero__inner');
+			const card = document.querySelector('.emo-article-card');
+			const visible = (node) => {
+				if (!node) return false;
+				const rect = node.getBoundingClientRect();
+				const style = getComputedStyle(node);
+				return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+			};
+			const p = primary?.getBoundingClientRect();
+			const hs = hero ? getComputedStyle(hero) : null;
+			const cs = card ? getComputedStyle(card) : null;
+			return {
+				primaryRatio: p ? p.width / window.innerWidth : 0,
+				secondaryVisible: visible(secondary),
+				heroRadius: hs ? parseFloat(hs.borderTopLeftRadius) || 0 : 0,
+				heroBackground: hs?.backgroundColor || '',
+				cardRadius: cs ? parseFloat(cs.borderTopLeftRadius) || 0 : null
+			};
+		});
+		if (blog.primaryRatio < 0.95 || blog.secondaryVisible || blog.heroRadius < 16) throw new Error(`blog surface invalid (${JSON.stringify(blog)})`);
+		if (blog.cardRadius !== null && blog.cardRadius < 16) throw new Error(`blog cards not rounded (${blog.cardRadius}px)`);
+		await page.screenshot({ path: 'qa/v10-blog-mobile.png', fullPage: false });
+
 		await go(page, '/tienda/hidalgo-de-la-jara/');
 		const vendorGap = await page.evaluate(() => {
 			const toolbar = document.querySelector('#wcfmmp-store .elmercado-vendor-toolbar');
@@ -123,7 +216,6 @@ const go = async (page, path) => {
 		if (vendorGap < 12) throw new Error(`vendor toolbar too close to tabs (${vendorGap}px)`);
 		await page.screenshot({ path: 'qa/v10-vendor-spacing-mobile.png', fullPage: false });
 
-		/* La captura del usuario revela el breakpoint intermedio; lo auditamos explícitamente. */
 		await page.setViewport({ width: 768, height: 960, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
 		await go(page, '/tienda/hidalgo-de-la-jara/');
 		const tablet = await page.evaluate(() => {
@@ -147,21 +239,13 @@ const go = async (page, path) => {
 			};
 		});
 		if (!tablet) throw new Error('tablet vendor geometry missing');
-		if (tablet.tabToolbarGap < 12 || tablet.tabToolbarGap > 30) {
-			throw new Error(`tablet tabs/toolbar spacing out of range (${tablet.tabToolbarGap}px)`);
-		}
-		if (tablet.toolbarProductsGap < 6 || tablet.toolbarProductsGap > 22) {
-			throw new Error(`tablet toolbar/products spacing out of range (${tablet.toolbarProductsGap}px)`);
-		}
-		if (tablet.bannerTabsGap !== null && tablet.bannerTabsGap > 70) {
-			throw new Error(`tablet vendor header/tabs gap too large (${tablet.bannerTabsGap}px)`);
-		}
-		if (Math.max(tablet.imageInsetLeft, tablet.imageInsetRight) > 3) {
-			throw new Error(`tablet vendor product image still inset (${tablet.imageInsetLeft}/${tablet.imageInsetRight}px)`);
-		}
+		if (tablet.tabToolbarGap < 12 || tablet.tabToolbarGap > 30) throw new Error(`tablet tabs/toolbar spacing out of range (${tablet.tabToolbarGap}px)`);
+		if (tablet.toolbarProductsGap < 6 || tablet.toolbarProductsGap > 22) throw new Error(`tablet toolbar/products spacing out of range (${tablet.toolbarProductsGap}px)`);
+		if (tablet.bannerTabsGap !== null && tablet.bannerTabsGap > 70) throw new Error(`tablet vendor header/tabs gap too large (${tablet.bannerTabsGap}px)`);
+		if (Math.max(tablet.imageInsetLeft, tablet.imageInsetRight) > 3) throw new Error(`tablet vendor product image still inset (${tablet.imageInsetLeft}/${tablet.imageInsetRight}px)`);
 		await page.screenshot({ path: 'qa/v10-vendor-tablet.png', fullPage: false });
 
-		console.log(`MOBILE_UI_OK headerGap=${header.brandGap}px toolsSpread=${header.toolCenterSpread}px toolStepSpread=${header.toolStepSpread}px vendorGap=${vendorGap}px tablet=${JSON.stringify(tablet)} close=ok`);
+		console.log(`MOBILE_UI_OK header=${JSON.stringify(header)} menu=${JSON.stringify(menuState)} shop=${JSON.stringify(shopInitial)} producers=${JSON.stringify(producers)} blog=${JSON.stringify(blog)} vendorGap=${vendorGap}px tablet=${JSON.stringify(tablet)}`);
 	} finally {
 		await browser.close();
 	}
