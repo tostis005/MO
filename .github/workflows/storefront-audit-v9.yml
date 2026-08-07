@@ -61,6 +61,10 @@ jobs:
             });"""
           new = """    const stillOpen = await page.evaluate(() => document.documentElement.classList.contains('sidebar-menu-open'));"""
           text = text.replace(old, new)
+          text = text.replace(
+              "else { await input.click(); await input.type('aceite'); report.checks[`searchOpen-${mode}`] = true; }",
+              "else { await input.evaluate((node) => { node.focus(); node.click(); }); await input.type('aceite'); report.checks[`searchOpen-${mode}`] = true; }"
+          )
           path.write_text(text)
           PY
           node --check .github/scripts/storefront-audit-v10.cjs
