@@ -1,12 +1,38 @@
 <?php
 /**
- * Responsive shop, content width and card density refinements 0.10.39.
+ * Responsive shop, content width and card density refinements 0.10.40.
  *
  * @package ElMercadoDeOrigen
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
+}
+
+/*
+ * vendor-toolbar-mobile-final.php conserva CSS útil, pero su callback de footer
+ * medía el viewport y desplazaba productos con transform. Retiramos únicamente
+ * ese callback legado para que el ritmo de la tienda de productor dependa del
+ * flujo CSS estable definido en las capas finales.
+ */
+global $wp_filter;
+if ( isset( $wp_filter['wp_footer'] ) && $wp_filter['wp_footer'] instanceof WP_Hook ) {
+	$footer_callbacks = $wp_filter['wp_footer']->callbacks[ PHP_INT_MAX ] ?? array();
+	foreach ( $footer_callbacks as $footer_callback ) {
+		$callable = $footer_callback['function'] ?? null;
+		if ( ! $callable instanceof Closure ) {
+			continue;
+		}
+		try {
+			$reflection = new ReflectionFunction( $callable );
+			$file_name  = $reflection->getFileName();
+			if ( $file_name && 'vendor-toolbar-mobile-final.php' === basename( $file_name ) ) {
+				remove_action( 'wp_footer', $callable, PHP_INT_MAX );
+			}
+		} catch ( ReflectionException $exception ) {
+			unset( $exception );
+		}
+	}
 }
 
 add_filter(
@@ -32,8 +58,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-layout-density-final-01039">
-			/* Quitar cabeceras/breadcrumbs redundantes y acercar el contenido principal. */
+		<style id="elmercado-layout-density-final-01040">
 			body.elmercado-child-theme:is(.elmercado-compact-shop,.elmercado-compact-contact,.elmercado-compact-producers) :is(
 				.page-header,
 				.entry-header,
@@ -53,7 +78,6 @@ add_action(
 				margin-top: 0 !important;
 			}
 
-			/* Entrada de blog: nunca reservar una columna vacía para sidebar. */
 			body.elmercado-child-theme.single-post #secondary,
 			body.elmercado-child-theme.single-post .widget-area:not(.footer-widget-area) {
 				display: none !important;
@@ -68,7 +92,6 @@ add_action(
 				display: block !important;
 			}
 
-			/* Home: menos aire entre bloques, manteniendo respiración editorial. */
 			body.elmercado-child-theme.home .site-content {
 				padding-top: 0 !important;
 			}
@@ -78,7 +101,6 @@ add_action(
 				padding-bottom: clamp(24px, 3.2vw, 48px) !important;
 			}
 
-			/* Tarjetas: dos líneas reales, sin cortar descendentes, y bloque de precio más compacto. */
 			body.elmercado-child-theme :is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) ul.products li.product :is(
 				.woocommerce-loop-product__title,
 				.product-title,
@@ -113,7 +135,6 @@ add_action(
 				padding-bottom: 10px !important;
 			}
 
-			/* Filtros desktop: columna estable, alineada con la primera fila de producto y sticky. */
 			@media (min-width: 1101px) {
 				body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) :is(#secondary.widget-area,.shop-widget-area) {
 					position: sticky !important;
@@ -131,7 +152,6 @@ add_action(
 				}
 			}
 
-			/* Cuando deja de caber la columna, desaparece del flujo y el catálogo usa todo el ancho. */
 			@media (max-width: 1100px) {
 				body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) :is(#primary,.content-area,.site-main) {
 					width: 100% !important;
@@ -165,7 +185,6 @@ add_action(
 				}
 			}
 
-			/* Drawer y títulos de filtros: más ligeros, separados y ordenados. */
 			body.elmercado-child-theme .emo-mobile-filter-head {
 				min-height: 44px !important;
 				margin-bottom: 14px !important;
@@ -216,7 +235,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-shop-filter-breakpoint-01039">
+		<script id="elmercado-shop-filter-breakpoint-01040">
 		(() => {
 			'use strict';
 			const body = document.body;
@@ -228,7 +247,7 @@ add_action(
 			const content = shell?.querySelector('.emo-mobile-filter-content');
 			if (!sidebar || !toggle || !shell || !content) return;
 
-			const homeMarker = document.createComment('emo-filter-home-01039');
+			const homeMarker = document.createComment('emo-filter-home-01040');
 			if (sidebar.parentNode) sidebar.parentNode.insertBefore(homeMarker, sidebar);
 			const compact = () => window.matchMedia('(max-width: 1100px)').matches;
 
