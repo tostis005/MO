@@ -1,6 +1,6 @@
 name: Deploy child theme to staging
 
-# Temporary fallback: integration-created commits do not emit a push workflow run.
+# Temporary fallback: deploy the current main tip even when integration pushes are delayed.
 on:
   push:
     branches: [main]
