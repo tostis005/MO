@@ -53,6 +53,10 @@ add_action(
 				margin: 0 !important;
 			}
 			@media (max-width: 600px) {
+				/* El padding del host crea una separación real, sin colapso de márgenes. */
+				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-sorting-normalized {
+					padding-top: 16px !important;
+				}
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar {
 					display: grid !important;
 					grid-template-columns: minmax(0, 1fr) 132px !important;
