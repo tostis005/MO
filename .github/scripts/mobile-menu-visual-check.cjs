@@ -66,7 +66,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 		await page.click('.site-header .toggle-sidebar-menu-btn');
 		await sleep(350);
-		const menu = await page.evaluate(() => {
+		const state = await page.evaluate(() => {
 			const drawer = document.querySelector('.sidebar-menu');
 			const custom = drawer?.querySelector('.elmercado-mobile-menu-close');
 			if (!drawer || !custom) return null;
@@ -76,6 +76,59 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 				const s = getComputedStyle(node);
 				return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
 			};
+			const signature = (node) => `${node.tagName.toLowerCase()}${node.id ? `#${node.id}` : ''}${node.className && typeof node.className === 'string' ? `.${node.className.trim().replace(/\s+/g, '.')}` : ''}`;
+			const pseudo = (node, name) => {
+				const s = getComputedStyle(node, name);
+				return {
+					content: s.content,
+					display: s.display,
+					visibility: s.visibility,
+					opacity: s.opacity,
+					position: s.position,
+					width: s.width,
+					height: s.height,
+					top: s.top,
+					right: s.right,
+					bottom: s.bottom,
+					left: s.left,
+					backgroundImage: s.backgroundImage,
+					backgroundColor: s.backgroundColor,
+					borderTop: s.borderTop,
+					borderRight: s.borderRight,
+					borderBottom: s.borderBottom,
+					borderLeft: s.borderLeft,
+					transform: s.transform,
+					fontFamily: s.fontFamily,
+					fontSize: s.fontSize,
+					color: s.color
+				};
+			};
+			const describe = (node) => {
+				const r = node.getBoundingClientRect();
+				const s = getComputedStyle(node);
+				return {
+					signature: signature(node),
+					text: (node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+					aria: node.getAttribute?.('aria-label') || '',
+					title: node.getAttribute?.('title') || '',
+					rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+					display: s.display,
+					position: s.position,
+					zIndex: s.zIndex,
+					before: pseudo(node, '::before'),
+					after: pseudo(node, '::after')
+				};
+			};
+			const pointStack = (x, y) => document.elementsFromPoint(x, y).slice(0, 10).map(describe);
+			const intersects = (r, box) => r.right >= box.left && r.left <= box.right && r.bottom >= box.top && r.top <= box.bottom;
+			const scan = (box) => [...document.querySelectorAll('body *')]
+				.filter((node) => {
+					const r = node.getBoundingClientRect();
+					return r.width > 0 && r.height > 0 && intersects(r, box);
+				})
+				.slice(0, 80)
+				.map(describe);
+
 			const searchRoot = [...drawer.querySelectorAll('.dgwt-wcas-search-wrapp,.aws-container,form.search-form')].find(visible) || null;
 			const d = drawer.getBoundingClientRect();
 			const c = custom.getBoundingClientRect();
@@ -93,18 +146,33 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 				if (node.closest('.elmercado-mobile-menu-close')) return false;
 				return true;
 			});
+			const edgeX = Math.min(window.innerWidth - 2, Math.round(d.right + 11));
+			const edgeY = Math.round(d.top + 35);
+			const glassX = Math.round(d.left + 43);
+			const glassY = Math.min(window.innerHeight - 2, Math.round(d.top + 469));
 			return {
-				customVisible: visible(custom),
-				closeInside: c.left >= d.left && c.right <= d.right && c.top >= d.top && c.bottom <= d.bottom,
-				nativeCloseCount: nativeClose.length,
-				nativeCloseSignatures: nativeClose.map((node) => `${node.tagName}#${node.id}.${node.className}`),
-				searchVisible: Boolean(searchRoot && visible(searchRoot)),
-				searchInside: Boolean(s && s.left >= d.left + 3 && s.right <= d.right - 3),
-				standaloneSearchCount: searchCandidates.length,
-				standaloneSearchSignatures: searchCandidates.map((node) => `${node.tagName}#${node.id}.${node.className}[${node.getAttribute('aria-label') || node.getAttribute('title') || ''}]`)
+				menu: {
+					customVisible: visible(custom),
+					closeInside: c.left >= d.left && c.right <= d.right && c.top >= d.top && c.bottom <= d.bottom,
+					nativeCloseCount: nativeClose.length,
+					nativeCloseSignatures: nativeClose.map(signature),
+					searchVisible: Boolean(searchRoot && visible(searchRoot)),
+					searchInside: Boolean(s && s.left >= d.left + 3 && s.right <= d.right - 3),
+					standaloneSearchCount: searchCandidates.length,
+					standaloneSearchSignatures: searchCandidates.map(signature)
+				},
+				diagnostics: {
+					drawer: { x: Math.round(d.x), y: Math.round(d.y), w: Math.round(d.width), h: Math.round(d.height), right: Math.round(d.right) },
+					edgePoint: { x: edgeX, y: edgeY, stack: pointStack(edgeX, edgeY) },
+					glassPoint: { x: glassX, y: glassY, stack: pointStack(glassX, glassY) },
+					edgeRegion: scan({ left: Math.max(0, d.right - 15), right: window.innerWidth, top: 0, bottom: 90 }),
+					glassRegion: scan({ left: Math.max(0, d.left + 15), right: Math.min(window.innerWidth, d.left + 90), top: Math.max(0, d.top + 420), bottom: Math.min(window.innerHeight, d.top + 520) })
+				}
 			};
 		});
-		if (!menu) throw new Error('mobile drawer missing');
+		if (!state) throw new Error('mobile drawer missing');
+		console.log(`MENU_POINT_DIAGNOSTIC ${JSON.stringify(state.diagnostics)}`);
+		const menu = state.menu;
 		if (!menu.customVisible || !menu.closeInside || menu.nativeCloseCount !== 0 || !menu.searchVisible || !menu.searchInside || menu.standaloneSearchCount !== 0) {
 			throw new Error(`mobile drawer visual artifacts remain (${JSON.stringify(menu)})`);
 		}
