@@ -1,0 +1,43 @@
+name: Storefront audit v8
+
+on:
+  workflow_run:
+    workflows: ["Deploy child theme to staging"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/storefront-audit-v8.yml'
+      - '.github/scripts/storefront-audit-v8.cjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storefront-audit-v8
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Audit deployed storefront
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node --check .github/scripts/storefront-audit-v8.cjs
+          node .github/scripts/storefront-audit-v8.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: storefront-audit-v8
+          path: qa/
+          retention-days: 14
