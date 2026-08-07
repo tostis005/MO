@@ -1,6 +1,6 @@
 <?php
 /**
- * Revisión integral 0.10.33: estabilidad visual de carrito y títulos de catálogo.
+ * Revisión integral 0.10.34: estabilidad visual de carrito y títulos de catálogo.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,7 +16,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-comprehensive-review-01033">
+		<style id="elmercado-comprehensive-review-01034">
 			/*
 			 * El aviso de WooCommerce puede quedar dentro de .emo-cart-layout.
 			 * Si ocupa una celda normal desplaza el formulario a la derecha y
@@ -121,6 +121,69 @@ add_action(
 				html body.elmercado-child-theme.woocommerce-cart .woocommerce-cart-form .cart_item .product-name {
 					min-width: 0 !important;
 					padding-right: 50px !important;
+				}
+
+				/* Acciones del carrito: una composición limpia y sin fondos heredados. */
+				html body.elmercado-child-theme.woocommerce-cart .woocommerce-cart-form td.actions {
+					display: grid !important;
+					grid-template-columns: 1fr !important;
+					gap: 10px !important;
+					width: 100% !important;
+					padding: 14px 10px 10px !important;
+					background: transparent !important;
+					border: 0 !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .woocommerce-cart-form td.actions .coupon {
+					display: grid !important;
+					grid-template-columns: minmax(0, 1fr) auto !important;
+					gap: 8px !important;
+					width: 100% !important;
+					padding: 0 !important;
+					background: transparent !important;
+					border: 0 !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .woocommerce-cart-form td.actions .coupon input.input-text {
+					width: 100% !important;
+					min-width: 0 !important;
+					height: 44px !important;
+					margin: 0 !important;
+					padding: 0 14px !important;
+					background: #faf8f2 !important;
+					border: 1px solid rgba(13, 33, 27, 0.13) !important;
+					border-radius: 999px !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .woocommerce-cart-form td.actions .coupon button.button {
+					min-width: 92px !important;
+					height: 44px !important;
+					min-height: 44px !important;
+					margin: 0 !important;
+					padding: 0 14px !important;
+					background: #173f32 !important;
+					border-color: #173f32 !important;
+					color: #fff !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .woocommerce-cart-form td.actions > button.button[name="update_cart"] {
+					width: 100% !important;
+					height: 44px !important;
+					min-height: 44px !important;
+					margin: 0 !important;
+					padding: 0 14px !important;
+					background: #173f32 !important;
+					border: 1px solid #173f32 !important;
+					border-radius: 999px !important;
+					color: #fff !important;
+					opacity: 1 !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .woocommerce-cart-form td.actions > button.button[name="update_cart"]:disabled {
+					background: #e7e4dc !important;
+					border-color: #e7e4dc !important;
+					color: #6b736f !important;
+					cursor: default !important;
 				}
 			}
 		</style>
