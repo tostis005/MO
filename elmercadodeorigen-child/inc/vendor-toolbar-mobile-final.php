@@ -151,7 +151,6 @@ add_action(
 					justify-items: center !important;
 					justify-content: end !important;
 				}
-				html body.elmercadodeorigen-child-theme .site-header .site-tools > *,
 				html body.elmercado-child-theme .site-header .site-tools > *,
 				html body.elmercado-child-theme .site-header .site-tools > * > a {
 					position: static !important;
@@ -203,7 +202,7 @@ add_action(
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-sorting-normalized {
 					margin: 0 !important;
 					padding-top: 0 !important;
-			}
+				}
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar {
 					margin: 0 0 14px !important;
 				}
@@ -274,10 +273,16 @@ add_action(
 					frame = 0;
 					const toolbar = store.querySelector('.elmercado-vendor-toolbar');
 					const tabs = store.querySelector('.tab_links');
+					const products = store.querySelector('ul.products');
+					const firstProduct = products?.querySelector('li.product');
 					if (!toolbar || !tabs) return;
 
 					toolbar.style.setProperty('transform', 'none', 'important');
 					toolbar.style.setProperty('margin-bottom', '14px', 'important');
+					if (products) {
+						products.style.setProperty('transform', 'none', 'important');
+						products.style.setProperty('margin-bottom', '0', 'important');
+					}
 					if (!window.matchMedia('(max-width: 991px)').matches) return;
 
 					requestAnimationFrame(() => {
@@ -286,8 +291,20 @@ add_action(
 						const gap = Math.round(toolbarRect.top - tabRect.bottom);
 						const shift = Math.max(0, 16 - gap);
 						toolbar.style.setProperty('transform', `translateY(${shift}px)`, 'important');
-						toolbar.style.setProperty('margin-bottom', `${14 + shift}px`, 'important');
 						toolbar.dataset.elmercadoTabGap = String(gap + shift);
+
+						requestAnimationFrame(() => {
+							if (!products || !firstProduct) return;
+							const visualToolbar = toolbar.getBoundingClientRect();
+							const productRect = firstProduct.getBoundingClientRect();
+							const productGap = Math.round(productRect.top - visualToolbar.bottom);
+							const lift = Math.max(0, productGap - 14);
+							if (lift > 0) {
+								products.style.setProperty('transform', `translateY(-${lift}px)`, 'important');
+								products.style.setProperty('margin-bottom', `-${lift}px`, 'important');
+							}
+							products.dataset.elmercadoToolbarGap = String(productGap - lift);
+						});
 					});
 				});
 			};
