@@ -53,53 +53,23 @@ add_action(
 				}
 			}
 
-			body.wcfmmp-store-page #wcfmmp-store .woostify-sorting {
-				display: flex !important;
-				align-items: center !important;
-				justify-content: space-between !important;
-				gap: 1rem !important;
-				height: auto !important;
-				min-height: 70px !important;
-				margin: 2rem 0 1.5rem !important;
-				padding: 12px 16px !important;
-				border: 1px solid rgba(23,63,50,.1) !important;
-				border-radius: 14px !important;
-				background: #fff !important;
-				box-shadow: 0 8px 24px rgba(13,33,27,.05) !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store .woostify-toolbar-left {
-				display: flex !important;
-				align-items: center !important;
-				height: 46px !important;
-				min-height: 46px !important;
-				margin: 0 !important;
-				padding: 0 !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-result-count,
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering {
-				display: flex !important;
-				align-items: center !important;
-				height: 46px !important;
-				min-height: 46px !important;
-				margin: 0 !important;
-				padding: 0 !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering {
-				margin-left: auto !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering select {
-				height: 46px !important;
-				min-height: 46px !important;
-				margin: 0 !important;
-			}
-			@media (max-width: 767px) {
-				body.wcfmmp-store-page #wcfmmp-store .woostify-sorting {
-					align-items: stretch !important;
-					flex-direction: column !important;
+			/* Evita la segunda línea duplicada de marca que aparece en algunas
+			 * plantillas móviles de Woostify/WCFM. */
+			@media (max-width: 991px) {
+				body.elmercado-child-theme .site-header .site-branding > .site-title ~ .site-title,
+				body.elmercado-child-theme .site-header .site-branding .site-description {
+					display: none !important;
 				}
-				body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering {
-					width: 100% !important;
-					margin-left: 0 !important;
+			}
+
+			/* El acceso flotante a WhatsApp no debe invadir buscadores, filtros o
+			 * controles del directorio en pantallas estrechas. */
+			@media (max-width: 767px) {
+				body.elmercado-child-theme #ht-ctc-chat,
+				body.elmercado-child-theme .ht-ctc-chat {
+					left: auto !important;
+					right: 12px !important;
+					bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
 				}
 			}
 		</style>

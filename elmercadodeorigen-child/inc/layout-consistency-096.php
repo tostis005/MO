@@ -100,6 +100,8 @@ add_action(
 				transform: none !important;
 			}
 
+			/* La barra resultado/ordenación la gobierna runtime-stability-final.php.
+			 * Aquí solo conservamos la separación de las pestañas del productor. */
 			body.wcfmmp-store-page #wcfmmp-store #tab_links_area {
 				margin: 0 0 2rem !important;
 				padding: 0 !important;
@@ -108,48 +110,6 @@ add_action(
 			body.wcfmmp-store-page #wcfmmp-store .woocommerce-result-count::before {
 				content: none !important;
 				display: none !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store :is(div,section):has(> .woocommerce-result-count):has(> .woocommerce-ordering) {
-				display: flex !important;
-				align-items: center !important;
-				justify-content: space-between !important;
-				gap: 1.25rem !important;
-				min-height: 0 !important;
-				margin: 0 0 1.4rem !important;
-				padding: .85rem 1rem !important;
-				border: 1px solid rgba(23,63,50,.1) !important;
-				border-radius: 14px !important;
-				background: #fff !important;
-				box-shadow: 0 8px 24px rgba(13,33,27,.05) !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-result-count,
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering {
-				position: static !important;
-				float: none !important;
-				display: flex !important;
-				align-items: center !important;
-				width: auto !important;
-				min-height: 44px !important;
-				margin: 0 !important;
-				padding: 0 !important;
-				vertical-align: middle !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering {
-				margin-left: auto !important;
-			}
-			body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering select {
-				min-height: 44px !important;
-				margin: 0 !important;
-			}
-			@media (max-width: 767px) {
-				body.wcfmmp-store-page #wcfmmp-store :is(div,section):has(> .woocommerce-result-count):has(> .woocommerce-ordering) {
-					align-items: stretch !important;
-					flex-direction: column !important;
-				}
-				body.wcfmmp-store-page #wcfmmp-store .woocommerce-ordering {
-					width: 100% !important;
-					margin-left: 0 !important;
-				}
 			}
 		</style>
 		<?php
