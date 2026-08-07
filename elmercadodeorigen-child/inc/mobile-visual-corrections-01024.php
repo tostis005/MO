@@ -1,6 +1,6 @@
 <?php
 /**
- * Correcciones visuales 0.10.29: drawer móvil, copy genérico y estabilidad de home.
+ * Correcciones visuales 0.10.30: drawer móvil, copy genérico y estabilidad de home.
  *
  * @package ElMercadoDeOrigen
  */
@@ -27,7 +27,7 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<style id="elmercado-mobile-visual-corrections-01029">
+		<style id="elmercado-mobile-visual-corrections-01030">
 			@media (max-width: 991px) {
 				html body.elmercado-child-theme .sidebar-menu { overflow-x: hidden !important; }
 				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search,
@@ -115,7 +115,7 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<script id="elmercado-mobile-visual-corrections-01029-js">
+		<script id="elmercado-mobile-visual-corrections-01030-js">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
@@ -127,22 +127,48 @@ add_action(
 				if (primary && !primary.classList.contains('search-form')) primary.classList.add('search-form');
 				return primary;
 			};
-			const clean = () => {
-				normalizePrimarySearch();
-				if (!root.classList.contains('sidebar-menu-open')) return;
-				const menu = document.querySelector('.sidebar-menu');
-				if (!menu) return;
-				document.querySelectorAll('.site-dialog-search .icon-close,.woostify-search-wrap .icon-close').forEach((node) => {
-					node.setAttribute('aria-hidden', 'true');
+			const suppressGlobalSearch = () => {
+				document.querySelectorAll('.site-dialog-search,.woostify-search-wrap').forEach((node) => {
+					if (node.closest('.sidebar-menu')) return;
+					node.dataset.emoMenuSuppressed = '1';
 					node.style.setProperty('display', 'none', 'important');
 					node.style.setProperty('visibility', 'hidden', 'important');
+					node.style.setProperty('opacity', '0', 'important');
+					node.style.setProperty('pointer-events', 'none', 'important');
+					node.setAttribute('aria-hidden', 'true');
 				});
+			};
+			const restoreGlobalSearch = () => {
+				document.querySelectorAll('[data-emo-menu-suppressed="1"]').forEach((node) => {
+					node.style.removeProperty('display');
+					node.style.removeProperty('visibility');
+					node.style.removeProperty('opacity');
+					node.style.removeProperty('pointer-events');
+					node.removeAttribute('aria-hidden');
+					delete node.dataset.emoMenuSuppressed;
+				});
+			};
+			const clean = () => {
+				normalizePrimarySearch();
+				const open = root.classList.contains('sidebar-menu-open');
+				if (!open) {
+					restoreGlobalSearch();
+					return;
+				}
+				const menu = document.querySelector('.sidebar-menu');
+				if (!menu) return;
+				suppressGlobalSearch();
 				menu.querySelectorAll('.emo-duplicate-search-item').forEach((node) => {
 					node.setAttribute('aria-hidden', 'true');
 					node.style.setProperty('display', 'none', 'important');
 				});
 			};
-			new MutationObserver(clean).observe(root, { attributes: true, attributeFilter: ['class'] });
+			const settle = () => {
+				clean();
+				requestAnimationFrame(clean);
+				[25, 75, 160, 300].forEach((delay) => setTimeout(clean, delay));
+			};
+			new MutationObserver(settle).observe(root, { attributes: true, attributeFilter: ['class'] });
 			document.addEventListener('DOMContentLoaded', normalizePrimarySearch, { once: true });
 			[0, 80, 220].forEach((delay) => setTimeout(normalizePrimarySearch, delay));
 		})();
