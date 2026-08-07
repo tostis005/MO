@@ -1,4 +1,4 @@
-name: Storefront audit v9
+name: Storefront audit
 
 on:
   workflow_run:
@@ -10,14 +10,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: storefront-audit-v9
+  group: storefront-audit
   cancel-in-progress: true
 
 jobs:
   audit:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,18 +28,11 @@ jobs:
           set -euo pipefail
           mkdir -p qa
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('.github/scripts/storefront-audit-v9.cjs')
-          s=p.read_text()
-          s=s.replace("if(await page.evaluate(()=>document.querySelectorAll('li.product').length>0)R.errors.push", "if(await page.evaluate(()=>document.querySelectorAll('li.product').length>0))R.errors.push")
-          p.write_text(s)
-          PY
-          node --check .github/scripts/storefront-audit-v9.cjs
-          node .github/scripts/storefront-audit-v9.cjs
+          node --check .github/scripts/storefront-audit-v10.cjs
+          node .github/scripts/storefront-audit-v10.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: storefront-audit-v9
+          name: storefront-audit
           path: qa/
           retention-days: 14

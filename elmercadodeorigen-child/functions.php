@@ -51,16 +51,11 @@ $elmercado_modules = array(
 	'inc/minicart-final-control.php',
 	'inc/layout-consistency-096.php',
 	'inc/layout-consistency-098.php',
-	'inc/header-exact-consistency.php',
 	'inc/mobile-commerce-finish.php',
 	'inc/product-card-carousel-finish.php',
-	'inc/cart-count-visibility.php',
-	'inc/integral-audit-fixes-0105.php',
-	'inc/header-final-audit.php',
 	'inc/shop-producer-filter-final.php',
 	'inc/home-mobile-header-final.php',
-	'inc/mobile-menu-close-final.php',
-	'inc/vendor-mobile-toolbar-final.php',
+	'inc/runtime-stability-final.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
