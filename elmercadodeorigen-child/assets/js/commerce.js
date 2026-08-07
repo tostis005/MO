@@ -219,6 +219,7 @@
 		closeTimer = window.setTimeout(removeToast, 8000);
 	};
 
+	/* La confirmación se crea únicamente desde el evento real de WooCommerce. */
 	if (productSurface && window.jQuery) {
 		window.jQuery(document.body).on('added_to_cart', (_event, _fragments, _cartHash, button) => {
 			const element = button?.get?.(0) || button?.[0] || null;
@@ -227,11 +228,5 @@
 			updateCartAccessibleName();
 			showToast(name);
 		});
-	}
-
-	const reloadMessage = productSurface ? document.querySelector('.woocommerce-message') : null;
-
-	if (reloadMessage?.textContent?.match(/añadid|carrito/i)) {
-		showToast(reloadMessage.textContent.replace(/ver carrito/gi, '').trim().slice(0, 120));
 	}
 })();
