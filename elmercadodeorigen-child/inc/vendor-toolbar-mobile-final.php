@@ -54,9 +54,11 @@ add_action(
 			}
 
 			@media (max-width: 991px) {
-				/* Woostify transforma el trigger original en una X externa. Durante el
-				 * drawer lo ocultamos y conservamos solo el cierre del propio panel. */
-				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn {
+				/* Al abrir el drawer conservamos únicamente el cierre nativo blanco de
+				 * Woostify; el trigger y el cierre añadido por el child theme se ocultan. */
+				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn,
+				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close {
+					display: none !important;
 					visibility: hidden !important;
 					opacity: 0 !important;
 					pointer-events: none !important;
@@ -64,7 +66,7 @@ add_action(
 			}
 
 			@media (max-width: 600px) {
-				/* El padding del host crea una separación real, sin colapso de márgenes. */
+				/* Separación visual real entre las pestañas y la barra de catálogo. */
 				body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-sorting-normalized {
 					padding-top: 28px !important;
 				}

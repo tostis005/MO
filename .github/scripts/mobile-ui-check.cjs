@@ -9,12 +9,6 @@ const go = async (page, path) => {
 	await sleep(650);
 };
 
-const visibleCount = async (page, selector) => page.evaluate((query) => [...document.querySelectorAll(query)].filter((node) => {
-	const rect = node.getBoundingClientRect();
-	const style = getComputedStyle(node);
-	return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
-}).length, selector);
-
 (async () => {
 	const browser = await puppeteer.launch({
 		executablePath: '/usr/bin/google-chrome',
@@ -53,11 +47,26 @@ const visibleCount = async (page, selector) => page.evaluate((query) => [...docu
 
 		await page.click('.site-header .toggle-sidebar-menu-btn');
 		await sleep(250);
-		const closeCount = await visibleCount(page, '.sidebar-menu .elmercado-mobile-menu-close,.site-header .toggle-sidebar-menu-btn,html.sidebar-menu-open body .close-sidebar-menu-btn,html.sidebar-menu-open body .close-sidebar-menu,html.sidebar-menu-open body [class*="close-sidebar"]');
-		if (closeCount !== 1) throw new Error(`mobile menu shows ${closeCount} visible close controls`);
+		const duplicateCustomClose = await page.evaluate(() => {
+			const custom = document.querySelector('.sidebar-menu .elmercado-mobile-menu-close');
+			const trigger = document.querySelector('.site-header .toggle-sidebar-menu-btn');
+			const visible = (node) => {
+				if (!node) return false;
+				const rect = node.getBoundingClientRect();
+				const style = getComputedStyle(node);
+				return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+			};
+			return { custom: visible(custom), trigger: visible(trigger) };
+		});
+		if (duplicateCustomClose.custom || duplicateCustomClose.trigger) {
+			throw new Error(`duplicate mobile close still visible (${JSON.stringify(duplicateCustomClose)})`);
+		}
 		await page.screenshot({ path: 'qa/v10-menu-mobile.png', fullPage: false });
-		await page.click('.sidebar-menu .elmercado-mobile-menu-close');
-		await sleep(250);
+		/* La X nativa visible de Woostify está en la esquina superior derecha del overlay. */
+		await page.mouse.click(354, 35);
+		await sleep(300);
+		const menuStillOpen = await page.evaluate(() => document.documentElement.classList.contains('sidebar-menu-open'));
+		if (menuStillOpen) throw new Error('native mobile menu close did not dismiss drawer');
 
 		await go(page, '/tienda/');
 		const filterToggle = await page.$('.emo-mobile-filter-toggle');
@@ -102,7 +111,7 @@ const visibleCount = async (page, selector) => page.evaluate((query) => [...docu
 		if (vendorGap < 12) throw new Error(`vendor toolbar too close to tabs (${vendorGap}px)`);
 		await page.screenshot({ path: 'qa/v10-vendor-spacing-mobile.png', fullPage: false });
 
-		console.log(`MOBILE_UI_OK headerGap=${header.brandGap}px toolsSpread=${header.toolCenterSpread}px vendorGap=${vendorGap}px`);
+		console.log(`MOBILE_UI_OK headerGap=${header.brandGap}px toolsSpread=${header.toolCenterSpread}px vendorGap=${vendorGap}px nativeClose=ok`);
 	} finally {
 		await browser.close();
 	}
