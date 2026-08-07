@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.41' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.42' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -73,6 +73,7 @@ $elmercado_modules = array(
 	'inc/store-vendor-layout-final-01037.php',
 	'inc/layout-density-final-01039.php',
 	'inc/vendor-flow-gap-final-01041.php',
+	'inc/content-header-unification-01042.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
