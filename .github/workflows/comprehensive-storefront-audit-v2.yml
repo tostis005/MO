@@ -1,0 +1,93 @@
+name: Comprehensive storefront audit v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/comprehensive-storefront-audit-v2.yml'
+      - 'elmercadodeorigen-child/**'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Validate storefront interactions and layouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          cat > qa.cjs <<'NODE'
+          const fs=require('fs'),puppeteer=require('puppeteer-core');
+          const base='https://dev.elmercadodeorigen.com',sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const R={errors:[],warnings:[],checks:{},runtime:{}};
+          const ignored=u=>/google-analytics|googletagmanager|doubleclick|notification\.mp3|facebook|clarity/i.test(u);
+          const vis=async(p,s)=>p.$$eval(s,es=>es.some(e=>{const r=e.getBoundingClientRect(),c=getComputedStyle(e);return r.width>0&&r.height>0&&c.display!=='none'&&c.visibility!=='hidden'&&+c.opacity>0})).catch(()=>false);
+          const clickVisible=async(p,s)=>{const es=await p.$$(s);for(const e of es){if(await e.evaluate(x=>{const r=x.getBoundingClientRect(),c=getComputedStyle(x);return r.width>0&&r.height>0&&c.display!=='none'&&c.visibility!=='hidden'&&+c.opacity>0})){await e.click();return true}}return false};
+          const visibleHandle=async(p,s)=>{for(const e of await p.$$(s)){if(await e.evaluate(x=>{const r=x.getBoundingClientRect(),c=getComputedStyle(x);return r.width>0&&r.height>0&&c.display!=='none'&&c.visibility!=='hidden'&&+c.opacity>0}))return e}return null};
+          const nav=async(p,path,label)=>{const u=path.startsWith('http')?path:base+path;const q=u+(u.includes('?')?'&':'?')+'qa='+Date.now();const res=await p.goto(q,{waitUntil:'networkidle2',timeout:90000});await p.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}'}).catch(()=>{});await sleep(500);if(!res||res.status()>=400)R.errors.push(`${label}: HTTP ${res?.status()||'none'}`);if(await p.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth+2))R.errors.push(`${label}: horizontal overflow`);return res};
+          const hook=(p,k)=>{const c=[],f=[];p.on('console',m=>{if(m.type()==='error')c.push(m.text())});p.on('requestfailed',q=>{if(!ignored(q.url()))f.push(q.url())});R.runtime[k]={consoleErrors:c,requestFailures:f}};
+          const count=async p=>p.evaluate(()=>{for(const n of document.querySelectorAll('.site-header .shop-cart-count,.site-header .cart-count,.site-header .count,.site-header .elmercado-cart-direct-count')){const r=n.getBoundingClientRect(),s=getComputedStyle(n);if(r.width&&r.height&&s.display!=='none'&&s.visibility!=='hidden'&&+s.opacity>0){const m=(n.textContent||'').match(/\d+/);return m?+m[0]:0}}return 0});
+          const shot=(p,n)=>p.screenshot({path:`qa/${n}.png`,fullPage:true});
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',protocolTimeout:120000,args:['--no-sandbox','--disable-dev-shm-usage']});
+            // clean cart/account
+            {const c=await b.createBrowserContext(),p=await c.newPage();hook(p,'clean');await p.setViewport({width:1440,height:1000});await nav(p,'/carrito/','empty cart');if(!await p.evaluate(()=>/carrito.*vac[ií]o|tu carrito est[aá] vac[ií]o|volver a la tienda|return to shop/i.test(document.body.innerText)))R.errors.push('empty cart state missing');await nav(p,'/mi-cuenta/','account');if(!await p.evaluate(()=>!!document.querySelector('form.woocommerce-form-login,input[name="username"],input[name="password"]')))R.warnings.push('account login form not detected');await c.close()}
+            for(const [mode,vp] of [['desktop',{width:1440,height:1000}],['mobile',{width:390,height:844,isMobile:true,hasTouch:true}]]){
+              const c=await b.createBrowserContext(),p=await c.newPage();hook(p,mode);await p.setViewport(vp);
+              await nav(p,'/',`home ${mode}`);await shot(p,`home-${mode}`);if(await count(p)!==0)R.errors.push(`home ${mode}: zero cart badge visible`);
+              // header geometry
+              const geo=await p.evaluate(()=>{const h=document.querySelector('.site-header'),t=document.querySelector('.site-tools');if(!h||!t)return null;const a=h.getBoundingClientRect(),b=t.getBoundingClientRect();return{hc:a.y+a.height/2,tc:b.y+b.height/2}});if(mode==='mobile'&&geo&&Math.abs(geo.hc-geo.tc)>6)R.errors.push('home mobile: header tools not centered');
+              // mobile menu toggle opens and can close with close control or same toggle
+              if(mode==='mobile'){
+                const tog='.site-header .toggle-sidebar-menu-btn';if(!await clickVisible(p,tog))R.errors.push('mobile menu toggle missing');else{await sleep(350);const open=await p.evaluate(()=>{const e=document.querySelector('.sidebar-menu');if(!e)return false;const r=e.getBoundingClientRect();return r.width>0&&r.height>0});if(!open)R.errors.push('mobile menu did not open');const close='.sidebar-menu .close-sidebar-menu-btn,.sidebar-menu .close-sidebar-menu,.sidebar-menu [class*="close-sidebar"]';if(!await clickVisible(p,close))await clickVisible(p,tog);await sleep(350);const still=await p.evaluate(()=>{const e=document.querySelector('.sidebar-menu');if(!e)return false;const r=e.getBoundingClientRect();const s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&!e.hasAttribute('inert')&&e.getAttribute('aria-hidden')!=='true'});if(still)R.errors.push('mobile menu did not close')}
+              }
+              // search opens native Woostify dialog or FiboSearch input
+              const st='.site-header .header-search-icon,.site-header .search-icon,.site-header .site-search-toggle,.site-header .js-dgwt-wcas-search-icon-handler';
+              if(!await clickVisible(p,st))R.errors.push(`search ${mode}: toggle missing`);else{await sleep(650);const inp=await visibleHandle(p,'input[type="search"]');if(!inp)R.errors.push(`search ${mode}: visible search input missing`);else{await inp.click();await inp.type('aceite');await sleep(700);R.checks[`searchOpen-${mode}`]=true}}
+              await nav(p,'/?s=aceite&post_type=product',`search results ${mode}`);if(!await p.evaluate(()=>document.querySelectorAll('li.product').length>0))R.errors.push(`search ${mode}: known query no products`);
+              await nav(p,'/?s=zzzz-no-existe-qa-987654&post_type=product',`search empty ${mode}`);if(await p.evaluate(()=>document.querySelectorAll('li.product').length>0))R.errors.push(`search ${mode}: impossible query returned products`);
+              // shop
+              await nav(p,'/tienda/',`shop ${mode}`);await shot(p,`shop-${mode}`);
+              if(await p.evaluate(()=>[...document.querySelectorAll('select')].some(s=>[...s.options].some(o=>/(todos los productores|todos los vendedores)/i.test(o.textContent||''))&&s.getClientRects().length>0&&s.getBoundingClientRect().width>0)))R.errors.push(`shop ${mode}: producer filter visible`);
+              const bd=await p.evaluate(()=>{const e=document.querySelector('.woocommerce-ordering select');if(!e)return null;const s=getComputedStyle(e);return[s.borderTopWidth,s.borderBottomWidth]});if(bd&&bd.includes('0px'))R.errors.push(`shop ${mode}: ordering border incomplete`);
+              const rt=await p.$eval('.woocommerce-result-count',e=>(e.textContent||'').replace(/\s+/g,' ').trim()).catch(()=>null);if(rt&&/\d(de)\d/i.test(rt))R.errors.push(`shop ${mode}: result spacing malformed`);
+              const th=await p.$$eval('ul.products li.product .woocommerce-loop-product__title,ul.products li.product .elmercado-product-title-link',es=>es.slice(0,8).map(e=>{const s=getComputedStyle(e);return[e.getBoundingClientRect().height,parseFloat(s.lineHeight)]}));if(th.some(([h,l])=>h+1<l*1.9))R.errors.push(`shop ${mode}: titles not two-line height`);
+              // product + add to cart from single product
+              const href=await p.$eval('li.product a.woocommerce-loop-product__link',a=>a.href).catch(()=>null);if(!href)R.errors.push(`shop ${mode}: product link missing`);else{
+                await nav(p,href,`product ${mode}`);await shot(p,`product-${mode}`);
+                for(const s of await p.$$('form.variations_form select')){const v=await s.evaluate(e=>[...e.options].find(o=>o.value&&!o.disabled)?.value||'');if(v)await s.select(v)}await sleep(500);
+                const add=await visibleHandle(p,'.single_add_to_cart_button:not(.disabled),form.cart button[type="submit"]');
+                if(add){const before=await count(p);await add.click();await sleep(1500);const after=await count(p);R.checks[`cartCountAfterAdd-${mode}`]={before,after};if(after<1)R.errors.push(`cart ${mode}: count not positive after add`);
+                  const cartButton='.site-header .shopping-cart,.site-header .shopping-bag-button,.site-header a.cart-contents';if(await clickVisible(p,cartButton)){await sleep(450);if(!await p.evaluate(()=>!!document.querySelector('.mini_cart_item,.woocommerce-mini-cart-item')))R.warnings.push(`minicart ${mode}: item not detected`)}
+                  await nav(p,'/carrito/',`cart ${mode}`);await shot(p,`cart-${mode}`);const q=await p.$('input.qty');if(!q)R.errors.push(`cart ${mode}: quantity missing`);else{await q.click({clickCount:3});await q.type('2');if(await clickVisible(p,'button[name="update_cart"],input[name="update_cart"]'))await sleep(1000)}
+                  const cp=await visibleHandle(p,'input#coupon_code,input[name="coupon_code"]');if(cp){await cp.type('QA-CUPON-INVALIDO-987654');if(await clickVisible(p,'button[name="apply_coupon"],input[name="apply_coupon"]')){await sleep(900);if(!await p.evaluate(()=>!!document.querySelector('.woocommerce-error,.woocommerce-notices-wrapper,.woocommerce-message')))R.warnings.push(`cart ${mode}: invalid coupon feedback not detected`)}}
+                  await nav(p,'/finalizar-compra/',`checkout ${mode}`);await shot(p,`checkout-${mode}`);if(!await p.evaluate(()=>!!document.querySelector('form.checkout,#customer_details,.woocommerce-checkout')))R.errors.push(`checkout ${mode}: form missing`);
+                }else{const sold=await p.evaluate(()=>/agotado|out of stock/i.test(document.body.innerText));if(!sold)R.warnings.push(`product ${mode}: no add button; could not exercise non-empty cart`)}
+              }
+              // contact invalid only
+              await nav(p,'/contacto/',`contact ${mode}`);await shot(p,`contact-${mode}`);const form=await p.$('form.wpcf7-form,.elementor-form,form[id*="contact"]');if(form){const sub=await form.$('button[type="submit"],input[type="submit"]');if(sub){await sub.click();await sleep(700);R.checks[`contactInvalid-${mode}`]=await p.evaluate(()=>!!document.querySelector('[aria-invalid="true"],.wpcf7-not-valid-tip,.elementor-message-danger,.error'))}}
+              // blog + article
+              await nav(p,'/blog/',`blog ${mode}`);const art=await p.$eval('article a[href],h2 a[href]',a=>a.href).catch(()=>null);if(art)await nav(p,art,`blog article ${mode}`);else R.warnings.push(`blog ${mode}: article link not found`);
+              // legal links from footer
+              await nav(p,'/',`footer ${mode}`);const ls=await p.evaluate(()=>[...document.querySelectorAll('footer a[href],.site-footer a[href]')].filter(a=>/privacidad|cookies|aviso legal|t[eé]rminos|condiciones/i.test((a.textContent||'')+' '+a.href)).map(a=>a.href).filter((x,i,a)=>a.indexOf(x)===i).slice(0,6));for(let i=0;i<ls.length;i++)await nav(p,ls[i],`legal ${mode} ${i}`);if(!ls.length)R.warnings.push(`footer ${mode}: no legal links`);
+              // vendor
+              await nav(p,'/tienda/hidalgo-de-la-jara/',`vendor ${mode}`);await shot(p,`vendor-${mode}`);const gap=await p.evaluate(()=>{const t=document.querySelector('.wcfmmp-store-tabs,.wcfm_store_tabs,.store-tabs,.wcfmmp-store-tab');if(!t||!t.nextElementSibling)return null;return t.nextElementSibling.getBoundingClientRect().top-t.getBoundingClientRect().bottom});if(gap!==null&&gap<16)R.errors.push(`vendor ${mode}: tab spacing ${Math.round(gap)}px`);
+              await c.close();
+            }
+            for(const [k,v] of Object.entries(R.runtime)){if([...new Set(v.consoleErrors)].length)R.warnings.push(`${k}: console errors detected`);if([...new Set(v.requestFailures)].length)R.warnings.push(`${k}: request failures detected`)}
+            fs.writeFileSync('qa/report.json',JSON.stringify(R,null,2));await b.close();if(R.errors.length){console.error(R.errors.join('\n'));process.exit(2)}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node qa.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comprehensive-storefront-audit-v2
+          path: qa/
+          retention-days: 14
