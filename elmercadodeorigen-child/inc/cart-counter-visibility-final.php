@@ -17,43 +17,89 @@ add_action(
 		}
 		?>
 		<style id="elmercado-cart-counter-visibility-final">
-			body.elmercado-child-theme .site-header .site-tools .emo-cart-count-empty {
+			body.elmercado-child-theme .site-header .emo-cart-count-empty {
 				display: none !important;
 				visibility: hidden !important;
 				opacity: 0 !important;
 				pointer-events: none !important;
+			}
+
+			body.elmercado-child-theme .site-header .emo-cart-pseudo-empty::before,
+			body.elmercado-child-theme .site-header .emo-cart-pseudo-empty::after,
+			body.elmercado-child-theme .site-header [data-count="0"]::before,
+			body.elmercado-child-theme .site-header [data-count="0"]::after,
+			body.elmercado-child-theme .site-header [data-cart-count="0"]::before,
+			body.elmercado-child-theme .site-header [data-cart-count="0"]::after,
+			body.elmercado-child-theme .site-header [data-items="0"]::before,
+			body.elmercado-child-theme .site-header [data-items="0"]::after {
+				content: none !important;
+				display: none !important;
 			}
 		</style>
 		<script id="elmercado-cart-counter-visibility-final-js">
 		(() => {
 			'use strict';
 
-			const selector = '.site-header .site-tools .shop-cart-count, .site-header .site-tools .cart-count, .site-header .site-tools .shopping-cart .count, .site-header .site-tools .shopping-bag-button .count, .site-header .site-tools .cart-contents .count';
+			const explicitCounters = '.site-header .shop-cart-count, .site-header .cart-count, .site-header .cart-contents-count, .site-header .elmercado-cart-direct-count, .site-header [class*="cart-count"], .site-header [class*="cart_count"]';
+			const cartRoots = '.site-header .shopping-cart, .site-header .shopping-bag-button, .site-header .cart-contents, .site-header [class*="shopping-cart"], .site-header [class*="shopping-bag"], .site-header a[href*="carrito"], .site-header a[href*="cart"]';
 
-			const readCount = (node) => {
-				const raw = (node.textContent || '').replace(/[^0-9]/g, '');
-				return raw === '' ? 0 : Number.parseInt(raw, 10) || 0;
+			const numericText = (node) => {
+				const value = (node.textContent || '').trim();
+				return /^\d+$/.test(value) ? Number.parseInt(value, 10) : null;
 			};
 
-			const sync = (root = document) => {
-				root.querySelectorAll(selector).forEach((node) => {
-					const empty = readCount(node) <= 0;
-					node.classList.toggle('emo-cart-count-empty', empty);
-					node.setAttribute('aria-hidden', empty ? 'true' : 'false');
+			const quotedPseudoNumber = (value) => {
+				const normalized = String(value || '').replace(/^['"]|['"]$/g, '').trim();
+				return /^\d+$/.test(normalized) ? Number.parseInt(normalized, 10) : null;
+			};
+
+			const syncNode = (node) => {
+				const count = numericText(node);
+				if (count === null) return;
+				const empty = count <= 0;
+				node.classList.toggle('emo-cart-count-empty', empty);
+				node.setAttribute('aria-hidden', empty ? 'true' : 'false');
+			};
+
+			const syncPseudo = (node) => {
+				const before = quotedPseudoNumber(getComputedStyle(node, '::before').content);
+				const after = quotedPseudoNumber(getComputedStyle(node, '::after').content);
+				node.classList.toggle('emo-cart-pseudo-empty', before === 0 || after === 0);
+			};
+
+			const sync = () => {
+				document.querySelectorAll(explicitCounters).forEach(syncNode);
+
+				document.querySelectorAll(cartRoots).forEach((root) => {
+					syncPseudo(root);
+					root.querySelectorAll('*').forEach((node) => {
+						if (node.children.length === 0) syncNode(node);
+						syncPseudo(node);
+					});
 				});
 			};
 
 			const start = () => {
 				sync();
-				const observer = new MutationObserver(() => sync());
+				let scheduled = false;
+				const observer = new MutationObserver(() => {
+					if (scheduled) return;
+					scheduled = true;
+					requestAnimationFrame(() => {
+						scheduled = false;
+						sync();
+					});
+				});
 				observer.observe(document.documentElement, {
 					childList: true,
 					subtree: true,
-					characterData: true
+					characterData: true,
+					attributes: true,
+					attributeFilter: ['class', 'data-count', 'data-cart-count', 'data-items']
 				});
-				document.body.addEventListener('wc_fragments_refreshed', () => sync());
-				document.body.addEventListener('added_to_cart', () => sync());
-				document.body.addEventListener('removed_from_cart', () => sync());
+				['wc_fragments_refreshed', 'added_to_cart', 'removed_from_cart', 'updated_wc_div'].forEach((eventName) => {
+					document.body.addEventListener(eventName, () => requestAnimationFrame(sync));
+				});
 			};
 
 			if (document.readyState === 'loading') {
