@@ -54,10 +54,6 @@ add_action(
 				margin: 0 !important;
 			}
 
-			/*
-			 * Tiendas de productor: la imagen ocupa toda la superficie superior
-			 * de la tarjeta, igual que en el catálogo general.
-			 */
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store ul.products li.product {
 				padding: 0 !important;
 				overflow: hidden !important;
@@ -84,10 +80,6 @@ add_action(
 			}
 
 			@media (max-width: 991px) {
-				/*
-				 * Un único cierre: ocultamos el trigger transformado y cualquier
-				 * cierre nativo exterior; conservamos la X accesible del panel.
-				 */
 				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn,
 				html.sidebar-menu-open body.elmercado-child-theme .close-sidebar-menu-btn,
 				html.sidebar-menu-open body.elmercado-child-theme .close-sidebar-menu,
@@ -104,7 +96,6 @@ add_action(
 					pointer-events: auto !important;
 				}
 
-				/* Tres herramientas con el mismo paso horizontal y centro óptico. */
 				html body.elmercado-child-theme .site-header .site-tools {
 					display: grid !important;
 					grid-template-columns: repeat(3, 32px) !important;
@@ -155,11 +146,6 @@ add_action(
 					text-align: center !important;
 				}
 
-				/*
-				 * Ritmo vertical responsive: menos aire entre cabecera de tienda y
-				 * pestañas, separación estándar pestañas/toolbar y menos hueco
-				 * toolbar/productos.
-				 */
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store {
 					margin-top: 16px !important;
 				}
@@ -172,10 +158,10 @@ add_action(
 				}
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-sorting-normalized {
 					margin: 0 !important;
-					padding-top: 28px !important;
+					padding-top: 0 !important;
 				}
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar {
-					margin: 0 0 14px !important;
+					margin: 16px 0 14px !important;
 				}
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store ul.products {
 					margin-top: 0 !important;
