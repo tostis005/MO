@@ -1,6 +1,6 @@
 <?php
 /**
- * Correcciones visuales 0.10.27: drawer móvil y copy genérico de tienda.
+ * Correcciones visuales 0.10.28: drawer móvil y copy genérico de tienda.
  *
  * @package ElMercadoDeOrigen
  */
@@ -27,7 +27,7 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<style id="elmercado-mobile-visual-corrections-01027">
+		<style id="elmercado-mobile-visual-corrections-01028">
 			@media (max-width: 991px) {
 				html body.elmercado-child-theme .sidebar-menu {
 					overflow-x: hidden !important;
@@ -55,8 +55,7 @@ add_action(
 					pointer-events: none !important;
 				}
 
-				html body.elmercado-child-theme .sidebar-menu > form.woocommerce-product-search,
-				html body.elmercado-child-theme .sidebar-menu > form.woocommerce-product-search.search-form {
+				html body.elmercado-child-theme .sidebar-menu form.woocommerce-product-search.search-form {
 					position: relative !important;
 					left: auto !important;
 					right: auto !important;
@@ -75,7 +74,7 @@ add_action(
 					box-shadow: none !important;
 					overflow: visible !important;
 				}
-				html body.elmercado-child-theme .sidebar-menu > form.woocommerce-product-search > input.search-field {
+				html body.elmercado-child-theme .sidebar-menu form.woocommerce-product-search.search-form > input.search-field {
 					position: static !important;
 					display: block !important;
 					box-sizing: border-box !important;
@@ -90,7 +89,7 @@ add_action(
 					background: #fff !important;
 					box-shadow: none !important;
 				}
-				html body.elmercado-child-theme .sidebar-menu > form.woocommerce-product-search > button {
+				html body.elmercado-child-theme .sidebar-menu form.woocommerce-product-search.search-form > button {
 					position: absolute !important;
 					top: 4px !important;
 					right: 4px !important;
@@ -123,13 +122,17 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<script id="elmercado-mobile-visual-corrections-01027-js">
+		<script id="elmercado-mobile-visual-corrections-01028-js">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
 			const normalizePrimarySearch = () => {
-				const primary = document.querySelector('.sidebar-menu > form.woocommerce-product-search');
+				const menu = document.querySelector('.sidebar-menu');
+				if (!menu) return null;
+				const forms = [...menu.querySelectorAll('form.woocommerce-product-search')];
+				const primary = forms.find((form) => !form.closest('.emo-duplicate-search-item')) || forms[0] || null;
 				if (primary) primary.classList.add('search-form');
+				return primary;
 			};
 			const clean = () => {
 				normalizePrimarySearch();
