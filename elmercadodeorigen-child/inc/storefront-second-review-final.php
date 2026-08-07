@@ -205,7 +205,7 @@ add_action(
 			@media (max-width: 600px) {
 				body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) .woostify-sorting,
 				body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar {
-					grid-template-columns: minmax(0, 1fr) 165px !important;
+					grid-template-columns: minmax(0, 1fr) 154px !important;
 					gap: 10px !important;
 					min-height: 68px !important;
 					margin-bottom: 20px !important;
@@ -329,6 +329,24 @@ add_action(
 				.replace(/[\u0300-\u036f]/g, '')
 				.trim()
 				.toLowerCase();
+
+			const normalizeResultCounts = () => {
+				const compact = window.matchMedia('(max-width: 600px)').matches;
+				document.querySelectorAll('.woocommerce-result-count').forEach((node) => {
+					let text = (node.dataset.emoFullResult || node.textContent || '').replace(/\s+/g, ' ').trim();
+					text = text
+						.replace(/^Mostrando\s*/i, 'Mostrando ')
+						.replace(/(\d+)\s*[–-]\s*(\d+)/g, '$1–$2')
+						.replace(/(\d+)\s*de\s*(\d+)/gi, '$1 de $2')
+						.replace(/(\d)(de)(\d)/gi, '$1 de $3')
+						.replace(/\s+/g, ' ')
+						.trim();
+					node.dataset.emoFullResult = text;
+					node.textContent = compact ? text.replace(/^Mostrando\s+/i, '') : text;
+				});
+			};
+
+			normalizeResultCounts();
 
 			document.querySelectorAll('#wcfmmp-store .tab_links li').forEach((item) => {
 				const link = item.querySelector('a');
