@@ -1,0 +1,38 @@
+name: Comprehensive storefront audit v4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/comprehensive-storefront-audit-v4.yml'
+      - '.github/scripts/comprehensive-storefront-audit.cjs'
+      - 'elmercadodeorigen-child/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comprehensive-storefront-audit-v4
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate storefront end to end without order submission
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node --check .github/scripts/comprehensive-storefront-audit.cjs
+          node .github/scripts/comprehensive-storefront-audit.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comprehensive-storefront-audit-v4
+          path: qa/
+          retention-days: 14
