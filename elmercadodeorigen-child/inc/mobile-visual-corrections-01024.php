@@ -1,6 +1,6 @@
 <?php
 /**
- * Correcciones visuales 0.10.25: drawer móvil y copy genérico de tienda.
+ * Correcciones visuales 0.10.26: drawer móvil y copy genérico de tienda.
  *
  * @package ElMercadoDeOrigen
  */
@@ -27,62 +27,96 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<style id="elmercado-mobile-visual-corrections-01025">
+		<style id="elmercado-mobile-visual-corrections-01026">
 			@media (max-width: 991px) {
-				html.sidebar-menu-open .toggle-sidebar-menu-btn,
-				html.sidebar-menu-open body .toggle-sidebar-menu-btn,
-				body.sidebar-menu-open .toggle-sidebar-menu-btn,
-				html.sidebar-menu-open body.elmercado-child-theme .site-header .toggle-sidebar-menu-btn,
-				body.elmercado-child-theme.sidebar-menu-open .site-header .toggle-sidebar-menu-btn {
+				html body.elmercado-child-theme .sidebar-menu {
+					overflow-x: hidden !important;
+				}
+
+				/* El icono X que se veía fuera del drawer pertenece al diálogo global de búsqueda,
+				 * no al disparador del menú. Mientras el menú está abierto, ese diálogo permanece
+				 * inactivo y ninguno de sus controles debe dibujarse. */
+				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search,
+				html.sidebar-menu-open body.elmercado-child-theme .woostify-search-wrap,
+				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search .woostify-svg-icon.icon-close,
+				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search > .icon-close,
+				html.sidebar-menu-open body.elmercado-child-theme .woostify-search-wrap .icon-close {
+					visibility: hidden !important;
+					opacity: 0 !important;
+					pointer-events: none !important;
+				}
+				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search .woostify-svg-icon.icon-close,
+				html.sidebar-menu-open body.elmercado-child-theme .site-dialog-search > .icon-close,
+				html.sidebar-menu-open body.elmercado-child-theme .woostify-search-wrap .icon-close {
+					display: none !important;
+				}
+
+				/* Sólo un buscador en el drawer: el formulario superior de WooCommerce.
+				 * El ítem de menú duplicado de FiboSearch es el que generaba la lupa suelta. */
+				html body.elmercado-child-theme .sidebar-menu .emo-duplicate-search-item,
+				html body.elmercado-child-theme .sidebar-menu li.menu-item .dgwt-wcas-search-wrapp {
 					display: none !important;
 					visibility: hidden !important;
 					opacity: 0 !important;
 					pointer-events: none !important;
 				}
 
-				html body.elmercado-child-theme .sidebar-menu {
-					overflow-x: hidden !important;
-				}
-				html body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close {
-					top: 14px !important;
-					right: 14px !important;
-					z-index: 20 !important;
-				}
-
-				html body.elmercado-child-theme .sidebar-menu :is(.dgwt-wcas-search-wrapp,.aws-container,form.search-form) {
+				/* Geometría del buscador real: 18 px de margen a cada lado dentro del drawer. */
+				html body.elmercado-child-theme .sidebar-menu > form.woocommerce-product-search,
+				html body.elmercado-child-theme .sidebar-menu > .woocommerce-product-search {
 					position: relative !important;
 					left: auto !important;
 					right: auto !important;
 					transform: none !important;
+					display: block !important;
 					box-sizing: border-box !important;
 					width: calc(100% - 36px) !important;
 					max-width: calc(100% - 36px) !important;
-					margin: 72px 18px 18px !important;
-					padding: 0 !important;
-					border: 0 !important;
-					background: transparent !important;
-					box-shadow: none !important;
-				}
-				html body.elmercado-child-theme .sidebar-menu :is(.dgwt-wcas-sf-wrapp,.aws-search-form) {
-					box-sizing: border-box !important;
-					width: 100% !important;
-					max-width: 100% !important;
-					margin: 0 !important;
+					height: 52px !important;
+					min-height: 52px !important;
+					margin: 74px 18px 18px !important;
 					padding: 0 !important;
 					border: 0 !important;
 					border-radius: 0 !important;
 					background: transparent !important;
 					box-shadow: none !important;
+					overflow: visible !important;
 				}
-				html body.elmercado-child-theme .sidebar-menu :is(.dgwt-wcas-search-input,.aws-search-field,input[type="search"]) {
+				html body.elmercado-child-theme .sidebar-menu > form.woocommerce-product-search > input.search-field {
+					position: static !important;
+					display: block !important;
 					box-sizing: border-box !important;
 					width: 100% !important;
 					max-width: 100% !important;
+					height: 52px !important;
+					min-height: 52px !important;
 					margin: 0 !important;
+					padding: 0 54px 0 16px !important;
 					border: 1px solid rgba(23,63,50,.22) !important;
 					border-radius: 999px !important;
 					background: #fff !important;
 					box-shadow: none !important;
+				}
+				html body.elmercado-child-theme .sidebar-menu > form.woocommerce-product-search > button {
+					position: absolute !important;
+					top: 4px !important;
+					right: 4px !important;
+					left: auto !important;
+					display: grid !important;
+					width: 44px !important;
+					height: 44px !important;
+					margin: 0 !important;
+					padding: 0 !important;
+					place-items: center !important;
+					border: 0 !important;
+					background: transparent !important;
+					box-shadow: none !important;
+				}
+
+				html body.elmercado-child-theme .sidebar-menu .elmercado-mobile-menu-close {
+					top: 14px !important;
+					right: 14px !important;
+					z-index: 30 !important;
 				}
 
 				html body.elmercado-child-theme .sidebar-menu .emo-empty-nav-artifact {
@@ -90,13 +124,6 @@ add_action(
 					visibility: hidden !important;
 					opacity: 0 !important;
 					pointer-events: none !important;
-				}
-				html body.elmercado-child-theme .sidebar-menu .emo-empty-nav-artifact::before,
-				html body.elmercado-child-theme .sidebar-menu .emo-empty-nav-artifact::after,
-				html body.elmercado-child-theme .sidebar-menu .emo-empty-nav-artifact *::before,
-				html body.elmercado-child-theme .sidebar-menu .emo-empty-nav-artifact *::after {
-					content: none !important;
-					display: none !important;
 				}
 			}
 		</style>
@@ -110,7 +137,7 @@ add_action(
 	static function (): void {
 		if ( is_admin() ) return;
 		?>
-		<script id="elmercado-mobile-visual-corrections-01025-js">
+		<script id="elmercado-mobile-visual-corrections-01026-js">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
@@ -118,32 +145,27 @@ add_action(
 				if (!root.classList.contains('sidebar-menu-open')) return;
 				const menu = document.querySelector('.sidebar-menu');
 				if (!menu) return;
-				document.querySelectorAll('.toggle-sidebar-menu-btn').forEach((toggle) => {
-					toggle.setAttribute('aria-hidden', 'true');
-					toggle.style.setProperty('display', 'none', 'important');
+
+				/* Retira el cierre huérfano del diálogo de búsqueda global. */
+				document.querySelectorAll('.site-dialog-search .icon-close,.woostify-search-wrap .icon-close').forEach((node) => {
+					node.setAttribute('aria-hidden', 'true');
+					node.style.setProperty('display', 'none', 'important');
+					node.style.setProperty('visibility', 'hidden', 'important');
 				});
-				menu.querySelectorAll('ul > li, nav > a, nav > button').forEach((item) => {
-					if (!(item instanceof Element)) return;
-					if (item.closest('.elmercado-mobile-menu-close')) return;
-					if (item.querySelector('input,textarea,select,form,ul,ol')) return;
-					const text = (item.textContent || '').replace(/\s+/g, ' ').trim();
-					const control = item.matches('a,button') ? item : item.querySelector(':scope > a,:scope > button');
-					const aria = `${control?.getAttribute('aria-label') || ''} ${control?.getAttribute('title') || ''}`.trim();
-					const href = control?.getAttribute('href') || '';
-					const meaningfulHref = href && href !== '#' && !/^javascript:/i.test(href);
-					if (!text && !aria && !meaningfulHref) item.classList.add('emo-empty-nav-artifact');
+
+				/* Retira el clon FiboSearch del menú; el buscador WooCommerce superior se conserva. */
+				menu.querySelectorAll('.emo-duplicate-search-item').forEach((node) => {
+					node.setAttribute('aria-hidden', 'true');
+					node.style.setProperty('display', 'none', 'important');
 				});
 			};
-			const observer = new MutationObserver(() => {
-				clean();
-				if (!root.classList.contains('sidebar-menu-open')) {
-					document.querySelectorAll('.toggle-sidebar-menu-btn').forEach((toggle) => {
-						toggle.removeAttribute('aria-hidden');
-						toggle.style.removeProperty('display');
-					});
-				}
+
+			new MutationObserver(clean).observe(document.documentElement, {
+				attributes: true,
+				childList: true,
+				subtree: true,
+				attributeFilter: ['class']
 			});
-			observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true, attributeFilter: ['class'] });
 			[0, 40, 100, 220, 450].forEach((delay) => setTimeout(clean, delay));
 		})();
 		</script>
