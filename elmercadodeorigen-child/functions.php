@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.22' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.23' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -65,6 +65,7 @@ $elmercado_modules = array(
 	'inc/cart-toast-guard-final.php',
 	'inc/mobile-menu-visual-final.php',
 	'inc/mobile-header-hitareas-final.php',
+	'inc/mobile-visual-corrections-01023.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
