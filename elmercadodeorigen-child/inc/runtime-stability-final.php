@@ -190,6 +190,14 @@ add_action(
 				margin: 0 !important;
 				padding: 0 !important;
 			}
+			body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar .woocommerce-result-count {
+				grid-column: 1 !important;
+				grid-row: 1 !important;
+			}
+			body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar .woocommerce-ordering {
+				grid-column: 2 !important;
+				grid-row: 1 !important;
+			}
 			body.elmercado-child-theme #wcfmmp-store .elmercado-vendor-toolbar :is(.woocommerce-result-count,.woocommerce-ordering) {
 				display: flex !important;
 				width: 100% !important;
