@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.32' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.33' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -67,6 +67,7 @@ $elmercado_modules = array(
 	'inc/mobile-header-hitareas-final.php',
 	'inc/mobile-visual-corrections-01023.php',
 	'inc/mobile-visual-corrections-01024.php',
+	'inc/comprehensive-review-01033.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
