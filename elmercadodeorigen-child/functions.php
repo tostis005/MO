@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.92' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.93' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -19,14 +19,12 @@ $elmercado_modules = array(
 	'inc/polish.php',
 	'inc/performance.php',
 	'inc/home-cache.php',
-	'inc/output-optimization.php',
 	'inc/final-performance.php',
 	'inc/header-finish.php',
 	'inc/home-navigation.php',
 	'inc/home-refresh.php',
 	'inc/home-header-normalize.php',
-	'inc/release-one.php',
-	'inc/release-one-finish.php',
+	'inc/legacy-runtime-cleanup-01093.php',
 	'inc/editorial-system.php',
 	'inc/editorial-performance.php',
 	'inc/editorial-finish.php',
@@ -47,11 +45,10 @@ $elmercado_modules = array(
 	'inc/storefront-final-pass.php',
 	'inc/premium-storefront-polish.php',
 	'inc/visual-correction-093.php',
-	'inc/storefront-edge-fix.php',
 	'inc/minicart-final-control.php',
 	'inc/layout-consistency-096.php',
 	'inc/layout-consistency-098.php',
-	'inc/mobile-commerce-finish.php',
+	'inc/minicart-quantity-events-01093.php',
 	'inc/product-card-carousel-finish.php',
 	'inc/shop-producer-filter-final.php',
 	'inc/home-mobile-header-final.php',
@@ -62,7 +59,7 @@ $elmercado_modules = array(
 	'inc/mobile-catalog-interactions-final.php',
 	'inc/header-unified-final.php',
 	'inc/sitewide-visual-harmony-final.php',
-	'inc/cart-toast-guard-final.php',
+	'inc/cart-toast-event-guard-01093.php',
 	'inc/mobile-menu-visual-final.php',
 	'inc/mobile-header-hitareas-final.php',
 	'inc/mobile-visual-corrections-01023.php',

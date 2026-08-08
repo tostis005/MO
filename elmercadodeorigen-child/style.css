@@ -4,10 +4,10 @@ Theme URI: https://www.elmercadodeorigen.com/
 Description: Tema hijo premium de Woostify para El Mercado de Origen.
 Author: El Mercado de Origen
 Template: woostify
-Version: 0.10.92
+Version: 0.10.93
 Text Domain: elmercadodeorigen
 Requires at least: 6.4
 Requires PHP: 8.0
 */
 
-/* Los estilos del proyecto se cargan desde assets/css/theme.css. Release QA: consolidate the Shop filter runtime into one canonical controller and remove the global product-card observer 0.10.92. */
+/* Los estilos del proyecto se cargan desde assets/css/theme.css. Release QA: retire obsolete global observers and keep cart/minicart cleanup event-driven 0.10.93. */
