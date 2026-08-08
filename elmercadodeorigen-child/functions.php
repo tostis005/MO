@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.53' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.54' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -81,6 +81,7 @@ $elmercado_modules = array(
 	'inc/interaction-layer-01050.php',
 	'inc/home-product-card-finish-01052.php',
 	'inc/content-alignment-final-01053.php',
+	'inc/home-carousel-inert-controls-01054.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
