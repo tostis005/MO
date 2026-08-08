@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.62' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.63' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -88,6 +88,7 @@ $elmercado_modules = array(
 	'inc/checkout-summary-column-01059.php',
 	'inc/mobile-reading-checkout-01060.php',
 	'inc/checkout-status-css-01062.php',
+	'inc/visual-coherence-01063.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
