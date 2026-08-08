@@ -28,20 +28,6 @@ add_filter(
 );
 
 add_action(
-	'woocommerce_single_product_summary',
-	static function (): void {
-		global $product;
-
-		if ( ! $product instanceof WC_Product || $product->is_in_stock() ) {
-			return;
-		}
-
-		echo '<p class="emo-stock-state" role="status">' . esc_html__( 'Agotado temporalmente', 'elmercadodeorigen' ) . '</p>';
-	},
-	21
-);
-
-add_action(
 	'wp_head',
 	static function (): void {
 		if ( is_admin() ) {
@@ -55,8 +41,8 @@ add_action(
 				content: none !important;
 			}
 
-			body.elmercado-child-theme.single-product .emo-stock-state {
-				display: inline-flex;
+			body.elmercado-child-theme.single-product div.product.outofstock .stock.out-of-stock {
+				display: inline-flex !important;
 				align-items: center;
 				gap: 8px;
 				min-height: 34px;
@@ -65,7 +51,7 @@ add_action(
 				border: 1px solid rgba(127, 47, 42, .20);
 				border-radius: 999px;
 				background: #f8ebe7;
-				color: #7f2f2a;
+				color: #7f2f2a !important;
 				font-size: 12px;
 				font-weight: 850;
 				letter-spacing: .035em;
@@ -73,21 +59,23 @@ add_action(
 				text-transform: uppercase;
 			}
 
-			body.elmercado-child-theme.single-product .emo-stock-state::before {
+			body.elmercado-child-theme.single-product div.product.outofstock .stock.out-of-stock::before {
 				width: 7px;
 				height: 7px;
+				flex: 0 0 7px;
 				border-radius: 50%;
 				background: currentColor;
 				content: "";
 			}
 
-			/* Contacto: feedback inequívoco y una caja de mensaje menos desproporcionada. */
+			/* Contacto: feedback inequívoco y una caja de mensaje proporcionada. */
 			body.elmercado-child-theme.elmercado-contact-page .emo-contact-form :is(input, textarea, select) {
 				transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 			}
 
 			body.elmercado-child-theme.elmercado-contact-page .emo-contact-form textarea {
-				min-height: 220px !important;
+				height: 220px !important;
+				min-height: 180px !important;
 				resize: vertical !important;
 			}
 
@@ -146,7 +134,8 @@ add_action(
 
 			@media (max-width: 767px) {
 				body.elmercado-child-theme.elmercado-contact-page .emo-contact-form textarea {
-					min-height: 190px !important;
+					height: 190px !important;
+					min-height: 160px !important;
 				}
 
 				body.elmercado-child-theme.single-post .emo-article-content > :is(p, ul, ol, blockquote) {
