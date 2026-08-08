@@ -1,6 +1,6 @@
 <?php
 /**
- * Persistencia visible de filtros y limpieza final del toolbar móvil 0.10.84.
+ * Persistencia visible de filtros y limpieza final del toolbar móvil 0.10.85.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,7 +16,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-filter-state-final-01084">
+		<style id="elmercado-filter-state-final-01085">
 			@media (max-width: 1100px) {
 				body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) .woostify-sorting > .elmercado-filter-toolbar-extra {
 					display: none !important;
@@ -95,7 +95,7 @@ add_action(
 
 		$shop_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/tienda/' );
 		?>
-		<script id="elmercado-filter-state-final-controller-01084">
+		<script id="elmercado-filter-state-final-controller-01085">
 		(() => {
 			'use strict';
 			const body = document.body;
@@ -114,6 +114,12 @@ add_action(
 				.replace(/^pa_/, '')
 				.replace(/[-_]+/g, ' ')
 				.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+			const visible = (node) => {
+				if (!node) return false;
+				const rect = node.getBoundingClientRect();
+				const style = getComputedStyle(node);
+				return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+			};
 
 			const cleanToolbar = () => {
 				if (!compact()) return;
@@ -179,13 +185,13 @@ add_action(
 				cleanToolbar();
 				const content = document.querySelector('#emo-premium-filter-shell .emo-mobile-filter-content');
 				const toggle = document.querySelector('#emo-premium-filter-toggle');
-				if (!content || !toggle) return;
+				if (!content || !toggle) return [];
 				content.querySelector('.emo-active-filters')?.remove();
 				content.querySelectorAll('.emo-filter-is-active').forEach((node) => node.classList.remove('emo-filter-is-active'));
 				const items = collectState(content);
 				const label = toggle.querySelector('.emo-filter-label');
 				if (label) label.textContent = items.length ? `Filtros (${items.length})` : 'Filtros';
-				if (!items.length) return;
+				if (!items.length) return items;
 
 				const section = document.createElement('section');
 				section.className = 'emo-active-filters';
@@ -210,6 +216,28 @@ add_action(
 				});
 				section.append(head, chips);
 				content.prepend(section);
+				return items;
+			};
+
+			const qaVerifyFilteredArchive = () => {
+				const params = new URLSearchParams(location.search);
+				if (!params.has('qa') || !compact() || !body.matches('.tax-product_cat,.tax-product_tag')) return;
+				const items = renderState();
+				const toolbar = document.querySelector('.woostify-sorting');
+				const rogue = toolbar ? [...toolbar.children].filter((child) => {
+					const keepsCount = child.matches?.('.woocommerce-result-count') || child.querySelector?.('.woocommerce-result-count');
+					const keepsOrdering = child.matches?.('.woocommerce-ordering') || child.querySelector?.('.woocommerce-ordering');
+					return !keepsCount && !keepsOrdering && visible(child);
+				}) : [];
+				const producerVisible = toolbar ? [...toolbar.querySelectorAll('select')].some((select) => {
+					if ((select.name || '').toLowerCase() === 'orderby' || select.closest('.woocommerce-ordering')) return false;
+					return visible(select);
+				}) : false;
+				const summary = document.querySelector('#emo-premium-filter-shell .emo-active-filters');
+				const chips = summary?.querySelectorAll('.emo-active-filter-chip').length || 0;
+				if (rogue.length) console.error(`EMO_QA_FILTER_TOOLBAR_EXTRA:${rogue.length}`);
+				if (producerVisible) console.error('EMO_QA_FILTER_PRODUCER_CONTROL_VISIBLE');
+				if (!items.length || !summary || chips < 1) console.error('EMO_QA_FILTER_ACTIVE_STATE_MISSING');
 			};
 
 			const refresh = () => {
@@ -219,6 +247,7 @@ add_action(
 			setTimeout(refresh, 0);
 			setTimeout(refresh, 160);
 			setTimeout(refresh, 650);
+			setTimeout(qaVerifyFilteredArchive, 900);
 			window.addEventListener('pageshow', refresh, { passive: true });
 			window.addEventListener('popstate', refresh, { passive: true });
 		})();
