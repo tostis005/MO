@@ -14,23 +14,26 @@ async function go(page, path, delay = 650) {
   if (!response || response.status() >= 400) failures.push(`${path}: HTTP ${response?.status() || 'none'}`);
 }
 
-async function measureStableTop(page, path, selector) {
-  await go(page, path);
-  const before = await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
+async function visibleDocumentTop(page, selector) {
+  return page.evaluate((sel) => {
+    const el = [...document.querySelectorAll(sel)].find((node) => {
+      const r = node.getBoundingClientRect();
+      const s = getComputedStyle(node);
+      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
+    });
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return Math.round((r.top + scrollY) * 10) / 10;
   }, selector);
+}
+
+async function measureStableTop(page, path, selector) {
+  await go(page, path);
+  const before = await visibleDocumentTop(page, selector);
   if (before === null) return null;
   await page.evaluate(() => scrollTo(0, 180));
   await sleep(300);
-  const after = await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return Math.round((r.top + scrollY) * 10) / 10;
-  }, selector);
+  const after = await visibleDocumentTop(page, selector);
   await page.evaluate(() => scrollTo(0, 0));
   return { top: before, after, delta: after === null ? null : Math.round(Math.abs(after - before) * 10) / 10 };
 }
@@ -72,15 +75,15 @@ async function measureGroup(page, name, surfaces, tolerance = 7) {
   page.setDefaultNavigationTimeout(60000);
 
   try {
-    /* Introducciones sobre papel: comparamos el primer elemento visual, no el wrapper estructural. */
+    /* Introducciones sobre papel: primer kicker realmente visible. */
     await measureGroup(page, 'paperIntro', [
-      ['/tienda/', '.emo-shop-lead .emo-kicker'],
+      ['/tienda/', 'main.site-main .emo-kicker'],
       ['/quienes-somos/', '.emo-about-intro .emo-kicker'],
     ]);
     await go(page, '/quienes-somos/');
     await page.screenshot({ path: 'qa/page-start-about-mobile.png', fullPage: false });
 
-    /* Carrito y checkout requieren una sesión real antes de comparar sus cabeceras. */
+    /* Carrito y checkout requieren una sesión real. */
     await go(page, `/contacto/?add-to-cart=${product.id}`, 850);
     await measureGroup(page, 'transactionIntro', [
       ['/carrito/', '.emo-cart-intro .emo-kicker'],
@@ -99,7 +102,7 @@ async function measureGroup(page, name, surfaces, tolerance = 7) {
       if (spread > 7) failures.push(`paper/transaction intros not aligned (${spread}px): ${JSON.stringify(paperTops)}`);
     }
 
-    /* Tarjetas verdes: Blog, Contacto y Productores comparten exactamente el mismo borde superior. */
+    /* Tarjetas verdes: mismo borde superior y cero salto inicial. */
     await measureGroup(page, 'greenCard', [
       ['/contacto/', '.emo-contact-aside'],
       ['/contacto-productores/', '.emo-contact-aside'],
@@ -107,7 +110,7 @@ async function measureGroup(page, name, surfaces, tolerance = 7) {
       ['/blog/', '.emo-journal-hero__inner'],
     ], 4);
 
-    /* Drawer de filtros: geometría visual completa. */
+    /* Drawer de filtros: cabeceras, separación y slider. */
     await go(page, '/tienda/', 750);
     const toggle = await page.$('#emo-premium-filter-toggle');
     if (!toggle) {

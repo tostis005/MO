@@ -1,6 +1,6 @@
 <?php
 /**
- * Alineación final de superficies interiores y geometría del filtro móvil 0.10.75.
+ * Alineación final de superficies interiores y geometría del filtro móvil 0.10.76.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,23 +16,32 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-page-start-filter-final-01075">
+		<style id="elmercado-page-start-filter-final-01076">
 			/*
-			 * Quiénes somos usa una introducción clara sobre papel, igual que Tienda,
-			 * Carrito y Checkout. Su wrapper no debe sumar un segundo gap superior.
+			 * Quiénes somos comparte la cadencia de las introducciones sobre papel.
+			 * Woostify añade aire a wrappers intermedios; lo neutralizamos y dejamos
+			 * un único gap explícito, responsive y estable en el flujo normal.
 			 */
-			html body.elmercado-child-theme.elmercado-about-page .site-content {
-				padding-top: 0 !important;
-			}
-			html body.elmercado-child-theme.elmercado-about-page .emo-about-layout,
-			html body.elmercado-child-theme.elmercado-about-page .emo-about-intro {
+			html body.elmercado-child-theme.elmercado-about-page .site-content,
+			html body.elmercado-child-theme.elmercado-about-page :is(#primary,.content-area,main.site-main,article.page,.entry-content) {
 				margin-top: 0 !important;
 				padding-top: 0 !important;
 				top: auto !important;
 				translate: none !important;
 				transform: none !important;
 			}
-			html body.elmercado-child-theme.is-scrolled.elmercado-about-page :is(.site-content,.emo-about-layout,.emo-about-intro) {
+			html body.elmercado-child-theme.elmercado-about-page .emo-about-layout {
+				margin-top: 0 !important;
+				padding-top: max(14px, calc(var(--emo-content-start-gap, 18px) - 4px)) !important;
+				top: auto !important;
+				translate: none !important;
+				transform: none !important;
+			}
+			html body.elmercado-child-theme.elmercado-about-page .emo-about-intro {
+				margin-top: 0 !important;
+				padding-top: 0 !important;
+			}
+			html body.elmercado-child-theme.is-scrolled.elmercado-about-page :is(.site-content,#primary,.content-area,main.site-main,article.page,.entry-content,.emo-about-layout,.emo-about-intro) {
 				top: auto !important;
 				translate: none !important;
 				transform: none !important;
