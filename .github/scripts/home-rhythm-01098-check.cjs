@@ -31,27 +31,35 @@ async function inspect(page, width, height) {
     };
   });
 
-  const editorial = metrics.sections.filter((s) => !s.cls.includes('emo-hero') && !s.cls.includes('emo-trust'));
-  const maxTop = width <= 767 ? 46 : width <= 991 ? 62 : 90;
-  const minTop = width <= 767 ? 32 : 40;
+  const hero = metrics.sections.find((s) => s.cls.includes('emo-hero'));
+  const editorial = metrics.sections.filter((s) => s.cls.includes('emo-section'));
+  const editorialMax = width <= 767 ? 34 : width <= 991 ? 46 : 62;
+  const editorialMin = width <= 767 ? 28 : width <= 991 ? 38 : 50;
+  const heroMax = width <= 767 ? 38 : width <= 991 ? 45 : 60;
+  const heroMin = width <= 767 ? 30 : width <= 991 ? 34 : 46;
 
   if (metrics.overflow) failures.push(`${width}px: horizontal overflow on home`);
+  if (!hero) failures.push(`${width}px: hero missing`);
   if (editorial.length < 4) failures.push(`${width}px: expected at least four editorial sections, got ${editorial.length}`);
 
-  for (const section of editorial) {
-    if (section.paddingTop > maxTop + 1) failures.push(`${width}px: excessive top air in ${section.cls} (${section.paddingTop}px)`);
-    if (section.paddingTop < minTop - 1) failures.push(`${width}px: section too compressed in ${section.cls} (${section.paddingTop}px)`);
+  if (hero) {
+    if (hero.paddingTop > heroMax + 1) failures.push(`${width}px: excessive hero top air (${hero.paddingTop}px)`);
+    if (hero.paddingTop < heroMin - 1) failures.push(`${width}px: hero too compressed (${hero.paddingTop}px)`);
   }
 
-  const normal = editorial.filter((s) => !s.cls.includes('emo-story') && !s.cls.includes('emo-vendor-cta'));
-  if (normal.length > 1) {
-    const values = normal.map((s) => s.paddingTop);
+  for (const section of editorial) {
+    if (section.paddingTop > editorialMax + 1) failures.push(`${width}px: excessive top air in ${section.cls} (${section.paddingTop}px)`);
+    if (section.paddingTop < editorialMin - 1) failures.push(`${width}px: section too compressed in ${section.cls} (${section.paddingTop}px)`);
+  }
+
+  if (editorial.length > 1) {
+    const values = editorial.map((s) => s.paddingTop);
     const spread = Math.max(...values) - Math.min(...values);
-    if (spread > 3) failures.push(`${width}px: inconsistent main editorial top rhythm (${spread}px spread)`);
+    if (spread > 3) failures.push(`${width}px: inconsistent editorial top rhythm (${spread}px spread)`);
   }
 
   results[`${width}`] = metrics;
-  await page.screenshot({ path: `qa/home-rhythm-01098-${width}.png`, fullPage: true });
+  await page.screenshot({ path: `qa/home-rhythm-01099-${width}.png`, fullPage: true });
 }
 
 (async () => {
@@ -71,9 +79,9 @@ async function inspect(page, width, height) {
   }
 
   if (failures.length) {
-    console.error(`HOME_RHYTHM_01098_FAIL ${JSON.stringify(failures)}`);
+    console.error(`HOME_RHYTHM_01099_FAIL ${JSON.stringify(failures)}`);
     process.exitCode = 2;
   } else {
-    console.log(`HOME_RHYTHM_01098_OK ${JSON.stringify(results)}`);
+    console.log(`HOME_RHYTHM_01099_OK ${JSON.stringify(results)}`);
   }
 })();
