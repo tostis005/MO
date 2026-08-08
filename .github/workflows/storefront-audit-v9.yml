@@ -32,8 +32,10 @@ jobs:
           mkdir -p qa
           node --check .github/scripts/user-request-visual-check.cjs
           node --check .github/scripts/page-start-filter-check.cjs
+          node --check .github/scripts/real-device-layout-check.cjs
           node .github/scripts/user-request-visual-check.cjs
           node .github/scripts/page-start-filter-check.cjs
+          node .github/scripts/real-device-layout-check.cjs
       - name: Audit deployed storefront
         shell: bash
         run: |
