@@ -67,10 +67,19 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
       if (Math.max(...sides) - Math.min(...sides) > 4) failures.push(`page gutters inconsistent ${JSON.stringify(gutters)}`);
     }
 
+    /*
+     * El top absoluto del contenido debe ser inmutable al activar el estado
+     * is-scrolled. Incluimos tanto cabeceras editoriales como superficies que
+     * perdieron el page-header nativo (tienda, carrito, checkout y cuenta).
+     */
     const headers = [
       ['/productores/', '.emo-producers-intro'],
       ['/contacto/', '.emo-contact-aside'],
       ['/blog/', '.emo-journal-hero__inner'],
+      ['/tienda/', '#content'],
+      ['/carrito/', '#content'],
+      ['/finalizar-compra/', '#content'],
+      ['/mi-cuenta/', '#content'],
     ];
     for (const [path, selector] of headers) {
       await go(page, path);
@@ -78,8 +87,8 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
       await page.evaluate(() => scrollTo(0, 180));
       await sleep(350);
       const after = await page.evaluate(sel => { const e=document.querySelector(sel); if(!e)return null; const r=e.getBoundingClientRect(); return r.top + scrollY; }, selector);
-      if (before === null || after === null) failures.push(`${path}: header surface missing`);
-      else if (Math.abs(after-before) > 3) failures.push(`${path}: header jumps on scroll (${before} -> ${after})`);
+      if (before === null || after === null) failures.push(`${path}: scroll-stability surface missing`);
+      else if (Math.abs(after-before) > 3) failures.push(`${path}: content jumps on scroll (${before} -> ${after})`);
     }
   } finally {
     await browser.close();
