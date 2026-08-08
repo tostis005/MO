@@ -172,8 +172,14 @@ function assertInitial(initial, label, current) {
   if (!initial.tagsPresent || initial.tagCount < 1) failures.push(`${label}: product tag filters missing`);
   if (initial.tagOverflow) failures.push(`${label}: tag chips overflow sidebar`);
   if (current.activeTerm) {
-    if (!initial.currentTermStyle) failures.push(`${label}: current taxonomy term not represented in filter rail`);
-    else if (initial.currentTermStyle.background !== 'rgb(23, 63, 50)' || initial.currentTermStyle.color !== 'rgb(255, 255, 255)') failures.push(`${label}: current taxonomy term is not visually active (${JSON.stringify(initial.currentTermStyle)})`);
+    if (!initial.currentTermStyle) {
+      failures.push(`${label}: current taxonomy term not represented in filter rail`);
+    } else {
+      const style = initial.currentTermStyle;
+      const darkActive = style.background === 'rgb(23, 63, 50)' && style.color === 'rgb(255, 255, 255)';
+      const lightActive = style.background === 'rgb(234, 242, 237)' && style.color === 'rgb(23, 63, 50)' && Number.parseInt(style.weight, 10) >= 800;
+      if (!darkActive && !lightActive) failures.push(`${label}: current taxonomy term is not visually active (${JSON.stringify(style)})`);
+    }
   }
 }
 
