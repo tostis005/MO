@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.65' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.66' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -91,6 +91,7 @@ $elmercado_modules = array(
 	'inc/visual-coherence-01063.php',
 	'inc/visual-coherence-01064.php',
 	'inc/visual-coherence-01065.php',
+	'inc/visual-coherence-01066.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
