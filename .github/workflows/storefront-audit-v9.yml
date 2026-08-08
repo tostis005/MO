@@ -22,12 +22,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+      - name: Install audit dependency
+        shell: bash
+        run: npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Targeted visual QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa
+          node --check .github/scripts/user-request-visual-check.cjs
+          node .github/scripts/user-request-visual-check.cjs
       - name: Audit deployed storefront
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p qa
-          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
           python - <<'PY'
           from pathlib import Path
           path = Path('.github/scripts/comprehensive-storefront-audit.cjs')
@@ -82,7 +91,6 @@ jobs:
           node --check .github/scripts/vendor-resize-stability.cjs
           node --check .github/scripts/shop-responsive-breakpoint.cjs
           node --check .github/scripts/premium-visual-system-check.cjs
-          node --check .github/scripts/user-request-visual-check.cjs
           node .github/scripts/storefront-audit-v10.cjs
           node .github/scripts/comprehensive-storefront-audit.cjs
           node .github/scripts/mobile-ui-check.cjs
@@ -90,7 +98,6 @@ jobs:
           node .github/scripts/vendor-resize-stability.cjs
           node .github/scripts/shop-responsive-breakpoint.cjs
           node .github/scripts/premium-visual-system-check.cjs
-          node .github/scripts/user-request-visual-check.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
