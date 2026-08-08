@@ -54,9 +54,8 @@ add_filter(
 );
 
 /**
- * El modo compacto de tienda empieza a 1100px. Esta capa crea el control si la
- * versión móvil antigua no lo hizo y conserva un único sidebar real, que vuelve
- * a su lugar al regresar a escritorio.
+ * Conservamos únicamente la capa visual heredada. La estructura y los eventos
+ * del drawer los gestiona el controlador canónico posterior.
  */
 add_action(
 	'wp_head',
@@ -92,107 +91,6 @@ add_action(
 				body.elmercado-child-theme .emo-mobile-filter-shell { display:none !important; }
 			}
 		</style>
-		<?php
-	},
-	PHP_INT_MAX
-);
-
-add_action(
-	'wp_footer',
-	static function (): void {
-		if ( is_admin() ) {
-			return;
-		}
-		?>
-		<script id="elmercado-premium-shop-filter-controller-01045">
-		(() => {
-			'use strict';
-			const body = document.body;
-			if (!body.matches('.woocommerce-shop,.tax-product_cat,.tax-product_tag') || body.classList.contains('wcfmmp-store-page')) return;
-
-			const compact = () => matchMedia('(max-width:1100px)').matches;
-			const sorting = document.querySelector('.woostify-sorting,.woocommerce-ordering')?.closest('.woostify-sorting') || document.querySelector('.woostify-sorting');
-			let sidebar = document.querySelector('.emo-mobile-filter-content #secondary.widget-area,.emo-mobile-filter-content .widget-area,#secondary.widget-area,.shop-widget-area,.content-area + .widget-area');
-			if (!sidebar) return;
-
-			let homeMarker = document.querySelector('#emo-filter-home-01045');
-			if (!homeMarker) {
-				homeMarker = document.createElement('span');
-				homeMarker.id = 'emo-filter-home-01045';
-				homeMarker.hidden = true;
-				const oldContent = sidebar.closest('.emo-mobile-filter-content');
-				const fallbackParent = document.querySelector('.site-content > .woostify-container,#content > .woostify-container');
-				if (!oldContent && sidebar.parentNode) sidebar.parentNode.insertBefore(homeMarker, sidebar);
-				else if (fallbackParent) fallbackParent.append(homeMarker);
-			}
-
-			let toggle = document.querySelector('.emo-mobile-filter-toggle');
-			if (!toggle) {
-				toggle = document.createElement('button');
-				toggle.type = 'button';
-				toggle.className = 'emo-mobile-filter-toggle';
-				toggle.setAttribute('aria-expanded','false');
-				toggle.setAttribute('aria-controls','emo-mobile-filter-panel');
-				toggle.innerHTML = '<span class="emo-filter-label">Filtros</span><span class="emo-filter-chevron" aria-hidden="true">⌄</span>';
-				if (sorting) sorting.insertAdjacentElement('afterend', toggle);
-				else document.querySelector('#primary,.content-area')?.prepend(toggle);
-			} else {
-				toggle.querySelector('.emo-filter-label')?.replaceChildren(document.createTextNode('Filtros'));
-			}
-
-			let shell = document.querySelector('.emo-mobile-filter-shell');
-			if (!shell) {
-				shell = document.createElement('div');
-				shell.className = 'emo-mobile-filter-shell';
-				shell.hidden = true;
-				shell.innerHTML = '<aside class="emo-mobile-filter-panel" id="emo-mobile-filter-panel" aria-label="Filtros de productos"><div class="emo-mobile-filter-head"><h2 class="emo-mobile-filter-title">Filtros</h2><button type="button" class="emo-mobile-filter-close" aria-label="Cerrar filtros">×</button></div><div class="emo-mobile-filter-content"></div></aside>';
-				body.append(shell);
-			}
-			const content = shell.querySelector('.emo-mobile-filter-content');
-			const close = shell.querySelector('.emo-mobile-filter-close');
-			const title = shell.querySelector('.emo-mobile-filter-title');
-			if (title) title.textContent = 'Filtros';
-			if (!content || !toggle) return;
-
-			const moveIn = () => { if (sidebar.parentElement !== content) content.append(sidebar); };
-			const moveOut = () => {
-				if (homeMarker?.parentNode && sidebar.parentElement === content) homeMarker.parentNode.insertBefore(sidebar, homeMarker.nextSibling);
-			};
-			const shut = (focus = false) => {
-				shell.hidden = true;
-				toggle.setAttribute('aria-expanded','false');
-				document.documentElement.classList.remove('emo-shop-filter-open');
-				body.classList.remove('emo-shop-filter-open');
-				if (focus && compact()) toggle.focus();
-			};
-			const open = () => {
-				if (!compact()) return;
-				moveIn();
-				shell.hidden = false;
-				toggle.setAttribute('aria-expanded','true');
-				document.documentElement.classList.add('emo-shop-filter-open');
-				body.classList.add('emo-shop-filter-open');
-				requestAnimationFrame(() => close?.focus());
-			};
-			const sync = () => {
-				if (compact()) moveIn();
-				else { shut(false); moveOut(); }
-			};
-
-			/* Sustituimos nodos para descartar listeners heredados con breakpoint 991. */
-			const freshToggle = toggle.cloneNode(true);
-			toggle.replaceWith(freshToggle);
-			toggle = freshToggle;
-			const freshClose = close ? close.cloneNode(true) : null;
-			if (close && freshClose) close.replaceWith(freshClose);
-			toggle.addEventListener('click', () => toggle.getAttribute('aria-expanded') === 'true' ? shut(true) : open());
-			freshClose?.addEventListener('click', () => shut(true));
-			shell.addEventListener('click', (event) => { if (event.target === shell) shut(true); });
-			document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !shell.hidden) shut(true); });
-			window.addEventListener('resize', () => requestAnimationFrame(sync), {passive:true});
-			sync();
-		})();
-		</script>
 		<?php
 	},
 	PHP_INT_MAX

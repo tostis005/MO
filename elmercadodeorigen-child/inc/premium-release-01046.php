@@ -120,14 +120,15 @@ add_action(
 			'use strict';
 			const body = document.body;
 			if (!body.matches('.woocommerce-shop,.tax-product_cat,.tax-product_tag') || body.classList.contains('wcfmmp-store-page')) return;
-			const compact = () => matchMedia('(max-width:1100px)').matches;
+
+			const compactQuery = window.matchMedia('(max-width:1100px)');
+			const compact = () => compactQuery.matches;
 			const primary = document.querySelector('#primary,.content-area');
 			const root = document.querySelector('.site-content > .woostify-container,#content > .woostify-container') || primary?.parentElement;
 			let sidebar = document.querySelector('.emo-mobile-filter-content #secondary.widget-area,.emo-mobile-filter-content .shop-widget-area,.emo-mobile-filter-content .widget-area,#secondary.widget-area,.shop-widget-area,.content-area + .widget-area');
 			if (!sidebar || !root || !primary) return;
 			if (sidebar.id !== 'secondary' && document.querySelector('#secondary.widget-area')) sidebar = document.querySelector('#secondary.widget-area');
 
-			/* Conservamos un punto de retorno real junto al catálogo antes de retirar drawers heredados. */
 			const marker = document.createComment('emo-premium-filter-home-01047');
 			primary.parentNode?.insertBefore(marker, primary.nextSibling);
 			const parking = document.createDocumentFragment();
@@ -156,19 +157,6 @@ add_action(
 			const close = shell.querySelector('.emo-mobile-filter-close');
 			if (!content) return;
 
-			const forceToggleVisibility = () => {
-				if (compact()) {
-					toggle.style.setProperty('display','flex','important');
-					toggle.style.setProperty('visibility','visible','important');
-					toggle.style.setProperty('opacity','1','important');
-					toggle.style.setProperty('position','relative','important');
-					toggle.style.setProperty('width','100%','important');
-					toggle.style.setProperty('height','44px','important');
-					toggle.style.setProperty('min-height','44px','important');
-				} else {
-					toggle.style.setProperty('display','none','important');
-				}
-			};
 			const normalizeSidebar = () => {
 				sidebar.style.setProperty('display','block','important');
 				sidebar.style.setProperty('visibility','visible','important');
@@ -183,6 +171,9 @@ add_action(
 				if (marker.parentNode) marker.parentNode.insertBefore(sidebar, marker.nextSibling);
 				else root.append(sidebar);
 				normalizeSidebar();
+			};
+			const setToggleVisibility = () => {
+				toggle.style.setProperty('display', compact() ? 'flex' : 'none', 'important');
 			};
 			const shut = (restoreFocus = false) => {
 				shell.hidden = true;
@@ -202,26 +193,29 @@ add_action(
 				toggle.setAttribute('aria-expanded','true');
 				document.documentElement.classList.add('emo-shop-filter-open');
 				body.classList.add('emo-shop-filter-open');
-				requestAnimationFrame(() => close?.focus());
+				close?.focus();
 			};
 			const sync = () => {
-				forceToggleVisibility();
-				if (compact()) moveIn();
-				else { shut(false); moveOut(); }
+				setToggleVisibility();
+				if (compact()) {
+					moveIn();
+				} else {
+					shut(false);
+					moveOut();
+				}
 			};
 
 			toggle.addEventListener('click', (event) => {
 				event.preventDefault();
-				event.stopImmediatePropagation();
 				toggle.getAttribute('aria-expanded') === 'true' ? shut(true) : open();
 			});
-			close?.addEventListener('click', (event) => { event.preventDefault(); event.stopImmediatePropagation(); shut(true); });
-			shell.addEventListener('click', (event) => { if (event.target === shell) { event.stopImmediatePropagation(); shut(true); } });
+			close?.addEventListener('click', (event) => { event.preventDefault(); shut(true); });
+			shell.addEventListener('click', (event) => { if (event.target === shell) shut(true); });
 			document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !shell.hidden) { event.preventDefault(); shut(true); } });
-			window.addEventListener('resize', () => requestAnimationFrame(sync), {passive:true});
+			if (typeof compactQuery.addEventListener === 'function') compactQuery.addEventListener('change', sync);
+			else if (typeof compactQuery.addListener === 'function') compactQuery.addListener(sync);
+			window.addEventListener('pageshow', sync);
 			sync();
-			setTimeout(sync, 100);
-			setTimeout(sync, 500);
 		})();
 		</script>
 		<script id="elmercado-final-public-copy-01047">

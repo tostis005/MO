@@ -34,14 +34,10 @@ add_action(
 			const compactCartAssurance = () => {
 				const box = document.querySelector('.cart_totals .emo-cart-assurance');
 				if (!box) return;
-
-				/* El contenido útil son exactamente las tres garantías. Algunos filtros
-				 * heredados intercalan saltos/nodos que se convierten en ítems flex. */
 				[...box.childNodes].forEach((node) => {
 					const keep = node.nodeType === Node.ELEMENT_NODE && node.tagName === 'SPAN';
 					if (!keep) node.remove();
 				});
-
 				const boxStyles = {
 					display: 'flex',
 					'flex-direction': 'column',
@@ -58,7 +54,6 @@ add_action(
 					padding: '10px 0 0'
 				};
 				Object.entries(boxStyles).forEach(([property, value]) => important(box, property, value));
-
 				box.querySelectorAll(':scope > span').forEach((row) => {
 					const rowStyles = {
 						position: 'static',
@@ -83,7 +78,6 @@ add_action(
 				const review = document.querySelector('#order_review');
 				const column = review?.closest('.emo-checkout-summary-column');
 				if (!review || !column) return null;
-
 				let card = column.querySelector(':scope > .emo-checkout-status-card');
 				if (!card) {
 					card = document.createElement('div');
@@ -93,7 +87,6 @@ add_action(
 					card.innerHTML = '<strong>Preparando tu resumen</strong><span>Estamos actualizando el pedido y las opciones de pago con tus datos.</span>';
 					column.prepend(card);
 				}
-
 				const cardStyles = {
 					height: 'auto',
 					'min-height': '116px',
@@ -116,30 +109,22 @@ add_action(
 				const rect = node.getBoundingClientRect();
 				return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
 			});
-
 			const cleanRenderedText = (review) => (review.innerText || '')
 				.replace(/\s+/g, ' ')
 				.replace(/^[*·•\s]+$/, '')
 				.trim();
-
 			const syncCheckoutSummary = () => {
 				const state = ensureCheckoutStatusCard();
 				if (!state) return;
-
 				const { review, column, card } = state;
 				const heading = column.querySelector(':scope > #order_review_heading');
-
-				/* Mantenerlo renderizado permite leer innerText real; opacity/height evitan
-				 * que el usuario vea el asterisco/loader mientras se prepara. */
 				important(review, 'display', 'block');
 				const renderedText = cleanRenderedText(review);
 				const hasProduct = !!review.querySelector('tr.cart_item');
 				const ready = hasProduct && !overlayVisible(review) && renderedText.length >= 18;
-
 				column.classList.toggle('emo-checkout-summary-ready', ready);
 				important(card, 'display', ready ? 'none' : 'flex');
 				if (heading) important(heading, 'display', ready ? 'block' : 'none');
-
 				if (ready) {
 					important(review, 'opacity', '1');
 					important(review, 'height', 'auto');
@@ -163,18 +148,13 @@ add_action(
 				compactCartAssurance();
 				syncCheckoutSummary();
 			};
-
-			if (document.readyState === 'loading') {
-				document.addEventListener('DOMContentLoaded', run, { once: true });
-			} else {
-				run();
-			}
-
+			if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });
+			else run();
 			[80, 220, 500, 900, 1600, 2800, 4500].forEach((delay) => window.setTimeout(run, delay));
 			if (window.jQuery) {
 				window.jQuery(document.body).on(
 					'updated_wc_div updated_cart_totals update_checkout updated_checkout checkout_error',
-					() => window.requestAnimationFrame(run)
+					run
 				);
 			}
 		})();

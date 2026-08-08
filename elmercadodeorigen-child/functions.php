@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.91' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.92' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -117,6 +117,5 @@ foreach ( $elmercado_modules as $elmercado_module ) {
 	}
 }
 
-/* La optimización se ejecuta una sola vez, al final del encolado normal. */
 remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );
 remove_action( 'wp_print_footer_scripts', 'elmercado_optimize_home_assets', 0 );

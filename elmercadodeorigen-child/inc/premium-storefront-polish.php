@@ -17,7 +17,6 @@ add_action(
 		}
 		?>
 		<style id="elmercado-premium-storefront-polish">
-			/* CART: never inherit dark text over the dark summary panel. */
 			body.woocommerce-cart .cart-collaterals,
 			body.woocommerce-cart .cart_totals,
 			body.woocommerce-cart .cart_totals h2,
@@ -39,7 +38,6 @@ add_action(
 			body.woocommerce-cart .cart_totals td { border-color: rgba(255,255,255,.24) !important; }
 			body.woocommerce-cart .cart_totals .checkout-button { color: #173f32 !important; }
 
-			/* VENDOR: separate navigation from the results panel using the real WCFM containers. */
 			body.wcfmmp-store-page #wcfmmp-store .tab_area,
 			body.wcfmmp-store-page #wcfmmp-store .tab_links_area,
 			body.wcfmmp-store-page #wcfmmp-store .tab_links,
@@ -52,9 +50,7 @@ add_action(
 			body.wcfmmp-store-page #wcfmmp-store .tab_area { margin-bottom: 2.25rem !important; }
 			body.wcfmmp-store-page #wcfmmp-store .right_side_full,
 			body.wcfmmp-store-page #wcfmmp-store .right_side,
-			body.wcfmmp-store-page #wcfmmp-store .product_area {
-				padding-top: 1.1rem !important;
-			}
+			body.wcfmmp-store-page #wcfmmp-store .product_area { padding-top: 1.1rem !important; }
 			body.wcfmmp-store-page #wcfmmp-store .woostify-sorting {
 				display: flex !important;
 				align-items: center !important;
@@ -68,7 +64,6 @@ add_action(
 			}
 			body.wcfmmp-store-page #wcfmmp-store .woocommerce-result-count { margin: 0 !important; padding: 0 !important; }
 
-			/* SOLD BY: preserve an actual visual gap. */
 			body.elmercado-child-theme .wcfmmp_sold_by_container,
 			body.elmercado-child-theme .wcfmmp_sold_by_wrapper,
 			body.elmercado-child-theme [class*="sold_by"] {
@@ -80,7 +75,6 @@ add_action(
 			}
 			body.elmercado-child-theme .wcfmmp_sold_by_label::after { content: "" !important; }
 
-			/* MINICART: explicit signs on the actual first/last empty controls. */
 			body.elmercado-child-theme #shop-cart-sidebar .quantity,
 			body.elmercado-child-theme #shop-cart-sidebar .mini-cart-quantity {
 				display: grid !important;
@@ -135,7 +129,6 @@ add_action(
 				transform: none !important;
 			}
 
-			/* PRODUCT CARDS: large media, no inset frame, soft fade into content. */
 			body.elmercado-child-theme ul.products li.product {
 				position: relative !important;
 				border: 1px solid rgba(23,63,50,.09) !important;
@@ -144,6 +137,7 @@ add_action(
 				overflow: hidden !important;
 				box-shadow: 0 10px 30px rgba(17,42,34,.07) !important;
 				transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease !important;
+				cursor: pointer !important;
 			}
 			body.elmercado-child-theme ul.products li.product:hover {
 				transform: translateY(-4px) !important;
@@ -192,7 +186,6 @@ add_action(
 				background: #fff !important;
 			}
 
-			/* Four products per row on desktop, including every home product section. */
 			@media (min-width: 1180px) {
 				body.woocommerce-shop ul.products,
 				body.tax-product_cat ul.products,
@@ -215,7 +208,6 @@ add_action(
 				}
 			}
 
-			/* HOME categories: less oversized, portrait but not excessively tall. */
 			body.home .emo-category-card {
 				min-height: 0 !important;
 				aspect-ratio: 4 / 5 !important;
@@ -251,22 +243,12 @@ add_action(
 		(() => {
 			'use strict';
 			const interactive = 'a,button,input,select,textarea,label,[role="button"]';
-			const wire = (root = document) => {
-				root.querySelectorAll?.('ul.products li.product:not([data-emo-card-wired])').forEach((card) => {
-					const link = card.querySelector('a.woocommerce-LoopProduct-link,a.woocommerce-loop-product__link,a[href*="/producto/"]');
-					if (!link) return;
-					card.dataset.emoCardWired = '1';
-					card.style.cursor = 'pointer';
-					card.addEventListener('click', (event) => {
-						if (event.target.closest(interactive)) return;
-						window.location.assign(link.href);
-					});
-				});
-			};
-			wire();
-			new MutationObserver((mutations) => mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
-				if (node.nodeType === 1) wire(node);
-			}))).observe(document.body,{childList:true,subtree:true});
+			document.addEventListener('click', (event) => {
+				const card = event.target.closest?.('ul.products li.product');
+				if (!card || event.target.closest?.(interactive)) return;
+				const link = card.querySelector('a.woocommerce-LoopProduct-link,a.woocommerce-loop-product__link,a[href*="/producto/"]');
+				if (link?.href) window.location.assign(link.href);
+			});
 		})();
 		</script>
 		<?php
