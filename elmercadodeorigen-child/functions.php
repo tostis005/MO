@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.93' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.94' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -105,6 +105,7 @@ $elmercado_modules = array(
 	'inc/desktop-filter-layout-final-01090.php',
 	'inc/filter-price-init-final-01090.php',
 	'inc/desktop-filter-sticky-final-01091.php',
+	'inc/native-filter-trigger-guard-01094.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
