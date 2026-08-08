@@ -33,6 +33,7 @@ async function clickVisible(page, selector) {
   const products = await fetch(`${BASE}/wp-json/wc/store/v1/products?per_page=100`).then((r) => r.json());
   const product = products.find((item) => item.is_purchasable && item.is_in_stock && item.type === 'simple');
   if (!product) throw new Error('No purchasable simple product available for visual cart test');
+  const titleToken = (product.name || '').replace(/<[^>]*>/g, '').trim().split(/\s+/)[0].toLowerCase();
 
   const browser = await puppeteer.launch({
     executablePath: '/usr/bin/google-chrome',
@@ -71,19 +72,27 @@ async function clickVisible(page, selector) {
     if (!opened) failures.push('mobile minicart trigger not found');
     await sleep(650);
 
-    const minicart = await page.evaluate(() => {
+    const minicart = await page.evaluate((token) => {
       const item = document.querySelector('#shop-cart-sidebar .woocommerce-mini-cart-item,#shop-cart-sidebar .mini_cart_item');
       if (!item) return null;
-      const link = [...item.querySelectorAll('a')].find((a) => !a.matches('.remove,.remove_from_cart_button') && a.querySelector('img'));
-      const image = link?.querySelector('img') || item.querySelector('img');
-      if (!link || !image) return { item: true, title: '', image: false };
+      const image = item.querySelector('img');
+      if (!image) return { item: true, title: '', image: false };
 
-      const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
       let textNode = null;
       while (walker.nextNode()) {
         const value = (walker.currentNode.nodeValue || '').replace(/\s+/g, ' ').trim();
-        if (value) { textNode = walker.currentNode; break; }
+        if (!value || /<img\b/i.test(value)) continue;
+        if (token && value.toLowerCase().includes(token)) { textNode = walker.currentNode; break; }
       }
+      if (!textNode) {
+        const fallback = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+        while (fallback.nextNode()) {
+          const value = (fallback.currentNode.nodeValue || '').replace(/\s+/g, ' ').trim();
+          if (value && !/<img\b/i.test(value) && !/vendido por|subtotal|€|^[+−\-]?\d+$/i.test(value)) { textNode = fallback.currentNode; break; }
+        }
+      }
+
       const ir = image.getBoundingClientRect();
       let tr = null;
       let title = '';
@@ -100,9 +109,9 @@ async function clickVisible(page, selector) {
         titleRect: tr ? { left: Math.round(tr.left), right: Math.round(tr.right), top: Math.round(tr.top), bottom: Math.round(tr.bottom) } : null,
         drawer: drawer ? { left: Math.round(drawer.left), right: Math.round(drawer.right), width: Math.round(drawer.width) } : null
       };
-    });
+    }, titleToken);
     checks.minicart = minicart;
-    if (!minicart?.title || !minicart.titleRect) {
+    if (!minicart?.title || !minicart.titleRect || minicart.titleRect.width === 0 || minicart.titleRect.height === 0) {
       failures.push(`mobile minicart product title missing: ${JSON.stringify(minicart)}`);
     } else {
       const beside = minicart.titleRect.left >= minicart.image.right - 4 && minicart.titleRect.top < minicart.image.bottom - 10;
@@ -116,12 +125,24 @@ async function clickVisible(page, selector) {
       const spans = [...(box?.querySelectorAll(':scope > span') || [])];
       if (!box || spans.length !== 3) return null;
       const rect = box.getBoundingClientRect();
+      const style = getComputedStyle(box);
       const rows = spans.map((el) => {
         const r = el.getBoundingClientRect();
         return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
       });
       const gaps = rows.slice(1).map((row, i) => Math.round(row.top - rows[i].bottom));
-      return { height: Math.round(rect.height), rows, gaps, maxGap: Math.max(...gaps) };
+      return {
+        height: Math.round(rect.height),
+        rows,
+        gaps,
+        maxGap: Math.max(...gaps),
+        display: style.display,
+        gap: style.gap,
+        justifyContent: style.justifyContent,
+        minHeight: style.minHeight,
+        paddingTop: style.paddingTop,
+        paddingBottom: style.paddingBottom
+      };
     });
     checks.assurance = assurance;
     if (!assurance) failures.push('cart assurance block missing');
@@ -142,16 +163,21 @@ async function clickVisible(page, selector) {
         return (node.innerText || '').replace(/\s+/g, ' ').trim();
       };
       const cr = column?.getBoundingClientRect();
+      const pseudo = column ? getComputedStyle(column, '::before').content : 'none';
       return {
         columnHeight: cr ? Math.round(cr.height) : 0,
         loading: !!review?.classList.contains('emo-order-review-loading'),
         pending: !!review?.classList.contains('emo-order-review-pending'),
+        cartRows: review?.querySelectorAll('tr.cart_item').length || 0,
+        cardExists: !!card,
         cardText: visibleText(card),
-        reviewText: visibleText(review)
+        reviewText: visibleText(review),
+        pseudoContent: pseudo && pseudo !== 'none' ? pseudo : ''
       };
     });
     checks.checkout = checkout;
-    if (checkout?.columnHeight > 100 && `${checkout.cardText} ${checkout.reviewText}`.trim().length < 18) {
+    const checkoutReadable = `${checkout?.cardText || ''} ${checkout?.reviewText || ''} ${checkout?.pseudoContent || ''}`.replace(/\s+/g, ' ').trim();
+    if (checkout?.columnHeight > 100 && checkoutReadable.length < 18) {
       failures.push(`checkout summary surface is blank: ${JSON.stringify(checkout)}`);
     }
     await page.screenshot({ path: 'qa/user-checkout-mobile.png', fullPage: true });
