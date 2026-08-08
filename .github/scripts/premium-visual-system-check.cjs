@@ -9,6 +9,10 @@ async function go(page, path, delay = 650) {
 }
 
 const rgb = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+const alpha = value => {
+  const parts = value.match(/[\d.]+/g) || [];
+  return parts.length > 3 ? Number(parts[3]) : 1;
+};
 const luminance = ([r=0,g=0,b=0]) => {
   const c = [r,g,b].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
   return .2126*c[0] + .7152*c[1] + .0722*c[2];
@@ -22,6 +26,7 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
     await page.setViewport({ width:390, height:844, deviceScaleFactor:1, isMobile:true, hasTouch:true });
     await go(page, '/');
     const home = await page.evaluate(() => {
+      const story = document.querySelector('.emo-story');
       const panel = document.querySelector('.emo-story__panel');
       const p = panel?.querySelector('p');
       const list = document.querySelector('.emo-featured-products ul.products');
@@ -32,8 +37,11 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
       const arrows = [...document.querySelectorAll('.emo-featured-products .slick-arrow,.emo-featured-products .swiper-button-prev,.emo-featured-products .swiper-button-next,.emo-featured-products .owl-nav,.emo-featured-products .tns-controls')].filter(el => {
         const r=el.getBoundingClientRect(), s=getComputedStyle(el); return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';
       });
+      const panelStyle = panel ? getComputedStyle(panel) : null;
       return {
-        panelBg: panel ? getComputedStyle(panel).backgroundColor : '',
+        panelBg: panelStyle?.backgroundColor || '',
+        panelBackgroundImage: panelStyle?.backgroundImage || '',
+        storyBg: story ? getComputedStyle(story).backgroundColor : '',
         textColor: p ? getComputedStyle(p).color : '',
         cardRatio: r0 && lr ? r0.width / lr.width : 0,
         nextPeek: r1 && lr ? Math.max(0, Math.min(r1.right, lr.right) - Math.max(r1.left, lr.left)) : 0,
@@ -41,8 +49,10 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
         horizontal: list ? list.scrollWidth > list.clientWidth + 10 : false,
       };
     });
-    const ratio = contrast(rgb(home.panelBg), rgb(home.textColor));
-    if (ratio < 4.5) failures.push(`home dark block contrast too low (${ratio.toFixed(2)} ${JSON.stringify(home)})`);
+    const effectiveBg = alpha(home.panelBg) === 0 ? home.storyBg : home.panelBg;
+    const ratio = contrast(rgb(effectiveBg), rgb(home.textColor));
+    if (alpha(home.panelBg) !== 0 || home.panelBackgroundImage !== 'none') failures.push(`home mobile story panel should remain integrated with the light section ${JSON.stringify(home)}`);
+    if (ratio < 4.5) failures.push(`home light story contrast too low (${ratio.toFixed(2)} ${JSON.stringify({...home,effectiveBg})})`);
     if (home.arrows) failures.push(`home product carousel arrows still visible (${home.arrows})`);
     if (!home.horizontal || home.cardRatio < .72 || home.cardRatio > .9 || home.nextPeek < 20) failures.push(`home mobile carousel affordance invalid ${JSON.stringify(home)}`);
 
