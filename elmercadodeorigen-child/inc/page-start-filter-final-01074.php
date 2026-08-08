@@ -1,6 +1,6 @@
 <?php
 /**
- * Alineación final de superficies interiores y geometría del filtro móvil 0.10.77.
+ * Alineación final de superficies interiores y geometría del filtro móvil 0.10.78.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,11 +16,11 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-page-start-filter-final-01077">
+		<style id="elmercado-page-start-filter-final-01078">
 			/*
-			 * Quiénes somos comparte la cadencia de las introducciones sobre papel.
-			 * Neutralizamos también el contenedor exterior de Woostify: era el último
-			 * nivel que seguía sumando aire sobre los wrappers ya normalizados.
+			 * Quiénes somos conserva un offset estructural del template de página que
+			 * no aparece en las superficies transaccionales. Lo compensamos en flujo
+			 * con un margen estático; nunca se modifica durante scroll o resize.
 			 */
 			html body.elmercado-child-theme.elmercado-about-page .site-content,
 			html body.elmercado-child-theme.elmercado-about-page .site-content > .woostify-container,
@@ -33,7 +33,7 @@ add_action(
 				transform: none !important;
 			}
 			html body.elmercado-child-theme.elmercado-about-page .emo-about-layout {
-				margin-top: 0 !important;
+				margin-top: -28px !important;
 				padding-top: max(14px, calc(var(--emo-content-start-gap, 18px) - 4px)) !important;
 				top: auto !important;
 				translate: none !important;
@@ -42,6 +42,9 @@ add_action(
 			html body.elmercado-child-theme.elmercado-about-page .emo-about-intro {
 				margin-top: 0 !important;
 				padding-top: 0 !important;
+			}
+			html body.elmercado-child-theme.is-scrolled.elmercado-about-page .emo-about-layout {
+				margin-top: -28px !important;
 			}
 			html body.elmercado-child-theme.is-scrolled.elmercado-about-page :is(.site-content,.site-content>.woostify-container,#content>.woostify-container,#primary,.content-area,main.site-main,article.page,.entry-content,.emo-about-layout,.emo-about-intro) {
 				top: auto !important;
@@ -174,11 +177,6 @@ add_action(
 	PHP_INT_MAX
 );
 
-/*
- * WooCommerce expone init_price_filter para reinicializar el slider clásico.
- * Al mover el sidebar al drawer puede quedar pendiente; reemitimos el evento
- * únicamente al abrirlo y sólo si el widget aún no tiene handles inicializados.
- */
 add_action(
 	'wp_footer',
 	static function (): void {
@@ -186,7 +184,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-price-filter-reinit-01077">
+		<script id="elmercado-price-filter-reinit-01078">
 		(() => {
 			'use strict';
 			const needsInit = () => {
