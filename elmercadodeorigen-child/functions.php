@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.96' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.97' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -108,6 +108,7 @@ $elmercado_modules = array(
 	'inc/native-filter-trigger-guard-01094.php',
 	'inc/user-feedback-pass-01095.php',
 	'inc/native-filter-remove-01096.php',
+	'inc/mobile-home-contrast-01097.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
