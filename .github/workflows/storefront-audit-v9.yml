@@ -37,6 +37,7 @@ jobs:
           node --check .github/scripts/desktop-filter-visual-check.cjs
           node --check .github/scripts/filter-postapply-flow-check.cjs
           node --check .github/scripts/user-feedback-01096-check.cjs
+          node --check .github/scripts/home-rhythm-01098-check.cjs
           node .github/scripts/runtime-layout-policy-check.cjs
           node .github/scripts/user-request-visual-check.cjs
           node .github/scripts/real-device-layout-check-01081.cjs
@@ -44,6 +45,7 @@ jobs:
           node .github/scripts/desktop-filter-visual-check.cjs
           node .github/scripts/filter-postapply-flow-check.cjs
           node .github/scripts/user-feedback-01096-check.cjs
+          node .github/scripts/home-rhythm-01098-check.cjs
       - name: Audit deployed storefront
         shell: bash
         run: |
