@@ -67,6 +67,41 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
       if (Math.max(...sides) - Math.min(...sides) > 4) failures.push(`page gutters inconsistent ${JSON.stringify(gutters)}`);
     }
 
+    const geometryPaths = ['/tienda/','/carrito/','/finalizar-compra/','/mi-cuenta/','/contacto/','/productores/','/blog/'];
+    for (const path of geometryPaths) {
+      await go(page, path);
+      const geometry = await page.evaluate(() => {
+        const selectors = ['#content','.site-content > .woostify-container','#primary','main.site-main','article.page','.entry-content','.woocommerce','.emo-cart-intro','.emo-checkout-intro','.emo-contact-layout','.emo-producers-intro','.emo-journal-hero','.emo-journal-hero__inner'];
+        const result = { body: document.body.className };
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          const s = getComputedStyle(el);
+          result[sel] = {
+            top: Math.round((r.top + scrollY) * 10) / 10,
+            height: Math.round(r.height * 10) / 10,
+            marginTop: s.marginTop,
+            paddingTop: s.paddingTop,
+            borderTop: s.borderTopWidth,
+            position: s.position,
+            transform: s.transform,
+          };
+        }
+        const first = [...document.querySelectorAll('#content *')].find((el) => {
+          const s=getComputedStyle(el), r=el.getBoundingClientRect();
+          const text=(el.textContent||'').trim();
+          return text && r.width>0 && r.height>0 && s.display!=='none' && s.visibility!=='hidden' && !['SCRIPT','STYLE'].includes(el.tagName);
+        });
+        if (first) {
+          const r=first.getBoundingClientRect(), s=getComputedStyle(first);
+          result.first = { tag:first.tagName, cls:first.className || '', top:Math.round((r.top+scrollY)*10)/10, marginTop:s.marginTop, paddingTop:s.paddingTop };
+        }
+        return result;
+      });
+      console.log(`TOP_GEOMETRY ${path} ${JSON.stringify(geometry)}`);
+    }
+
     /*
      * El top absoluto del contenido debe ser inmutable al activar el estado
      * is-scrolled. Incluimos tanto cabeceras editoriales como superficies que
