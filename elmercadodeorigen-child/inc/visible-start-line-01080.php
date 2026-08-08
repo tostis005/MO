@@ -1,6 +1,6 @@
 <?php
 /**
- * Ajuste final de la línea de arranque visible en páginas sobre papel 0.10.80.
+ * Ajuste final de la línea de arranque visible en páginas sobre papel 0.10.81.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,31 +16,46 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visible-start-line-01080">
+		<style id="elmercado-visible-start-line-01081">
 			/*
-			 * Las cuatro plantillas tienen wrappers internos distintos. Ajustamos sólo
-			 * el margen estático del primer bloque útil para que su primer kicker quede
-			 * en la misma línea. El valor no cambia con scroll, resize ni JavaScript.
+			 * Tienda marca la línea compacta de referencia. Los márgenes son estáticos
+			 * y se mantienen idénticos al entrar en el estado is-scrolled.
 			 */
 			@media (max-width: 767px) {
 				html body.elmercado-child-theme.woocommerce-shop .emo-shop-lead {
-					margin-top: 6px !important;
+					margin-top: 0 !important;
 				}
-				html body.elmercado-child-theme.elmercado-about-page .emo-about-layout {
-					margin-top: -10px !important;
+				html body.elmercado-child-theme.elmercado-about-page .emo-about-layout,
+				html body.elmercado-child-theme.is-scrolled.elmercado-about-page .emo-about-layout {
+					margin-top: -16.6px !important;
 				}
-				html body.elmercado-child-theme:is(.woocommerce-cart,.woocommerce-checkout) :is(.emo-cart-intro,.emo-checkout-intro) {
-					margin-top: -20px !important;
+				html body.elmercado-child-theme:is(.woocommerce-cart,.woocommerce-checkout) :is(.emo-cart-intro,.emo-checkout-intro),
+				html body.elmercado-child-theme.is-scrolled:is(.woocommerce-cart,.woocommerce-checkout) :is(.emo-cart-intro,.emo-checkout-intro) {
+					margin-top: -26.6px !important;
 				}
 			}
 
-			/* El estado visual del header nunca modifica estos valores. */
+			/* En escritorio carrito y checkout comparten la línea de Quiénes somos. */
+			@media (min-width: 768px) {
+				html body.elmercado-child-theme:is(.woocommerce-cart,.woocommerce-checkout) :is(.emo-cart-intro,.emo-checkout-intro),
+				html body.elmercado-child-theme.is-scrolled:is(.woocommerce-cart,.woocommerce-checkout) :is(.emo-cart-intro,.emo-checkout-intro) {
+					margin-top: -10px !important;
+				}
+			}
+
 			html body.elmercado-child-theme.is-scrolled.woocommerce-shop .emo-shop-lead,
 			html body.elmercado-child-theme.is-scrolled.elmercado-about-page .emo-about-layout,
 			html body.elmercado-child-theme.is-scrolled:is(.woocommerce-cart,.woocommerce-checkout) :is(.emo-cart-intro,.emo-checkout-intro) {
 				top: auto !important;
 				translate: none !important;
 				transform: none !important;
+			}
+
+			@media (max-width: 767px) {
+				/* Separación inequívoca entre Precio y Categorías en el drawer. */
+				html body.elmercado-child-theme #emo-premium-filter-shell .widget_price_filter {
+					margin-bottom: 20px !important;
+				}
 			}
 		</style>
 		<?php
