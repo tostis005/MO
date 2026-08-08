@@ -1,6 +1,6 @@
 <?php
 /**
- * Foco transaccional de carrito y checkout 0.10.56.
+ * Foco transaccional y disponibilidad final.
  *
  * @package ElMercadoDeOrigen
  */
@@ -10,27 +10,66 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 add_action(
+	'woocommerce_single_product_summary',
+	static function (): void {
+		global $product;
+
+		if ( ! $product instanceof WC_Product || $product->is_in_stock() ) {
+			return;
+		}
+
+		echo '<p class="emo-stock-state" role="status">' . esc_html__( 'Agotado temporalmente', 'elmercadodeorigen' ) . '</p>';
+	},
+	21
+);
+
+add_action(
 	'wp_head',
 	static function (): void {
-		if ( is_admin() || ! function_exists( 'is_cart' ) || ( ! is_cart() && ! is_checkout() ) ) {
+		if ( is_admin() ) {
 			return;
 		}
 		?>
-		<style id="elmercado-transaction-focus-final-01056">
-			/* Carrito y checkout deben terminar en la acción, no en una pared de reseñas. */
+		<style id="elmercado-transaction-focus-final-01057">
+			body.elmercado-child-theme.single-product div.product.outofstock .stock.out-of-stock {
+				display: none !important;
+			}
+
+			body.elmercado-child-theme.single-product .emo-stock-state {
+				display: inline-flex !important;
+				align-items: center;
+				gap: 8px;
+				min-height: 34px;
+				margin: 0 0 14px !important;
+				padding: 7px 12px;
+				border: 1px solid rgba(127, 47, 42, .20);
+				border-radius: 999px;
+				background: #f8ebe7;
+				color: #7f2f2a !important;
+				font-size: 12px;
+				font-weight: 850;
+				letter-spacing: .035em;
+				line-height: 1.2;
+				text-transform: uppercase;
+			}
+
+			body.elmercado-child-theme.single-product .emo-stock-state::before {
+				width: 7px;
+				height: 7px;
+				flex: 0 0 7px;
+				border-radius: 50%;
+				background: currentColor;
+				content: "";
+			}
+
 			body.elmercado-child-theme:is(.woocommerce-cart,.woocommerce-checkout) :is(
-				.emo-transaction-review-hidden,
-				.emo-transaction-review-shell-hidden,
+				.emo-review-cluster-hidden,
+				.emo-review-frame-hidden,
 				.ti-widget,
 				[class*="trustindex" i],
 				[class*="trustpilot" i],
 				[class*="google-review" i],
-				[class*="google_reviews" i],
-				[class*="reviews-widget" i],
-				iframe[src*="trustindex" i],
-				iframe[src*="trustpilot" i],
-				iframe[title*="trustpilot" i],
-				iframe[title*="reviews" i]
+				[class*="reviews-widget" i]
 			) {
 				display: none !important;
 				visibility: hidden !important;
@@ -42,56 +81,30 @@ add_action(
 				overflow: hidden !important;
 			}
 
-			/* El panel de pago necesita contraste estable incluso mientras WooCommerce
-			 * recalcula el pedido y otros módulos vuelven a inyectar estilos. */
+			body.elmercado-child-theme.woocommerce-checkout form.checkout,
+			body.elmercado-child-theme.woocommerce-checkout .woocommerce-checkout {
+				align-items: start !important;
+			}
+
 			html body.elmercado-child-theme.woocommerce-checkout #order_review,
-			html body.elmercado-child-theme.woocommerce-checkout #payment {
+			html body.elmercado-child-theme.woocommerce-checkout #payment,
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-checkout-review-order {
+				align-self: start !important;
+				height: auto !important;
+				min-height: 0 !important;
 				color: #fffdf8 !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #order_review :is(
-				th, td, .product-name, .product-total, .amount, strong, small
-			),
-			html body.elmercado-child-theme.woocommerce-checkout #payment :is(
-				.payment_methods > li > label,
-				.woocommerce-terms-and-conditions-checkbox-text,
-				.woocommerce-privacy-policy-text,
-				.form-row label
-			) {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review :is(th,td,.product-name,.product-total,.amount,strong,small),
+			html body.elmercado-child-theme.woocommerce-checkout #payment :is(label,p,span,strong,small,.woocommerce-terms-and-conditions-checkbox-text,.woocommerce-privacy-policy-text) {
 				color: #fffdf8 !important;
 				opacity: 1 !important;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #order_review .shop_table th {
-				font-size: 11px !important;
-				font-weight: 850 !important;
-				letter-spacing: .055em !important;
-				text-transform: uppercase !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #order_review .shop_table td {
-				font-size: 13px !important;
-				line-height: 1.5 !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_methods > li {
-				padding-block: 10px !important;
-				border-bottom: 1px solid rgba(255,255,255,.10) !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_methods > li:last-child {
-				border-bottom: 0 !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #payment .payment_methods > li > label {
-				font-size: 13px !important;
-				font-weight: 760 !important;
-				line-height: 1.4 !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #payment input[type="radio"],
-			html body.elmercado-child-theme.woocommerce-checkout #payment input[type="checkbox"] {
-				accent-color: #d7a84f !important;
+			html body.elmercado-child-theme.woocommerce-checkout #payment .blockUI.blockOverlay,
+			html body.elmercado-child-theme.woocommerce-checkout #order_review .blockUI.blockOverlay {
+				background: rgba(23, 63, 50, .12) !important;
+				opacity: 1 !important;
 			}
 
 			html body.elmercado-child-theme.woocommerce-checkout #place_order {
@@ -99,36 +112,8 @@ add_action(
 				background: #f1d59c !important;
 				border-color: #f1d59c !important;
 				color: #0d211b !important;
-				font-size: 12px !important;
 				font-weight: 900 !important;
-				letter-spacing: .025em !important;
 				opacity: 1 !important;
-			}
-
-			/* El overlay de actualización debe indicar actividad sin borrar la lectura. */
-			html body.elmercado-child-theme.woocommerce-checkout #order_review > .blockUI.blockOverlay,
-			html body.elmercado-child-theme.woocommerce-checkout #payment > .blockUI.blockOverlay {
-				background: rgba(23,63,50,.18) !important;
-				opacity: 1 !important;
-			}
-
-			body.elmercado-child-theme.woocommerce-cart .site-content,
-			body.elmercado-child-theme.woocommerce-checkout .site-content {
-				padding-bottom: clamp(3.5rem, 7vw, 6rem) !important;
-			}
-
-			@media (max-width: 767px) {
-				html body.elmercado-child-theme.woocommerce-checkout #order_review_heading {
-					padding: 18px 18px 4px !important;
-				}
-
-				html body.elmercado-child-theme.woocommerce-checkout #order_review {
-					padding: 12px 18px 18px !important;
-				}
-
-				html body.elmercado-child-theme.woocommerce-checkout #payment .payment_methods > li {
-					padding-block: 8px !important;
-				}
 			}
 		</style>
 		<?php
@@ -143,58 +128,51 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-transaction-focus-final-js-01056">
+		<script id="elmercado-transaction-cleanup-01057">
 		(() => {
 			'use strict';
-
 			const root = document.querySelector('#primary,.site-main') || document.body;
 			const protectedSelector = '.woocommerce-cart-form,.cart_totals,#customer_details,#order_review,#payment,form.checkout,.woocommerce-checkout-review-order';
-			const reviewMarker = /(?:evaluaciones?|opiniones?|reviews?)/gi;
+			const isProtected = (node) => !!node?.closest?.(protectedSelector);
+			const hits = (node) => ((node?.innerText || '').match(/evaluaciones?|opiniones?|trustpilot|google/gi) || []).length;
 
-			const countMarkers = (node) => ((node?.textContent || '').match(reviewMarker) || []).length;
-			const isProtected = (node) => !!node.closest?.(protectedSelector);
-
-			const hideReviewCards = () => {
-				const leaves = [...root.querySelectorAll('*')].filter((node) => {
-					if (isProtected(node) || countMarkers(node) !== 1) return false;
-					return ![...node.children].some((child) => countMarkers(child) === 1);
+			const clean = () => {
+				const candidates = [...root.querySelectorAll('section,div,article,aside,ul')].filter((node) => {
+					if (isProtected(node) || hits(node) < 2) return false;
+					const r = node.getBoundingClientRect();
+					return r.width > 240 && r.height > 100 && r.height < 2400;
 				});
 
-				const cards = new Set();
-				leaves.forEach((leaf) => {
-					let card = leaf;
-					while (card.parentElement && card.parentElement !== root) {
-						const parent = card.parentElement;
-						if (isProtected(parent) || countMarkers(parent) !== 1) break;
-						const rect = parent.getBoundingClientRect();
-						if (rect.height > 620 || rect.width > innerWidth * .92) break;
-						card = parent;
-					}
-					cards.add(card);
-				});
+				if (candidates.length) {
+					const maxHits = Math.max(...candidates.map(hits));
+					const cluster = candidates
+						.filter((node) => hits(node) === maxHits)
+						.sort((a, b) => {
+							const ar = a.getBoundingClientRect();
+							const br = b.getBoundingClientRect();
+							return (ar.width * ar.height) - (br.width * br.height);
+						})[0];
+					if (cluster) cluster.classList.add('emo-review-cluster-hidden');
+				}
 
-				cards.forEach((card) => card.classList.add('emo-transaction-review-hidden'));
-
-				/* Si todas las tarjetas de un grid han quedado fuera, retiramos también
-				 * su envoltorio para que no sobreviva un hueco vacío. */
-				cards.forEach((card) => {
-					let parent = card.parentElement;
-					while (parent && parent !== root && !isProtected(parent)) {
-						const children = [...parent.children];
-						if (!children.length || !children.every((child) => child.classList.contains('emo-transaction-review-hidden') || child.classList.contains('emo-transaction-review-shell-hidden'))) break;
-						parent.classList.add('emo-transaction-review-shell-hidden');
-						parent = parent.parentElement;
+				root.querySelectorAll('iframe').forEach((frame) => {
+					if (isProtected(frame)) return;
+					let shell = frame;
+					for (let i = 0; i < 3 && shell.parentElement && shell.parentElement !== root; i++) {
+						const parent = shell.parentElement;
+						const r = parent.getBoundingClientRect();
+						if (r.height > 900 || r.width > innerWidth * .95) break;
+						shell = parent;
 					}
+					shell.classList.add('emo-review-frame-hidden');
 				});
 			};
 
-			const observer = new MutationObserver(() => requestAnimationFrame(hideReviewCards));
-			document.addEventListener('DOMContentLoaded', () => {
-				hideReviewCards();
-				observer.observe(root, { childList: true, subtree: true });
-				[150, 500, 1200, 2200].forEach((delay) => setTimeout(hideReviewCards, delay));
-				setTimeout(() => observer.disconnect(), 5000);
-			});
+			const observer = new MutationObserver(() => requestAnimationFrame(clean));
+			clean();
+			observer.observe(root, { childList: true, subtree: true });
+			[120, 400, 900, 1600, 2600, 4200].forEach((delay) => setTimeout(clean, delay));
+			setTimeout(() => observer.disconnect(), 6000);
 		})();
 		</script>
 		<?php
