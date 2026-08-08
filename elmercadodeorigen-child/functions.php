@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.79' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.80' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -99,6 +99,7 @@ $elmercado_modules = array(
 	'inc/commerce-top-rhythm-01071.php',
 	'inc/content-start-final-01072.php',
 	'inc/page-start-filter-final-01074.php',
+	'inc/visible-start-line-01080.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
