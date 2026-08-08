@@ -6,13 +6,6 @@
  */
 
 get_header();
-
-$categories = get_categories(
-	array(
-		'hide_empty' => true,
-		'orderby'    => 'name',
-	)
-);
 ?>
 
 <main id="primary" class="site-main emo-journal">
@@ -31,13 +24,6 @@ $categories = get_categories(
 					<span class="emo-kicker"><?php esc_html_e( 'Últimas historias', 'elmercadodeorigen' ); ?></span>
 					<h2><?php esc_html_e( 'Conocer mejor para elegir mejor', 'elmercadodeorigen' ); ?></h2>
 				</div>
-				<?php if ( ! empty( $categories ) ) : ?>
-					<nav class="emo-journal-categories" aria-label="<?php esc_attr_e( 'Categorías del blog', 'elmercadodeorigen' ); ?>">
-						<?php foreach ( $categories as $category ) : ?>
-							<a href="<?php echo esc_url( get_category_link( $category ) ); ?>"><?php echo esc_html( $category->name ); ?></a>
-						<?php endforeach; ?>
-					</nav>
-				<?php endif; ?>
 			</header>
 
 			<?php if ( have_posts() ) : ?>
