@@ -33,13 +33,13 @@ jobs:
           node --check .github/scripts/user-request-visual-check.cjs
           node --check .github/scripts/page-start-filter-check.cjs
           node --check .github/scripts/real-device-layout-check-01081.cjs
-          node --check .github/scripts/filter-postapply-flow-check.cjs
           node --check .github/scripts/desktop-filter-visual-check.cjs
+          node --check .github/scripts/filter-postapply-flow-check.cjs
           node .github/scripts/user-request-visual-check.cjs
           node .github/scripts/real-device-layout-check-01081.cjs
           node .github/scripts/page-start-filter-check.cjs
-          node .github/scripts/filter-postapply-flow-check.cjs
           node .github/scripts/desktop-filter-visual-check.cjs
+          node .github/scripts/filter-postapply-flow-check.cjs
       - name: Audit deployed storefront
         shell: bash
         run: |
