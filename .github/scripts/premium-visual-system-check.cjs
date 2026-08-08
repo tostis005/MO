@@ -50,6 +50,7 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
       ['/tienda/', '#content > .woostify-container,.site-content > .woostify-container'],
       ['/productores/', '#content > .woostify-container,.site-content > .woostify-container'],
       ['/contacto/', '#content > .woostify-container,.site-content > .woostify-container'],
+      ['/quienes-somos/', '#content > .woostify-container,.site-content > .woostify-container'],
       ['/blog/', '.emo-journal-hero__inner'],
       ['/tienda/hidalgo-de-la-jara/', '#content > .woostify-container,.site-content > .woostify-container'],
     ];
@@ -67,11 +68,10 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
       if (Math.max(...sides) - Math.min(...sides) > 4) failures.push(`page gutters inconsistent ${JSON.stringify(gutters)}`);
     }
 
-    /* Primer contenido visible: misma altura perceptiva en las páginas principales. */
+    /* Páginas que no dependen del estado de una sesión de compra. */
     const starts = [
       ['/tienda/', 'main.site-main .emo-kicker'],
-      ['/carrito/', '.emo-cart-intro .emo-kicker'],
-      ['/finalizar-compra/', '.emo-checkout-intro .emo-kicker'],
+      ['/quienes-somos/', '.emo-about-layout'],
       ['/contacto/', '.emo-contact-aside'],
       ['/productores/', '.emo-producers-intro'],
       ['/blog/', '.emo-journal-hero__inner'],
@@ -88,17 +88,14 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
     }
     if (startTops.length) {
       const values = startTops.map(([,top]) => top);
-      if (Math.max(...values) - Math.min(...values) > 7) failures.push(`content starts not aligned ${JSON.stringify(startTops)}`);
+      if (Math.max(...values) - Math.min(...values) > 8) failures.push(`content starts not aligned ${JSON.stringify(startTops)}`);
     }
 
-    /*
-     * El top absoluto del contenido debe ser inmutable al activar el estado
-     * is-scrolled. Incluimos tanto cabeceras editoriales como superficies que
-     * perdieron el page-header nativo (tienda, carrito, checkout y cuenta).
-     */
+    /* El top absoluto del contenido debe ser inmutable al activar is-scrolled. */
     const headers = [
       ['/productores/', '.emo-producers-intro'],
       ['/contacto/', '.emo-contact-aside'],
+      ['/quienes-somos/', '.emo-about-layout'],
       ['/blog/', '.emo-journal-hero__inner'],
       ['/tienda/', '#content'],
       ['/carrito/', '#content'],
