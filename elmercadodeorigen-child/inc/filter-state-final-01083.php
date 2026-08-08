@@ -1,6 +1,6 @@
 <?php
 /**
- * Persistencia visible de filtros y limpieza final del toolbar móvil 0.10.83.
+ * Persistencia visible de filtros y limpieza final del toolbar móvil 0.10.84.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,7 +16,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-filter-state-final-01083">
+		<style id="elmercado-filter-state-final-01084">
 			@media (max-width: 1100px) {
 				body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) .woostify-sorting > .elmercado-filter-toolbar-extra {
 					display: none !important;
@@ -95,7 +95,7 @@ add_action(
 
 		$shop_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'shop' ) : home_url( '/tienda/' );
 		?>
-		<script id="elmercado-filter-state-final-controller-01083">
+		<script id="elmercado-filter-state-final-controller-01084">
 		(() => {
 			'use strict';
 			const body = document.body;
@@ -131,16 +131,19 @@ add_action(
 
 			const collectState = (content) => {
 				const items = [];
-				const seen = new Set();
+				const seenKeys = new Set();
+				const seenLabels = new Set();
 				const add = (key, label) => {
 					const clean = String(label || '').replace(/\s+/g, ' ').trim();
-					if (!clean || seen.has(key)) return;
-					seen.add(key);
+					const labelKey = clean.toLocaleLowerCase('es');
+					if (!clean || seenKeys.has(key) || seenLabels.has(labelKey)) return;
+					seenKeys.add(key);
+					seenLabels.add(labelKey);
 					items.push({ key, label: clean });
 				};
 				const currentPath = normalizePath(location.href);
 
-				content.querySelectorAll('.widget_layered_nav_filters a,.woocommerce-widget-layered-nav-list__item--chosen a,.widget_product_categories .current-cat > a,.current-cat-parent > a').forEach((link, index) => {
+				content.querySelectorAll('.widget_layered_nav_filters a,.woocommerce-widget-layered-nav-list__item--chosen a,.widget_product_categories .current-cat > a').forEach((link, index) => {
 					add(`dom-${index}-${normalizePath(link.href)}`, link.textContent);
 					link.classList.add('emo-filter-is-active');
 					link.closest('li')?.classList.add('emo-filter-is-active');
