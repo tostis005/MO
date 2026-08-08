@@ -1,6 +1,6 @@
 <?php
 /**
- * Alineación final de superficies interiores y geometría del filtro móvil 0.10.74.
+ * Alineación final de superficies interiores y geometría del filtro móvil 0.10.75.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,19 +16,23 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-page-start-filter-final-01074">
-			/* Quiénes somos comparte exactamente el mismo arranque estable que el resto. */
+		<style id="elmercado-page-start-filter-final-01075">
+			/*
+			 * Quiénes somos usa una introducción clara sobre papel, igual que Tienda,
+			 * Carrito y Checkout. Su wrapper no debe sumar un segundo gap superior.
+			 */
 			html body.elmercado-child-theme.elmercado-about-page .site-content {
-				padding-top: var(--emo-content-start-gap, 22px) !important;
+				padding-top: 0 !important;
 			}
-			html body.elmercado-child-theme.elmercado-about-page .emo-about-layout {
+			html body.elmercado-child-theme.elmercado-about-page .emo-about-layout,
+			html body.elmercado-child-theme.elmercado-about-page .emo-about-intro {
 				margin-top: 0 !important;
 				padding-top: 0 !important;
 				top: auto !important;
 				translate: none !important;
 				transform: none !important;
 			}
-			html body.elmercado-child-theme.is-scrolled.elmercado-about-page :is(.site-content,.emo-about-layout) {
+			html body.elmercado-child-theme.is-scrolled.elmercado-about-page :is(.site-content,.emo-about-layout,.emo-about-intro) {
 				top: auto !important;
 				translate: none !important;
 				transform: none !important;
@@ -66,10 +70,10 @@ add_action(
 					text-transform: uppercase !important;
 				}
 
-				/* Precio: flujo propio para que nunca invada la sección siguiente. */
+				/* Precio: flujo propio y separación real antes de la siguiente sección. */
 				html body.elmercado-child-theme #emo-premium-filter-shell .widget_price_filter {
 					display: block !important;
-					padding-bottom: 22px !important;
+					padding-bottom: 0 !important;
 				}
 				html body.elmercado-child-theme #emo-premium-filter-shell .widget_price_filter form {
 					display: block !important;
@@ -134,7 +138,7 @@ add_action(
 					width: 100% !important;
 					height: auto !important;
 					min-height: 42px !important;
-					margin: 0 !important;
+					margin: 0 0 20px !important;
 					padding: 0 !important;
 					clear: both !important;
 					float: none !important;
@@ -150,13 +154,7 @@ add_action(
 					display: none !important;
 				}
 				html body.elmercado-child-theme #emo-premium-filter-shell .widget_price_filter + .widget {
-					padding-top: 20px !important;
-				}
-			}
-
-			@media (max-width: 767px) {
-				html body.elmercado-child-theme.elmercado-about-page .site-content {
-					padding-top: 18px !important;
+					padding-top: 0 !important;
 				}
 			}
 		</style>

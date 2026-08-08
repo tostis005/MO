@@ -35,6 +35,26 @@ async function measureStableTop(page, path, selector) {
   return { top: before, after, delta: after === null ? null : Math.round(Math.abs(after - before) * 10) / 10 };
 }
 
+async function measureGroup(page, name, surfaces, tolerance = 7) {
+  const values = [];
+  for (const [path, selector] of surfaces) {
+    const metric = await measureStableTop(page, path, selector);
+    checks[`${name}:${path}`] = metric;
+    if (!metric) {
+      failures.push(`${path}: ${name} surface missing (${selector})`);
+      continue;
+    }
+    values.push([path, metric.top]);
+    if (metric.delta === null || metric.delta > 3) failures.push(`${path}: ${name} moves on first scroll ${JSON.stringify(metric)}`);
+  }
+  if (values.length > 1) {
+    const tops = values.map(([, top]) => top);
+    const spread = Math.round((Math.max(...tops) - Math.min(...tops)) * 10) / 10;
+    checks[`${name}Spread`] = { spread, values };
+    if (spread > tolerance) failures.push(`${name} starts differ (${spread}px): ${JSON.stringify(values)}`);
+  }
+}
+
 (async () => {
   fs.mkdirSync('qa', { recursive: true });
   const products = await fetch(`${BASE}/wp-json/wc/store/v1/products?per_page=100`).then((r) => r.json());
@@ -52,46 +72,42 @@ async function measureStableTop(page, path, selector) {
   page.setDefaultNavigationTimeout(60000);
 
   try {
-    const surfaces = [
-      ['/tienda/', 'main.site-main'],
-      ['/quienes-somos/', '.emo-about-layout'],
-      ['/contacto/', '.emo-contact-layout'],
+    /* Introducciones sobre papel: comparamos el primer elemento visual, no el wrapper estructural. */
+    await measureGroup(page, 'paperIntro', [
+      ['/tienda/', '.emo-shop-lead .emo-kicker'],
+      ['/quienes-somos/', '.emo-about-intro .emo-kicker'],
+    ]);
+    await go(page, '/quienes-somos/');
+    await page.screenshot({ path: 'qa/page-start-about-mobile.png', fullPage: false });
+
+    /* Carrito y checkout requieren una sesión real antes de comparar sus cabeceras. */
+    await go(page, `/contacto/?add-to-cart=${product.id}`, 850);
+    await measureGroup(page, 'transactionIntro', [
+      ['/carrito/', '.emo-cart-intro .emo-kicker'],
+      ['/finalizar-compra/', '.emo-checkout-intro .emo-kicker'],
+    ]);
+
+    const paperTops = [
+      checks['paperIntro:/tienda/']?.top,
+      checks['paperIntro:/quienes-somos/']?.top,
+      checks['transactionIntro:/carrito/']?.top,
+      checks['transactionIntro:/finalizar-compra/']?.top,
+    ].filter(Number.isFinite);
+    if (paperTops.length === 4) {
+      const spread = Math.round((Math.max(...paperTops) - Math.min(...paperTops)) * 10) / 10;
+      checks.paperAndTransactionSpread = spread;
+      if (spread > 7) failures.push(`paper/transaction intros not aligned (${spread}px): ${JSON.stringify(paperTops)}`);
+    }
+
+    /* Tarjetas verdes: Blog, Contacto y Productores comparten exactamente el mismo borde superior. */
+    await measureGroup(page, 'greenCard', [
+      ['/contacto/', '.emo-contact-aside'],
+      ['/contacto-productores/', '.emo-contact-aside'],
       ['/productores/', '.emo-producers-intro'],
-      ['/blog/', '.emo-journal-hero'],
-    ];
-    const starts = [];
-    for (const [path, selector] of surfaces) {
-      const metric = await measureStableTop(page, path, selector);
-      checks[`start:${path}`] = metric;
-      if (!metric) failures.push(`${path}: start surface missing (${selector})`);
-      else {
-        starts.push([path, metric.top]);
-        if (metric.delta === null || metric.delta > 3) failures.push(`${path}: start moves on first scroll ${JSON.stringify(metric)}`);
-      }
-      if (path === '/quienes-somos/') await page.screenshot({ path: 'qa/page-start-about-mobile.png', fullPage: false });
-    }
+      ['/blog/', '.emo-journal-hero__inner'],
+    ], 4);
 
-    await go(page, `/contacto/?add-to-cart=${product.id}`, 800);
-    for (const [path, selector] of [
-      ['/carrito/', '.emo-cart-intro'],
-      ['/finalizar-compra/', '.emo-checkout-intro'],
-    ]) {
-      const metric = await measureStableTop(page, path, selector);
-      checks[`start:${path}`] = metric;
-      if (!metric) failures.push(`${path}: transactional start surface missing (${selector})`);
-      else {
-        starts.push([path, metric.top]);
-        if (metric.delta === null || metric.delta > 3) failures.push(`${path}: start moves on first scroll ${JSON.stringify(metric)}`);
-      }
-    }
-
-    if (starts.length >= 5) {
-      const values = starts.map(([, top]) => top);
-      const spread = Math.round((Math.max(...values) - Math.min(...values)) * 10) / 10;
-      checks.startSpread = { spread, starts };
-      if (spread > 12) failures.push(`page starts differ too much (${spread}px): ${JSON.stringify(starts)}`);
-    }
-
+    /* Drawer de filtros: geometría visual completa. */
     await go(page, '/tienda/', 750);
     const toggle = await page.$('#emo-premium-filter-toggle');
     if (!toggle) {
@@ -116,9 +132,10 @@ async function measureStableTop(page, path, selector) {
           };
         });
         const priceWidget = shell?.querySelector('.widget_price_filter');
+        const amount = priceWidget?.querySelector('.price_slider_amount');
         const nextWidget = priceWidget?.nextElementSibling;
         const nextHeading = nextWidget?.querySelector(':scope > .widget-title,:scope > .sidebar-heading,:scope > .widget-heading,:scope > .wp-block-heading');
-        const pw = priceWidget?.getBoundingClientRect();
+        const ar = amount?.getBoundingClientRect();
         const nh = nextHeading?.getBoundingClientRect();
         const track = shell?.querySelector('.widget_price_filter .price_slider.ui-slider,.widget_price_filter .ui-slider-horizontal');
         const handles = [...(shell?.querySelectorAll('.widget_price_filter .ui-slider-handle') || [])].slice(0, 2);
@@ -134,7 +151,7 @@ async function measureStableTop(page, path, selector) {
           open: !!shell && !shell.hidden,
           panelWidth: panel ? Math.round(panel.getBoundingClientRect().width) : 0,
           headings: headingData,
-          sectionGap: pw && nh ? Math.round((nh.top - pw.bottom) * 10) / 10 : null,
+          sectionGap: ar && nh ? Math.round((nh.top - ar.bottom) * 10) / 10 : null,
           slider,
         };
       });
@@ -147,7 +164,7 @@ async function measureStableTop(page, path, selector) {
         const backgrounds = new Set(filter.headings.map((h) => h.background));
         if (Math.max(...heights) - Math.min(...heights) > 1.5 || radii.size !== 1 || backgrounds.size !== 1) failures.push(`filter headings inconsistent ${JSON.stringify(filter.headings)}`);
       }
-      if (filter.sectionGap === null || filter.sectionGap < 14) failures.push(`price/categories sections collide (${filter.sectionGap}px)`);
+      if (filter.sectionGap === null || filter.sectionGap < 16) failures.push(`price/categories visual gap too small (${filter.sectionGap}px)`);
       if (!filter.slider) failures.push('price slider geometry missing');
       else if (Math.max(...filter.slider.yDelta) > 1.5 || Math.max(...filter.slider.xDelta) > 2.5) failures.push(`price slider handles misaligned ${JSON.stringify(filter.slider)}`);
       await page.screenshot({ path: 'qa/filter-detail-mobile.png', fullPage: false });

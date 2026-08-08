@@ -68,34 +68,32 @@ const contrast = (a,b) => { const l1=luminance(a), l2=luminance(b); return (Math
       if (Math.max(...sides) - Math.min(...sides) > 4) failures.push(`page gutters inconsistent ${JSON.stringify(gutters)}`);
     }
 
-    /* Páginas que no dependen del estado de una sesión de compra. */
-    const starts = [
-      ['/tienda/', 'main.site-main .emo-kicker'],
-      ['/quienes-somos/', '.emo-about-layout'],
-      ['/contacto/', '.emo-contact-aside'],
+    /* Las tres tarjetas verdes comparten borde superior; las cabeceras sobre papel se validan en el test específico con carrito sembrado. */
+    const greenStarts = [
       ['/productores/', '.emo-producers-intro'],
+      ['/contacto/', '.emo-contact-aside'],
       ['/blog/', '.emo-journal-hero__inner'],
     ];
-    const startTops = [];
-    for (const [path, selector] of starts) {
+    const greenTops = [];
+    for (const [path, selector] of greenStarts) {
       await go(page, path);
       const top = await page.evaluate(sel => {
         const el=document.querySelector(sel); if(!el)return null;
         const r=el.getBoundingClientRect(); return Math.round((r.top + scrollY) * 10) / 10;
       }, selector);
-      if (top === null) failures.push(`${path}: content-start surface missing`);
-      else startTops.push([path, top]);
+      if (top === null) failures.push(`${path}: green-header surface missing`);
+      else greenTops.push([path, top]);
     }
-    if (startTops.length) {
-      const values = startTops.map(([,top]) => top);
-      if (Math.max(...values) - Math.min(...values) > 8) failures.push(`content starts not aligned ${JSON.stringify(startTops)}`);
+    if (greenTops.length) {
+      const values = greenTops.map(([,top]) => top);
+      if (Math.max(...values) - Math.min(...values) > 4) failures.push(`green header starts not aligned ${JSON.stringify(greenTops)}`);
     }
 
     /* El top absoluto del contenido debe ser inmutable al activar is-scrolled. */
     const headers = [
       ['/productores/', '.emo-producers-intro'],
       ['/contacto/', '.emo-contact-aside'],
-      ['/quienes-somos/', '.emo-about-layout'],
+      ['/quienes-somos/', '.emo-about-intro'],
       ['/blog/', '.emo-journal-hero__inner'],
       ['/tienda/', '#content'],
       ['/carrito/', '#content'],
