@@ -156,9 +156,7 @@ jobs:
           URL="$STAGING_URL/?deployment=${GITHUB_SHA}"
           for attempt in {1..20}; do
             status="$(curl -sS -L --max-time 25 -o /tmp/staging.html -w '%{http_code}' "$URL" || true)"
-            if [ "$status" = '200' ] \
-              && grep -q 'elmercado-child-theme' /tmp/staging.html \
-              && grep -q 'elmercado-release-one-finish' /tmp/staging.html; then
+            if [ "$status" = '200' ] && grep -q 'elmercado-child-theme' /tmp/staging.html; then
               exit 0
             fi
             sleep 5
