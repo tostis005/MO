@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.109.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.110.
  *
  * @package ElMercadoDeOrigen
  */
@@ -9,11 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Mantiene la información fiscal del total en una sola línea sin desplazar el
- * importe principal de su margen derecho. El orden semántico sigue siendo
- * importe + detalle fiscal; CSS invierte únicamente su presentación visual.
- */
 add_filter(
 	'woocommerce_cart_totals_order_total_html',
 	static function ( string $html ): string {
@@ -36,10 +31,10 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010109">
-			/* Portada: una sola superficie blanca en toda la selección de productos. */
+		<style id="elmercado-visual-continuity-final-010110">
+			/* Portada: una sola superficie salvia muy clara, sin franjas ni cambios de tono internos. */
 			body.home.elmercado-child-theme .emo-featured-products {
-				background: #fff !important;
+				background: var(--emo-forest-100, #e4eee8) !important;
 			}
 			body.home.elmercado-child-theme .emo-featured-products :is(.emo-shell,.woocommerce,ul.products) {
 				background: transparent !important;
@@ -57,13 +52,7 @@ add_action(
 				box-shadow: none !important;
 			}
 
-			/*
-			 * Cabecera: Woostify/una capa heredada todavía añade .fija y un
-			 * margin-top inline al #content al iniciar el scroll. El sticky real vive
-			 * en .site-header, por lo que ese margen ya no cumple ninguna función y
-			 * es precisamente el salto visible de ~70 px. Se neutraliza de forma
-			 * declarativa, sin medir posiciones ni compensar offsets por JavaScript.
-			 */
+			/* Cabecera: neutraliza el margen heredado que provocaba el salto al comenzar a hacer scroll. */
 			body.elmercado-child-theme .site-header,
 			body.elmercado-child-theme .site-header.is-scrolled,
 			body.elmercado-child-theme.is-scrolled .site-header {
@@ -89,7 +78,7 @@ add_action(
 				padding: 0 !important;
 			}
 
-			/* Carrito: IVA e importe comparten una línea; el importe acaba al margen derecho. */
+			/* Carrito: IVA e importe comparten una línea; el importe termina al margen derecho. */
 			body.elmercado-child-theme.woocommerce-cart .cart_totals tr.order-total th {
 				width: 32% !important;
 				padding-right: 8px !important;
