@@ -8,67 +8,130 @@ const checks = {};
 
 async function go(page, pathOrUrl, delay = 700) {
   const url = /^https?:/i.test(pathOrUrl) ? new URL(pathOrUrl) : new URL(pathOrUrl, BASE);
-  url.searchParams.set('qa-010102', Date.now().toString());
+  url.searchParams.set('qa-010103', Date.now().toString());
   const response = await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}' }).catch(() => {});
   await sleep(delay);
   if (!response || response.status() >= 400) failures.push(`${url.pathname}: HTTP ${response?.status() || 'none'}`);
 }
 
-function transparent(value) {
-  return value === 'transparent' || /rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/i.test(value || '');
+function isWhite(value) {
+  return /^rgb\(255,\s*255,\s*255\)$/i.test(value || '') || /^rgba\(255,\s*255,\s*255,\s*1(?:\.0+)?\)$/i.test(value || '');
 }
 
-async function homeSurfaceCheck(page, width, height) {
-  await page.setViewport({ width, height, deviceScaleFactor: 1, isMobile: width <= 767, hasTouch: width <= 1100 });
-  await go(page, '/');
-  const metric = await page.evaluate(() => {
-    const card = document.querySelector('.emo-featured-products ul.products li.product');
+async function productCardMetric(page, scope) {
+  return page.evaluate((scopeSelector) => {
+    const card = document.querySelector(`${scopeSelector} ul.products li.product`);
     if (!card) return null;
-    const nodes = {
-      card,
-      wrapper: card.querySelector('.product-loop-wrapper'),
-      imageWrapper: card.querySelector('.product-loop-image-wrapper'),
-      link: card.querySelector('.woocommerce-LoopProduct-link,.woocommerce-loop-product__link'),
-      content: card.querySelector('.product-loop-content,.product-content'),
-      image: card.querySelector('img'),
+    const title = card.querySelector('.woocommerce-loop-product__title,.product-title,h2');
+    const price = card.querySelector('.price');
+    const content = card.querySelector('.product-loop-content,.product-content');
+    const image = card.querySelector('img');
+    const effectiveBackground = (node) => {
+      let current = node;
+      while (current && current !== document.documentElement) {
+        const color = getComputedStyle(current).backgroundColor;
+        if (color && color !== 'transparent' && !/^rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/i.test(color)) return color;
+        current = current.parentElement;
+      }
+      return '';
     };
-    const surface = (node) => {
+    const style = (node) => {
       if (!node) return null;
       const s = getComputedStyle(node);
+      const r = node.getBoundingClientRect();
       return {
         backgroundColor: s.backgroundColor,
-        backgroundImage: s.backgroundImage,
-        boxShadow: s.boxShadow,
-        overflow: s.overflow,
+        effectiveBackground: effectiveBackground(node),
         borderRadius: s.borderRadius,
+        overflow: s.overflow,
+        paddingLeft: s.paddingLeft,
+        paddingRight: s.paddingRight,
+        lineHeight: s.lineHeight,
+        webkitLineClamp: s.webkitLineClamp,
+        textOverflow: s.textOverflow,
+        width: r.width,
+        height: r.height,
       };
     };
     return {
       overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
-      surfaces: Object.fromEntries(Object.entries(nodes).map(([key, node]) => [key, surface(node)])),
+      card: style(card),
+      content: style(content),
+      title: style(title),
+      price: style(price),
+      image: style(image),
     };
-  });
-  checks[`homeSurface-${width}`] = metric;
+  }, scope);
+}
+
+async function cardAndTitleCheck(page, path, scope, label, width, height) {
+  await page.setViewport({ width, height, deviceScaleFactor: 1, isMobile: width <= 767, hasTouch: width <= 1100 });
+  await go(page, path);
+  const metric = await productCardMetric(page, scope);
+  checks[`${label}-${width}`] = metric;
   if (!metric) {
-    failures.push(`${width}px home: featured card missing`);
-    return;
+    failures.push(`${label}-${width}: product card missing`);
+    return null;
   }
-  for (const key of ['card', 'wrapper', 'imageWrapper', 'link', 'content']) {
-    const surface = metric.surfaces[key];
-    if (!surface) continue;
-    if (!transparent(surface.backgroundColor) || surface.backgroundImage !== 'none') {
-      failures.push(`${width}px home ${key}: painted background remains (${surface.backgroundColor} / ${surface.backgroundImage})`);
-    }
+  if (!isWhite(metric.card.backgroundColor)) failures.push(`${label}-${width}: card is not white (${metric.card.backgroundColor})`);
+  if (!isWhite(metric.title.effectiveBackground)) failures.push(`${label}-${width}: title area is not on white (${metric.title.effectiveBackground})`);
+  if (metric.price && !isWhite(metric.price.effectiveBackground)) failures.push(`${label}-${width}: price area is not on white (${metric.price.effectiveBackground})`);
+  if (metric.card.overflow !== 'hidden') failures.push(`${label}-${width}: outer card does not clip rounded corners (${metric.card.overflow})`);
+  if (parseFloat(metric.card.borderRadius || '0') < 12) failures.push(`${label}-${width}: outer card radius too small (${metric.card.borderRadius})`);
+  if (metric.overflow > 1) failures.push(`${label}-${width}: horizontal overflow ${metric.overflow}px`);
+
+  const titles = await page.evaluate((scopeSelector) => {
+    const cards = [...document.querySelectorAll(`${scopeSelector} ul.products li.product`)].slice(0, 10);
+    return cards.map((card) => {
+      const title = card.querySelector('.woocommerce-loop-product__title,.product-title,h2');
+      if (!title) return null;
+      const s = getComputedStyle(title);
+      const r = title.getBoundingClientRect();
+      const lineHeight = parseFloat(s.lineHeight || '0');
+      return {
+        text: (title.textContent || '').replace(/\s+/g, ' ').trim(),
+        height: r.height,
+        clientHeight: title.clientHeight,
+        scrollHeight: title.scrollHeight,
+        lineHeight,
+        approxLines: lineHeight ? r.height / lineHeight : 0,
+        webkitLineClamp: s.webkitLineClamp,
+        overflow: s.overflow,
+        textOverflow: s.textOverflow,
+        whiteSpace: s.whiteSpace,
+      };
+    }).filter(Boolean);
+  }, scope);
+  checks[`${label}-${width}-titles`] = titles;
+  if (!titles.length) failures.push(`${label}-${width}: titles missing`);
+  for (const title of titles) {
+    if (title.webkitLineClamp !== '2') failures.push(`${label}-${width}: title clamp is ${title.webkitLineClamp} (${title.text})`);
+    if (title.overflow !== 'hidden') failures.push(`${label}-${width}: title overflow is ${title.overflow} (${title.text})`);
+    if (title.textOverflow !== 'ellipsis') failures.push(`${label}-${width}: title ellipsis is ${title.textOverflow} (${title.text})`);
+    if (title.approxLines < 1.9 || title.approxLines > 2.1) failures.push(`${label}-${width}: title box is not two lines (${title.approxLines.toFixed(2)} / ${title.text})`);
   }
-  if (metric.surfaces.wrapper && metric.surfaces.wrapper.overflow !== 'visible') {
-    failures.push(`${width}px home: product wrapper overflow should be visible (${metric.surfaces.wrapper.overflow})`);
-  }
-  if (metric.surfaces.imageWrapper && parseFloat(metric.surfaces.imageWrapper.borderRadius || '0') < 12) {
-    failures.push(`${width}px home: rounded image corners missing (${metric.surfaces.imageWrapper.borderRadius})`);
-  }
-  if (metric.overflow > 1) failures.push(`${width}px home: horizontal overflow ${metric.overflow}px`);
-  await page.screenshot({ path: `qa/user-request-010102-home-${width}.png`, fullPage: true });
+  const longTitle = titles.find((title) => title.text.length >= 45 && title.scrollHeight > title.clientHeight + 1);
+  checks[`${label}-${width}-truncatedExample`] = longTitle || null;
+
+  await page.screenshot({ path: `qa/user-request-010103-${label}-${width}.png`, fullPage: true });
+  return metric;
+}
+
+async function compareHomeShop(page, width, height) {
+  const home = await cardAndTitleCheck(page, '/', '.emo-featured-products', 'home-products', width, height);
+  const shop = await cardAndTitleCheck(page, '/tienda/', '.woocommerce', 'shop-products', width, height);
+  if (!home || !shop) return;
+  const comparison = {
+    radiusDelta: Math.abs(parseFloat(home.card.borderRadius || '0') - parseFloat(shop.card.borderRadius || '0')),
+    homeRadius: home.card.borderRadius,
+    shopRadius: shop.card.borderRadius,
+    homeTitleLineHeight: home.title.lineHeight,
+    shopTitleLineHeight: shop.title.lineHeight,
+  };
+  checks[`home-shop-comparison-${width}`] = comparison;
+  if (comparison.radiusDelta > 1) failures.push(`${width}px: home/shop card radius differs (${JSON.stringify(comparison)})`);
+  if (home.title.webkitLineClamp !== shop.title.webkitLineClamp) failures.push(`${width}px: home/shop title clamp differs`);
 }
 
 async function landscapeCheck(page) {
@@ -88,10 +151,13 @@ async function landscapeCheck(page) {
     const track = document.querySelector('.emo-featured-products ul.products');
     const card = track?.querySelector('li.product');
     const cs = track ? getComputedStyle(track) : null;
+    const cardStyle = card ? getComputedStyle(card) : null;
     return {
       productFirstRow: rowCount('.emo-featured-products ul.products li.product'),
       categoryFirstRow: rowCount('.emo-category-grid .emo-category-card'),
       cardWidth: card?.getBoundingClientRect().width || 0,
+      cardBackground: cardStyle?.backgroundColor || '',
+      cardRadius: cardStyle?.borderRadius || '',
       display: cs?.display || '',
       columns: cs?.gridTemplateColumns || '',
       overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
@@ -102,8 +168,9 @@ async function landscapeCheck(page) {
   if (metric.categoryFirstRow >= 3 && metric.productFirstRow !== metric.categoryFirstRow) failures.push(`landscape: product/category row density differs (${JSON.stringify(metric)})`);
   if (metric.cardWidth > 280) failures.push(`landscape: product cards remain too large (${metric.cardWidth}px)`);
   if (metric.display !== 'grid') failures.push(`landscape: product track is not grid (${metric.display})`);
+  if (!isWhite(metric.cardBackground)) failures.push(`landscape: product card is not white (${metric.cardBackground})`);
   if (metric.overflow > 1) failures.push(`landscape: horizontal overflow ${metric.overflow}px`);
-  await page.screenshot({ path: 'qa/user-request-010102-home-landscape-844x390.png', fullPage: true });
+  await page.screenshot({ path: 'qa/user-request-010103-home-landscape-844x390.png', fullPage: true });
 }
 
 async function filterFeedbackCheck(page) {
@@ -154,6 +221,7 @@ async function filterFeedbackCheck(page) {
   if (!state?.visible) failures.push(`filter feedback: progress layer not visible (${JSON.stringify(state)})`);
   if (!/actualizando productos/i.test(state?.text || '')) failures.push(`filter feedback: progress copy missing (${JSON.stringify(state)})`);
   if (state?.ariaBusy !== 'true') failures.push(`filter feedback: aria-busy not set (${JSON.stringify(state)})`);
+  await page.screenshot({ path: 'qa/user-request-010103-filter-feedback-390.png', fullPage: false });
   await handle.dispose();
 }
 
@@ -189,7 +257,7 @@ async function filteredLeadCheck(page) {
   if (!metric.toolbar) failures.push('filtered lead: result toolbar missing');
   if (metric.lead && metric.toolbar && metric.toolbar.top <= metric.lead.top) failures.push(`filtered lead: toolbar appears before/over lead (${JSON.stringify(metric)})`);
   if (metric.overflow > 1) failures.push(`filtered lead: horizontal overflow ${metric.overflow}px`);
-  await page.screenshot({ path: 'qa/user-request-010102-filtered-shop-390.png', fullPage: true });
+  await page.screenshot({ path: 'qa/user-request-010103-filtered-shop-390.png', fullPage: true });
 }
 
 async function cartAlignmentCheck(page, productId) {
@@ -233,7 +301,7 @@ async function cartAlignmentCheck(page, productId) {
     if (metric.tax.top < metric.total.bottom - 1) failures.push(`cart alignment: tax note is not below total (${JSON.stringify(metric)})`);
   }
   if (metric.overflow > 1) failures.push(`cart alignment: horizontal overflow ${metric.overflow}px`);
-  await page.screenshot({ path: 'qa/user-request-010102-cart-390.png', fullPage: true });
+  await page.screenshot({ path: 'qa/user-request-010103-cart-390.png', fullPage: true });
 }
 
 (async () => {
@@ -251,8 +319,10 @@ async function cartAlignmentCheck(page, productId) {
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(60000);
   try {
-    await homeSurfaceCheck(page, 390, 844);
-    await homeSurfaceCheck(page, 1440, 1000);
+    await compareHomeShop(page, 390, 844);
+    await compareHomeShop(page, 768, 1024);
+    await compareHomeShop(page, 1100, 900);
+    await compareHomeShop(page, 1440, 1000);
     await landscapeCheck(page);
     await filterFeedbackCheck(page);
     await filteredLeadCheck(page);
@@ -261,11 +331,11 @@ async function cartAlignmentCheck(page, productId) {
     await browser.close();
   }
 
-  fs.writeFileSync('qa/user-request-010102-check.json', JSON.stringify({ failures, checks }, null, 2));
+  fs.writeFileSync('qa/user-request-010103-check.json', JSON.stringify({ failures, checks }, null, 2));
   if (failures.length) {
-    console.error(`USER_REQUEST_010102_FAIL ${JSON.stringify(failures)}`);
+    console.error(`USER_REQUEST_010103_FAIL ${JSON.stringify(failures)}`);
     process.exitCode = 2;
   } else {
-    console.log(`USER_REQUEST_010102_OK ${JSON.stringify(checks)}`);
+    console.log(`USER_REQUEST_010103_OK ${JSON.stringify(checks)}`);
   }
 })();
