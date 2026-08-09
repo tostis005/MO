@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.113.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.115.
  *
  * @package ElMercadoDeOrigen
  */
@@ -31,12 +31,12 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010113">
-			/* Portada: tonos cálidos de miel, arcilla y piedra; sin blanco, verde ni marrón dominante. */
+		<style id="elmercado-visual-continuity-final-010115">
+			/* Portada: las secciones centrales reutilizan directamente la paleta base del sitio. */
 			body.home.elmercado-child-theme .emo-home {
-				--emo-home-categories-bg: #f0d8a0;
-				--emo-home-products-bg: #efd0c3;
-				--emo-home-story-bg: #e2e4dc;
+				--emo-home-categories-bg: #f7f3ea;
+				--emo-home-products-bg: #e4eee8;
+				--emo-home-story-bg: #eee7da;
 				--emo-home-muted: #4f5d56;
 			}
 			body.home.elmercado-child-theme .emo-categories {
