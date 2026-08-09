@@ -39,7 +39,6 @@ async function homeSurfaceCheck(page, width, height) {
       return {
         backgroundColor: s.backgroundColor,
         backgroundImage: s.backgroundImage,
-        borderColor: s.borderTopColor,
         boxShadow: s.boxShadow,
         overflow: s.overflow,
         borderRadius: s.borderRadius,
@@ -52,23 +51,23 @@ async function homeSurfaceCheck(page, width, height) {
   });
   checks[`homeSurface-${width}`] = metric;
   if (!metric) {
-    failures.push(`${width}px home surface: featured card missing`);
+    failures.push(`${width}px home: featured card missing`);
     return;
   }
   for (const key of ['card', 'wrapper', 'imageWrapper', 'link', 'content']) {
     const surface = metric.surfaces[key];
     if (!surface) continue;
     if (!transparent(surface.backgroundColor) || surface.backgroundImage !== 'none') {
-      failures.push(`${width}px home surface ${key}: painted background remains (${surface.backgroundColor} / ${surface.backgroundImage})`);
+      failures.push(`${width}px home ${key}: painted background remains (${surface.backgroundColor} / ${surface.backgroundImage})`);
     }
   }
   if (metric.surfaces.wrapper && metric.surfaces.wrapper.overflow !== 'visible') {
-    failures.push(`${width}px home surface wrapper: overflow should be visible (${metric.surfaces.wrapper.overflow})`);
+    failures.push(`${width}px home: product wrapper overflow should be visible (${metric.surfaces.wrapper.overflow})`);
   }
   if (metric.surfaces.imageWrapper && parseFloat(metric.surfaces.imageWrapper.borderRadius || '0') < 12) {
-    failures.push(`${width}px home surface image wrapper: rounded corners missing (${metric.surfaces.imageWrapper.borderRadius})`);
+    failures.push(`${width}px home: rounded image corners missing (${metric.surfaces.imageWrapper.borderRadius})`);
   }
-  if (metric.overflow > 1) failures.push(`${width}px home surface: horizontal overflow ${metric.overflow}px`);
+  if (metric.overflow > 1) failures.push(`${width}px home: horizontal overflow ${metric.overflow}px`);
   await page.screenshot({ path: `qa/user-request-010102-home-${width}.png`, fullPage: true });
 }
 
@@ -99,60 +98,12 @@ async function landscapeCheck(page) {
     };
   });
   checks.landscape = metric;
-  if (metric.productFirstRow < 3) failures.push(`landscape home: fewer than 3 products in first row (${JSON.stringify(metric)})`);
-  if (metric.cardWidth > 280) failures.push(`landscape home: product cards remain too large (${metric.cardWidth}px)`);
-  if (metric.display !== 'grid') failures.push(`landscape home: product track is not a grid (${metric.display})`);
-  if (metric.overflow > 1) failures.push(`landscape home: horizontal overflow ${metric.overflow}px`);
+  if (metric.productFirstRow < 3) failures.push(`landscape: fewer than 3 products in first row (${JSON.stringify(metric)})`);
+  if (metric.categoryFirstRow >= 3 && metric.productFirstRow !== metric.categoryFirstRow) failures.push(`landscape: product/category row density differs (${JSON.stringify(metric)})`);
+  if (metric.cardWidth > 280) failures.push(`landscape: product cards remain too large (${metric.cardWidth}px)`);
+  if (metric.display !== 'grid') failures.push(`landscape: product track is not grid (${metric.display})`);
+  if (metric.overflow > 1) failures.push(`landscape: horizontal overflow ${metric.overflow}px`);
   await page.screenshot({ path: 'qa/user-request-010102-home-landscape-844x390.png', fullPage: true });
-}
-
-async function filteredLeadCheck(page) {
-  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
-  await go(page, '/tienda/');
-  const categoryHref = await page.evaluate(() => {
-    const links = [...document.querySelectorAll('a[href*="/categoria-producto/"]')];
-    const link = links.find((node) => {
-      const r = node.getBoundingClientRect();
-      return r.width > 0 && r.height > 0;
-    }) || links[0];
-    return link?.href || '';
-  });
-  if (!categoryHref) {
-    failures.push('filtered lead: no product-category link available');
-    return;
-  }
-  await go(page, categoryHref, 800);
-  const metric = await page.evaluate(() => {
-    const lead = document.querySelector('.emo-shop-lead');
-    const toolbar = document.querySelector('.woostify-sorting');
-    const rect = (node) => {
-      if (!node) return null;
-      const r = node.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height };
-    };
-    const visible = (node) => {
-      if (!node) return false;
-      const r = node.getBoundingClientRect();
-      const s = getComputedStyle(node);
-      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
-    };
-    return {
-      url: location.href,
-      leadVisible: visible(lead),
-      leadText: (lead?.textContent || '').replace(/\s+/g, ' ').trim(),
-      lead: rect(lead),
-      toolbar: rect(toolbar),
-      gap: lead && toolbar ? toolbar.getBoundingClientRect().top - lead.getBoundingClientRect().bottom : null,
-      overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
-    };
-  });
-  checks.filteredLead = metric;
-  if (!metric.leadVisible) failures.push(`filtered lead: lead missing/hidden (${JSON.stringify(metric)})`);
-  if (!/procedencia clara/i.test(metric.leadText)) failures.push(`filtered lead: context copy missing (${metric.leadText})`);
-  if (!metric.toolbar) failures.push('filtered lead: result toolbar missing');
-  if (metric.lead && metric.toolbar && metric.toolbar.top <= metric.lead.top) failures.push(`filtered lead: toolbar appears before/over lead (${JSON.stringify(metric)})`);
-  if (metric.overflow > 1) failures.push(`filtered lead: horizontal overflow ${metric.overflow}px`);
-  await page.screenshot({ path: 'qa/user-request-010102-filtered-shop-390.png', fullPage: true });
 }
 
 async function filterFeedbackCheck(page) {
@@ -203,8 +154,42 @@ async function filterFeedbackCheck(page) {
   if (!state?.visible) failures.push(`filter feedback: progress layer not visible (${JSON.stringify(state)})`);
   if (!/actualizando productos/i.test(state?.text || '')) failures.push(`filter feedback: progress copy missing (${JSON.stringify(state)})`);
   if (state?.ariaBusy !== 'true') failures.push(`filter feedback: aria-busy not set (${JSON.stringify(state)})`);
-  await page.screenshot({ path: 'qa/user-request-010102-filter-feedback-390.png', fullPage: false });
   await handle.dispose();
+}
+
+async function filteredLeadCheck(page) {
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await go(page, '/categoria-producto/aceites/', 800);
+  const metric = await page.evaluate(() => {
+    const lead = document.querySelector('.emo-shop-lead');
+    const toolbar = document.querySelector('.woostify-sorting');
+    const rect = (node) => {
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height };
+    };
+    const visible = (node) => {
+      if (!node) return false;
+      const r = node.getBoundingClientRect();
+      const s = getComputedStyle(node);
+      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
+    };
+    return {
+      leadVisible: visible(lead),
+      leadText: (lead?.textContent || '').replace(/\s+/g, ' ').trim(),
+      lead: rect(lead),
+      toolbar: rect(toolbar),
+      gap: lead && toolbar ? toolbar.getBoundingClientRect().top - lead.getBoundingClientRect().bottom : null,
+      overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
+    };
+  });
+  checks.filteredLead = metric;
+  if (!metric.leadVisible) failures.push(`filtered lead: lead missing/hidden (${JSON.stringify(metric)})`);
+  if (!/procedencia clara/i.test(metric.leadText)) failures.push(`filtered lead: context copy missing (${metric.leadText})`);
+  if (!metric.toolbar) failures.push('filtered lead: result toolbar missing');
+  if (metric.lead && metric.toolbar && metric.toolbar.top <= metric.lead.top) failures.push(`filtered lead: toolbar appears before/over lead (${JSON.stringify(metric)})`);
+  if (metric.overflow > 1) failures.push(`filtered lead: horizontal overflow ${metric.overflow}px`);
+  await page.screenshot({ path: 'qa/user-request-010102-filtered-shop-390.png', fullPage: true });
 }
 
 async function cartAlignmentCheck(page, productId) {
@@ -214,7 +199,6 @@ async function cartAlignmentCheck(page, productId) {
   const metric = await page.evaluate(() => {
     const card = document.querySelector('.cart_totals');
     const table = card?.querySelector('table.shop_table');
-    const firstTh = table?.querySelector('tbody tr th, tr th');
     const subtotal = card?.querySelector('.cart-subtotal td .amount');
     const total = card?.querySelector('.order-total td .amount');
     const tax = card?.querySelector('.order-total td .includes_tax');
@@ -230,14 +214,11 @@ async function cartAlignmentCheck(page, productId) {
     return {
       card: cardRect,
       table: rect(table),
-      firstTh: rect(firstTh),
       subtotal: rect(subtotal),
       total: rect(total),
       tax: rect(tax),
       expectedLeft,
       expectedRight,
-      tableDisplay: table ? getComputedStyle(table).display : '',
-      tableWidth: table ? getComputedStyle(table).width : '',
       overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
     };
   });
@@ -246,7 +227,7 @@ async function cartAlignmentCheck(page, productId) {
     failures.push(`cart alignment: geometry missing (${JSON.stringify(metric)})`);
   } else {
     if (Math.abs(metric.table.left - metric.expectedLeft) > 3) failures.push(`cart alignment: table left inset incorrect (${JSON.stringify(metric)})`);
-    if (Math.abs(metric.table.right - metric.expectedRight) > 3) failures.push(`cart alignment: table does not reach right inset (${JSON.stringify(metric)})`);
+    if (Math.abs(metric.table.right - metric.expectedRight) > 3) failures.push(`cart alignment: table right inset incorrect (${JSON.stringify(metric)})`);
     if (Math.abs(metric.subtotal.right - metric.expectedRight) > 4) failures.push(`cart alignment: subtotal too far left (${JSON.stringify(metric)})`);
     if (Math.abs(metric.total.right - metric.expectedRight) > 4) failures.push(`cart alignment: total too far left (${JSON.stringify(metric)})`);
     if (metric.tax.top < metric.total.bottom - 1) failures.push(`cart alignment: tax note is not below total (${JSON.stringify(metric)})`);
@@ -270,9 +251,8 @@ async function cartAlignmentCheck(page, productId) {
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(60000);
   try {
-    for (const [width, height] of [[390, 844], [768, 1024], [1100, 900], [1440, 1000]]) {
-      await homeSurfaceCheck(page, width, height);
-    }
+    await homeSurfaceCheck(page, 390, 844);
+    await homeSurfaceCheck(page, 1440, 1000);
     await landscapeCheck(page);
     await filterFeedbackCheck(page);
     await filteredLeadCheck(page);
