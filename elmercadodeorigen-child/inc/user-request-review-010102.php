@@ -1,6 +1,6 @@
 <?php
 /**
- * Revisión visual solicitada: carrito, fichas de producto y continuidad del catálogo 0.10.103.
+ * Revisión visual solicitada: carrito, fichas de producto y continuidad del catálogo 0.10.104.
  *
  * @package ElMercadoDeOrigen
  */
@@ -39,12 +39,19 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-user-request-review-010103">
+		<style id="elmercado-user-request-review-010104">
 			/*
-			 * Nombres de producto: dos líneas completas tanto en portada como en tienda.
-			 * Si el nombre necesita más espacio, line-clamp muestra la elipsis al final.
+			 * Nombres de producto: exactamente dos líneas útiles tanto en portada
+			 * como en catálogo. Los selectores deliberadamente incluyen el contexto
+			 * de cada vista para prevalecer sobre las reglas responsive históricas.
 			 */
-			body.elmercado-child-theme ul.products li.product :is(
+			body.home.elmercado-child-theme .emo-featured-products .woocommerce ul.products li.product :is(
+				.woocommerce-loop-product__title,
+				.product-title,
+				h2,
+				h3
+			),
+			body.elmercado-child-theme.woocommerce-page .site-content .woocommerce ul.products li.product :is(
 				.woocommerce-loop-product__title,
 				.product-title,
 				h2,
@@ -56,6 +63,8 @@ add_action(
 				min-height: 2.7em !important;
 				max-height: 2.7em !important;
 				margin-bottom: 8px !important;
+				padding-top: 0 !important;
+				padding-bottom: 0 !important;
 				overflow: hidden !important;
 				-webkit-box-orient: vertical !important;
 				-webkit-line-clamp: 2 !important;
