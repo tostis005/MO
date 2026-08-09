@@ -1,6 +1,6 @@
 <?php
 /**
- * Revisión visual solicitada: carrito, fichas de producto y continuidad del catálogo 0.10.104.
+ * Revisión visual solicitada: carrito, fichas de producto y continuidad del catálogo 0.10.105.
  *
  * @package ElMercadoDeOrigen
  */
@@ -39,11 +39,12 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-user-request-review-010104">
+		<style id="elmercado-user-request-review-010105">
 			/*
 			 * Nombres de producto: exactamente dos líneas útiles tanto en portada
-			 * como en catálogo. Los selectores deliberadamente incluyen el contexto
-			 * de cada vista para prevalecer sobre las reglas responsive históricas.
+			 * como en catálogo. En los archivos WooCommerce el propio body lleva
+			 * la clase .woocommerce, así que no dependemos de un wrapper interior
+			 * que cambia entre breakpoints.
 			 */
 			body.home.elmercado-child-theme .emo-featured-products .woocommerce ul.products li.product :is(
 				.woocommerce-loop-product__title,
@@ -51,7 +52,7 @@ add_action(
 				h2,
 				h3
 			),
-			body.elmercado-child-theme.woocommerce-page .site-content .woocommerce ul.products li.product :is(
+			body.elmercado-child-theme.woocommerce ul.products li.product :is(
 				.woocommerce-loop-product__title,
 				.product-title,
 				h2,
