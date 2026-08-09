@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.108.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.109.
  *
  * @package ElMercadoDeOrigen
  */
@@ -36,7 +36,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010108">
+		<style id="elmercado-visual-continuity-final-010109">
 			/* Portada: una sola superficie blanca en toda la selección de productos. */
 			body.home.elmercado-child-theme .emo-featured-products {
 				background: #fff !important;
@@ -122,8 +122,8 @@ add_action(
 			}
 			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > .includes_tax,
 			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > small.includes_tax {
-				color: rgba(255,255,255,.76) !important;
-				font-size: .72rem !important;
+				color: rgba(255,255,255,.8) !important;
+				font-size: .74rem !important;
 				font-weight: 650 !important;
 			}
 
@@ -139,7 +139,7 @@ add_action(
 				}
 				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > .includes_tax,
 				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > small.includes_tax {
-					font-size: .68rem !important;
+					font-size: .75rem !important;
 				}
 			}
 		</style>
