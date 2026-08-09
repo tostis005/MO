@@ -1,6 +1,6 @@
 <?php
 /**
- * Revisión visual solicitada: carrito, productos de portada y continuidad del catálogo 0.10.102.
+ * Revisión visual solicitada: carrito, fichas de producto y continuidad del catálogo 0.10.103.
  *
  * @package ElMercadoDeOrigen
  */
@@ -39,75 +39,32 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-user-request-review-010102">
+		<style id="elmercado-user-request-review-010103">
 			/*
-			 * Portada: ningún contenedor interior de producto vuelve a pintar
-			 * una tarjeta blanca. La única superficie es la propia sección.
+			 * Nombres de producto: dos líneas completas tanto en portada como en tienda.
+			 * Si el nombre necesita más espacio, line-clamp muestra la elipsis al final.
 			 */
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product,
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product:hover,
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-wrapper,
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-image-wrapper,
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product :is(
-				.woocommerce-LoopProduct-link,
-				.woocommerce-loop-product__link,
-				.product-loop-content,
-				.product-content,
-				.product-thumbnail,
-				.product-image,
-				.product-loop-image
+			body.elmercado-child-theme ul.products li.product :is(
+				.woocommerce-loop-product__title,
+				.product-title,
+				h2,
+				h3
 			) {
-				background: transparent !important;
-				background-color: transparent !important;
-				background-image: none !important;
-				border-color: transparent !important;
-				box-shadow: none !important;
-			}
-
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-wrapper {
-				border: 0 !important;
-				border-radius: 0 !important;
-				overflow: visible !important;
-			}
-
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-image-wrapper {
-				margin: 0 !important;
-				padding: 0 !important;
-				border: 0 !important;
-				border-radius: 18px !important;
+				display: -webkit-box !important;
+				box-sizing: border-box !important;
+				height: 2.7em !important;
+				min-height: 2.7em !important;
+				max-height: 2.7em !important;
+				margin-bottom: 8px !important;
 				overflow: hidden !important;
-				isolation: isolate !important;
-			}
-
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-image-wrapper::before,
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-image-wrapper::after {
-				display: none !important;
-				content: none !important;
-				background: none !important;
-			}
-
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product :is(
-				.product-loop-image-wrapper img,
-				img.product-loop-image,
-				.woocommerce-LoopProduct-link img,
-				.woocommerce-loop-product__link img
-			) {
-				margin: 0 !important;
-				padding: 0 !important;
-				background: transparent !important;
-				background-color: transparent !important;
-				background-image: none !important;
-				border-radius: 18px !important;
-			}
-
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product :is(
-				.product-loop-content,
-				.product-content
-			) {
-				margin-top: 0 !important;
-				padding: 12px 2px 0 !important;
-				border: 0 !important;
-				overflow: visible !important;
+				-webkit-box-orient: vertical !important;
+				-webkit-line-clamp: 2 !important;
+				line-clamp: 2 !important;
+				line-height: 1.35 !important;
+				text-overflow: ellipsis !important;
+				text-wrap: wrap !important;
+				white-space: normal !important;
+				overflow-wrap: break-word !important;
 			}
 
 			/*
