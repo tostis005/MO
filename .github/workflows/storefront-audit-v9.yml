@@ -30,6 +30,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p qa
+          python - <<'PY'
+          from pathlib import Path
+          legacy = Path('.github/scripts/user-request-010100-check.cjs')
+          text = legacy.read_text()
+          old = "if (metric.tax.top < metric.total.bottom - 1) failures.push(`cart alignment: tax note is not below total (${JSON.stringify(metric)})`);"
+          new = "if (metric.tax.top >= metric.total.bottom - 1 || metric.total.top >= metric.tax.bottom - 1) failures.push(`cart alignment: tax note is not inline with total (${JSON.stringify(metric)})`);"
+          if old not in text:
+              raise SystemExit('legacy cart VAT assertion not found')
+          legacy.write_text(text.replace(old, new))
+          PY
           node --check .github/scripts/runtime-layout-policy-check.cjs
           node --check .github/scripts/user-request-visual-check.cjs
           node --check .github/scripts/page-start-filter-check.cjs
@@ -39,6 +49,7 @@ jobs:
           node --check .github/scripts/user-feedback-01096-check.cjs
           node --check .github/scripts/home-rhythm-01098-check.cjs
           node --check .github/scripts/user-request-010100-check.cjs
+          node --check .github/scripts/user-request-010107-check.cjs
           node .github/scripts/runtime-layout-policy-check.cjs
           node .github/scripts/user-request-visual-check.cjs
           node .github/scripts/real-device-layout-check-01081.cjs
@@ -48,6 +59,7 @@ jobs:
           node .github/scripts/user-feedback-01096-check.cjs
           node .github/scripts/home-rhythm-01098-check.cjs
           node .github/scripts/user-request-010100-check.cjs
+          node .github/scripts/user-request-010107-check.cjs
       - name: Audit deployed storefront
         shell: bash
         run: |
