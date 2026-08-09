@@ -1,6 +1,6 @@
 <?php
 /**
- * Contraste final del bloque editorial claro de la portada móvil 0.10.97.
+ * Contraste final del bloque editorial claro de la portada móvil 0.10.114.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,10 +16,10 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-mobile-home-contrast-01097">
+		<style id="elmercado-mobile-home-contrast-010114">
 			@media (max-width: 767px) {
 				body.home.elmercado-child-theme .emo-story__panel p {
-					color: #5f6b65 !important;
+					color: #4f5d56 !important;
 				}
 			}
 		</style>
