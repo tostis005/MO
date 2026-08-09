@@ -35,7 +35,8 @@ async function homeCheck(page, width, height) {
       featuredBg: f?.backgroundColor || '',
       storyBg: s?.backgroundColor || '',
       cardBg: c?.backgroundColor || '',
-      cardBorder: c?.borderTopWidth || '',
+      cardBorderColor: c?.borderTopColor || '',
+      cardBorderWidth: c?.borderTopWidth || '',
       cardShadow: c?.boxShadow || '',
       cardOverflow: c?.overflow || '',
       imageRadius: i?.borderRadius || '',
@@ -46,7 +47,7 @@ async function homeCheck(page, width, height) {
   if (!metric.productCount) failures.push(`${width}px home: no featured products`);
   if (metric.overflow > 1) failures.push(`${width}px home: horizontal overflow ${metric.overflow}px`);
   if (!transparent(metric.cardBg)) failures.push(`${width}px home: product card background is not transparent (${metric.cardBg})`);
-  if (metric.cardBorder !== '0px') failures.push(`${width}px home: product card border remains (${metric.cardBorder})`);
+  if (!transparent(metric.cardBorderColor)) failures.push(`${width}px home: visible product card border remains (${metric.cardBorderWidth} ${metric.cardBorderColor})`);
   if (metric.cardShadow !== 'none') failures.push(`${width}px home: product card shadow remains (${metric.cardShadow})`);
   if (metric.featuredBg === metric.storyBg || !metric.featuredBg || !metric.storyBg) failures.push(`${width}px home: featured/story surfaces are not distinct (${metric.featuredBg} / ${metric.storyBg})`);
   await page.screenshot({ path: `qa/user-request-010100-home-${width}.png`, fullPage: true });
