@@ -1,9 +1,10 @@
 <?php
 /**
- * Paleta final de portada alineada con el resto del sitio 0.10.117.
+ * Paleta final de portada alineada con el resto del sitio 0.10.118.
  *
- * Mantiene las superficies amplias en papel y blanco roto, y reserva los
- * verdes de marca para jerarquía, acentos y bloques de contraste.
+ * Mantiene las superficies amplias en papel y blanco roto, reserva los verdes
+ * de marca para jerarquía y acentos, y conserva en móvil el bloque editorial
+ * ligero que ya forma parte del lenguaje de la portada.
  *
  * @package ElMercadoDeOrigen
  */
@@ -19,7 +20,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-home-palette-site-final-010117">
+		<style id="elmercado-home-palette-site-final-010118">
 			body.home.elmercado-child-theme .emo-home {
 				--emo-home-categories-bg: #f7f3ea;
 				--emo-home-products-bg: #fffdf8;
@@ -44,15 +45,12 @@ add_action(
 				box-shadow: none !important;
 			}
 
-			/* Hero y bloque editorial: verdes de marca sin dominantes anaranjadas. */
+			/* Hero: verdes de marca sin dominantes anaranjadas. */
 			body.home.elmercado-child-theme .emo-hero {
 				background:
 					radial-gradient(circle at 12% 20%, rgba(228,238,232,.10), transparent 30%),
 					radial-gradient(circle at 89% 12%, rgba(247,243,234,.08), transparent 28%),
 					linear-gradient(135deg, #122a22, #21483a) !important;
-			}
-			body.home.elmercado-child-theme .emo-story__panel {
-				background: linear-gradient(145deg, #173f32, #21483a) !important;
 			}
 
 			/* Los acentos claros pasan del melocotón a salvia/papel. */
@@ -78,6 +76,22 @@ add_action(
 				background: #fffdf8 !important;
 				border-color: #fffdf8 !important;
 				color: #122a22 !important;
+			}
+
+			/* En escritorio el panel editorial mantiene contraste de marca; en móvil sigue integrado en papel. */
+			@media (min-width: 768px) {
+				body.home.elmercado-child-theme .emo-story__panel {
+					background: linear-gradient(145deg, #173f32, #21483a) !important;
+				}
+			}
+			@media (max-width: 767px) {
+				body.home.elmercado-child-theme .emo-story__panel {
+					background: transparent !important;
+					background-image: none !important;
+				}
+				body.home.elmercado-child-theme .emo-story__panel .emo-kicker {
+					color: #2f6650 !important;
+				}
 			}
 		</style>
 		<?php
