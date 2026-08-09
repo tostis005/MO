@@ -112,6 +112,7 @@ $elmercado_modules = array(
 	'inc/home-rhythm-final-01099.php',
 	'inc/user-request-polish-010100.php',
 	'inc/user-request-review-010102.php',
+	'inc/filtered-context-desktop-010102.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
