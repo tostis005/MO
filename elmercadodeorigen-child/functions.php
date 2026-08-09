@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.101' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.102' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -111,6 +111,7 @@ $elmercado_modules = array(
 	'inc/mobile-home-contrast-01097.php',
 	'inc/home-rhythm-final-01099.php',
 	'inc/user-request-polish-010100.php',
+	'inc/user-request-review-010102.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {

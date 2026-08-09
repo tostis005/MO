@@ -6,84 +6,153 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const failures = [];
 const checks = {};
 
-async function go(page, path, delay = 700) {
-  const separator = path.includes('?') ? '&' : '?';
-  const response = await page.goto(`${BASE}${path}${separator}qa-010101=${Date.now()}`, {
-    waitUntil: 'domcontentloaded', timeout: 60000,
-  });
+async function go(page, pathOrUrl, delay = 700) {
+  const url = /^https?:/i.test(pathOrUrl) ? new URL(pathOrUrl) : new URL(pathOrUrl, BASE);
+  url.searchParams.set('qa-010102', Date.now().toString());
+  const response = await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}' }).catch(() => {});
   await sleep(delay);
-  if (!response || response.status() >= 400) failures.push(`${path}: HTTP ${response?.status() || 'none'}`);
+  if (!response || response.status() >= 400) failures.push(`${url.pathname}: HTTP ${response?.status() || 'none'}`);
 }
 
 function transparent(value) {
   return value === 'transparent' || /rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/i.test(value || '');
 }
 
-async function homeCheck(page, width, height) {
+async function homeSurfaceCheck(page, width, height) {
   await page.setViewport({ width, height, deviceScaleFactor: 1, isMobile: width <= 767, hasTouch: width <= 1100 });
   await go(page, '/');
   const metric = await page.evaluate(() => {
-    const featured = document.querySelector('.emo-featured-products');
-    const story = document.querySelector('.emo-story');
-    const cards = [...(featured?.querySelectorAll('ul.products li.product') || [])].slice(0, 8);
-    const style = (node) => node ? getComputedStyle(node) : null;
-    const f = style(featured); const s = style(story);
-    const cardMetrics = cards.map((card) => {
-      const imageWrapper = card.querySelector('.product-loop-image-wrapper');
-      const content = card.querySelector('.product-loop-content,.product-content');
-      const image = card.querySelector('a img');
-      const c = style(card); const iw = style(imageWrapper); const ct = style(content); const im = style(image);
-      const pseudo = imageWrapper ? getComputedStyle(imageWrapper, '::after') : null;
+    const card = document.querySelector('.emo-featured-products ul.products li.product');
+    if (!card) return null;
+    const nodes = {
+      card,
+      wrapper: card.querySelector('.product-loop-wrapper'),
+      imageWrapper: card.querySelector('.product-loop-image-wrapper'),
+      link: card.querySelector('.woocommerce-LoopProduct-link,.woocommerce-loop-product__link'),
+      content: card.querySelector('.product-loop-content,.product-content'),
+      image: card.querySelector('img'),
+    };
+    const surface = (node) => {
+      if (!node) return null;
+      const s = getComputedStyle(node);
       return {
-        cardBg: c?.backgroundColor || '',
-        cardBorderColor: c?.borderTopColor || '',
-        cardBorderWidth: c?.borderTopWidth || '',
-        cardShadow: c?.boxShadow || '',
-        imageWrapperExists: !!imageWrapper,
-        imageWrapperBg: iw?.backgroundColor || '',
-        imageWrapperImage: iw?.backgroundImage || '',
-        imageWrapperPadding: iw ? `${iw.paddingTop} ${iw.paddingRight} ${iw.paddingBottom} ${iw.paddingLeft}` : '',
-        pseudoDisplay: pseudo?.display || '',
-        pseudoContent: pseudo?.content || '',
-        pseudoBg: pseudo?.backgroundColor || '',
-        pseudoImage: pseudo?.backgroundImage || '',
-        contentExists: !!content,
-        contentBg: ct?.backgroundColor || '',
-        contentImage: ct?.backgroundImage || '',
-        contentShadow: ct?.boxShadow || '',
-        contentMarginTop: ct?.marginTop || '',
-        imageRadius: im?.borderRadius || '',
+        backgroundColor: s.backgroundColor,
+        backgroundImage: s.backgroundImage,
+        borderColor: s.borderTopColor,
+        boxShadow: s.boxShadow,
+        overflow: s.overflow,
+        borderRadius: s.borderRadius,
       };
-    });
+    };
     return {
       overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
-      featuredBg: f?.backgroundColor || '',
-      storyBg: s?.backgroundColor || '',
-      productCount: cards.length,
-      cards: cardMetrics,
+      surfaces: Object.fromEntries(Object.entries(nodes).map(([key, node]) => [key, surface(node)])),
     };
   });
-  checks[`home-${width}`] = metric;
-  if (!metric.productCount) failures.push(`${width}px home: no featured products`);
-  if (metric.overflow > 1) failures.push(`${width}px home: horizontal overflow ${metric.overflow}px`);
-  if (metric.featuredBg === metric.storyBg || !metric.featuredBg || !metric.storyBg) failures.push(`${width}px home: featured/story surfaces are not distinct (${metric.featuredBg} / ${metric.storyBg})`);
-  metric.cards.forEach((card, index) => {
-    if (!transparent(card.cardBg)) failures.push(`${width}px home card ${index}: card background is not transparent (${card.cardBg})`);
-    if (!transparent(card.cardBorderColor)) failures.push(`${width}px home card ${index}: visible border remains (${card.cardBorderWidth} ${card.cardBorderColor})`);
-    if (card.cardShadow !== 'none') failures.push(`${width}px home card ${index}: card shadow remains (${card.cardShadow})`);
-    if (card.imageWrapperExists) {
-      if (!transparent(card.imageWrapperBg) || card.imageWrapperImage !== 'none') failures.push(`${width}px home card ${index}: image wrapper still paints a surface (${card.imageWrapperBg} / ${card.imageWrapperImage})`);
-      if (card.imageWrapperPadding !== '0px 0px 0px 0px') failures.push(`${width}px home card ${index}: image wrapper padding remains (${card.imageWrapperPadding})`);
-      if (card.pseudoDisplay !== 'none' && card.pseudoContent !== 'none') failures.push(`${width}px home card ${index}: image wrapper fade pseudo remains (${card.pseudoDisplay} / ${card.pseudoContent})`);
+  checks[`homeSurface-${width}`] = metric;
+  if (!metric) {
+    failures.push(`${width}px home surface: featured card missing`);
+    return;
+  }
+  for (const key of ['card', 'wrapper', 'imageWrapper', 'link', 'content']) {
+    const surface = metric.surfaces[key];
+    if (!surface) continue;
+    if (!transparent(surface.backgroundColor) || surface.backgroundImage !== 'none') {
+      failures.push(`${width}px home surface ${key}: painted background remains (${surface.backgroundColor} / ${surface.backgroundImage})`);
     }
-    if (card.contentExists) {
-      if (!transparent(card.contentBg) || card.contentImage !== 'none') failures.push(`${width}px home card ${index}: product content still paints a surface (${card.contentBg} / ${card.contentImage})`);
-      if (card.contentShadow !== 'none') failures.push(`${width}px home card ${index}: product content shadow remains (${card.contentShadow})`);
-      if (card.contentMarginTop !== '0px') failures.push(`${width}px home card ${index}: product content still overlaps image (${card.contentMarginTop})`);
-    }
+  }
+  if (metric.surfaces.wrapper && metric.surfaces.wrapper.overflow !== 'visible') {
+    failures.push(`${width}px home surface wrapper: overflow should be visible (${metric.surfaces.wrapper.overflow})`);
+  }
+  if (metric.surfaces.imageWrapper && parseFloat(metric.surfaces.imageWrapper.borderRadius || '0') < 12) {
+    failures.push(`${width}px home surface image wrapper: rounded corners missing (${metric.surfaces.imageWrapper.borderRadius})`);
+  }
+  if (metric.overflow > 1) failures.push(`${width}px home surface: horizontal overflow ${metric.overflow}px`);
+  await page.screenshot({ path: `qa/user-request-010102-home-${width}.png`, fullPage: true });
+}
+
+async function landscapeCheck(page) {
+  await page.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await go(page, '/');
+  const metric = await page.evaluate(() => {
+    const rowCount = (selector) => {
+      const items = [...document.querySelectorAll(selector)].filter((node) => {
+        const r = node.getBoundingClientRect();
+        const s = getComputedStyle(node);
+        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+      });
+      if (!items.length) return 0;
+      const top = items[0].getBoundingClientRect().top;
+      return items.filter((node) => Math.abs(node.getBoundingClientRect().top - top) < 3).length;
+    };
+    const track = document.querySelector('.emo-featured-products ul.products');
+    const card = track?.querySelector('li.product');
+    const cs = track ? getComputedStyle(track) : null;
+    return {
+      productFirstRow: rowCount('.emo-featured-products ul.products li.product'),
+      categoryFirstRow: rowCount('.emo-category-grid .emo-category-card'),
+      cardWidth: card?.getBoundingClientRect().width || 0,
+      display: cs?.display || '',
+      columns: cs?.gridTemplateColumns || '',
+      overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
+    };
   });
-  await page.screenshot({ path: `qa/user-request-010101-home-${width}.png`, fullPage: true });
+  checks.landscape = metric;
+  if (metric.productFirstRow < 3) failures.push(`landscape home: fewer than 3 products in first row (${JSON.stringify(metric)})`);
+  if (metric.cardWidth > 280) failures.push(`landscape home: product cards remain too large (${metric.cardWidth}px)`);
+  if (metric.display !== 'grid') failures.push(`landscape home: product track is not a grid (${metric.display})`);
+  if (metric.overflow > 1) failures.push(`landscape home: horizontal overflow ${metric.overflow}px`);
+  await page.screenshot({ path: 'qa/user-request-010102-home-landscape-844x390.png', fullPage: true });
+}
+
+async function filteredLeadCheck(page) {
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await go(page, '/tienda/');
+  const categoryHref = await page.evaluate(() => {
+    const links = [...document.querySelectorAll('a[href*="/categoria-producto/"]')];
+    const link = links.find((node) => {
+      const r = node.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    }) || links[0];
+    return link?.href || '';
+  });
+  if (!categoryHref) {
+    failures.push('filtered lead: no product-category link available');
+    return;
+  }
+  await go(page, categoryHref, 800);
+  const metric = await page.evaluate(() => {
+    const lead = document.querySelector('.emo-shop-lead');
+    const toolbar = document.querySelector('.woostify-sorting');
+    const rect = (node) => {
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height };
+    };
+    const visible = (node) => {
+      if (!node) return false;
+      const r = node.getBoundingClientRect();
+      const s = getComputedStyle(node);
+      return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
+    };
+    return {
+      url: location.href,
+      leadVisible: visible(lead),
+      leadText: (lead?.textContent || '').replace(/\s+/g, ' ').trim(),
+      lead: rect(lead),
+      toolbar: rect(toolbar),
+      gap: lead && toolbar ? toolbar.getBoundingClientRect().top - lead.getBoundingClientRect().bottom : null,
+      overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
+    };
+  });
+  checks.filteredLead = metric;
+  if (!metric.leadVisible) failures.push(`filtered lead: lead missing/hidden (${JSON.stringify(metric)})`);
+  if (!/procedencia clara/i.test(metric.leadText)) failures.push(`filtered lead: context copy missing (${metric.leadText})`);
+  if (!metric.toolbar) failures.push('filtered lead: result toolbar missing');
+  if (metric.lead && metric.toolbar && metric.toolbar.top <= metric.lead.top) failures.push(`filtered lead: toolbar appears before/over lead (${JSON.stringify(metric)})`);
+  if (metric.overflow > 1) failures.push(`filtered lead: horizontal overflow ${metric.overflow}px`);
+  await page.screenshot({ path: 'qa/user-request-010102-filtered-shop-390.png', fullPage: true });
 }
 
 async function filterFeedbackCheck(page) {
@@ -91,90 +160,99 @@ async function filterFeedbackCheck(page) {
   await go(page, '/tienda/');
   const toggle = await page.$('#emo-premium-filter-toggle');
   if (!toggle) {
-    failures.push('390px filter feedback: premium filter toggle missing');
+    failures.push('filter feedback: premium filter toggle missing');
     return;
   }
   await toggle.click();
-  await sleep(250);
-
+  await sleep(220);
   await page.evaluate(() => {
     window.__emoQaPreventFilterNav = (event) => {
       if (event.target.closest?.('#emo-premium-filter-shell .emo-mobile-filter-content a[href]')) event.preventDefault();
     };
     document.addEventListener('click', window.__emoQaPreventFilterNav, true);
   });
-
-  const link = await page.evaluateHandle(() => {
+  const handle = await page.evaluateHandle(() => {
     const visible = (node) => {
-      const r = node.getBoundingClientRect(); const s = getComputedStyle(node);
+      const r = node.getBoundingClientRect();
+      const s = getComputedStyle(node);
       return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
     };
     return [...document.querySelectorAll('#emo-premium-filter-shell .emo-mobile-filter-content a[href]')]
       .find((node) => visible(node) && node.getAttribute('href') && node.getAttribute('href').charAt(0) !== '#') || null;
   });
-  const element = link.asElement();
-  if (!element) {
-    failures.push('390px filter feedback: no visible filter link');
-    await link.dispose();
+  const link = handle.asElement();
+  if (!link) {
+    failures.push('filter feedback: no visible filter link');
+    await handle.dispose();
     return;
   }
-  await element.click();
+  await link.click();
   await sleep(90);
   const state = await page.evaluate(() => {
     const overlay = document.querySelector('#emo-catalog-filter-progress');
     if (!overlay) return null;
-    const r = overlay.getBoundingClientRect(); const s = getComputedStyle(overlay);
+    const r = overlay.getBoundingClientRect();
+    const s = getComputedStyle(overlay);
     return {
-      hidden: overlay.hidden,
       visible: !overlay.hidden && r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden',
       text: (overlay.textContent || '').replace(/\s+/g, ' ').trim(),
       ariaBusy: document.body.getAttribute('aria-busy'),
-      width: Math.round(r.width),
-      height: Math.round(r.height),
     };
   });
   checks.filterFeedback = state;
-  if (!state?.visible) failures.push(`390px filter feedback: progress layer not visible (${JSON.stringify(state)})`);
-  if (!/actualizando productos/i.test(state?.text || '')) failures.push(`390px filter feedback: progress copy missing (${JSON.stringify(state)})`);
-  if (state?.ariaBusy !== 'true') failures.push(`390px filter feedback: aria-busy not set (${JSON.stringify(state)})`);
-  await page.screenshot({ path: 'qa/user-request-010101-filter-feedback-390.png', fullPage: false });
-  await link.dispose();
+  if (!state?.visible) failures.push(`filter feedback: progress layer not visible (${JSON.stringify(state)})`);
+  if (!/actualizando productos/i.test(state?.text || '')) failures.push(`filter feedback: progress copy missing (${JSON.stringify(state)})`);
+  if (state?.ariaBusy !== 'true') failures.push(`filter feedback: aria-busy not set (${JSON.stringify(state)})`);
+  await page.screenshot({ path: 'qa/user-request-010102-filter-feedback-390.png', fullPage: false });
+  await handle.dispose();
 }
 
-async function cartCheck(page, productId) {
+async function cartAlignmentCheck(page, productId) {
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   await go(page, `/tienda/?add-to-cart=${productId}`, 850);
   await go(page, '/carrito/', 800);
   const metric = await page.evaluate(() => {
-    const subtotal = document.querySelector('.cart_totals .cart-subtotal td .amount');
-    const orderAmount = document.querySelector('.cart_totals .order-total td strong .amount,.cart_totals .order-total td > strong .amount');
-    const tax = document.querySelector('.cart_totals .order-total td .includes_tax');
-    const td = document.querySelector('.cart_totals .order-total td');
+    const card = document.querySelector('.cart_totals');
+    const table = card?.querySelector('table.shop_table');
+    const firstTh = table?.querySelector('tbody tr th, tr th');
+    const subtotal = card?.querySelector('.cart-subtotal td .amount');
+    const total = card?.querySelector('.order-total td .amount');
+    const tax = card?.querySelector('.order-total td .includes_tax');
     const rect = (node) => {
       if (!node) return null;
       const r = node.getBoundingClientRect();
       return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
     };
+    const style = card ? getComputedStyle(card) : null;
+    const cardRect = rect(card);
+    const expectedLeft = cardRect && style ? cardRect.left + parseFloat(style.paddingLeft || '0') : null;
+    const expectedRight = cardRect && style ? cardRect.right - parseFloat(style.paddingRight || '0') : null;
     return {
+      card: cardRect,
+      table: rect(table),
+      firstTh: rect(firstTh),
       subtotal: rect(subtotal),
-      total: rect(orderAmount),
+      total: rect(total),
       tax: rect(tax),
-      cell: rect(td),
-      strongDisplay: orderAmount?.closest('strong') ? getComputedStyle(orderAmount.closest('strong')).display : '',
-      taxDisplay: tax ? getComputedStyle(tax).display : '',
-      textAlign: td ? getComputedStyle(td).textAlign : '',
+      expectedLeft,
+      expectedRight,
+      tableDisplay: table ? getComputedStyle(table).display : '',
+      tableWidth: table ? getComputedStyle(table).width : '',
       overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
     };
   });
-  checks.cart = metric;
-  if (!metric.subtotal || !metric.total || !metric.tax || !metric.cell) failures.push(`cart total geometry missing (${JSON.stringify(metric)})`);
-  else {
-    if (Math.abs(metric.subtotal.right - metric.total.right) > 5) failures.push(`cart total amount not aligned with subtotal (${JSON.stringify(metric)})`);
-    if (metric.tax.top < metric.total.bottom - 1) failures.push(`cart tax note did not move below total (${JSON.stringify(metric)})`);
-    if (metric.textAlign !== 'right') failures.push(`cart total cell not right aligned (${metric.textAlign})`);
+  checks.cartAlignment = metric;
+  if (!metric.card || !metric.table || !metric.subtotal || !metric.total || !metric.tax) {
+    failures.push(`cart alignment: geometry missing (${JSON.stringify(metric)})`);
+  } else {
+    if (Math.abs(metric.table.left - metric.expectedLeft) > 3) failures.push(`cart alignment: table left inset incorrect (${JSON.stringify(metric)})`);
+    if (Math.abs(metric.table.right - metric.expectedRight) > 3) failures.push(`cart alignment: table does not reach right inset (${JSON.stringify(metric)})`);
+    if (Math.abs(metric.subtotal.right - metric.expectedRight) > 4) failures.push(`cart alignment: subtotal too far left (${JSON.stringify(metric)})`);
+    if (Math.abs(metric.total.right - metric.expectedRight) > 4) failures.push(`cart alignment: total too far left (${JSON.stringify(metric)})`);
+    if (metric.tax.top < metric.total.bottom - 1) failures.push(`cart alignment: tax note is not below total (${JSON.stringify(metric)})`);
   }
-  if (metric.overflow > 1) failures.push(`cart 390px horizontal overflow ${metric.overflow}px`);
-  await page.screenshot({ path: 'qa/user-request-010101-cart-390.png', fullPage: true });
+  if (metric.overflow > 1) failures.push(`cart alignment: horizontal overflow ${metric.overflow}px`);
+  await page.screenshot({ path: 'qa/user-request-010102-cart-390.png', fullPage: true });
 }
 
 (async () => {
@@ -183,22 +261,31 @@ async function cartCheck(page, productId) {
   const product = products.find((item) => item.is_purchasable && item.is_in_stock && item.type === 'simple');
   if (!product) throw new Error('No purchasable simple product available for cart QA');
 
-  const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', protocolTimeout: 120000, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await puppeteer.launch({
+    executablePath: '/usr/bin/google-chrome',
+    headless: 'new',
+    protocolTimeout: 120000,
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(60000);
   try {
-    for (const [width, height] of [[390, 844], [768, 1024], [1100, 900], [1440, 1000]]) await homeCheck(page, width, height);
+    for (const [width, height] of [[390, 844], [768, 1024], [1100, 900], [1440, 1000]]) {
+      await homeSurfaceCheck(page, width, height);
+    }
+    await landscapeCheck(page);
     await filterFeedbackCheck(page);
-    await cartCheck(page, product.id);
+    await filteredLeadCheck(page);
+    await cartAlignmentCheck(page, product.id);
   } finally {
     await browser.close();
   }
 
-  fs.writeFileSync('qa/user-request-010101-check.json', JSON.stringify({ failures, checks }, null, 2));
+  fs.writeFileSync('qa/user-request-010102-check.json', JSON.stringify({ failures, checks }, null, 2));
   if (failures.length) {
-    console.error(`USER_REQUEST_010101_FAIL ${JSON.stringify(failures)}`);
+    console.error(`USER_REQUEST_010102_FAIL ${JSON.stringify(failures)}`);
     process.exitCode = 2;
   } else {
-    console.log(`USER_REQUEST_010101_OK ${JSON.stringify(checks)}`);
+    console.log(`USER_REQUEST_010102_OK ${JSON.stringify(checks)}`);
   }
 })();
