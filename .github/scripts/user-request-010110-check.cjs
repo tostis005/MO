@@ -3,10 +3,10 @@ const puppeteer=require('puppeteer-core');
 const BASE='https://dev.elmercadodeorigen.com';
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const failures=[];const checks={};
-const EXPECT={categories:[248,240,228],products:[215,231,220],story:[234,215,196]};
+const EXPECT={categories:[240,216,160],products:[239,208,195],story:[226,228,220]};
 
 async function go(page,path,delay=650){
-  const u=new URL(path,BASE);u.searchParams.set('qa-010111',Date.now());
+  const u=new URL(path,BASE);u.searchParams.set('qa-010113',Date.now());
   const res=await page.goto(u.href,{waitUntil:'domcontentloaded',timeout:60000});
   await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}'}).catch(()=>{});
   await page.evaluate(()=>{document.documentElement.style.scrollBehavior='auto'});await sleep(delay);
@@ -55,7 +55,7 @@ async function homeCheck(page,w,h){
     if(w<=991&&Number.isFinite(m.categoryGap)&&m.categoryGap>0&&(m.categoryGap<14||m.categoryGap>24)) failures.push(`home ${w}: category reference gap ${m.categoryGap}`);
     if(m.overflow>1) failures.push(`home ${w}: overflow ${m.overflow}px`);
   }
-  await page.screenshot({path:`qa/user-request-010111-home-${w}.png`,fullPage:true});
+  await page.screenshot({path:`qa/user-request-010113-home-${w}.png`,fullPage:true});
 }
 
 async function cartCheck(page,id,w=390,h=844){
@@ -68,14 +68,14 @@ async function cartCheck(page,id,w=390,h=844){
   });
   checks[`cart-${w}`]=m;
   if(!m.line||!m.total||!m.tax) failures.push(`cart ${w}: inline total missing ${JSON.stringify(m)}`);
-  else{if(Math.abs(m.total.mid-m.tax.mid)>5) failures.push(`cart ${w}: VAT not inline`);if(Math.abs(m.total.right-m.expectedRight)>5) failures.push(`cart ${w}: total not at right margin ${JSON.stringify(m)}`);if(m.line.width>m.td.width+1) failures.push(`cart ${w}: total line overflow`);if(!/iva/i.test(m.taxText)) failures.push(`cart ${w}: VAT text missing`);if(parseFloat(m.taxFont)<10) failures.push(`cart ${w}: VAT text too small ${m.taxFont}`);if(!/flex/.test(m.display)||m.direction!=='row-reverse') failures.push(`cart ${w}: inline presentation wrong ${m.display}/${m.direction}`)}
+  else{if(Math.abs(m.total.mid-m.tax.mid)>5) failures.push(`cart ${w}: VAT not inline`);if(Math.abs(m.tax.right-m.expectedRight)>5) failures.push(`cart ${w}: VAT detail not at right margin ${JSON.stringify(m)}`);if(m.total.left>=m.tax.left) failures.push(`cart ${w}: total is not before VAT ${JSON.stringify(m)}`);if(m.line.width>m.td.width+1) failures.push(`cart ${w}: total line overflow`);if(!/iva/i.test(m.taxText)) failures.push(`cart ${w}: VAT text missing`);if(parseFloat(m.taxFont)<10) failures.push(`cart ${w}: VAT text too small ${m.taxFont}`);if(!/flex/.test(m.display)||m.direction!=='row') failures.push(`cart ${w}: inline presentation wrong ${m.display}/${m.direction}`)}
   if(m.overflow>1) failures.push(`cart ${w}: overflow ${m.overflow}px`);
-  await page.screenshot({path:`qa/user-request-010111-cart-${w}.png`,fullPage:true});
+  await page.screenshot({path:`qa/user-request-010113-cart-${w}.png`,fullPage:true});
 }
 
 async function scrollCheck(page,path,label,w,h,capture=false){
   await page.setViewport({width:w,height:h,deviceScaleFactor:1,isMobile:w<=767,hasTouch:w<=1100});await go(page,path,700);const rows=[];
-  for(const y of [0,4,8,12,16,24,40]){await page.evaluate(v=>window.scrollTo(0,v),y);await sleep(90);rows.push(await page.evaluate(()=>{const h=document.querySelector('.site-header'),i=document.querySelector('.site-header-inner'),c=document.querySelector('#content,.site-content'),s=h?getComputedStyle(h):null,is=i?getComputedStyle(i):null,cs=c?getComputedStyle(c):null,hr=h?.getBoundingClientRect(),cr=c?.getBoundingClientRect();const bump=[...document.querySelectorAll('.site-header .bumper,.site-header + .bumper,.site-header-inner + .bumper,.site-header-inner ~ .bumper')].some(n=>{const r=n.getBoundingClientRect(),x=getComputedStyle(n);return r.height>0&&r.width>0&&x.display!=='none'&&x.visibility!=='hidden'});return{y:scrollY,hh:hr?.height??null,docTop:cr?cr.top+scrollY:null,bg:s?.backgroundColor||'',shadow:s?.boxShadow||'',position:s?.position||'',innerPosition:is?.position||'',fija:!!i?.classList.contains('fija'),contentMarginTop:cs?.marginTop||'',bumper:bump}}));if(capture&&(y===0||y===16)) await page.screenshot({path:`qa/user-request-010111-scroll-${label}-${w}-${y}.png`,fullPage:false})}
+  for(const y of [0,4,8,12,16,24,40]){await page.evaluate(v=>window.scrollTo(0,v),y);await sleep(90);rows.push(await page.evaluate(()=>{const h=document.querySelector('.site-header'),i=document.querySelector('.site-header-inner'),c=document.querySelector('#content,.site-content'),s=h?getComputedStyle(h):null,is=i?getComputedStyle(i):null,cs=c?getComputedStyle(c):null,hr=h?.getBoundingClientRect(),cr=c?.getBoundingClientRect();const bump=[...document.querySelectorAll('.site-header .bumper,.site-header + .bumper,.site-header-inner + .bumper,.site-header-inner ~ .bumper')].some(n=>{const r=n.getBoundingClientRect(),x=getComputedStyle(n);return r.height>0&&r.width>0&&x.display!=='none'&&x.visibility!=='hidden'});return{y:scrollY,hh:hr?.height??null,docTop:cr?cr.top+scrollY:null,bg:s?.backgroundColor||'',shadow:s?.boxShadow||'',position:s?.position||'',innerPosition:is?.position||'',fija:!!i?.classList.contains('fija'),contentMarginTop:cs?.marginTop||'',bumper:bump}}));if(capture&&(y===0||y===16)) await page.screenshot({path:`qa/user-request-010113-scroll-${label}-${w}-${y}.png`,fullPage:false})}
   checks[`scroll-${label}-${w}`]=rows;const hs=rows.map(x=>x.hh).filter(Number.isFinite),tops=rows.map(x=>x.docTop).filter(Number.isFinite);
   if(!hs.length||!tops.length) failures.push(`${label} ${w}: missing scroll geometry`);else{if(Math.max(...hs)-Math.min(...hs)>1) failures.push(`${label} ${w}: header height jumps`);if(Math.max(...tops)-Math.min(...tops)>1.5) failures.push(`${label} ${w}: content document position jumps ${JSON.stringify(rows)}`)}
   if(new Set(rows.map(x=>x.bg)).size>1) failures.push(`${label} ${w}: header background changes at tiny scroll`);if(new Set(rows.map(x=>x.shadow)).size>1) failures.push(`${label} ${w}: header shadow changes at tiny scroll`);
@@ -89,5 +89,5 @@ async function scrollCheck(page,path,label,w,h,capture=false){
     for(const [path,label] of [['/','home'],['/tienda/','shop'],['/quienes-somos/','about'],['/contacto/','contact'],['/contacto-productores/','producer-contact'],['/productores/','producers'],['/blog/','blog'],['/carrito/','cart'],['/finalizar-compra/','checkout']])await scrollCheck(page,path,label,390,844,label==='home'||label==='shop');
     for(const [path,label] of [['/','home'],['/tienda/','shop'],['/blog/','blog'],['/carrito/','cart']])await scrollCheck(page,path,label,1440,1000);
   }finally{await browser.close()}
-  fs.writeFileSync('qa/user-request-010111-check.json',JSON.stringify({failures,checks},null,2));if(failures.length){console.error('USER_REQUEST_010111_FAIL '+JSON.stringify(failures));process.exitCode=2}else console.log('USER_REQUEST_010111_OK');
+  fs.writeFileSync('qa/user-request-010113-check.json',JSON.stringify({failures,checks},null,2));if(failures.length){console.error('USER_REQUEST_010113_FAIL '+JSON.stringify(failures));process.exitCode=2}else console.log('USER_REQUEST_010113_OK');
 })();

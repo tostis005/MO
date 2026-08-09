@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.112.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.113.
  *
  * @package ElMercadoDeOrigen
  */
@@ -31,13 +31,13 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010112">
-			/* Portada: tres superficies editoriales centrales más distinguibles, sin perder la paleta suave. */
+		<style id="elmercado-visual-continuity-final-010113">
+			/* Portada: tonos cálidos de miel, arcilla y piedra; sin blanco, verde ni marrón dominante. */
 			body.home.elmercado-child-theme .emo-home {
-				--emo-home-categories-bg: #f8f0e4;
-				--emo-home-products-bg: #d7e7dc;
-				--emo-home-story-bg: #ead7c4;
-				--emo-home-story-muted: #4f5d56;
+				--emo-home-categories-bg: #f0d8a0;
+				--emo-home-products-bg: #efd0c3;
+				--emo-home-story-bg: #e2e4dc;
+				--emo-home-muted: #4f5d56;
 			}
 			body.home.elmercado-child-theme .emo-categories {
 				background: var(--emo-home-categories-bg) !important;
@@ -68,12 +68,14 @@ add_action(
 				box-shadow: none !important;
 			}
 
-			/* El texto secundario de las tarjetas claras mantiene contraste AA sobre el nuevo fondo arena. */
+			/* El texto secundario mantiene contraste AA sobre las tres superficies claras. */
+			body.home.elmercado-child-theme .emo-categories .emo-section-heading > p,
+			body.home.elmercado-child-theme .emo-featured-products .emo-section-heading p,
 			body.home.elmercado-child-theme .emo-story__values p {
-				color: var(--emo-home-story-muted) !important;
+				color: var(--emo-home-muted) !important;
 			}
 
-			/* Patrón editorial común: kicker marrón, título y descripción con el mismo ritmo vertical. */
+			/* Patrón editorial común: kicker, título y descripción con el mismo ritmo vertical. */
 			body.elmercado-child-theme :is(.emo-kicker,.emo-eyebrow) + :is(h1,h2,h3) {
 				margin-bottom: 0 !important;
 			}
@@ -107,7 +109,7 @@ add_action(
 				padding: 0 !important;
 			}
 
-			/* Carrito: IVA e importe comparten una línea; el importe termina al margen derecho. */
+			/* Carrito: primero el total y, después, el detalle de IVA entre paréntesis. */
 			body.elmercado-child-theme.woocommerce-cart .cart_totals tr.order-total th {
 				width: 32% !important;
 				padding-right: 8px !important;
@@ -125,7 +127,7 @@ add_action(
 				align-items: baseline !important;
 				justify-content: flex-end !important;
 				gap: 6px !important;
-				flex-direction: row-reverse !important;
+				flex-direction: row !important;
 				white-space: nowrap !important;
 			}
 			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > strong,

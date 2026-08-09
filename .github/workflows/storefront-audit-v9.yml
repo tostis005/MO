@@ -36,9 +36,11 @@ jobs:
           text = legacy.read_text()
           old = "if (metric.tax.top < metric.total.bottom - 1) failures.push(`cart alignment: tax note is not below total (${JSON.stringify(metric)})`);"
           new = "if (metric.tax.top >= metric.total.bottom - 1 || metric.total.top >= metric.tax.bottom - 1) failures.push(`cart alignment: tax note is not inline with total (${JSON.stringify(metric)})`);"
-          if old not in text:
-              raise SystemExit('legacy cart VAT assertion not found')
-          legacy.write_text(text.replace(old, new))
+          old_right = "if (Math.abs(metric.total.right - metric.expectedRight) > 4) failures.push(`cart alignment: total too far left (${JSON.stringify(metric)})`);"
+          new_right = "if (Math.abs(metric.tax.right - metric.expectedRight) > 4) failures.push(`cart alignment: VAT detail too far left (${JSON.stringify(metric)})`);"
+          if old not in text or old_right not in text:
+              raise SystemExit('legacy cart VAT assertions not found')
+          legacy.write_text(text.replace(old, new).replace(old_right, new_right))
           PY
           node --check .github/scripts/runtime-layout-policy-check.cjs
           node --check .github/scripts/user-request-visual-check.cjs
