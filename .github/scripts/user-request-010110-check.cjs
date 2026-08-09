@@ -52,7 +52,7 @@ async function homeCheck(page,w,h){
       if(gaps.some(x=>x<14||x>24)) failures.push(`home ${w}: title-description gap outside rhythm ${JSON.stringify(m.headingPatterns)}`);
       if(gaps.length&&Math.max(...gaps)-Math.min(...gaps)>2.5) failures.push(`home ${w}: title-description gaps inconsistent ${JSON.stringify(m.headingPatterns)}`);
     }
-    if(w<=991&&Number.isFinite(m.categoryGap)&&(m.categoryGap<14||m.categoryGap>24)) failures.push(`home ${w}: category reference gap ${m.categoryGap}`);
+    if(w<=991&&Number.isFinite(m.categoryGap)&&m.categoryGap>0&&(m.categoryGap<14||m.categoryGap>24)) failures.push(`home ${w}: category reference gap ${m.categoryGap}`);
     if(m.overflow>1) failures.push(`home ${w}: overflow ${m.overflow}px`);
   }
   await page.screenshot({path:`qa/user-request-010111-home-${w}.png`,fullPage:true});

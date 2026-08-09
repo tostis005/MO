@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.111.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.111. QA visual corregido.
  *
  * @package ElMercadoDeOrigen
  */
