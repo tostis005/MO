@@ -8,7 +8,7 @@ const checks = {};
 
 async function go(page, path, delay = 700) {
   const separator = path.includes('?') ? '&' : '?';
-  const response = await page.goto(`${BASE}${path}${separator}qa-010100=${Date.now()}`, {
+  const response = await page.goto(`${BASE}${path}${separator}qa-010101=${Date.now()}`, {
     waitUntil: 'domcontentloaded', timeout: 60000,
   });
   await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}' }).catch(() => {});
@@ -26,31 +26,64 @@ async function homeCheck(page, width, height) {
   const metric = await page.evaluate(() => {
     const featured = document.querySelector('.emo-featured-products');
     const story = document.querySelector('.emo-story');
-    const card = featured?.querySelector('ul.products li.product');
-    const image = card?.querySelector('a img');
-    const css = (node) => node ? getComputedStyle(node) : null;
-    const f = css(featured); const s = css(story); const c = css(card); const i = css(image);
+    const cards = [...(featured?.querySelectorAll('ul.products li.product') || [])].slice(0, 8);
+    const style = (node) => node ? getComputedStyle(node) : null;
+    const f = style(featured); const s = style(story);
+    const cardMetrics = cards.map((card) => {
+      const imageWrapper = card.querySelector('.product-loop-image-wrapper');
+      const content = card.querySelector('.product-loop-content,.product-content');
+      const image = card.querySelector('a img');
+      const c = style(card); const iw = style(imageWrapper); const ct = style(content); const im = style(image);
+      const pseudo = imageWrapper ? getComputedStyle(imageWrapper, '::after') : null;
+      return {
+        cardBg: c?.backgroundColor || '',
+        cardBorderColor: c?.borderTopColor || '',
+        cardBorderWidth: c?.borderTopWidth || '',
+        cardShadow: c?.boxShadow || '',
+        imageWrapperExists: !!imageWrapper,
+        imageWrapperBg: iw?.backgroundColor || '',
+        imageWrapperImage: iw?.backgroundImage || '',
+        imageWrapperPadding: iw ? `${iw.paddingTop} ${iw.paddingRight} ${iw.paddingBottom} ${iw.paddingLeft}` : '',
+        pseudoDisplay: pseudo?.display || '',
+        pseudoContent: pseudo?.content || '',
+        pseudoBg: pseudo?.backgroundColor || '',
+        pseudoImage: pseudo?.backgroundImage || '',
+        contentExists: !!content,
+        contentBg: ct?.backgroundColor || '',
+        contentImage: ct?.backgroundImage || '',
+        contentShadow: ct?.boxShadow || '',
+        contentMarginTop: ct?.marginTop || '',
+        imageRadius: im?.borderRadius || '',
+      };
+    });
     return {
       overflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
       featuredBg: f?.backgroundColor || '',
       storyBg: s?.backgroundColor || '',
-      cardBg: c?.backgroundColor || '',
-      cardBorderColor: c?.borderTopColor || '',
-      cardBorderWidth: c?.borderTopWidth || '',
-      cardShadow: c?.boxShadow || '',
-      cardOverflow: c?.overflow || '',
-      imageRadius: i?.borderRadius || '',
-      productCount: featured?.querySelectorAll('ul.products li.product').length || 0,
+      productCount: cards.length,
+      cards: cardMetrics,
     };
   });
   checks[`home-${width}`] = metric;
   if (!metric.productCount) failures.push(`${width}px home: no featured products`);
   if (metric.overflow > 1) failures.push(`${width}px home: horizontal overflow ${metric.overflow}px`);
-  if (!transparent(metric.cardBg)) failures.push(`${width}px home: product card background is not transparent (${metric.cardBg})`);
-  if (!transparent(metric.cardBorderColor)) failures.push(`${width}px home: visible product card border remains (${metric.cardBorderWidth} ${metric.cardBorderColor})`);
-  if (metric.cardShadow !== 'none') failures.push(`${width}px home: product card shadow remains (${metric.cardShadow})`);
   if (metric.featuredBg === metric.storyBg || !metric.featuredBg || !metric.storyBg) failures.push(`${width}px home: featured/story surfaces are not distinct (${metric.featuredBg} / ${metric.storyBg})`);
-  await page.screenshot({ path: `qa/user-request-010100-home-${width}.png`, fullPage: true });
+  metric.cards.forEach((card, index) => {
+    if (!transparent(card.cardBg)) failures.push(`${width}px home card ${index}: card background is not transparent (${card.cardBg})`);
+    if (!transparent(card.cardBorderColor)) failures.push(`${width}px home card ${index}: visible border remains (${card.cardBorderWidth} ${card.cardBorderColor})`);
+    if (card.cardShadow !== 'none') failures.push(`${width}px home card ${index}: card shadow remains (${card.cardShadow})`);
+    if (card.imageWrapperExists) {
+      if (!transparent(card.imageWrapperBg) || card.imageWrapperImage !== 'none') failures.push(`${width}px home card ${index}: image wrapper still paints a surface (${card.imageWrapperBg} / ${card.imageWrapperImage})`);
+      if (card.imageWrapperPadding !== '0px 0px 0px 0px') failures.push(`${width}px home card ${index}: image wrapper padding remains (${card.imageWrapperPadding})`);
+      if (card.pseudoDisplay !== 'none' && card.pseudoContent !== 'none') failures.push(`${width}px home card ${index}: image wrapper fade pseudo remains (${card.pseudoDisplay} / ${card.pseudoContent})`);
+    }
+    if (card.contentExists) {
+      if (!transparent(card.contentBg) || card.contentImage !== 'none') failures.push(`${width}px home card ${index}: product content still paints a surface (${card.contentBg} / ${card.contentImage})`);
+      if (card.contentShadow !== 'none') failures.push(`${width}px home card ${index}: product content shadow remains (${card.contentShadow})`);
+      if (card.contentMarginTop !== '0px') failures.push(`${width}px home card ${index}: product content still overlaps image (${card.contentMarginTop})`);
+    }
+  });
+  await page.screenshot({ path: `qa/user-request-010101-home-${width}.png`, fullPage: true });
 }
 
 async function filterFeedbackCheck(page) {
@@ -104,7 +137,7 @@ async function filterFeedbackCheck(page) {
   if (!state?.visible) failures.push(`390px filter feedback: progress layer not visible (${JSON.stringify(state)})`);
   if (!/actualizando productos/i.test(state?.text || '')) failures.push(`390px filter feedback: progress copy missing (${JSON.stringify(state)})`);
   if (state?.ariaBusy !== 'true') failures.push(`390px filter feedback: aria-busy not set (${JSON.stringify(state)})`);
-  await page.screenshot({ path: 'qa/user-request-010100-filter-feedback-390.png', fullPage: false });
+  await page.screenshot({ path: 'qa/user-request-010101-filter-feedback-390.png', fullPage: false });
   await link.dispose();
 }
 
@@ -117,7 +150,6 @@ async function cartCheck(page, productId) {
     const orderAmount = document.querySelector('.cart_totals .order-total td strong .amount,.cart_totals .order-total td > strong .amount');
     const tax = document.querySelector('.cart_totals .order-total td .includes_tax');
     const td = document.querySelector('.cart_totals .order-total td');
-    const row = document.querySelector('.cart_totals .order-total');
     const rect = (node) => {
       if (!node) return null;
       const r = node.getBoundingClientRect();
@@ -128,7 +160,6 @@ async function cartCheck(page, productId) {
       total: rect(orderAmount),
       tax: rect(tax),
       cell: rect(td),
-      row: rect(row),
       strongDisplay: orderAmount?.closest('strong') ? getComputedStyle(orderAmount.closest('strong')).display : '',
       taxDisplay: tax ? getComputedStyle(tax).display : '',
       textAlign: td ? getComputedStyle(td).textAlign : '',
@@ -143,7 +174,7 @@ async function cartCheck(page, productId) {
     if (metric.textAlign !== 'right') failures.push(`cart total cell not right aligned (${metric.textAlign})`);
   }
   if (metric.overflow > 1) failures.push(`cart 390px horizontal overflow ${metric.overflow}px`);
-  await page.screenshot({ path: 'qa/user-request-010100-cart-390.png', fullPage: true });
+  await page.screenshot({ path: 'qa/user-request-010101-cart-390.png', fullPage: true });
 }
 
 (async () => {
@@ -163,11 +194,11 @@ async function cartCheck(page, productId) {
     await browser.close();
   }
 
-  fs.writeFileSync('qa/user-request-010100-check.json', JSON.stringify({ failures, checks }, null, 2));
+  fs.writeFileSync('qa/user-request-010101-check.json', JSON.stringify({ failures, checks }, null, 2));
   if (failures.length) {
-    console.error(`USER_REQUEST_010100_FAIL ${JSON.stringify(failures)}`);
+    console.error(`USER_REQUEST_010101_FAIL ${JSON.stringify(failures)}`);
     process.exitCode = 2;
   } else {
-    console.log(`USER_REQUEST_010100_OK ${JSON.stringify(checks)}`);
+    console.log(`USER_REQUEST_010101_OK ${JSON.stringify(checks)}`);
   }
 })();

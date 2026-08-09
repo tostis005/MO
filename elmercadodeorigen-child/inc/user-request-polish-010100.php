@@ -1,6 +1,6 @@
 <?php
 /**
- * Pulido solicitado para portada, carrito y feedback de filtros 0.10.100.
+ * Pulido solicitado para portada, carrito y feedback de filtros 0.10.101.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,8 +16,8 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-user-request-polish-010100">
-			/* Portada: las fichas respiran sobre la sección, sin una segunda tarjeta de color bajo la imagen. */
+		<style id="elmercado-user-request-polish-010101">
+			/* Portada: la fotografía es la única superficie de la ficha; texto y acciones respiran sobre el fondo de sección. */
 			body.home.elmercado-child-theme .emo-featured-products {
 				background: #eaf1eb !important;
 			}
@@ -25,20 +25,46 @@ add_action(
 				background: #f3eadf !important;
 			}
 			body.home.elmercado-child-theme .emo-featured-products .woocommerce,
-			body.home.elmercado-child-theme .emo-featured-products ul.products {
+			body.home.elmercado-child-theme .emo-featured-products ul.products,
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product,
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product:hover,
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product > a,
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .woocommerce-loop-product__link {
 				background: transparent !important;
 			}
 			body.home.elmercado-child-theme .emo-featured-products ul.products li.product,
 			body.home.elmercado-child-theme .emo-featured-products ul.products li.product:hover {
-				background: transparent !important;
 				border-color: transparent !important;
 				box-shadow: none !important;
 				overflow: visible !important;
 			}
-			body.home.elmercado-child-theme .emo-featured-products ul.products li.product a img {
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-image-wrapper {
+				margin: 0 !important;
+				padding: 0 !important;
+				background: transparent !important;
+				background-image: none !important;
+				border: 0 !important;
+				border-radius: 18px !important;
+				overflow: hidden !important;
+			}
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-image-wrapper::after {
+				display: none !important;
+				content: none !important;
+				background: none !important;
+			}
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product :is(.product-loop-content,.product-content) {
+				margin-top: 0 !important;
+				padding: 12px 2px 0 !important;
+				background: transparent !important;
+				background-image: none !important;
+				border: 0 !important;
+				box-shadow: none !important;
+			}
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .product-loop-image-wrapper img,
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product img.product-loop-image,
+			body.home.elmercado-child-theme .emo-featured-products ul.products li.product .woocommerce-loop-product__link img {
 				border-radius: 18px !important;
 				box-shadow: 0 9px 26px rgba(13,33,27,.08);
-				overflow: hidden;
 			}
 			body.home.elmercado-child-theme .emo-featured-products ul.products li.product :is(.woocommerce-loop-product__title,.product-title,h2,h3) {
 				padding-inline: 2px !important;
@@ -149,7 +175,7 @@ add_action(
 				<span><?php esc_html_e( 'Actualizando productos…', 'elmercadodeorigen' ); ?></span>
 			</div>
 		</div>
-		<script id="elmercado-filter-progress-controller-010100">
+		<script id="elmercado-filter-progress-controller-010101">
 		(() => {
 			'use strict';
 			const overlay = document.querySelector('#emo-catalog-filter-progress');
