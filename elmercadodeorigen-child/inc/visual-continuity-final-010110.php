@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.110.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.111.
  *
  * @package ElMercadoDeOrigen
  */
@@ -31,12 +31,27 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010110">
-			/* Portada: una sola superficie salvia muy clara, sin franjas ni cambios de tono internos. */
-			body.home.elmercado-child-theme .emo-featured-products {
-				background: var(--emo-forest-100, #e4eee8) !important;
+		<style id="elmercado-visual-continuity-final-010111">
+			/* Portada: tres superficies editoriales centrales más distinguibles, sin perder la paleta suave. */
+			body.home.elmercado-child-theme .emo-home {
+				--emo-home-categories-bg: #f8f0e4;
+				--emo-home-products-bg: #d7e7dc;
+				--emo-home-story-bg: #ead7c4;
 			}
-			body.home.elmercado-child-theme .emo-featured-products :is(.emo-shell,.woocommerce,ul.products) {
+			body.home.elmercado-child-theme .emo-categories {
+				background: var(--emo-home-categories-bg) !important;
+			}
+			body.home.elmercado-child-theme .emo-featured-products {
+				background: var(--emo-home-products-bg) !important;
+			}
+			body.home.elmercado-child-theme .emo-story {
+				background: var(--emo-home-story-bg) !important;
+			}
+			body.home.elmercado-child-theme .emo-categories > .emo-shell,
+			body.home.elmercado-child-theme .emo-featured-products > .emo-shell,
+			body.home.elmercado-child-theme .emo-featured-products .woocommerce,
+			body.home.elmercado-child-theme .emo-featured-products ul.products,
+			body.home.elmercado-child-theme .emo-story > .emo-shell {
 				background: transparent !important;
 				background-image: none !important;
 				box-shadow: none !important;
@@ -50,6 +65,14 @@ add_action(
 			body.home.elmercado-child-theme .emo-featured-products ul.products > li.product:hover,
 			body.home.elmercado-child-theme .emo-featured-products ul.products > li.product:focus-within {
 				box-shadow: none !important;
+			}
+
+			/* Patrón editorial común: kicker marrón, título y descripción con el mismo ritmo vertical. */
+			body.elmercado-child-theme :is(.emo-kicker,.emo-eyebrow) + :is(h1,h2,h3) {
+				margin-bottom: 0 !important;
+			}
+			body.elmercado-child-theme :is(.emo-kicker,.emo-eyebrow) + :is(h1,h2,h3) + p {
+				margin-top: clamp(1rem, 1.4vw, 1.25rem) !important;
 			}
 
 			/* Cabecera: neutraliza el margen heredado que provocaba el salto al comenzar a hacer scroll. */

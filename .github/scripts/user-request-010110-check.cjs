@@ -3,24 +3,28 @@ const puppeteer=require('puppeteer-core');
 const BASE='https://dev.elmercadodeorigen.com';
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 const failures=[];const checks={};
+const EXPECT={categories:[248,240,228],products:[215,231,220],story:[234,215,196]};
 
 async function go(page,path,delay=650){
-  const u=new URL(path,BASE);u.searchParams.set('qa-010110',Date.now());
+  const u=new URL(path,BASE);u.searchParams.set('qa-010111',Date.now());
   const res=await page.goto(u.href,{waitUntil:'domcontentloaded',timeout:60000});
   await page.addStyleTag({content:'#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important}'}).catch(()=>{});
   await page.evaluate(()=>{document.documentElement.style.scrollBehavior='auto'});await sleep(delay);
   if(!res||res.status()>=400) failures.push(`${u.pathname}: HTTP ${res?.status()||'none'}`);
 }
-const white=v=>/^rgba?\(255,\s*255,\s*255(?:,\s*1(?:\.0+)?)?\)$/i.test(v||'');
-const sage=v=>/^rgba?\(228,\s*238,\s*232(?:,\s*1(?:\.0+)?)?\)$/i.test(v||'');
+const rgb=v=>{const m=(v||'').match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);return m?[+m[1],+m[2],+m[3]]:null};
+const matches=(v,e)=>{const c=rgb(v);return !!c&&c.every((n,i)=>Math.abs(n-e[i])<=1)};
+const distance=(a,b)=>{const x=rgb(a),y=rgb(b);return x&&y?Math.hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2]):0};
 const clear=v=>v==='transparent'||/^rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/i.test(v||'');
 
 async function homeCheck(page,w,h){
   await page.setViewport({width:w,height:h,deviceScaleFactor:1,isMobile:w<=767,hasTouch:w<=1100});await go(page,'/');
   const m=await page.evaluate(()=>{
-    const sec=document.querySelector('.emo-featured-products'),track=sec?.querySelector('ul.products'),card=track?.querySelector('li.product'),story=document.querySelector('.emo-story');
+    const categories=document.querySelector('.emo-categories'),sec=document.querySelector('.emo-featured-products'),track=sec?.querySelector('ul.products'),card=track?.querySelector('li.product'),story=document.querySelector('.emo-story');
     const get=n=>{if(!n)return null;const s=getComputedStyle(n),r=n.getBoundingClientRect();return{bg:s.backgroundColor,img:s.backgroundImage,shadow:s.boxShadow,top:r.top+scrollY,bottom:r.bottom+scrollY,left:r.left,right:r.right}};
-    return{sec:get(sec),shell:get(sec?.querySelector('.emo-shell')),woo:get(sec?.querySelector('.woocommerce')),track:get(track),card:get(card),story:get(story),overflow:Math.max(0,document.documentElement.scrollWidth-innerWidth)};
+    const headingPatterns=[...document.querySelectorAll(':is(.emo-kicker,.emo-eyebrow) + :is(h1,h2,h3) + p')].map(p=>{const title=p.previousElementSibling,kicker=title?.previousElementSibling,hr=title?.getBoundingClientRect(),pr=p.getBoundingClientRect(),hs=title?getComputedStyle(title):null,ps=getComputedStyle(p);return{title:(title?.textContent||'').replace(/\s+/g,' ').trim(),kicker:(kicker?.textContent||'').replace(/\s+/g,' ').trim(),gap:hr&&pr?pr.top-hr.bottom:null,titleMarginBottom:hs?.marginBottom||'',descriptionMarginTop:ps.marginTop||''}});
+    const categoryTitle=categories?.querySelector('.emo-section-heading h2'),categoryText=categories?.querySelector('.emo-section-heading > p'),chr=categoryTitle?.getBoundingClientRect(),cpr=categoryText?.getBoundingClientRect();
+    return{categories:get(categories),sec:get(sec),shell:get(sec?.querySelector('.emo-shell')),woo:get(sec?.querySelector('.woocommerce')),track:get(track),card:get(card),story:get(story),headingPatterns,categoryGap:chr&&cpr?cpr.top-chr.bottom:null,overflow:Math.max(0,document.documentElement.scrollWidth-innerWidth)};
   });
   let gap=null;
   if(m.sec&&m.card){
@@ -33,16 +37,25 @@ async function homeCheck(page,w,h){
     await page.evaluate(()=>window.scrollTo(0,0));await sleep(50);
   }
   m.gap=gap;checks[`home-${w}`]=m;
-  if(!m.sec||!m.track||!m.card) failures.push(`home ${w}: structure missing`);
+  if(!m.categories||!m.sec||!m.track||!m.card||!m.story) failures.push(`home ${w}: central structure missing`);
   else{
-    if(!sage(m.sec.bg)) failures.push(`home ${w}: section background ${m.sec.bg}`);
-    for(const [n,x] of [['shell',m.shell],['woocommerce',m.woo],['track',m.track]]) if(x){if(!(white(x.bg)||clear(x.bg))) failures.push(`home ${w}: ${n} background ${x.bg}`);if(x.img!=='none') failures.push(`home ${w}: ${n} background image`);if(x.shadow!=='none') failures.push(`home ${w}: ${n} shadow ${x.shadow}`)}
+    if(!matches(m.categories.bg,EXPECT.categories)) failures.push(`home ${w}: categories background ${m.categories.bg}`);
+    if(!matches(m.sec.bg,EXPECT.products)) failures.push(`home ${w}: products background ${m.sec.bg}`);
+    if(!matches(m.story.bg,EXPECT.story)) failures.push(`home ${w}: story background ${m.story.bg}`);
+    if(distance(m.categories.bg,m.sec.bg)<30||distance(m.sec.bg,m.story.bg)<30) failures.push(`home ${w}: central section contrast too weak ${m.categories.bg}/${m.sec.bg}/${m.story.bg}`);
+    for(const [n,x] of [['shell',m.shell],['woocommerce',m.woo],['track',m.track]]) if(x){if(!clear(x.bg)) failures.push(`home ${w}: ${n} background ${x.bg}`);if(x.img!=='none') failures.push(`home ${w}: ${n} background image`);if(x.shadow!=='none') failures.push(`home ${w}: ${n} shadow ${x.shadow}`)}
     if(m.card.shadow!=='none') failures.push(`home ${w}: product shadow still creates band ${m.card.shadow}`);
-    if(!sage(m.gap?.bg||'')) failures.push(`home ${w}: below-card band ${JSON.stringify(m.gap)}`);
-    if(m.story&&m.story.bg===m.sec.bg) failures.push(`home ${w}: story lost section contrast`);
+    if(!matches(m.gap?.bg||'',EXPECT.products)) failures.push(`home ${w}: below-card band ${JSON.stringify(m.gap)}`);
+    if(m.headingPatterns.length<3) failures.push(`home ${w}: editorial heading patterns missing ${JSON.stringify(m.headingPatterns)}`);
+    else{
+      const gaps=m.headingPatterns.map(x=>x.gap).filter(Number.isFinite);
+      if(gaps.some(x=>x<14||x>24)) failures.push(`home ${w}: title-description gap outside rhythm ${JSON.stringify(m.headingPatterns)}`);
+      if(gaps.length&&Math.max(...gaps)-Math.min(...gaps)>2.5) failures.push(`home ${w}: title-description gaps inconsistent ${JSON.stringify(m.headingPatterns)}`);
+    }
+    if(w<=991&&Number.isFinite(m.categoryGap)&&(m.categoryGap<14||m.categoryGap>24)) failures.push(`home ${w}: category reference gap ${m.categoryGap}`);
     if(m.overflow>1) failures.push(`home ${w}: overflow ${m.overflow}px`);
   }
-  await page.screenshot({path:`qa/user-request-010110-home-${w}.png`,fullPage:true});
+  await page.screenshot({path:`qa/user-request-010111-home-${w}.png`,fullPage:true});
 }
 
 async function cartCheck(page,id,w=390,h=844){
@@ -57,12 +70,12 @@ async function cartCheck(page,id,w=390,h=844){
   if(!m.line||!m.total||!m.tax) failures.push(`cart ${w}: inline total missing ${JSON.stringify(m)}`);
   else{if(Math.abs(m.total.mid-m.tax.mid)>5) failures.push(`cart ${w}: VAT not inline`);if(Math.abs(m.total.right-m.expectedRight)>5) failures.push(`cart ${w}: total not at right margin ${JSON.stringify(m)}`);if(m.line.width>m.td.width+1) failures.push(`cart ${w}: total line overflow`);if(!/iva/i.test(m.taxText)) failures.push(`cart ${w}: VAT text missing`);if(parseFloat(m.taxFont)<10) failures.push(`cart ${w}: VAT text too small ${m.taxFont}`);if(!/flex/.test(m.display)||m.direction!=='row-reverse') failures.push(`cart ${w}: inline presentation wrong ${m.display}/${m.direction}`)}
   if(m.overflow>1) failures.push(`cart ${w}: overflow ${m.overflow}px`);
-  await page.screenshot({path:`qa/user-request-010110-cart-${w}.png`,fullPage:true});
+  await page.screenshot({path:`qa/user-request-010111-cart-${w}.png`,fullPage:true});
 }
 
 async function scrollCheck(page,path,label,w,h,capture=false){
   await page.setViewport({width:w,height:h,deviceScaleFactor:1,isMobile:w<=767,hasTouch:w<=1100});await go(page,path,700);const rows=[];
-  for(const y of [0,4,8,12,16,24,40]){await page.evaluate(v=>window.scrollTo(0,v),y);await sleep(90);rows.push(await page.evaluate(()=>{const h=document.querySelector('.site-header'),i=document.querySelector('.site-header-inner'),c=document.querySelector('#content,.site-content'),s=h?getComputedStyle(h):null,is=i?getComputedStyle(i):null,cs=c?getComputedStyle(c):null,hr=h?.getBoundingClientRect(),cr=c?.getBoundingClientRect();const bump=[...document.querySelectorAll('.site-header .bumper,.site-header + .bumper,.site-header-inner + .bumper,.site-header-inner ~ .bumper')].some(n=>{const r=n.getBoundingClientRect(),x=getComputedStyle(n);return r.height>0&&r.width>0&&x.display!=='none'&&x.visibility!=='hidden'});return{y:scrollY,hh:hr?.height??null,docTop:cr?cr.top+scrollY:null,bg:s?.backgroundColor||'',shadow:s?.boxShadow||'',position:s?.position||'',innerPosition:is?.position||'',fija:!!i?.classList.contains('fija'),contentMarginTop:cs?.marginTop||'',bumper:bump}}));if(capture&&(y===0||y===16)) await page.screenshot({path:`qa/user-request-010110-scroll-${label}-${w}-${y}.png`,fullPage:false})}
+  for(const y of [0,4,8,12,16,24,40]){await page.evaluate(v=>window.scrollTo(0,v),y);await sleep(90);rows.push(await page.evaluate(()=>{const h=document.querySelector('.site-header'),i=document.querySelector('.site-header-inner'),c=document.querySelector('#content,.site-content'),s=h?getComputedStyle(h):null,is=i?getComputedStyle(i):null,cs=c?getComputedStyle(c):null,hr=h?.getBoundingClientRect(),cr=c?.getBoundingClientRect();const bump=[...document.querySelectorAll('.site-header .bumper,.site-header + .bumper,.site-header-inner + .bumper,.site-header-inner ~ .bumper')].some(n=>{const r=n.getBoundingClientRect(),x=getComputedStyle(n);return r.height>0&&r.width>0&&x.display!=='none'&&x.visibility!=='hidden'});return{y:scrollY,hh:hr?.height??null,docTop:cr?cr.top+scrollY:null,bg:s?.backgroundColor||'',shadow:s?.boxShadow||'',position:s?.position||'',innerPosition:is?.position||'',fija:!!i?.classList.contains('fija'),contentMarginTop:cs?.marginTop||'',bumper:bump}}));if(capture&&(y===0||y===16)) await page.screenshot({path:`qa/user-request-010111-scroll-${label}-${w}-${y}.png`,fullPage:false})}
   checks[`scroll-${label}-${w}`]=rows;const hs=rows.map(x=>x.hh).filter(Number.isFinite),tops=rows.map(x=>x.docTop).filter(Number.isFinite);
   if(!hs.length||!tops.length) failures.push(`${label} ${w}: missing scroll geometry`);else{if(Math.max(...hs)-Math.min(...hs)>1) failures.push(`${label} ${w}: header height jumps`);if(Math.max(...tops)-Math.min(...tops)>1.5) failures.push(`${label} ${w}: content document position jumps ${JSON.stringify(rows)}`)}
   if(new Set(rows.map(x=>x.bg)).size>1) failures.push(`${label} ${w}: header background changes at tiny scroll`);if(new Set(rows.map(x=>x.shadow)).size>1) failures.push(`${label} ${w}: header shadow changes at tiny scroll`);
@@ -76,5 +89,5 @@ async function scrollCheck(page,path,label,w,h,capture=false){
     for(const [path,label] of [['/','home'],['/tienda/','shop'],['/quienes-somos/','about'],['/contacto/','contact'],['/contacto-productores/','producer-contact'],['/productores/','producers'],['/blog/','blog'],['/carrito/','cart'],['/finalizar-compra/','checkout']])await scrollCheck(page,path,label,390,844,label==='home'||label==='shop');
     for(const [path,label] of [['/','home'],['/tienda/','shop'],['/blog/','blog'],['/carrito/','cart']])await scrollCheck(page,path,label,1440,1000);
   }finally{await browser.close()}
-  fs.writeFileSync('qa/user-request-010110-check.json',JSON.stringify({failures,checks},null,2));if(failures.length){console.error('USER_REQUEST_010110_FAIL '+JSON.stringify(failures));process.exitCode=2}else console.log('USER_REQUEST_010110_OK');
+  fs.writeFileSync('qa/user-request-010111-check.json',JSON.stringify({failures,checks},null,2));if(failures.length){console.error('USER_REQUEST_010111_FAIL '+JSON.stringify(failures));process.exitCode=2}else console.log('USER_REQUEST_010111_OK');
 })();
