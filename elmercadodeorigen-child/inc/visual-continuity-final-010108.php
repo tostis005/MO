@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.107.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.108.
  *
  * @package ElMercadoDeOrigen
  */
@@ -36,12 +36,8 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010107">
-			/*
-			 * Portada: una sola superficie blanca en toda la sección. La banda que
-			 * aparecía bajo el carrusel era la suma de sombras/superficies internas,
-			 * no un cambio real de sección.
-			 */
+		<style id="elmercado-visual-continuity-final-010108">
+			/* Portada: una sola superficie blanca en toda la selección de productos. */
 			body.home.elmercado-child-theme .emo-featured-products {
 				background: #fff !important;
 			}
@@ -62,10 +58,11 @@ add_action(
 			}
 
 			/*
-			 * Cabecera: el sticky nativo mantiene exactamente la misma geometría y
-			 * apariencia antes y después de los primeros píxeles de scroll. También
-			 * se neutralizan las dos huellas del antiguo controlador fijo, si algún
-			 * recurso externo llegara a reinsertarlas.
+			 * Cabecera: Woostify/una capa heredada todavía añade .fija y un
+			 * margin-top inline al #content al iniciar el scroll. El sticky real vive
+			 * en .site-header, por lo que ese margen ya no cumple ninguna función y
+			 * es precisamente el salto visible de ~70 px. Se neutraliza de forma
+			 * declarativa, sin medir posiciones ni compensar offsets por JavaScript.
 			 */
 			body.elmercado-child-theme .site-header,
 			body.elmercado-child-theme .site-header.is-scrolled,
@@ -74,22 +71,25 @@ add_action(
 				box-shadow: 0 1px 0 rgba(13,33,27,.06) !important;
 				transition: none !important;
 			}
+			body.elmercado-child-theme #content.site-content {
+				margin-top: 0 !important;
+			}
 			body.elmercado-child-theme .site-header-inner.fija,
 			body.elmercado-child-theme .topbar.fija {
 				position: static !important;
 				top: auto !important;
 			}
-			body.elmercado-child-theme .site-header-inner + .bumper {
+			body.elmercado-child-theme .site-header .bumper,
+			body.elmercado-child-theme .site-header + .bumper,
+			body.elmercado-child-theme .site-header-inner + .bumper,
+			body.elmercado-child-theme .site-header-inner ~ .bumper {
 				display: none !important;
 				height: 0 !important;
 				margin: 0 !important;
 				padding: 0 !important;
 			}
 
-			/*
-			 * Carrito: el IVA comparte línea con el total y el importe fuerte sigue
-			 * terminando exactamente en el margen derecho de la tabla.
-			 */
+			/* Carrito: IVA e importe comparten una línea; el importe acaba al margen derecho. */
 			body.elmercado-child-theme.woocommerce-cart .cart_totals tr.order-total th {
 				width: 32% !important;
 				padding-right: 8px !important;
@@ -122,8 +122,8 @@ add_action(
 			}
 			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > .includes_tax,
 			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > small.includes_tax {
-				color: rgba(255,255,255,.72) !important;
-				font-size: .66rem !important;
+				color: rgba(255,255,255,.76) !important;
+				font-size: .72rem !important;
 				font-weight: 650 !important;
 			}
 
@@ -139,7 +139,7 @@ add_action(
 				}
 				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > .includes_tax,
 				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > small.includes_tax {
-					font-size: .62rem !important;
+					font-size: .68rem !important;
 				}
 			}
 		</style>
