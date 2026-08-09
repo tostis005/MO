@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.116' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.117' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -114,6 +114,7 @@ $elmercado_modules = array(
 	'inc/user-request-review-010102.php',
 	'inc/filtered-context-desktop-010102.php',
 	'inc/visual-continuity-final-010110.php',
+	'inc/home-palette-site-final-010117.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
