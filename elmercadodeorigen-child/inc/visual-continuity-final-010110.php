@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.111. QA visual corregido.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.112.
  *
  * @package ElMercadoDeOrigen
  */
@@ -31,12 +31,13 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010111">
+		<style id="elmercado-visual-continuity-final-010112">
 			/* Portada: tres superficies editoriales centrales más distinguibles, sin perder la paleta suave. */
 			body.home.elmercado-child-theme .emo-home {
 				--emo-home-categories-bg: #f8f0e4;
 				--emo-home-products-bg: #d7e7dc;
 				--emo-home-story-bg: #ead7c4;
+				--emo-home-story-muted: #4f5d56;
 			}
 			body.home.elmercado-child-theme .emo-categories {
 				background: var(--emo-home-categories-bg) !important;
@@ -65,6 +66,11 @@ add_action(
 			body.home.elmercado-child-theme .emo-featured-products ul.products > li.product:hover,
 			body.home.elmercado-child-theme .emo-featured-products ul.products > li.product:focus-within {
 				box-shadow: none !important;
+			}
+
+			/* El texto secundario de las tarjetas claras mantiene contraste AA sobre el nuevo fondo arena. */
+			body.home.elmercado-child-theme .emo-story__values p {
+				color: var(--emo-home-story-muted) !important;
 			}
 
 			/* Patrón editorial común: kicker marrón, título y descripción con el mismo ritmo vertical. */
