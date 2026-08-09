@@ -1,6 +1,6 @@
 <?php
 /**
- * Continuidad visual final de portada, cabecera y total del carrito 0.10.115.
+ * Continuidad visual final de portada, cabecera y total del carrito 0.10.116.
  *
  * @package ElMercadoDeOrigen
  */
@@ -17,7 +17,7 @@ add_filter(
 		}
 
 		$pattern = '~(<strong\b[^>]*>.*?</strong>)\s*(<small\b[^>]*class=["\'][^"\']*\bincludes_tax\b[^"\']*["\'][^>]*>.*?</small>)~is';
-		$wrapped = preg_replace( $pattern, '<span class="emo-cart-total-inline">$1$2</span>', $html, 1 );
+		$wrapped = preg_replace( $pattern, '<span class="emo-cart-total-stack">$1$2</span>', $html, 1 );
 
 		return is_string( $wrapped ) ? $wrapped : $html;
 	},
@@ -31,7 +31,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-visual-continuity-final-010115">
+		<style id="elmercado-visual-continuity-final-010116">
 			/* Portada: las secciones centrales reutilizan directamente la paleta base del sitio. */
 			body.home.elmercado-child-theme .emo-home {
 				--emo-home-categories-bg: #f7f3ea;
@@ -109,42 +109,50 @@ add_action(
 				padding: 0 !important;
 			}
 
-			/* Carrito: primero el total y, después, el detalle de IVA entre paréntesis. */
+			/* Carrito: importe del total en la misma línea visual que “Total”; detalle fiscal debajo. */
 			body.elmercado-child-theme.woocommerce-cart .cart_totals tr.order-total th {
 				width: 32% !important;
 				padding-right: 8px !important;
-				vertical-align: baseline !important;
+				vertical-align: top !important;
+				line-height: 1.25 !important;
 			}
 			body.elmercado-child-theme.woocommerce-cart .cart_totals tr.order-total td {
 				width: 68% !important;
-				vertical-align: baseline !important;
+				vertical-align: top !important;
 				text-align: right !important;
-				white-space: nowrap !important;
+				white-space: normal !important;
 			}
-			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline {
+			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-stack {
 				display: inline-flex !important;
 				max-width: 100% !important;
-				align-items: baseline !important;
-				justify-content: flex-end !important;
-				gap: 6px !important;
-				flex-direction: row !important;
-				white-space: nowrap !important;
+				align-items: flex-end !important;
+				justify-content: flex-start !important;
+				gap: 4px !important;
+				flex-direction: column !important;
+				white-space: normal !important;
 			}
-			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > strong,
-			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > .includes_tax,
-			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > small.includes_tax {
-				display: inline !important;
+			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-stack > strong {
+				display: block !important;
 				width: auto !important;
 				margin: 0 !important;
 				padding: 0 !important;
 				text-align: right !important;
-				line-height: 1.15 !important;
+				line-height: 1.25 !important;
+				white-space: nowrap !important;
 			}
-			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > .includes_tax,
-			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > small.includes_tax {
+			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-stack > .includes_tax,
+			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-stack > small.includes_tax {
+				display: block !important;
+				width: auto !important;
+				max-width: 100% !important;
+				margin: 0 !important;
+				padding: 0 !important;
 				color: rgba(255,255,255,.8) !important;
 				font-size: .74rem !important;
 				font-weight: 650 !important;
+				line-height: 1.25 !important;
+				text-align: right !important;
+				white-space: normal !important;
 			}
 
 			@media (max-width: 420px) {
@@ -154,11 +162,8 @@ add_action(
 				body.elmercado-child-theme.woocommerce-cart .cart_totals tr.order-total td {
 					width: 72% !important;
 				}
-				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline {
-					gap: 4px !important;
-				}
-				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > .includes_tax,
-				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-inline > small.includes_tax {
+				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-stack > .includes_tax,
+				body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-total-stack > small.includes_tax {
 					font-size: .75rem !important;
 				}
 			}
