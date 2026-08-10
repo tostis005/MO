@@ -34,7 +34,7 @@ jobs:
           const puppeteer = require('puppeteer-core');
           const postcss = require('postcss');
           const cssnano = require('cssnano');
-          const base = 'https://dev.elmercadodeorigen.com';
+          const base = 'https://dev.elmercadodeorigen.com/';
           const criticalOutput = 'elmercadodeorigen-child/assets/css/critical-woostify-home.min.css';
           const homeOutput = 'elmercadodeorigen-child/assets/css/home-used-full.min.css';
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -43,7 +43,7 @@ jobs:
             const page = await browser.newPage();
             await page.setViewport({ width, height, isMobile: mobile, deviceScaleFactor: 1 });
             if (mobile) await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
-            await page.goto(`${base}/?home-css-publish=${width}-${Date.now()}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.goto(base, { waitUntil: 'networkidle2', timeout: 90000 });
             await sleep(500);
 
             const result = await page.evaluate(() => {
@@ -183,4 +183,4 @@ jobs:
           git commit -m 'perf: publish Home CSS subsets'
           git push
 
-# Manual refresh trigger: 2026-08-10 Home-used CSS review.
+# Manual refresh trigger: 2026-08-10 root-response Home-used CSS review.
