@@ -1,9 +1,10 @@
 <?php
 /**
- * Carrito móvil: calculadora de envío final 0.10.139.
+ * Carrito móvil: calculadora de envío final 0.10.140 QA.
  *
  * Alinea el disparador con los importes del resumen y hace que el formulario
  * desplegable use toda la anchura disponible, sin floats ni media columna.
+ * Durante `user-visual` se fuerza abierto únicamente para validar su geometría.
  *
  * @package ElMercadoDeOrigen
  */
@@ -19,9 +20,8 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-mobile-shipping-calculator-final-010139">
+		<style id="elmercado-mobile-shipping-calculator-final-010140">
 			@media (max-width: 767px) {
-				/* El enlace forma parte del lado de importes del resumen. */
 				html body.elmercado-child-theme.woocommerce-cart .cart_totals .woocommerce-shipping-calculator {
 					display: block !important;
 					box-sizing: border-box !important;
@@ -44,7 +44,6 @@ add_action(
 					line-height: 1.35 !important;
 				}
 
-				/* Al abrirlo, el formulario es una única superficie a ancho completo. */
 				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form {
 					float: none !important;
 					clear: both !important;
@@ -61,12 +60,7 @@ add_action(
 					text-align: left !important;
 				}
 
-				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form :is(
-					.form-row,
-					.form-row-wide,
-					.form-row-first,
-					.form-row-last
-				) {
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form :is(.form-row,.form-row-wide,.form-row-first,.form-row-last) {
 					float: none !important;
 					clear: both !important;
 					display: block !important;
@@ -78,12 +72,7 @@ add_action(
 					padding: 0 !important;
 				}
 
-				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form :is(
-					input.input-text,
-					select,
-					.select2-container,
-					.select2-selection
-				) {
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form :is(input.input-text,select,.select2-container,.select2-selection) {
 					float: none !important;
 					box-sizing: border-box !important;
 					width: 100% !important;
@@ -141,6 +130,15 @@ add_action(
 				}
 			}
 		</style>
+		<?php if ( isset( $_GET['user-visual'] ) ) : ?>
+			<style id="elmercado-mobile-shipping-calculator-qa-010140">
+				@media (max-width: 767px) {
+					html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form {
+						display: block !important;
+					}
+				}
+			</style>
+		<?php endif; ?>
 		<?php
 	},
 	PHP_INT_MAX
