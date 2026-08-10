@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate valid critical parent CSS
+      - name: Generate comprehensive first-view CSS
         shell: bash
         run: |
           set -euo pipefail
@@ -31,6 +31,7 @@ jobs:
           cat > generate-critical.cjs <<'NODE'
           const fs = require('fs');
           const path = require('path');
+          const crypto = require('crypto');
           const puppeteer = require('puppeteer-core');
           const postcss = require('postcss');
           const cssnano = require('cssnano');
@@ -82,7 +83,7 @@ jobs:
             await sleep(1400);
             const entries = await page.coverage.stopCSSCoverage();
             await page.close();
-            return entries.find((entry) => /\/themes\/woostify\/style\.css/.test(entry.url)) || null;
+            return entries;
           }
 
           (async () => {
@@ -91,19 +92,48 @@ jobs:
             const desktop = await collect(browser, { width: 1440, height: 1000, deviceScaleFactor: 1 });
             await browser.close();
 
-            const source = mobile?.text || desktop?.text || '';
-            if (!source) throw new Error('Woostify stylesheet coverage was not found.');
-            const ranges = mergeRanges([...(mobile?.ranges || []), ...(desktop?.ranges || [])]);
-            const root = postcss.parse(source);
-            const filtered = filterContainer(root, ranges);
-            const result = await postcss([cssnano({ preset: 'default' })]).process(filtered.toString(), { from: undefined });
-            const critical = result.css.trim();
+            const registry = new Map();
+            for (const entries of [mobile, desktop]) {
+              for (const entry of entries) {
+                const text = entry.text || '';
+                if (!text.trim() || !(entry.ranges || []).length) continue;
+                const digest = crypto.createHash('sha1').update(text).digest('hex');
+                const key = `${entry.url || 'inline'}|${digest}`;
+                if (!registry.has(key)) registry.set(key, { url: entry.url || 'inline', text, ranges: [] });
+                registry.get(key).ranges.push(...entry.ranges);
+              }
+            }
 
-            if (!critical || critical.length < 7000) throw new Error(`Critical CSS is unexpectedly small: ${critical.length} bytes.`);
+            const parts = [];
+            let sourceBytes = 0;
+            let usedSources = 0;
+            let totalRanges = 0;
+            for (const entry of registry.values()) {
+              const ranges = mergeRanges(entry.ranges);
+              if (!ranges.length) continue;
+              sourceBytes += Buffer.byteLength(entry.text);
+              totalRanges += ranges.length;
+              try {
+                const root = postcss.parse(entry.text);
+                const filtered = filterContainer(root, ranges);
+                const css = filtered.toString().trim();
+                if (css) {
+                  parts.push(css);
+                  usedSources++;
+                }
+              } catch (error) {
+                console.warn(`Skipping unparsable coverage source ${entry.url}: ${error.message}`);
+              }
+            }
+
+            const result = await postcss([cssnano({ preset: 'default' })]).process(parts.join('\n'), { from: undefined });
+            const critical = result.css.trim();
+            if (!critical || critical.length < 12000) throw new Error(`Comprehensive critical CSS is unexpectedly small: ${critical.length} bytes.`);
+            if (critical.length > 160000) throw new Error(`Comprehensive critical CSS is unexpectedly large: ${critical.length} bytes.`);
             postcss.parse(critical);
             fs.mkdirSync(path.dirname(output), { recursive: true });
-            fs.writeFileSync(output, `/* Generated from valid first-view mobile and desktop rules. */\n${critical}\n`);
-            console.log(JSON.stringify({ sourceBytes: source.length, criticalBytes: critical.length, coveragePercent: Math.round((critical.length / source.length) * 1000) / 10, ranges: ranges.length }, null, 2));
+            fs.writeFileSync(output, `/* Generated from all CSS used in the first mobile and desktop viewport. */\n${critical}\n`);
+            console.log(JSON.stringify({ sourceBytes, criticalBytes: critical.length, usedSources, totalRanges, coveragePercent: Math.round((critical.length / sourceBytes) * 1000) / 10 }, null, 2));
           })().catch((error) => { console.error(error); process.exit(1); });
           NODE
           node generate-critical.cjs
@@ -120,7 +150,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add "$TARGET"
-          git commit -m 'perf: publish critical Woostify CSS'
+          git commit -m 'perf: publish comprehensive Home critical CSS'
           git push
 
-# Manual refresh trigger: 2026-08-10 performance review.
+# Manual refresh trigger: 2026-08-10 comprehensive performance review.
