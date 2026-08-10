@@ -45,7 +45,17 @@ $cache_file = __DIR__ . '/cache/elmercado-home-static/index.html';
 $ttl        = 10 * 60;
 $mtime      = is_file( $cache_file ) ? @filemtime( $cache_file ) : false;
 
-if ( ! is_readable( $cache_file ) || false === $mtime || ( time() - (int) $mtime ) > $ttl ) {
+if ( ! is_readable( $cache_file ) || false === $mtime ) {
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Early-Cache: MISS-NOFILE' );
+	}
+	return;
+}
+
+if ( ( time() - (int) $mtime ) > $ttl ) {
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Early-Cache: MISS-STALE' );
+	}
 	return;
 }
 
