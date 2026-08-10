@@ -1,10 +1,10 @@
 <?php
 /**
- * Copy final de Home 0.10.153.
+ * Copy final de Home 0.10.154.
  *
  * Mantiene el discurso abierto a cualquier categoría y concentra la propuesta
- * de valor en una idea sencilla: seleccionar proveedores con criterio, sin
- * recurrir a metáforas de mercado, despensa o puestos.
+ * de valor en una idea sencilla: elegir proveedores con criterio, sin recurrir
+ * a metáforas de mercado, despensa, puestos o similares.
  *
  * @package ElMercadoDeOrigen
  */
@@ -32,13 +32,16 @@ function elmercado_home_copy_clean_final_010152( string $html ): string {
 		'Del productor a tu casa' => 'Compra sencilla y segura',
 		'Envíos preparados con cuidado' => 'Compra sencilla y segura',
 
-		'Lo que merece la pena.' => 'Propuestas que destacan.',
-		'Un mercado con criterio.' => 'Propuestas que destacan.',
-		'Directo de quien lo hace.' => 'Seleccionadas con criterio.',
-		'Cada incorporación cuenta.' => 'Seleccionadas con criterio.',
-		'Elegimos uno a uno.' => 'Seleccionadas con criterio.',
-		'Seleccionamos productor a productor y miramos primero el producto: ibéricos hechos con tiempo, aceites de almazara y una despensa que apetece volver a pedir. Tú eliges sabiendo quién está detrás.' => 'Buscamos proveedores que aporten algo distinto. Valoramos lo que ofrecen, cómo trabajan y qué hace especial su propuesta.',
-		'Seleccionamos cada proyecto de forma individual. Buscamos propuestas con algo propio y una razón clara para estar aquí.' => 'Buscamos proveedores que aporten algo distinto. Valoramos lo que ofrecen, cómo trabajan y qué hace especial su propuesta.',
+		'Lo que merece la pena.' => 'Elegimos bien.',
+		'Un mercado con criterio.' => 'Elegimos bien.',
+		'Propuestas que destacan.' => 'Elegimos bien.',
+		'Directo de quien lo hace.' => 'Para ofrecer algo diferente.',
+		'Cada incorporación cuenta.' => 'Para ofrecer algo diferente.',
+		'Elegimos uno a uno.' => 'Para ofrecer algo diferente.',
+		'Seleccionadas con criterio.' => 'Para ofrecer algo diferente.',
+		'Seleccionamos productor a productor y miramos primero el producto: ibéricos hechos con tiempo, aceites de almazara y una despensa que apetece volver a pedir. Tú eliges sabiendo quién está detrás.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Cada propuesta pasa por ese filtro.',
+		'Seleccionamos cada proyecto de forma individual. Buscamos propuestas con algo propio y una razón clara para estar aquí.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Cada propuesta pasa por ese filtro.',
+		'Buscamos proveedores que aporten algo distinto. Valoramos lo que ofrecen, cómo trabajan y qué hace especial su propuesta.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Cada propuesta pasa por ese filtro.',
 		'Entrar al mercado' => 'Ver productos',
 		'Ver el mercado' => 'Ver productos',
 		'Conocer los productores' => 'Conocer proveedores',
@@ -52,26 +55,31 @@ function elmercado_home_copy_clean_final_010152( string $html ): string {
 		'Compra fácil y cercana' => 'Confianza',
 		'Compra clara y segura' => 'Compra clara y segura',
 
-		'El producto manda' => 'Buscamos algo distinto',
-		'Seleccionamos uno a uno' => 'Buscamos algo distinto',
-		'Elegimos por sabor, materia prima y forma de hacer las cosas. Si no nos apetece tenerlo en casa, no tiene sentido que esté en el mercado.' => 'Seleccionamos proveedores por lo que aportan, no por sumar opciones.',
-		'Productos seleccionados por su calidad, su procedencia y todo lo que aporta conocer su origen.' => 'Seleccionamos proveedores por lo que aportan, no por sumar opciones.',
-		'No buscamos llenar el catálogo. Elegimos cada proyecto de forma individual.' => 'Seleccionamos proveedores por lo que aportan, no por sumar opciones.',
-		'Sabes a quién compras' => 'Valoramos cómo trabajan',
-		'Miramos el conjunto' => 'Valoramos cómo trabajan',
-		'Cada productor tiene su puesto, su historia y sus productos. Puedes conocerlos antes de decidir qué llevarte.' => 'Nos importa tanto lo que ofrecen como la forma en que lo hacen.',
-		'Valoramos la propuesta completa antes de incorporarla al mercado.' => 'Nos importa tanto lo que ofrecen como la forma en que lo hacen.',
+		'El producto manda' => 'Criterio, no cantidad',
+		'Seleccionamos uno a uno' => 'Criterio, no cantidad',
+		'Buscamos algo distinto' => 'Criterio, no cantidad',
+		'Elegimos por sabor, materia prima y forma de hacer las cosas. Si no nos apetece tenerlo en casa, no tiene sentido que esté en el mercado.' => 'No buscamos tener de todo. Buscamos opciones que aporten algo distinto.',
+		'Productos seleccionados por su calidad, su procedencia y todo lo que aporta conocer su origen.' => 'No buscamos tener de todo. Buscamos opciones que aporten algo distinto.',
+		'No buscamos llenar el catálogo. Elegimos cada proyecto de forma individual.' => 'No buscamos tener de todo. Buscamos opciones que aporten algo distinto.',
+		'Seleccionamos proveedores por lo que aportan, no por sumar opciones.' => 'No buscamos tener de todo. Buscamos opciones que aporten algo distinto.',
+		'Sabes a quién compras' => 'Miramos más allá',
+		'Miramos el conjunto' => 'Miramos más allá',
+		'Valoramos cómo trabajan' => 'Miramos más allá',
+		'Cada productor tiene su puesto, su historia y sus productos. Puedes conocerlos antes de decidir qué llevarte.' => 'También valoramos cómo trabaja cada proveedor y qué hay detrás de su propuesta.',
+		'Valoramos la propuesta completa antes de incorporarla al mercado.' => 'También valoramos cómo trabaja cada proveedor y qué hay detrás de su propuesta.',
+		'Nos importa tanto lo que ofrecen como la forma en que lo hacen.' => 'También valoramos cómo trabaja cada proveedor y qué hay detrás de su propuesta.',
 		'De allí a tu casa' => 'El criterio se mantiene',
-		'La compra es online, pero la idea sigue siendo sencilla: acercar a quien hace un buen producto a quien quiere disfrutarlo.' => 'Pueden cambiar las categorías. La forma de seleccionar no cambia.',
-		'Pueden cambiar las categorías. La forma de seleccionar no cambia.' => 'Pueden cambiar las categorías. La forma de seleccionar no cambia.',
+		'La compra es online, pero la idea sigue siendo sencilla: acercar a quien hace un buen producto a quien quiere disfrutarlo.' => 'Pueden cambiar las categorías. El criterio no cambia.',
+		'Pueden cambiar las categorías. La forma de seleccionar no cambia.' => 'Pueden cambiar las categorías. El criterio no cambia.',
 
 		'De puesto en puesto' => 'Explora por categorías',
 		'Explora el mercado' => 'Explora por categorías',
 		'Una despensa que merece la pena conocer' => 'Encuentra lo que buscas',
 		'Descubre la selección' => 'Encuentra lo que buscas',
-		'Ibéricos con tiempo, aceites de almazara y otros productos elegidos productor a productor. Entra por lo que te apetezca y descubre quién está detrás.' => 'La selección seguirá creciendo con nuevas propuestas elegidas con el mismo criterio.',
-		'El catálogo puede crecer. El criterio de selección se mantiene.' => 'La selección seguirá creciendo con nuevas propuestas elegidas con el mismo criterio.',
-		'Nuevas categorías, nuevas propuestas y el mismo criterio en cada incorporación.' => 'La selección seguirá creciendo con nuevas propuestas elegidas con el mismo criterio.',
+		'Ibéricos con tiempo, aceites de almazara y otros productos elegidos productor a productor. Entra por lo que te apetezca y descubre quién está detrás.' => 'Iremos sumando nuevas propuestas sin cambiar la forma de elegirlas.',
+		'El catálogo puede crecer. El criterio de selección se mantiene.' => 'Iremos sumando nuevas propuestas sin cambiar la forma de elegirlas.',
+		'Nuevas categorías, nuevas propuestas y el mismo criterio en cada incorporación.' => 'Iremos sumando nuevas propuestas sin cambiar la forma de elegirlas.',
+		'La selección seguirá creciendo con nuevas propuestas elegidas con el mismo criterio.' => 'Iremos sumando nuevas propuestas sin cambiar la forma de elegirlas.',
 
 		'Para empezar bien' => 'Lo más elegido',
 		'Los favoritos del mercado' => 'Los más elegidos',
@@ -84,25 +92,30 @@ function elmercado_home_copy_clean_final_010152( string $html ): string {
 		'Primero vendimos lo nuestro. Después abrimos el mercado.' => 'No se trata de tener más. Se trata de elegir bien.',
 		'Elegir bien antes que sumar.' => 'No se trata de tener más. Se trata de elegir bien.',
 		'Seleccionar antes que acumular.' => 'No se trata de tener más. Se trata de elegir bien.',
-		'En 2017 pusimos en marcha una tienda online para vender directamente lo que producíamos. Vimos que había clientes que querían buen producto, trazabilidad y saber de dónde venía. El siguiente paso fue abrir espacio a otros productores que también merecía la pena conocer.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Cada propuesta se valora antes de formar parte de la selección.',
-		'El mercado puede crecer sin perder el criterio. Cada nueva propuesta se valora por separado.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Cada propuesta se valora antes de formar parte de la selección.',
-		'El mercado está pensado para crecer sin convertirse en un catálogo sin filtro. Cada nueva incorporación se revisa de forma individual y tiene que aportar una razón clara para estar aquí.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Cada propuesta se valora antes de formar parte de la selección.',
+		'En 2017 pusimos en marcha una tienda online para vender directamente lo que producíamos. Vimos que había clientes que querían buen producto, trazabilidad y saber de dónde venía. El siguiente paso fue abrir espacio a otros productores que también merecía la pena conocer.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Ese criterio guía cada selección.',
+		'El mercado puede crecer sin perder el criterio. Cada nueva propuesta se valora por separado.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Ese criterio guía cada selección.',
+		'El mercado está pensado para crecer sin convertirse en un catálogo sin filtro. Cada nueva incorporación se revisa de forma individual y tiene que aportar una razón clara para estar aquí.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Ese criterio guía cada selección.',
+		'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Cada propuesta se valora antes de formar parte de la selección.' => 'Buscamos proveedores que destaquen por lo que ofrecen o por cómo trabajan. Ese criterio guía cada selección.',
 		'Conoce nuestra historia' => 'Conoce el proyecto',
 		'Producto antes que volumen' => 'Selección antes que volumen',
-		'Preferimos elegir bien antes que llenar el catálogo: materia prima, elaboración, sabor y una calidad que se mantenga compra tras compra.' => 'Preferimos tener menos opciones y elegirlas bien.',
-		'Preferimos incorporar menos propuestas y elegirlas bien.' => 'Preferimos tener menos opciones y elegirlas bien.',
+		'Preferimos elegir bien antes que llenar el catálogo: materia prima, elaboración, sabor y una calidad que se mantenga compra tras compra.' => 'Preferimos menos opciones si eso significa elegir mejor.',
+		'Preferimos incorporar menos propuestas y elegirlas bien.' => 'Preferimos menos opciones si eso significa elegir mejor.',
+		'Preferimos tener menos opciones y elegirlas bien.' => 'Preferimos menos opciones si eso significa elegir mejor.',
 		'Cada productor, su puesto' => 'Algo propio que aportar',
-		'No escondemos a quien lo hace detrás de una ficha genérica. Puedes entrar en su tienda y conocer su trabajo.' => 'Buscamos proveedores que destaquen por lo que hacen y por cómo lo hacen.',
-		'Buscamos proyectos que destaquen por lo que hacen y por cómo lo hacen.' => 'Buscamos proveedores que destaquen por lo que hacen y por cómo lo hacen.',
-		'Directo y con trazabilidad' => 'Un criterio que no cambia',
-		'Sabes quién produce, qué estás comprando y de dónde viene. Esa cercanía es la razón de ser del mercado.' => 'Pueden cambiar las categorías. La forma de seleccionar se mantiene.',
-		'Pueden cambiar las categorías. La forma de seleccionar se mantiene.' => 'Pueden cambiar las categorías. La forma de seleccionar se mantiene.',
+		'No escondemos a quien lo hace detrás de una ficha genérica. Puedes entrar en su tienda y conocer su trabajo.' => 'Cada proveedor tiene que aportar una razón para elegirlo.',
+		'Buscamos proyectos que destaquen por lo que hacen y por cómo lo hacen.' => 'Cada proveedor tiene que aportar una razón para elegirlo.',
+		'Buscamos proveedores que destaquen por lo que hacen y por cómo lo hacen.' => 'Cada proveedor tiene que aportar una razón para elegirlo.',
+		'Directo y con trazabilidad' => 'El criterio no cambia',
+		'Un criterio que no cambia' => 'El criterio no cambia',
+		'Sabes quién produce, qué estás comprando y de dónde viene. Esa cercanía es la razón de ser del mercado.' => 'Pueden cambiar las categorías. La forma de elegir se mantiene.',
+		'Pueden cambiar las categorías. La forma de seleccionar se mantiene.' => 'Pueden cambiar las categorías. La forma de elegir se mantiene.',
 
 		'Conoce a quien está detrás de lo que compras.' => '¿Crees que tu propuesta encaja?',
 		'¿Tu proyecto encaja en este mercado?' => '¿Crees que tu propuesta encaja?',
-		'Entra en los puestos, descubre cómo trabaja cada productor y encuentra esas cosas que uno acaba recomendando después por su nombre.' => 'Buscamos proveedores con algo propio. Si crees que tu propuesta puede aportar, queremos conocerla.',
-		'Buscamos propuestas con algo propio y una forma de trabajar que marque la diferencia. Si crees que encaja, queremos conocerla.' => 'Buscamos proveedores con algo propio. Si crees que tu propuesta puede aportar, queremos conocerla.',
-		'Buscamos propuestas con algo propio. Si crees que la tuya encaja, queremos conocerla.' => 'Buscamos proveedores con algo propio. Si crees que tu propuesta puede aportar, queremos conocerla.',
+		'Entra en los puestos, descubre cómo trabaja cada productor y encuentra esas cosas que uno acaba recomendando después por su nombre.' => 'Si crees que lo que haces puede encajar, queremos conocerlo.',
+		'Buscamos propuestas con algo propio y una forma de trabajar que marque la diferencia. Si crees que encaja, queremos conocerla.' => 'Si crees que lo que haces puede encajar, queremos conocerlo.',
+		'Buscamos propuestas con algo propio. Si crees que la tuya encaja, queremos conocerla.' => 'Si crees que lo que haces puede encajar, queremos conocerlo.',
+		'Buscamos proveedores con algo propio. Si crees que tu propuesta puede aportar, queremos conocerla.' => 'Si crees que lo que haces puede encajar, queremos conocerlo.',
 	);
 
 	$html = strtr( $html, $copy );
@@ -139,11 +152,15 @@ function elmercado_home_copy_clean_final_010152( string $html ): string {
 				array(
 					'Explora el mercado',
 					'De puesto en puesto',
+					'Explora por categorías',
 					'Conocer los productores',
+					'Conocer proveedores',
 				),
 				array(
 					'¿Quieres vender con nosotros?',
 					'¿Quieres vender con nosotros?',
+					'¿Quieres vender con nosotros?',
+					'Cuéntanos tu propuesta',
 					'Cuéntanos tu propuesta',
 				),
 				$matches[0]
