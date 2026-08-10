@@ -1,0 +1,65 @@
+name: Home performance probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-perf-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect served Home document
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 30 -D /tmp/headers.txt https://dev.elmercadodeorigen.com/ -o /tmp/home.html
+          tr -d '\r' < /tmp/headers.txt
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('/tmp/home.html').read_text(errors='replace')
+          lower = html.lower()
+          body = lower.find('<body')
+          head_end = lower.find('</head>')
+          print(f'DOCUMENT_BYTES={len(html.encode())}')
+          print(f'HEAD_CHARS={head_end + 7 if head_end >= 0 else -1}')
+          print(f'BODY_OFFSET_CHARS={body}')
+          print('COPY_CURRENT=', all(x in html for x in [
+              'UNA SELECCIÓN HECHA CON CRITERIO',
+              'Seleccionamos cuidadosamente cada producto',
+              'Los favoritos de nuestros clientes',
+              'Buscamos productores que tengan algo que aportar.'
+          ]))
+          print('COPY_OLD=', any(x in html for x in [
+              'Proveedores seleccionados con criterio',
+              'Elegimos bien.',
+              'Los más elegidos'
+          ]))
+          scripts=[]
+          for m in re.finditer(r'<script\b([^>]*)>(.*?)</script\s*>', html, re.I|re.S):
+              attrs=m.group(1)
+              code=m.group(2)
+              srcm=re.search(r'\bsrc=["\']([^"\']+)', attrs, re.I)
+              typem=re.search(r'\btype=["\']([^"\']+)', attrs, re.I)
+              scripts.append({
+                  'offset':m.start(), 'before_body': body >= 0 and m.start() < body,
+                  'attrs':attrs.strip()[:180], 'src':srcm.group(1) if srcm else '',
+                  'type':typem.group(1) if typem else '', 'code_len':len(code),
+                  'sample':re.sub(r'\s+',' ',code.strip())[:100]
+              })
+          print(f'SCRIPTS_TOTAL={len(scripts)} SCRIPTS_BEFORE_BODY={sum(x["before_body"] for x in scripts)}')
+          print('TOP_HEAD_SCRIPTS:')
+          for s in sorted((x for x in scripts if x['before_body']), key=lambda x:max(x['code_len'],len(x['src'])), reverse=True)[:20]:
+              print(s)
+          lines=html.splitlines()
+          print('LINES_10360_10385:')
+          for i in range(10359, min(10385, len(lines))):
+              print(f'{i+1}: {lines[i][:500]}')
+          PY
