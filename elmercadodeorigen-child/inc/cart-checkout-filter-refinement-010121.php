@@ -1,6 +1,6 @@
 <?php
 /**
- * Carrito, checkout y filtros: ajuste de anchura y densidad 0.10.121.
+ * Carrito, checkout y filtros: ajuste de anchura y densidad 0.10.122.
  *
  * @package ElMercadoDeOrigen
  */
@@ -11,7 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 add_filter(
 	'widget_title',
-	static function ( string $title, array $instance = array(), string $id_base = '' ): string {
+	static function ( $title ): string {
+		$title = (string) $title;
 		if ( is_admin() ) {
 			return $title;
 		}
@@ -34,7 +35,7 @@ add_filter(
 		return $title;
 	},
 	40,
-	3
+	1
 );
 
 add_action(
