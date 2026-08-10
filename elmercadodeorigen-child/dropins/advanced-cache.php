@@ -41,7 +41,8 @@ foreach ( $sensitive as $needle ) {
 	}
 }
 
-$cache_file = __DIR__ . '/cache/elmercado-home-static/index.html';
+/* Uploads is writable by the WordPress PHP user and is available pre-bootstrap. */
+$cache_file = __DIR__ . '/uploads/elmercado-home-static/index.html';
 $ttl        = 10 * 60;
 $mtime      = is_file( $cache_file ) ? @filemtime( $cache_file ) : false;
 
