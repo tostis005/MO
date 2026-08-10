@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate comprehensive first-view CSS
+      - name: Generate geometric first-view CSS
         shell: bash
         run: |
           set -euo pipefail
@@ -31,7 +31,6 @@ jobs:
           cat > generate-critical.cjs <<'NODE'
           const fs = require('fs');
           const path = require('path');
-          const crypto = require('crypto');
           const puppeteer = require('puppeteer-core');
           const postcss = require('postcss');
           const cssnano = require('cssnano');
@@ -39,51 +38,90 @@ jobs:
           const output = 'elmercadodeorigen-child/assets/css/critical-woostify-home.min.css';
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          const mergeRanges = (ranges) => {
-            const sorted = [...ranges].sort((a, b) => a.start - b.start);
-            const merged = [];
-            for (const range of sorted) {
-              const last = merged[merged.length - 1];
-              if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
-              else merged.push({ start: range.start, end: range.end });
-            }
-            return merged;
-          };
-
-          const intersects = (node, ranges) => {
-            const start = node.source?.start?.offset;
-            const end = node.source?.end?.offset;
-            if (!Number.isInteger(start) || !Number.isInteger(end)) return false;
-            return ranges.some((range) => range.start <= end + 1 && range.end >= start);
-          };
-
-          const filterContainer = (container, ranges) => {
-            const clone = container.clone({ nodes: [] });
-            for (const child of container.nodes || []) {
-              if (child.type === 'atrule' && Array.isArray(child.nodes)) {
-                const nested = filterContainer(child, ranges);
-                if ((nested.nodes || []).length || intersects(child, ranges)) clone.append(nested);
-                continue;
-              }
-              if (child.type === 'rule') {
-                if (intersects(child, ranges) || (child.nodes || []).some((node) => intersects(node, ranges))) clone.append(child.clone());
-                continue;
-              }
-              if (intersects(child, ranges)) clone.append(child.clone());
-            }
-            return clone;
-          };
-
           async function collect(browser, viewport, userAgent = '') {
             const page = await browser.newPage();
             await page.setViewport(viewport);
             if (userAgent) await page.setUserAgent(userAgent);
-            await page.coverage.startCSSCoverage({ resetOnNavigation: false });
-            await page.goto(`${base}/?critical-publish=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
-            await sleep(1400);
-            const entries = await page.coverage.stopCSSCoverage();
+            await page.goto(`${base}/?critical-geometry=${Date.now()}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await sleep(500);
+
+            const result = await page.evaluate(() => {
+              const vh = window.innerHeight;
+              const vw = window.innerWidth;
+              const interactive = /:(hover|active|focus|focus-visible|focus-within|visited)(?![-\w])/g;
+
+              const splitSelectors = (selectorText) => {
+                const out = []; let current = ''; let depth = 0;
+                for (const ch of selectorText) {
+                  if (ch === '(' || ch === '[') depth++;
+                  if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
+                  if (ch === ',' && depth === 0) { if (current.trim()) out.push(current.trim()); current = ''; continue; }
+                  current += ch;
+                }
+                if (current.trim()) out.push(current.trim());
+                return out;
+              };
+
+              const visibleForSelector = (raw) => {
+                let selector = raw
+                  .replace(/::(before|after|marker|first-letter|first-line|placeholder|selection)/g, '')
+                  .replace(/:(before|after)(?![-\w])/g, '')
+                  .replace(interactive, '');
+                if (!selector.trim()) return false;
+                try {
+                  const nodes = document.querySelectorAll(selector);
+                  for (const node of nodes) {
+                    const style = getComputedStyle(node);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    for (const rect of node.getClientRects()) {
+                      if (rect.bottom > -2 && rect.top < vh + 2 && rect.right > -2 && rect.left < vw + 2 && rect.width >= 0 && rect.height >= 0) return true;
+                    }
+                  }
+                } catch (_) {}
+                return false;
+              };
+
+              const styleRuleVisible = (rule) => splitSelectors(rule.selectorText || '').some(visibleForSelector);
+
+              const walk = (rules, prefix) => {
+                const collected = [];
+                for (let i = 0; i < rules.length; i++) {
+                  const rule = rules[i];
+                  const key = `${prefix}.${i}`;
+                  if (rule.type === CSSRule.STYLE_RULE) {
+                    if (styleRuleVisible(rule)) collected.push({ key, text: rule.cssText });
+                    continue;
+                  }
+                  if (rule.type === CSSRule.MEDIA_RULE) {
+                    if (!matchMedia(rule.conditionText).matches) continue;
+                    const children = walk(rule.cssRules, key);
+                    if (children.length) collected.push({ key, text: `@media ${rule.conditionText}{${children.map(x => x.text).join('')}}` });
+                    continue;
+                  }
+                  if (rule.type === CSSRule.SUPPORTS_RULE) {
+                    const children = walk(rule.cssRules, key);
+                    if (children.length) collected.push({ key, text: `@supports ${rule.conditionText}{${children.map(x => x.text).join('')}}` });
+                    continue;
+                  }
+                  if (rule.type === CSSRule.FONT_FACE_RULE || rule.type === CSSRule.KEYFRAMES_RULE) {
+                    collected.push({ key, text: rule.cssText });
+                  }
+                }
+                return collected;
+              };
+
+              const all = [];
+              [...document.styleSheets].forEach((sheet, sheetIndex) => {
+                try {
+                  const rules = sheet.cssRules;
+                  if (!rules) return;
+                  for (const item of walk(rules, `s${sheetIndex}`)) all.push(item);
+                } catch (_) {}
+              });
+              return { items: all, sheetCount: document.styleSheets.length };
+            });
             await page.close();
-            return entries;
+            return result;
           }
 
           (async () => {
@@ -92,48 +130,18 @@ jobs:
             const desktop = await collect(browser, { width: 1440, height: 1000, deviceScaleFactor: 1 });
             await browser.close();
 
-            const registry = new Map();
-            for (const entries of [mobile, desktop]) {
-              for (const entry of entries) {
-                const text = entry.text || '';
-                if (!text.trim() || !(entry.ranges || []).length) continue;
-                const digest = crypto.createHash('sha1').update(text).digest('hex');
-                const key = `${entry.url || 'inline'}|${digest}`;
-                if (!registry.has(key)) registry.set(key, { url: entry.url || 'inline', text, ranges: [] });
-                registry.get(key).ranges.push(...entry.ranges);
-              }
-            }
-
-            const parts = [];
-            let sourceBytes = 0;
-            let usedSources = 0;
-            let totalRanges = 0;
-            for (const entry of registry.values()) {
-              const ranges = mergeRanges(entry.ranges);
-              if (!ranges.length) continue;
-              sourceBytes += Buffer.byteLength(entry.text);
-              totalRanges += ranges.length;
-              try {
-                const root = postcss.parse(entry.text);
-                const filtered = filterContainer(root, ranges);
-                const css = filtered.toString().trim();
-                if (css) {
-                  parts.push(css);
-                  usedSources++;
-                }
-              } catch (error) {
-                console.warn(`Skipping unparsable coverage source ${entry.url}: ${error.message}`);
-              }
-            }
-
-            const result = await postcss([cssnano({ preset: 'default' })]).process(parts.join('\n'), { from: undefined });
+            const merged = new Map();
+            for (const item of mobile.items) merged.set(item.key, item.text);
+            for (const item of desktop.items) if (!merged.has(item.key)) merged.set(item.key, item.text);
+            const source = [...merged.values()].join('\n');
+            const result = await postcss([cssnano({ preset: 'default' })]).process(source, { from: undefined });
             const critical = result.css.trim();
-            if (!critical || critical.length < 12000) throw new Error(`Comprehensive critical CSS is unexpectedly small: ${critical.length} bytes.`);
-            if (critical.length > 160000) throw new Error(`Comprehensive critical CSS is unexpectedly large: ${critical.length} bytes.`);
+            if (!critical || critical.length < 12000) throw new Error(`Geometric critical CSS is unexpectedly small: ${critical.length} bytes.`);
+            if (critical.length > 100000) throw new Error(`Geometric critical CSS is unexpectedly large: ${critical.length} bytes.`);
             postcss.parse(critical);
             fs.mkdirSync(path.dirname(output), { recursive: true });
-            fs.writeFileSync(output, `/* Generated from all CSS used in the first mobile and desktop viewport. */\n${critical}\n`);
-            console.log(JSON.stringify({ sourceBytes, criticalBytes: critical.length, usedSources, totalRanges, coveragePercent: Math.round((critical.length / sourceBytes) * 1000) / 10 }, null, 2));
+            fs.writeFileSync(output, `/* Generated from CSS rules affecting the actual first mobile and desktop viewport. */\n${critical}\n`);
+            console.log(JSON.stringify({ criticalBytes: critical.length, mobileRules: mobile.items.length, desktopRules: desktop.items.length, mergedRules: merged.size, mobileSheets: mobile.sheetCount, desktopSheets: desktop.sheetCount }, null, 2));
           })().catch((error) => { console.error(error); process.exit(1); });
           NODE
           node generate-critical.cjs
@@ -150,7 +158,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add "$TARGET"
-          git commit -m 'perf: publish comprehensive Home critical CSS'
+          git commit -m 'perf: publish geometric Home critical CSS'
           git push
 
-# Manual refresh trigger: 2026-08-10 comprehensive performance review.
+# Manual refresh trigger: 2026-08-10 geometric performance review.
