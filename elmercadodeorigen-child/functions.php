@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.134' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.135' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -117,6 +117,7 @@ $elmercado_modules = array(
 	'inc/transaction-cascade-final-010126.php',
 	'inc/checkout-legibility-final-010128.php',
 	'inc/cart-checkout-shipping-final-010132.php',
+	'inc/home-cart-visual-cleanup-010135.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
