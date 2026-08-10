@@ -1,6 +1,6 @@
 <?php
 /**
- * Legibilidad final del checkout 0.10.130.
+ * Legibilidad final del checkout 0.10.131.
  *
  * Ajusta únicamente contraste fino del resumen y muestra el aviso de recálculo
  * solo cuando existe un overlay AJAX real de WooCommerce. En sesiones de QA
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 add_action(
-	'wp_loaded',
+	'wp',
 	static function (): void {
 		if (
 			is_admin()
@@ -47,7 +47,7 @@ add_action(
 		WC()->cart->calculate_shipping();
 		WC()->cart->calculate_totals();
 	},
-	30
+	5
 );
 
 add_action(
