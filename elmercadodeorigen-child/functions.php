@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.142' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.143' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -122,6 +122,7 @@ $elmercado_modules = array(
 	'inc/checkout-clean-coupon-010137.php',
 	'inc/mobile-shipping-calculator-final-010139.php',
 	'inc/mobile-shipping-calculator-geometry-010142.php',
+	'inc/mobile-shipping-calculator-row-final-010143.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
