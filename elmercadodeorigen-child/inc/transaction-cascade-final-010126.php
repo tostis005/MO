@@ -1,6 +1,6 @@
 <?php
 /**
- * Cierre de cascada transaccional 0.10.126.
+ * Cierre de cascada transaccional 0.10.127.
  *
  * Recupera únicamente la densidad compacta del bloque de garantías del carrito
  * en la última posición de la cascada. No interviene en estados AJAX ni en el
@@ -20,7 +20,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-transaction-cascade-final-010126">
+		<style id="elmercado-transaction-cascade-final-010127">
 			html body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-assurance {
 				display: flex !important;
 				flex-direction: column !important;
@@ -56,6 +56,42 @@ add_action(
 				line-height: 1.35 !important;
 			}
 		</style>
+		<?php
+	},
+	PHP_INT_MAX
+);
+
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() || ! function_exists( 'is_cart' ) || ! is_cart() ) {
+			return;
+		}
+		?>
+		<script id="elmercado-cart-assurance-cleanup-010127">
+		(() => {
+			'use strict';
+
+			const cleanAssurance = () => {
+				const box = document.querySelector('.cart_totals .emo-cart-assurance');
+				if (!box) return;
+				[...box.childNodes].forEach((node) => {
+					const keep = node.nodeType === Node.ELEMENT_NODE && node.nodeName === 'SPAN';
+					if (!keep) node.remove();
+				});
+			};
+
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', cleanAssurance, { once: true });
+			} else {
+				cleanAssurance();
+			}
+
+			if (window.jQuery) {
+				window.jQuery(document.body).on('updated_wc_div updated_cart_totals', cleanAssurance);
+			}
+		})();
+		</script>
 		<?php
 	},
 	PHP_INT_MAX
