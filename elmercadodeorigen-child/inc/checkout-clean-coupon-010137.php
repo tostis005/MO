@@ -1,11 +1,10 @@
 <?php
 /**
- * Checkout limpio y tratamiento de cupones 0.10.137.
+ * Checkout limpio y tratamiento final de cupones 0.10.138.
  *
  * Reduce divisores y contornos redundantes del resumen/pago y da al flujo de
- * cupones un acabado coherente con el resto del sistema visual. La aplicación
- * de `jamonjunta` queda limitada a la consulta QA `user-visual` para validar el
- * estado real en staging; se retirará tras la comprobación visual.
+ * cupones un acabado coherente con el resto del sistema visual. No modifica la
+ * lógica de WooCommerce ni aplica cupones automáticamente.
  *
  * @package ElMercadoDeOrigen
  */
@@ -14,38 +13,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Fixture temporal de QA: aplica el cupón real indicado únicamente durante la
- * auditoría visual. No modifica sesiones normales ni crea cupones inexistentes.
- */
-add_action(
-	'wp',
-	static function (): void {
-		if (
-			is_admin()
-			|| ! isset( $_GET['user-visual'] )
-			|| ! function_exists( 'is_checkout' )
-			|| ! is_checkout()
-			|| is_order_received_page()
-			|| ! function_exists( 'WC' )
-			|| ! WC()->cart
-			|| WC()->cart->is_empty()
-		) {
-			return;
-		}
-
-		$coupon_code = function_exists( 'wc_format_coupon_code' )
-			? wc_format_coupon_code( 'jamonjunta' )
-			: 'jamonjunta';
-
-		if ( ! WC()->cart->has_discount( $coupon_code ) ) {
-			WC()->cart->apply_coupon( $coupon_code );
-			WC()->cart->calculate_totals();
-		}
-	},
-	30
-);
-
 add_action(
 	'wp_head',
 	static function (): void {
@@ -53,7 +20,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-checkout-clean-coupon-010137">
+		<style id="elmercado-checkout-clean-coupon-010138">
 			/* Una sola tarjeta de resumen: la profundidad la da la superficie, no el contorno. */
 			html body.elmercado-child-theme.woocommerce-checkout #order_review_heading,
 			html body.elmercado-child-theme.woocommerce-checkout #order_review {
@@ -198,21 +165,54 @@ add_action(
 				padding-top: 5px !important;
 			}
 
+			/* El estado AJAX se distingue por fondo, no por otra caja con borde. */
+			html body.elmercado-child-theme.woocommerce-checkout #order_review .emo-checkout-loading-note {
+				border: 0 !important;
+				outline: 0 !important;
+				background: rgba(255,255,255,.065) !important;
+				box-shadow: none !important;
+			}
+
 			/* Toggle, formulario y mensajes de cupón: superficie clara y compacta. */
 			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-form-coupon-toggle {
 				margin-bottom: 12px !important;
 			}
 
 			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-form-coupon-toggle .woocommerce-info,
-			html body.elmercado-child-theme.woocommerce-checkout > :is(.woocommerce-message,.woocommerce-info,.woocommerce-error),
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-notices-wrapper :is(.woocommerce-message,.woocommerce-info,.woocommerce-error),
 			html body.elmercado-child-theme.woocommerce-checkout .woocommerce > :is(.woocommerce-message,.woocommerce-info,.woocommerce-error) {
 				box-sizing: border-box !important;
 				border: 0 !important;
 				border-left: 0 !important;
+				outline: 0 !important;
 				border-radius: 14px !important;
 				background: #fffdf8 !important;
 				box-shadow: 0 10px 28px rgba(13,33,27,.07) !important;
 				color: #355047 !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-notices-wrapper .woocommerce-message {
+				background: #edf4ef !important;
+				color: #173f32 !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-notices-wrapper .woocommerce-error {
+				background: #fff1ed !important;
+				color: #7f2f2a !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-notices-wrapper :is(.woocommerce-message,.woocommerce-info,.woocommerce-error)::after {
+				display: none !important;
+				content: none !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-notices-wrapper .woocommerce-message::before,
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-form-coupon-toggle .woocommerce-info::before {
+				color: #2f6650 !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-notices-wrapper .woocommerce-error::before {
+				color: #a74f2d !important;
 			}
 
 			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-form-coupon-toggle .woocommerce-info {
@@ -220,10 +220,6 @@ add_action(
 				padding: 13px 15px !important;
 				font-size: 13px !important;
 				line-height: 1.45 !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-form-coupon-toggle .woocommerce-info::before {
-				color: #c96d45 !important;
 			}
 
 			html body.elmercado-child-theme.woocommerce-checkout .woocommerce-form-coupon-toggle .showcoupon {
@@ -247,7 +243,6 @@ add_action(
 
 			html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon :is(.form-row,.form-row-first,.form-row-last) {
 				box-sizing: border-box !important;
-				margin: 0 !important;
 				padding: 0 !important;
 			}
 
@@ -281,11 +276,20 @@ add_action(
 			}
 
 			@media (min-width: 768px) {
-				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon {
-					display: grid !important;
-					grid-template-columns: minmax(0,1fr) auto !important;
-					align-items: center !important;
-					gap: 10px !important;
+				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon .form-row-first {
+					float: left !important;
+					width: calc(100% - 166px) !important;
+					margin: 0 !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon .form-row-last {
+					float: right !important;
+					width: 156px !important;
+					margin: 0 !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon .form-row-last .button {
+					width: 100% !important;
 				}
 			}
 
@@ -314,10 +318,15 @@ add_action(
 					background: transparent !important;
 				}
 
-				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon {
-					display: grid !important;
-					grid-template-columns: minmax(0,1fr) !important;
-					gap: 10px !important;
+				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon .form-row-first,
+				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon .form-row-last {
+					float: none !important;
+					width: 100% !important;
+					margin: 0 0 10px !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon .form-row-last {
+					margin-bottom: 0 !important;
 				}
 
 				html body.elmercado-child-theme.woocommerce-checkout form.checkout_coupon button.button,
