@@ -6,6 +6,9 @@
  * WooCommerce, parámetros ni vista previa. La tienda, producto, checkout,
  * cuentas y usuarios identificados nunca pasan por este caché.
  *
+ * Además del transient, mantiene una copia estática que el drop-in
+ * advanced-cache.php puede servir antes de cargar plugins y tema.
+ *
  * @package ElMercadoDeOrigen
  */
 
@@ -21,6 +24,45 @@ function elmercado_home_cache_key(): string {
 }
 
 /**
+ * Ruta de la copia estática que consume el drop-in temprano.
+ */
+function elmercado_home_static_cache_file(): string {
+	return WP_CONTENT_DIR . '/cache/elmercado-home-static/index.html';
+}
+
+/**
+ * Guarda de forma atómica el documento final de Home para el cache temprano.
+ */
+function elmercado_write_home_static_cache( string $html ): void {
+	if ( '' === $html || false === stripos( $html, '</html>' ) || false !== stripos( $html, 'wp-die-message' ) ) {
+		return;
+	}
+
+	$file      = elmercado_home_static_cache_file();
+	$directory = dirname( $file );
+
+	if ( ! is_dir( $directory ) && ! wp_mkdir_p( $directory ) ) {
+		return;
+	}
+
+	$tmp = tempnam( $directory, 'home-' );
+	if ( false === $tmp ) {
+		return;
+	}
+
+	$written = file_put_contents( $tmp, $html, LOCK_EX ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+	if ( false === $written || $written < strlen( $html ) ) {
+		@unlink( $tmp );
+		return;
+	}
+
+	@chmod( $tmp, 0644 );
+	if ( ! @rename( $tmp, $file ) ) {
+		@unlink( $tmp );
+	}
+}
+
+/**
  * Comprueba si la petición admite una respuesta pública compartida.
  */
 function elmercado_can_cache_home_request(): bool {
@@ -30,7 +72,7 @@ function elmercado_can_cache_home_request(): bool {
 
 	$method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) : 'GET';
 
-	if ( 'GET' !== $method || wp_doing_ajax() || defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+	if ( 'GET' !== $method || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 		return false;
 	}
 
@@ -64,9 +106,8 @@ function elmercado_home_cache_header( string $status ): void {
 }
 
 /**
- * Sirve una copia o inicia la captura exterior. El buffer de optimización de
- * output-optimization.php se abre después y, por tanto, el caché almacena el
- * documento final ya depurado.
+ * Sirve una copia o inicia la captura exterior. El buffer almacena el documento
+ * final ya depurado y lo replica también al fichero usado por advanced-cache.
  */
 add_action(
 	'template_redirect',
@@ -79,6 +120,12 @@ add_action(
 		$cached = get_transient( $key );
 
 		if ( is_string( $cached ) && '' !== $cached ) {
+			$file  = elmercado_home_static_cache_file();
+			$mtime = is_file( $file ) ? @filemtime( $file ) : false;
+			if ( ! is_readable( $file ) || false === $mtime || ( time() - (int) $mtime ) > 10 * MINUTE_IN_SECONDS ) {
+				elmercado_write_home_static_cache( $cached );
+			}
+
 			elmercado_home_cache_header( 'HIT' );
 			header( 'Content-Type: text/html; charset=' . get_bloginfo( 'charset' ) );
 			echo $cached; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Documento HTML previamente generado por WordPress.
@@ -90,6 +137,7 @@ add_action(
 			static function ( string $html ) use ( $key ): string {
 				if ( '' !== $html && false !== stripos( $html, '</html>' ) && false === stripos( $html, 'wp-die-message' ) ) {
 					set_transient( $key, $html, 10 * MINUTE_IN_SECONDS );
+					elmercado_write_home_static_cache( $html );
 				}
 
 				return $html;
@@ -105,6 +153,10 @@ add_action(
  */
 function elmercado_flush_home_cache(): void {
 	delete_transient( elmercado_home_cache_key() );
+	$file = elmercado_home_static_cache_file();
+	if ( is_file( $file ) ) {
+		@unlink( $file );
+	}
 }
 
 add_action( 'save_post_product', 'elmercado_flush_home_cache' );
