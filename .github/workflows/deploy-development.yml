@@ -149,6 +149,62 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$wp_path" --skip-plugins --allow-root || true
           REMOTE
 
+      - name: Configure long-lived static asset caching
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_WP_PATH'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          htaccess="$wp_path/.htaccess"
+          touch "$htaccess"
+          [ -w "$htaccess" ] || { echo "Cannot write ${htaccess}." >&2; exit 1; }
+
+          tmp="$(mktemp)"
+          awk '
+            $0 == "# BEGIN El Mercado Static Cache" { skip=1; next }
+            $0 == "# END El Mercado Static Cache" { skip=0; next }
+            !skip { print }
+          ' "$htaccess" > "$tmp"
+
+          cat >> "$tmp" <<'CACHE'
+
+# BEGIN El Mercado Static Cache
+<IfModule mod_expires.c>
+ExpiresActive On
+ExpiresByType text/css "access plus 1 year"
+ExpiresByType application/javascript "access plus 1 year"
+ExpiresByType text/javascript "access plus 1 year"
+ExpiresByType image/jpeg "access plus 1 year"
+ExpiresByType image/png "access plus 1 year"
+ExpiresByType image/gif "access plus 1 year"
+ExpiresByType image/webp "access plus 1 year"
+ExpiresByType image/avif "access plus 1 year"
+ExpiresByType image/svg+xml "access plus 1 year"
+ExpiresByType image/x-icon "access plus 1 year"
+ExpiresByType font/woff "access plus 1 year"
+ExpiresByType font/woff2 "access plus 1 year"
+ExpiresByType font/ttf "access plus 1 year"
+ExpiresByType font/otf "access plus 1 year"
+</IfModule>
+<IfModule mod_headers.c>
+<FilesMatch "\.(css|js|mjs|jpg|jpeg|png|gif|webp|avif|svg|ico|woff|woff2|ttf|otf)$">
+Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>
+</IfModule>
+# END El Mercado Static Cache
+CACHE
+
+          cat "$tmp" > "$htaccess"
+          rm -f "$tmp"
+          echo "Static cache policy installed in ${htaccess}."
+          REMOTE
+
       - name: Verify the public staging URL
         shell: bash
         run: |
@@ -157,13 +213,26 @@ jobs:
           for attempt in {1..20}; do
             status="$(curl -sS -L --max-time 25 -o /tmp/staging.html -w '%{http_code}' "$URL" || true)"
             if [ "$status" = '200' ] && grep -q 'elmercado-child-theme' /tmp/staging.html; then
-              exit 0
+              break
             fi
             sleep 5
           done
-          echo 'The public staging URL did not serve the active child theme.' >&2
-          echo "Last HTTP status: ${status:-unknown}" >&2
-          exit 1
+          if [ "${status:-}" != '200' ] || ! grep -q 'elmercado-child-theme' /tmp/staging.html; then
+            echo 'The public staging URL did not serve the active child theme.' >&2
+            echo "Last HTTP status: ${status:-unknown}" >&2
+            exit 1
+          fi
+
+          ASSET="$STAGING_URL/wp-content/themes/elmercadodeorigen-child/style.css?cache-check=${GITHUB_SHA}"
+          headers="$(curl -sSIL --max-time 30 "$ASSET")"
+          printf '%s\n' "$headers"
+          normalized="$(printf '%s\n' "$headers" | tr -d '\r')"
+          cache_control="$(printf '%s\n' "$normalized" | grep -i '^cache-control:' | tail -n 1 || true)"
+          expires="$(printf '%s\n' "$normalized" | grep -i '^expires:' | tail -n 1 || true)"
+          printf 'Resolved Cache-Control: %s\n' "${cache_control:-missing}"
+          printf 'Resolved Expires: %s\n' "${expires:-missing}"
+          printf '%s\n' "$cache_control" | grep -Eiq 'max-age=31536000'
+          printf '%s\n' "$cache_control" | grep -Eiq 'immutable'
 
       - name: Deployment summary
-        run: echo "Child theme deployed, activated and verified on dev.elmercadodeorigen.com."
+        run: echo "Child theme deployed and static assets verified with a one-year immutable browser cache on dev.elmercadodeorigen.com."
