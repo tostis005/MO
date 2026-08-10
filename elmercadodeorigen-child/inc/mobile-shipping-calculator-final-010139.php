@@ -1,10 +1,10 @@
 <?php
 /**
- * Carrito móvil: calculadora de envío final 0.10.140 QA.
+ * Carrito móvil: calculadora de envío final 0.10.141 QA.
  *
- * Alinea el disparador con los importes del resumen y hace que el formulario
- * desplegable use toda la anchura disponible, sin floats ni media columna.
- * Durante `user-visual` se fuerza abierto únicamente para validar su geometría.
+ * Reestructura la fila móvil para que ENVÍO y el disparador compartan una línea
+ * a ancho completo, mientras el formulario desplegado ocupa la fila siguiente
+ * completa. `user-visual` lo fuerza abierto solo para comprobación visual.
  *
  * @package ElMercadoDeOrigen
  */
@@ -20,39 +20,103 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-mobile-shipping-calculator-final-010140">
+		<style id="elmercado-mobile-shipping-calculator-final-010141">
 			@media (max-width: 767px) {
-				html body.elmercado-child-theme.woocommerce-cart .cart_totals .woocommerce-shipping-calculator {
+				/* La fila de envío deja de ser una tabla de dos medias columnas. */
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals table.shop_table tr.woocommerce-shipping-totals.shipping {
 					display: block !important;
 					box-sizing: border-box !important;
 					width: 100% !important;
 					max-width: none !important;
-					margin: 9px 0 0 !important;
-					padding: 0 !important;
-					text-align: right !important;
+					margin: 0 !important;
+					padding: 8px 0 10px !important;
+					border: 0 !important;
 				}
 
-				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-button {
-					display: inline-flex !important;
-					width: auto !important;
-					max-width: 100% !important;
-					align-items: center !important;
-					justify-content: flex-end !important;
-					margin: 0 0 0 auto !important;
-					padding: 3px 0 !important;
-					text-align: right !important;
-					line-height: 1.35 !important;
+				/* El encabezado real se sustituye por la etiqueta móvil dentro de la celda completa. */
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals table.shop_table tr.woocommerce-shipping-totals.shipping > th {
+					display: none !important;
 				}
 
-				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form {
-					float: none !important;
-					clear: both !important;
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals table.shop_table tr.woocommerce-shipping-totals.shipping > td {
+					display: grid !important;
 					box-sizing: border-box !important;
 					width: 100% !important;
 					max-width: none !important;
 					min-width: 0 !important;
-					margin: 11px 0 2px !important;
-					padding: 12px !important;
+					grid-template-columns: auto minmax(0,1fr) !important;
+					align-items: start !important;
+					column-gap: 14px !important;
+					row-gap: 9px !important;
+					margin: 0 !important;
+					padding: 0 !important;
+					border: 0 !important;
+					text-align: left !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals table.shop_table tr.woocommerce-shipping-totals.shipping > td::before {
+					display: block !important;
+					content: "ENVÍO" !important;
+					grid-column: 1 !important;
+					grid-row: 1 !important;
+					align-self: center !important;
+					margin: 0 !important;
+					padding: 3px 0 !important;
+					color: rgba(255,253,248,.68) !important;
+					font-size: 10px !important;
+					font-weight: 850 !important;
+					letter-spacing: .055em !important;
+					line-height: 1.35 !important;
+					text-transform: uppercase !important;
+			}
+
+				/* El wrapper no crea otra columna: sus hijos participan en la rejilla de la celda. */
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals .woocommerce-shipping-calculator {
+					display: contents !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-button {
+					display: inline-flex !important;
+					grid-column: 2 !important;
+					grid-row: 1 !important;
+					width: auto !important;
+					max-width: 100% !important;
+					align-items: center !important;
+					justify-content: flex-end !important;
+					justify-self: end !important;
+					margin: 0 !important;
+					padding: 3px 0 !important;
+					color: #f1d59c !important;
+					font-size: 13px !important;
+					font-weight: 850 !important;
+					line-height: 1.35 !important;
+					text-align: right !important;
+					text-decoration: underline !important;
+					text-decoration-thickness: 1px !important;
+					text-underline-offset: 3px !important;
+				}
+
+				/* Métodos/destino, si ya existen, también usan toda la anchura disponible. */
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals tr.woocommerce-shipping-totals.shipping > td > :is(ul#shipping_method,ul.woocommerce-shipping-methods,.woocommerce-shipping-destination) {
+					grid-column: 1 / -1 !important;
+					box-sizing: border-box !important;
+					width: 100% !important;
+					max-width: none !important;
+					min-width: 0 !important;
+				}
+
+				/* El panel abierto cruza ambas columnas y se convierte en una única superficie. */
+				html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form {
+					float: none !important;
+					clear: both !important;
+					grid-column: 1 / -1 !important;
+					grid-row: auto !important;
+					box-sizing: border-box !important;
+					width: 100% !important;
+					max-width: none !important;
+					min-width: 0 !important;
+					margin: 3px 0 0 !important;
+					padding: 13px !important;
 					border: 0 !important;
 					border-radius: 12px !important;
 					background: rgba(255,255,255,.045) !important;
@@ -68,7 +132,7 @@ add_action(
 					width: 100% !important;
 					max-width: none !important;
 					min-width: 0 !important;
-					margin: 0 0 9px !important;
+					margin: 0 0 10px !important;
 					padding: 0 !important;
 				}
 
@@ -131,7 +195,7 @@ add_action(
 			}
 		</style>
 		<?php if ( isset( $_GET['user-visual'] ) ) : ?>
-			<style id="elmercado-mobile-shipping-calculator-qa-010140">
+			<style id="elmercado-mobile-shipping-calculator-qa-010141">
 				@media (max-width: 767px) {
 					html body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-form {
 						display: block !important;
