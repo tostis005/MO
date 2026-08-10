@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.124' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.125' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -81,6 +81,7 @@ $elmercado_modules = array(
 	'inc/home-carousel-inert-controls-01054.php',
 	'inc/experience-polish-final-01055.php',
 	'inc/transaction-focus-final-01056.php',
+	'inc/transaction-tail-cleanup-01058.php',
 	'inc/checkout-summary-column-01059.php',
 	'inc/mobile-reading-checkout-01060.php',
 	'inc/visual-coherence-01063.php',

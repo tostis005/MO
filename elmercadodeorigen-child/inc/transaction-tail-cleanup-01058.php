@@ -1,6 +1,10 @@
 <?php
 /**
- * Limpieza estructural de cierre de compra y estado de carga del resumen.
+ * Cierre transaccional seguro 0.10.125.
+ *
+ * Conserva compacto el bloque de garantías del carrito y oculta contenido
+ * promocional/reseñas que aparezca después del flujo transaccional. No crea
+ * estados de checkout ni oculta el resumen o los métodos de pago.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,7 +20,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-transaction-tail-cleanup-01058">
+		<style id="elmercado-transaction-tail-cleanup-010125">
 			body.elmercado-child-theme:is(.woocommerce-cart,.woocommerce-checkout) .emo-post-transaction-hidden {
 				display: none !important;
 				visibility: hidden !important;
@@ -24,40 +28,43 @@ add_action(
 				min-height: 0 !important;
 				margin: 0 !important;
 				padding: 0 !important;
+				border: 0 !important;
 				overflow: hidden !important;
 			}
 
-			body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-pending {
-				display: block !important;
+			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-assurance {
+				display: flex !important;
+				flex-direction: column !important;
+				flex-wrap: nowrap !important;
+				align-items: stretch !important;
+				align-content: flex-start !important;
+				justify-content: flex-start !important;
+				gap: 7px !important;
+				box-sizing: border-box !important;
+				width: 100% !important;
 				height: auto !important;
 				min-height: 0 !important;
-				max-height: 300px !important;
-				padding-bottom: 22px !important;
-				overflow: hidden !important;
+				max-height: none !important;
+				margin: 10px 0 0 !important;
+				padding: 10px 0 0 !important;
 			}
 
-			body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-pending::after {
-				display: block;
-				margin: 18px;
-				padding: 18px;
-				border: 1px solid rgba(255,255,255,.14);
-				border-radius: 14px;
-				background: rgba(255,255,255,.06);
-				color: #fffdf8;
-				content: "Completa tus datos para actualizar el resumen y mostrar las opciones de pago disponibles.";
-				font-size: 13px;
-				font-weight: 650;
-				line-height: 1.55;
-			}
-
-			body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-pending #payment {
-				display: none !important;
-			}
-
-			@media (max-width: 767px) {
-				body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-pending {
-					max-height: 260px !important;
-				}
+			body.elmercado-child-theme.woocommerce-cart .cart_totals .emo-cart-assurance > span {
+				position: static !important;
+				display: flex !important;
+				flex: 0 0 auto !important;
+				align-self: auto !important;
+				align-items: flex-start !important;
+				justify-content: flex-start !important;
+				box-sizing: border-box !important;
+				width: 100% !important;
+				height: auto !important;
+				min-height: 0 !important;
+				max-height: none !important;
+				margin: 0 !important;
+				padding: 0 !important;
+				transform: none !important;
+				line-height: 1.35 !important;
 			}
 		</style>
 		<?php
@@ -72,16 +79,16 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-transaction-tail-cleanup-js-01058">
+		<script id="elmercado-transaction-tail-cleanup-js-010125">
 		(() => {
 			'use strict';
 
-			const protectedSelector = '.woocommerce-cart-form,.cart-collaterals,#customer_details,#order_review,#payment,form.checkout,.woocommerce-checkout-review-order';
+			const protectedSelector = '.woocommerce-cart-form,.cart-collaterals,#customer_details,#order_review,#payment,form.checkout,.woocommerce-checkout-review-order,.emo-checkout-summary-column';
 			const root = document.querySelector('#primary,.site-main') || document.body;
 
 			const hideTail = () => {
 				let boundary = document.body.classList.contains('woocommerce-checkout')
-					? document.querySelector('#order_review')
+					? (document.querySelector('.emo-checkout-summary-column') || document.querySelector('#order_review'))
 					: (document.querySelector('.cart-collaterals') || document.querySelector('.woocommerce-cart-form'));
 
 				while (boundary && boundary !== root && root.contains(boundary)) {
@@ -97,24 +104,18 @@ add_action(
 				}
 			};
 
-			const syncCheckoutState = () => {
-				if (!document.body.classList.contains('woocommerce-checkout')) return;
-				const review = document.querySelector('#order_review');
-				if (!review) return;
-				const summaryText = (review.querySelector('.shop_table')?.innerText || '').replace(/\s+/g, ' ').trim();
-				const paymentOptions = review.querySelectorAll('#payment .payment_methods li').length;
-				review.classList.toggle('emo-order-review-pending', summaryText.length < 12 && paymentOptions === 0);
-			};
-
-			const run = () => {
+			const start = () => {
 				hideTail();
-				syncCheckoutState();
+				[180, 700, 1800].forEach((delay) => window.setTimeout(hideTail, delay));
+				if (window.jQuery) {
+					window.jQuery(document.body).on('updated_checkout updated_wc_div', hideTail);
+				}
 			};
 
-			run();
-			[150, 500, 1100, 2200, 4200].forEach((delay) => setTimeout(run, delay));
-			if (window.jQuery) {
-				jQuery(document.body).on('updated_checkout', run);
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', start, { once: true });
+			} else {
+				start();
 			}
 		})();
 		</script>
