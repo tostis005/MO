@@ -2,6 +2,9 @@
 /**
  * Columna de resumen de checkout estable durante actualizaciones AJAX.
  *
+ * Mantiene el resumen en su columna sin ocultar métodos de pago ni sustituir
+ * el contenido mientras WooCommerce recalcula envío, impuestos o pasarelas.
+ *
  * @package ElMercadoDeOrigen
  */
 
@@ -17,8 +20,6 @@ add_action(
 		}
 		?>
 		<style id="elmercado-checkout-summary-column-01059">
-			/* La columna de datos y la de resumen deben medir por su propio contenido.
-			 * Evitamos que el alto del formulario izquierdo se transfiera al panel verde. */
 			html body.elmercado-child-theme.woocommerce-checkout form.checkout {
 				display: grid !important;
 				grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr) !important;
@@ -36,7 +37,7 @@ add_action(
 				grid-column: 2 !important;
 				grid-row: 1 !important;
 				align-self: start !important;
-				min-width: 0;
+				min-width: 0 !important;
 			}
 
 			html body.elmercado-child-theme.woocommerce-checkout .emo-checkout-summary-column > :is(#order_review_heading,#order_review) {
@@ -47,49 +48,29 @@ add_action(
 				min-height: 0 !important;
 			}
 
-			/* Durante updated_checkout no enseñamos una gran superficie vacía. */
-			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-loading {
-				position: relative !important;
-				display: block !important;
-				height: auto !important;
-				min-height: 0 !important;
-				max-height: none !important;
-				padding: 14px 18px 18px !important;
-				overflow: visible !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-loading > :not(.emo-checkout-loading-note):not(.blockUI) {
-				display: none !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-loading > .blockUI.blockOverlay {
-				display: block !important;
-				background: transparent !important;
-				opacity: 0 !important;
-			}
-
+			/* El estado AJAX acompaña al contenido; nunca lo sustituye. */
 			html body.elmercado-child-theme.woocommerce-checkout .emo-checkout-loading-note {
 				display: none;
-				margin: 0 !important;
-				padding: 16px;
+				margin: 0 0 14px !important;
+				padding: 12px 14px;
 				border: 1px solid rgba(255,255,255,.14);
-				border-radius: 14px;
+				border-radius: 12px;
 				background: rgba(255,255,255,.055);
 				color: #fffdf8 !important;
-				font-size: 13px;
+				font-size: 12.5px;
 				font-weight: 650;
-				line-height: 1.55;
+				line-height: 1.45;
 			}
 
-			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-loading .emo-checkout-loading-note {
+			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-updating > .emo-checkout-loading-note {
 				display: block;
 			}
 
 			html body.elmercado-child-theme.woocommerce-checkout .emo-checkout-loading-note::before {
 				display: inline-block;
-				width: 8px;
-				height: 8px;
-				margin-right: 9px;
+				width: 7px;
+				height: 7px;
+				margin-right: 8px;
 				border-radius: 50%;
 				background: #f1d59c;
 				content: "";
@@ -127,8 +108,8 @@ add_action(
 
 			const setup = () => {
 				const form = document.querySelector('form.checkout');
-				const heading = form?.querySelector(':scope > #order_review_heading');
-				const review = form?.querySelector(':scope > #order_review');
+				const review = form?.querySelector('#order_review');
+				const heading = form?.querySelector('#order_review_heading');
 				if (!form || !review) return null;
 
 				let column = form.querySelector(':scope > .emo-checkout-summary-column');
@@ -136,9 +117,9 @@ add_action(
 					column = document.createElement('div');
 					column.className = 'emo-checkout-summary-column';
 					(heading || review).before(column);
-					if (heading) column.append(heading);
-					column.append(review);
 				}
+				if (heading && heading.parentElement !== column) column.append(heading);
+				if (review.parentElement !== column) column.append(review);
 
 				let note = review.querySelector(':scope > .emo-checkout-loading-note');
 				if (!note) {
@@ -146,41 +127,41 @@ add_action(
 					note.className = 'emo-checkout-loading-note';
 					note.setAttribute('role', 'status');
 					note.setAttribute('aria-live', 'polite');
-					note.textContent = 'Estamos actualizando el resumen y las opciones de pago con tus datos.';
-					review.append(note);
+					note.textContent = 'Actualizando el resumen y las opciones disponibles…';
+					review.prepend(note);
 				}
 
+				/* Clases antiguas podían ocultar por completo el resumen. */
+				review.classList.remove('emo-order-review-loading', 'emo-order-review-pending');
 				return review;
 			};
 
-			const overlayVisible = (review) => [...review.querySelectorAll('.blockUI.blockOverlay')].some((node) => {
-				const style = getComputedStyle(node);
-				const rect = node.getBoundingClientRect();
-				return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-			});
-
-			const sync = () => {
+			const markUpdating = () => {
 				const review = setup();
-				if (!review) return;
-				const text = [...review.children]
-					.filter((node) => !node.matches('.blockUI,.emo-checkout-loading-note'))
-					.map((node) => node.innerText || '')
-					.join(' ')
-					.replace(/\s+/g, ' ')
-					.trim();
-				const loading = overlayVisible(review) || text.length < 18;
-				review.classList.toggle('emo-order-review-loading', loading);
+				if (review) review.classList.add('emo-order-review-updating');
+			};
+
+			const markReady = () => {
+				const review = setup();
+				if (review) review.classList.remove('emo-order-review-updating');
 			};
 
 			document.addEventListener('DOMContentLoaded', () => {
-				sync();
-				[80, 220, 500, 900, 1600, 2800, 4500].forEach((delay) => setTimeout(sync, delay));
-				const form = document.querySelector('form.checkout');
-				if (form) {
-					new MutationObserver(() => requestAnimationFrame(sync)).observe(form, { childList: true, subtree: true, attributes: true, attributeFilter: ['style','class'] });
+				const review = setup();
+				if (review) {
+					const content = [...review.children]
+						.filter((node) => !node.matches('.blockUI,.emo-checkout-loading-note'))
+						.map((node) => node.innerText || '')
+						.join(' ')
+						.replace(/\s+/g, ' ')
+						.trim();
+					if (content.length < 18) review.classList.add('emo-order-review-updating');
 				}
+
 				if (window.jQuery) {
-					jQuery(document.body).on('update_checkout updated_checkout checkout_error', () => requestAnimationFrame(sync));
+					jQuery(document.body)
+						.on('update_checkout', markUpdating)
+						.on('updated_checkout checkout_error', markReady);
 				}
 			});
 		})();

@@ -1,6 +1,9 @@
 <?php
 /**
- * Último pulido móvil: checkout en carga y descripción de producto desplegable.
+ * Lectura móvil: descripción de producto desplegable.
+ *
+ * El checkout se deja en manos del flujo AJAX nativo de WooCommerce para que
+ * los métodos de pago permanezcan visibles mientras se actualiza el pedido.
  *
  * @package ElMercadoDeOrigen
  */
@@ -17,46 +20,6 @@ add_action(
 		}
 		?>
 		<style id="elmercado-mobile-reading-checkout-01060">
-			/* Chrome actual permite reaccionar al overlay real de WooCommerce sin
-			 * depender del momento exacto en que se ejecuta el controlador JS. */
-			html body.elmercado-child-theme.woocommerce-checkout #order_review:has(.blockUI.blockOverlay),
-			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-loading {
-				position: relative !important;
-				height: auto !important;
-				min-height: 0 !important;
-				max-height: 210px !important;
-				padding: 16px 18px 18px !important;
-				overflow: hidden !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #order_review:has(.blockUI.blockOverlay) > :not(.blockUI),
-			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-loading > :not(.blockUI):not(.emo-checkout-loading-note) {
-				visibility: hidden !important;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #order_review:has(.blockUI.blockOverlay)::after {
-				display: block;
-				margin: 0;
-				padding: 16px;
-				border: 1px solid rgba(255,255,255,.14);
-				border-radius: 14px;
-				background: rgba(255,255,255,.055);
-				color: #fffdf8;
-				content: "Estamos actualizando el resumen y las opciones de pago con tus datos.";
-				font-size: 13px;
-				font-weight: 650;
-				line-height: 1.55;
-				visibility: visible;
-			}
-
-			html body.elmercado-child-theme.woocommerce-checkout #order_review:has(.blockUI.blockOverlay) > .blockUI.blockOverlay,
-			html body.elmercado-child-theme.woocommerce-checkout #order_review.emo-order-review-loading > .blockUI.blockOverlay {
-				background: transparent !important;
-				opacity: 0 !important;
-			}
-
-			/* Descripciones extensas: todo el contenido sigue en el DOM; en móvil
-			 * sólo reducimos el recorrido inicial y dejamos una acción explícita. */
 			body.elmercado-child-theme.single-product .emo-product-description-toggle {
 				display: none;
 			}
@@ -138,23 +101,6 @@ add_action(
 		(() => {
 			'use strict';
 
-			const visible = (node) => {
-				if (!node) return false;
-				const style = getComputedStyle(node);
-				const rect = node.getBoundingClientRect();
-				return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
-			};
-
-			const syncCheckout = () => {
-				if (!document.body.classList.contains('woocommerce-checkout')) return;
-				const review = document.querySelector('#order_review');
-				if (!review) return;
-				const overlay = [...review.querySelectorAll('.blockUI.blockOverlay')].some(visible);
-				const placeOrder = review.querySelector('#place_order');
-				const suspiciouslyTall = review.getBoundingClientRect().height > 720 && !visible(placeOrder);
-				review.classList.toggle('emo-order-review-loading', overlay || suspiciouslyTall);
-			};
-
 			const setupDescription = () => {
 				if (!document.body.classList.contains('single-product')) return;
 				const panel = document.querySelector('.woocommerce-Tabs-panel--description,#tab-description');
@@ -196,20 +142,14 @@ add_action(
 					}
 				});
 
-				window.addEventListener('resize', () => requestAnimationFrame(sync), { passive: true });
+				const mobileQuery = matchMedia('(max-width: 767px)');
+				if (mobileQuery.addEventListener) mobileQuery.addEventListener('change', sync);
 				document.querySelectorAll('.wc-tabs a,[role="tab"]').forEach((tab) => tab.addEventListener('click', () => setTimeout(sync, 80)));
 				setTimeout(sync, 80);
 				setTimeout(sync, 500);
 			};
 
-			document.addEventListener('DOMContentLoaded', () => {
-				syncCheckout();
-				setupDescription();
-				[120, 400, 900, 1600, 2800].forEach((delay) => setTimeout(syncCheckout, delay));
-				const review = document.querySelector('#order_review');
-				if (review) new MutationObserver(() => requestAnimationFrame(syncCheckout)).observe(review, { childList: true, subtree: true, attributes: true, attributeFilter: ['style','class'] });
-				if (window.jQuery) jQuery(document.body).on('update_checkout updated_checkout checkout_error', () => requestAnimationFrame(syncCheckout));
-			});
+			document.addEventListener('DOMContentLoaded', setupDescription);
 		})();
 		</script>
 		<?php
