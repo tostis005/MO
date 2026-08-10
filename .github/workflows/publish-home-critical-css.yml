@@ -1,4 +1,4 @@
-name: Publish home critical CSS
+name: Publish Home CSS subsets
 
 on:
   push:
@@ -17,148 +17,170 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Generate geometric first-view CSS
+      - name: Generate first-view and Home-used CSS
         shell: bash
         run: |
           set -euo pipefail
           npm install --no-save --no-package-lock puppeteer-core@24 postcss@8 cssnano@7 >/dev/null 2>&1
-          cat > generate-critical.cjs <<'NODE'
+          cat > generate-home-css.cjs <<'NODE'
           const fs = require('fs');
           const path = require('path');
           const puppeteer = require('puppeteer-core');
           const postcss = require('postcss');
           const cssnano = require('cssnano');
           const base = 'https://dev.elmercadodeorigen.com';
-          const output = 'elmercadodeorigen-child/assets/css/critical-woostify-home.min.css';
+          const criticalOutput = 'elmercadodeorigen-child/assets/css/critical-woostify-home.min.css';
+          const homeOutput = 'elmercadodeorigen-child/assets/css/home-used-full.min.css';
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          async function collect(browser, viewport, userAgent = '') {
+          async function collect(browser, width, height, mobile = false) {
             const page = await browser.newPage();
-            await page.setViewport(viewport);
-            if (userAgent) await page.setUserAgent(userAgent);
-            await page.goto(`${base}/?critical-geometry=${Date.now()}`, { waitUntil: 'networkidle2', timeout: 90000 });
+            await page.setViewport({ width, height, isMobile: mobile, deviceScaleFactor: 1 });
+            if (mobile) await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
+            await page.goto(`${base}/?home-css-publish=${width}-${Date.now()}`, { waitUntil: 'networkidle2', timeout: 90000 });
             await sleep(500);
 
             const result = await page.evaluate(() => {
               const vh = window.innerHeight;
               const vw = window.innerWidth;
               const interactive = /:(hover|active|focus|focus-visible|focus-within|visited)(?![-\w])/g;
+              const pseudo = /::(before|after|marker|first-letter|first-line|placeholder|selection)|:(before|after)(?![-\w])/g;
+              const dynamicWord = /(open|opened|active|visible|expanded|loading|loaded|selected|focus|hover|menu|drawer|search|cart|minicart|carousel|slider|toast|modal|overlay)/i;
 
               const splitSelectors = (selectorText) => {
-                const out = []; let current = ''; let depth = 0;
-                for (const ch of selectorText) {
-                  if (ch === '(' || ch === '[') depth++;
-                  if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
-                  if (ch === ',' && depth === 0) { if (current.trim()) out.push(current.trim()); current = ''; continue; }
+                const out = []; let current = ''; let round = 0; let square = 0;
+                for (const ch of selectorText || '') {
+                  if (ch === '(') round++;
+                  if (ch === ')') round = Math.max(0, round - 1);
+                  if (ch === '[') square++;
+                  if (ch === ']') square = Math.max(0, square - 1);
+                  if (ch === ',' && round === 0 && square === 0) { if (current.trim()) out.push(current.trim()); current=''; continue; }
                   current += ch;
                 }
                 if (current.trim()) out.push(current.trim());
                 return out;
               };
 
-              const visibleForSelector = (raw) => {
-                let selector = raw
-                  .replace(/::(before|after|marker|first-letter|first-line|placeholder|selection)/g, '')
-                  .replace(/:(before|after)(?![-\w])/g, '')
-                  .replace(interactive, '');
+              const queryable = (raw) => (raw || '').replace(pseudo, '').replace(interactive, '');
+              const matchesAny = (raw) => {
+                const selector = queryable(raw);
+                if (!selector.trim()) return false;
+                try { return !!document.querySelector(selector); } catch (_) { return false; }
+              };
+              const isFirstView = (raw) => {
+                const selector = queryable(raw);
                 if (!selector.trim()) return false;
                 try {
-                  const nodes = document.querySelectorAll(selector);
-                  for (const node of nodes) {
+                  for (const node of document.querySelectorAll(selector)) {
                     const style = getComputedStyle(node);
                     if (style.display === 'none' || style.visibility === 'hidden') continue;
                     for (const rect of node.getClientRects()) {
-                      if (rect.bottom > -2 && rect.top < vh + 2 && rect.right > -2 && rect.left < vw + 2 && rect.width >= 0 && rect.height >= 0) return true;
+                      if (rect.bottom > -2 && rect.top < vh + 2 && rect.right > -2 && rect.left < vw + 2) return true;
                     }
                   }
                 } catch (_) {}
                 return false;
               };
+              const keepDynamic = (selector) => {
+                if (!dynamicWord.test(selector || '')) return false;
+                const simplified = queryable(selector)
+                  .replace(/\.(?:is-|has-|show|shown|open|opened|active|visible|expanded|loading|loaded|selected)[\w-]*/gi, '')
+                  .replace(/\[[^\]]*(?:aria-expanded|aria-hidden|data-state)[^\]]*\]/gi, '');
+                try { return simplified.trim() ? !!document.querySelector(simplified) : false; } catch (_) { return false; }
+              };
 
-              const styleRuleVisible = (rule) => splitSelectors(rule.selectorText || '').some(visibleForSelector);
-
-              const walk = (rules, prefix) => {
-                const collected = [];
-                for (let i = 0; i < rules.length; i++) {
+              const walk = (rules, prefix, mode) => {
+                const out = [];
+                for (let i=0; i<rules.length; i++) {
                   const rule = rules[i];
                   const key = `${prefix}.${i}`;
                   if (rule.type === CSSRule.STYLE_RULE) {
-                    if (styleRuleVisible(rule)) collected.push({ key, text: rule.cssText });
+                    const selectors = splitSelectors(rule.selectorText);
+                    const keep = selectors.some(mode === 'critical' ? isFirstView : (s) => matchesAny(s) || keepDynamic(s));
+                    if (keep) out.push({ key, text: rule.cssText });
                     continue;
                   }
                   if (rule.type === CSSRule.MEDIA_RULE) {
-                    if (!matchMedia(rule.conditionText).matches) continue;
-                    const children = walk(rule.cssRules, key);
-                    if (children.length) collected.push({ key, text: `@media ${rule.conditionText}{${children.map(x => x.text).join('')}}` });
+                    if (mode === 'critical' && !matchMedia(rule.conditionText).matches) continue;
+                    const children = walk(rule.cssRules, key, mode);
+                    if (children.length) out.push({ key, text: `@media ${rule.conditionText}{${children.map(x=>x.text).join('')}}` });
                     continue;
                   }
                   if (rule.type === CSSRule.SUPPORTS_RULE) {
-                    const children = walk(rule.cssRules, key);
-                    if (children.length) collected.push({ key, text: `@supports ${rule.conditionText}{${children.map(x => x.text).join('')}}` });
+                    const children = walk(rule.cssRules, key, mode);
+                    if (children.length) out.push({ key, text: `@supports ${rule.conditionText}{${children.map(x=>x.text).join('')}}` });
                     continue;
                   }
-                  if (rule.type === CSSRule.FONT_FACE_RULE || rule.type === CSSRule.KEYFRAMES_RULE) {
-                    collected.push({ key, text: rule.cssText });
-                  }
+                  if (rule.type === CSSRule.FONT_FACE_RULE || rule.type === CSSRule.KEYFRAMES_RULE) out.push({ key, text: rule.cssText });
                 }
-                return collected;
+                return out;
               };
 
-              const all = [];
+              const critical=[]; const home=[]; let deferredSheet='';
               [...document.styleSheets].forEach((sheet, sheetIndex) => {
-                try {
-                  const rules = sheet.cssRules;
-                  if (!rules) return;
-                  for (const item of walk(rules, `s${sheetIndex}`)) all.push(item);
-                } catch (_) {}
+                let rules;
+                try { rules = sheet.cssRules; } catch (_) { return; }
+                if (!rules) return;
+                const href = sheet.href || '';
+                for (const item of walk(rules, `s${sheetIndex}`, 'critical')) critical.push(item);
+                if (href.includes('/uploads/elmercado-home-static/home-deferred-')) {
+                  deferredSheet = href;
+                  for (const item of walk(rules, 'deferred', 'home')) home.push(item);
+                }
               });
-              return { items: all, sheetCount: document.styleSheets.length };
+              return { critical, home, deferredSheet, sheets: document.styleSheets.length };
             });
             await page.close();
             return result;
           }
 
+          const mergeByKey = (sets, field) => {
+            const map = new Map();
+            for (const set of sets) for (const item of set[field]) if (!map.has(item.key)) map.set(item.key, item.text);
+            return map;
+          };
+
           (async () => {
-            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-gpu'] });
-            const mobile = await collect(browser, { width: 390, height: 844, isMobile: true, deviceScaleFactor: 1 }, 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1');
-            const desktop = await collect(browser, { width: 1440, height: 1000, deviceScaleFactor: 1 });
+            const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox','--disable-gpu'] });
+            const views = [];
+            for (const [w,h,m] of [[390,844,true],[768,900,false],[900,900,false],[1100,900,false],[1440,1000,false]]) views.push(await collect(browser,w,h,m));
             await browser.close();
+            if (!views.some(v => v.deferredSheet)) throw new Error('The current Home deferred CSS sheet was not found.');
 
-            const merged = new Map();
-            for (const item of mobile.items) merged.set(item.key, item.text);
-            for (const item of desktop.items) if (!merged.has(item.key)) merged.set(item.key, item.text);
-            const source = [...merged.values()].join('\n');
-            const result = await postcss([cssnano({ preset: 'default' })]).process(source, { from: undefined });
-            const critical = result.css.trim();
-            if (!critical || critical.length < 12000) throw new Error(`Geometric critical CSS is unexpectedly small: ${critical.length} bytes.`);
-            if (critical.length > 100000) throw new Error(`Geometric critical CSS is unexpectedly large: ${critical.length} bytes.`);
-            postcss.parse(critical);
-            fs.mkdirSync(path.dirname(output), { recursive: true });
-            fs.writeFileSync(output, `/* Generated from CSS rules affecting the actual first mobile and desktop viewport. */\n${critical}\n`);
-            console.log(JSON.stringify({ criticalBytes: critical.length, mobileRules: mobile.items.length, desktopRules: desktop.items.length, mergedRules: merged.size, mobileSheets: mobile.sheetCount, desktopSheets: desktop.sheetCount }, null, 2));
-          })().catch((error) => { console.error(error); process.exit(1); });
+            const criticalMap = mergeByKey([views[0], views[4]], 'critical');
+            const homeMap = mergeByKey(views, 'home');
+            const minify = async (source) => (await postcss([cssnano({preset:'default'})]).process(source,{from:undefined})).css.trim();
+            const critical = await minify([...criticalMap.values()].join('\n'));
+            const home = await minify([...homeMap.values()].join('\n'));
+            if (critical.length < 12000 || critical.length > 100000) throw new Error(`Critical CSS size out of range: ${critical.length}`);
+            if (home.length < 60000 || home.length > 350000) throw new Error(`Home-used CSS size out of range: ${home.length}`);
+            postcss.parse(critical); postcss.parse(home);
+            fs.mkdirSync(path.dirname(criticalOutput), {recursive:true});
+            fs.writeFileSync(criticalOutput, `/* First viewport CSS. */\n${critical}\n`);
+            fs.writeFileSync(homeOutput, `/* CSS applicable to the Home DOM and its interaction states. */\n${home}\n`);
+            console.log(JSON.stringify({criticalBytes:critical.length,homeBytes:home.length,criticalRules:criticalMap.size,homeRules:homeMap.size,deferredSheets:[...new Set(views.map(v=>v.deferredSheet).filter(Boolean))],sheets:views.map(v=>v.sheets)},null,2));
+          })().catch((error)=>{console.error(error);process.exit(1);});
           NODE
-          node generate-critical.cjs
+          node generate-home-css.cjs
 
-      - name: Commit generated critical CSS
+      - name: Commit generated Home CSS subsets
         shell: bash
         run: |
           set -euo pipefail
-          TARGET='elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
-          if [ -z "$(git status --porcelain -- "$TARGET")" ]; then
-            echo 'Critical CSS is already current.'
-            exit 0
-          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add "$TARGET"
-          git commit -m 'perf: publish geometric Home critical CSS'
+          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css elmercadodeorigen-child/assets/css/home-used-full.min.css
+          if git diff --cached --quiet; then
+            echo 'Home CSS subsets are already current.'
+            exit 0
+          fi
+          git commit -m 'perf: publish Home CSS subsets'
           git push
 
-# Manual refresh trigger: 2026-08-10 geometric performance review.
+# Manual refresh trigger: 2026-08-10 Home-used CSS review.
