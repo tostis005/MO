@@ -120,9 +120,16 @@ add_action(
 		$cached = get_transient( $key );
 
 		if ( is_string( $cached ) && '' !== $cached ) {
-			$file  = elmercado_home_static_cache_file();
-			$mtime = is_file( $file ) ? @filemtime( $file ) : false;
-			if ( ! is_readable( $file ) || false === $mtime || ( time() - (int) $mtime ) > 10 * MINUTE_IN_SECONDS ) {
+			$file         = elmercado_home_static_cache_file();
+			$mtime        = is_file( $file ) ? @filemtime( $file ) : false;
+			$dropin       = WP_CONTENT_DIR . '/advanced-cache.php';
+			$dropin_mtime = is_file( $dropin ) ? @filemtime( $dropin ) : false;
+			$needs_refresh = ! is_readable( $file )
+				|| false === $mtime
+				|| ( time() - (int) $mtime ) > 10 * MINUTE_IN_SECONDS
+				|| ( false !== $dropin_mtime && ( false === $mtime || (int) $mtime < (int) $dropin_mtime ) );
+
+			if ( $needs_refresh ) {
 				elmercado_write_home_static_cache( $cached );
 			}
 
