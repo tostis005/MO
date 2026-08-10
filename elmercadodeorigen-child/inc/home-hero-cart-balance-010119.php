@@ -1,6 +1,6 @@
 <?php
 /**
- * Ajuste final de los CTA del hero y equilibrio del carrito móvil 0.10.119.
+ * Ajuste final de los CTA del hero y equilibrio del carrito móvil 0.10.120.
  *
  * @package ElMercadoDeOrigen
  */
@@ -18,7 +18,8 @@ add_action(
 		?>
 		<style id="elmercado-home-hero-cart-balance-010119">
 			/* Home: recuperar exactamente la pareja de CTA anterior al cambio de paleta 0.10.117. */
-			body.home.elmercado-child-theme .emo-hero .emo-button--accent {
+			body.home.elmercado-child-theme .emo-hero .emo-button--accent,
+			body.home.elmercado-child-theme .emo-hero .emo-button--accent:focus-visible {
 				background: var(--emo-clay) !important;
 				border-color: var(--emo-clay) !important;
 				color: #fff !important;
