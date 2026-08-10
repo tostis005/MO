@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.146' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.147' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -123,6 +123,7 @@ $elmercado_modules = array(
 	'inc/mobile-shipping-calculator-final-010144.php',
 	'inc/desktop-shipping-calculator-final-010145.php',
 	'inc/home-final-copy-performance-010146.php',
+	'inc/home-performance-second-pass-010147.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
