@@ -1,7 +1,8 @@
 <?php
 /**
  * Diagnóstico temporal de peso inline de Home 0.10.150.
- * Solo responde al query privado emo-inline-audit=1 y no altera visitas normales.
+ * Inserta únicamente un resumen oculto de tamaños para identificar el lastre
+ * del documento inicial. Se retirará en la siguiente release.
  *
  * @package ElMercadoDeOrigen
  */
@@ -13,12 +14,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'template_redirect',
 	static function (): void {
-		if ( ! function_exists( 'elmercado_is_optimized_home' ) || ! elmercado_is_optimized_home() || ! isset( $_GET['emo-inline-audit'] ) || '1' !== sanitize_text_field( wp_unslash( $_GET['emo-inline-audit'] ) ) ) {
+		if ( ! function_exists( 'elmercado_is_optimized_home' ) || ! elmercado_is_optimized_home() || is_feed() || is_trackback() || wp_doing_ajax() ) {
 			return;
 		}
-
-		nocache_headers();
-		header( 'Content-Type: application/json; charset=utf-8' );
 
 		ob_start(
 			static function ( string $html ): string {
@@ -54,16 +52,19 @@ add_action(
 				$hero_offset = strpos( $html, '<section class="emo-hero"' );
 				$head_end    = strpos( $html, '</head>' );
 				$result      = array(
-					'total_bytes'       => strlen( $html ),
-					'head_bytes'        => false === $head_end ? null : $head_end,
-					'hero_offset_bytes' => false === $hero_offset ? null : $hero_offset,
-					'style_total_bytes' => array_sum( array_column( $styles, 'bytes' ) ),
-					'script_inline_total_bytes' => array_sum( array_column( $scripts, 'inline_bytes' ) ),
-					'top_styles'        => array_slice( $styles, 0, 20 ),
-					'top_inline_scripts' => array_slice( $scripts, 0, 20 ),
+					'total'   => strlen( $html ),
+					'head'    => false === $head_end ? null : $head_end,
+					'hero'    => false === $hero_offset ? null : $hero_offset,
+					'styles'  => array_sum( array_column( $styles, 'bytes' ) ),
+					'scripts' => array_sum( array_column( $scripts, 'inline_bytes' ) ),
+					'top_styles' => array_slice( $styles, 0, 10 ),
+					'top_scripts' => array_slice( $scripts, 0, 10 ),
 				);
 
-				return (string) wp_json_encode( $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+				$summary = 'INLINE_AUDIT ' . (string) wp_json_encode( $result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+				$marker  = '<div id="emo-inline-audit-output" aria-hidden="true" style="display:none!important">' . esc_html( $summary ) . '</div>';
+
+				return str_contains( $html, '</body>' ) ? str_replace( '</body>', $marker . '</body>', $html ) : $html . $marker;
 			}
 		);
 	},
