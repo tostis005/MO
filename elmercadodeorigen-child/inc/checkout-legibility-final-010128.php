@@ -1,9 +1,10 @@
 <?php
 /**
- * Legibilidad final del checkout 0.10.128.
+ * Legibilidad final del checkout 0.10.129.
  *
  * Ajusta únicamente contraste fino del resumen y muestra el aviso de recálculo
- * solo cuando existe un overlay AJAX real de WooCommerce.
+ * solo cuando existe un overlay AJAX real de WooCommerce. En sesiones de QA
+ * user-visual fija una dirección peninsular para auditar métodos de envío reales.
  *
  * @package ElMercadoDeOrigen
  */
@@ -11,6 +12,35 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+add_action(
+	'wp_loaded',
+	static function (): void {
+		if ( is_admin() || ! isset( $_GET['user-visual'] ) || ! function_exists( 'is_checkout' ) || ! is_checkout() ) {
+			return;
+		}
+		if ( ! function_exists( 'WC' ) || ! WC()->customer || ! WC()->cart ) {
+			return;
+		}
+
+		$customer = WC()->customer;
+		$customer->set_billing_country( 'ES' );
+		$customer->set_billing_state( 'M' );
+		$customer->set_billing_postcode( '28001' );
+		$customer->set_billing_city( 'Madrid' );
+		$customer->set_billing_address_1( 'Calle de Alcalá 1' );
+		$customer->set_shipping_country( 'ES' );
+		$customer->set_shipping_state( 'M' );
+		$customer->set_shipping_postcode( '28001' );
+		$customer->set_shipping_city( 'Madrid' );
+		$customer->set_shipping_address_1( 'Calle de Alcalá 1' );
+		$customer->save();
+
+		WC()->cart->calculate_shipping();
+		WC()->cart->calculate_totals();
+	},
+	30
+);
 
 add_action(
 	'wp_head',
