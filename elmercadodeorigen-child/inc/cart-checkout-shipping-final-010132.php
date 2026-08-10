@@ -1,6 +1,6 @@
 <?php
 /**
- * Envío y CTA transaccional final 0.10.132.
+ * Envío y CTA transaccional final 0.10.133.
  *
  * Corrige la geometría del único método de envío (input oculto) y de las
  * alternativas con radio, mantiene el transporte legible en carrito/checkout
@@ -51,6 +51,31 @@ add_action(
 				background: rgba(255,255,255,.055) !important;
 				color: #fffdf8 !important;
 				text-align: left !important;
+			}
+
+			/* 010121 llevaba .cart_totals y ganaba por especificidad: una tarifa única debe volver a flex. */
+			html body.elmercado-child-theme.woocommerce-cart .cart_totals ul#shipping_method > li:not(:has(> input[type="radio"])),
+			html body.elmercado-child-theme.woocommerce-cart .cart_totals ul.woocommerce-shipping-methods > li:not(:has(> input[type="radio"])) {
+				display: flex !important;
+				grid-template-columns: none !important;
+				align-items: center !important;
+				justify-content: space-between !important;
+				gap: 12px !important;
+			}
+
+			html body.elmercado-child-theme.woocommerce-cart .cart_totals ul#shipping_method > li:not(:has(> input[type="radio"])) > label,
+			html body.elmercado-child-theme.woocommerce-cart .cart_totals ul.woocommerce-shipping-methods > li:not(:has(> input[type="radio"])) > label {
+				display: flex !important;
+				box-sizing: border-box !important;
+				width: 100% !important;
+				max-width: none !important;
+				min-width: 0 !important;
+				flex: 1 1 auto !important;
+				flex-wrap: nowrap !important;
+				align-items: baseline !important;
+				justify-content: space-between !important;
+				gap: 12px !important;
+				grid-column: auto !important;
 			}
 
 			html body.elmercado-child-theme:is(.woocommerce-cart,.woocommerce-checkout) ul#shipping_method > li:has(> input[type="radio"]),
