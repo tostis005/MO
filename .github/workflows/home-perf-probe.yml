@@ -28,8 +28,9 @@ jobs:
           lower = html.lower()
           body = lower.find('<body')
           head_end = lower.find('</head>')
+          head = html[:head_end + 7] if head_end >= 0 else html[:body]
           print(f'DOCUMENT_BYTES={len(html.encode())}')
-          print(f'HEAD_CHARS={head_end + 7 if head_end >= 0 else -1}')
+          print(f'HEAD_CHARS={len(head)}')
           print(f'BODY_OFFSET_CHARS={body}')
           print('COPY_CURRENT=', all(x in html for x in [
               'UNA SELECCIÓN HECHA CON CRITERIO',
@@ -42,24 +43,36 @@ jobs:
               'Elegimos bien.',
               'Los más elegidos'
           ]))
+
           scripts=[]
           for m in re.finditer(r'<script\b([^>]*)>(.*?)</script\s*>', html, re.I|re.S):
-              attrs=m.group(1)
-              code=m.group(2)
+              attrs=m.group(1); code=m.group(2)
               srcm=re.search(r'\bsrc=["\']([^"\']+)', attrs, re.I)
               typem=re.search(r'\btype=["\']([^"\']+)', attrs, re.I)
-              scripts.append({
-                  'offset':m.start(), 'before_body': body >= 0 and m.start() < body,
-                  'attrs':attrs.strip()[:180], 'src':srcm.group(1) if srcm else '',
-                  'type':typem.group(1) if typem else '', 'code_len':len(code),
-                  'sample':re.sub(r'\s+',' ',code.strip())[:100]
-              })
-          print(f'SCRIPTS_TOTAL={len(scripts)} SCRIPTS_BEFORE_BODY={sum(x["before_body"] for x in scripts)}')
+              scripts.append({'offset':m.start(),'before_body':body >= 0 and m.start() < body,'attrs':attrs.strip()[:180],'src':srcm.group(1) if srcm else '','type':typem.group(1) if typem else '','code_len':len(code),'sample':re.sub(r'\s+',' ',code.strip())[:100]})
+          print(f'SCRIPTS_TOTAL={len(scripts)} SCRIPTS_BEFORE_BODY={sum(x["before_body"] for x in scripts)} HEAD_INLINE_SCRIPT_CHARS={sum(x["code_len"] for x in scripts if x["before_body"])}')
           print('TOP_HEAD_SCRIPTS:')
-          for s in sorted((x for x in scripts if x['before_body']), key=lambda x:max(x['code_len'],len(x['src'])), reverse=True)[:20]:
-              print(s)
+          for s in sorted((x for x in scripts if x['before_body']), key=lambda x:max(x['code_len'],len(x['src'])), reverse=True)[:20]: print(s)
+
+          styles=[]
+          for m in re.finditer(r'<style\b([^>]*)>(.*?)</style\s*>', head, re.I|re.S):
+              attrs=m.group(1); code=m.group(2)
+              idm=re.search(r'\bid=["\']([^"\']+)', attrs, re.I)
+              styles.append({'offset':m.start(),'id':idm.group(1) if idm else '','attrs':attrs.strip()[:160],'code_len':len(code),'sample':re.sub(r'\s+',' ',code.strip())[:120]})
+          print(f'HEAD_STYLE_BLOCKS={len(styles)} HEAD_INLINE_STYLE_CHARS={sum(x["code_len"] for x in styles)}')
+          print('TOP_HEAD_STYLES:')
+          for s in sorted(styles, key=lambda x:x['code_len'], reverse=True)[:25]: print(s)
+
+          links=[]
+          for m in re.finditer(r'<link\b([^>]*)>', head, re.I|re.S):
+              attrs=m.group(1)
+              href=re.search(r'\bhref=["\']([^"\']+)', attrs, re.I)
+              rel=re.search(r'\brel=["\']([^"\']+)', attrs, re.I)
+              links.append({'offset':m.start(),'href':href.group(1) if href else '','rel':rel.group(1) if rel else '','attrs':re.sub(r'\s+',' ',attrs.strip())[:220]})
+          print(f'HEAD_LINKS={len(links)}')
+          for x in links: print('LINK', x)
+
           lines=html.splitlines()
-          print('LINES_10360_10385:')
-          for i in range(10359, min(10385, len(lines))):
-              print(f'{i+1}: {lines[i][:500]}')
+          print('LINES_10360_10390:')
+          for i in range(10359, min(10390, len(lines))): print(f'{i+1}: {lines[i][:500]}')
           PY
