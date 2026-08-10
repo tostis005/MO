@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.155' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.156' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -127,6 +127,7 @@ $elmercado_modules = array(
 	'inc/home-inline-jquery-010148.php',
 	'inc/home-voice-performance-final-010149.php',
 	'inc/home-copy-clean-final-010152.php',
+	'inc/home-copy-proof-final-010156.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
