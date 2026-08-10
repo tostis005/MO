@@ -42,13 +42,22 @@ foreach ( $sensitive as $needle ) {
 }
 
 /* Uploads is writable by the WordPress PHP user and is available pre-bootstrap. */
-$cache_file = __DIR__ . '/uploads/elmercado-home-static/index.html';
-$ttl        = 10 * 60;
-$mtime      = is_file( $cache_file ) ? @filemtime( $cache_file ) : false;
+$cache_file    = __DIR__ . '/uploads/elmercado-home-static/index.html';
+$ttl           = 10 * 60;
+$mtime         = is_file( $cache_file ) ? @filemtime( $cache_file ) : false;
+$dropin_mtime  = @filemtime( __FILE__ );
 
 if ( ! is_readable( $cache_file ) || false === $mtime ) {
 	if ( ! headers_sent() ) {
 		header( 'X-El-Mercado-Early-Cache: MISS-NOFILE' );
+	}
+	return;
+}
+
+/* Every deployment recopies this drop-in. Never serve HTML generated before it. */
+if ( false !== $dropin_mtime && (int) $mtime < (int) $dropin_mtime ) {
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Early-Cache: MISS-RELEASE' );
 	}
 	return;
 }
