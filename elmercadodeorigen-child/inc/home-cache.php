@@ -27,7 +27,7 @@ function elmercado_home_cache_key(): string {
  * Ruta de la copia estática que consume el drop-in temprano.
  */
 function elmercado_home_static_cache_file(): string {
-	return WP_CONTENT_DIR . '/cache/elmercado-home-static/index.html';
+	return WP_CONTENT_DIR . '/uploads/elmercado-home-static/index.html';
 }
 
 /**
