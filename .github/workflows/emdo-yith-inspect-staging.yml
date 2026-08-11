@@ -28,10 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-      - name: Inspect staging YITH and examples
+      - name: Inspect YITH schema and Hidalgo example
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -45,32 +44,24 @@ jobs:
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
           if [ ! -f "$wp_path/wp-config.php" ]; then
             wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
-            [ -n "$wpconfig" ] || { echo 'No staging WordPress found' >&2; exit 1; }
-            wp_path="$(dirname "$wpconfig")"
+            [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"
           fi
           wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           WP="$php_bin -d memory_limit=512M $wp_bin --path=$wp_path --allow-root"
-          prefix="$($WP db prefix)"
-          echo '=== YITH PLUGINS ==='
-          $WP plugin list --format=csv | grep -i 'yith\|product-add' || true
-          echo '=== YITH-LIKE TABLES ==='
-          $WP db query "SHOW TABLES LIKE '${prefix}%yith%';" --skip-column-names || true
-          echo '=== YITH POST TYPES ==='
-          $WP db query "SELECT post_type,COUNT(*) FROM ${prefix}posts WHERE post_type LIKE '%yith%' OR post_type LIKE '%add-on%' OR post_type LIKE '%addon%' GROUP BY post_type ORDER BY 2 DESC;" --skip-column-names || true
-          echo '=== YITH META KEYS ==='
-          $WP db query "SELECT meta_key,COUNT(*) c FROM ${prefix}postmeta WHERE meta_key LIKE '%yith%' OR meta_key LIKE '%addon%' OR meta_key LIKE '%add_on%' GROUP BY meta_key ORDER BY c DESC LIMIT 80;" --skip-column-names || true
-          echo '=== EL CATEDRATICO TARGET ==='
-          $WP db query "SELECT sp.id,sp.wc_product_id,sp.title,sp.source_url,sp.status FROM ${prefix}mdo_source_products sp JOIN ${prefix}mdo_suppliers s ON s.id=sp.supplier_id WHERE s.connector='el-catedratico' AND sp.source_url LIKE '%jamon-de-cebo-iberico-50-raza-iberica-deshuesado%' ORDER BY sp.id DESC LIMIT 5;" --skip-column-names || true
-          echo '=== HIDALGO PRODUCT CANDIDATES WITH YITH META ==='
-          $WP db query "SELECT DISTINCT p.ID,p.post_title,p.post_author,pm.meta_key FROM ${prefix}posts p JOIN ${prefix}postmeta pm ON pm.post_id=p.ID WHERE p.post_type='product' AND p.post_status NOT IN ('trash','auto-draft') AND (pm.meta_key LIKE '%yith%' OR pm.meta_key LIKE '%addon%' OR pm.meta_key LIKE '%add_on%') ORDER BY p.ID DESC LIMIT 50;" --skip-column-names || true
-          echo '=== ADDON POSTS RECENT ==='
-          $WP db query "SELECT ID,post_type,post_title,post_status,post_parent FROM ${prefix}posts WHERE post_type LIKE '%yith%' OR post_type LIKE '%addon%' OR post_type LIKE '%add-on%' ORDER BY ID DESC LIMIT 60;" --skip-column-names || true
-          echo '=== YITH PLUGIN FILES/TABLE REFERENCES ==='
-          plugin_dir="$wp_path/wp-content/plugins"
-          yithdir="$(find "$plugin_dir" -maxdepth 1 -mindepth 1 -type d -iname '*yith*product*add*' | head -n1 || true)"
-          echo "YITH_DIR=$yithdir"
-          if [ -n "$yithdir" ]; then
-            grep -RIn --include='*.php' -E 'CREATE TABLE|yith_wapo|blocks|addons|product_association|products' "$yithdir" 2>/dev/null | head -n 120 || true
-          fi
+          prefix="$($WP db prefix 2>/dev/null)"
+          echo '=== SCHEMA BLOCKS ==='; $WP db query "DESCRIBE ${prefix}yith_wapo_blocks;" 2>/dev/null
+          echo '=== SCHEMA ASSOC ==='; $WP db query "DESCRIBE ${prefix}yith_wapo_blocks_assoc;" 2>/dev/null
+          echo '=== SCHEMA ADDONS ==='; $WP db query "DESCRIBE ${prefix}yith_wapo_addons;" 2>/dev/null
+          echo '=== BLOCKS ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_blocks ORDER BY id;" 2>/dev/null
+          echo '=== ASSOC FOR HIDALGO JAMON 5045 ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_blocks_assoc WHERE product_id=5045 OR rule_id=5045;" 2>/dev/null || true
+          echo '=== ALL ASSOC (LIMIT 120) ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_blocks_assoc ORDER BY id LIMIT 120;" 2>/dev/null || true
+          echo '=== ADDONS ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_addons ORDER BY id LIMIT 120;" 2>/dev/null
+          echo '=== TARGET PRODUCT ==='; $WP db query "SELECT ID,post_title,post_status,post_author FROM ${prefix}posts WHERE ID=11235;" 2>/dev/null
+          echo '=== HIDALGO PRODUCT ==='; $WP db query "SELECT ID,post_title,post_status,post_author FROM ${prefix}posts WHERE ID=5045;" 2>/dev/null
+          yithdir="$wp_path/wp-content/plugins/yith-woocommerce-product-add-ons"
+          echo '=== MODEL FILES ==='
+          find "$yithdir" -type f -name '*.php' | grep -Ei 'class.*(block|addon)|db|database' | head -n 80 || true
+          echo '=== INSERT/UPDATE API ==='
+          grep -RIn --include='*.php' -E 'class YITH_WAPO_(Block|Addon)|function (save|insert|update|add)|yith_wapo_blocks_assoc' "$yithdir/includes" 2>/dev/null | head -n 180 || true
           REMOTE
