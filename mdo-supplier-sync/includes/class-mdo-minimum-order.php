@@ -13,7 +13,9 @@ final class MDO_Minimum_Order {
 		add_action( 'admin_post_mdo_save_supplier', array( __CLASS__, 'prepare_manual_supplier_save' ), 1 );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_styles' ) );
 		add_action( 'woocommerce_check_cart_items', array( __CLASS__, 'validate_cart' ), 20 );
-		// Lo renderizamos fuera de la tabla de totales para que el tema no pueda reducirlo a media columna.
+		// Antes de que WooCommerce pinte el botón estándar, lo retiramos si falta algún mínimo.
+		add_action( 'woocommerce_proceed_to_checkout', array( __CLASS__, 'maybe_disable_checkout_button' ), 1 );
+		// El aviso se renderiza fuera de la tabla de totales para ocupar todo el ancho.
 		add_action( 'woocommerce_proceed_to_checkout', array( __CLASS__, 'render_cart_notice' ), 5 );
 		add_action( 'woocommerce_review_order_before_payment', array( __CLASS__, 'render_checkout_notice' ), 5 );
 	}
@@ -110,6 +112,13 @@ final class MDO_Minimum_Order {
 		}
 	}
 
+	public static function maybe_disable_checkout_button(): void {
+		if ( ! self::has_unmet_minimum() ) {
+			return;
+		}
+		remove_action( 'woocommerce_proceed_to_checkout', 'woocommerce_button_proceed_to_checkout', 20 );
+	}
+
 	public static function render_cart_notice(): void {
 		self::render_notices();
 	}
@@ -143,6 +152,15 @@ final class MDO_Minimum_Order {
 			<?php endforeach; ?>
 		</div>
 		<?php
+	}
+
+	private static function has_unmet_minimum(): bool {
+		foreach ( self::cart_minimums() as $entry ) {
+			if ( $entry['missing'] > 0 ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static function plain_price( float $amount ): string {
