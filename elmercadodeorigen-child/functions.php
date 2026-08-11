@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.164' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.165' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -126,12 +126,10 @@ $elmercado_modules = array(
 	'inc/home-performance-second-pass-010147.php',
 	'inc/home-inline-jquery-010148.php',
 	'inc/home-voice-performance-final-010149.php',
-	'inc/home-copy-clean-final-010152.php',
-	'inc/home-copy-proof-final-010156.php',
-	'inc/home-story-layout-restore-010161.php',
 	'inc/product-card-density-final-010162.php',
 	'inc/product-card-footer-density-010163.php',
 	'inc/product-card-footer-flow-010164.php',
+	'inc/home-copy-definitive-010165.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {

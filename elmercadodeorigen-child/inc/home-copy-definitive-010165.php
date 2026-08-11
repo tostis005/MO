@@ -2,8 +2,8 @@
 /**
  * Copy definitivo de la Home 0.10.165.
  *
- * Sustituye exclusivamente textos visibles sobre el HTML final ya compuesto.
- * No altera estructura, estilos, imágenes, productos, enlaces ni comportamiento.
+ * Única capa activa de sustitución textual sobre la portada ya compuesta.
+ * Mantiene intactos estructura, estilos, imágenes, productos, enlaces y lógica.
  *
  * @package ElMercadoDeOrigen
  */
@@ -13,11 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Aplica una transformación dentro de una sección existente de la Home.
+ * Ejecuta una transformación dentro de una sección existente de la Home.
  *
  * @param string   $html Documento HTML.
- * @param string   $class Clase de la sección.
- * @param callable $callback Transformación textual.
+ * @param string   $class Clase identificadora de la sección.
+ * @param callable $callback Transformación exclusivamente textual.
  * @return string
  */
 function elmercado_home_copy_section_010165( string $html, string $class, callable $callback ): string {
@@ -35,7 +35,7 @@ function elmercado_home_copy_section_010165( string $html, string $class, callab
 }
 
 /**
- * Sustituye el copy final solicitado manteniendo todos los componentes actuales.
+ * Aplica el copy definitivo solicitado sobre los mismos componentes actuales.
  *
  * @param string $html Documento HTML completo.
  * @return string
@@ -45,17 +45,17 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 		return $html;
 	}
 
-	/* Barra superior: conserva iconos, spans y distribución. */
+	/* Barra superior: solo sustituye el texto y conserva iconos y spans. */
 	$announcement = array(
 		'Productos cuidadosamente seleccionados',
 		'Conoce el origen de cada producto',
 		'Directamente del productor a tu casa',
 	);
-	$html = preg_replace_callback(
+	$result = preg_replace_callback(
 		'~<div class="emo-announcement__inner"[^>]*>.*?</div>~s',
 		static function ( array $matches ) use ( $announcement ): string {
 			$index = 0;
-			$result = preg_replace_callback(
+			$inner = preg_replace_callback(
 				'~<span([^>]*)>(.*?)</span>~s',
 				static function ( array $span ) use ( &$index, $announcement ): string {
 					if ( ! isset( $announcement[ $index ] ) ) {
@@ -68,7 +68,7 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 					}
 
 					$text = $announcement[ $index ];
-					$index++;
+					++$index;
 
 					return '<span' . $span[1] . '>' . $icon . $text . '</span>';
 				},
@@ -76,13 +76,16 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 				3
 			);
 
-			return is_string( $result ) ? $result : $matches[0];
+			return is_string( $inner ) ? $inner : $matches[0];
 		},
 		$html,
 		1
-	) ?? $html;
+	);
+	if ( is_string( $result ) ) {
+		$html = $result;
+	}
 
-	/* Hero, etiqueta de la selección y tres conceptos. */
+	/* Hero y tres conceptos. */
 	$html = elmercado_home_copy_section_010165(
 		$html,
 		'emo-hero',
@@ -118,6 +121,14 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 				1
 			) ?? $section;
 
+			/* Este segundo botón existe hoy y no fue solicitado para cambio. */
+			$section = preg_replace_callback(
+				'~(<a class="emo-button emo-button--ghost"[^>]*>).*?(</a>)~s',
+				static fn ( array $matches ): string => $matches[1] . 'Conocer a los productores' . $matches[2],
+				$section,
+				1
+			) ?? $section;
+
 			$concepts = array(
 				array( 'Origen', 'Nos fijamos en la procedencia, en quién está detrás y en cómo se elabora cada producto.' ),
 				array( 'Selección', 'Elegimos cuidadosamente los productos que incorporamos a El Mercado de Origen.' ),
@@ -133,13 +144,15 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 							if ( ! isset( $concepts[ $index ] ) ) {
 								return $item[0];
 							}
+
 							$current = $concepts[ $index ];
-							$index++;
+							++$index;
 							return '<span><strong>' . $current[0] . '</strong>' . $current[1] . '</span>';
 						},
 						$proof_match[0],
 						3
 					);
+
 					return is_string( $proof ) ? $proof : $proof_match[0];
 				},
 				$section,
@@ -186,25 +199,38 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 		}
 	);
 
-	/* Categorías. No se crea ningún botón nuevo: solo se renombra si ya existe. */
+	/* Categorías: se mantienen exactamente los componentes actuales. */
 	$html = elmercado_home_copy_section_010165(
 		$html,
 		'emo-categories',
 		static function ( string $section ): string {
-			$section = preg_replace_callback( '~<span class="emo-kicker">.*?</span>~s', static fn (): string => '<span class="emo-kicker">DESCUBRE POR CATEGORÍAS</span>', $section, 1 ) ?? $section;
-			$section = preg_replace_callback( '~<h2>.*?</h2>~s', static fn (): string => '<h2>Encuentra lo que buscas.</h2>', $section, 1 ) ?? $section;
+			$section = preg_replace_callback(
+				'~<span class="emo-kicker">.*?</span>~s',
+				static fn (): string => '<span class="emo-kicker">DESCUBRE POR CATEGORÍAS</span>',
+				$section,
+				1
+			) ?? $section;
+			$section = preg_replace_callback(
+				'~<h2>.*?</h2>~s',
+				static fn (): string => '<h2>Encuentra lo que buscas.</h2>',
+				$section,
+				1
+			) ?? $section;
 			$section = preg_replace_callback(
 				'~(<div class="emo-section-heading">.*?</div><p>).*?(</p>)~s',
 				static fn ( array $matches ): string => $matches[1] . 'Explora todos los productos de El Mercado de Origen y recorre fácilmente cada una de nuestras categorías.' . $matches[2],
 				$section,
 				1
 			) ?? $section;
+
+			/* Si el componente ya incluye enlace textual, solo se renombra. */
 			$section = preg_replace_callback(
 				'~(<a class="emo-text-link"[^>]*>).*?(<svg)~s',
 				static fn ( array $matches ): string => $matches[1] . 'Ver categorías' . $matches[2],
 				$section,
 				1
 			) ?? $section;
+
 			return $section;
 		}
 	);
@@ -214,8 +240,18 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 		$html,
 		'emo-featured-products',
 		static function ( string $section ): string {
-			$section = preg_replace_callback( '~<span class="emo-kicker">.*?</span>~s', static fn (): string => '<span class="emo-kicker">LOS MÁS ELEGIDOS</span>', $section, 1 ) ?? $section;
-			$section = preg_replace_callback( '~<h2>.*?</h2>~s', static fn (): string => '<h2>Los favoritos de nuestros clientes.</h2>', $section, 1 ) ?? $section;
+			$section = preg_replace_callback(
+				'~<span class="emo-kicker">.*?</span>~s',
+				static fn (): string => '<span class="emo-kicker">LOS MÁS ELEGIDOS</span>',
+				$section,
+					1
+			) ?? $section;
+			$section = preg_replace_callback(
+				'~<h2>.*?</h2>~s',
+				static fn (): string => '<h2>Los favoritos de nuestros clientes.</h2>',
+				$section,
+				1
+			) ?? $section;
 			$section = preg_replace_callback(
 				'~(<div class="emo-section-heading">.*?<p>).*?(</p>)~s',
 				static fn ( array $matches ): string => $matches[1] . 'Descubre los productos que más se eligen en El Mercado de Origen.' . $matches[2],
@@ -232,7 +268,7 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 		}
 	);
 
-	/* Cómo elegimos + criterios. */
+	/* Cómo elegimos + criterios 01 / 02 / 03. */
 	$html = elmercado_home_copy_section_010165(
 		$html,
 		'emo-story',
@@ -242,14 +278,33 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 				'~<div class="emo-story__panel">.*?</div>~s',
 				static function ( array $matches ) use ( $panel_text ): string {
 					$content = $matches[0];
-					$content = preg_replace_callback( '~<span class="emo-kicker emo-kicker--light">.*?</span>~s', static fn (): string => '<span class="emo-kicker emo-kicker--light">CÓMO ELEGIMOS</span>', $content, 1 ) ?? $content;
-					$content = preg_replace_callback( '~<h2>.*?</h2>~s', static fn (): string => '<h2>Hay muchas formas de hacer un producto diferente.</h2>', $content, 1 ) ?? $content;
 					$content = preg_replace_callback(
-						'~(<p>).*?(</p>)~s',
-						static fn ( array $paragraph ) => $paragraph[1] . $panel_text . $paragraph[2],
+						'~<span class="emo-kicker emo-kicker--light">.*?</span>~s',
+						static fn (): string => '<span class="emo-kicker emo-kicker--light">CÓMO ELEGIMOS</span>',
 						$content,
 						1
 					) ?? $content;
+					$content = preg_replace_callback(
+						'~<h2>.*?</h2>~s',
+						static fn (): string => '<h2>Hay muchas formas de hacer un producto diferente.</h2>',
+						$content,
+						1
+					) ?? $content;
+					$content = preg_replace_callback(
+						'~(<p>).*?(</p>)~s',
+						static fn ( array $paragraph ): string => $paragraph[1] . $panel_text . $paragraph[2],
+						$content,
+						1
+					) ?? $content;
+
+					/* Este enlace existe hoy y no fue solicitado para cambio. */
+					$content = preg_replace_callback(
+						'~(<a class="emo-text-link emo-text-link--light"[^>]*>).*?(<svg)~s',
+						static fn ( array $link ): string => $link[1] . 'Conoce el proyecto' . $link[2],
+						$content,
+						1
+					) ?? $content;
+
 					return $content;
 				},
 				$section,
@@ -260,35 +315,50 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 			}
 
 			$criteria = array(
-				'01' => array(
-					'ORIGEN',
+				array(
+					'01 — ORIGEN',
 					'El lugar también forma parte del producto.',
 					'Hay productos profundamente ligados a su procedencia, a las materias primas de su entorno o a una tradición vinculada a un territorio.<br><br>Cuando ese origen aporta algo al producto, queremos ponerlo en valor.',
 				),
-				'02' => array(
-					'SABER HACER',
+				array(
+					'02 — SABER HACER',
 					'Hay conocimientos que se construyen con los años.',
 					'La experiencia, la especialización y el dominio de una elaboración pueden marcar una diferencia difícil de reproducir.<br><br>Valoramos ese conocimiento cuando forma parte esencial del resultado.',
 				),
-				'03' => array(
-					'IDENTIDAD',
+				array(
+					'03 — IDENTIDAD',
 					'Productos con algo propio.',
 					'También buscamos aquello que consigue que un producto tenga personalidad y se distinga dentro de su categoría.<br><br>Puede venir de la manera de elaborarlo, de una especialización concreta o de una forma particular de entender lo que se hace.',
 				),
 			);
+			$index = 0;
+			$values = preg_replace_callback(
+				'~<div class="emo-story__values">.*?</div>~s',
+				static function ( array $matches ) use ( $criteria ): string {
+					$index = 0;
+					$updated = preg_replace_callback(
+						'~<article><span>.*?</span><h3>.*?</h3><p>.*?</p></article>~s',
+						static function ( array $article ) use ( &$index, $criteria ): string {
+							if ( ! isset( $criteria[ $index ] ) ) {
+								return $article[0];
+							}
 
-			foreach ( $criteria as $number => $copy ) {
-				$pattern = '~(<article><span aria-label=")[^"]*(">)' . preg_quote( $number, '~' ) . '(.*?</span></span><h3>).*?(</h3><p>).*?(</p></article>)~s';
-				$section = preg_replace_callback(
-					$pattern,
-					static function ( array $matches ) use ( $number, $copy ): string {
-						return $matches[1] . $number . ' — ' . $copy[0] . $matches[2]
-							. $number . ' — ' . $copy[0] . '<span hidden> — ' . $copy[0] . '</span></span><h3>'
-							. $copy[1] . $matches[4] . $copy[2] . $matches[5];
-					},
-					$section,
-					1
-				) ?? $section;
+							$current = $criteria[ $index ];
+							++$index;
+
+							return '<article><span>' . $current[0] . '</span><h3>' . $current[1] . '</h3><p>' . $current[2] . '</p></article>';
+						},
+						$matches[0],
+						3
+					);
+
+					return is_string( $updated ) ? $updated : $matches[0];
+				},
+				$section,
+				1
+			);
+			if ( is_string( $values ) ) {
+				$section = $values;
 			}
 
 			return $section;
@@ -300,8 +370,18 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 		$html,
 		'emo-vendor-cta',
 		static function ( string $section ): string {
-			$section = preg_replace_callback( '~<span class="emo-kicker">.*?</span>~s', static fn (): string => '<span class="emo-kicker">PARA PRODUCTORES</span>', $section, 1 ) ?? $section;
-			$section = preg_replace_callback( '~<h2>.*?</h2>~s', static fn (): string => '<h2>¿Quieres formar parte de El Mercado de Origen?</h2>', $section, 1 ) ?? $section;
+			$section = preg_replace_callback(
+				'~<span class="emo-kicker">.*?</span>~s',
+				static fn (): string => '<span class="emo-kicker">PARA PRODUCTORES</span>',
+				$section,
+				1
+			) ?? $section;
+			$section = preg_replace_callback(
+				'~<h2>.*?</h2>~s',
+				static fn (): string => '<h2>¿Quieres formar parte de El Mercado de Origen?</h2>',
+				$section,
+				1
+			) ?? $section;
 			$section = preg_replace_callback(
 				'~(<p>).*?(</p>)~s',
 				static fn ( array $matches ): string => $matches[1] . 'Si eres productor y crees que tus productos pueden encajar en nuestra selección, queremos conocer tu proyecto.<br><br>Cuéntanos qué haces y qué productos te gustaría incorporar.' . $matches[2],
@@ -314,11 +394,18 @@ function elmercado_home_copy_definitive_010165( string $html ): string {
 				$section,
 				1
 			) ?? $section;
+
 			return $section;
 		}
 	);
 
-	return $html;
+	/*
+	 * Se conserva en este mismo y único buffer la limpieza de modulepreloads
+	 * huérfanos de Advanced Coupons que antes vivía en otra capa de salida.
+	 */
+	$clean = preg_replace( '~<link\\b[^>]*advanced-coupons-for-woocommerce-free[^>]*>\\s*~i', '', $html );
+
+	return is_string( $clean ) ? $clean : $html;
 }
 
 add_action(
@@ -328,10 +415,7 @@ add_action(
 			return;
 		}
 
-		/*
-		 * Se abre antes que las capas históricas para ser el buffer exterior:
-		 * su callback se ejecuta el último y fija únicamente el copy definitivo.
-		 */
+		/* Único buffer de copy de la Home. */
 		ob_start( 'elmercado_home_copy_definitive_010165' );
 	},
 	-10000
