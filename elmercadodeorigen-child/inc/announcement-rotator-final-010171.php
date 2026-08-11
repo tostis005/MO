@@ -1,14 +1,12 @@
 <?php
 /**
- * Rotación determinista de la barra superior.
+ * Rotación estable de la barra superior 0.10.173.
  *
- * Sustituye la rotación CSS por un único estado activo controlado con un
- * temporizador sencillo. Evita intervalos vacíos y garantiza el ciclo
- * 1 → 2 → 3 → 1 sin requestAnimationFrame, resize sync ni observers.
+ * Usa un único nodo visible para mostrar, en orden, el contenido de los tres
+ * mensajes originales. De este modo ninguna regla heredada que oculte el
+ * segundo o tercer span puede dejar la barra vacía.
  *
- * Capa iniciada en 0.10.171; 0.10.172 neutraliza además los display:none
- * heredados de prefers-reduced-motion para que los tres mensajes puedan
- * alternarse en cualquier configuración de accesibilidad.
+ * No usa requestAnimationFrame, sincronización de resize ni observers.
  *
  * @package ElMercadoDeOrigen
  */
@@ -24,41 +22,24 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-announcement-rotator-final-010172">
+		<style id="elmercado-announcement-rotator-final-010173">
 			body.elmercado-child-theme .emo-announcement__inner > span {
-				display: flex !important;
+				display: none !important;
 				opacity: 0 !important;
 				visibility: hidden !important;
-				transform: translateY(105%) !important;
+				transform: none !important;
 				animation: none !important;
-				transition:
-					opacity 280ms ease,
-					transform 340ms ease,
-					visibility 0s linear 340ms !important;
-				z-index: 1;
+				transition: none !important;
 			}
 
-			body.elmercado-child-theme .emo-announcement__inner:not(.emo-announcement-js) > span:first-child,
-			body.elmercado-child-theme .emo-announcement__inner.emo-announcement-js > span.emo-announcement-current {
+			body.elmercado-child-theme .emo-announcement__inner > span:first-child {
+				display: flex !important;
 				opacity: 1 !important;
 				visibility: visible !important;
-				transform: translateY(0) !important;
-				transition-delay: 0s !important;
-				z-index: 3;
-			}
-
-			body.elmercado-child-theme .emo-announcement__inner.emo-announcement-js > span.emo-announcement-leaving {
-				opacity: 0 !important;
-				visibility: visible !important;
-				transform: translateY(-105%) !important;
-				transition-delay: 0s !important;
-				z-index: 2;
-			}
-
-			body.elmercado-child-theme .emo-announcement__inner.emo-announcement-reduced > span {
-				display: flex !important;
 				transform: none !important;
+				animation: none !important;
 				transition: none !important;
+				z-index: 3 !important;
 			}
 		</style>
 		<?php
@@ -73,50 +54,42 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-announcement-rotator-final-010172">
+		<script id="elmercado-announcement-rotator-final-010173">
 		(() => {
 			const initAnnouncementRotator = () => {
 				const inner = document.querySelector('.emo-announcement__inner');
-				if (!inner || inner.dataset.emoRotator === '1') return;
+				if (!inner || inner.dataset.emoRotator === 'single-node-010173') return;
 
-				const items = Array.from(inner.children).filter((node) => node.tagName === 'SPAN');
+				const items = Array.from(inner.children)
+					.filter((node) => node.tagName === 'SPAN')
+					.slice(0, 3);
+
 				if (items.length < 2) return;
 
-				inner.dataset.emoRotator = '1';
-				inner.classList.add('emo-announcement-js');
-
-				const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-				if (reducedMotion) inner.classList.add('emo-announcement-reduced');
-
+				const slides = items.map((item) => item.innerHTML);
+				const host = items[0];
 				let index = 0;
 
-				items.forEach((item, itemIndex) => {
-					item.classList.toggle('emo-announcement-current', itemIndex === 0);
-					item.classList.remove('emo-announcement-leaving');
-					item.setAttribute('aria-hidden', itemIndex === 0 ? 'false' : 'true');
+				inner.dataset.emoRotator = 'single-node-010173';
+				inner.classList.add('emo-announcement-js');
+				host.setAttribute('aria-live', 'polite');
+				host.setAttribute('aria-atomic', 'true');
+
+				items.slice(1).forEach((item) => {
+					item.setAttribute('aria-hidden', 'true');
 				});
 
-				const showNext = () => {
-					const current = items[index];
-					const nextIndex = (index + 1) % items.length;
-					const next = items[nextIndex];
-
-					current.classList.remove('emo-announcement-current');
-					current.classList.add('emo-announcement-leaving');
-					current.setAttribute('aria-hidden', 'true');
-
-					next.classList.remove('emo-announcement-leaving');
-					next.classList.add('emo-announcement-current');
-					next.setAttribute('aria-hidden', 'false');
-
-					window.setTimeout(() => {
-						current.classList.remove('emo-announcement-leaving');
-					}, reducedMotion ? 0 : 380);
-
-					index = nextIndex;
+				const render = () => {
+					host.innerHTML = slides[index];
+					host.dataset.emoAnnouncementIndex = String(index);
+					host.setAttribute('aria-hidden', 'false');
 				};
 
-				window.setInterval(showNext, 3600);
+				render();
+				window.setInterval(() => {
+					index = (index + 1) % slides.length;
+					render();
+				}, 3600);
 			};
 
 			if (document.readyState === 'loading') {

@@ -54,6 +54,30 @@ if ( ! is_readable( $cache_file ) || false === $mtime ) {
 	return;
 }
 
+/*
+ * La portada optimizada enlaza una hoja diferida versionada con la versión
+ * del tema hijo. Antes de servir HTML estático, exige que esa versión coincida
+ * con la que está desplegada. Así un rsync que conserve mtimes nunca puede
+ * mantener viva una Home de una release anterior.
+ */
+$theme_style   = __DIR__ . '/themes/elmercadodeorigen-child/style.css';
+$style_head    = is_readable( $theme_style ) ? @file_get_contents( $theme_style, false, null, 0, 2048 ) : false;
+$theme_version = '';
+
+if ( is_string( $style_head ) && preg_match( '/^\s*Version:\s*([0-9]+(?:\.[0-9]+)+)\s*$/mi', $style_head, $version_match ) ) {
+	$theme_version = trim( (string) $version_match[1] );
+}
+
+$cache_head = @file_get_contents( $cache_file, false, null, 0, 262144 );
+$expected_deferred_css = '' !== $theme_version ? 'home-deferred-' . $theme_version . '.css' : '';
+
+if ( '' === $expected_deferred_css || ! is_string( $cache_head ) || false === strpos( $cache_head, $expected_deferred_css ) ) {
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Early-Cache: MISS-VERSION' );
+	}
+	return;
+}
+
 /* Every deployment recopies this drop-in. Never serve HTML generated before it. */
 if ( false !== $dropin_mtime && (int) $mtime < (int) $dropin_mtime ) {
 	if ( ! headers_sent() ) {
