@@ -1,10 +1,14 @@
 <?php
 /**
- * Rotación determinista de la barra superior 0.10.171.
+ * Rotación determinista de la barra superior.
  *
  * Sustituye la rotación CSS por un único estado activo controlado con un
  * temporizador sencillo. Evita intervalos vacíos y garantiza el ciclo
  * 1 → 2 → 3 → 1 sin requestAnimationFrame, resize sync ni observers.
+ *
+ * Capa iniciada en 0.10.171; 0.10.172 neutraliza además los display:none
+ * heredados de prefers-reduced-motion para que los tres mensajes puedan
+ * alternarse en cualquier configuración de accesibilidad.
  *
  * @package ElMercadoDeOrigen
  */
@@ -20,8 +24,9 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-announcement-rotator-final-010171">
+		<style id="elmercado-announcement-rotator-final-010172">
 			body.elmercado-child-theme .emo-announcement__inner > span {
+				display: flex !important;
 				opacity: 0 !important;
 				visibility: hidden !important;
 				transform: translateY(105%) !important;
@@ -51,6 +56,7 @@ add_action(
 			}
 
 			body.elmercado-child-theme .emo-announcement__inner.emo-announcement-reduced > span {
+				display: flex !important;
 				transform: none !important;
 				transition: none !important;
 			}
@@ -67,7 +73,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-announcement-rotator-final-010171">
+		<script id="elmercado-announcement-rotator-final-010172">
 		(() => {
 			const initAnnouncementRotator = () => {
 				const inner = document.querySelector('.emo-announcement__inner');
