@@ -11,9 +11,22 @@ final class MDO_Minimum_Order {
 	public static function init(): void {
 		add_action( 'admin_footer', array( __CLASS__, 'admin_supplier_field' ) );
 		add_action( 'admin_post_mdo_save_supplier', array( __CLASS__, 'prepare_manual_supplier_save' ), 1 );
+		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_styles' ) );
 		add_action( 'woocommerce_check_cart_items', array( __CLASS__, 'validate_cart' ), 20 );
 		add_action( 'woocommerce_cart_totals_before_order_total', array( __CLASS__, 'render_cart_rows' ), 20 );
 		add_action( 'woocommerce_review_order_before_order_total', array( __CLASS__, 'render_checkout_rows' ), 20 );
+	}
+
+	public static function enqueue_styles(): void {
+		if ( ! function_exists( 'is_cart' ) || ( ! is_cart() && ! is_checkout() ) ) {
+			return;
+		}
+		wp_enqueue_style(
+			'mdo-supplier-sync-frontend',
+			MDO_SUPPLIER_SYNC_URL . 'assets/frontend.css',
+			array(),
+			MDO_SUPPLIER_SYNC_VERSION
+		);
 	}
 
 	public static function prepare_manual_supplier_save(): void {
@@ -106,19 +119,27 @@ final class MDO_Minimum_Order {
 
 	private static function render_rows( bool $cart_context ): void {
 		foreach ( self::cart_minimums() as $entry ) {
-			$ok = $entry['missing'] <= 0;
+			$ok    = $entry['missing'] <= 0;
+			$label = 'Pedido mínimo · ' . $entry['name'];
 			?>
 			<tr class="emdo-minimum-order-row <?php echo $ok ? 'is-ok' : 'is-missing'; ?>">
-				<th><?php echo esc_html( 'Pedido mínimo · ' . $entry['name'] ); ?></th>
-				<td<?php echo $cart_context ? ' data-title="' . esc_attr( 'Pedido mínimo · ' . $entry['name'] ) . '"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
-					<?php echo wp_kses_post( wc_price( $entry['subtotal'] ) . ' / ' . wc_price( $entry['minimum'] ) ); ?>
-					<br><small style="<?php echo $ok ? 'color:#2e7d32;' : 'color:#b32d2e;font-weight:600;'; ?>">
-						<?php
-						echo $ok
-							? esc_html__( 'Pedido mínimo alcanzado.', 'mdo-supplier-sync' )
-							: wp_kses_post( 'Te faltan ' . wc_price( $entry['missing'] ) . ' para el pedido mínimo.' );
-						?>
-					</small>
+				<td colspan="2"<?php echo $cart_context ? ' data-title="' . esc_attr( $label ) . '"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
+					<div class="emdo-minimum-order-card">
+						<div class="emdo-minimum-order-card__title"><?php echo esc_html( $label ); ?></div>
+						<?php if ( $ok ) : ?>
+							<div class="emdo-minimum-order-card__message">Pedido mínimo alcanzado.</div>
+							<div class="emdo-minimum-order-card__meta">
+								<?php echo wp_kses_post( 'Llevas ' . wc_price( $entry['subtotal'] ) . ' en productos de ' . esc_html( $entry['name'] ) . ' (mínimo ' . wc_price( $entry['minimum'] ) . ').' ); ?>
+							</div>
+						<?php else : ?>
+							<div class="emdo-minimum-order-card__message">
+								<?php echo wp_kses_post( 'Te faltan <strong>' . wc_price( $entry['missing'] ) . '</strong> para alcanzar el pedido mínimo de <strong>' . wc_price( $entry['minimum'] ) . '</strong>.' ); ?>
+							</div>
+							<div class="emdo-minimum-order-card__meta">
+								<?php echo wp_kses_post( 'Llevas ' . wc_price( $entry['subtotal'] ) . ' en productos de ' . esc_html( $entry['name'] ) . '.' ); ?>
+							</div>
+						<?php endif; ?>
+					</div>
 				</td>
 			</tr>
 			<?php
