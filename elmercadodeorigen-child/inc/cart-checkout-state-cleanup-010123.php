@@ -1,6 +1,6 @@
 <?php
 /**
- * Limpieza de estados de checkout y destino único de envío, refinado en 0.10.178.
+ * Limpieza de estados de checkout y destino único de envío, refinado en 0.10.179.
  *
  * @package ElMercadoDeOrigen
  */
@@ -9,68 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/* QA temporal: fuerza un carrito multivendedor con destino en la sesión headless de staging. */
-add_action(
-	'template_redirect',
-	static function (): void {
-		if ( is_admin() || ! function_exists( 'is_cart' ) || ! is_cart() || empty( $_GET['qa'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			return;
-		}
-		$user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
-		if ( false === stripos( $user_agent, 'HeadlessChrome' ) || ! function_exists( 'WC' ) || ! WC()->cart || ! WC()->customer ) {
-			return;
-		}
-
-		$authors = array();
-		$ids     = array();
-		foreach ( WC()->cart->get_cart() as $item ) {
-			$product_id = (int) ( $item['product_id'] ?? 0 );
-			if ( $product_id <= 0 ) {
-				continue;
-			}
-			$ids[] = $product_id;
-			$author = (int) get_post_field( 'post_author', $product_id );
-			if ( $author > 0 ) {
-				$authors[] = $author;
-			}
-		}
-		$authors = array_values( array_unique( $authors ) );
-
-		if ( function_exists( 'wc_get_products' ) && count( $authors ) < 3 ) {
-			foreach ( wc_get_products( array( 'limit' => 100, 'status' => 'publish', 'type' => 'simple', 'stock_status' => 'instock', 'orderby' => 'date', 'order' => 'DESC' ) ) as $product ) {
-				if ( count( $authors ) >= 3 ) {
-					break;
-				}
-				if ( ! $product instanceof WC_Product || ! $product->is_purchasable() || ! $product->is_in_stock() ) {
-					continue;
-				}
-				$product_id = (int) $product->get_id();
-				$author     = (int) get_post_field( 'post_author', $product_id );
-				$price      = (float) $product->get_price();
-				if ( $product_id <= 0 || $author <= 0 || $price <= 0 || $price >= 60 || in_array( $product_id, $ids, true ) || in_array( $author, $authors, true ) ) {
-					continue;
-				}
-				if ( WC()->cart->add_to_cart( $product_id, 1 ) ) {
-					$ids[]     = $product_id;
-					$authors[] = $author;
-				}
-			}
-		}
-
-		WC()->customer->set_shipping_country( 'ES' );
-		WC()->customer->set_shipping_state( 'M' );
-		WC()->customer->set_shipping_postcode( '28001' );
-		WC()->customer->set_shipping_city( 'Madrid' );
-		WC()->customer->set_shipping_address_1( 'Calle de Alcalá 1' );
-		if ( method_exists( WC()->customer, 'set_calculated_shipping' ) ) {
-			WC()->customer->set_calculated_shipping( true );
-		}
-		WC()->customer->save();
-		WC()->cart->calculate_totals();
-	},
-	1
-);
-
 add_action(
 	'wp_head',
 	static function (): void {
@@ -78,7 +16,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-cart-checkout-state-cleanup-010178">
+		<style id="elmercado-cart-checkout-state-cleanup-010179">
 			body.elmercado-child-theme.woocommerce-cart .cart_totals .shipping-calculator-button {
 				display: flex !important;
 				float: none !important;
@@ -211,7 +149,7 @@ add_action(
 		}
 		if ( function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page() ) {
 			?>
-			<script id="elmercado-cart-checkout-state-cleanup-js-010178">
+			<script id="elmercado-cart-checkout-state-cleanup-js-010179">
 			(() => {
 				'use strict';
 				const clean = () => document.querySelectorAll('.emo-checkout-status-card').forEach((card) => card.remove());
@@ -227,7 +165,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-cart-shipping-destination-010178">
+		<script id="elmercado-cart-shipping-destination-010179">
 		(() => {
 			'use strict';
 			const body = document.body;
