@@ -24,10 +24,8 @@ final class MDO_Database {
 
 	private static function install_schema(): void {
 		global $wpdb;
-
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		$charset_collate = $wpdb->get_charset_collate();
-
 		$suppliers = self::table( 'suppliers' );
 		$products  = self::table( 'source_products' );
 		$runs      = self::table( 'sync_runs' );
@@ -71,6 +69,7 @@ final class MDO_Database {
 			source_price decimal(12,2) DEFAULT NULL,
 			source_stock_status varchar(30) DEFAULT NULL,
 			source_hash char(64) DEFAULT NULL,
+			source_payload longtext DEFAULT NULL,
 			first_seen_at datetime NOT NULL,
 			last_seen_at datetime NOT NULL,
 			last_changed_at datetime DEFAULT NULL,
@@ -120,7 +119,6 @@ final class MDO_Database {
 		dbDelta( $sql_products );
 		dbDelta( $sql_runs );
 		dbDelta( $sql_events );
-
 		update_option( 'mdo_supplier_sync_db_version', MDO_SUPPLIER_SYNC_DB_VERSION, true );
 	}
 }
