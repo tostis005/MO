@@ -1,6 +1,6 @@
 <?php
 /**
- * Carga continua estable del catálogo, refinada en 0.10.178.
+ * Carga continua estable del catálogo, refinada en 0.10.180.
  *
  * Conserva la paginación HTML para rastreo y navegación sin JavaScript, pero
  * sustituye la experiencia visual de scroll infinito de Woostify por una carga
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 function elmercado_is_continuous_catalog_surface_010176(): bool {
 	$is_archive = function_exists( 'is_shop' ) && ( is_shop() || ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) );
-	$is_vendor  = function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page();
+	$is_vendor  = ( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() ) || ( function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page() );
 
 	return $is_archive || $is_vendor;
 }
@@ -50,7 +50,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-continuous-catalog-010178">
+		<style id="elmercado-continuous-catalog-010180">
 			/* El cargador nativo residual es el segundo spinner que no debe verse. */
 			body.emo-continuous-catalog .emo-catalog-native-pagination,
 			body.emo-continuous-catalog ul.products ~ #infscr-loading,
@@ -116,7 +116,7 @@ add_action(
 				border: 2px solid rgba(23,63,50,.18);
 				border-top-color: #173f32;
 				border-radius: 50%;
-				animation: emo-catalog-spin-010178 .7s linear infinite;
+				animation: emo-catalog-spin-010180 .7s linear infinite;
 			}
 
 			body.emo-continuous-catalog .emo-catalog-load-state.is-loading .emo-catalog-spinner {
@@ -142,7 +142,7 @@ add_action(
 				display: none !important;
 			}
 
-			@keyframes emo-catalog-spin-010178 {
+			@keyframes emo-catalog-spin-010180 {
 				to { transform: rotate(360deg); }
 			}
 
@@ -152,7 +152,7 @@ add_action(
 				}
 			}
 		</style>
-		<script id="elmercado-continuous-catalog-history-010178">
+		<script id="elmercado-continuous-catalog-history-010180">
 		(() => {
 			'use strict';
 
@@ -220,7 +220,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-continuous-catalog-loader-010178">
+		<script id="elmercado-continuous-catalog-loader-010180">
 		(() => {
 			'use strict';
 
@@ -249,10 +249,31 @@ add_action(
 				return 1;
 			};
 
+			const pageUrl = (value, targetPage) => {
+				try {
+					const url = new URL(value, window.location.href);
+					if (/\/page\/\d+(?:\/|$)/i.test(url.pathname)) {
+						url.pathname = url.pathname.replace(/\/page\/\d+(?:\/|$)/i, `/page/${targetPage}/`);
+						return url.href;
+					}
+					for (const key of ['paged', 'product-page', 'product_page']) {
+						if (!url.searchParams.has(key)) continue;
+						url.searchParams.set(key, String(targetPage));
+						return url.href;
+					}
+					const path = url.pathname.replace(/\/+$/, '');
+					url.pathname = `${path}/page/${targetPage}/`;
+					return url.href;
+				} catch (_) {
+					return '';
+				}
+			};
+
 			const initialPage = pageNumber(currentUrl.href);
 			let highestPage = initialPage;
 			let loading = false;
 			let retryTimer = 0;
+			let continuationTimer = 0;
 			let nextUrl = '';
 
 			const pagerScopeSelector = [
@@ -326,6 +347,7 @@ add_action(
 			const totalMatch = countNode?.textContent?.replace(/\./g, '').match(/(\d+)\s+resultados?/i);
 			const total = totalMatch ? Number.parseInt(totalMatch[1], 10) : 0;
 			let shown = grid.querySelectorAll(':scope > li.product').length;
+			const preloadDistance = Math.max(1800, Math.min(3200, Math.round(window.innerHeight * 2.6)));
 
 			const updateCount = () => {
 				if (!countNode || initialPage !== 1 || !total) return;
@@ -351,8 +373,13 @@ add_action(
 			const showIdle = () => setState('idle');
 			const showLoading = () => setState('loading', 'Cargando más productos…');
 			const showRetrying = () => setState('retrying', 'Cargando más productos…');
-			const showFailure = () => setState('failure', 'No se han podido cargar automáticamente.');
+			const showFailure = () => setState('failure', 'No se ha podido continuar la carga automática.');
 			const showFinished = () => setState('finished');
+
+			const stateIsNearViewport = () => {
+				const rect = state.getBoundingClientRect();
+				return rect.top <= window.innerHeight + preloadDistance && rect.bottom >= -preloadDistance;
+			};
 
 			const fetchPage = async (url) => {
 				const controller = new AbortController();
@@ -368,6 +395,13 @@ add_action(
 				} finally {
 					window.clearTimeout(timeout);
 				}
+			};
+
+			const scheduleContinuation = () => {
+				window.clearTimeout(continuationTimer);
+				continuationTimer = window.setTimeout(() => {
+					if (!loading && nextUrl && stateIsNearViewport()) loadNext(true);
+				}, 40);
 			};
 
 			const loadNext = async (allowAutomaticRetry = true) => {
@@ -393,14 +427,22 @@ add_action(
 					if (!appended) throw new Error('No new products returned');
 
 					highestPage = Math.max(highestPage + 1, pageNumber(requestedUrl));
-					nextUrl = findPageUrl(doc, 'next', highestPage);
 					shown += appended;
+					let discoveredNext = findPageUrl(doc, 'next', highestPage);
+					if (!discoveredNext && total && shown < total) {
+						discoveredNext = pageUrl(requestedUrl, highestPage + 1);
+					}
+					nextUrl = discoveredNext;
 					updateCount();
 					document.body.dispatchEvent(new CustomEvent('emo:catalog-products-appended', { detail: { count: appended, page: highestPage } }));
 					window.__emoCatalogHistoryGuard?.restore?.();
 					loading = false;
-					if (nextUrl) showIdle();
-					else showFinished();
+					if (nextUrl) {
+						showIdle();
+						scheduleContinuation();
+					} else {
+						showFinished();
+					}
 				} catch (_) {
 					loading = false;
 					window.__emoCatalogHistoryGuard?.restore?.();
@@ -418,7 +460,9 @@ add_action(
 
 			button.addEventListener('click', () => {
 				window.clearTimeout(retryTimer);
+				window.clearTimeout(continuationTimer);
 				retryTimer = 0;
+				continuationTimer = 0;
 				showIdle();
 				loadNext(false);
 			});
@@ -434,7 +478,6 @@ add_action(
 			}
 
 			showIdle();
-			const preloadDistance = Math.max(1800, Math.min(3200, Math.round(window.innerHeight * 2.6)));
 			const observer = new IntersectionObserver((entries) => {
 				if (entries.some((entry) => entry.isIntersecting)) loadNext(true);
 			}, { rootMargin: `${preloadDistance}px 0px ${preloadDistance}px 0px`, threshold: 0.01 });

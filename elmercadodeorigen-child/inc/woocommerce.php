@@ -64,6 +64,24 @@ add_filter(
 );
 
 /**
+ * El formulario de consulta de WCFM no se ofrece en la ficha de producto.
+ * Se corta en el filtro del plugin antes de que el botón llegue al HTML.
+ *
+ * @param bool $allow Estado original del módulo de consultas.
+ */
+add_filter(
+	'wcfm_is_allow_enquiry',
+	static function ( $allow ): bool {
+		if ( ! is_admin() && function_exists( 'is_product' ) && is_product() ) {
+			return false;
+		}
+
+		return (bool) $allow;
+	},
+	PHP_INT_MAX
+);
+
+/**
  * Seis productos relacionados en una rejilla responsiva compacta.
  *
  * El número de columnas visuales se resuelve en CSS para poder pasar de

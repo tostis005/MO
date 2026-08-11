@@ -1,11 +1,11 @@
 <?php
 /**
- * Eliminación definitiva del trigger nativo redundante de filtros 0.10.96.
+ * Eliminación visual desde el primer pintado del trigger nativo redundante de filtros 0.10.180.
  *
  * El catálogo ya dispone de rail visible en escritorio y del trigger canónico
  * del child theme en compacto. El botón `.filter` de Woostify no aporta una
- * segunda acción útil y puede reaparecer con estilos inline, por lo que se
- * retira una vez por carga sin observar mutaciones globales del documento.
+ * segunda acción útil, así que se oculta en CSS crítico antes del primer pintado,
+ * sin retirada posterior mediante JavaScript.
  *
  * @package ElMercadoDeOrigen
  */
@@ -17,15 +17,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'wp_head',
 	static function (): void {
-		if ( is_admin() || ( ! is_shop() && ! is_product_category() && ! is_product_tag() ) ) {
+		$is_catalog = ( function_exists( 'is_shop' ) && is_shop() ) ||
+			( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) ||
+			( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() ) ||
+			( function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page() );
+
+		if ( is_admin() || ! $is_catalog ) {
 			return;
 		}
 		?>
-		<style id="elmercado-native-filter-remove-01096">
-			html body.elmercado-child-theme:not(.wcfmmp-store-page) .woostify-sorting.woostify-sorting > button.filter.filter,
-			html body.elmercado-child-theme:not(.wcfmmp-store-page) .woostify-sorting.woostify-sorting > a.filter.filter,
-			html body.elmercado-child-theme:not(.wcfmmp-store-page) .woostify-sorting.woostify-sorting button.filter.filter.show,
-			html body.elmercado-child-theme:not(.wcfmmp-store-page) .woostify-sorting.woostify-sorting a.filter.filter.show {
+		<style id="elmercado-native-filter-remove-010180">
+			html body.elmercado-child-theme .woostify-sorting button.filter:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle),
+			html body.elmercado-child-theme .woostify-sorting a.filter:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle),
+			html body.elmercado-child-theme .woostify-sorting .filter.show:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle) {
 				display: none !important;
 				visibility: hidden !important;
 				opacity: 0 !important;
@@ -42,36 +46,5 @@ add_action(
 		</style>
 		<?php
 	},
-	PHP_INT_MAX
-);
-
-add_action(
-	'wp_footer',
-	static function (): void {
-		if ( is_admin() || ( ! is_shop() && ! is_product_category() && ! is_product_tag() ) ) {
-			return;
-		}
-		?>
-		<script id="elmercado-native-filter-remove-js-01096">
-		(() => {
-			'use strict';
-			const selector = '.woostify-sorting button.filter, .woostify-sorting a.filter, .woostify-sorting .filter.show';
-			const removeNativeFilter = () => {
-				document.querySelectorAll(selector).forEach((control) => {
-					if (control.id === 'emo-premium-filter-toggle' || control.classList.contains('emo-mobile-filter-toggle')) return;
-					control.remove();
-				});
-			};
-
-			removeNativeFilter();
-			if (document.readyState === 'loading') {
-				document.addEventListener('DOMContentLoaded', removeNativeFilter, { once: true });
-			}
-			window.addEventListener('pageshow', removeNativeFilter, { passive: true });
-			window.addEventListener('popstate', removeNativeFilter, { passive: true });
-		})();
-		</script>
-		<?php
-	},
-	PHP_INT_MAX
+	0
 );
