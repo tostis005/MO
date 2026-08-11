@@ -8,11 +8,13 @@ final class MDO_Scheduler {
 	private const DISPATCH_HOOK = 'mdo_supplier_sync_dispatch';
 	private const RUN_HOOK      = 'mdo_supplier_sync_run_supplier';
 	private const PRODUCT_HOOK  = 'mdo_supplier_sync_scrape_product';
+	private const IMPORT_HOOK   = 'mdo_supplier_sync_import_product';
 
 	public static function init(): void {
 		add_action( self::DISPATCH_HOOK, array( __CLASS__, 'dispatch' ) );
 		add_action( self::RUN_HOOK, array( __CLASS__, 'run_supplier' ), 10, 2 );
 		add_action( self::PRODUCT_HOOK, array( __CLASS__, 'process_product' ), 10, 4 );
+		add_action( self::IMPORT_HOOK, array( __CLASS__, 'process_import' ), 10, 1 );
 		self::ensure_dispatcher();
 	}
 
@@ -25,6 +27,7 @@ final class MDO_Scheduler {
 			as_unschedule_all_actions( self::DISPATCH_HOOK, array(), 'mdo-supplier-sync' );
 			as_unschedule_all_actions( self::RUN_HOOK, array(), 'mdo-supplier-sync' );
 			as_unschedule_all_actions( self::PRODUCT_HOOK, array(), 'mdo-supplier-sync' );
+			as_unschedule_all_actions( self::IMPORT_HOOK, array(), 'mdo-supplier-sync' );
 		}
 		wp_clear_scheduled_hook( self::DISPATCH_HOOK );
 	}
@@ -40,6 +43,22 @@ final class MDO_Scheduler {
 
 	public static function queue_manual( int $supplier_id ): void {
 		self::enqueue_action( self::RUN_HOOK, array( $supplier_id, 'manual' ) );
+	}
+
+	public static function queue_import( int $source_product_id ): bool {
+		if ( ! MDO_Woo_Importer::mark_importing( $source_product_id ) ) {
+			return false;
+		}
+		self::enqueue_action( self::IMPORT_HOOK, array( $source_product_id ) );
+		return true;
+	}
+
+	public static function process_import( int $source_product_id ): void {
+		try {
+			MDO_Woo_Importer::import_source_product( $source_product_id );
+		} catch ( Throwable $error ) {
+			MDO_Woo_Importer::mark_import_error( $source_product_id, $error->getMessage() );
+		}
 	}
 
 	public static function run_supplier( int $supplier_id, string $trigger_type = 'scheduled' ): void {
@@ -103,8 +122,19 @@ final class MDO_Scheduler {
 			$product = 'tolecarnes' === (string) $supplier['connector']
 				? MDO_Connector_Tolecarnes::scrape_product( $url )
 				: MDO_Connector_Iberico_Family::scrape_product( $url, $supplier );
-			$result = $connector::upsert_product( $supplier_id, $product );
+			$product = MDO_Text::normalize_product( $product );
+			$result  = $connector::upsert_product( $supplier_id, $product );
 			self::increment_run( $run_id, $result );
+
+			if ( 'updated' === $result ) {
+				try {
+					MDO_Woo_Importer::sync_if_active( $supplier_id, (string) $product['source_url'] );
+				} catch ( Throwable $sync_error ) {
+					self::increment_run( $run_id, 'error' );
+					self::log_event( $run_id, $supplier_id, 'woocommerce_sync_error', 'error', $sync_error->getMessage(), array( 'url' => $url ) );
+				}
+			}
+
 			self::log_event(
 				$run_id,
 				$supplier_id,
@@ -152,7 +182,7 @@ final class MDO_Scheduler {
 
 	private static function increment_run( int $run_id, string $result ): void {
 		global $wpdb;
-		$table = MDO_Database::table( 'sync_runs' );
+		$table  = MDO_Database::table( 'sync_runs' );
 		$column = match ( $result ) {
 			'new'     => 'products_new',
 			'updated' => 'products_updated',
