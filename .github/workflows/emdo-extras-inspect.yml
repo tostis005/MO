@@ -30,7 +30,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-      - name: Inspect source options
+      - name: Inspect preparation markup
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -53,27 +53,27 @@ jobs:
           cat > "$script" <<'PHP'
           <?php
           global $wpdb;
-          $wc_id = 11235;
-          $source_id = (int) get_post_meta( $wc_id, '_emdo_source_product_id', true );
+          $source_id = (int) get_post_meta( 11235, '_emdo_source_product_id', true );
           $table = MDO_Database::table( 'source_products' );
-          $row = $wpdb->get_row( $wpdb->prepare( "SELECT sp.*, s.connector, s.source_url AS supplier_source_url FROM {$table} sp JOIN " . MDO_Database::table( 'suppliers' ) . " s ON s.id=sp.supplier_id WHERE sp.id=%d", $source_id ), ARRAY_A );
+          $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id=%d", $source_id ), ARRAY_A );
           if ( ! $row ) { throw new RuntimeException('source row missing'); }
-          $supplier = MDO_Supplier_Repository::find( (int) $row['supplier_id'] );
-          echo "SOURCE_URL={$row['source_url']}\n";
-          $product = MDO_Connector_Iberico_Family::scrape_product( (string) $row['source_url'], $supplier );
-          echo "OPTION_GROUPS=" . wp_json_encode( $product['option_groups'] ?? array(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
-          $response = wp_safe_remote_get( (string) $row['source_url'], array( 'timeout'=>20, 'redirection'=>4 ) );
-          $html = is_wp_error($response) ? '' : (string) wp_remote_retrieve_body($response);
-          if ( $html ) {
-              $dom = new DOMDocument(); $prev=libxml_use_internal_errors(true); $dom->loadHTML('<?xml encoding="utf-8" ?>'.$html, LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET); libxml_clear_errors(); libxml_use_internal_errors($prev); $xp=new DOMXPath($dom);
-              foreach ( $xp->query('//select') ?: array() as $select ) {
-                  $name = $select->getAttribute('name'); $id=$select->getAttribute('id');
-                  echo "SELECT name={$name} id={$id}\n";
-                  foreach ( $xp->query('.//option',$select) ?: array() as $opt ) {
-                      $attrs=array(); foreach($opt->attributes ?: array() as $attr){ if(str_starts_with(strtolower($attr->name),'data-')){$attrs[$attr->name]=$attr->value;} }
-                      echo "  OPTION value=".$opt->getAttribute('value')." text=".trim(preg_replace('/\\s+/u',' ',(string)$opt->textContent))." data=".wp_json_encode($attrs,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-                  }
+          $response = wp_safe_remote_get( (string) $row['source_url'], array( 'timeout'=>20, 'redirection'=>4, 'user-agent'=>'EMDO extras inspect' ) );
+          if ( is_wp_error($response) ) { throw new RuntimeException($response->get_error_message()); }
+          $html = (string) wp_remote_retrieve_body($response);
+          echo "HTML_BYTES=".strlen($html)."\n";
+          $needles = array('Cortado a cuchillo','Cortado a máquina','Deshuesado','Pieza entera','prepar','lonche');
+          foreach ($needles as $needle) {
+              $pos = mb_stripos($html,$needle);
+              echo "NEEDLE {$needle} POS=".($pos===false?'none':(string)$pos)."\n";
+              if ($pos!==false) {
+                  echo "SNIPPET=".trim(preg_replace('/\\s+/u',' ',strip_tags(mb_substr($html,max(0,$pos-900),2200))))."\n";
               }
+          }
+          $dom = new DOMDocument(); $prev=libxml_use_internal_errors(true); $dom->loadHTML('<?xml encoding="utf-8" ?>'.$html, LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET); libxml_clear_errors(); libxml_use_internal_errors($prev); $xp=new DOMXPath($dom);
+          foreach ($xp->query('//*[contains(translate(normalize-space(.),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"cortado a cuchillo")]') ?: array() as $node) {
+              if (!$node instanceof DOMElement) continue;
+              echo "NODE tag={$node->tagName} class={$node->getAttribute('class')} id={$node->getAttribute('id')} text=".trim(preg_replace('/\\s+/u',' ',(string)$node->textContent))."\n";
+              $attrs=[]; foreach($node->attributes ?: array() as $attr){$attrs[$attr->name]=$attr->value;} echo "ATTRS=".wp_json_encode($attrs,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
           }
           PHP
           $WP eval-file "$script" 2>/dev/null
