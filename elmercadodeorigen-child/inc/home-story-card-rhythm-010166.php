@@ -1,9 +1,10 @@
 <?php
 /**
- * Ritmo uniforme de las tarjetas de criterio de la Home 0.10.166.
+ * Ritmo uniforme de las tarjetas de criterio de la Home 0.10.167.
  *
- * Homogeneiza exclusivamente la distancia entre el titular y su descripción
- * en las tres tarjetas, sin alterar estructura, textos, tamaños ni distribución.
+ * En móvil, la etiqueta lateral abarca las dos filas de contenido para que su
+ * altura no altere la separación entre el titular y la descripción.
+ * No modifica estructura, textos, tamaños ni distribución general.
  *
  * @package ElMercadoDeOrigen
  */
@@ -19,20 +20,28 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-home-story-card-rhythm-010166">
-			body.home.elmercado-child-theme .emo-story__values article {
-				row-gap: 0 !important;
-			}
+		<style id="elmercado-home-story-card-rhythm-010167">
+			@media (max-width: 767px) {
+				body.home.elmercado-child-theme .emo-story__values article {
+					row-gap: 0.9rem !important;
+				}
 
-			body.home.elmercado-child-theme .emo-story__values article h3 {
-				margin-top: 0 !important;
-				margin-bottom: 0 !important;
-				padding-bottom: 0 !important;
-			}
+				body.home.elmercado-child-theme .emo-story__values article > span {
+					grid-row: 1 / span 2 !important;
+				}
 
-			body.home.elmercado-child-theme .emo-story__values article h3 + p {
-				margin-top: 0.9rem !important;
-				margin-bottom: 0 !important;
+				body.home.elmercado-child-theme .emo-story__values article h3 {
+					grid-column: 2 !important;
+					grid-row: 1 !important;
+					margin: 0 !important;
+					padding: 0 !important;
+				}
+
+				body.home.elmercado-child-theme .emo-story__values article h3 + p {
+					grid-column: 2 !important;
+					grid-row: 2 !important;
+					margin: 0 !important;
+				}
 			}
 		</style>
 		<?php
