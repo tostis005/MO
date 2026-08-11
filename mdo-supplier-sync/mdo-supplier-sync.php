@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 0.7.0
+ * Version: 0.8.0
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '0.7.0' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '0.8.0' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -24,13 +24,16 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-supplier-repository.ph
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-pricing.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-iberico-variations.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-text.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-rich-description-source.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tolecarnes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-family.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-migration.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-stock-guard.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-scheduler.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-nightly-scheduler.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-admin.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-product-bulk-admin.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-minimum-order.php';
@@ -45,9 +48,12 @@ add_action(
 		MDO_Description_Migration::run_once();
 		MDO_Pricing::init();
 		MDO_Iberico_Variations::init();
+		MDO_Rich_Description_Source::init();
+		MDO_Variable_Upgrade::init();
 		MDO_Description_Guard::init();
 		MDO_Stock_Guard::init();
 		MDO_Scheduler::init();
+		MDO_Nightly_Scheduler::init();
 		MDO_Minimum_Order::init();
 		if ( is_admin() ) {
 			MDO_Admin::init();
