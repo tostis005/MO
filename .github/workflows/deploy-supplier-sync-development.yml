@@ -1,4 +1,4 @@
-name: Deploy Supplier Sync plugin to staging
+name: Deploy EMDO plugin to staging
 
 on:
   push:
@@ -100,7 +100,7 @@ jobs:
           : "${WP_PATH:?Could not resolve staging WordPress path}"
           echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
 
-      - name: Deploy and activate Supplier Sync
+      - name: Deploy and activate EMDO
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -128,5 +128,5 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active mdo-supplier-sync --path="$wp_path" --allow-root
           db_version="$("$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_supplier_sync_db_version --path="$wp_path" --allow-root)"
           [ "$db_version" = '1.0.0' ]
-          echo "Supplier Sync ${db_version} active in ${wp_path}."
+          echo "EMDO ${db_version} active in ${wp_path}."
           REMOTE
