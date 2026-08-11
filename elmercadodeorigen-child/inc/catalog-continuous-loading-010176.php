@@ -1,10 +1,10 @@
 <?php
 /**
- * Carga continua estable del catálogo, refinada en 0.10.177.
+ * Carga continua estable del catálogo, refinada en 0.10.178.
  *
  * Conserva la paginación HTML para rastreo y navegación sin JavaScript, pero
  * sustituye la experiencia visual de scroll infinito de Woostify por una carga
- * anticipada, silenciosa y con fallback manual si la red no responde.
+ * anticipada, con un único indicador visible y fallback manual si la red falla.
  *
  * @package ElMercadoDeOrigen
  */
@@ -50,7 +50,8 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-continuous-catalog-010177">
+		<style id="elmercado-continuous-catalog-010178">
+			/* El cargador nativo residual es el segundo spinner que no debe verse. */
 			body.emo-continuous-catalog .emo-catalog-native-pagination,
 			body.emo-continuous-catalog ul.products ~ #infscr-loading,
 			body.emo-continuous-catalog ul.products ~ .infinite-scroll-status,
@@ -77,34 +78,49 @@ add_action(
 				text-decoration: none;
 			}
 
-			/* Sentinel de carga: ocupa 1px y permanece invisible en el flujo normal. */
+			/* En reposo solo queda el sentinel de 1px; durante la petición sí damos feedback. */
 			body.emo-continuous-catalog .emo-catalog-load-state {
-				display: block;
+				display: flex;
+				box-sizing: border-box;
 				width: 100%;
 				height: 1px;
 				min-height: 1px;
+				align-items: center;
+				justify-content: center;
+				gap: 10px;
 				margin: 0;
 				padding: 0;
 				clear: both;
 				overflow: hidden;
 				visibility: hidden;
-			}
-
-			/* Solo mostramos interfaz si la carga automática ha fallado dos veces. */
-			body.emo-continuous-catalog .emo-catalog-load-state.is-failure {
-				display: flex;
-				height: auto;
-				min-height: 58px;
-				align-items: center;
-				justify-content: center;
-				gap: 10px;
-				padding: 14px 0 4px;
-				overflow: visible;
-				visibility: visible;
 				color: #496258;
 				font-size: 12px;
 				line-height: 1.4;
 				text-align: center;
+			}
+
+			body.emo-continuous-catalog .emo-catalog-load-state.is-loading,
+			body.emo-continuous-catalog .emo-catalog-load-state.is-failure {
+				height: auto;
+				min-height: 58px;
+				padding: 14px 0 4px;
+				overflow: visible;
+				visibility: visible;
+			}
+
+			body.emo-continuous-catalog .emo-catalog-spinner {
+				display: none;
+				width: 18px;
+				height: 18px;
+				flex: 0 0 18px;
+				border: 2px solid rgba(23,63,50,.18);
+				border-top-color: #173f32;
+				border-radius: 50%;
+				animation: emo-catalog-spin-010178 .7s linear infinite;
+			}
+
+			body.emo-continuous-catalog .emo-catalog-load-state.is-loading .emo-catalog-spinner {
+				display: inline-block;
 			}
 
 			body.emo-continuous-catalog .emo-catalog-load-button {
@@ -125,8 +141,18 @@ add_action(
 			body.emo-continuous-catalog .emo-catalog-load-button[hidden] {
 				display: none !important;
 			}
+
+			@keyframes emo-catalog-spin-010178 {
+				to { transform: rotate(360deg); }
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				body.emo-continuous-catalog .emo-catalog-spinner {
+					animation: none;
+				}
+			}
 		</style>
-		<script id="elmercado-continuous-catalog-history-010177">
+		<script id="elmercado-continuous-catalog-history-010178">
 		(() => {
 			'use strict';
 
@@ -194,7 +220,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-continuous-catalog-loader-010177">
+		<script id="elmercado-continuous-catalog-loader-010178">
 		(() => {
 			'use strict';
 
@@ -291,7 +317,7 @@ add_action(
 			state.className = 'emo-catalog-load-state';
 			state.setAttribute('role', 'status');
 			state.setAttribute('aria-live', 'polite');
-			state.innerHTML = '<span class="emo-catalog-load-message"></span><button type="button" class="emo-catalog-load-button" hidden>Cargar más productos</button>';
+			state.innerHTML = '<span class="emo-catalog-spinner" aria-hidden="true"></span><span class="emo-catalog-load-message"></span><button type="button" class="emo-catalog-load-button" hidden>Cargar más productos</button>';
 			grid.insertAdjacentElement('afterend', state);
 
 			const message = state.querySelector('.emo-catalog-load-message');
@@ -314,15 +340,17 @@ add_action(
 			};
 
 			const setState = (mode, text = '') => {
+				const active = mode === 'loading' || mode === 'retrying';
 				const failure = mode === 'failure';
+				state.classList.toggle('is-loading', active);
 				state.classList.toggle('is-failure', failure);
-				message.textContent = failure ? text : '';
+				message.textContent = active || failure ? text : '';
 				button.hidden = !failure;
 			};
 
 			const showIdle = () => setState('idle');
-			const showLoading = () => setState('loading');
-			const showRetrying = () => setState('retrying');
+			const showLoading = () => setState('loading', 'Cargando más productos…');
+			const showRetrying = () => setState('retrying', 'Cargando más productos…');
 			const showFailure = () => setState('failure', 'No se han podido cargar automáticamente.');
 			const showFinished = () => setState('finished');
 
