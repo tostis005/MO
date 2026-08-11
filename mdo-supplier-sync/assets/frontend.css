@@ -1,0 +1,63 @@
+.emdo-minimum-order-row > td {
+	padding: 12px 0 !important;
+	background: transparent !important;
+	border: 0 !important;
+	text-align: left !important;
+}
+
+.emdo-minimum-order-card {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 14px 16px;
+	border: 1px solid #e6ca72;
+	border-radius: 10px;
+	background: #fff4cf;
+	color: #3d351d !important;
+	text-align: left !important;
+	line-height: 1.4;
+}
+
+.emdo-minimum-order-card,
+.emdo-minimum-order-card * {
+	color: inherit !important;
+}
+
+.emdo-minimum-order-card__title {
+	margin: 0 0 5px;
+	font-size: 13px;
+	font-weight: 800;
+	letter-spacing: 0.02em;
+}
+
+.emdo-minimum-order-card__message {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.emdo-minimum-order-card__meta {
+	margin-top: 4px;
+	font-size: 12.5px;
+	opacity: 0.82;
+}
+
+.emdo-minimum-order-row.is-ok .emdo-minimum-order-card {
+	border-color: #9fcbae;
+	background: #eaf6ee;
+	color: #234c30 !important;
+}
+
+@media (max-width: 768px) {
+	.emdo-minimum-order-row > td {
+		display: table-cell !important;
+		width: 100% !important;
+		padding: 10px 0 !important;
+	}
+
+	.emdo-minimum-order-row > td::before {
+		display: none !important;
+	}
+
+	.emdo-minimum-order-card {
+		padding: 13px 14px;
+	}
+}
