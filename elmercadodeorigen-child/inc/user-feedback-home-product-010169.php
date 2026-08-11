@@ -1,13 +1,15 @@
 <?php
 /**
- * Correcciones de feedback en ficha y Home 0.10.169.
+ * Correcciones de feedback en ficha y Home.
  *
  * - Compacta la separación vertical entre los selectores de variación y el
  *   primer bloque de formato de YITH WAPO.
  * - Corrige el ciclo vertical de la barra superior para que los tres mensajes
- *   roten de forma continua, sin quedarse en un fotograma vacío.
+ *   roten de forma continua y sin intervalos vacíos.
  * - Fuerza el encuadre completo de jamones y paletas dentro de las tarjetas del
  *   hero sin aumentar el tamaño del mosaico.
+ *
+ * Capa iniciada en 0.10.169; transición superior corregida en 0.10.170.
  *
  * @package ElMercadoDeOrigen
  */
@@ -23,12 +25,12 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-user-feedback-home-product-010169">
-			/* Barra superior: ciclo 1 → 2 → 3 continuo, sin pausa en hover. */
+		<style id="elmercado-user-feedback-home-product-010170">
+			/* Barra superior: ciclo 1 → 2 → 3 continuo y con transiciones solapadas. */
 			body.elmercado-child-theme .emo-announcement__inner > span {
-				opacity: 0 !important;
+				opacity: 0;
 				transform: translateY(105%);
-				animation-name: emo-announcement-vertical-010169 !important;
+				animation-name: emo-announcement-vertical-010170 !important;
 				animation-duration: 12s !important;
 				animation-timing-function: ease-in-out !important;
 				animation-iteration-count: infinite !important;
@@ -52,16 +54,16 @@ add_action(
 				animation-play-state: running !important;
 			}
 
-			@keyframes emo-announcement-vertical-010169 {
-				0%, 27% {
+			@keyframes emo-announcement-vertical-010170 {
+				0%, 29% {
 					opacity: 1;
 					transform: translateY(0);
 				}
-				31% {
+				33.333% {
 					opacity: 0;
 					transform: translateY(-105%);
 				}
-				31.01%, 96% {
+				33.334%, 95% {
 					opacity: 0;
 					transform: translateY(105%);
 				}
