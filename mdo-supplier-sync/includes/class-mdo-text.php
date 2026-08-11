@@ -5,47 +5,55 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class MDO_Text {
+	private const PRESERVE_UPPERCASE = array( 'DOP', 'IGP', 'DO', 'ETG', 'IVA', 'SKU' );
+
 	public static function normalize_title( string $title ): string {
 		$title = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $title ) ) );
 		if ( '' === $title || ! function_exists( 'mb_strtoupper' ) || ! function_exists( 'mb_strtolower' ) ) {
 			return $title;
 		}
 
-		$letters = preg_replace( '/[^\p{L}]+/u', '', $title );
-		if ( '' === $letters ) {
-			return $title;
-		}
+		// Normalizamos por palabra, no por título completo. De este modo textos como
+		// "JAMÓN RESERVA (Cortado a máquina)" pasan a "Jamón reserva (Cortado a máquina)"
+		// aunque dentro del mismo título existan fragmentos correctamente escritos.
+		$title = preg_replace_callback(
+			'/\p{L}[\p{L}\p{M}]*/u',
+			static function ( array $match ): string {
+				$word = (string) $match[0];
+				$upper = mb_strtoupper( $word, 'UTF-8' );
+				$lower = mb_strtolower( $word, 'UTF-8' );
 
-		$chars      = preg_split( '//u', $letters, -1, PREG_SPLIT_NO_EMPTY ) ?: array();
-		$uppercase  = 0;
-		$lowercase  = 0;
-		foreach ( $chars as $char ) {
-			$upper = mb_strtoupper( $char, 'UTF-8' );
-			$lower = mb_strtolower( $char, 'UTF-8' );
-			if ( $upper === $lower ) {
-				continue;
-			}
-			if ( $char === $upper ) {
-				$uppercase++;
-			} elseif ( $char === $lower ) {
-				$lowercase++;
-			}
-		}
+				if ( $upper === $lower || $word !== $upper ) {
+					return $word;
+				}
 
-		$cased = $uppercase + $lowercase;
-		if ( $cased < 4 || 0 === $uppercase ) {
-			return $title;
-		}
+				if ( in_array( $upper, self::PRESERVE_UPPERCASE, true ) ) {
+					return $upper;
+				}
 
-		// Algunos proveedores escriben títulos prácticamente enteros en mayúsculas,
-		// pero dejan unidades como "Kg" o pequeñas partículas en minúscula. Los
-		// tratamos igualmente como títulos en mayúsculas para mantener consistencia.
-		if ( ( $uppercase / $cased ) < 0.75 ) {
-			return $title;
-		}
+				return $lower;
+			},
+			$title
+		);
 
-		$lower = mb_strtolower( $title, 'UTF-8' );
-		return mb_strtoupper( mb_substr( $lower, 0, 1, 'UTF-8' ), 'UTF-8' ) . mb_substr( $lower, 1, null, 'UTF-8' );
+		// El primer término del título debe mantener formato de frase incluso cuando
+		// empieza por números o símbolos, por ejemplo "100% IBÉRICO".
+		$title = preg_replace_callback(
+			'/\p{Ll}/u',
+			static fn( array $match ): string => mb_strtoupper( (string) $match[0], 'UTF-8' ),
+			$title,
+			1
+		);
+
+		// Si un proveedor pone un descriptor completo en mayúsculas entre paréntesis,
+		// lo dejamos también en formato natural: "(DESHUESADO)" -> "(Deshuesado)".
+		$title = preg_replace_callback(
+			'/\(\s*\K\p{Ll}/u',
+			static fn( array $match ): string => mb_strtoupper( (string) $match[0], 'UTF-8' ),
+			$title
+		);
+
+		return $title;
 	}
 
 	public static function normalize_product( array $product ): array {
