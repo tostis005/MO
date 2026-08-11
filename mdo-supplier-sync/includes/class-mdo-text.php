@@ -12,7 +12,35 @@ final class MDO_Text {
 		}
 
 		$letters = preg_replace( '/[^\p{L}]+/u', '', $title );
-		if ( '' === $letters || mb_strtoupper( $letters, 'UTF-8' ) !== $letters ) {
+		if ( '' === $letters ) {
+			return $title;
+		}
+
+		$chars      = preg_split( '//u', $letters, -1, PREG_SPLIT_NO_EMPTY ) ?: array();
+		$uppercase  = 0;
+		$lowercase  = 0;
+		foreach ( $chars as $char ) {
+			$upper = mb_strtoupper( $char, 'UTF-8' );
+			$lower = mb_strtolower( $char, 'UTF-8' );
+			if ( $upper === $lower ) {
+				continue;
+			}
+			if ( $char === $upper ) {
+				$uppercase++;
+			} elseif ( $char === $lower ) {
+				$lowercase++;
+			}
+		}
+
+		$cased = $uppercase + $lowercase;
+		if ( $cased < 4 || 0 === $uppercase ) {
+			return $title;
+		}
+
+		// Algunos proveedores escriben títulos prácticamente enteros en mayúsculas,
+		// pero dejan unidades como "Kg" o pequeñas partículas en minúscula. Los
+		// tratamos igualmente como títulos en mayúsculas para mantener consistencia.
+		if ( ( $uppercase / $cased ) < 0.75 ) {
 			return $title;
 		}
 
