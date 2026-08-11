@@ -131,7 +131,7 @@ jobs:
           echo "EMDO ${db_version} active in ${wp_path}."
           REMOTE
 
-      - name: Inspect El Catedratico variation payloads
+      - name: Verify EMDO description repair
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -149,15 +149,26 @@ jobs:
           fi
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             global $wpdb;
-            $s = MDO_Database::table("suppliers");
-            $p = MDO_Database::table("source_products");
-            $rows = $wpdb->get_results("SELECT p.title,p.source_url,p.source_payload FROM {$p} p INNER JOIN {$s} s ON s.id=p.supplier_id WHERE s.connector=\"el-catedratico\" AND p.source_payload IS NOT NULL AND (p.source_url LIKE \"%jamon-de-bellota%\" OR p.source_url LIKE \"%paleta-de-bellota%\" OR p.source_url LIKE \"%paleta-de-cebo%\") ORDER BY p.id DESC LIMIT 10", ARRAY_A);
+            $table = MDO_Database::table("source_products");
+            $stats = get_option("mdo_description_repair_stats", array());
+            $version = (string) get_option("mdo_description_repair_version", "");
+            echo "repair_version=" . $version . "\n";
+            echo "repair_stats=" . wp_json_encode($stats, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+            $rows = $wpdb->get_results("SELECT wc_product_id, source_payload FROM {$table} WHERE wc_product_id IS NOT NULL AND wc_product_id > 0 AND source_payload IS NOT NULL", ARRAY_A) ?: array();
+            $remaining_woo = 0;
+            $remaining_payload = 0;
             foreach ($rows as $row) {
+              $id = absint($row["wc_product_id"] ?? 0);
+              $content = (string) $wpdb->get_var($wpdb->prepare("SELECT post_content FROM {$wpdb->posts} WHERE ID=%d", $id));
+              if ($content !== MDO_Text::normalize_description($content)) { $remaining_woo++; }
               $payload = json_decode((string)$row["source_payload"], true);
-              echo "=== " . $row["title"] . " ===\n";
-              echo "URL: " . $row["source_url"] . "\n";
-              echo "price=" . json_encode($payload["price"] ?? null) . " regular=" . json_encode($payload["regular_price"] ?? null) . " stock=" . json_encode($payload["stock_status"] ?? null) . " variation_count=" . json_encode($payload["variation_count"] ?? null) . "\n";
-              echo "option_groups=" . wp_json_encode($payload["option_groups"] ?? array(), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+              if (is_array($payload) && array_key_exists("description", $payload)) {
+                $desc = (string)$payload["description"];
+                if ($desc !== MDO_Text::normalize_description($desc)) { $remaining_payload++; }
+              }
             }
+            echo "remaining_woo=" . $remaining_woo . "\n";
+            echo "remaining_payload=" . $remaining_payload . "\n";
+            if ($version !== "1" || (int)($stats["errors"] ?? 1) !== 0 || $remaining_woo !== 0 || $remaining_payload !== 0) { exit(9); }
           ' --path="$wp_path" --allow-root
           REMOTE
