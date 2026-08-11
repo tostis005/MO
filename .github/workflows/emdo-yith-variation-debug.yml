@@ -1,4 +1,4 @@
-name: Fix YITH variation associations
+name: Verify YITH variation resolution
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  fix:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -30,7 +30,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-      - name: Associate block to parent and variations and verify
+      - name: Verify YITH helper for target and Hidalgo variations
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -49,58 +49,29 @@ jobs:
           wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           WP="$php_bin -d memory_limit=512M $wp_bin --path=$wp_path --allow-root"
-          script="$(mktemp /tmp/emdo-yith-varfix.XXXXXX.php)"; trap 'rm -f "$script"' EXIT
+          prefix="$($WP db prefix 2>/dev/null)"
+          echo '=== CURRENT TARGET ASSOCIATIONS ==='
+          $WP db query "SELECT rule_id,object,type FROM ${prefix}yith_wapo_blocks_assoc WHERE rule_id=(SELECT meta_value FROM ${prefix}postmeta WHERE post_id=11235 AND meta_key='_emdo_yith_wapo_block_id' LIMIT 1) ORDER BY CAST(object AS UNSIGNED);" 2>/dev/null
+          script="$(mktemp /tmp/emdo-yith-verify.XXXXXX.php)"; trap 'rm -f "$script"' EXIT
           cat > "$script" <<'PHP'
           <?php
-          global $wpdb;
-          $product_id = 11235;
-          $block_id = (int) get_post_meta( $product_id, '_emdo_yith_wapo_block_id', true );
-          if ( $block_id <= 0 ) {
-              throw new RuntimeException( 'Missing EMDO YITH block marker.' );
-          }
-          $assoc = $wpdb->prefix . 'yith_wapo_blocks_assoc';
-          $ids = array( $product_id );
-          $variation_ids = get_posts( array(
-              'post_type'      => 'product_variation',
-              'post_parent'    => $product_id,
-              'post_status'    => 'publish',
-              'fields'         => 'ids',
-              'posts_per_page' => -1,
-              'orderby'        => 'ID',
-              'order'          => 'ASC',
-          ) );
-          $ids = array_merge( $ids, array_map( 'intval', $variation_ids ) );
-          $wpdb->delete( $assoc, array( 'rule_id' => $block_id ), array( '%d' ) );
-          foreach ( $ids as $id ) {
-              $ok = $wpdb->insert(
-                  $assoc,
-                  array( 'rule_id' => $block_id, 'object' => (string) $id, 'type' => 'product' ),
-                  array( '%d', '%s', '%s' )
-              );
-              if ( false === $ok ) {
-                  throw new RuntimeException( 'Association failed for ' . $id . ': ' . $wpdb->last_error );
-              }
-          }
-          wp_cache_flush();
-          echo 'BLOCK_ID=' . $block_id . "\n";
-          echo 'ASSOCIATED_IDS=' . implode( ',', $ids ) . "\n";
-          foreach ( $variation_ids as $variation_id ) {
-              $product = wc_get_product( $product_id );
-              $variation = wc_get_product( $variation_id );
-              $blocks = YITH_WAPO_DB()->yith_wapo_get_blocks_by_product( $product, $variation, 'yes' );
-              $found = false;
-              foreach ( $blocks as $block ) {
-                  $id = is_object( $block ) && method_exists( $block, 'get_id' ) ? (int) $block->get_id() : ( isset( $block->id ) ? (int) $block->id : 0 );
-                  if ( $id === $block_id ) { $found = true; break; }
-              }
-              echo 'VARIATION_' . $variation_id . '_HAS_BLOCK=' . ( $found ? 'yes' : 'no' ) . "\n";
-              if ( ! $found ) {
-                  throw new RuntimeException( 'Block not resolved for variation ' . $variation_id );
-              }
+          $cases = array(
+              array( 11235, 11926, 'TARGET' ),
+              array( 11235, 11927, 'TARGET' ),
+              array( 11235, 11928, 'TARGET' ),
+              array( 11235, 11929, 'TARGET' ),
+              array( 11235, 11930, 'TARGET' ),
+              array( 11235, 11931, 'TARGET' ),
+              array( 11235, 11932, 'TARGET' ),
+              array( 5045, 5046, 'HIDALGO' ),
+              array( 5045, 5049, 'HIDALGO' ),
+              array( 5045, 6310, 'HIDALGO' ),
+          );
+          foreach ( $cases as $case ) {
+              list( $product_id, $variation_id, $label ) = $case;
+              $has = yith_wapo_product_has_blocks( $product_id, $variation_id );
+              echo $label . '_' . $product_id . '_' . $variation_id . '_HAS_BLOCKS=' . ( $has ? 'yes' : 'no' ) . "\n";
           }
           PHP
           $WP eval-file "$script" 2>/dev/null
-          prefix="$($WP db prefix 2>/dev/null)"
-          echo '=== FINAL ASSOCIATIONS ==='
-          $WP db query "SELECT rule_id,object,type FROM ${prefix}yith_wapo_blocks_assoc WHERE rule_id=(SELECT meta_value FROM ${prefix}postmeta WHERE post_id=11235 AND meta_key='_emdo_yith_wapo_block_id' LIMIT 1) ORDER BY CAST(object AS UNSIGNED);" 2>/dev/null
           REMOTE
