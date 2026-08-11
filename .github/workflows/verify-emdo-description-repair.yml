@@ -1,0 +1,97 @@
+name: Verify EMDO description repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-emdo-description-repair.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify repair on staging
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          domain="$2"
+          wp_path=""
+          case "$raw" in
+            */wp-content/*) wp_path="${raw%%/wp-content/*}" ;;
+            */wp-content) wp_path="$(dirname "$raw")" ;;
+            *) wp_path="$raw" ;;
+          esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            candidates="$(mktemp)"
+            trap 'rm -f "$candidates"' EXIT
+            for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www; do
+              [ -d "$base" ] || continue
+              find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null >> "$candidates" || true
+            done
+            preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+            [ -n "$preferred" ] || { echo "No WordPress staging installation found." >&2; exit 1; }
+            wp_path="$(dirname "$preferred")"
+          fi
+          [ "$(basename "$wp_path")" = "$domain" ] || exit 2
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ]
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            $table = MDO_Database::table("source_products");
+            $version = (string) get_option("mdo_description_repair_version", "");
+            $stats = get_option("mdo_description_repair_stats", array());
+            $rows = $wpdb->get_results("SELECT wc_product_id, source_payload FROM {$table} WHERE wc_product_id IS NOT NULL AND wc_product_id > 0 AND source_payload IS NOT NULL", ARRAY_A) ?: array();
+            $remaining_woo = 0;
+            $remaining_payload = 0;
+            foreach ($rows as $row) {
+              $id = absint($row["wc_product_id"] ?? 0);
+              $content = (string) $wpdb->get_var($wpdb->prepare("SELECT post_content FROM {$wpdb->posts} WHERE ID=%d", $id));
+              if ($content !== MDO_Text::normalize_description($content)) { $remaining_woo++; }
+              $payload = json_decode((string)$row["source_payload"], true);
+              if (is_array($payload) && array_key_exists("description", $payload)) {
+                $desc = (string)$payload["description"];
+                if ($desc !== MDO_Text::normalize_description($desc)) { $remaining_payload++; }
+              }
+            }
+            echo "repair_version=" . $version . "\n";
+            echo "repair_stats=" . wp_json_encode($stats, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+            echo "remaining_woo=" . $remaining_woo . "\n";
+            echo "remaining_payload=" . $remaining_payload . "\n";
+            if ($version !== "3" || (int)($stats["errors"] ?? 1) !== 0 || $remaining_woo !== 0 || $remaining_payload !== 0) { exit(9); }
+          ' --path="$wp_path" --allow-root
+          REMOTE
