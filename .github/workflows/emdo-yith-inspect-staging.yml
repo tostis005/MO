@@ -1,4 +1,4 @@
-name: Inspect YITH staging integration
+name: Test YITH staging integration
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -30,7 +30,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-      - name: Inspect YITH schema and Hidalgo example
+      - name: Create and verify one EMDO YITH block
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -49,19 +49,145 @@ jobs:
           wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           WP="$php_bin -d memory_limit=512M $wp_bin --path=$wp_path --allow-root"
-          prefix="$($WP db prefix 2>/dev/null)"
-          echo '=== SCHEMA BLOCKS ==='; $WP db query "DESCRIBE ${prefix}yith_wapo_blocks;" 2>/dev/null
-          echo '=== SCHEMA ASSOC ==='; $WP db query "DESCRIBE ${prefix}yith_wapo_blocks_assoc;" 2>/dev/null
-          echo '=== SCHEMA ADDONS ==='; $WP db query "DESCRIBE ${prefix}yith_wapo_addons;" 2>/dev/null
-          echo '=== BLOCKS ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_blocks ORDER BY id;" 2>/dev/null
-          echo '=== ASSOC FOR HIDALGO JAMON 5045 ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_blocks_assoc WHERE product_id=5045 OR rule_id=5045;" 2>/dev/null || true
-          echo '=== ALL ASSOC (LIMIT 120) ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_blocks_assoc ORDER BY id LIMIT 120;" 2>/dev/null || true
-          echo '=== ADDONS ==='; $WP db query "SELECT * FROM ${prefix}yith_wapo_addons ORDER BY id LIMIT 120;" 2>/dev/null
-          echo '=== TARGET PRODUCT ==='; $WP db query "SELECT ID,post_title,post_status,post_author FROM ${prefix}posts WHERE ID=11235;" 2>/dev/null
-          echo '=== HIDALGO PRODUCT ==='; $WP db query "SELECT ID,post_title,post_status,post_author FROM ${prefix}posts WHERE ID=5045;" 2>/dev/null
-          yithdir="$wp_path/wp-content/plugins/yith-woocommerce-product-add-ons"
-          echo '=== MODEL FILES ==='
-          find "$yithdir" -type f -name '*.php' | grep -Ei 'class.*(block|addon)|db|database' | head -n 80 || true
-          echo '=== INSERT/UPDATE API ==='
-          grep -RIn --include='*.php' -E 'class YITH_WAPO_(Block|Addon)|function (save|insert|update|add)|yith_wapo_blocks_assoc' "$yithdir/includes" 2>/dev/null | head -n 180 || true
+          script="$(mktemp /tmp/emdo-yith-test.XXXXXX.php)"
+          trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          global $wpdb;
+          $product_id  = 11235;
+          $blocks      = $wpdb->prefix . 'yith_wapo_blocks';
+          $addons      = $wpdb->prefix . 'yith_wapo_addons';
+          $marker_key  = '_emdo_yith_wapo_block_id';
+          $marker_name = 'EMDO · Preparación · 11235';
+
+          if ( 'product' !== get_post_type( $product_id ) ) {
+              throw new RuntimeException( 'Target product 11235 does not exist.' );
+          }
+          if ( ! metadata_exists( 'post', $product_id, '_emdo_source_product_id' ) ) {
+              throw new RuntimeException( 'Target is not linked to EMDO.' );
+          }
+
+          $template_block = $wpdb->get_row( "SELECT * FROM {$blocks} WHERE id = 1" );
+          $template_addon = $wpdb->get_row( "SELECT * FROM {$addons} WHERE id = 1" );
+          if ( ! $template_block || ! $template_addon ) {
+              throw new RuntimeException( 'Hidalgo YITH template was not found.' );
+          }
+
+          $old_block_id = (int) get_post_meta( $product_id, $marker_key, true );
+          if ( $old_block_id > 0 ) {
+              $wpdb->delete( $addons, array( 'block_id' => $old_block_id ), array( '%d' ) );
+              $wpdb->delete( $blocks, array( 'id' => $old_block_id ), array( '%d' ) );
+              delete_post_meta( $product_id, $marker_key );
+          }
+
+          $block_settings = maybe_unserialize( $template_block->settings );
+          if ( ! is_array( $block_settings ) ) {
+              throw new RuntimeException( 'Invalid Hidalgo block settings.' );
+          }
+          $block_settings['name'] = $marker_name;
+          $block_settings['priority'] = '1';
+          $block_settings['rules']['show_in'] = 'products';
+          $block_settings['rules']['show_in_products'] = array( (string) $product_id );
+          $block_settings['rules']['show_in_categories'] = '';
+          $block_settings['rules']['exclude_products'] = '';
+          $block_settings['rules']['exclude_products_products'] = '';
+          $block_settings['rules']['exclude_products_categories'] = '';
+          $block_settings['rules']['show_to'] = 'all';
+          $block_settings['rules']['show_to_user_roles'] = '';
+          $block_settings['rules']['show_to_membership'] = '';
+
+          $inserted = $wpdb->insert(
+              $blocks,
+              array(
+                  'user_id'             => null,
+                  'vendor_id'           => 0,
+                  'settings'            => maybe_serialize( $block_settings ),
+                  'priority'            => '1.00000',
+                  'visibility'          => 1,
+                  'last_update'         => current_time( 'mysql' ),
+                  'name'                => $marker_name,
+                  'product_association' => 'products',
+                  'exclude_products'    => 0,
+                  'user_association'    => 'all',
+                  'exclude_users'       => 0,
+              ),
+              array( '%d', '%d', '%s', '%f', '%d', '%s', '%s', '%s', '%d', '%s', '%d' )
+          );
+          if ( false === $inserted ) {
+              throw new RuntimeException( 'Could not create YITH block: ' . $wpdb->last_error );
+          }
+          $block_id = (int) $wpdb->insert_id;
+
+          $addon_settings = maybe_unserialize( $template_addon->settings );
+          if ( ! is_array( $addon_settings ) ) {
+              throw new RuntimeException( 'Invalid Hidalgo addon settings.' );
+          }
+          $addon_settings['type'] = 'select';
+          $addon_settings['title'] = 'PREPARACIÓN';
+          $addon_settings['required'] = '';
+          $addon_settings['description'] = '';
+          $addon_settings['enable_rules'] = '';
+          $addon_settings['conditional_logic'] = array();
+
+          $labels = array(
+              'Pieza entera',
+              'Deshuesado',
+              'Cortado a cuchillo',
+              'Cortado a máquina',
+          );
+          $prices = array( '0', '0', '20', '9.47' );
+          $options = array(
+              'default'       => array( 'yes', 'no', 'no', 'no' ),
+              'addon_enabled' => array( 'yes', 'yes', 'yes', 'yes' ),
+              'label'         => $labels,
+              'description'   => array( '', '', '', '' ),
+              'image'         => array( '', '', '', '' ),
+              'price_method'  => array( 'free', 'increase', 'increase', 'increase' ),
+              'price'         => $prices,
+              'price_sale'    => array( '', '', '', '' ),
+              'price_type'    => array( 'fixed', 'fixed', 'fixed', 'fixed' ),
+              'show_image'    => array( 'no', 'no', 'no', 'no' ),
+              'label_in_cart' => array( 'no', 'no', 'no', 'no' ),
+          );
+
+          $inserted = $wpdb->insert(
+              $addons,
+              array(
+                  'block_id'    => $block_id,
+                  'settings'    => maybe_serialize( $addon_settings ),
+                  'options'     => maybe_serialize( $options ),
+                  'priority'    => '1.00000',
+                  'visibility'  => 1,
+                  'last_update' => current_time( 'mysql' ),
+              ),
+              array( '%d', '%s', '%s', '%f', '%d', '%s' )
+          );
+          if ( false === $inserted ) {
+              $wpdb->delete( $blocks, array( 'id' => $block_id ), array( '%d' ) );
+              throw new RuntimeException( 'Could not create YITH addon: ' . $wpdb->last_error );
+          }
+          $addon_id = (int) $wpdb->insert_id;
+          update_post_meta( $product_id, $marker_key, $block_id );
+          update_post_meta( $product_id, '_emdo_yith_wapo_addon_id', $addon_id );
+          clean_post_cache( $product_id );
+          wp_cache_flush();
+
+          echo "PRODUCT_ID={$product_id}\n";
+          echo 'PRODUCT_TITLE=' . get_the_title( $product_id ) . "\n";
+          echo 'PRODUCT_URL=' . get_permalink( $product_id ) . "\n";
+          echo "BLOCK_ID={$block_id}\n";
+          echo "ADDON_ID={$addon_id}\n";
+          echo 'LABELS=' . implode( ' | ', $labels ) . "\n";
+          echo 'PRICES=' . implode( ' | ', $prices ) . "\n";
+          PHP
+          $WP eval-file "$script" 2>/dev/null
+          url="$($WP post url 11235 2>/dev/null)"
+          echo "=== FRONTEND VERIFY: $url ==="
+          html="$(curl -LfsS --max-time 30 "$url")"
+          printf '%s' "$html" | grep -Fq 'PREPARACIÓN'
+          printf '%s' "$html" | grep -Fq 'Cortado a cuchillo'
+          printf '%s' "$html" | grep -Fq 'Cortado a máquina'
+          echo 'FRONTEND_HAS_PREPARACION=yes'
+          echo 'FRONTEND_HAS_CUCHILLO=yes'
+          echo 'FRONTEND_HAS_MAQUINA=yes'
           REMOTE
