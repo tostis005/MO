@@ -151,12 +151,12 @@ jobs:
             global $wpdb;
             $s = MDO_Database::table("suppliers");
             $p = MDO_Database::table("source_products");
-            $rows = $wpdb->get_results("SELECT p.title,p.source_url,p.source_payload FROM {$p} p INNER JOIN {$s} s ON s.id=p.supplier_id WHERE s.connector=\"el-catedratico\" AND p.source_payload IS NOT NULL ORDER BY p.id DESC LIMIT 6", ARRAY_A);
+            $rows = $wpdb->get_results("SELECT p.title,p.source_url,p.source_payload FROM {$p} p INNER JOIN {$s} s ON s.id=p.supplier_id WHERE s.connector=\"el-catedratico\" AND p.source_payload IS NOT NULL AND (p.source_url LIKE \"%jamon-de-bellota%\" OR p.source_url LIKE \"%paleta-de-bellota%\" OR p.source_url LIKE \"%paleta-de-cebo%\") ORDER BY p.id DESC LIMIT 10", ARRAY_A);
             foreach ($rows as $row) {
               $payload = json_decode((string)$row["source_payload"], true);
               echo "=== " . $row["title"] . " ===\n";
               echo "URL: " . $row["source_url"] . "\n";
-              echo "price=" . json_encode($payload["price"] ?? null) . " regular=" . json_encode($payload["regular_price"] ?? null) . " stock=" . json_encode($payload["stock_status"] ?? null) . "\n";
+              echo "price=" . json_encode($payload["price"] ?? null) . " regular=" . json_encode($payload["regular_price"] ?? null) . " stock=" . json_encode($payload["stock_status"] ?? null) . " variation_count=" . json_encode($payload["variation_count"] ?? null) . "\n";
               echo "option_groups=" . wp_json_encode($payload["option_groups"] ?? array(), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
             }
           ' --path="$wp_path" --allow-root
