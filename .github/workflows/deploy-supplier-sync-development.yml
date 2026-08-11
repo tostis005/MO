@@ -127,6 +127,6 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" plugin activate mdo-supplier-sync --path="$wp_path" --allow-root
           "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active mdo-supplier-sync --path="$wp_path" --allow-root
           db_version="$("$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_supplier_sync_db_version --path="$wp_path" --allow-root)"
-          [ "$db_version" = '1.1.0' ]
+          [ "$db_version" = '1.2.0' ]
           echo "EMDO ${db_version} active in ${wp_path}."
           REMOTE
