@@ -50,12 +50,13 @@ final class MDO_Scheduler {
 
 		$run_id = self::create_run( $supplier_id, $trigger_type );
 		try {
-			if ( 'tolecarnes' !== (string) $supplier['connector'] ) {
+			$connector = self::connector_class( $supplier );
+			if ( ! $connector ) {
 				self::finish_run( $run_id, 'warning', 'El conector seleccionado todavía no está implementado.' );
 				return;
 			}
 
-			$discovery = MDO_Connector_Tolecarnes::discover( $supplier );
+			$discovery = $connector::discover( $supplier );
 			$products  = $discovery['products'] ?? array();
 			$excluded  = $discovery['excluded'] ?? array();
 			$total     = count( $products ) + count( $excluded );
@@ -95,8 +96,14 @@ final class MDO_Scheduler {
 			return;
 		}
 		try {
-			$product = MDO_Connector_Tolecarnes::scrape_product( $url );
-			$result  = MDO_Connector_Tolecarnes::upsert_product( $supplier_id, $product );
+			$connector = self::connector_class( $supplier );
+			if ( ! $connector ) {
+				throw new RuntimeException( 'El conector seleccionado todavía no está implementado.' );
+			}
+			$product = 'tolecarnes' === (string) $supplier['connector']
+				? MDO_Connector_Tolecarnes::scrape_product( $url )
+				: MDO_Connector_Iberico_Family::scrape_product( $url, $supplier );
+			$result = $connector::upsert_product( $supplier_id, $product );
 			self::increment_run( $run_id, $result );
 			self::log_event(
 				$run_id,
@@ -117,6 +124,15 @@ final class MDO_Scheduler {
 			self::log_event( $run_id, $supplier_id, 'product_error', 'error', $error->getMessage(), array( 'url' => $url ) );
 		}
 		self::finish_if_complete( $run_id, $supplier, $trigger_type );
+	}
+
+	private static function connector_class( array $supplier ): ?string {
+		return match ( (string) ( $supplier['connector'] ?? 'none' ) ) {
+			'tolecarnes'      => MDO_Connector_Tolecarnes::class,
+			'el-catedratico',
+			'puente-robles'   => MDO_Connector_Iberico_Family::class,
+			default           => null,
+		};
 	}
 
 	private static function create_run( int $supplier_id, string $trigger_type ): int {
