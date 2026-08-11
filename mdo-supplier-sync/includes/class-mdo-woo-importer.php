@@ -76,6 +76,9 @@ final class MDO_Woo_Importer {
 			self::sync_variations( $product, $variations );
 			WC_Product_Variable::sync( $product_id );
 		}
+		if ( class_exists( 'MDO_YITH_Extras' ) ) {
+			MDO_YITH_Extras::sync_product( $product_id, $payload );
+		}
 
 		update_post_meta( $product_id, '_emdo_source_product_id', $source_product_id );
 		update_post_meta( $product_id, '_emdo_supplier_id', (int) $row['supplier_id'] );
