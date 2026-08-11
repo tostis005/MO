@@ -73,6 +73,13 @@
 	flex-basis: 100% !important;
 }
 
+/* Respaldo visual: si el tema vuelve a dibujar su propio CTA estándar después del aviso,
+   no debe mostrarse mientras haya un mínimo pendiente. */
+.wc-proceed-to-checkout > .emdo-minimum-order-notices ~ .checkout-button,
+.wc-proceed-to-checkout:has(.emdo-minimum-order-notices) .checkout-button {
+	display: none !important;
+}
+
 @media (max-width: 768px) {
 	.emdo-minimum-order-notices {
 		margin-bottom: 14px !important;
