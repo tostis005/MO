@@ -10,6 +10,9 @@ final class MDO_Admin {
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'assets' ) );
 		add_action( 'admin_post_mdo_save_supplier', array( __CLASS__, 'save_supplier' ) );
 		add_action( 'admin_post_mdo_run_supplier', array( __CLASS__, 'run_supplier' ) );
+		add_action( 'admin_post_mdo_import_source_product', array( __CLASS__, 'import_source_product' ) );
+		add_action( 'admin_post_mdo_import_pending', array( __CLASS__, 'import_pending' ) );
+		add_action( 'admin_post_mdo_exclude_source_product', array( __CLASS__, 'exclude_source_product' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'dependency_notice' ) );
 	}
 
@@ -43,7 +46,7 @@ final class MDO_Admin {
 		$runs      = MDO_Database::table( 'sync_runs' );
 		$stats = array(
 			'suppliers' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$suppliers}" ),
-			'active'    => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$suppliers} WHERE active = 1" ),
+			'active'    => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$products} WHERE status = 'active'" ),
 			'pending'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$products} WHERE status = 'pending'" ),
 			'errors'    => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$runs} WHERE status IN ('error','warning') AND started_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)" ),
 		);
@@ -51,10 +54,10 @@ final class MDO_Admin {
 		?>
 		<div class="wrap mdo-sync-wrap">
 			<h1>EMDO</h1>
-			<p class="description">Centro de control de proveedores y sincronizaciones de El Mercado de Origen.</p>
+			<p class="description">Centro de control de proveedores, importaciones y sincronizaciones de El Mercado de Origen.</p>
 			<div class="mdo-cards">
 				<?php self::card( 'Proveedores', $stats['suppliers'] ); ?>
-				<?php self::card( 'Activos', $stats['active'] ); ?>
+				<?php self::card( 'Productos activos', $stats['active'] ); ?>
 				<?php self::card( 'Pendientes', $stats['pending'] ); ?>
 				<?php self::card( 'Avisos 30 días', $stats['errors'] ); ?>
 			</div>
@@ -65,7 +68,7 @@ final class MDO_Admin {
 
 	public static function suppliers(): void {
 		self::guard();
-		$id        = isset( $_GET['supplier_id'] ) ? absint( $_GET['supplier_id'] ) : 0;
+		$id        = isset( $_GET['supplier_id'] ) ? absint( $_GET['supplier_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$editing   = $id ? MDO_Supplier_Repository::find( $id ) : null;
 		$suppliers = MDO_Supplier_Repository::all();
 		?>
@@ -73,7 +76,7 @@ final class MDO_Admin {
 			<h1 class="wp-heading-inline">Proveedores</h1>
 			<a href="<?php echo esc_url( admin_url( 'admin.php?page=mdo-supplier-sync-suppliers&new=1' ) ); ?>" class="page-title-action">Añadir proveedor</a>
 			<hr class="wp-header-end">
-			<?php if ( $editing || isset( $_GET['new'] ) ) : ?>
+			<?php if ( $editing || isset( $_GET['new'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification.Recommended ?>
 				<?php self::supplier_form( $editing ); ?>
 			<?php else : ?>
 				<div class="mdo-panel"><table class="widefat striped"><thead><tr><th>Proveedor</th><th>Código</th><th>Web origen</th><th>Vendedor</th><th>Conector</th><th>Regla comercial</th><th>Frecuencia</th><th>Estado</th><th></th></tr></thead><tbody>
@@ -86,7 +89,7 @@ final class MDO_Admin {
 					<td><?php echo esc_html( $supplier['connector'] ); ?></td>
 					<td><?php echo esc_html( self::commercial_label( $supplier ) ); ?></td>
 					<td><?php echo esc_html( ucfirst( $supplier['sync_frequency'] ) ); ?></td>
-					<td><?php echo $supplier['active'] ? '<span class="mdo-status is-ok">Activo</span>' : '<span class="mdo-status">Inactivo</span>'; ?></td>
+					<td><?php echo $supplier['active'] ? '<span class="mdo-status is-ok">Activo</span>' : '<span class="mdo-status">Inactivo</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></td>
 					<td><a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=mdo-supplier-sync-suppliers&supplier_id=' . (int) $supplier['id'] ) ); ?>">Gestionar</a></td>
 				</tr><?php endforeach; ?>
 				</tbody></table></div>
@@ -98,25 +101,50 @@ final class MDO_Admin {
 	public static function products(): void {
 		self::guard();
 		global $wpdb;
-		$products  = MDO_Database::table( 'source_products' );
-		$suppliers = MDO_Database::table( 'suppliers' );
-		$rows = $wpdb->get_results( "SELECT p.*, s.name supplier_name FROM {$products} p LEFT JOIN {$suppliers} s ON s.id = p.supplier_id ORDER BY p.id DESC LIMIT 250", ARRAY_A ) ?: array();
+		$products        = MDO_Database::table( 'source_products' );
+		$suppliers_table = MDO_Database::table( 'suppliers' );
+		$supplier_id     = isset( $_GET['supplier_id'] ) ? absint( $_GET['supplier_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$where           = $supplier_id ? $wpdb->prepare( ' WHERE p.supplier_id = %d', $supplier_id ) : '';
+		$rows            = $wpdb->get_results( "SELECT p.*, s.name supplier_name FROM {$products} p LEFT JOIN {$suppliers_table} s ON s.id = p.supplier_id {$where} ORDER BY p.id DESC LIMIT 500", ARRAY_A ) ?: array(); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$suppliers       = MDO_Supplier_Repository::all();
+		$pending_count   = (int) $wpdb->get_var( $supplier_id ? $wpdb->prepare( "SELECT COUNT(*) FROM {$products} WHERE status = 'pending' AND supplier_id = %d", $supplier_id ) : "SELECT COUNT(*) FROM {$products} WHERE status = 'pending'" );
 		?>
-		<div class="wrap mdo-sync-wrap"><h1>Productos origen</h1><p class="description">Los productos nuevos detectados quedan pendientes; esta versión todavía no los publica en WooCommerce.</p><div class="mdo-panel">
-		<table class="widefat striped"><thead><tr><th>Proveedor</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Imágenes</th><th>Variantes</th><th>Estado</th><th>Última detección</th><th>Origen</th></tr></thead><tbody>
-		<?php if ( ! $rows ) : ?><tr><td colspan="9">Aún no se ha analizado ningún catálogo.</td></tr><?php endif; ?>
-		<?php foreach ( $rows as $row ) : $payload = json_decode( (string) $row['source_payload'], true ); $payload = is_array( $payload ) ? $payload : array(); ?><tr>
-			<td><?php echo esc_html( $row['supplier_name'] ?: '#' . $row['supplier_id'] ); ?></td>
-			<td><strong><?php echo esc_html( $row['title'] ?: '(sin título)' ); ?></strong></td>
-			<td><?php echo null !== $row['source_price'] ? esc_html( number_format_i18n( (float) $row['source_price'], 2 ) . ' €' ) : '—'; ?></td>
-			<td><?php echo esc_html( $row['source_stock_status'] ?: '—' ); ?></td>
-			<td><?php echo isset( $payload['image_count'] ) ? (int) $payload['image_count'] : '—'; ?></td>
-			<td><?php echo isset( $payload['variation_count'] ) ? (int) $payload['variation_count'] : '—'; ?></td>
-			<td><span class="mdo-status status-<?php echo esc_attr( $row['status'] ); ?>"><?php echo esc_html( ucfirst( $row['status'] ) ); ?></span></td>
-			<td><?php echo esc_html( $row['last_seen_at'] ); ?></td>
-			<td><a href="<?php echo esc_url( $row['source_url'] ); ?>" target="_blank" rel="noopener">Ver</a></td>
-		</tr><?php endforeach; ?>
-		</tbody></table></div></div>
+		<div class="wrap mdo-sync-wrap">
+			<h1 class="wp-heading-inline">Productos origen</h1>
+			<?php if ( $pending_count ) : ?>
+				<a class="page-title-action" onclick="return confirm('Se pondrán en cola todos los productos pendientes de esta vista. ¿Continuar?');" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mdo_import_pending' . ( $supplier_id ? '&supplier_id=' . $supplier_id : '' ) ), 'mdo_import_pending' ) ); ?>">Importar pendientes (<?php echo (int) $pending_count; ?>)</a>
+			<?php endif; ?>
+			<hr class="wp-header-end">
+			<?php self::product_notices(); ?>
+			<p class="description">Los productos detectados por primera vez quedan pendientes. Puedes importarlos o excluirlos. Los productos activos se mantienen sincronizados en ejecuciones posteriores.</p>
+			<form method="get" style="margin:16px 0;">
+				<input type="hidden" name="page" value="mdo-supplier-sync-products">
+				<select name="supplier_id"><option value="">Todos los proveedores</option><?php foreach ( $suppliers as $supplier ) : ?><option value="<?php echo (int) $supplier['id']; ?>" <?php selected( $supplier_id, (int) $supplier['id'] ); ?>><?php echo esc_html( $supplier['name'] ); ?></option><?php endforeach; ?></select>
+				<button class="button">Filtrar</button>
+			</form>
+			<div class="mdo-panel">
+			<table class="widefat striped"><thead><tr><th>Proveedor</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Imágenes</th><th>Variantes</th><th>Estado</th><th>WooCommerce</th><th>Origen</th><th>Acciones</th></tr></thead><tbody>
+			<?php if ( ! $rows ) : ?><tr><td colspan="10">Aún no se ha analizado ningún catálogo.</td></tr><?php endif; ?>
+			<?php foreach ( $rows as $row ) :
+				$payload = json_decode( (string) $row['source_payload'], true );
+				$payload = is_array( $payload ) ? $payload : array();
+				$title   = MDO_Text::normalize_title( (string) ( $row['title'] ?: '(sin título)' ) );
+				?>
+				<tr>
+					<td><?php echo esc_html( $row['supplier_name'] ?: '#' . $row['supplier_id'] ); ?></td>
+					<td><strong><?php echo esc_html( $title ); ?></strong><?php if ( ! empty( $row['last_error'] ) ) : ?><br><small style="color:#b32d2e;"><?php echo esc_html( wp_trim_words( (string) $row['last_error'], 24 ) ); ?></small><?php endif; ?></td>
+					<td><?php echo null !== $row['source_price'] ? esc_html( number_format_i18n( (float) $row['source_price'], 2 ) . ' €' ) : '—'; ?></td>
+					<td><?php echo esc_html( $row['source_stock_status'] ?: '—' ); ?></td>
+					<td><?php echo isset( $payload['image_count'] ) ? (int) $payload['image_count'] : '—'; ?></td>
+					<td><?php echo isset( $payload['variation_count'] ) ? (int) $payload['variation_count'] : '—'; ?></td>
+					<td><span class="mdo-status status-<?php echo esc_attr( $row['status'] ); ?>"><?php echo esc_html( self::status_label( (string) $row['status'] ) ); ?></span></td>
+					<td><?php echo ! empty( $row['wc_product_id'] ) ? '<a href="' . esc_url( get_edit_post_link( (int) $row['wc_product_id'] ) ) . '">#' . (int) $row['wc_product_id'] . '</a>' : '—'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></td>
+					<td><a href="<?php echo esc_url( $row['source_url'] ); ?>" target="_blank" rel="noopener">Ver</a></td>
+					<td><?php self::product_actions( $row ); ?></td>
+				</tr>
+			<?php endforeach; ?>
+			</tbody></table></div>
+		</div>
 		<?php
 	}
 
@@ -162,6 +190,48 @@ final class MDO_Admin {
 		exit;
 	}
 
+	public static function import_source_product(): void {
+		self::guard();
+		$id = isset( $_GET['source_product_id'] ) ? absint( $_GET['source_product_id'] ) : 0;
+		check_admin_referer( 'mdo_import_source_' . $id );
+		$queued = $id && MDO_Scheduler::queue_import( $id );
+		wp_safe_redirect( admin_url( 'admin.php?page=mdo-supplier-sync-products&import_queued=' . ( $queued ? '1' : '0' ) ) );
+		exit;
+	}
+
+	public static function import_pending(): void {
+		self::guard();
+		check_admin_referer( 'mdo_import_pending' );
+		global $wpdb;
+		$table       = MDO_Database::table( 'source_products' );
+		$supplier_id = isset( $_GET['supplier_id'] ) ? absint( $_GET['supplier_id'] ) : 0;
+		$sql         = $supplier_id ? $wpdb->prepare( "SELECT id FROM {$table} WHERE status = 'pending' AND supplier_id = %d ORDER BY id ASC LIMIT 500", $supplier_id ) : "SELECT id FROM {$table} WHERE status = 'pending' ORDER BY id ASC LIMIT 500";
+		$ids         = array_map( 'intval', $wpdb->get_col( $sql ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$queued      = 0;
+		foreach ( $ids as $id ) {
+			if ( MDO_Scheduler::queue_import( $id ) ) {
+				$queued++;
+			}
+		}
+		$url = admin_url( 'admin.php?page=mdo-supplier-sync-products&queued_imports=' . $queued );
+		if ( $supplier_id ) {
+			$url = add_query_arg( 'supplier_id', $supplier_id, $url );
+		}
+		wp_safe_redirect( $url );
+		exit;
+	}
+
+	public static function exclude_source_product(): void {
+		self::guard();
+		$id = isset( $_GET['source_product_id'] ) ? absint( $_GET['source_product_id'] ) : 0;
+		check_admin_referer( 'mdo_exclude_source_' . $id );
+		if ( $id ) {
+			MDO_Woo_Importer::exclude_source_product( $id );
+		}
+		wp_safe_redirect( admin_url( 'admin.php?page=mdo-supplier-sync-products&excluded=1' ) );
+		exit;
+	}
+
 	private static function supplier_form( ?array $supplier ): void {
 		$supplier = $supplier ?: array(
 			'id' => 0, 'code' => '', 'name' => '', 'source_url' => '', 'vendor_user_id' => '', 'connector' => 'none',
@@ -178,8 +248,8 @@ final class MDO_Admin {
 				<label><span>Nombre</span><input class="regular-text" name="name" required value="<?php echo esc_attr( $supplier['name'] ); ?>"></label>
 				<label><span>Código interno</span><input class="regular-text" name="code" required placeholder="tolecarnes" value="<?php echo esc_attr( $supplier['code'] ); ?>"><small>Identificador estable para BI e integraciones.</small></label>
 				<label class="mdo-span-2"><span>URL de la tienda / catálogo</span><input class="large-text" type="url" name="source_url" required value="<?php echo esc_attr( $supplier['source_url'] ); ?>"></label>
-				<label><span>Vendedor WordPress / WCFM</span><select name="vendor_user_id"><option value="">— Sin asignar —</option><?php foreach ( $users as $user ) : ?><option value="<?php echo (int) $user->ID; ?>" <?php selected( (int) $supplier['vendor_user_id'], (int) $user->ID ); ?>><?php echo esc_html( $user->display_name . ' (#' . $user->ID . ')' ); ?></option><?php endforeach; ?></select><small>Solo se muestran usuarios con rol wcfm_vendor.</small></label>
-				<label><span>Conector</span><select name="connector"><option value="none" <?php selected( $supplier['connector'], 'none' ); ?>>Sin conector</option><option value="tolecarnes" <?php selected( $supplier['connector'], 'tolecarnes' ); ?>>Tolecarnes</option><option value="el-catedratico" <?php selected( $supplier['connector'], 'el-catedratico' ); ?>>El Catedrático (pendiente)</option><option value="puente-robles" <?php selected( $supplier['connector'], 'puente-robles' ); ?>>Puente Robles (pendiente)</option></select><small>Tolecarnes ya dispone de analizador real en esta versión.</small></label>
+				<label><span>Vendedor WordPress / WCFM</span><select name="vendor_user_id"><option value="">— Sin asignar —</option><?php foreach ( $users as $user ) : ?><option value="<?php echo (int) $user->ID; ?>" <?php selected( (int) $supplier['vendor_user_id'], (int) $user->ID ); ?>><?php echo esc_html( $user->display_name . ' (#' . $user->ID . ')' ); ?></option><?php endforeach; ?></select><small>Los productos importados se asignarán a este vendedor.</small></label>
+				<label><span>Conector</span><select name="connector"><option value="none" <?php selected( $supplier['connector'], 'none' ); ?>>Sin conector</option><option value="tolecarnes" <?php selected( $supplier['connector'], 'tolecarnes' ); ?>>Tolecarnes</option><option value="el-catedratico" <?php selected( $supplier['connector'], 'el-catedratico' ); ?>>El Catedrático</option><option value="puente-robles" <?php selected( $supplier['connector'], 'puente-robles' ); ?>>Puente Robles</option></select><small>El análisis usa el scraper específico seleccionado.</small></label>
 			</div>
 			<h3>Condiciones comerciales</h3><div class="mdo-grid mdo-grid-4">
 				<label><span>Regla</span><select name="commercial_rule"><option value="percentage" <?php selected( $supplier['commercial_rule'], 'percentage' ); ?>>Porcentaje</option><option value="percentage_plus_fixed" <?php selected( $supplier['commercial_rule'], 'percentage_plus_fixed' ); ?>>Porcentaje + fijo</option><option value="fixed" <?php selected( $supplier['commercial_rule'], 'fixed' ); ?>>Fijo</option><option value="custom" <?php selected( $supplier['commercial_rule'], 'custom' ); ?>>Personalizada</option></select></label>
@@ -195,9 +265,50 @@ final class MDO_Admin {
 				<label class="mdo-check"><input type="checkbox" name="active" value="1" <?php checked( (int) $supplier['active'], 1 ); ?>> Proveedor activo</label><input type="hidden" name="currency" value="EUR">
 			</div>
 			<p class="submit"><button class="button button-primary" type="submit">Guardar proveedor</button><?php if ( $supplier['id'] ) : ?> <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=mdo_run_supplier&supplier_id=' . (int) $supplier['id'] ), 'mdo_run_supplier_' . (int) $supplier['id'] ) ); ?>">Analizar catálogo</a><?php endif; ?></p>
-			<?php if ( $supplier['id'] && 'tolecarnes' === $supplier['connector'] ) : ?><p class="description">El análisis descubre el catálogo y procesa las fichas en segundo plano. Los productos quedan en <strong>Productos origen</strong> y todavía no se publican en WooCommerce.</p><?php elseif ( $supplier['id'] ) : ?><p class="description">El conector seleccionado todavía está pendiente de implementación.</p><?php endif; ?>
+			<?php if ( $supplier['id'] ) : ?><p class="description">El análisis actualiza “Productos origen”. Los nuevos quedan pendientes; desde esa pantalla puedes importarlos a WooCommerce o excluirlos.</p><?php endif; ?>
 		</form>
 		<?php
+	}
+
+	private static function product_notices(): void {
+		if ( isset( $_GET['queued_imports'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			echo '<div class="notice notice-success is-dismissible"><p>Se han puesto en cola ' . (int) $_GET['queued_imports'] . ' productos para importar.</p></div>'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		} elseif ( isset( $_GET['import_queued'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$ok = '1' === (string) $_GET['import_queued']; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			echo $ok ? '<div class="notice notice-success is-dismissible"><p>Producto puesto en cola para importar.</p></div>' : '<div class="notice notice-warning is-dismissible"><p>El producto ya no estaba pendiente o no se pudo poner en cola.</p></div>';
+		} elseif ( isset( $_GET['excluded'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			echo '<div class="notice notice-success is-dismissible"><p>Producto excluido. EMDO no volverá a publicarlo ni actualizarlo.</p></div>';
+		}
+	}
+
+	private static function product_actions( array $row ): void {
+		$id     = (int) $row['id'];
+		$status = (string) $row['status'];
+		if ( 'pending' === $status ) {
+			$import = wp_nonce_url( admin_url( 'admin-post.php?action=mdo_import_source_product&source_product_id=' . $id ), 'mdo_import_source_' . $id );
+			echo '<a class="button button-primary" href="' . esc_url( $import ) . '">Importar</a> ';
+		}
+		if ( 'importing' === $status ) {
+			echo '<span>En cola…</span> ';
+		}
+		if ( 'active' === $status && ! empty( $row['wc_product_id'] ) ) {
+			echo '<a class="button" href="' . esc_url( get_edit_post_link( (int) $row['wc_product_id'] ) ) . '">Editar</a> ';
+		}
+		if ( 'excluded' !== $status ) {
+			$exclude = wp_nonce_url( admin_url( 'admin-post.php?action=mdo_exclude_source_product&source_product_id=' . $id ), 'mdo_exclude_source_' . $id );
+			echo '<a class="button" onclick="return confirm(\'EMDO dejará de sincronizar este producto y, si ya está importado, lo pasará a borrador. ¿Continuar?\');" href="' . esc_url( $exclude ) . '">Excluir</a>';
+		}
+	}
+
+	private static function status_label( string $status ): string {
+		return match ( $status ) {
+			'active'    => 'Activo',
+			'pending'   => 'Pendiente',
+			'importing' => 'Importando',
+			'excluded'  => 'Excluido',
+			'missing'   => 'No encontrado',
+			default     => ucfirst( $status ),
+		};
 	}
 
 	private static function runs_table( array $rows ): void {
