@@ -1,4 +1,4 @@
-name: Validate EMDO automatic extras
+name: Verify EMDO nightly supplier schedule
 
 on:
   push:
@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -30,7 +30,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-      - name: Scrape import and verify target
+      - name: Verify supplier modes and next dispatcher
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -48,75 +48,34 @@ jobs:
           fi
           wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
-          WP="$php_bin -d memory_limit=768M $wp_bin --path=$wp_path --allow-root"
-          script="$(mktemp /tmp/emdo-extras-e2e.XXXXXX.php)"; trap 'rm -f "$script"' EXIT
+          WP="$php_bin -d memory_limit=512M $wp_bin --path=$wp_path --allow-root"
+          script="$(mktemp /tmp/emdo-nightly-check.XXXXXX.php)"; trap 'rm -f "$script"' EXIT
           cat > "$script" <<'PHP'
           <?php
           global $wpdb;
-          $wc_id = 11235;
-          $source_id = (int) get_post_meta( $wc_id, '_emdo_source_product_id', true );
-          $source_table = MDO_Database::table( 'source_products' );
-          $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$source_table} WHERE id=%d", $source_id ), ARRAY_A );
-          if ( ! $row ) { throw new RuntimeException('source row missing'); }
-          $supplier = MDO_Supplier_Repository::find( (int) $row['supplier_id'] );
-          if ( ! $supplier ) { throw new RuntimeException('supplier missing'); }
-
-          $product = MDO_Connector_Iberico_Family::scrape_product( (string) $row['source_url'], $supplier );
-          $product = MDO_Text::normalize_product( $product );
-          echo 'EXTRA_GROUPS=' . wp_json_encode( $product['extra_groups'] ?? array(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
-          echo 'VARIATION_COUNT=' . (int) ( $product['variation_count'] ?? 0 ) . "\n";
-          if ( empty( $product['extra_groups'][0]['options'] ) || count( $product['extra_groups'][0]['options'] ) !== 4 ) {
-              throw new RuntimeException('expected four preparation extras');
+          $suppliers = MDO_Supplier_Repository::active();
+          usort($suppliers, static fn($a,$b)=>(int)$a['id'] <=> (int)$b['id']);
+          $daily = 0;
+          foreach ($suppliers as $supplier) {
+              echo 'SUPPLIER id='.(int)$supplier['id'].' name='.(string)$supplier['name'].' connector='.(string)$supplier['connector'].' frequency='.(string)$supplier['sync_frequency']."\n";
+              if ('daily' === (string)$supplier['sync_frequency'] && 'none' !== (string)$supplier['connector']) { $daily++; }
           }
-          if ( (int) ( $product['variation_count'] ?? 0 ) < 2 ) {
-              throw new RuntimeException('weight variations disappeared');
+          echo 'DAILY_COUNT='.$daily."\n";
+          echo 'WP_TIMEZONE='.wp_timezone_string()."\n";
+          echo 'WP_NOW='.current_datetime()->format('Y-m-d H:i:s P')."\n";
+          $next = 0;
+          if ( function_exists('as_next_scheduled_action') ) {
+              $next = (int) as_next_scheduled_action('mdo_supplier_sync_dispatch', array(), 'mdo-supplier-sync');
           }
-
-          $result = MDO_Connector_Iberico_Family::upsert_product( (int) $row['supplier_id'], $product );
-          echo "UPSERT_RESULT={$result}\n";
-          MDO_Woo_Importer::sync_if_active( (int) $row['supplier_id'], (string) $product['source_url'] );
-
-          $block_id = (int) get_post_meta( $wc_id, '_emdo_yith_wapo_block_id', true );
-          $sync_error = (string) get_post_meta( $wc_id, '_emdo_yith_wapo_sync_error', true );
-          echo "BLOCK_ID={$block_id}\nSYNC_ERROR={$sync_error}\n";
-          if ( $block_id <= 0 || '' !== $sync_error ) {
-              throw new RuntimeException('YITH sync failed: ' . $sync_error);
-          }
-
-          $blocks = $wpdb->prefix . 'yith_wapo_blocks';
-          $addons = $wpdb->prefix . 'yith_wapo_addons';
-          $assoc  = $wpdb->prefix . 'yith_wapo_blocks_assoc';
-          $block_name = (string) $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$blocks} WHERE id=%d", $block_id ) );
-          $addon_rows = $wpdb->get_results( $wpdb->prepare( "SELECT id,settings,options FROM {$addons} WHERE block_id=%d ORDER BY priority,id", $block_id ), ARRAY_A );
-          echo "BLOCK_NAME={$block_name}\nADDON_COUNT=" . count($addon_rows) . "\n";
-          if ( 1 !== count( $addon_rows ) ) { throw new RuntimeException('expected one managed addon'); }
-          $settings = maybe_unserialize( $addon_rows[0]['settings'] );
-          $options = maybe_unserialize( $addon_rows[0]['options'] );
-          echo 'ADDON_TITLE=' . (string) ( $settings['title'] ?? '' ) . "\n";
-          echo 'ADDON_LABELS=' . implode( ' | ', (array) ( $options['label'] ?? array() ) ) . "\n";
-          echo 'ADDON_PRICES=' . implode( ' | ', (array) ( $options['price'] ?? array() ) ) . "\n";
-          if ( 'PREPARACIÓN' !== (string) ( $settings['title'] ?? '' ) ) { throw new RuntimeException('wrong addon title'); }
-          if ( (array) ( $options['label'] ?? array() ) !== array('Pieza entera','Deshuesado','Cortado a Cuchillo','Cortado a máquina') ) { throw new RuntimeException('wrong addon labels'); }
-
-          $variation_ids = get_posts(array('post_type'=>'product_variation','post_parent'=>$wc_id,'post_status'=>'publish','fields'=>'ids','posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC'));
-          $expected_ids = array_merge(array($wc_id), array_map('intval',$variation_ids));
-          $associated = array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT object FROM {$assoc} WHERE rule_id=%d ORDER BY CAST(object AS UNSIGNED)",$block_id)));
-          sort($expected_ids); sort($associated);
-          echo 'EXPECTED_ASSOC=' . implode(',',$expected_ids) . "\n";
-          echo 'ASSOCIATED=' . implode(',',$associated) . "\n";
-          if ( $expected_ids !== $associated ) { throw new RuntimeException('association mismatch'); }
-          foreach ( $variation_ids as $variation_id ) {
-              if ( ! yith_wapo_product_has_blocks( $wc_id, (int) $variation_id ) ) {
-                  throw new RuntimeException('YITH cannot resolve block for variation ' . $variation_id);
-              }
-          }
-          echo "YITH_VARIATIONS_OK=yes\n";
+          if (!$next) { $next = (int) wp_next_scheduled('mdo_supplier_sync_dispatch'); }
+          echo 'NEXT_DISPATCH_TS='.$next."\n";
+          echo 'NEXT_DISPATCH_LOCAL='.($next ? wp_date('Y-m-d H:i:s P',$next) : 'none')."\n";
+          echo 'SCHEDULE_VERSION='.(string)get_option('mdo_nightly_schedule_version','')."\n";
+          if ($daily < 1) { throw new RuntimeException('no daily suppliers configured'); }
+          if (!$next) { throw new RuntimeException('nightly dispatcher not scheduled'); }
+          $hour = (int) wp_date('G',$next);
+          $minute = (int) wp_date('i',$next);
+          if (3 !== $hour || 0 !== $minute) { throw new RuntimeException('next dispatcher is not at 03:00 local time'); }
           PHP
-          $WP eval-file "$script"
-          url="$($WP post url 11235 2>/dev/null)"
-          html="$(curl -LfsS --max-time 30 -H 'Cache-Control: no-cache' "$url?emdo_extras_e2e=$(date +%s)")"
-          printf '%s' "$html" | grep -Fq 'PREPARACIÓN'
-          printf '%s' "$html" | grep -Fq 'Cortado a Cuchillo'
-          printf '%s' "$html" | grep -Fq 'Cortado a máquina'
-          echo 'FRONTEND_EXTRAS_OK=yes'
+          $WP eval-file "$script" 2>/dev/null
           REMOTE
