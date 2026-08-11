@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 0.6.3
+ * Version: 0.7.0
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '0.6.3' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '0.7.0' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -22,6 +22,7 @@ define( 'MDO_SUPPLIER_SYNC_URL', plugin_dir_url( __FILE__ ) );
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-database.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-supplier-repository.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-pricing.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-iberico-variations.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-text.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tolecarnes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-family.php';
@@ -43,6 +44,7 @@ add_action(
 		MDO_Database::maybe_upgrade();
 		MDO_Description_Migration::run_once();
 		MDO_Pricing::init();
+		MDO_Iberico_Variations::init();
 		MDO_Description_Guard::init();
 		MDO_Stock_Guard::init();
 		MDO_Scheduler::init();
