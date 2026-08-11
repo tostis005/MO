@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.174' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.175' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -129,7 +129,7 @@ $elmercado_modules = array(
 	'inc/product-card-density-final-010162.php',
 	'inc/product-card-footer-density-010163.php',
 	'inc/product-card-footer-flow-010164.php',
-	'inc/related-products-responsive-grid-010174.php',
+	'inc/related-products-responsive-grid-010175.php',
 	'inc/home-copy-definitive-010165.php',
 	'inc/home-story-card-rhythm-010166.php',
 	'inc/commerce-home-clarity-final-010168.php',
