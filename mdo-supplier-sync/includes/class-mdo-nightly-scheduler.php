@@ -19,12 +19,25 @@ final class MDO_Nightly_Scheduler {
 	private const RUN_HOOK      = 'mdo_supplier_sync_run_supplier';
 	private const GROUP         = 'mdo-supplier-sync';
 	private const SLOT_SECONDS  = 30 * MINUTE_IN_SECONDS;
-	private const SCHEDULE_VERSION = '3';
+	private const SCHEDULE_VERSION = '4';
 
 	public static function init(): void {
 		remove_action( self::DISPATCH_HOOK, array( 'MDO_Scheduler', 'dispatch' ) );
 		add_action( self::DISPATCH_HOOK, array( __CLASS__, 'dispatch' ), 10, 0 );
-		self::ensure_nightly_dispatcher();
+
+		/*
+		 * Action Scheduler puede existir como función antes de que su almacén de
+		 * datos esté listo. Esperamos a action_scheduler_init para poder inspeccionar,
+		 * borrar y recrear realmente el evento recurrente. Esto también corrige
+		 * instalaciones que conservasen un dispatcher antiguo a otra hora.
+		 */
+		if ( did_action( 'action_scheduler_init' ) ) {
+			self::ensure_nightly_dispatcher();
+		} elseif ( function_exists( 'as_schedule_recurring_action' ) ) {
+			add_action( 'action_scheduler_init', array( __CLASS__, 'ensure_nightly_dispatcher' ), 20 );
+		} else {
+			add_action( 'init', array( __CLASS__, 'ensure_nightly_dispatcher' ), 100 );
+		}
 	}
 
 	public static function dispatch(): void {
@@ -51,29 +64,43 @@ final class MDO_Nightly_Scheduler {
 		}
 	}
 
-	private static function ensure_nightly_dispatcher(): void {
-		$version = (string) get_option( 'mdo_nightly_schedule_version', '' );
-		$needs_reset = self::SCHEDULE_VERSION !== $version;
+	public static function ensure_nightly_dispatcher(): void {
+		$version       = (string) get_option( 'mdo_nightly_schedule_version', '' );
+		$existing_next = self::existing_dispatch_timestamp();
+		$wrong_slot    = $existing_next > 0 && '03:00' !== wp_date( 'H:i', $existing_next );
+		$needs_reset   = self::SCHEDULE_VERSION !== $version || $wrong_slot;
 
 		if ( $needs_reset ) {
 			if ( function_exists( 'as_unschedule_all_actions' ) ) {
 				as_unschedule_all_actions( self::DISPATCH_HOOK, array(), self::GROUP );
 			}
 			wp_clear_scheduled_hook( self::DISPATCH_HOOK );
+			$existing_next = 0;
 		}
 
 		$next = self::next_three_am_timestamp();
 		if ( function_exists( 'as_has_scheduled_action' ) && function_exists( 'as_schedule_recurring_action' ) ) {
-			if ( $needs_reset || ! as_has_scheduled_action( self::DISPATCH_HOOK, array(), self::GROUP ) ) {
+			if ( $existing_next <= 0 && ! as_has_scheduled_action( self::DISPATCH_HOOK, array(), self::GROUP ) ) {
 				as_schedule_recurring_action( $next, DAY_IN_SECONDS, self::DISPATCH_HOOK, array(), self::GROUP );
 			}
-		} elseif ( $needs_reset || ! wp_next_scheduled( self::DISPATCH_HOOK ) ) {
+		} elseif ( $existing_next <= 0 && ! wp_next_scheduled( self::DISPATCH_HOOK ) ) {
 			wp_schedule_event( $next, 'daily', self::DISPATCH_HOOK );
 		}
 
-		if ( $needs_reset ) {
+		if ( $needs_reset || self::SCHEDULE_VERSION !== $version ) {
 			update_option( 'mdo_nightly_schedule_version', self::SCHEDULE_VERSION, false );
 		}
+	}
+
+	private static function existing_dispatch_timestamp(): int {
+		if ( function_exists( 'as_next_scheduled_action' ) ) {
+			$next = as_next_scheduled_action( self::DISPATCH_HOOK, array(), self::GROUP );
+			if ( is_numeric( $next ) && (int) $next > 0 ) {
+				return (int) $next;
+			}
+		}
+		$next = wp_next_scheduled( self::DISPATCH_HOOK );
+		return $next ? (int) $next : 0;
 	}
 
 	private static function next_three_am_timestamp(): int {
