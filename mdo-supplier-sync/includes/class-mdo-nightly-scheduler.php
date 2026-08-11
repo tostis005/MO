@@ -19,7 +19,7 @@ final class MDO_Nightly_Scheduler {
 	private const RUN_HOOK      = 'mdo_supplier_sync_run_supplier';
 	private const GROUP         = 'mdo-supplier-sync';
 	private const SLOT_SECONDS  = 30 * MINUTE_IN_SECONDS;
-	private const SCHEDULE_VERSION = '2';
+	private const SCHEDULE_VERSION = '3';
 
 	public static function init(): void {
 		remove_action( self::DISPATCH_HOOK, array( 'MDO_Scheduler', 'dispatch' ) );
