@@ -42,6 +42,7 @@ final class MDO_Database {
 			commission_percent decimal(8,4) DEFAULT NULL,
 			fixed_fee decimal(12,2) DEFAULT NULL,
 			fixed_fee_scope varchar(20) NOT NULL DEFAULT 'order',
+			minimum_order_amount decimal(12,2) DEFAULT NULL,
 			currency char(3) NOT NULL DEFAULT 'EUR',
 			sync_frequency varchar(20) NOT NULL DEFAULT 'weekly',
 			notification_email varchar(191) DEFAULT NULL,
