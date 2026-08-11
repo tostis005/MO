@@ -15,7 +15,7 @@ final class MDO_Admin {
 
 	public static function menu(): void {
 		$capability = 'manage_woocommerce';
-		add_menu_page( 'Supplier Sync', 'Supplier Sync', $capability, 'mdo-supplier-sync', array( __CLASS__, 'dashboard' ), 'dashicons-update', 56 );
+		add_menu_page( 'EMDO', 'EMDO', $capability, 'mdo-supplier-sync', array( __CLASS__, 'dashboard' ), 'dashicons-update', 56 );
 		add_submenu_page( 'mdo-supplier-sync', 'Resumen', 'Resumen', $capability, 'mdo-supplier-sync', array( __CLASS__, 'dashboard' ) );
 		add_submenu_page( 'mdo-supplier-sync', 'Proveedores', 'Proveedores', $capability, 'mdo-supplier-sync-suppliers', array( __CLASS__, 'suppliers' ) );
 		add_submenu_page( 'mdo-supplier-sync', 'Productos origen', 'Productos origen', $capability, 'mdo-supplier-sync-products', array( __CLASS__, 'products' ) );
@@ -34,7 +34,7 @@ final class MDO_Admin {
 			return;
 		}
 		if ( ! class_exists( 'WooCommerce' ) ) {
-			echo '<div class="notice notice-warning"><p><strong>Supplier Sync:</strong> WooCommerce no está activo. La gestión de proveedores funcionará, pero no se podrán crear ni actualizar productos.</p></div>';
+			echo '<div class="notice notice-warning"><p><strong>EMDO:</strong> WooCommerce no está activo. La gestión de proveedores funcionará, pero no se podrán crear ni actualizar productos.</p></div>';
 		}
 	}
 
@@ -53,7 +53,7 @@ final class MDO_Admin {
 		$recent = $wpdb->get_results( "SELECT r.*, s.name supplier_name FROM {$runs} r LEFT JOIN {$suppliers} s ON s.id = r.supplier_id ORDER BY r.id DESC LIMIT 10", ARRAY_A ) ?: array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		?>
 		<div class="wrap mdo-sync-wrap">
-			<h1>Supplier Sync</h1>
+			<h1>EMDO</h1>
 			<p class="description">Centro de control de proveedores y sincronizaciones de El Mercado de Origen.</p>
 			<div class="mdo-cards">
 				<?php self::card( 'Proveedores', $stats['suppliers'] ); ?>
@@ -150,6 +150,13 @@ final class MDO_Admin {
 		if ( empty( $data['code'] ) || empty( $data['name'] ) || empty( $data['source_url'] ) ) {
 			wp_die( 'Código, nombre y URL origen son obligatorios.' );
 		}
+		$vendor_user_id = isset( $data['vendor_user_id'] ) ? absint( $data['vendor_user_id'] ) : 0;
+		if ( $vendor_user_id ) {
+			$vendor_user = get_user_by( 'id', $vendor_user_id );
+			if ( ! $vendor_user || ! in_array( 'wcfm_vendor', (array) $vendor_user->roles, true ) ) {
+				wp_die( 'El usuario seleccionado debe tener el rol wcfm_vendor.' );
+			}
+		}
 		$saved_id = MDO_Supplier_Repository::save( $data, $id );
 		wp_safe_redirect( admin_url( 'admin.php?page=mdo-supplier-sync-suppliers&supplier_id=' . $saved_id . '&saved=1' ) );
 		exit;
@@ -173,7 +180,7 @@ final class MDO_Admin {
 			'currency' => 'EUR', 'sync_frequency' => 'weekly', 'notification_email' => get_option( 'admin_email' ),
 			'exclusion_url_fragments' => '[]', 'notes' => '', 'active' => 1,
 		);
-		$users = get_users( array( 'number' => 500, 'orderby' => 'display_name', 'order' => 'ASC' ) );
+		$users = get_users( array( 'role' => 'wcfm_vendor', 'orderby' => 'display_name', 'order' => 'ASC' ) );
 		?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="mdo-panel mdo-form">
 			<input type="hidden" name="action" value="mdo_save_supplier">
@@ -184,13 +191,13 @@ final class MDO_Admin {
 				<label><span>Nombre</span><input class="regular-text" name="name" required value="<?php echo esc_attr( $supplier['name'] ); ?>"></label>
 				<label><span>Código interno</span><input class="regular-text" name="code" required placeholder="tolecarnes" value="<?php echo esc_attr( $supplier['code'] ); ?>"><small>Identificador estable para BI e integraciones.</small></label>
 				<label class="mdo-span-2"><span>URL de la tienda / catálogo</span><input class="large-text" type="url" name="source_url" required value="<?php echo esc_attr( $supplier['source_url'] ); ?>"></label>
-				<label><span>Vendedor WordPress / WCFM</span><select name="vendor_user_id"><option value="">— Sin asignar —</option><?php foreach ( $users as $user ) : ?><option value="<?php echo (int) $user->ID; ?>" <?php selected( (int) $supplier['vendor_user_id'], (int) $user->ID ); ?>><?php echo esc_html( $user->display_name . ' (#' . $user->ID . ' · ' . implode( ', ', $user->roles ) . ')' ); ?></option><?php endforeach; ?></select><small>Los productos se asociarán a este usuario/vendedor.</small></label>
+				<label><span>Vendedor WordPress / WCFM</span><select name="vendor_user_id"><option value="">— Sin asignar —</option><?php foreach ( $users as $user ) : ?><option value="<?php echo (int) $user->ID; ?>" <?php selected( (int) $supplier['vendor_user_id'], (int) $user->ID ); ?>><?php echo esc_html( $user->display_name . ' (#' . $user->ID . ')' ); ?></option><?php endforeach; ?></select><small>Solo se muestran usuarios con rol wcfm_vendor.</small></label>
 				<label><span>Conector</span><select name="connector"><option value="none" <?php selected( $supplier['connector'], 'none' ); ?>>Sin conector</option><option value="tolecarnes" <?php selected( $supplier['connector'], 'tolecarnes' ); ?>>Tolecarnes</option><option value="el-catedratico" <?php selected( $supplier['connector'], 'el-catedratico' ); ?>>El Catedrático</option><option value="puente-robles" <?php selected( $supplier['connector'], 'puente-robles' ); ?>>Puente Robles</option></select><small>El scraper concreto se conecta aquí.</small></label>
 			</div>
 			<h3>Condiciones comerciales</h3>
 			<div class="mdo-grid mdo-grid-4">
 				<label><span>Regla</span><select name="commercial_rule"><option value="percentage" <?php selected( $supplier['commercial_rule'], 'percentage' ); ?>>Porcentaje</option><option value="percentage_plus_fixed" <?php selected( $supplier['commercial_rule'], 'percentage_plus_fixed' ); ?>>Porcentaje + fijo</option><option value="fixed" <?php selected( $supplier['commercial_rule'], 'fixed' ); ?>>Fijo</option><option value="custom" <?php selected( $supplier['commercial_rule'], 'custom' ); ?>>Personalizada</option></select></label>
-				<label><span>% para MDO</span><input type="number" step="0.0001" min="0" name="commission_percent" value="<?php echo esc_attr( $supplier['commission_percent'] ); ?>"></label>
+				<label><span>% para EMDO</span><input type="number" step="0.0001" min="0" name="commission_percent" value="<?php echo esc_attr( $supplier['commission_percent'] ); ?>"></label>
 				<label><span>Fijo</span><input type="number" step="0.01" min="0" name="fixed_fee" value="<?php echo esc_attr( $supplier['fixed_fee'] ); ?>"></label>
 				<label><span>Fijo por</span><select name="fixed_fee_scope"><option value="order" <?php selected( $supplier['fixed_fee_scope'], 'order' ); ?>>Pedido</option><option value="line" <?php selected( $supplier['fixed_fee_scope'], 'line' ); ?>>Línea/producto</option></select></label>
 			</div>
@@ -250,7 +257,7 @@ final class MDO_Admin {
 
 	private static function guard(): void {
 		if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'No tienes permisos para gestionar Supplier Sync.' );
+			wp_die( 'No tienes permisos para gestionar EMDO.' );
 		}
 	}
 }
