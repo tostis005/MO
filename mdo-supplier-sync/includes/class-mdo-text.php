@@ -13,49 +13,46 @@ final class MDO_Text {
 			return $title;
 		}
 
-		// Normalizamos palabra a palabra y corregimos también capitalizaciones parciales
-		// heredadas de versiones anteriores, por ejemplo "JamÓn" o "PAnceta".
+		/*
+		 * Usamos una estrategia determinista de formato frase:
+		 * 1. Protegemos solo siglas conocidas que ya vienen realmente en mayúsculas.
+		 * 2. Pasamos TODO el resto del título a minúsculas con Unicode.
+		 * 3. Recuperamos las siglas y ponemos en mayúscula únicamente el inicio del
+		 *    título y el inicio de un descriptor entre paréntesis.
+		 *
+		 * Esto elimina también errores heredados como JamÓn, JamóN, PAnceta, etc.
+		 */
+		$protected = array();
 		$title = preg_replace_callback(
-			'/\p{L}[\p{L}\p{M}]*/u',
-			static function ( array $match ): string {
-				$word  = (string) $match[0];
-				$upper = mb_strtoupper( $word, 'UTF-8' );
-				$lower = mb_strtolower( $word, 'UTF-8' );
-
-				if ( $upper === $lower ) {
-					return $word;
-				}
-
-				if ( in_array( $upper, self::PRESERVE_UPPERCASE, true ) && $word === $upper ) {
-					return $upper;
-				}
-
-				// Una palabra ya natural ("Cortado") o completamente minúscula se conserva.
-				$first        = mb_substr( $word, 0, 1, 'UTF-8' );
-				$rest         = mb_substr( $word, 1, null, 'UTF-8' );
-				$natural_word = mb_strtoupper( $first, 'UTF-8' ) . mb_strtolower( $rest, 'UTF-8' );
-				if ( $word === $lower || $word === $natural_word ) {
-					return $word;
-				}
-
-				// Todo lo demás es mayúscula total o una mezcla anómala: JAMÓN, JamÓn, PAnceta…
-				return $lower;
+			'/(?<![\p{L}\p{N}])(?:' . implode( '|', array_map( 'preg_quote', self::PRESERVE_UPPERCASE ) ) . ')(?![\p{L}\p{N}])/u',
+			static function ( array $match ) use ( &$protected ): string {
+				$marker = '@@' . count( $protected ) . '@@';
+				$protected[ $marker ] = (string) $match[0];
+				return $marker;
 			},
 			$title
 		);
 
-		// Formato de frase: primera letra real del título en mayúscula, también con Unicode.
+		$title = mb_strtolower( (string) $title, 'UTF-8' );
+
+		foreach ( $protected as $marker => $value ) {
+			$title = str_replace( $marker, $value, $title );
+		}
+
+		// Primera letra real del título en mayúscula, independientemente de tildes.
 		$title = preg_replace_callback(
-			'/\p{Ll}/u',
+			'/\p{L}/u',
 			static fn( array $match ): string => mb_strtoupper( (string) $match[0], 'UTF-8' ),
 			$title,
 			1
 		);
 
-		// Los descriptores entre paréntesis se presentan también con inicio natural.
+		// Descriptor entre paréntesis: "(deshuesado)" -> "(Deshuesado)".
 		$title = preg_replace_callback(
-			'/\(\s*\K\p{Ll}/u',
-			static fn( array $match ): string => mb_strtoupper( (string) $match[0], 'UTF-8' ),
+			'/(\(\s*)(\p{L})/u',
+			static function ( array $match ): string {
+				return (string) $match[1] . mb_strtoupper( (string) $match[2], 'UTF-8' );
+			},
 			$title
 		);
 
