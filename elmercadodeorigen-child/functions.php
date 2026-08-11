@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.168' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.169' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -132,6 +132,7 @@ $elmercado_modules = array(
 	'inc/home-copy-definitive-010165.php',
 	'inc/home-story-card-rhythm-010166.php',
 	'inc/commerce-home-clarity-final-010168.php',
+	'inc/user-feedback-home-product-010169.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
