@@ -102,7 +102,8 @@ jobs:
           $expected_ids = array_merge(array($wc_id), array_map('intval',$variation_ids));
           $associated = array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT object FROM {$assoc} WHERE rule_id=%d ORDER BY CAST(object AS UNSIGNED)",$block_id)));
           sort($expected_ids); sort($associated);
-          echo 'EXPECTED_ASSOC=' . implode(',',$expected_ids) . "\nASSOCIATED=' . implode(',',$associated) . "\n";
+          echo 'EXPECTED_ASSOC=' . implode(',',$expected_ids) . "\n";
+          echo 'ASSOCIATED=' . implode(',',$associated) . "\n";
           if ( $expected_ids !== $associated ) { throw new RuntimeException('association mismatch'); }
           foreach ( $variation_ids as $variation_id ) {
               if ( ! yith_wapo_product_has_blocks( $wc_id, (int) $variation_id ) ) {
