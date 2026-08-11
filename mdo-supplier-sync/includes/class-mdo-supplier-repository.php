@@ -32,13 +32,14 @@ final class MDO_Supplier_Repository {
 		$record = array(
 			'code'                    => sanitize_key( (string) ( $data['code'] ?? '' ) ),
 			'name'                    => sanitize_text_field( (string) ( $data['name'] ?? '' ) ),
-			'source_url'              => esc_url_raw( (string) ( $data['source_url'] ?? '' ) ),
+			'source_url'              => esc_url_raw( trim( (string) ( $data['source_url'] ?? '' ) ) ),
 			'vendor_user_id'          => ! empty( $data['vendor_user_id'] ) ? absint( $data['vendor_user_id'] ) : null,
 			'connector'               => sanitize_key( (string) ( $data['connector'] ?? 'none' ) ),
 			'commercial_rule'         => sanitize_key( (string) ( $data['commercial_rule'] ?? 'percentage' ) ),
 			'commission_percent'      => self::nullable_decimal( $data['commission_percent'] ?? null ),
 			'fixed_fee'               => self::nullable_decimal( $data['fixed_fee'] ?? null ),
 			'fixed_fee_scope'         => in_array( ( $data['fixed_fee_scope'] ?? 'order' ), array( 'order', 'line' ), true ) ? $data['fixed_fee_scope'] : 'order',
+			'minimum_order_amount'    => self::nullable_decimal( $data['minimum_order_amount'] ?? null ),
 			'currency'                => strtoupper( substr( sanitize_text_field( (string) ( $data['currency'] ?? 'EUR' ) ), 0, 3 ) ),
 			'sync_frequency'          => in_array( ( $data['sync_frequency'] ?? 'weekly' ), array( 'manual', 'daily', 'weekly' ), true ) ? $data['sync_frequency'] : 'weekly',
 			'notification_email'      => sanitize_email( (string) ( $data['notification_email'] ?? '' ) ) ?: null,
@@ -86,6 +87,6 @@ final class MDO_Supplier_Repository {
 			return null;
 		}
 		$value = str_replace( ',', '.', (string) $value );
-		return is_numeric( $value ) ? number_format( (float) $value, 4, '.', '' ) : null;
+		return is_numeric( $value ) ? number_format( max( 0, (float) $value ), 4, '.', '' ) : null;
 	}
 }
