@@ -58,6 +58,7 @@ final class MDO_Connector_Iberico_Family {
 		}
 
 		$option_groups = self::option_groups( $xpath );
+		$extra_groups  = self::extra_groups( $xpath, $url );
 		$price         = self::price_from_json( $json );
 		if ( null === $price ) {
 			$price = self::price_from_meta( $xpath );
@@ -84,6 +85,7 @@ final class MDO_Connector_Iberico_Family {
 			'sku'               => isset( $json['sku'] ) ? sanitize_text_field( (string) $json['sku'] ) : '',
 			'source_product_id' => $product_id,
 			'option_groups'     => $option_groups,
+			'extra_groups'      => $extra_groups,
 			'variations'        => array(),
 			'variation_count'   => self::variation_count( $option_groups ),
 			'image_count'       => count( $images ),
@@ -294,6 +296,63 @@ final class MDO_Connector_Iberico_Family {
 			}
 		}
 		return $groups;
+	}
+
+	/**
+	 * Extrae servicios/formato que el origen presenta fuera de la matriz de
+	 * variaciones. En El Catedrático/Puente Robles aparecen como enlaces dentro
+	 * de .formatos, por ejemplo "Cortado a Cuchillo (+20,00 €)".
+	 */
+	private static function extra_groups( DOMXPath $xpath, string $base_url ): array {
+		$options = array();
+		$query   = "//*[contains(concat(' ', normalize-space(@class), ' '), ' formatos ')]//ul//a[@href]";
+
+		foreach ( $xpath->query( $query ) ?: array() as $anchor ) {
+			if ( ! $anchor instanceof DOMElement ) {
+				continue;
+			}
+			$text = trim( preg_replace( '/\s+/u', ' ', html_entity_decode( (string) $anchor->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+			if ( '' === $text ) {
+				continue;
+			}
+
+			$price = 0.0;
+			if ( preg_match( '/\(\s*\+\s*([0-9]+(?:[.,][0-9]{1,2})?)\s*€\s*\)\s*$/u', $text, $match ) ) {
+				$price = (float) str_replace( ',', '.', $match[1] );
+			}
+			$title = trim( html_entity_decode( (string) $anchor->getAttribute( 'title' ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+			$label = $title ?: trim( preg_replace( '/\s*\(\s*\+\s*[0-9]+(?:[.,][0-9]{1,2})?\s*€\s*\)\s*$/u', '', $text ) );
+			if ( '' === $label ) {
+				continue;
+			}
+
+			$class = strtolower( (string) $anchor->getAttribute( 'class' ) );
+			if ( $anchor->parentNode instanceof DOMElement ) {
+				$class .= ' ' . strtolower( (string) $anchor->parentNode->getAttribute( 'class' ) );
+			}
+			$source_id = sanitize_text_field( (string) $anchor->getAttribute( 'data-id' ) );
+			$key       = strtolower( $label ) . '|' . number_format( $price, 2, '.', '' );
+			$options[ $key ] = array(
+				'value'      => $source_id ?: sanitize_title( $label ),
+				'label'      => sanitize_text_field( $label ),
+				'price'      => round( $price, 2 ),
+				'disabled'   => str_contains( $class, 'inactivo' ) || str_contains( $class, 'disabled' ),
+				'source_id'  => $source_id,
+				'source_url' => self::canonical_url( self::absolute_url( (string) $anchor->getAttribute( 'href' ), $base_url ) ),
+			);
+		}
+
+		if ( count( $options ) < 2 ) {
+			return array();
+		}
+		return array(
+			array(
+				'key'     => 'preparacion',
+				'label'   => 'Preparación',
+				'type'    => 'select',
+				'options' => array_values( $options ),
+			),
+		);
 	}
 
 	private static function variation_count( array $groups ): int {
