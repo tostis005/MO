@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class MDO_Description_Migration {
 	private const OPTION_VERSION = 'mdo_description_repair_version';
 	private const OPTION_STATS   = 'mdo_description_repair_stats';
-	private const VERSION        = '1';
+	private const VERSION        = '2';
 
 	public static function run_once(): void {
 		if ( self::VERSION === (string) get_option( self::OPTION_VERSION, '' ) ) {
