@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 0.8.1
+ * Version: 0.8.0
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '0.8.1' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '0.8.0' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -28,7 +28,6 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-rich-description-sourc
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tolecarnes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-family.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-yith-extras.php';
-require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-tolecarnes-category.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';
@@ -48,7 +47,6 @@ add_action(
 	static function (): void {
 		MDO_Database::maybe_upgrade();
 		MDO_Description_Migration::run_once();
-		MDO_Tolecarnes_Category::run_once();
 		MDO_Pricing::init();
 		MDO_Iberico_Variations::init();
 		MDO_Rich_Description_Source::init();
