@@ -91,6 +91,16 @@ final class MDO_Text {
 			$product['description'] = self::normalize_description( (string) $product['description'] );
 		}
 
+		// Primero resolvemos el precio normal/oferta de la ficha base. El Catedrático
+		// publica después los tramos de peso dentro de esa misma ficha y necesitamos
+		// ambos precios para construir cada variación sin perder el descuento.
+		if ( class_exists( 'MDO_Pricing' ) ) {
+			$product = MDO_Pricing::enrich_product( $product );
+		}
+		if ( class_exists( 'MDO_Iberico_Variations' ) ) {
+			$product = MDO_Iberico_Variations::enrich_product( $product );
+		}
+		// Recalculamos el resumen del producto desde la matriz final de variaciones.
 		if ( class_exists( 'MDO_Pricing' ) ) {
 			$product = MDO_Pricing::enrich_product( $product );
 		}
