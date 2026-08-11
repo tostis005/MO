@@ -13,8 +13,9 @@ final class MDO_Minimum_Order {
 		add_action( 'admin_post_mdo_save_supplier', array( __CLASS__, 'prepare_manual_supplier_save' ), 1 );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_styles' ) );
 		add_action( 'woocommerce_check_cart_items', array( __CLASS__, 'validate_cart' ), 20 );
-		add_action( 'woocommerce_cart_totals_before_order_total', array( __CLASS__, 'render_cart_rows' ), 20 );
-		add_action( 'woocommerce_review_order_before_order_total', array( __CLASS__, 'render_checkout_rows' ), 20 );
+		// Lo renderizamos fuera de la tabla de totales para que el tema no pueda reducirlo a media columna.
+		add_action( 'woocommerce_proceed_to_checkout', array( __CLASS__, 'render_cart_notice' ), 5 );
+		add_action( 'woocommerce_review_order_before_payment', array( __CLASS__, 'render_checkout_notice' ), 5 );
 	}
 
 	public static function enqueue_styles(): void {
@@ -101,49 +102,51 @@ final class MDO_Minimum_Order {
 				sprintf(
 					'Pedido mínimo de %1$s: te faltan %2$s para alcanzar el mínimo de %3$s.',
 					$entry['name'],
-					wp_strip_all_tags( wc_price( $entry['missing'] ) ),
-					wp_strip_all_tags( wc_price( $entry['minimum'] ) )
+					self::plain_price( $entry['missing'] ),
+					self::plain_price( $entry['minimum'] )
 				),
 				'error'
 			);
 		}
 	}
 
-	public static function render_cart_rows(): void {
-		self::render_rows( true );
+	public static function render_cart_notice(): void {
+		self::render_notices();
 	}
 
-	public static function render_checkout_rows(): void {
-		self::render_rows( false );
+	public static function render_checkout_notice(): void {
+		self::render_notices();
 	}
 
-	private static function render_rows( bool $cart_context ): void {
-		foreach ( self::cart_minimums() as $entry ) {
-			$ok    = $entry['missing'] <= 0;
-			$label = 'Pedido mínimo · ' . $entry['name'];
-			?>
-			<tr class="emdo-minimum-order-row <?php echo $ok ? 'is-ok' : 'is-missing'; ?>">
-				<td colspan="2"<?php echo $cart_context ? ' data-title="' . esc_attr( $label ) . '"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
-					<div class="emdo-minimum-order-card">
-						<div class="emdo-minimum-order-card__title"><?php echo esc_html( $label ); ?></div>
-						<?php if ( $ok ) : ?>
-							<div class="emdo-minimum-order-card__message">Pedido mínimo alcanzado.</div>
-							<div class="emdo-minimum-order-card__meta">
-								<?php echo wp_kses_post( 'Llevas ' . wc_price( $entry['subtotal'] ) . ' en productos de ' . esc_html( $entry['name'] ) . ' (mínimo ' . wc_price( $entry['minimum'] ) . ').' ); ?>
-							</div>
-						<?php else : ?>
-							<div class="emdo-minimum-order-card__message">
-								<?php echo wp_kses_post( 'Te faltan <strong>' . wc_price( $entry['missing'] ) . '</strong> para alcanzar el pedido mínimo de <strong>' . wc_price( $entry['minimum'] ) . '</strong>.' ); ?>
-							</div>
-							<div class="emdo-minimum-order-card__meta">
-								<?php echo wp_kses_post( 'Llevas ' . wc_price( $entry['subtotal'] ) . ' en productos de ' . esc_html( $entry['name'] ) . '.' ); ?>
-							</div>
-						<?php endif; ?>
-					</div>
-				</td>
-			</tr>
-			<?php
+	private static function render_notices(): void {
+		$missing = array_values(
+			array_filter(
+				self::cart_minimums(),
+				static fn( array $entry ): bool => $entry['missing'] > 0
+			)
+		);
+		if ( ! $missing ) {
+			return;
 		}
+		?>
+		<div class="emdo-minimum-order-notices" role="alert" aria-live="polite">
+			<?php foreach ( $missing as $entry ) : ?>
+				<div class="emdo-minimum-order-card">
+					<div class="emdo-minimum-order-card__title"><?php echo esc_html( 'Pedido mínimo · ' . $entry['name'] ); ?></div>
+					<div class="emdo-minimum-order-card__message">
+						Te faltan <strong><?php echo esc_html( self::plain_price( $entry['missing'] ) ); ?></strong> para alcanzar el pedido mínimo de <strong><?php echo esc_html( self::plain_price( $entry['minimum'] ) ); ?></strong>.
+					</div>
+					<div class="emdo-minimum-order-card__meta">
+						<?php echo esc_html( 'Llevas ' . self::plain_price( $entry['subtotal'] ) . ' en productos de ' . $entry['name'] . '.' ); ?>
+					</div>
+				</div>
+			<?php endforeach; ?>
+		</div>
+		<?php
+	}
+
+	private static function plain_price( float $amount ): string {
+		return html_entity_decode( wp_strip_all_tags( wc_price( $amount ) ), ENT_QUOTES, 'UTF-8' );
 	}
 
 	private static function cart_minimums(): array {
