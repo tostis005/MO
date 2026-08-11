@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class MDO_Description_Migration {
 	private const OPTION_VERSION = 'mdo_description_repair_version';
 	private const OPTION_STATS   = 'mdo_description_repair_stats';
-	private const VERSION        = '2';
+	private const VERSION        = '3';
 
 	public static function run_once(): void {
 		if ( self::VERSION === (string) get_option( self::OPTION_VERSION, '' ) ) {
@@ -111,7 +111,6 @@ final class MDO_Description_Migration {
 		$stats['completed_at'] = current_time( 'mysql', true );
 		update_option( self::OPTION_STATS, $stats, false );
 
-		// Solo marcamos la migración como completada si no hubo errores.
 		if ( 0 === (int) $stats['errors'] ) {
 			update_option( self::OPTION_VERSION, self::VERSION, false );
 		}
