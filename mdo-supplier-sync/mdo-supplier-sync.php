@@ -27,6 +27,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-text.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-rich-description-source.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-tolecarnes.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-family.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-yith-extras.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';
