@@ -64,7 +64,10 @@ add_filter(
 );
 
 /**
- * Relacionados y ventas adicionales con tarjetas grandes y legibles.
+ * Seis productos relacionados en una rejilla responsiva compacta.
+ *
+ * El número de columnas visuales se resuelve en CSS para poder pasar de
+ * 6 → 3 → 2 → 1 según el ancho disponible sin afectar otros listados.
  *
  * @param array<string, mixed> $args Argumentos de la consulta.
  * @return array<string, mixed>
@@ -72,8 +75,8 @@ add_filter(
 add_filter(
 	'woocommerce_output_related_products_args',
 	static function ( array $args ): array {
-		$args['posts_per_page'] = 3;
-		$args['columns']        = 3;
+		$args['posts_per_page'] = 6;
+		$args['columns']        = 6;
 
 		return $args;
 	},
