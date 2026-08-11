@@ -64,6 +64,10 @@ final class MDO_Text {
 			$product['title'] = self::normalize_title( (string) $product['title'] );
 		}
 
+		if ( class_exists( 'MDO_Pricing' ) ) {
+			$product = MDO_Pricing::enrich_product( $product );
+		}
+
 		$hash_payload = $product;
 		unset( $hash_payload['source_hash'] );
 		if ( isset( $hash_payload['description'] ) ) {
