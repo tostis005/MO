@@ -108,7 +108,12 @@ final class MDO_Text {
 		$hash_payload = $product;
 		unset( $hash_payload['source_hash'] );
 		if ( isset( $hash_payload['description'] ) ) {
-			$hash_payload['description_hash'] = hash( 'sha256', wp_strip_all_tags( (string) $hash_payload['description'] ) );
+			/*
+			 * La estructura HTML segura también es información de producto: <strong>,
+			 * listas, párrafos, saltos, etc. deben provocar resincronización aunque el
+			 * texto visible sea idéntico. El contenido ya ha pasado por wp_kses_post().
+			 */
+			$hash_payload['description_hash'] = hash( 'sha256', (string) $hash_payload['description'] );
 			unset( $hash_payload['description'] );
 		}
 		$product['source_hash'] = hash(
