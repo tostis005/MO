@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 0.4.0
+ * Version: 0.4.1
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '0.4.0' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '0.4.1' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.1.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -27,6 +27,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-fa
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-scheduler.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-admin.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-product-bulk-admin.php';
 
 register_activation_hook( __FILE__, array( 'MDO_Database', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'MDO_Scheduler', 'deactivate' ) );
@@ -38,6 +39,7 @@ add_action(
 		MDO_Scheduler::init();
 		if ( is_admin() ) {
 			MDO_Admin::init();
+			MDO_Product_Bulk_Admin::init();
 		}
 	}
 );
