@@ -23,16 +23,21 @@ final class MDO_Product_Bulk_Admin {
 		$table       = MDO_Database::table( 'source_products' );
 		$supplier_id = isset( $_GET['supplier_id'] ) ? absint( $_GET['supplier_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$sql         = $supplier_id
-			? $wpdb->prepare( "SELECT id, status FROM {$table} WHERE supplier_id = %d ORDER BY id DESC LIMIT 500", $supplier_id )
-			: "SELECT id, status FROM {$table} ORDER BY id DESC LIMIT 500";
+			? $wpdb->prepare( "SELECT id, status, source_payload FROM {$table} WHERE supplier_id = %d ORDER BY id DESC LIMIT 500", $supplier_id )
+			: "SELECT id, status, source_payload FROM {$table} ORDER BY id DESC LIMIT 500";
 		$rows        = $wpdb->get_results( $sql, ARRAY_A ) ?: array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 		$items = array();
 		foreach ( $rows as $row ) {
-			$id = (int) $row['id'];
+			$id      = (int) $row['id'];
+			$payload = json_decode( (string) $row['source_payload'], true );
+			$payload = is_array( $payload ) ? $payload : array();
+			$images  = isset( $payload['images'] ) && is_array( $payload['images'] ) ? $payload['images'] : array();
+			$thumb   = $images ? esc_url_raw( (string) reset( $images ) ) : '';
 			$items[] = array(
 				'id'          => $id,
 				'status'      => sanitize_key( (string) $row['status'] ),
+				'thumbnail'   => $thumb,
 				'restore_url' => wp_nonce_url(
 					admin_url( 'admin-post.php?action=mdo_restore_source_product&source_product_id=' . $id . ( $supplier_id ? '&supplier_id=' . $supplier_id : '' ) ),
 					'mdo_restore_source_' . $id
@@ -59,6 +64,11 @@ final class MDO_Product_Bulk_Admin {
 			th.innerHTML = '<input type="checkbox" id="mdo-select-all" aria-label="Seleccionar todos los productos de esta vista">';
 			headRow.prepend(th);
 
+			const imageTh = document.createElement('th');
+			imageTh.textContent = 'Imagen';
+			imageTh.style.width = '72px';
+			th.after(imageTh);
+
 			bodyRows.forEach((row, index) => {
 				const item = items[index];
 				const td = document.createElement('th');
@@ -66,6 +76,26 @@ final class MDO_Product_Bulk_Admin {
 				td.className = 'check-column';
 				td.innerHTML = '<input type="checkbox" class="mdo-product-check" form="mdo-bulk-products" name="source_product_ids[]" value="' + item.id + '" aria-label="Seleccionar producto">';
 				row.prepend(td);
+
+				const imageTd = document.createElement('td');
+				imageTd.style.width = '72px';
+				if (item.thumbnail) {
+					const img = document.createElement('img');
+					img.src = item.thumbnail;
+					img.alt = '';
+					img.loading = 'lazy';
+					img.referrerPolicy = 'no-referrer-when-downgrade';
+					img.style.width = '56px';
+					img.style.height = '56px';
+					img.style.objectFit = 'cover';
+					img.style.borderRadius = '4px';
+					img.style.border = '1px solid #dcdcde';
+					img.style.background = '#fff';
+					imageTd.appendChild(img);
+				} else {
+					imageTd.textContent = '—';
+				}
+				td.after(imageTd);
 
 				if (item.status === 'excluded') {
 					const actionsCell = row.lastElementChild;
