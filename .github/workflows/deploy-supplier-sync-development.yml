@@ -172,3 +172,41 @@ jobs:
             if ($version !== "1" || (int)($stats["errors"] ?? 1) !== 0 || $remaining_woo !== 0 || $remaining_payload !== 0) { exit(9); }
           ' --path="$wp_path" --allow-root
           REMOTE
+
+      - name: Validate El Catedratico weight variations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_WP_PATH'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            global $wpdb;
+            $suppliers = MDO_Database::table("suppliers");
+            $supplier = $wpdb->get_row("SELECT * FROM {$suppliers} WHERE connector=\"el-catedratico\" ORDER BY id ASC LIMIT 1", ARRAY_A);
+            if (!$supplier) { throw new RuntimeException("No hay proveedor El Catedrático configurado en staging."); }
+            $url = "https://www.elcatedratico.com/es/jamon-de-bellota-iberico-75-raza-iberica";
+            $product = MDO_Connector_Iberico_Family::scrape_product($url, $supplier);
+            $product = MDO_Text::normalize_product($product);
+            $vars = isset($product["variations"]) && is_array($product["variations"]) ? $product["variations"] : array();
+            echo "variation_count=" . count($vars) . "\n";
+            echo "base_price=" . json_encode($product["price"] ?? null) . " regular=" . json_encode($product["regular_price"] ?? null) . " unit=" . json_encode($product["unit_price"] ?? null) . "\n";
+            echo "first=" . wp_json_encode($vars[0] ?? array(), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+            echo "last=" . wp_json_encode($vars ? end($vars) : array(), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+            if (count($vars) < 8) { throw new RuntimeException("No se detectaron todos los tramos de peso esperados."); }
+            $first = $vars[0];
+            $label = (string)($first["attributes"]["peso"] ?? "");
+            if (strpos($label, "7,200 kg") === false || strpos($label, "7,400 kg") === false) { throw new RuntimeException("El primer tramo de peso no coincide con el origen."); }
+            if (abs((float)($first["display_price"] ?? 0) - 248.20) > 0.08) { throw new RuntimeException("El precio de la primera variación no coincide con el origen."); }
+            if ((float)($first["display_regular_price"] ?? 0) <= (float)($first["display_price"] ?? 0)) { throw new RuntimeException("No se conservó el precio regular de la oferta."); }
+          ' --path="$wp_path" --allow-root
+          REMOTE
