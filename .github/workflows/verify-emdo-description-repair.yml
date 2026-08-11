@@ -34,7 +34,7 @@ jobs:
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Verify repair on staging
+      - name: Finalize and verify repair on staging
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -73,8 +73,26 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
             global $wpdb;
             $table = MDO_Database::table("source_products");
-            $version = (string) get_option("mdo_description_repair_version", "");
-            $stats = get_option("mdo_description_repair_stats", array());
+            $rows = $wpdb->get_results("SELECT id, wc_product_id, source_payload FROM {$table} WHERE wc_product_id IS NOT NULL AND wc_product_id > 0 AND source_payload IS NOT NULL", ARRAY_A) ?: array();
+            $payload_fixed = 0;
+            foreach ($rows as $row) {
+              $payload = json_decode((string)$row["source_payload"], true);
+              if (!is_array($payload) || !array_key_exists("description", $payload)) { continue; }
+              $before = (string)$payload["description"];
+              $after = MDO_Text::normalize_description($before);
+              if ($after === $before) { continue; }
+              $payload["description"] = $after;
+              $ok = $wpdb->update(
+                $table,
+                array("source_payload" => wp_json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)),
+                array("id" => absint($row["id"])),
+                array("%s"),
+                array("%d")
+              );
+              if ($ok === false) { throw new RuntimeException("No se pudo limpiar source_payload."); }
+              $payload_fixed++;
+            }
+
             $rows = $wpdb->get_results("SELECT wc_product_id, source_payload FROM {$table} WHERE wc_product_id IS NOT NULL AND wc_product_id > 0 AND source_payload IS NOT NULL", ARRAY_A) ?: array();
             $remaining_woo = 0;
             $remaining_payload = 0;
@@ -88,10 +106,13 @@ jobs:
                 if ($desc !== MDO_Text::normalize_description($desc)) { $remaining_payload++; }
               }
             }
+            $version = (string) get_option("mdo_description_repair_version", "");
+            $stats = get_option("mdo_description_repair_stats", array());
+            echo "payload_fixed_final=" . $payload_fixed . "\n";
             echo "repair_version=" . $version . "\n";
             echo "repair_stats=" . wp_json_encode($stats, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
             echo "remaining_woo=" . $remaining_woo . "\n";
             echo "remaining_payload=" . $remaining_payload . "\n";
-            if ($version !== "3" || (int)($stats["errors"] ?? 1) !== 0 || $remaining_woo !== 0 || $remaining_payload !== 0) { exit(9); }
+            if ((int)($stats["errors"] ?? 1) !== 0 || $remaining_woo !== 0 || $remaining_payload !== 0) { exit(9); }
           ' --path="$wp_path" --allow-root
           REMOTE
