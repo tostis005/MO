@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.175' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.176' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -57,6 +57,7 @@ $elmercado_modules = array(
 	'inc/storefront-second-review-final.php',
 	'inc/cart-counter-visibility-final.php',
 	'inc/mobile-catalog-interactions-final.php',
+	'inc/catalog-continuous-loading-010176.php',
 	'inc/header-unified-final.php',
 	'inc/sitewide-visual-harmony-final.php',
 	'inc/cart-toast-event-guard-01093.php',
