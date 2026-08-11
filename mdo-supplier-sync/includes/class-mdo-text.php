@@ -59,9 +59,36 @@ final class MDO_Text {
 		return $title;
 	}
 
+	/**
+	 * Decodifica entidades HTML simples o dobles sin eliminar el HTML válido.
+	 * Ejemplos: &eacute; -> é, &amp;eacute; -> é, &nbsp; -> espacio normal.
+	 */
+	public static function normalize_description( string $description ): string {
+		$value = $description;
+
+		// Algunos proveedores entregan entidades HTML doblemente codificadas.
+		// Repetimos unas pocas veces y paramos en cuanto el contenido sea estable.
+		for ( $i = 0; $i < 4; $i++ ) {
+			$decoded = html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			if ( $decoded === $value ) {
+				break;
+			}
+			$value = $decoded;
+		}
+
+		// No queremos que &nbsp; termine visible ni que introduzca espacios no separables
+		// difíciles de editar en WooCommerce.
+		$value = str_replace( array( "\xC2\xA0", "\u{00A0}" ), ' ', $value );
+
+		return wp_kses_post( $value );
+	}
+
 	public static function normalize_product( array $product ): array {
 		if ( isset( $product['title'] ) ) {
 			$product['title'] = self::normalize_title( (string) $product['title'] );
+		}
+		if ( isset( $product['description'] ) ) {
+			$product['description'] = self::normalize_description( (string) $product['description'] );
 		}
 
 		if ( class_exists( 'MDO_Pricing' ) ) {
