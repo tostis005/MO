@@ -1,0 +1,70 @@
+name: Inspect YITH variation behavior
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-yith-variation-debug.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+      - name: Inspect target and Hidalgo variation behavior
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; domain="$2"; wp_path=""
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
+            [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"
+          fi
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP="$php_bin -d memory_limit=512M $wp_bin --path=$wp_path --allow-root"
+          prefix="$($WP db prefix 2>/dev/null)"
+          echo '=== TARGET PRODUCT + VARIATIONS ==='
+          $WP db query "SELECT ID,post_type,post_parent,post_title,post_status FROM ${prefix}posts WHERE ID=11235 OR post_parent=11235 ORDER BY ID;" 2>/dev/null
+          echo '=== HIDALGO 5045 + VARIATIONS ==='
+          $WP db query "SELECT ID,post_type,post_parent,post_title,post_status FROM ${prefix}posts WHERE ID=5045 OR post_parent=5045 ORDER BY ID;" 2>/dev/null
+          echo '=== TARGET YITH ASSOCIATIONS ==='
+          $WP db query "SELECT a.rule_id,a.object,a.type,b.name FROM ${prefix}yith_wapo_blocks_assoc a JOIN ${prefix}yith_wapo_blocks b ON b.id=a.rule_id WHERE a.object='11235' OR a.object IN (SELECT CAST(ID AS CHAR) FROM ${prefix}posts WHERE post_parent=11235) ORDER BY a.rule_id,a.object;" 2>/dev/null || true
+          echo '=== HIDALGO YITH ASSOCIATIONS ==='
+          $WP db query "SELECT a.rule_id,a.object,a.type,b.name FROM ${prefix}yith_wapo_blocks_assoc a JOIN ${prefix}yith_wapo_blocks b ON b.id=a.rule_id WHERE a.object='5045' OR a.object IN (SELECT CAST(ID AS CHAR) FROM ${prefix}posts WHERE post_parent=5045) ORDER BY a.rule_id,a.object;" 2>/dev/null || true
+          echo '=== TARGET BLOCK SETTINGS ==='
+          $WP db query "SELECT id,name,settings FROM ${prefix}yith_wapo_blocks WHERE id=(SELECT meta_value FROM ${prefix}postmeta WHERE post_id=11235 AND meta_key='_emdo_yith_wapo_block_id' LIMIT 1);" 2>/dev/null
+          echo '=== TARGET ADDON SETTINGS ==='
+          $WP db query "SELECT id,block_id,settings,options FROM ${prefix}yith_wapo_addons WHERE id=(SELECT meta_value FROM ${prefix}postmeta WHERE post_id=11235 AND meta_key='_emdo_yith_wapo_addon_id' LIMIT 1);" 2>/dev/null
+          echo '=== YITH VARIATION-RELATED CODE ==='
+          yithdir="$wp_path/wp-content/plugins/yith-woocommerce-product-add-ons"
+          grep -RIn --include='*.php' -E 'variation_id|variation.*block|block.*variation|get_blocks|get_blocks_by|product_id.*variation' "$yithdir/includes" 2>/dev/null | head -n 220 || true
+          echo '=== YITH FRONT JS VARIATION HANDLERS ==='
+          grep -RIn --include='*.js' -E 'found_variation|reset_data|variation_id|show_variation|hide_variation|woocommerce_variation' "$yithdir" 2>/dev/null | head -n 180 || true
+          REMOTE
