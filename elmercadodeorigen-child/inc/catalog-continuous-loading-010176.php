@@ -1,10 +1,10 @@
 <?php
 /**
- * Carga continua estable del catálogo 0.10.176.
+ * Carga continua estable del catálogo, refinada en 0.10.177.
  *
  * Conserva la paginación HTML para rastreo y navegación sin JavaScript, pero
  * sustituye la experiencia visual de scroll infinito de Woostify por una carga
- * anticipada, con timeout, reintento y fallback manual cuando la red no responde.
+ * anticipada, silenciosa y con fallback manual si la red no responde.
  *
  * @package ElMercadoDeOrigen
  */
@@ -50,10 +50,18 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-continuous-catalog-010176">
-			body.emo-continuous-catalog .emo-catalog-native-pagination {
+		<style id="elmercado-continuous-catalog-010177">
+			body.emo-continuous-catalog .emo-catalog-native-pagination,
+			body.emo-continuous-catalog ul.products ~ #infscr-loading,
+			body.emo-continuous-catalog ul.products ~ .infinite-scroll-status,
+			body.emo-continuous-catalog ul.products ~ .infinite-scroll-request,
+			body.emo-continuous-catalog ul.products ~ .infinite-scroll-loader,
+			body.emo-continuous-catalog ul.products ~ .woostify-infinite-scroll-loading,
+			body.emo-continuous-catalog ul.products ~ .woostify-load-more,
+			body.emo-continuous-catalog ul.products ~ .woocommerce-load-more {
 				display: none !important;
 			}
+
 			body.emo-continuous-catalog .emo-catalog-previous {
 				display: inline-flex;
 				align-items: center;
@@ -68,40 +76,37 @@ add_action(
 				font-weight: 750;
 				text-decoration: none;
 			}
+
+			/* Sentinel de carga: ocupa 1px y permanece invisible en el flujo normal. */
 			body.emo-continuous-catalog .emo-catalog-load-state {
-				display: flex;
+				display: block;
 				width: 100%;
-				min-height: 66px;
+				height: 1px;
+				min-height: 1px;
+				margin: 0;
+				padding: 0;
+				clear: both;
+				overflow: hidden;
+				visibility: hidden;
+			}
+
+			/* Solo mostramos interfaz si la carga automática ha fallado dos veces. */
+			body.emo-continuous-catalog .emo-catalog-load-state.is-failure {
+				display: flex;
+				height: auto;
+				min-height: 58px;
 				align-items: center;
 				justify-content: center;
 				gap: 10px;
-				padding: 16px 0 6px;
-				clear: both;
+				padding: 14px 0 4px;
+				overflow: visible;
+				visibility: visible;
 				color: #496258;
 				font-size: 12px;
 				line-height: 1.4;
 				text-align: center;
 			}
-			body.emo-continuous-catalog .emo-catalog-load-state.is-idle {
-				min-height: 18px;
-				padding: 0;
-			}
-			body.emo-continuous-catalog .emo-catalog-load-state[hidden] {
-				display: none !important;
-			}
-			body.emo-continuous-catalog .emo-catalog-spinner {
-				display: none;
-				width: 18px;
-				height: 18px;
-				flex: 0 0 18px;
-				border: 2px solid rgba(23,63,50,.18);
-				border-top-color: #173f32;
-				border-radius: 50%;
-				animation: emo-catalog-spin-010176 .7s linear infinite;
-			}
-			body.emo-continuous-catalog .emo-catalog-load-state.is-loading .emo-catalog-spinner {
-				display: inline-block;
-			}
+
 			body.emo-continuous-catalog .emo-catalog-load-button {
 				display: inline-flex;
 				min-height: 40px;
@@ -116,18 +121,67 @@ add_action(
 				font-weight: 800;
 				cursor: pointer;
 			}
+
 			body.emo-continuous-catalog .emo-catalog-load-button[hidden] {
 				display: none !important;
 			}
-			@keyframes emo-catalog-spin-010176 {
-				to { transform: rotate(360deg); }
-			}
-			@media (prefers-reduced-motion: reduce) {
-				body.emo-continuous-catalog .emo-catalog-spinner {
-					animation: none;
-				}
-			}
 		</style>
+		<script id="elmercado-continuous-catalog-history-010177">
+		(() => {
+			'use strict';
+
+			const initialUrl = new URL(window.location.href);
+			const pageNumber = (value) => {
+				try {
+					const url = new URL(value, initialUrl.href);
+					const pathMatch = url.pathname.match(/\/page\/(\d+)(?:\/|$)/i);
+					if (pathMatch) return Math.max(1, Number.parseInt(pathMatch[1], 10) || 1);
+					for (const key of ['paged', 'product-page', 'product_page', 'page']) {
+						const parsed = Number.parseInt(url.searchParams.get(key) || '', 10);
+						if (Number.isFinite(parsed) && parsed > 0) return parsed;
+					}
+				} catch (_) {}
+				return 1;
+			};
+
+			const initialPage = pageNumber(initialUrl.href);
+			const basePath = (pathname) => pathname.replace(/\/page\/\d+\/?$/i, '/').replace(/\/+$/, '/');
+			const originalPushState = window.history.pushState.bind(window.history);
+			const originalReplaceState = window.history.replaceState.bind(window.history);
+
+			const isScrollPaginationUrl = (candidate) => {
+				if (!candidate || initialPage !== 1) return false;
+				try {
+					const target = new URL(candidate, initialUrl.href);
+					return target.origin === initialUrl.origin &&
+						basePath(target.pathname) === basePath(initialUrl.pathname) &&
+						pageNumber(target.href) > 1;
+				} catch (_) {
+					return false;
+				}
+			};
+
+			window.history.pushState = function (state, title, url) {
+				if (isScrollPaginationUrl(url)) return;
+				return originalPushState(state, title, url);
+			};
+
+			window.history.replaceState = function (state, title, url) {
+				if (isScrollPaginationUrl(url)) return;
+				return originalReplaceState(state, title, url);
+			};
+
+			window.__emoCatalogHistoryGuard = {
+				initialHref: initialUrl.href,
+				initialPage,
+				restore() {
+					if (initialPage === 1 && pageNumber(window.location.href) > 1) {
+						originalReplaceState(window.history.state, '', initialUrl.href);
+					}
+				}
+			};
+		})();
+		</script>
 		<?php
 	},
 	PHP_INT_MAX
@@ -140,13 +194,14 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-continuous-catalog-loader-010176">
+		<script id="elmercado-continuous-catalog-loader-010177">
 		(() => {
 			'use strict';
 
 			const body = document.body;
 			if (!body.classList.contains('emo-continuous-catalog')) return;
 			body.classList.remove('infinite-scroll-active');
+			window.__emoCatalogHistoryGuard?.restore?.();
 
 			const gridSelector = '#wcfmmp-store ul.products, main ul.products, #primary ul.products, .content-area ul.products, ul.products';
 			const grid = document.querySelector(gridSelector);
@@ -160,7 +215,7 @@ add_action(
 					const url = new URL(value, window.location.href);
 					const pathMatch = url.pathname.match(/\/page\/(\d+)(?:\/|$)/i);
 					if (pathMatch) return Math.max(1, Number.parseInt(pathMatch[1], 10) || 1);
-					for (const key of ['paged', 'product-page', 'product_page']) {
+					for (const key of ['paged', 'product-page', 'product_page', 'page']) {
 						const parsed = Number.parseInt(url.searchParams.get(key) || '', 10);
 						if (Number.isFinite(parsed) && parsed > 0) return parsed;
 					}
@@ -233,10 +288,10 @@ add_action(
 			}
 
 			const state = document.createElement('div');
-			state.className = 'emo-catalog-load-state is-idle';
+			state.className = 'emo-catalog-load-state';
 			state.setAttribute('role', 'status');
 			state.setAttribute('aria-live', 'polite');
-			state.innerHTML = '<span class="emo-catalog-spinner" aria-hidden="true"></span><span class="emo-catalog-load-message"></span><button type="button" class="emo-catalog-load-button" hidden>Cargar más productos</button>';
+			state.innerHTML = '<span class="emo-catalog-load-message"></span><button type="button" class="emo-catalog-load-button" hidden>Cargar más productos</button>';
 			grid.insertAdjacentElement('afterend', state);
 
 			const message = state.querySelector('.emo-catalog-load-message');
@@ -259,22 +314,21 @@ add_action(
 			};
 
 			const setState = (mode, text = '') => {
-				state.hidden = false;
-				state.classList.toggle('is-idle', mode === 'idle');
-				state.classList.toggle('is-loading', mode === 'loading' || mode === 'retrying');
-				message.textContent = text;
-				button.hidden = mode !== 'retrying' && mode !== 'failure';
+				const failure = mode === 'failure';
+				state.classList.toggle('is-failure', failure);
+				message.textContent = failure ? text : '';
+				button.hidden = !failure;
 			};
 
 			const showIdle = () => setState('idle');
-			const showLoading = () => setState('loading', 'Cargando más productos…');
-			const showRetrying = () => setState('retrying', 'La carga está tardando. Reintentando…');
+			const showLoading = () => setState('loading');
+			const showRetrying = () => setState('retrying');
 			const showFailure = () => setState('failure', 'No se han podido cargar automáticamente.');
-			const showFinished = () => setState('finished', 'Has visto todos los productos.');
+			const showFinished = () => setState('finished');
 
 			const fetchPage = async (url) => {
 				const controller = new AbortController();
-				const timeout = window.setTimeout(() => controller.abort(), 9000);
+				const timeout = window.setTimeout(() => controller.abort(), 8000);
 				try {
 					const response = await fetch(url, {
 						credentials: 'same-origin',
@@ -315,17 +369,19 @@ add_action(
 					shown += appended;
 					updateCount();
 					document.body.dispatchEvent(new CustomEvent('emo:catalog-products-appended', { detail: { count: appended, page: highestPage } }));
+					window.__emoCatalogHistoryGuard?.restore?.();
 					loading = false;
 					if (nextUrl) showIdle();
 					else showFinished();
 				} catch (_) {
 					loading = false;
+					window.__emoCatalogHistoryGuard?.restore?.();
 					if (allowAutomaticRetry) {
 						showRetrying();
 						window.clearTimeout(retryTimer);
 						retryTimer = window.setTimeout(() => {
 							if (!loading && nextUrl === requestedUrl) loadNext(false);
-						}, 1000);
+						}, 800);
 						return;
 					}
 					showFailure();
@@ -335,6 +391,7 @@ add_action(
 			button.addEventListener('click', () => {
 				window.clearTimeout(retryTimer);
 				retryTimer = 0;
+				showIdle();
 				loadNext(false);
 			});
 
@@ -344,14 +401,15 @@ add_action(
 			}
 
 			if (!('IntersectionObserver' in window)) {
-				setState('failure', '');
+				showFailure();
 				return;
 			}
 
 			showIdle();
+			const preloadDistance = Math.max(1800, Math.min(3200, Math.round(window.innerHeight * 2.6)));
 			const observer = new IntersectionObserver((entries) => {
 				if (entries.some((entry) => entry.isIntersecting)) loadNext(true);
-			}, { rootMargin: '900px 0px 900px 0px', threshold: 0.01 });
+			}, { rootMargin: `${preloadDistance}px 0px ${preloadDistance}px 0px`, threshold: 0.01 });
 			observer.observe(state);
 		})();
 		</script>
