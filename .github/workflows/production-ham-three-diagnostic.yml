@@ -1,0 +1,53 @@
+name: Diagnose three production ham products
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-ham-three-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET: elmercadodeorigen.com
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      PASS: ${{ secrets.STAGING_PASSWORD }}
+      HINT: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Read production candidates
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh; ssh-keyscan -T 15 -p "$P" -H "$HOST" > ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+          sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$HINT' '$TARGET'" <<'REMOTE'
+          set -eu
+          hint="${1%/}"; target="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1 || true)"; fi
+          list="$(mktemp)"; trap 'rm -f "$list"' EXIT
+          for base in "$(dirname "$hint")" "$HOME" /var/www/vhosts /var/www /home; do [ -d "$base" ] || continue; find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' 2>/dev/null >> "$list" || true; done
+          wp_path=""
+          while IFS= read -r cfg; do [ -n "$cfg" ] || continue; p="$(dirname "$cfg")"; s="$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"; n="$(printf '%s' "$s"|sed -E 's#^https?://##;s#^www\.##;s#/*$##')"; if [ "$n" = "$target" ]; then wp_path="$p"; break; fi; done < "$list"
+          [ -n "$wp_path" ] || exit 2
+          script="$(mktemp --suffix=.php)"; trap 'rm -f "$list" "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          global $wpdb;
+          $out=['siteurl'=>get_option('siteurl')];
+          $out['sku_products']=$wpdb->get_results("SELECT p.ID,p.post_title,p.post_name,p.post_author,p.post_status,pm.meta_value sku FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_sku' WHERE p.post_type='product' AND pm.meta_value IN ('164','102')",ARRAY_A);
+          $out['title_candidates']=$wpdb->get_results("SELECT ID,post_title,post_name,post_author,post_status FROM {$wpdb->posts} WHERE post_type='product' AND (post_title LIKE '%bellota%75%' OR post_title LIKE '%Taco%jam%n reserva%' OR (post_title LIKE '%Paleta%' AND post_title LIKE '%100%' AND post_title LIKE '%Pedroches%')) ORDER BY ID",ARRAY_A);
+          $users=[];foreach(get_users(['fields'=>['ID','user_login','display_name']]) as $u){$h=strtolower(remove_accents($u->user_login.' '.$u->display_name.' '.get_user_meta($u->ID,'nickname',true)));if((int)$u->ID===6||(int)$u->ID===4505||(int)$u->ID===4506||str_contains($h,'puente')||str_contains($h,'catedr')||str_contains($h,'hidalgo')||str_contains($h,'jara'))$users[]=['ID'=>(int)$u->ID,'login'=>$u->user_login,'display'=>$u->display_name,'nickname'=>get_user_meta($u->ID,'nickname',true)];}$out['users']=$users;
+          $st=$wpdb->prefix.'mdo_source_products';$sup=$wpdb->prefix.'mdo_suppliers';if($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$st))===$st){$out['source_rows']=$wpdb->get_results("SELECT sp.id,sp.supplier_id,sp.source_product_id,sp.source_url,sp.wc_product_id,sp.title,sp.status,s.code supplier_code,s.name supplier_name,s.vendor_user_id FROM {$st} sp LEFT JOIN {$sup} s ON s.id=sp.supplier_id WHERE sp.source_product_id IN ('164','102') OR sp.source_url LIKE '%jamon-de-bellota-iberico-75-raza-iberica%' OR sp.source_url LIKE '%taco-de-jamon-reserva%' ORDER BY sp.id",ARRAY_A);}else{$out['source_rows']='table missing';}
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL;
+          PHP
+          "$php" -d memory_limit=1024M "$wp" eval-file "$script" --path="$wp_path" --allow-root
+          REMOTE
