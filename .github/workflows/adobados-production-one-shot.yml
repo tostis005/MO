@@ -1,0 +1,265 @@
+name: Adobados production one-shot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adobados-production-one-shot.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-adobados-production-one-shot
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      PRODUCTION_DOMAIN: elmercadodeorigen.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f mdo-supplier-sync/mdo-supplier-sync.php
+          test -f mdo-supplier-sync/includes/class-mdo-adobados-catalog.php
+          test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/inc/category-specific-filters-010185.php
+          grep -q "Version: 1.0.8" mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q "MDO_Adobados_Catalog" mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q "'adobados'" elmercadodeorigen-child/inc/category-specific-filters-010185.php
+          find mdo-supplier-sync elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+
+      - name: Install deployment tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass curl
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage plugin and child theme
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/emdo-adobados-prod-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/plugin' '$REMOTE_TMP/theme'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' -e "ssh $SSH_OPTIONS" mdo-supplier-sync/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/plugin/"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' --exclude='*.map' -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/"
+
+      - name: Deploy classify and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$PRODUCTION_DOMAIN' '$REMOTE_TMP' '$GITHUB_SHA'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; domain="$2"; incoming="$3"; commit="$4"
+
+          dev_path=""
+          case "$raw" in
+            */wp-content/*) dev_path="${raw%%/wp-content/*}" ;;
+            */wp-content) dev_path="$(dirname "$raw")" ;;
+            *) dev_path="$raw" ;;
+          esac
+          if [ ! -f "$dev_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve staging root.' >&2; exit 1; }
+            dev_path="$(dirname "$cfg")"
+          fi
+          prod_path="$(dirname "$dev_path")/httpdocs"
+          [ -f "$prod_path/wp-config.php" ] || { echo "Production wp-config not found: $prod_path" >&2; exit 1; }
+          [ -d "$prod_path/wp-content/plugins" ] && [ -d "$prod_path/wp-content/themes" ] || exit 1
+
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || { echo 'WP-CLI/PHP unavailable.' >&2; exit 1; }
+
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+          case "$siteurl" in
+            https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;;
+            *) echo "Refusing deployment: unexpected production siteurl=$siteurl" >&2; exit 1 ;;
+          esac
+
+          find "$incoming/plugin" "$incoming/theme" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/tmp/emdo-adobados-prod-lint.log
+
+          target_plugin="$prod_path/wp-content/plugins/mdo-supplier-sync"
+          target_theme="$prod_path/wp-content/themes/elmercadodeorigen-child"
+          backup_plugin="$prod_path/wp-content/plugins/.mdo-supplier-sync.backup-${commit}"
+          backup_theme="$prod_path/wp-content/themes/.elmercadodeorigen-child.backup-${commit}"
+          snapshot="$incoming/pre-adobados-snapshot.json"
+
+          snapshot_code="$(cat <<'PHP'
+          $ad = get_term_by( 'slug', 'adobados', 'product_cat' );
+          $rows = array();
+          $ids = wc_get_products( array( 'limit' => -1, 'return' => 'ids', 'status' => array( 'publish', 'private', 'draft', 'pending' ) ) );
+          foreach ( array_map( 'intval', $ids ) as $id ) {
+              $p = wc_get_product( $id );
+              if ( ! $p instanceof WC_Product || $p->is_type( 'variation' ) ) { continue; }
+              $norm = strtolower( remove_accents( $p->get_name() ) );
+              $named = ( false !== strpos( $norm, 'adobad' ) && preg_match( '/\b(?:costilla(?:s)?|lomo|panceta)\b/u', $norm ) ) || preg_match( '/\bchorizo(?:s)?\b.*\b(?:para\s+)?asar\b/u', $norm );
+              $in_ad = $ad instanceof WP_Term && has_term( (int) $ad->term_id, 'product_cat', $id );
+              if ( ! $named && ! $in_ad ) { continue; }
+              $cats = wp_get_post_terms( $id, 'product_cat', array( 'fields' => 'ids' ) );
+              if ( is_wp_error( $cats ) ) { $cats = array(); }
+              $types = taxonomy_exists( 'pa_tipo-producto' ) ? wp_get_post_terms( $id, 'pa_tipo-producto', array( 'fields' => 'ids' ) ) : array();
+              if ( is_wp_error( $types ) ) { $types = array(); }
+              $rows[] = array( 'id' => $id, 'categories' => array_map( 'intval', $cats ), 'type_terms' => array_map( 'intval', $types ), 'product_attributes' => get_post_meta( $id, '_product_attributes', true ) );
+          }
+          echo wp_json_encode( $rows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+          PHP
+          )"
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$snapshot_code" --path="$prod_path" --allow-root > "$snapshot"
+          test -s "$snapshot"
+
+          swapped=0
+          restore_catalog() {
+            [ -s "$snapshot" ] || return 0
+            restore_code="$(cat <<'PHP'
+          $file = getenv( 'EMDO_SNAPSHOT_FILE' );
+          $rows = json_decode( (string) file_get_contents( $file ), true );
+          if ( ! is_array( $rows ) ) { exit( 1 ); }
+          foreach ( $rows as $row ) {
+              $id = (int) ( $row['id'] ?? 0 );
+              if ( $id <= 0 ) { continue; }
+              wp_set_object_terms( $id, array_map( 'intval', (array) ( $row['categories'] ?? array() ) ), 'product_cat', false );
+              if ( taxonomy_exists( 'pa_tipo-producto' ) ) {
+                  wp_set_object_terms( $id, array_map( 'intval', (array) ( $row['type_terms'] ?? array() ) ), 'pa_tipo-producto', false );
+              }
+              update_post_meta( $id, '_product_attributes', $row['product_attributes'] ?? array() );
+              clean_post_cache( $id );
+          }
+          PHP
+            )"
+            EMDO_SNAPSHOT_FILE="$snapshot" "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$restore_code" --path="$prod_path" --allow-root >/dev/null 2>&1 || true
+          }
+          rollback() {
+            code=$?
+            if [ "$swapped" -eq 1 ] && [ "$code" -ne 0 ]; then
+              echo 'Production validation failed; restoring plugin, theme and affected catalog relationships.' >&2
+              rm -rf "$target_plugin" "$target_theme"
+              [ ! -d "$backup_plugin" ] || mv "$backup_plugin" "$target_plugin"
+              [ ! -d "$backup_theme" ] || mv "$backup_theme" "$target_theme"
+              restore_catalog
+            fi
+            rm -rf "$incoming"
+            exit "$code"
+          }
+          trap rollback EXIT HUP INT TERM
+
+          rm -rf "$backup_plugin" "$backup_theme"
+          [ ! -d "$target_plugin" ] || mv "$target_plugin" "$backup_plugin"
+          [ ! -d "$target_theme" ] || mv "$target_theme" "$backup_theme"
+          mv "$incoming/plugin" "$target_plugin"
+          mv "$incoming/theme" "$target_theme"
+          swapped=1
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin activate mdo-supplier-sync --path="$prod_path" --allow-root >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active mdo-supplier-sync --path="$prod_path" --allow-root
+          active_theme="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod_path" --skip-plugins --skip-themes --allow-root)"
+          [ "$active_theme" = 'elmercadodeorigen-child' ] || { echo "Unexpected active theme: $active_theme" >&2; exit 1; }
+          grep -q "Version: 1.0.8" "$target_plugin/mdo-supplier-sync.php"
+          grep -q "'adobados'" "$target_theme/inc/category-specific-filters-010185.php"
+
+          qa_code="$(cat <<'PHP'
+          $report = MDO_Adobados_Catalog::migrate_catalog( true );
+          $errors = array();
+          $adobados = get_term_by( 'slug', 'adobados', 'product_cat' );
+          $cured = get_term_by( 'slug', 'embutidos-y-curados', 'product_cat' );
+          if ( ! $adobados instanceof WP_Term ) { $errors[] = 'Falta categoría Adobados'; }
+          if ( ! $cured instanceof WP_Term ) { $errors[] = 'Falta categoría Embutidos y curados'; }
+          if ( ! taxonomy_exists( 'pa_tipo-producto' ) ) { $errors[] = 'Falta taxonomía pa_tipo-producto'; }
+          $ad_rows = array();
+          $ad_ids = wc_get_products( array( 'limit' => -1, 'return' => 'ids', 'category' => array( 'adobados' ), 'status' => array( 'publish', 'private', 'draft', 'pending' ) ) );
+          foreach ( array_map( 'intval', $ad_ids ) as $id ) {
+              $p = wc_get_product( $id );
+              if ( ! $p instanceof WC_Product ) { continue; }
+              $name = $p->get_name();
+              $norm = strtolower( remove_accents( $name ) );
+              $expected = '';
+              if ( preg_match( '/\bcostilla(?:s)?\b/u', $norm ) ) { $expected = 'Costilla'; }
+              elseif ( preg_match( '/\blomo\b/u', $norm ) ) { $expected = 'Lomo'; }
+              elseif ( preg_match( '/\bpanceta\b/u', $norm ) ) { $expected = 'Panceta'; }
+              if ( '' === $expected || false === strpos( $norm, 'adobad' ) ) { $errors[] = 'Producto ajeno en Adobados: ' . $name; }
+              if ( preg_match( '/\bchorizo(?:s)?\b/u', $norm ) ) { $errors[] = 'Chorizo dentro de Adobados: ' . $name; }
+              $terms = wp_get_post_terms( $id, 'pa_tipo-producto', array( 'fields' => 'names' ) );
+              if ( is_wp_error( $terms ) ) { $terms = array(); }
+              if ( '' !== $expected && ! in_array( $expected, $terms, true ) ) { $errors[] = 'Tipo incorrecto en ' . $name . ': ' . implode( ',', $terms ); }
+              if ( $cured instanceof WP_Term && has_term( (int) $cured->term_id, 'product_cat', $id ) ) { $errors[] = 'Adobado también en Embutidos y curados: ' . $name; }
+              $ad_rows[] = array( 'id' => $id, 'name' => $name, 'tipo' => $terms );
+          }
+          if ( 3 !== count( $ad_rows ) ) { $errors[] = 'Adobados debe contener 3 productos y contiene ' . count( $ad_rows ); }
+          $chorizos = array();
+          $all_ids = wc_get_products( array( 'limit' => -1, 'return' => 'ids', 'status' => array( 'publish', 'private', 'draft', 'pending' ) ) );
+          foreach ( array_map( 'intval', $all_ids ) as $id ) {
+              $p = wc_get_product( $id );
+              if ( ! $p instanceof WC_Product || $p->is_type( 'variation' ) ) { continue; }
+              $name = $p->get_name();
+              $norm = strtolower( remove_accents( $name ) );
+              if ( ! preg_match( '/\bchorizo(?:s)?\b.*\b(?:para\s+)?asar\b/u', $norm ) ) { continue; }
+              $in_ad = $adobados instanceof WP_Term && has_term( (int) $adobados->term_id, 'product_cat', $id );
+              $in_cured = $cured instanceof WP_Term && has_term( (int) $cured->term_id, 'product_cat', $id );
+              if ( $in_ad ) { $errors[] = 'Chorizo para asar sigue en Adobados: ' . $name; }
+              if ( ! $in_cured ) { $errors[] = 'Chorizo para asar no está en Embutidos y curados: ' . $name; }
+              $chorizos[] = array( 'id' => $id, 'name' => $name, 'adobados' => $in_ad, 'embutidos_y_curados' => $in_cured );
+          }
+          if ( 0 === count( $chorizos ) ) { $errors[] = 'No se encontró ningún chorizo para asar'; }
+          if ( ! empty( $report['errors'] ) ) { $errors[] = 'La migración devolvió errores'; }
+          $out = array( 'report' => $report, 'adobados' => $ad_rows, 'chorizo_para_asar' => $chorizos, 'errors' => $errors );
+          echo wp_json_encode( $out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+          if ( $errors ) { exit( 1 ); }
+          PHP
+          )"
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$qa_code" --path="$prod_path" --allow-root
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod_path" --allow-root >/dev/null 2>&1 || true
+          home_status="$(curl -ksS -L -o /tmp/emdo-adobados-prod-home -w '%{http_code}' --max-time 30 "https://$domain/?deployment=$commit" || true)"
+          shop_status="$(curl -ksS -L -o /tmp/emdo-adobados-prod-shop -w '%{http_code}' --max-time 30 "https://$domain/tienda/?deployment=$commit" || true)"
+          case "$home_status" in 2*|3*) ;; *) echo "Production home HTTP $home_status" >&2; exit 1 ;; esac
+          case "$shop_status" in 2*|3*) ;; *) echo "Production shop HTTP $shop_status" >&2; exit 1 ;; esac
+
+          ad_url="$("$php_bin" -d memory_limit=512M "$wp_bin" eval '$t=get_term_by("slug","adobados","product_cat"); if($t instanceof WP_Term){$u=get_term_link($t); if(!is_wp_error($u)){echo $u;}}' --path="$prod_path" --allow-root 2>/dev/null | tail -n1)"
+          [ -n "$ad_url" ] || { echo 'Cannot resolve production Adobados URL.' >&2; exit 1; }
+          sep='?'; case "$ad_url" in *\?*) sep='&' ;; esac
+          ad_status="$(curl -ksS -L -o /tmp/emdo-adobados-prod-category -w '%{http_code}' --max-time 30 "${ad_url}${sep}deployment=${commit}" || true)"
+          case "$ad_status" in 2*|3*) ;; *) echo "Production Adobados HTTP $ad_status" >&2; exit 1 ;; esac
+          grep -q 'Tipo de producto' /tmp/emdo-adobados-prod-category || { echo 'Adobados page does not expose Tipo de producto.' >&2; exit 1; }
+
+          echo "PRODUCTION_PATH=$prod_path"
+          echo "SITEURL=$siteurl"
+          echo "HTTP_HOME=$home_status HTTP_SHOP=$shop_status HTTP_ADOBADOS=$ad_status"
+          echo "DEPLOYED_COMMIT=$commit"
+          echo 'ADOBADOS_PRODUCTION_QA=passed'
+
+          swapped=0
+          rm -rf "$backup_plugin" "$backup_theme" "$incoming"
+          trap - EXIT HUP INT TERM
+          REMOTE
