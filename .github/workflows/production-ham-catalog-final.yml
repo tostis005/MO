@@ -1,0 +1,160 @@
+name: Final Jamones y Paletas migration to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-ham-catalog-final.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-ham-final
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PROD_DOMAIN: elmercadodeorigen.com
+      SSH_HOST: ${{ secrets.STAGING_HOST }}
+      SSH_PORT: ${{ secrets.STAGING_PORT }}
+      SSH_USER: ${{ secrets.STAGING_USER }}
+      SSH_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SEARCH_HINT: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build validated Dev map
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/ham-map.b64 <<'MAP'
+          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
+          MAP
+          python - <<'PY'
+          import base64,zlib,json
+          raw=open('/tmp/ham-map.b64').read().strip(); data=zlib.decompress(base64.b64decode(raw)); obj=json.loads(data)
+          assert obj['n']==145 and len(obj['i'])==145
+          open('/tmp/ham-map.json','wb').write(data)
+          print('Validated Dev products:',len(obj['i']),'with source URLs:',sum(bool(x.get('surl')) for x in obj['i']))
+          PY
+
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?Missing STAGING_HOST}"; : "${SSH_USER:?Missing STAGING_USER}"; : "${SSH_PASSWORD:?Missing STAGING_PASSWORD}"; : "${SEARCH_HINT:?Missing STAGING_REMOTE_PATH}"
+          PORT="${SSH_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts; test -s ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
+
+      - name: Resolve production WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$SEARCH_HINT' '$PROD_DOMAIN'" <<'REMOTE'
+          set -eu
+          hint="${1%/}"; target="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"; fi; [ -x "$php" ]
+          candidates="$(mktemp)"; matches="$(mktemp)"; trap 'rm -f "$candidates" "$matches"' EXIT
+          for base in "$(dirname "$hint")" "$HOME" /var/www/vhosts /var/www /home /srv /opt /data /web /www; do [ -d "$base" ] || continue; find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null >> "$candidates" || true; done
+          sort -u "$candidates" -o "$candidates"
+          while IFS= read -r cfg; do [ -n "$cfg" ] || continue; p="$(dirname "$cfg")"; s="$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"; h="$("$php" -d memory_limit=256M "$wp" option get home --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"; ns="$(printf '%s' "$s"|sed -E 's#^https?://##;s#^www\.##;s#/*$##')"; nh="$(printf '%s' "$h"|sed -E 's#^https?://##;s#^www\.##;s#/*$##')"; if [ "$ns" = "$target" ] || [ "$nh" = "$target" ]; then echo "$p" >> "$matches"; fi; done < "$candidates"
+          count="$(sort -u "$matches"|sed '/^$/d'|wc -l|tr -d ' ')"; [ "$count" = 1 ] || { echo "Expected one production WP, got $count" >&2; exit 2; }; p="$(sort -u "$matches"|head -n1)"; echo "__WP_PATH__=$p"; echo "__SITEURL__=$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root)"
+          REMOTE
+          )"
+          printf '%s\n' "$OUTPUT"; WP_PATH="$(printf '%s\n' "$OUTPUT"|sed -n 's/^__WP_PATH__=//p'|tail -n1)"; : "${WP_PATH:?No production WordPress}"; echo "PROD_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload verification map
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"; REMOTE_MAP="/tmp/elmercado-ham-final-${GITHUB_SHA}.json"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" /tmp/ham-map.json "$SSH_USER@$SSH_HOST:$REMOTE_MAP"; echo "REMOTE_HAM_MAP=$REMOTE_MAP" >> "$GITHUB_ENV"
+
+      - name: Preflight 145 products and EMDO 1.0.4
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PROD_WP_PATH' '$REMOTE_HAM_MAP'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; map="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1 || true)"; fi
+          script="$(mktemp --suffix=.php)"; trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          function emo_norm($v){$v=html_entity_decode((string)$v,ENT_QUOTES|ENT_HTML5,'UTF-8');$v=remove_accents(wp_strip_all_tags($v));return preg_replace('/[^a-z0-9]+/','',strtolower($v))?:'';}
+          function emo_vendor($row){$want=emo_norm($row['vn']??'');$pref=(int)($row['v']??0);if($pref&&($u=get_user_by('id',$pref))&&str_contains(emo_norm($u->user_login.' '.$u->display_name.' '.get_user_meta($u->ID,'nickname',true)),$want))return $pref;foreach(get_users(['fields'=>['ID','user_login','display_name']]) as $u){if($want&&str_contains(emo_norm($u->user_login.' '.$u->display_name.' '.get_user_meta($u->ID,'nickname',true)),$want))return(int)$u->ID;}return 0;}
+          function emo_resolve($row){global $wpdb;$st=$wpdb->prefix.'mdo_source_products';if(!empty($row['surl'])&&$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$st))===$st){$id=(int)$wpdb->get_var($wpdb->prepare("SELECT wc_product_id FROM {$st} WHERE source_url=%s AND wc_product_id>0 ORDER BY last_seen_at DESC LIMIT 1",(string)$row['surl']));if($id&&get_post_type($id)==='product'&&get_post_status($id)!=='trash')return$id;}$vendor=emo_vendor($row);if(!$vendor)return 0;if(!empty($row['sku'])){$ids=$wpdb->get_col($wpdb->prepare("SELECT p.ID FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_sku' WHERE p.post_type='product' AND p.post_status<>'trash' AND p.post_author=%d AND pm.meta_value=%s",$vendor,(string)$row['sku']));if(count($ids)===1)return(int)$ids[0];}$want=emo_norm($row['name']??'');$found=[];foreach(get_posts(['post_type'=>'product','post_status'=>['publish','private','draft','pending','future'],'posts_per_page'=>-1,'fields'=>'ids','author'=>$vendor]) as $id){if(emo_norm(get_the_title($id))===$want)$found[]=(int)$id;}return count($found)===1?$found[0]:0;}
+          $map=json_decode(file_get_contents($args[0]),true);$resolved=[];$missing=[];$dupes=[];foreach(($map['i']??[]) as $row){$id=emo_resolve($row);if(!$id){$missing[]=$row['slug'];continue;}if(isset($resolved[$id]))$dupes[]=$id;else$resolved[$id]=$row['slug'];}
+          $file=WP_PLUGIN_DIR.'/mdo-supplier-sync/mdo-supplier-sync.php';$version=is_file($file)?(get_file_data($file,['Version'=>'Version'])['Version']??''):'';$active=in_array('mdo-supplier-sync/mdo-supplier-sync.php',(array)get_option('active_plugins',[]),true);
+          echo wp_json_encode(['siteurl'=>get_option('siteurl'),'resolved'=>count($resolved),'missing'=>$missing,'duplicates'=>$dupes,'emdo_active'=>$active,'emdo_version'=>$version],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL;
+          if(count($resolved)!==145||$missing||$dupes||!$active||$version!=='1.0.4')exit(3);
+          PHP
+          "$php" -d memory_limit=1024M "$wp" eval-file "$script" "$map" --path="$wp_path" --allow-root
+          REMOTE
+
+      - name: Run exact Dev classification pipeline
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PROD_WP_PATH'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1 || true)"; fi
+          run(){ label="$1"; code="$2"; out="$("$php" -d memory_limit=1024M "$wp" eval "$code" --path="$wp_path" --allow-root)"; printf '%s: %s\n' "$label" "$out"; }
+          run TAXONOMY 'echo wp_json_encode(MDO_Ham_Taxonomy::migrate_catalog(true),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);'
+          run AUDIT 'echo wp_json_encode(MDO_Ham_Catalog_Audit::apply_catalog(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);'
+          run RESCUE 'echo wp_json_encode(MDO_Ham_Catalog_Rescue::apply_catalog(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);'
+          run FINAL 'echo wp_json_encode(MDO_Ham_Catalog_Final::apply_catalog(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);'
+          run PRECISION 'echo wp_json_encode(MDO_Ham_Catalog_Precision::apply_catalog(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);'
+          run TAGS '$ids=wc_get_products(["limit"=>-1,"return"=>"ids","status"=>["publish","private","draft","pending"]]);$n=0;foreach(array_map("intval",$ids) as $id){$p=wc_get_product($id);if($p instanceof WC_Product&&!$p->is_type("variation")&&get_post_meta($id,"_emdo_ham_precision_version",true)){MDO_Ham_Catalog_Tag_Closure::sync_saved_product($p);$n++;}}echo wp_json_encode(["status"=>"completed","synced"=>$n]);'
+          "$php" -d memory_limit=512M "$wp" cache flush --path="$wp_path" --allow-root || true
+          REMOTE
+
+      - name: Verify 145 products exactly against Dev
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PROD_WP_PATH' '$REMOTE_HAM_MAP'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; map="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1 || true)"; fi
+          script="$(mktemp --suffix=.php)"; trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          function emo_norm($v){$v=html_entity_decode((string)$v,ENT_QUOTES|ENT_HTML5,'UTF-8');$v=remove_accents(wp_strip_all_tags($v));return preg_replace('/[^a-z0-9]+/','',strtolower($v))?:'';}function emo_vendor($row){$want=emo_norm($row['vn']??'');$pref=(int)($row['v']??0);if($pref&&($u=get_user_by('id',$pref))&&str_contains(emo_norm($u->user_login.' '.$u->display_name.' '.get_user_meta($u->ID,'nickname',true)),$want))return$pref;foreach(get_users(['fields'=>['ID','user_login','display_name']]) as $u){if($want&&str_contains(emo_norm($u->user_login.' '.$u->display_name.' '.get_user_meta($u->ID,'nickname',true)),$want))return(int)$u->ID;}return 0;}function emo_resolve($row){global$wpdb;$st=$wpdb->prefix.'mdo_source_products';if(!empty($row['surl'])&&$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$st))===$st){$id=(int)$wpdb->get_var($wpdb->prepare("SELECT wc_product_id FROM {$st} WHERE source_url=%s AND wc_product_id>0 ORDER BY last_seen_at DESC LIMIT 1",(string)$row['surl']));if($id&&get_post_type($id)==='product'&&get_post_status($id)!=='trash')return$id;}$vendor=emo_vendor($row);if(!$vendor)return 0;if(!empty($row['sku'])){$ids=$wpdb->get_col($wpdb->prepare("SELECT p.ID FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_sku' WHERE p.post_type='product' AND p.post_status<>'trash' AND p.post_author=%d AND pm.meta_value=%s",$vendor,(string)$row['sku']));if(count($ids)===1)return(int)$ids[0];}$want=emo_norm($row['name']??'');$found=[];foreach(get_posts(['post_type'=>'product','post_status'=>['publish','private','draft','pending','future'],'posts_per_page'=>-1,'fields'=>'ids','author'=>$vendor]) as$id){if(emo_norm(get_the_title($id))===$want)$found[]=(int)$id;}return count($found)===1?$found[0]:0;}
+          $map=json_decode(file_get_contents($args[0]),true);$cat=get_term_by('slug','jamones-paletas','product_cat');$default=(int)get_option('default_product_cat',0);$errors=[];$checked=0;$coverage=[];$quality=[];$race=[];$feed=[];
+          foreach(($map['i']??[]) as$row){$id=emo_resolve($row);if(!$id){$errors[]=['slug'=>$row['slug'],'error'=>'not_found'];continue;}if(!$cat||!has_term((int)$cat->term_id,'product_cat',$id))$errors[]=['id'=>$id,'error'=>'category'];if($default&&has_term($default,'product_cat',$id))$errors[]=['id'=>$id,'error'=>'uncategorized'];foreach((array)$row['a'] as$tax=>$expected){$actual=wp_get_post_terms($id,$tax,['fields'=>'names']);if(is_wp_error($actual)){$errors[]=['id'=>$id,'error'=>$tax];continue;}$coverage[$tax]=($coverage[$tax]??0)+(empty($actual)?0:1);sort($actual,SORT_NATURAL|SORT_FLAG_CASE);$expected=array_values(array_map('strval',(array)$expected));sort($expected,SORT_NATURAL|SORT_FLAG_CASE);if($actual!==$expected)$errors[]=['id'=>$id,'error'=>$tax,'expected'=>$expected,'actual'=>$actual];if($tax==='pa_calidad')foreach($actual as$x)$quality[$x]=($quality[$x]??0)+1;if($tax==='pa_raza-iberica')foreach($actual as$x)$race[$x]=($race[$x]??0)+1;if($tax==='pa_alimentacion')foreach($actual as$x)$feed[$x]=($feed[$x]??0)+1;}$at=wp_get_post_terms($id,'product_tag',['fields'=>'names']);$et=array_values(array_map('strval',(array)$row['t']));sort($at,SORT_NATURAL|SORT_FLAG_CASE);sort($et,SORT_NATURAL|SORT_FLAG_CASE);if($at!==$et)$errors[]=['id'=>$id,'error'=>'product_tag','expected'=>$et,'actual'=>$at];$checked++;}
+          ksort($coverage);ksort($quality);ksort($race);ksort($feed);echo wp_json_encode(['status'=>$errors?'failed':'completed','siteurl'=>get_option('siteurl'),'checked'=>$checked,'errors_count'=>count($errors),'coverage'=>$coverage,'quality'=>$quality,'race'=>$race,'feeding'=>$feed,'errors'=>array_slice($errors,0,30)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL;if($checked!==145||$errors)exit(5);
+          PHP
+          "$php" -d memory_limit=1024M "$wp" eval-file "$script" "$map" --path="$wp_path" --allow-root
+          REMOTE
+
+      - name: Remove temporary map
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          if [ -n "${REMOTE_HAM_MAP:-}" ]; then PORT="${SSH_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"; sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "rm -f -- '$REMOTE_HAM_MAP'"; fi
