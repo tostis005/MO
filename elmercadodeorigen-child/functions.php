@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.199' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.200' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -149,6 +149,7 @@ $elmercado_modules = array(
 	'inc/catalog-filter-final-010197.php',
 	'inc/catalog-filter-layout-lock-010198.php',
 	'inc/catalog-filter-visual-refinement-010199.php',
+	'inc/catalog-filter-visual-lock-010200.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
