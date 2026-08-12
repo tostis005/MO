@@ -240,15 +240,32 @@ add_action(
 				font-weight:750 !important;
 			}
 
-			/* En la tienda sólo quedan los tres filtros base solicitados. */
-			body.elmercado-child-theme.woocommerce-shop :is(#secondary.widget-area,.shop-widget-area) :is(
-				.widget_product_tag_cloud,
-				.widget_tag_cloud,
-				.wp-block-tag-cloud,
-				.widget_layered_nav:not(#emo-global-vendor-filter)
+			/* En la tienda sólo quedan los tres filtros base solicitados, sin parpadeo inicial. */
+			body.elmercado-child-theme.woocommerce-shop :is(#secondary.widget-area,.shop-widget-area) > :is(
+				.widget,
+				.widget_block,
+				[class*="wp-block-woocommerce-"]
 			) {
 				display:none !important;
 				visibility:hidden !important;
+			}
+			body.elmercado-child-theme.woocommerce-shop :is(#secondary.widget-area,.shop-widget-area) > :is(
+				.widget_price_filter,
+				.widget_product_categories,
+				#emo-global-vendor-filter,
+				.wc-block-price-filter,
+				.wp-block-woocommerce-price-filter,
+				.wc-block-product-categories,
+				.wp-block-woocommerce-product-categories
+			),
+			body.elmercado-child-theme.woocommerce-shop :is(#secondary.widget-area,.shop-widget-area) > .widget_block:has(:is(
+				.wc-block-price-filter,
+				.wp-block-woocommerce-price-filter,
+				.wc-block-product-categories,
+				.wp-block-woocommerce-product-categories
+			)) {
+				display:block !important;
+				visibility:visible !important;
 			}
 		</style>
 		<?php
@@ -300,7 +317,7 @@ add_action(
 				const specific = document.getElementById('emo-category-attribute-filters');
 
 				const desired = (isCategory
-					? [price, vendor, context, specific]
+					? [price, vendor, specific]
 					: [price, categories, vendor]
 				).filter(Boolean);
 
