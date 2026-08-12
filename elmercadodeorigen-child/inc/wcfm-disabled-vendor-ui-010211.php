@@ -9,6 +9,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+$elmercado_wcfm_publish_policy_010216 = __DIR__ . '/wcfm-disabled-vendor-publish-policy-010216.php';
+if ( is_readable( $elmercado_wcfm_publish_policy_010216 ) ) {
+	require_once $elmercado_wcfm_publish_policy_010216;
+}
+unset( $elmercado_wcfm_publish_policy_010216 );
+
 /**
  * Devuelve los vendedores WCFM bloqueados que deben desaparecer del filtro.
  *
