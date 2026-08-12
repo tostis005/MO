@@ -74,7 +74,7 @@ jobs:
             $rows[]=array("id"=>(int)$term->term_id,"name"=>$term->name,"url"=>$link,"raw"=>(int)$term->count,"public"=>(int)$public);
           }
           echo "__COUNTS__=".base64_encode(wp_json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))."\n";
-          ' --path="$wp_path" --allow-root --skip-plugins
+          ' --path="$wp_path" --allow-root
           REMOTE
           )"
           printf '%s\n' "$OUT"
