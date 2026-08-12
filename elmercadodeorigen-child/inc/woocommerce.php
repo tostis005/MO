@@ -75,34 +75,6 @@ add_filter( 'wcfm_is_pref_enquiry_button', '__return_false', PHP_INT_MAX );
 add_filter( 'wcfm_is_allow_product_enquiry_bubtton', '__return_false', PHP_INT_MAX );
 
 /**
- * Retira también el callback de WCFM de la ficha de producto.
- *
- * WCFM ha usado las prioridades 15, 25 y 35 para `wcfm_enquiry_button` según
- * versión/configuración. Los filtros anteriores son la primera barrera; esta
- * retirada del hook garantiza que el botón no llegue al DOM aunque otro módulo
- * reactive la preferencia después.
- */
-add_action(
-	'init',
-	static function (): void {
-		global $WCFM;
-
-		if ( ! isset( $WCFM->wcfm_enquiry ) || ! is_object( $WCFM->wcfm_enquiry ) ) {
-			return;
-		}
-
-		foreach ( array( 15, 25, 35 ) as $priority ) {
-			remove_action(
-				'woocommerce_single_product_summary',
-				array( $WCFM->wcfm_enquiry, 'wcfm_enquiry_button' ),
-				$priority
-			);
-		}
-	},
-	PHP_INT_MAX
-);
-
-/**
  * Seis productos relacionados en una rejilla responsiva compacta.
  *
  * El número de columnas visuales se resuelve en CSS para poder pasar de
