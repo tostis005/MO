@@ -33,10 +33,12 @@ jobs:
           test -f mdo-supplier-sync/mdo-supplier-sync.php
           test -f mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           grep -q "Version: 1.0.9" mdo-supplier-sync/mdo-supplier-sync.php
-          grep -q "private const VERSION        = '1.0.3'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "private const VERSION        = '1.0.5'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           grep -q "html_entity_decode" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
-          grep -q "CATEGORY_SLUG  = 'accesorios'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
-          grep -q "ATTRIBUTE_SLUG = 'tipo-producto'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "wp_remove_object_terms" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "has_managed_terms" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "CATEGORY_SLUG   = 'accesorios'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "ATTRIBUTE_SLUG  = 'tipo-producto'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
 
@@ -130,7 +132,7 @@ jobs:
             fi
 
             verify="$(cat <<PHP
-          if ('1.0.3' !== (string) get_option('mdo_accessories_catalog_version','')) { fwrite(STDERR,"Wrong migration version\\n"); exit(71); }
+          if ('1.0.5' !== (string) get_option('mdo_accessories_catalog_version','')) { fwrite(STDERR,"Wrong migration version\\n"); exit(71); }
           \$term=get_term_by('slug','accesorios','product_cat');
           if (!\$term instanceof WP_Term) { fwrite(STDERR,"Accesorios missing\\n"); exit(72); }
           \$ids=get_objects_in_term((int)\$term->term_id,'product_cat');
