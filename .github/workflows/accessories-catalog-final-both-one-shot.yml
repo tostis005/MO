@@ -1,0 +1,173 @@
+name: Accessories catalog final both one-shot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/accessories-catalog-final-both-one-shot.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-accessories-final-both
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate final accessories release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f mdo-supplier-sync/mdo-supplier-sync.php
+          test -f mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "Version: 1.0.9" mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q "private const VERSION        = '1.0.3'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "html_entity_decode" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "CATEGORY_SLUG  = 'accesorios'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "ATTRIBUTE_SLUG = 'tipo-producto'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+
+      - name: Install deployment tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage final plugin
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/elmercado-accessories-final-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/plugin'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' -e "ssh $SSH_OPTIONS" mdo-supplier-sync/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/plugin/"
+
+      - name: Deploy and verify both environments
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP' '$GITHUB_SHA'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"
+
+          dev_path=""
+          case "$raw" in
+            */wp-content/*) dev_path="${raw%%/wp-content/*}" ;;
+            */wp-content) dev_path="$(dirname "$raw")" ;;
+            *) dev_path="$raw" ;;
+          esac
+          if [ ! -f "$dev_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root.' >&2; exit 1; }
+            dev_path="$(dirname "$cfg")"
+          fi
+          prod_path="$(dirname "$dev_path")/httpdocs"
+          [ -f "$dev_path/wp-config.php" ] && [ -f "$prod_path/wp-config.php" ]
+
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ] || { echo 'WP-CLI/PHP unavailable.' >&2; exit 1; }
+
+          deploy_one() {
+            env_name="$1"; wp_path="$2"; jamonero_id="$3"; cuchillo_id="$4"
+            target="$wp_path/wp-content/plugins/mdo-supplier-sync"
+            backup="$wp_path/wp-content/plugins/.mdo-supplier-sync.accessories-final-${commit}"
+            incoming_plugin="$incoming/plugin"
+            [ -d "$target" ] || { echo "$env_name: EMDO plugin missing" >&2; return 61; }
+            rm -rf "$backup"
+            cp -a "$target" "$backup"
+
+            if ! rsync -a --delete "$incoming_plugin/" "$target/"; then
+              rm -rf "$target"; mv "$backup" "$target"; return 62
+            fi
+            if ! "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active mdo-supplier-sync --path="$wp_path" --allow-root >/dev/null; then
+              rm -rf "$target"; mv "$backup" "$target"; return 63
+            fi
+            "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$wp_path" --skip-plugins --allow-root >/dev/null 2>&1 || true
+
+            report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Accessories_Catalog::migrate_catalog( true ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)" || {
+              rm -rf "$target"; mv "$backup" "$target"; return 64
+            }
+            printf '%s report: %s\n' "$env_name" "$report"
+            accessories="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true); echo (int)($d["accessories"]??0);')"
+            jamoneros="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true); echo (int)($d["jamoneros"]??0);')"
+            cuchillos="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true); echo (int)($d["cuchillos"]??0);')"
+            errors="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true); echo count((array)($d["errors"]??array()));')"
+            if [ "$accessories" -ne 2 ] || [ "$jamoneros" -ne 1 ] || [ "$cuchillos" -ne 1 ] || [ "$errors" -ne 0 ]; then
+              echo "$env_name: unexpected counts accessories=$accessories jamoneros=$jamoneros cuchillos=$cuchillos errors=$errors" >&2
+              rm -rf "$target"; mv "$backup" "$target"; return 65
+            fi
+
+            verify="$(cat <<PHP
+          if ('1.0.3' !== (string) get_option('mdo_accessories_catalog_version','')) { fwrite(STDERR,"Wrong migration version\\n"); exit(71); }
+          \$term=get_term_by('slug','accesorios','product_cat');
+          if (!\$term instanceof WP_Term) { fwrite(STDERR,"Accesorios missing\\n"); exit(72); }
+          \$ids=get_objects_in_term((int)\$term->term_id,'product_cat');
+          if (is_wp_error(\$ids)) { fwrite(STDERR,\$ids->get_error_message()."\\n"); exit(73); }
+          \$ids=array_values(array_unique(array_map('intval',\$ids))); sort(\$ids);
+          \$expected=array(${jamonero_id},${cuchillo_id}); sort(\$expected);
+          if (\$ids !== \$expected) { fwrite(STDERR,"Unexpected Accesorios IDs: ".wp_json_encode(\$ids)."\\n"); exit(74); }
+          foreach (array(${jamonero_id}=>'Jamonero',${cuchillo_id}=>'Cuchillo') as \$id=>\$type) {
+            \$types=wp_get_post_terms(\$id,'pa_tipo-producto',array('fields'=>'names'));
+            if (is_wp_error(\$types) || \$types !== array(\$type)) { fwrite(STDERR,"Wrong type for \$id: ".wp_json_encode(\$types)."\\n"); exit(75); }
+          }
+          \$products=wc_get_products(array('limit'=>-1,'return'=>'ids','status'=>array('publish','private','draft','pending')));
+          foreach (\$products as \$id) {
+            \$id=(int)\$id;
+            if (in_array(\$id,array(${jamonero_id},${cuchillo_id}),true)) { continue; }
+            \$p=wc_get_product(\$id);
+            if (!\$p instanceof WC_Product || \$p->is_type('variation')) { continue; }
+            \$name=strtolower(remove_accents(html_entity_decode(wp_strip_all_tags(\$p->get_name()),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+            if (!preg_match('/\\b(cuchillo|cuchillos|jamonero|jamoneros)\\b/u',\$name)) { continue; }
+            \$types=wp_get_post_terms(\$id,'pa_tipo-producto',array('fields'=>'names'));
+            if (has_term('accesorios','product_cat',\$id) || (!is_wp_error(\$types) && array_intersect(array('Jamonero','Cuchillo'),\$types))) {
+              fwrite(STDERR,"False positive accessory \$id: ".\$p->get_name()." ".wp_json_encode(\$types)."\\n"); exit(76);
+            }
+          }
+          echo 'FINAL_ACCESSORIES_DATA_OK';
+          PHP
+            )"
+            if ! "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$verify" --path="$wp_path" --allow-root | grep -q 'FINAL_ACCESSORIES_DATA_OK'; then
+              rm -rf "$target"; mv "$backup" "$target"; return 66
+            fi
+
+            rm -rf "$backup"
+            echo "$env_name=passed"
+          }
+
+          deploy_one DEVELOPMENT "$dev_path" 4067 11403
+          deploy_one PRODUCTION "$prod_path" 4067 12587
+          rm -rf "$incoming"
+          echo 'ACCESSORIES_BOTH_ENVIRONMENTS_QA=passed'
+          REMOTE
