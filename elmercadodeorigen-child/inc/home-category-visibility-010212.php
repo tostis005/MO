@@ -126,7 +126,26 @@ add_filter(
 			$content = (string) preg_replace_callback(
 				$card_pattern,
 				static function ( array $matches ) use ( $label ): string {
-					return (string) preg_replace( '~<small>.*?</small>~s', '<small>' . $label . '</small>', $matches[0], 1 );
+					$card = (string) $matches[0];
+					$card = (string) preg_replace(
+						'~<div class="emo-category-card__content">~',
+						'<div class="emo-category-card__content" style="display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-end!important;gap:0!important;min-width:0!important;">',
+						$card,
+						1
+					);
+					$card = (string) preg_replace(
+						'~<strong>~',
+						'<strong style="display:block!important;width:100%!important;max-width:100%!important;margin:0 0 6px!important;line-height:1.14!important;">',
+						$card,
+						1
+					);
+					$card = (string) preg_replace(
+						'~<small>.*?</small>~s',
+						'<small style="display:block!important;width:100%!important;margin:0!important;line-height:1.2!important;">' . $label . '</small>',
+						$card,
+						1
+					);
+					return $card;
 				},
 				$content,
 				1
@@ -174,7 +193,8 @@ add_action(
 );
 
 /**
- * Acabado final de las tarjetas: nombre arriba y contador debajo.
+ * Fallback de cascada. El layout decisivo tambien se fija inline en el HTML
+ * para que el optimizador de CSS de Home no pueda devolverlo al antiguo grid.
  */
 add_action(
 	'wp_head',
@@ -184,7 +204,7 @@ add_action(
 		}
 		?>
 		<style id="elmercado-home-category-visibility-010212">
-			body.home.elmercado-child-theme .emo-category-card__content {
+			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content {
 				display: flex !important;
 				flex-direction: column !important;
 				align-items: flex-start !important;
@@ -193,7 +213,7 @@ add_action(
 				min-width: 0 !important;
 			}
 
-			body.home.elmercado-child-theme .emo-category-card__content > strong {
+			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content > strong {
 				display: block !important;
 				width: 100% !important;
 				max-width: 100% !important;
@@ -201,17 +221,11 @@ add_action(
 				line-height: 1.14 !important;
 			}
 
-			body.home.elmercado-child-theme .emo-category-card__content > small {
+			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content > small {
 				display: block !important;
 				width: 100% !important;
 				margin: 0 !important;
 				line-height: 1.2 !important;
-			}
-
-			@media (max-width: 767px) {
-				body.home.elmercado-child-theme .emo-category-card__content > strong {
-					margin-bottom: 5px !important;
-				}
 			}
 		</style>
 		<?php
