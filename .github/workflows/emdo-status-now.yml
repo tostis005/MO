@@ -1,4 +1,4 @@
-name: Inspect EMDO Puente classification
+name: Inspect EMDO Puente variable extras
 
 on:
   push:
@@ -39,16 +39,20 @@ jobs:
           $WP eval '
             global $wpdb;
             $sp=MDO_Database::table("source_products");
-            $rows=$wpdb->get_results("SELECT id,title,source_url,wc_product_id,source_payload FROM {$sp} WHERE supplier_id=3 AND LOWER(title) LIKE \"%choriz%\" ORDER BY id ASC LIMIT 8",ARRAY_A);
+            $rows=$wpdb->get_results("SELECT id,title,source_url,wc_product_id,source_payload FROM {$sp} WHERE supplier_id=3 AND wc_product_id IS NOT NULL ORDER BY id ASC",ARRAY_A);
+            $shown=0;
             foreach($rows as $r){
-              $p=json_decode($r["source_payload"],true); if(!is_array($p)) $p=[];
-              $wc=$r["wc_product_id"]?wc_get_product((int)$r["wc_product_id"]):false;
+              $p=json_decode($r["source_payload"],true); if(!is_array($p)) continue;
+              if((int)($p["variation_count"]??0)<2 || empty($p["extra_groups"])) continue;
+              $wc=wc_get_product((int)$r["wc_product_id"]); if(!$wc) continue;
+              $attrs=[]; foreach($wc->get_attributes() as $a){$attrs[]=$a->get_name();}
               echo "PRODUCT=".wp_json_encode([
-                "source_id"=>(int)$r["id"],"title"=>$r["title"],"url"=>$r["source_url"],"wc_id"=>(int)$r["wc_product_id"],
-                "wc_type"=>$wc?$wc->get_type():null,"wc_attrs"=>$wc?array_keys($wc->get_attributes()):[],
-                "option_groups"=>$p["option_groups"]??[],"extra_groups"=>$p["extra_groups"]??[],"variations"=>$p["variations"]??[],"variation_count"=>$p["variation_count"]??null,
-                "yith_block"=>$r["wc_product_id"]?get_post_meta((int)$r["wc_product_id"],"_emdo_yith_wapo_block_id",true):null
+                "source_id"=>(int)$r["id"],"title"=>$r["title"],"wc_id"=>(int)$r["wc_product_id"],"permalink"=>get_permalink((int)$r["wc_product_id"]),
+                "wc_type"=>$wc->get_type(),"wc_attrs"=>$attrs,"variation_count"=>$p["variation_count"],"extra_groups"=>$p["extra_groups"],
+                "children"=>$wc->is_type("variable")?$wc->get_children():[],"yith_block"=>get_post_meta((int)$r["wc_product_id"],"_emdo_yith_wapo_block_id",true),
+                "slug"=>get_post_field("post_name",(int)$r["wc_product_id"])
               ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              $shown++; if($shown>=4) break;
             }
             $runs=MDO_Database::table("sync_runs"); $sup=MDO_Database::table("suppliers");
             $latest=$wpdb->get_results("SELECT r.id,s.name,r.trigger_type,r.status,r.started_at,r.finished_at,r.products_found,r.products_updated,r.errors_count,r.message FROM {$runs} r LEFT JOIN {$sup} s ON s.id=r.supplier_id ORDER BY r.id DESC LIMIT 6",ARRAY_A);
