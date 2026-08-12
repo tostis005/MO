@@ -1,0 +1,76 @@
+name: Deploy EMDO 1.0.6 direct ham closure to production
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-deploy-emdo-106-direct-closure.yml']
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOMAIN: elmercadodeorigen.com
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      PASS: ${{ secrets.STAGING_PASSWORD }}
+      HINT: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate EMDO 1.0.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'Version: 1.0.6' mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q 'MDO_Ham_Catalog_Direct_Closure::init' mdo-supplier-sync/mdo-supplier-sync.php
+          ! grep -q -- '->save()' mdo-supplier-sync/includes/class-mdo-ham-catalog-direct-closure.php
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends rsync sshpass
+      - name: Resolve production deploy and apply direct closure
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh; ssh-keyscan -T 15 -p "$P" -H "$HOST" > ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+          OUT="$(sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$HINT' '$DOMAIN'" <<'REMOTE'
+          set -eu
+          hint="${1%/}"; target="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1||true)"; fi
+          f="$(mktemp)"; trap 'rm -f "$f"' EXIT
+          for b in "$(dirname "$hint")" "$HOME" /var/www/vhosts /var/www /home; do [ -d "$b" ]||continue; find "$b" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null>>"$f"||true; done
+          while IFS= read -r c; do p="$(dirname "$c")"; s="$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true)"; n="$(printf '%s' "$s"|sed -E 's#^https?://##;s#^www\.##;s#/*$##')"; if [ "$n" = "$target" ]; then echo "__WP_PATH__=$p";echo "__SITEURL__=$s";break;fi;done<"$f"
+          REMOTE
+          )"; printf '%s\n' "$OUT"; WP_PATH="$(printf '%s\n' "$OUT"|sed -n 's/^__WP_PATH__=//p'|tail -n1)"; : "${WP_PATH:?production not found}"
+          TARGET="${WP_PATH%/}/wp-content/plugins/mdo-supplier-sync/"; sshpass -e ssh $OPT "$USER@$HOST" "mkdir -p -- '$TARGET'"; sshpass -e rsync -az --delete --exclude='.DS_Store' -e "ssh $OPT" mdo-supplier-sync/ "$USER@$HOST:$TARGET"
+          sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$WP_PATH'" <<'REMOTE'
+          set -eu
+          path="$1"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1||true)"; fi
+          version="$("$php" -d memory_limit=512M "$wp" plugin get mdo-supplier-sync --field=version --path="$path" --allow-root)"; [ "$version" = '1.0.6' ] || { echo "Expected 1.0.6, got $version" >&2; exit 3; }
+          "$php" -d memory_limit=512M "$wp" plugin is-active mdo-supplier-sync --path="$path" --allow-root
+          script="$(mktemp --suffix=.php)"; trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          if ( ! class_exists( 'MDO_Ham_Catalog_Direct_Closure' ) ) {
+              fwrite( STDERR, "Direct closure class missing.\n" );
+              exit( 4 );
+          }
+          $report = MDO_Ham_Catalog_Direct_Closure::apply_catalog();
+          $producer = wp_get_post_terms( 12631, 'pa_productor', array( 'fields' => 'names' ) );
+          $weight = wp_get_post_terms( 12460, 'pa_rango-peso', array( 'fields' => 'names' ) );
+          echo wp_json_encode(
+              array(
+                  'status' => 'completed',
+                  'siteurl' => get_option( 'siteurl' ),
+                  'emdo_version' => MDO_SUPPLIER_SYNC_VERSION,
+                  'report' => $report,
+                  'sample_producer' => is_wp_error( $producer ) ? array() : $producer,
+                  'sample_weight' => is_wp_error( $weight ) ? array() : $weight,
+              ),
+              JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
+          ) . PHP_EOL;
+          PHP
+          "$php" -d memory_limit=1024M "$wp" eval-file "$script" --path="$path" --allow-root
+          "$php" -d memory_limit=512M "$wp" cache flush --path="$path" --allow-root || true
+          REMOTE
