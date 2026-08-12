@@ -1,10 +1,10 @@
 <?php
 /**
- * Filtros de catálogo específicos por categoría 0.10.185.
+ * Filtros funcionales de catálogo específicos por categoría.
  *
- * Cada familia de producto puede declarar su propio conjunto de atributos sin
- * contaminar el resto de archivos de tienda. La primera familia configurada es
- * Jamones y Paletas, cuyos atributos los genera y mantiene EMDO.
+ * Este módulo define perfiles y genera el marcado de atributos. La presentación,
+ * el orden y el montaje pertenecen exclusivamente al sistema consolidado de
+ * catálogo; aquí no hay CSS ni controladores JavaScript.
  *
  * @package ElMercadoDeOrigen
  */
@@ -15,9 +15,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Perfiles de filtros por familia.
- *
- * Para añadir otra categoría basta con incorporar otro perfil y ampliar la
- * resolución en elmercado_catalog_filter_profile().
  */
 function elmercado_catalog_filter_profiles(): array {
 	return array(
@@ -44,7 +41,7 @@ function elmercado_catalog_filter_profiles(): array {
  * Devuelve el perfil aplicable a la categoría actual.
  *
  * También considera ancestros, de modo que una futura subcategoría de
- * "Jamones y Paletas" herede automáticamente estos filtros.
+ * Jamones y paletas herede automáticamente estos filtros.
  */
 function elmercado_catalog_filter_profile(): ?array {
 	if ( ! function_exists( 'is_product_category' ) || ! is_product_category() ) {
@@ -81,8 +78,8 @@ function elmercado_catalog_filter_profile(): ?array {
 }
 
 /**
- * URL limpia de la categoría que conserva la navegación actual pero elimina
- * filtros de atributos, precio y paginación.
+ * URL limpia de la categoría: elimina atributos, precio, vendedor y paginación
+ * al volver al estado sin filtros.
  */
 function elmercado_catalog_filter_clear_url(): string {
 	$term = get_queried_object();
@@ -97,7 +94,7 @@ function elmercado_catalog_filter_clear_url(): string {
 }
 
 /**
- * Indica si hay algún filtro del perfil activo en la URL actual.
+ * Indica si existe algún atributo/precio del perfil activo.
  */
 function elmercado_catalog_profile_has_active_filter( array $profile ): bool {
 	if ( ! class_exists( 'WC_Query' ) ) {
@@ -116,9 +113,8 @@ function elmercado_catalog_profile_has_active_filter( array $profile ): bool {
 }
 
 /**
- * Renderiza los widgets nativos de navegación por capas de WooCommerce en un
- * contenedor inicialmente oculto. El controlador del footer lo coloca dentro
- * del sidebar canónico que ya usa la tienda en escritorio y móvil.
+ * Genera únicamente el marcado de los widgets nativos de navegación por capas.
+ * El sistema consolidado los monta una vez en el sidebar y se ocupa del estilo.
  */
 add_action(
 	'woocommerce_before_main_content',
@@ -141,12 +137,6 @@ add_action(
 			data-clear-url="<?php echo esc_url( $clear_url ); ?>"
 			aria-label="<?php echo esc_attr( 'Filtros de ' . $profile['label'] ); ?>"
 		>
-			<div class="emo-category-attribute-filters__head">
-				<strong class="emo-category-attribute-filters__eyebrow"><?php echo esc_html( $profile['label'] ); ?></strong>
-				<?php if ( elmercado_catalog_profile_has_active_filter( $profile ) ) : ?>
-					<a class="emo-category-attribute-filters__clear" href="<?php echo esc_url( $clear_url ); ?>">Limpiar filtros</a>
-				<?php endif; ?>
-			</div>
 			<div class="emo-category-attribute-filters__groups">
 				<?php
 				foreach ( $profile['attributes'] as $attribute_slug => $label ) {
@@ -177,189 +167,4 @@ add_action(
 		<?php
 	},
 	40
-);
-
-add_action(
-	'wp_head',
-	static function (): void {
-		if ( is_admin() || ! elmercado_catalog_filter_profile() ) {
-			return;
-		}
-		?>
-		<style id="elmercado-category-specific-filters-010185">
-			#emo-category-attribute-filters[hidden] { display:none !important; }
-			#emo-category-attribute-filters {
-				margin: 0 0 22px !important;
-				padding: 0 !important;
-				color: #173f32 !important;
-			}
-			#emo-category-attribute-filters .emo-category-attribute-filters__head {
-				display:flex !important;
-				align-items:center !important;
-				justify-content:space-between !important;
-				gap:12px !important;
-				margin:0 0 14px !important;
-				padding:0 0 14px !important;
-				border-bottom:1px solid rgba(23,63,50,.12) !important;
-			}
-			#emo-category-attribute-filters .emo-category-attribute-filters__eyebrow {
-				color:#173f32 !important;
-				font-size:12px !important;
-				font-weight:850 !important;
-				letter-spacing:.09em !important;
-				line-height:1.25 !important;
-				text-transform:uppercase !important;
-			}
-			#emo-category-attribute-filters .emo-category-attribute-filters__clear {
-				color:#496158 !important;
-				font-size:12px !important;
-				font-weight:700 !important;
-				text-decoration:underline !important;
-				text-underline-offset:3px !important;
-			}
-			#emo-category-attribute-filters .emo-category-filter-group {
-				margin:0 !important;
-				padding:15px 0 !important;
-				border:0 !important;
-				border-bottom:1px solid rgba(23,63,50,.1) !important;
-				background:transparent !important;
-				box-shadow:none !important;
-			}
-			#emo-category-attribute-filters .emo-category-filter-group:last-child {
-				border-bottom:0 !important;
-			}
-			#emo-category-attribute-filters .emo-category-filter-title {
-				margin:0 0 10px !important;
-				color:#173f32 !important;
-				font-family:inherit !important;
-				font-size:14px !important;
-				font-weight:800 !important;
-				letter-spacing:0 !important;
-				line-height:1.35 !important;
-				text-transform:none !important;
-			}
-			#emo-category-attribute-filters .woocommerce-widget-layered-nav-list {
-				margin:0 !important;
-				padding:0 !important;
-				list-style:none !important;
-			}
-			#emo-category-attribute-filters .woocommerce-widget-layered-nav-list__item {
-				margin:0 !important;
-				padding:0 !important;
-				list-style:none !important;
-			}
-			#emo-category-attribute-filters .woocommerce-widget-layered-nav-list__item a {
-				position:relative !important;
-				display:inline-flex !important;
-				min-height:34px !important;
-				align-items:center !important;
-				padding:5px 0 5px 26px !important;
-				color:#334c43 !important;
-				font-size:13px !important;
-				font-weight:600 !important;
-				line-height:1.35 !important;
-				text-decoration:none !important;
-			}
-			#emo-category-attribute-filters .woocommerce-widget-layered-nav-list__item a::before {
-				content:"" !important;
-				position:absolute !important;
-				left:0 !important;
-				top:50% !important;
-				width:16px !important;
-				height:16px !important;
-				border:1px solid #9eaaa4 !important;
-				border-radius:4px !important;
-				background:#fff !important;
-				transform:translateY(-50%) !important;
-			}
-			#emo-category-attribute-filters .woocommerce-widget-layered-nav-list__item--chosen a {
-				color:#173f32 !important;
-				font-weight:800 !important;
-			}
-			#emo-category-attribute-filters .woocommerce-widget-layered-nav-list__item--chosen a::before {
-				border-color:#2f7d5d !important;
-				background:#2f7d5d !important;
-				box-shadow:inset 0 0 0 3px #fff !important;
-			}
-			#emo-category-attribute-filters .woocommerce-widget-layered-nav-list .count {
-				margin-left:5px !important;
-				color:#75857e !important;
-				font-size:11px !important;
-				font-weight:600 !important;
-			}
-			#emo-category-attribute-filters .emo-category-filter-productor .woocommerce-widget-layered-nav-list {
-				max-height:260px !important;
-				overflow:auto !important;
-				padding-right:5px !important;
-			}
-			@media (max-width:1100px) {
-				#emo-category-attribute-filters {
-					margin-bottom:18px !important;
-				}
-				#emo-category-attribute-filters .emo-category-filter-group {
-					padding:14px 0 !important;
-				}
-			}
-		</style>
-		<?php
-	},
-	1
-);
-
-add_action(
-	'wp_footer',
-	static function (): void {
-		$profile = elmercado_catalog_filter_profile();
-		if ( is_admin() || ! $profile ) {
-			return;
-		}
-		?>
-		<script id="elmercado-category-specific-filters-controller-010185">
-		(() => {
-			'use strict';
-			const panel = document.getElementById('emo-category-attribute-filters');
-			if (!panel) return;
-
-			const findSidebar = () => document.querySelector(
-				'.emo-mobile-filter-content #secondary.widget-area,' +
-				'.emo-mobile-filter-content .shop-widget-area,' +
-				'.emo-mobile-filter-content .widget-area,' +
-				'#secondary.widget-area,' +
-				'.shop-widget-area,' +
-				'.content-area + .widget-area'
-			);
-
-			const syncClearLinks = () => {
-				const clearUrl = panel.dataset.clearUrl || location.pathname;
-				document.querySelectorAll('.emo-active-filters__clear').forEach((link) => {
-					link.href = clearUrl;
-				});
-			};
-
-			const place = () => {
-				const sidebar = findSidebar();
-				if (sidebar) {
-					if (panel.parentElement !== sidebar) sidebar.prepend(panel);
-					panel.hidden = false;
-					panel.removeAttribute('aria-hidden');
-				} else {
-					const fallback = document.querySelector('.woostify-sorting,#primary,.content-area');
-					if (fallback && panel.parentElement !== fallback.parentElement) fallback.insertAdjacentElement('afterend', panel);
-					panel.hidden = false;
-				}
-				syncClearLinks();
-			};
-
-			place();
-			requestAnimationFrame(place);
-			setTimeout(place, 120);
-			setTimeout(place, 650);
-			setTimeout(syncClearLinks, 900);
-			window.addEventListener('pageshow', place, { passive:true });
-			window.addEventListener('resize', () => requestAnimationFrame(place), { passive:true });
-		})();
-		</script>
-		<?php
-	},
-	PHP_INT_MAX
 );
