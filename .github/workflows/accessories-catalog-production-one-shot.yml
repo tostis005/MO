@@ -33,7 +33,7 @@ jobs:
           test -f mdo-supplier-sync/mdo-supplier-sync.php
           test -f mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           grep -q "Version: 1.0.9" mdo-supplier-sync/mdo-supplier-sync.php
-          grep -q "private const VERSION        = '1.0.1'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "private const VERSION        = '1.0.2'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           grep -q "CATEGORY_SLUG  = 'accesorios'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           grep -q "ATTRIBUTE_SLUG = 'tipo-producto'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
