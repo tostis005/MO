@@ -1,0 +1,36 @@
+name: Request 010207 price and tags smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/catalog-filter-system-final-010207.php'
+      - '.github/scripts/request-010207-price-tags-smoke.cjs'
+      - '.github/workflows/request-010207-price-tags-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Validate smoke syntax
+        run: node --check .github/scripts/request-010207-price-tags-smoke.cjs
+      - name: Review price filter and tag removal on staging
+        run: node .github/scripts/request-010207-price-tags-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: request-010207-price-tags-smoke
+          path: qa/
+          retention-days: 14
+          if-no-files-found: warn
