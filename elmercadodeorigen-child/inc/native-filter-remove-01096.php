@@ -77,3 +77,5 @@ add_action(
 	},
 	0
 );
+
+require_once ELMERCADO_THEME_PATH . '/inc/category-specific-filters-010185.php';
