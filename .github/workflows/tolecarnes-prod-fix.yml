@@ -1,0 +1,148 @@
+name: Tolecarnes production fix
+
+on:
+  push:
+    branches:
+      - diag-cpu-20260812
+    paths:
+      - '.github/workflows/tolecarnes-prod-fix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Publish Tolecarnes products and verify visibility
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] && dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin='/opt/plesk/php/8.2/bin/php'
+          wp='/usr/local/bin/wp'
+          rollback_dir="$HOME/.elmercado-rollbacks"
+          mkdir -p "$rollback_dir"
+          state_file="$rollback_dir/tolecarnes-before-$(date -u +%Y%m%dT%H%M%SZ).tsv"
+
+          echo "PROD=$prod"
+          echo "STATE_FILE=$state_file"
+
+          # Capture exact pre-change state for a narrow rollback.
+          "$php_bin" "$wp" db query "SELECT ID,post_status,post_author,post_title FROM wp_posts WHERE post_type='product' AND post_author=4507 ORDER BY ID" --path="$prod" --skip-plugins --skip-themes --allow-root --batch --raw > "$state_file"
+          echo '=== BEFORE COUNTS ==='
+          "$php_bin" "$wp" db query "SELECT post_status,COUNT(*) c FROM wp_posts WHERE post_type='product' AND post_author=4507 GROUP BY post_status ORDER BY post_status" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== APPLY ==='
+          "$php_bin" "$wp" eval '
+          $vendor_id = 4507;
+          $carnes_id = 382;
+          global $wpdb;
+          $ids = array_map("intval", $wpdb->get_col($wpdb->prepare(
+              "SELECT ID FROM {$wpdb->posts} WHERE post_type=%s AND post_author=%d AND post_status=%s ORDER BY ID",
+              "product", $vendor_id, "archived"
+          )));
+          echo "archived_found=" . count($ids) . "\n";
+          if (count($ids) !== 39) {
+              fwrite(STDERR, "Safety stop: expected exactly 39 archived Tolecarnes products, found " . count($ids) . "\n");
+              exit(20);
+          }
+          $errors = [];
+          foreach ($ids as $id) {
+              $terms = wp_set_object_terms($id, [$carnes_id], "product_cat", true);
+              if (is_wp_error($terms)) {
+                  $errors[] = "term:$id:" . $terms->get_error_message();
+                  continue;
+              }
+              $r = wp_update_post(["ID" => $id, "post_status" => "publish"], true);
+              if (is_wp_error($r)) {
+                  $errors[] = "publish:$id:" . $r->get_error_message();
+                  continue;
+              }
+              clean_post_cache($id);
+              if (function_exists("wc_delete_product_transients")) wc_delete_product_transients($id);
+          }
+          if ($errors) {
+              fwrite(STDERR, implode("\n", $errors) . "\n");
+              exit(21);
+          }
+          wp_update_term_count_now([$carnes_id], "product_cat");
+          echo "published=" . count($ids) . "\n";
+          ' --path="$prod" --allow-root
+
+          "$php_bin" "$wp" cache flush --path="$prod" --allow-root || true
+
+          echo '=== AFTER DATABASE COUNTS ==='
+          "$php_bin" "$wp" db query "SELECT post_status,COUNT(*) c FROM wp_posts WHERE post_type='product' AND post_author=4507 GROUP BY post_status ORDER BY post_status" --path="$prod" --skip-plugins --skip-themes --allow-root
+          "$php_bin" "$wp" db query "SELECT COUNT(DISTINCT p.ID) carnes_products FROM wp_posts p JOIN wp_term_relationships tr ON tr.object_id=p.ID JOIN wp_term_taxonomy tt ON tt.term_taxonomy_id=tr.term_taxonomy_id WHERE p.post_type='product' AND p.post_author=4507 AND p.post_status='publish' AND tt.taxonomy='product_cat' AND tt.term_id=382" --path="$prod" --skip-plugins --skip-themes --allow-root
+          "$php_bin" "$wp" db query "SELECT t.term_id,t.name,t.slug,tt.count FROM wp_terms t JOIN wp_term_taxonomy tt ON tt.term_id=t.term_id WHERE tt.taxonomy='product_cat' AND t.term_id=382" --path="$prod" --skip-plugins --skip-themes --allow-root
+          "$php_bin" "$wp" db query "SELECT user_id,meta_key,meta_value FROM wp_usermeta WHERE user_id=4507 AND meta_key IN ('wp_capabilities','_disable_vendor','_wcfm_store_offline') ORDER BY meta_key" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== VERIFY THEME VISIBILITY LOGIC ==='
+          "$php_bin" "$wp" eval '
+          $vendor = 4507;
+          $product_ids = get_posts(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"fields"=>"ids","suppress_filters"=>true]);
+          echo "raw_published=" . count($product_ids) . "\n";
+          echo "disabled_fn=" . (function_exists("elmercado_wcfm_vendor_is_disabled_010210") ? "yes" : "no") . "\n";
+          if (function_exists("elmercado_wcfm_vendor_is_disabled_010210")) {
+              echo "vendor_disabled=" . (elmercado_wcfm_vendor_is_disabled_010210($vendor) ? "yes" : "no") . "\n";
+          }
+
+          wp_set_current_user(0);
+          echo "public_can_view_disabled=" . (function_exists("elmercado_wcfm_disabled_visibility_can_view_010210") && elmercado_wcfm_disabled_visibility_can_view_010210() ? "yes" : "no") . "\n";
+          $public_q = new WP_Query(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"fields"=>"ids","no_found_rows"=>true]);
+          echo "public_query_count=" . count($public_q->posts) . "\n";
+
+          $admin_id = 0;
+          foreach (get_users(["role"=>"administrator","fields"=>"ID"]) as $aid) {
+              wp_set_current_user((int)$aid);
+              if (current_user_can("manage_options")) { $admin_id=(int)$aid; break; }
+          }
+          if (!$admin_id) { fwrite(STDERR,"No manage_options administrator found\n"); exit(30); }
+          echo "admin_id=" . $admin_id . "\n";
+          echo "admin_can_view_disabled=" . (function_exists("elmercado_wcfm_disabled_visibility_can_view_010210") && elmercado_wcfm_disabled_visibility_can_view_010210() ? "yes" : "no") . "\n";
+          $admin_q = new WP_Query(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"fields"=>"ids","no_found_rows"=>true]);
+          echo "admin_query_count=" . count($admin_q->posts) . "\n";
+
+          $sample = reset($product_ids);
+          if ($sample) {
+              wp_set_current_user(0);
+              $p0=wc_get_product($sample);
+              echo "sample_id=$sample public_is_visible=" . ($p0 && $p0->is_visible() ? "yes" : "no") . "\n";
+              wp_set_current_user($admin_id);
+              $p1=wc_get_product($sample);
+              echo "sample_id=$sample admin_is_visible=" . ($p1 && $p1->is_visible() ? "yes" : "no") . "\n";
+          }
+          ' --path="$prod" --allow-root
+
+          echo '=== EXTERNAL PUBLIC CARNES SAMPLE ==='
+          curl -k -L -sS --max-time 20 -A 'Mozilla/5.0' https://www.elmercadodeorigen.com/categoria-producto/carnes/ | grep -Eio 'tolecarnes|carne picada extra|chuleton de lomo alto|chuletón de lomo alto|tira de churrasco argentino' | sort | uniq -c || true
+          REMOTE
