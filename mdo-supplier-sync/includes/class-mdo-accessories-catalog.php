@@ -10,14 +10,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  * productos de jamón/paleta no se consideran accesorios.
  */
 final class MDO_Accessories_Catalog {
-	private const VERSION        = '1.0.4';
+	private const VERSION        = '1.0.5';
 	private const VERSION_OPTION = 'mdo_accessories_catalog_version';
 	private const REPORT_OPTION  = 'mdo_accessories_catalog_last_report';
 	private const SNAPSHOT_META  = '_emdo_accessories_catalog_snapshot';
 
-	private const CATEGORY_NAME  = 'Accesorios';
-	private const CATEGORY_SLUG  = 'accesorios';
-	private const ATTRIBUTE_SLUG = 'tipo-producto';
+	private const CATEGORY_NAME   = 'Accesorios';
+	private const CATEGORY_SLUG   = 'accesorios';
+	private const ATTRIBUTE_SLUG  = 'tipo-producto';
 	private const ATTRIBUTE_LABEL = 'Tipo de producto';
 	private const TYPE_TERMS      = array( 'Jamonero', 'Cuchillo' );
 
@@ -193,15 +193,9 @@ final class MDO_Accessories_Catalog {
 
 	private static function cleanup_managed_product( WC_Product $product ): bool {
 		$snapshot = (string) get_post_meta( $product->get_id(), self::SNAPSHOT_META, true );
-		if ( '' === $snapshot ) {
-			return false;
-		}
-
 		$category_ids = array_values( array_unique( array_map( 'intval', $product->get_category_ids() ) ) );
 		$category = get_term_by( 'slug', self::CATEGORY_SLUG, 'product_cat' );
-		if ( $category instanceof WP_Term ) {
-			$category_ids = array_values( array_diff( $category_ids, array( (int) $category->term_id ) ) );
-		}
+		$has_managed_category = $category instanceof WP_Term && in_array( (int) $category->term_id, $category_ids, true );
 
 		$attributes = $product->get_attributes();
 		$taxonomy = wc_attribute_taxonomy_name( self::ATTRIBUTE_SLUG );
@@ -211,6 +205,29 @@ final class MDO_Accessories_Catalog {
 			if ( $term instanceof WP_Term ) {
 				$managed_term_ids[] = (int) $term->term_id;
 			}
+		}
+
+		$related_term_ids = array();
+		if ( $managed_term_ids && taxonomy_exists( $taxonomy ) ) {
+			$related = wp_get_object_terms( $product->get_id(), $taxonomy, array( 'fields' => 'ids' ) );
+			if ( ! is_wp_error( $related ) ) {
+				$related_term_ids = array_map( 'intval', $related );
+			}
+		}
+		$has_managed_terms = (bool) array_intersect( $managed_term_ids, $related_term_ids );
+
+		$has_managed_attribute = false;
+		if ( isset( $attributes[ $taxonomy ] ) && $attributes[ $taxonomy ] instanceof WC_Product_Attribute ) {
+			$options = array_values( array_map( 'intval', $attributes[ $taxonomy ]->get_options() ) );
+			$has_managed_attribute = (bool) array_intersect( $managed_term_ids, $options );
+		}
+
+		if ( '' === $snapshot && ! $has_managed_category && ! $has_managed_terms && ! $has_managed_attribute ) {
+			return false;
+		}
+
+		if ( $category instanceof WP_Term ) {
+			$category_ids = array_values( array_diff( $category_ids, array( (int) $category->term_id ) ) );
 		}
 
 		if ( isset( $attributes[ $taxonomy ] ) && $attributes[ $taxonomy ] instanceof WC_Product_Attribute ) {
