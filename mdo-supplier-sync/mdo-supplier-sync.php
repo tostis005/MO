@@ -32,6 +32,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-migration.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-product-slugs.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-stock-guard.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-scheduler.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-nightly-scheduler.php';
@@ -52,6 +53,7 @@ add_action(
 		MDO_Rich_Description_Source::init();
 		MDO_Variable_Upgrade::init();
 		MDO_Description_Guard::init();
+		MDO_Product_Slugs::init();
 		MDO_Stock_Guard::init();
 		MDO_Scheduler::init();
 		MDO_Nightly_Scheduler::init();
