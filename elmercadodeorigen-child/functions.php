@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.205' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.206' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -135,7 +135,7 @@ $elmercado_modules = array(
 	'inc/cart-checkout-contact-cleanup-010185.php',
 	'inc/category-specific-filters-010185.php',
 	'inc/cart-shipping-copy-final-010192.php',
-	'inc/catalog-filter-system-010203.php',
+	'inc/catalog-filter-system-final-010206.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
