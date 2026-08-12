@@ -54,7 +54,10 @@ jobs:
             dev_path="$(dirname "$cfg")"
           fi
           prod_path="$(dirname "$dev_path")/httpdocs"
-          wp_bin="$(command -v wp)"; php_bin="$(command -v php)"
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ]
           code="$(cat <<'PHP'
           $ids=wc_get_products(array('limit'=>-1,'return'=>'ids','status'=>array('publish','private','draft','pending')));
           $out=array();
