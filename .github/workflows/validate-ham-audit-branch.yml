@@ -17,10 +17,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Lint EMDO PHP
         shell: bash
         run: |
           set -euo pipefail
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Check whitespace
-        run: git diff --check origin/main...HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check origin/main...HEAD
