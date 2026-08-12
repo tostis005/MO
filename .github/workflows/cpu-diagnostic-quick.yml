@@ -1,10 +1,8 @@
 name: CPU diagnostic quick
-
 on:
   push:
     branches: [diag-cpu-20260812]
-    paths:
-      - '.github/workflows/cpu-diagnostic-quick.yml'
+    paths: ['.github/workflows/cpu-diagnostic-quick.yml']
 permissions:
   contents: read
 jobs:
@@ -16,9 +14,8 @@ jobs:
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
-      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
-      - name: Probe
+      - name: Count traffic around spike
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -27,37 +24,30 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set +e
-          raw="${1%/}"; case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}";; */wp-content) dev="$(dirname "$raw")";; *) dev="$raw";; esac
-          if [ ! -f "$dev/wp-config.php" ]; then cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1)"; [ -n "$cfg" ] && dev="$(dirname "$cfg")"; fi
-          prod="$(dirname "$dev")/httpdocs"; root="$(dirname "$prod")"
-          php="$(command -v php)"; wp="$(command -v wp)"; prefix="$("$php" "$wp" db prefix --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
-          echo '=== HOT ==='; date -Is; uptime
-          ps -eo pid,user,stat,lstart,etime,time,%cpu,%mem,wchan:24,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 30
-          echo '=== EMDO RUNS ==='
-          "$php" "$wp" db query "SELECT id,supplier_id,trigger_type,status,started_at,finished_at,products_found,products_new,products_updated,products_excluded,errors_count,message FROM ${prefix}mdo_sync_runs ORDER BY id DESC LIMIT 40" --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null
-          echo '=== EMDO EVENTS LATEST ==='
-          "$php" "$wp" db query "SELECT id,run_id,supplier_id,event_type,severity,created_at,LEFT(message,160) message FROM ${prefix}mdo_sync_events ORDER BY id DESC LIMIT 80" --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null
-          echo '=== TABLES ACTION ==='
-          "$php" "$wp" db query "SHOW TABLES" --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null | grep -Ei 'action|schedul|queue|resque' | head -n 80
-          echo '=== LOG DIR ==='
-          ls -lah "$root/logs" 2>/dev/null | tail -n 100
-          ls -lah /var/www/vhosts/system/elmercadodeorigen.com/logs 2>/dev/null | tail -n 100
-          echo '=== LIKELY ACCESS FILE SAMPLES ==='
-          for d in "$root/logs" /var/www/vhosts/system/elmercadodeorigen.com/logs; do
-            [ -d "$d" ] || continue
-            for n in proxy_access_ssl_log proxy_access_log access_ssl_log access_log; do
-              f="$d/$n"; [ -s "$f" ] || continue
-              echo "FILE=$f"
-              tail -n 1000 "$f" | awk '{print $1}' | sort | uniq -c | sort -nr | head -n 12
-              echo '-- requests --'
-              tail -n 1000 "$f" | awk -F'"' '{print $2}' | sort | uniq -c | sort -nr | head -n 20
-              echo '-- around 17:35-18:05 server UTC --'
-              grep -E '12/Aug/2026:17:(3[5-9]|4[0-9]|5[0-9]):|12/Aug/2026:18:0[0-5]:' "$f" | tail -n 50
-              echo '-- around 19:35-20:05 timestamp if local --'
-              grep -E '12/Aug/2026:19:(3[5-9]|4[0-9]|5[0-9]):|12/Aug/2026:20:0[0-5]:' "$f" | tail -n 50
-            done
-          done
+          f=/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log
+          tmp=$(mktemp)
+          # User's 19:35-19:50 local = server log 17:35-17:50 UTC.
+          grep -E '12/Aug/2026:17:(3[5-9]|4[0-9]|50):' "$f" > "$tmp"
+          echo '=== TOTAL REQUESTS 19:35-19:50 LOCAL ==='
+          wc -l < "$tmp"
+          echo '=== REQUESTS PER MINUTE ==='
+          awk -F'[:[]' '{print $3":"$4}' "$tmp" | sort | uniq -c
+          echo '=== TOP USER AGENTS ==='
+          awk -F'"' '{print $6}' "$tmp" | sort | uniq -c | sort -nr | head -n 15
+          echo '=== META REQUEST COUNT ==='
+          grep -ci 'meta-externalagent' "$tmp"
+          echo '=== META REQUESTS PER MINUTE ==='
+          grep -i 'meta-externalagent' "$tmp" | awk -F'[:[]' '{print $3":"$4}' | sort | uniq -c
+          echo '=== TOP IPS ==='
+          awk '{print $1}' "$tmp" | sort | uniq -c | sort -nr | head -n 20
+          echo '=== TOP META PATH FAMILIES ==='
+          grep -i 'meta-externalagent' "$tmp" | awk -F'"' '{print $2}' | sed -E 's#^(GET|POST|HEAD) ##; s# HTTP/[0-9.]+$##; s#\?.*$##' | sort | uniq -c | sort -nr | head -n 30
+          echo '=== META DYNAMIC QUERY COUNT ==='
+          grep -i 'meta-externalagent' "$tmp" | grep -Ec '\?(.*filter_|.*query_type_|.*add-to-cart|.*add_to_wishlist|.*remove_item|.*vendor_id)' || true
+          echo '=== SAMPLE 19:44-19:47 LOCAL ==='
+          grep -E '12/Aug/2026:17:4[4-7]:' "$tmp" | grep -i 'meta-externalagent' | head -n 30
+          rm -f "$tmp"
           REMOTE
