@@ -1,0 +1,48 @@
+name: Inspect EMDO live recovery status
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-status-now.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - shell: bash
+        run: |
+          set -euo pipefail; PORT="${STAGING_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh; ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+      - shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu; raw="${1%/}"; domain="$2"; wp_path=""
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"; [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"; fi
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"; WP="$php_bin -d memory_limit=512M $wp_bin --path=$wp_path --allow-root"
+          $WP eval '
+            global $wpdb;
+            $runs=MDO_Database::table("sync_runs"); $sup=MDO_Database::table("suppliers");
+            $rows=$wpdb->get_results("SELECT r.id,r.supplier_id,s.name,r.trigger_type,r.status,r.started_at,r.finished_at,r.products_found,r.products_updated,r.errors_count,r.message FROM {$runs} r LEFT JOIN {$sup} s ON s.id=r.supplier_id ORDER BY r.id DESC LIMIT 10",ARRAY_A);
+            foreach($rows as $r) echo "RUN=".wp_json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            $a=$wpdb->prefix."actionscheduler_actions"; $g=$wpdb->prefix."actionscheduler_groups";
+            $counts=$wpdb->get_results("SELECT a.status,COUNT(*) c FROM {$a} a JOIN {$g} g ON g.group_id=a.group_id WHERE g.slug=\"mdo-supplier-sync\" GROUP BY a.status",ARRAY_A);
+            foreach($counts as $c) echo "AS=".wp_json_encode($c)."\n";
+          ' 2>/dev/null
+          REMOTE
