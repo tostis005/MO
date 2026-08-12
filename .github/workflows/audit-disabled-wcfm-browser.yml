@@ -39,11 +39,9 @@ jobs:
               for(const s of samples){
                 const page=await browser.newPage();
                 await page.setViewport({width:1440,height:1000});
-                const nav=async url=>{
-                  const response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
-                  await new Promise(r=>setTimeout(r,1200));
-                  return response;
-                };
+                await page.setRequestInterception(true);
+                page.on('request', req => req.isNavigationRequest() && req.frame() === page.mainFrame() ? req.continue() : req.abort());
+                const nav=async url=>page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
                 const response=await nav(`${s.url}?disabled-vendor-audit=${Date.now()}`);
                 const direct=await page.evaluate((title)=>({titleFound:document.body.innerText.includes(title),h1:document.querySelector('h1')?.textContent?.trim()||'',bodyClass:document.body.className}),s.title);
                 const categoryHref=await page.evaluate(()=>document.querySelector('.product_meta .posted_in a, .posted_in a')?.href||'');
