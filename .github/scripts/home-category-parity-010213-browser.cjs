@@ -10,7 +10,7 @@ const norm = (url) => {
   return `${parsed.origin}${parsed.pathname.replace(/\/$/, '')}/`;
 };
 
-async function readCards(page, label) {
+async function readHome(page, label) {
   const response = await page.goto(`${base}/?home-parity-010213=${Date.now()}-${label}`, {
     waitUntil: 'domcontentloaded',
     timeout: 90000,
@@ -21,37 +21,44 @@ async function readCards(page, label) {
   await page.waitForSelector('.emo-category-card__content small', { timeout: 30000 });
   await new Promise((resolve) => setTimeout(resolve, 700));
 
-  return page.evaluate(() => [...document.querySelectorAll('.emo-category-card')].map((card) => {
-    const content = card.querySelector('.emo-category-card__content');
-    const strong = content?.querySelector('strong');
-    const small = content?.querySelector('small');
-    const cardRect = card.getBoundingClientRect();
-    const contentRect = content?.getBoundingClientRect();
-    const smallRect = small?.getBoundingClientRect();
-    const smallStyle = small ? getComputedStyle(small) : null;
-    const contentStyle = content ? getComputedStyle(content) : null;
-    return {
-      href: card.href,
-      name: strong?.textContent?.trim() || '',
-      countText: small?.textContent?.trim() || '',
-      textAlign: smallStyle?.textAlign || '',
-      contentDisplay: contentStyle?.display || '',
-      contentDirection: contentStyle?.flexDirection || '',
-      contentRightGap: contentRect && smallRect ? Math.abs(contentRect.right - smallRect.right) : null,
-      cardRightGap: smallRect ? cardRect.right - smallRect.right : null,
-    };
+  return page.evaluate(() => ({
+    authenticated: document.body.classList.contains('logged-in') || Boolean(document.querySelector('#wpadminbar')),
+    cards: [...document.querySelectorAll('.emo-category-card')].map((card) => {
+      const content = card.querySelector('.emo-category-card__content');
+      const strong = content?.querySelector('strong');
+      const small = content?.querySelector('small');
+      const contentRect = content?.getBoundingClientRect();
+      const smallRect = small?.getBoundingClientRect();
+      const smallStyle = small ? getComputedStyle(small) : null;
+      const contentStyle = content ? getComputedStyle(content) : null;
+      return {
+        href: card.href,
+        name: strong?.textContent?.trim() || '',
+        countText: small?.textContent?.trim() || '',
+        textAlign: smallStyle?.textAlign || '',
+        contentDisplay: contentStyle?.display || '',
+        contentDirection: contentStyle?.flexDirection || '',
+        contentRightGap: contentRect && smallRect ? Math.abs(contentRect.right - smallRect.right) : null,
+      };
+    }),
   }));
 }
 
-function validate(cards, field, label) {
-  const positive = rows.filter((row) => Number(row[field]) > 0);
-  const expected = new Map(positive.map((row) => [norm(row.url), row]));
-  if (cards.length !== positive.length) {
-    throw new Error(`${label}: ${cards.length} cards; expected ${positive.length}`);
+function validate(result, field, label, shouldBeAuthenticated) {
+  if (result.authenticated !== shouldBeAuthenticated) {
+    throw new Error(`${label}: authentication state is ${result.authenticated}`);
   }
-  for (const card of cards) {
+  if (result.cards.length < 4) {
+    throw new Error(`${label}: only ${result.cards.length} category cards rendered`);
+  }
+
+  const expected = new Map(rows.map((row) => [norm(row.url), row]));
+  for (const card of result.cards) {
     const row = expected.get(norm(card.href));
     if (!row) throw new Error(`${label}: unexpected category ${card.name} (${card.href})`);
+    if (Number(row[field]) <= 0) {
+      throw new Error(`${label}: category with zero visible products is rendered: ${card.name}`);
+    }
     const displayed = parseInt(card.countText.replace(/[^0-9]/g, ''), 10);
     if (displayed !== Number(row[field])) {
       throw new Error(`${label}: ${card.name} shows ${displayed}; expected ${row[field]}`);
@@ -81,8 +88,8 @@ function validate(cards, field, label) {
   try {
     const anonymousPage = await browser.newPage();
     await anonymousPage.setViewport({ width: 1440, height: 1000 });
-    const anonymous = await readCards(anonymousPage, 'anonymous');
-    validate(anonymous, 'public', 'anonymous');
+    const anonymous = await readHome(anonymousPage, 'anonymous');
+    validate(anonymous, 'public', 'anonymous', false);
 
     const adminPage = await browser.newPage();
     await adminPage.setViewport({ width: 1440, height: 1000 });
@@ -93,8 +100,8 @@ function validate(cards, field, label) {
       secure: true,
       httpOnly: true,
     });
-    const admin = await readCards(adminPage, 'admin');
-    validate(admin, 'admin', 'admin');
+    const admin = await readHome(adminPage, 'admin');
+    validate(admin, 'admin', 'admin', true);
 
     console.log('HOME_CATEGORY_PARITY_010213_BROWSER_OK', JSON.stringify({ rows, anonymous, admin }));
   } finally {
