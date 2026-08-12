@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Reutiliza los atributos globales de ibérico creados para Jamones y Paletas.
  */
 final class MDO_Cured_Catalog {
-	private const VERSION        = '1.0.0';
+	private const VERSION        = '1.0.1';
 	private const VERSION_OPTION = 'mdo_cured_catalog_version';
 	private const REPORT_OPTION  = 'mdo_cured_catalog_last_report';
 	private const SNAPSHOT_META  = '_emdo_cured_catalog_snapshot';
@@ -190,7 +190,7 @@ final class MDO_Cured_Catalog {
 		// contaminan categorías de familia cuando mezclan tres o más familias.
 		if ( $is_pack && $family_count > 2 ) {
 			$family_category_ids = array( self::$cured_category_id );
-			foreach ( array( 'jamones-y-paletas', 'quesos', 'carnes', 'aceites', 'naranjas' ) as $family_slug ) {
+			foreach ( array( 'jamones-paletas', 'jamones-y-paletas', 'quesos', 'carnes', 'aceites', 'naranjas' ) as $family_slug ) {
 				$family_id = self::term_id_by_slug( $family_slug );
 				if ( $family_id > 0 ) {
 					$family_category_ids[] = $family_id;
@@ -206,7 +206,7 @@ final class MDO_Cured_Catalog {
 			$category_ids[] = self::$packs_category_id;
 		}
 		if ( $pack_with_ham ) {
-			$ham_id = self::term_id_by_slug( 'jamones-y-paletas' );
+			$ham_id = self::ham_category_id();
 			if ( $ham_id > 0 ) {
 				$category_ids[] = $ham_id;
 			}
@@ -569,6 +569,16 @@ final class MDO_Cured_Catalog {
 		$text = remove_accents( strtolower( $text ) );
 		$text = preg_replace( '/\s+/u', ' ', $text );
 		return trim( (string) $text );
+	}
+
+	private static function ham_category_id(): int {
+		foreach ( array( 'jamones-paletas', 'jamones-y-paletas' ) as $slug ) {
+			$id = self::term_id_by_slug( $slug );
+			if ( $id > 0 ) {
+				return $id;
+			}
+		}
+		return 0;
 	}
 
 	private static function term_id_by_slug( string $slug ): int {
