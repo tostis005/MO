@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?visual-postcheck=1'
+          URL='https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?visual-postcheck=2'
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
           test -n "$CHROME"
           COMMON='--headless --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --disable-background-networking --disable-component-update --disable-sync --metrics-recording-only --no-first-run --virtual-time-budget=7000 --run-all-compositor-stages-before-draw'
