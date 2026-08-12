@@ -142,8 +142,13 @@ add_filter(
  * La Home dispone de cache HTML/estatica. Si WCFM cambia el estado de una
  * tienda hay que invalidarla en ese mismo momento para que el nuevo count sea
  * visible sin esperar a que expire la cache.
+ *
+ * El primer parametro es int al crear/actualizar metadata y array al borrarla,
+ * por eso se mantiene deliberadamente sin type hint.
+ *
+ * @param mixed $meta_id ID o IDs de metadata.
  */
-function elmercado_flush_home_for_wcfm_vendor_state_010212( int $meta_id, int $user_id, string $meta_key ): void {
+function elmercado_flush_home_for_wcfm_vendor_state_010212( $meta_id, int $user_id, string $meta_key ): void {
 	unset( $meta_id, $user_id );
 	if ( in_array( $meta_key, array( '_disable_vendor', '_wcfm_store_offline' ), true ) && function_exists( 'elmercado_flush_home_cache' ) ) {
 		elmercado_flush_home_cache();
