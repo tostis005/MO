@@ -1,0 +1,91 @@
+name: Meta emergency mitigation
+
+on:
+  push:
+    branches:
+      - diag-cpu-20260812
+    paths:
+      - '.github/workflows/meta-emergency-block.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  mitigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Apply block and verify
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] && dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          ht="$prod/.htaccess"
+          marker='# BEGIN EMDO META CRAWLER EMERGENCY BLOCK'
+          backup="$prod/.htaccess.pre-meta-block-20260812-2213"
+
+          echo '=== BEFORE ==='
+          date -Is
+          uptime
+          ps -eo %cpu,etime,args --sort=-%cpu | grep 'php-fpm: pool elmercadodeorigen.com' | head -n 12 || true
+
+          [ -f "$ht" ] || touch "$ht"
+          if ! grep -Fq "$marker" "$ht"; then
+            cp -p "$ht" "$backup"
+            tmp="$(mktemp "$prod/.htaccess.meta.XXXXXX")"
+            {
+              echo '# BEGIN EMDO META CRAWLER EMERGENCY BLOCK'
+              echo '<IfModule mod_rewrite.c>'
+              echo 'RewriteEngine On'
+              echo 'RewriteCond %{HTTP_USER_AGENT} meta-externalagent [NC]'
+              echo 'RewriteRule ^ - [F,L]'
+              echo '</IfModule>'
+              echo '# END EMDO META CRAWLER EMERGENCY BLOCK'
+              echo
+              cat "$ht"
+            } > "$tmp"
+            cat "$tmp" > "$ht"
+            rm -f "$tmp"
+            echo 'BLOCK_ADDED=1'
+            echo "BACKUP=$backup"
+          else
+            echo 'BLOCK_ADDED=0'
+          fi
+
+          echo '=== HTACCESS ==='
+          head -n 12 "$ht"
+          echo '=== VERIFY ==='
+          curl -k -sS --max-time 10 --resolve www.elmercadodeorigen.com:443:127.0.0.1 -A 'meta-externalagent/1.1' -o /dev/null -w 'META_HTTP=%{http_code} TOTAL=%{time_total}\n' https://www.elmercadodeorigen.com/ || true
+          curl -k -sS --max-time 15 --resolve www.elmercadodeorigen.com:443:127.0.0.1 -A 'Mozilla/5.0' -o /dev/null -w 'NORMAL_HTTP=%{http_code} TOTAL=%{time_total}\n' https://www.elmercadodeorigen.com/ || true
+          echo '=== AFTER ==='
+          uptime
+          ps -eo %cpu,etime,args --sort=-%cpu | grep 'php-fpm: pool elmercadodeorigen.com' | head -n 12 || true
+          REMOTE
