@@ -1,0 +1,70 @@
+name: Recover staging HTTP 500 safely
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-http500-recover.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass curl
+      - shell: bash
+        run: |
+          set -euo pipefail; PORT="${STAGING_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh; ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+      - shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; domain="$2"; wp_path=""
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"; [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"; fi
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP="$php_bin -d display_errors=1 -d memory_limit=768M $wp_bin --path=$wp_path --allow-root"
+          plugin='woocommerce-eu-vat-assistant'
+          was_active=no
+          if $WP plugin is-active "$plugin" >/dev/null 2>&1; then was_active=yes; fi
+          echo "AELIA_WAS_ACTIVE=$was_active"
+          before="$(curl -k -sS -o /tmp/before.out -w '%{http_code}' --max-time 20 "https://$domain/" || true)"
+          echo "HTTP_BEFORE=$before"
+          if [ "$was_active" = yes ]; then $WP plugin deactivate "$plugin" --quiet; fi
+          sleep 2
+          after="$(curl -k -sS -o /tmp/after.out -w '%{http_code}' --max-time 20 "https://$domain/" || true)"
+          echo "HTTP_AFTER_DEACTIVATE=$after"
+          case "$after" in
+            2*|3*)
+              echo 'RECOVERY_RESULT=restored_by_aelia_deactivation'
+              echo 'AELIA_LEFT_ACTIVE=no'
+              ;;
+            *)
+              echo 'RECOVERY_RESULT=aelia_not_root_or_additional_fatal'
+              if [ "$was_active" = yes ]; then $WP plugin activate "$plugin" --quiet || true; fi
+              echo "AELIA_RESTORED=$was_active"
+              echo 'BODY_AFTER_BEGIN'; head -c 1500 /tmp/after.out || true; echo; echo 'BODY_AFTER_END'
+              tail -n 100 "$wp_path/wp-content/debug.log" 2>/dev/null || true
+              exit 2
+              ;;
+          esac
+          echo '== FINAL ACTIVE CHECK =='
+          $WP plugin status "$plugin" || true
+          echo '== FINAL HTTP =='
+          curl -k -sS -o /tmp/final.out -D /tmp/final.hdr --max-time 20 "https://$domain/" || true
+          head -n 12 /tmp/final.hdr || true
+          REMOTE
