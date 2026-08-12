@@ -36,7 +36,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           test -s ~/.ssh/known_hosts
-      - name: Resolve disabled vendor sample and verify admin bypass
+      - name: Create reversible disabled-vendor fixture and verify WP queries
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -44,9 +44,11 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          FIXTURE_FILE="/tmp/elmercado-010210-fixture-${GITHUB_RUN_ID}.json"
+          echo "FIXTURE_FILE=$FIXTURE_FILE" >> "$GITHUB_ENV"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$FIXTURE_FILE'" <<'REMOTE'
           set -eu
-          raw="${1%/}"
+          raw="${1%/}"; fixture_file="$2"
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
           if [ ! -f "$wp_path/wp-config.php" ]; then
             cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
@@ -57,47 +59,68 @@ jobs:
           wp_bin="$(command -v wp || true)"
           runtime="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$wp_path" --allow-root --skip-plugins)"
           [ "$runtime" = '0.10.210' ] || { echo "Expected 0.10.210, got $runtime" >&2; exit 1; }
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          export FIXTURE_FILE="$fixture_file"
+          PREP="$("$php_bin" -d memory_limit=512M "$wp_bin" eval '
           global $wpdb;
-          $authors=array_map("intval",$wpdb->get_col("SELECT DISTINCT post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND post_author>0 ORDER BY post_author DESC"));
+          $authors=array_map("intval",$wpdb->get_col("SELECT DISTINCT post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND post_author>1 ORDER BY post_author DESC"));
           $sample=null;
           foreach($authors as $author){
-            if(!function_exists("elmercado_wcfm_vendor_is_disabled_010210") || !elmercado_wcfm_vendor_is_disabled_010210($author)) continue;
+            if(function_exists("elmercado_wcfm_vendor_is_disabled_010210") && elmercado_wcfm_vendor_is_disabled_010210($author)) continue;
+            if(function_exists("elmercado_core_filter_is_vendor") && !elmercado_core_filter_is_vendor($author)) continue;
             $pid=(int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type=%s AND post_status=%s AND post_author=%d ORDER BY ID DESC LIMIT 1","product","publish",$author));
             if(!$pid) continue;
             $post=get_post($pid);
-            $terms=get_the_terms($pid,"product_cat");
-            $category="";
-            if(is_array($terms)&&!empty($terms)){ $link=get_term_link($terms[0]); if(!is_wp_error($link)) $category=$link; }
-            $sample=array("vendor"=>$author,"id"=>$pid,"slug"=>$post->post_name,"title"=>$post->post_title,"url"=>get_permalink($pid),"category"=>$category);
+            $cat_slug=(string)$wpdb->get_var($wpdb->prepare("SELECT t.slug FROM {$wpdb->terms} t INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id INNER JOIN {$wpdb->term_relationships} tr ON tr.term_taxonomy_id=tt.term_taxonomy_id WHERE tr.object_id=%d AND tt.taxonomy=%s ORDER BY tt.parent DESC, t.term_id ASC LIMIT 1",$pid,"product_cat"));
+            $sample=array("vendor"=>$author,"id"=>$pid,"slug"=>$post->post_name,"title"=>$post->post_title,"url"=>home_url("/producto/".$post->post_name."/"),"category"=>$cat_slug?home_url("/categoria-producto/".$cat_slug."/"):"");
             break;
           }
-          if(!$sample){ fwrite(STDERR,"No disabled vendor with published product found in staging.\n"); exit(2); }
+          if(!$sample){ fwrite(STDERR,"No active vendor fixture candidate found.\n"); exit(2); }
+          $vendor=$sample["vendor"];
+          $state=array(
+            "sample"=>$sample,
+            "disable_exists"=>metadata_exists("user",$vendor,"_disable_vendor"),
+            "disable_value"=>base64_encode(serialize(get_user_meta($vendor,"_disable_vendor",true))),
+            "offline_exists"=>metadata_exists("user",$vendor,"_wcfm_store_offline"),
+            "offline_value"=>base64_encode(serialize(get_user_meta($vendor,"_wcfm_store_offline",true)))
+          );
+          file_put_contents(getenv("FIXTURE_FILE"),wp_json_encode($state));
+          update_user_meta($vendor,"_disable_vendor",1);
+          update_user_meta($vendor,"_wcfm_store_offline","yes");
           echo "__SAMPLE__=".base64_encode(wp_json_encode($sample))."\n";
+          ' --path="$wp_path" --allow-root --skip-plugins)"
+          printf '%s\n' "$PREP"
+          SAMPLE_B64="$(printf '%s\n' "$PREP" | sed -n 's/^__SAMPLE__=//p' | tail -n1)"
+          [ -n "$SAMPLE_B64" ] || { echo 'Fixture sample missing' >&2; exit 1; }
+          export SAMPLE_B64
+          CHECK="$("$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          $sample=json_decode(base64_decode(getenv("SAMPLE_B64")),true);
+          if(!is_array($sample)||empty($sample["id"])) exit(2);
           wp_set_current_user(0);
-          $anon=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>$sample["id"],"posts_per_page"=>1));
+          $anon=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>(int)$sample["id"],"posts_per_page"=>1));
           echo "__ANON_QUERY__=".count($anon->posts)."\n";
           $admins=get_users(array("role"=>"administrator","number"=>1,"fields"=>"ID"));
-          if(!$admins){ fwrite(STDERR,"No administrator found.\n"); exit(3); }
+          if(!$admins) exit(3);
           wp_set_current_user((int)$admins[0]);
-          $admin=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>$sample["id"],"posts_per_page"=>1));
+          $admin=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>(int)$sample["id"],"posts_per_page"=>1));
           echo "__ADMIN_QUERY__=".count($admin->posts)."\n";
-          ' --path="$wp_path" --allow-root
-          REMOTE
-          )"
-          printf '%s\n' "$OUT"
-          SAMPLE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__SAMPLE__=//p' | tail -n1)"
-          ANON_QUERY="$(printf '%s\n' "$OUT" | sed -n 's/^__ANON_QUERY__=//p' | tail -n1)"
-          ADMIN_QUERY="$(printf '%s\n' "$OUT" | sed -n 's/^__ADMIN_QUERY__=//p' | tail -n1)"
+          ' --path="$wp_path" --allow-root --skip-plugins)"
+          printf '%s\n' "$CHECK"
+          ANON_QUERY="$(printf '%s\n' "$CHECK" | sed -n 's/^__ANON_QUERY__=//p' | tail -n1)"
+          ADMIN_QUERY="$(printf '%s\n' "$CHECK" | sed -n 's/^__ADMIN_QUERY__=//p' | tail -n1)"
           [ "$ANON_QUERY" = '0' ] || { echo "Anonymous WP_Query still sees product: $ANON_QUERY" >&2; exit 1; }
           [ "$ADMIN_QUERY" = '1' ] || { echo "Administrator WP_Query cannot see product: $ADMIN_QUERY" >&2; exit 1; }
           SAMPLE_JSON="$(printf '%s' "$SAMPLE_B64" | base64 -d)"
-          echo "SAMPLE_JSON=$SAMPLE_JSON" >> "$GITHUB_ENV"
-          echo "SAMPLE_VENDOR=$(printf '%s' "$SAMPLE_JSON" | jq -r '.vendor')" >> "$GITHUB_ENV"
-          echo "SAMPLE_TITLE=$(printf '%s' "$SAMPLE_JSON" | jq -r '.title')" >> "$GITHUB_ENV"
-          echo "SAMPLE_URL=$(printf '%s' "$SAMPLE_JSON" | jq -r '.url')" >> "$GITHUB_ENV"
-          echo "SAMPLE_CATEGORY=$(printf '%s' "$SAMPLE_JSON" | jq -r '.category')" >> "$GITHUB_ENV"
+          {
+            echo "SAMPLE_JSON=$SAMPLE_JSON"
+            echo "SAMPLE_VENDOR=$(printf '%s' "$SAMPLE_JSON" | jq -r '.vendor')"
+            echo "SAMPLE_TITLE=$(printf '%s' "$SAMPLE_JSON" | jq -r '.title')"
+            echo "SAMPLE_URL=$(printf '%s' "$SAMPLE_JSON" | jq -r '.url')"
+            echo "SAMPLE_CATEGORY=$(printf '%s' "$SAMPLE_JSON" | jq -r '.category')"
+          } >> "$GITHUB_ENV"
           echo "WPCLI_VISIBILITY_OK anonymous=0 admin=1"
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
       - name: Verify anonymous HTTP behavior
         shell: bash
         run: |
@@ -106,15 +129,12 @@ jobs:
           echo "DIRECT_HTTP=$DIRECT_CODE"
           [ "$DIRECT_CODE" = '404' ] || { echo "Disabled product direct URL is not 404" >&2; exit 1; }
           ! grep -Fqi "$SAMPLE_TITLE" /tmp/direct.html || { echo "Disabled product title leaked on direct 404" >&2; exit 1; }
-
           SHOP_URL="${STAGING_URL}/tienda/?vendor_id=${SAMPLE_VENDOR}&disabled-vendor-smoke=1"
           SHOP_CODE="$(curl -ksS -L -o /tmp/shop.html -w '%{http_code}' --max-time 35 "$SHOP_URL" || true)"
           [ "$SHOP_CODE" = '200' ]
           ! grep -Fqi "$SAMPLE_TITLE" /tmp/shop.html || { echo "Disabled product leaked in Shop" >&2; exit 1; }
-
           if [ -n "$SAMPLE_CATEGORY" ]; then
-            sep='?'; case "$SAMPLE_CATEGORY" in *\?*) sep='&' ;; esac
-            CATEGORY_URL="${SAMPLE_CATEGORY}${sep}vendor_id=${SAMPLE_VENDOR}&disabled-vendor-smoke=1"
+            CATEGORY_URL="${SAMPLE_CATEGORY}?vendor_id=${SAMPLE_VENDOR}&disabled-vendor-smoke=1"
             CATEGORY_CODE="$(curl -ksS -L -o /tmp/category.html -w '%{http_code}' --max-time 35 "$CATEGORY_URL" || true)"
             [ "$CATEGORY_CODE" = '200' ]
             ! grep -Fqi "$SAMPLE_TITLE" /tmp/category.html || { echo "Disabled product leaked in category" >&2; exit 1; }
@@ -138,11 +158,9 @@ jobs:
               const direct=await go(`${sample.url}?chrome-disabled-vendor=1`);
               const directData=await page.evaluate(title=>({titleFound:document.body.innerText.includes(title),h1:document.querySelector('h1')?.textContent?.trim()||''}),sample.title);
               if((direct?.status()||0)!==404 || directData.titleFound) throw new Error(`Direct leak ${direct?.status()} ${JSON.stringify(directData)}`);
-
               await go(`${base}/tienda/?vendor_id=${sample.vendor}&chrome-disabled-vendor=1`);
               const shop=await page.evaluate(({title,vendor})=>({titleFound:document.body.innerText.includes(title),vendorRowVisible:[...document.querySelectorAll(`[data-vendor-id="${vendor}"]`)].some(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0})}),{title:sample.title,vendor:sample.vendor});
               if(shop.titleFound) throw new Error(`Shop leak ${JSON.stringify(shop)}`);
-
               let category=null;
               if(sample.category){
                 const u=new URL(sample.category);u.searchParams.set('vendor_id',String(sample.vendor));u.searchParams.set('chrome-disabled-vendor','1');
@@ -155,3 +173,36 @@ jobs:
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
           node disabled-vendor-smoke.cjs
+      - name: Restore staging vendor fixture
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          FIXTURE="${FIXTURE_FILE:-/tmp/elmercado-010210-fixture-${GITHUB_RUN_ID}.json}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$FIXTURE'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; fixture_file="$2"
+          [ -f "$fixture_file" ] || { echo 'No fixture state to restore.'; exit 0; }
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            wp_path="$(dirname "$cfg")"
+          fi
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          export FIXTURE_FILE="$fixture_file"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          $state=json_decode(file_get_contents(getenv("FIXTURE_FILE")),true);
+          if(!is_array($state)||empty($state["sample"]["vendor"])) exit(2);
+          $vendor=(int)$state["sample"]["vendor"];
+          if(!empty($state["disable_exists"])) update_user_meta($vendor,"_disable_vendor",unserialize(base64_decode($state["disable_value"]))); else delete_user_meta($vendor,"_disable_vendor");
+          if(!empty($state["offline_exists"])) update_user_meta($vendor,"_wcfm_store_offline",unserialize(base64_decode($state["offline_value"]))); else delete_user_meta($vendor,"_wcfm_store_offline");
+          echo "FIXTURE_RESTORED vendor={$vendor}\n";
+          ' --path="$wp_path" --allow-root --skip-plugins
+          rm -f "$fixture_file"
+          REMOTE
