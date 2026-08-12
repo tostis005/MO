@@ -1,0 +1,356 @@
+name: Production theme 0.10.212 Home categories v4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-theme-010212-home-categories-v4.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      EXPECTED_VERSION: 0.10.212
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/style.css
+          test -f elmercadodeorigen-child/dropins/advanced-cache.php
+          test -f elmercadodeorigen-child/inc/home-category-visibility-010212.php
+          test -f .github/scripts/elmercado-opcache-reset.php
+          grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
+          grep -Eq '^Version:[[:space:]]*0\.10\.212$' elmercadodeorigen-child/style.css
+          grep -q 'elmercado_home_public_category_count_010212' elmercadodeorigen-child/inc/home-category-visibility-010212.php
+          php -l .github/scripts/elmercado-opcache-reset.php >/dev/null
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          echo 'LOCAL_010212_V4_OK'
+
+      - name: Install tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass jq google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node -e "require('puppeteer-core')"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage exact child theme
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/elmercado-prod-010212-v4-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' --exclude='*.map' -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/"
+
+      - name: Backup deploy clear caches and calculate public counts
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-before-010212-v4-${GITHUB_SHA:0:10}"
+          echo "BACKUP_NAME=$BACKUP_NAME" >> "$GITHUB_ENV"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP/theme' '$GITHUB_SHA' '$BACKUP_NAME' '$EXPECTED_VERSION'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"; backup_name="$4"; expected="$5"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] && [ -d "$prod/wp-content/themes" ] || { echo 'Production WordPress path invalid.' >&2; exit 1; }
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Unexpected production siteurl=$siteurl" >&2; exit 1 ;; esac
+
+          find "$incoming" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          grep -q "ELMERCADO_THEME_VERSION', '$expected'" "$incoming/functions.php"
+          grep -Eq '^Version:[[:space:]]*0\.10\.212$' "$incoming/style.css"
+          parent="$prod/wp-content/themes"; target="$parent/elmercadodeorigen-child"; dropin="$prod/wp-content/advanced-cache.php"
+          [ -d "$target" ] || { echo 'Existing production child theme missing.' >&2; exit 1; }
+          if [ -f "$dropin" ] && ! grep -q 'ELMERCADO_EARLY_HOME_CACHE' "$dropin"; then echo 'Foreign advanced-cache.php found.' >&2; exit 1; fi
+          active_before="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          version_before="$(grep -o "ELMERCADO_THEME_VERSION', '[^']*" "$target/functions.php" | head -n1 | sed "s/.*'//" || true)"
+
+          backup_dir="$HOME/.elmercado-rollbacks/elmercadodeorigen.com/$backup_name"
+          mkdir -p "$backup_dir"
+          tar -czf "$backup_dir/theme.tar.gz" -C "$parent" elmercadodeorigen-child
+          (cd "$backup_dir" && sha256sum theme.tar.gz > theme.tar.gz.sha256 && sha256sum -c theme.tar.gz.sha256)
+          if [ -f "$dropin" ]; then cp "$dropin" "$backup_dir/advanced-cache.php"; printf 'present\n' > "$backup_dir/advanced-cache-state.txt"; else printf 'absent\n' > "$backup_dir/advanced-cache-state.txt"; fi
+          printf '%s\n' "$active_before" > "$backup_dir/active-stylesheet.txt"
+          printf '%s\n' "${version_before:-unknown}" > "$backup_dir/theme-version.txt"
+          printf '%s\n' "$siteurl" > "$backup_dir/siteurl.txt"
+          printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
+
+          old="$parent/.elmercadodeorigen-child.predeploy-$commit"
+          rm -rf "$old"
+          swapped=0
+          rollback() {
+            code=$?
+            if [ "$swapped" -eq 1 ] && [ "$code" -ne 0 ]; then
+              echo 'Server validation failed; restoring previous theme.' >&2
+              rm -rf "$target"; [ ! -d "$old" ] || mv "$old" "$target"
+              if [ "$(cat "$backup_dir/advanced-cache-state.txt" 2>/dev/null || echo absent)" = 'present' ] && [ -f "$backup_dir/advanced-cache.php" ]; then cp "$backup_dir/advanced-cache.php" "$dropin"; else rm -f "$dropin"; fi
+              rm -f "$prod/wp-content/uploads/elmercado-home-static/index.html" "$prod/wp-content/cache/elmercado-home-static/index.html"
+              rm -f "$prod/wp-content/uploads/elmercado-home-static"/home-deferred-*.css
+              "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$active_before" --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$incoming"
+            exit "$code"
+          }
+          trap rollback EXIT HUP INT TERM
+
+          mv "$target" "$old"
+          mv "$incoming" "$target"
+          swapped=1
+          cp "$target/dropins/advanced-cache.php" "$dropin"
+          chmod 0644 "$dropin"
+          rm -f "$prod/wp-content/uploads/elmercado-home-static/index.html" "$prod/wp-content/cache/elmercado-home-static/index.html"
+          rm -f "$prod/wp-content/uploads/elmercado-home-static"/home-deferred-*.css
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$prod" --skip-plugins --allow-root >/dev/null
+          runtime="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$prod" --skip-plugins --allow-root)"
+          [ "$runtime" = "$expected" ] || { echo "CLI runtime $runtime != $expected" >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'if(function_exists("elmercado_flush_home_cache")) elmercado_flush_home_cache();' --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          rm -f "$prod/wp-content/uploads/elmercado-home-static/index.html"
+          rm -f "$prod/wp-content/uploads/elmercado-home-static"/home-deferred-*.css
+
+          COUNTS_OUT="$("$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          if(!function_exists("elmercado_home_public_category_count_010212")){fwrite(STDERR,"Missing helper.\n");exit(2);}
+          $admins=get_users(array("role"=>"administrator","number"=>1,"fields"=>"ID")); if(!$admins)exit(3); wp_set_current_user((int)$admins[0]);
+          $disabled=function_exists("elmercado_wcfm_disabled_vendor_ids_010210")?array_values(array_filter(array_map("absint",elmercado_wcfm_disabled_vendor_ids_010210()))):array();
+          $exclude=array_filter(array((int)get_option("default_product_cat"))); $terms=get_terms(array("taxonomy"=>"product_cat","hide_empty"=>true,"number"=>6,"orderby"=>"count","order"=>"DESC","exclude"=>$exclude)); $rows=array();
+          foreach((array)$terms as $term){
+            if(!($term instanceof WP_Term))continue; $link=get_term_link($term); if(is_wp_error($link))continue;
+            $base=array("post_type"=>"product","post_status"=>"publish","fields"=>"ids","posts_per_page"=>1,"no_found_rows"=>false,"ignore_sticky_posts"=>true,"tax_query"=>array(array("taxonomy"=>"product_cat","field"=>"term_id","terms"=>array((int)$term->term_id),"include_children"=>true)));
+            $all=new WP_Query($base); $published=(int)$all->found_posts; $disabled_count=0;
+            if($disabled){$d=$base;$d["author__in"]=$disabled;$dq=new WP_Query($d);$disabled_count=(int)$dq->found_posts;}
+            $public=(int)elmercado_home_public_category_count_010212((int)$term->term_id);
+            if($public!==max(0,$published-$disabled_count)){fwrite(STDERR,"Count mismatch {$term->name}.\n");exit(4);}
+            $rows[]=array("id"=>(int)$term->term_id,"name"=>$term->name,"url"=>$link,"legacy"=>(int)$term->count,"published"=>$published,"disabled"=>$disabled_count,"public"=>$public);
+          }
+          echo "__COUNTS__=".base64_encode(wp_json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))."\n";
+          ' --path="$prod" --allow-root)"
+          counts_b64="$(printf '%s\n' "$COUNTS_OUT" | sed -n 's/^__COUNTS__=//p' | tail -n1)"
+          [ -n "$counts_b64" ] || { echo 'Count payload missing.' >&2; exit 1; }
+
+          swapped=0
+          trap - EXIT HUP INT TERM
+          printf '__SITEURL__=%s\n' "$siteurl"
+          printf '__PROD__=%s\n' "$prod"
+          printf '__BEFORE__=%s\n' "${version_before:-unknown}"
+          printf '__AFTER__=%s\n' "$runtime"
+          printf '__COUNTS_B64__=%s\n' "$counts_b64"
+          printf '__OLD__=%s\n' "$old"
+          printf '__BACKUP_DIR__=%s\n' "$backup_dir"
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          SITEURL="$(printf '%s\n' "$OUT" | sed -n 's/^__SITEURL__=//p' | tail -n1)"
+          PROD="$(printf '%s\n' "$OUT" | sed -n 's/^__PROD__=//p' | tail -n1)"
+          BEFORE="$(printf '%s\n' "$OUT" | sed -n 's/^__BEFORE__=//p' | tail -n1)"
+          AFTER="$(printf '%s\n' "$OUT" | sed -n 's/^__AFTER__=//p' | tail -n1)"
+          COUNTS_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COUNTS_B64__=//p' | tail -n1)"
+          OLD="$(printf '%s\n' "$OUT" | sed -n 's/^__OLD__=//p' | tail -n1)"
+          BACKUP_DIR="$(printf '%s\n' "$OUT" | sed -n 's/^__BACKUP_DIR__=//p' | tail -n1)"
+          : "${SITEURL:?}"; : "${PROD:?}"; : "${COUNTS_B64:?}"; : "${OLD:?}"; : "${BACKUP_DIR:?}"
+          COUNTS_JSON="$(printf '%s' "$COUNTS_B64" | base64 -d)"
+          {
+            echo "PRODUCTION_SITEURL=$SITEURL"
+            echo "PRODUCTION_WP_PATH=$PROD"
+            echo "PREVIOUS_VERSION=$BEFORE"
+            echo "CURRENT_VERSION=$AFTER"
+            echo "COUNTS_JSON=$COUNTS_JSON"
+            echo "PREDEPLOY_OLD_PATH=$OLD"
+            echo "ROLLBACK_BACKUP_DIR=$BACKUP_DIR"
+          } >> "$GITHUB_ENV"
+          echo "$COUNTS_JSON" | jq .
+          echo "SERVER_010212_V4_OK before=$BEFORE after=$AFTER"
+
+      - name: Reset PHP-FPM OPcache to new release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PROBE="elmercado-opcache-${GITHUB_RUN_ID}-$(openssl rand -hex 8).php"
+          echo "OPCACHE_PROBE=$PROBE" >> "$GITHUB_ENV"
+          sshpass -e scp $SSH_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PRODUCTION_WP_PATH/$PROBE"
+          body="$(curl -sS -L -H 'Cache-Control: no-store' --connect-timeout 15 --max-time 30 "${PRODUCTION_SITEURL%/}/$PROBE" || true)"
+          printf '%s\n' "$body"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PRODUCTION_WP_PATH/$PROBE'"
+          grep -q '^OPCACHE_RESET_OK$' <<< "$body"
+          echo 'PHP_FPM_OPCACHE_010212_V4_RESET_OK'
+
+      - name: Verify fresh PHP web runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${PRODUCTION_SITEURL%/}"
+          ok=0
+          for attempt in {1..8}; do
+            code="$(curl -sS -L -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' --connect-timeout 15 --max-time 60 -o /tmp/runtime.html -w '%{http_code}' "$BASE/?home-010212-v4=${GITHUB_RUN_ID}-${attempt}" || true)"
+            if [ "$code" = '200' ] && grep -q 'elmercado-home-category-visibility-010212' /tmp/runtime.html && grep -q 'display:flex!important;flex-direction:column!important' /tmp/runtime.html; then ok=1; break; fi
+            sleep 3
+          done
+          [ "$ok" = '1' ] || { echo 'PHP web runtime did not expose 0.10.212.' >&2; exit 1; }
+          echo "WEB_RUNTIME_010212_V4_OK attempt=$attempt"
+
+      - name: Warm and verify fresh anonymous Home cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${PRODUCTION_SITEURL%/}"
+          curl -sS -L -H 'Cache-Control: no-cache' --connect-timeout 15 --max-time 90 -D /tmp/warm-h -o /tmp/warm-b "$BASE/"
+          grep -q 'display:flex!important;flex-direction:column!important' /tmp/warm-b
+          grep -q 'home-deferred-0.10.212.css' /tmp/warm-b
+          fresh=0
+          for attempt in {1..8}; do
+            curl -sS -L --connect-timeout 15 --max-time 60 -D /tmp/hit-h -o /tmp/hit-b "$BASE/" || true
+            tr -d '\r' < /tmp/hit-h > /tmp/hit-hn
+            if grep -q 'display:flex!important;flex-direction:column!important' /tmp/hit-b && grep -q 'home-deferred-0.10.212.css' /tmp/hit-b && grep -Eiq '^x-el-mercado-(early-)?cache:[[:space:]]*HIT$' /tmp/hit-hn; then fresh=1; break; fi
+            sleep 3
+          done
+          cat /tmp/hit-hn
+          [ "$fresh" = '1' ] || { echo 'Fresh anonymous Home cache not verified.' >&2; exit 1; }
+          echo "HOME_CACHE_010212_V4_OK attempt=$attempt"
+
+      - name: Verify production Home in real Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > prod-home-010212-v4.cjs <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const expected=JSON.parse(process.env.COUNTS_JSON);
+          const norm=u=>{const x=new URL(u);return x.origin+x.pathname.replace(/\/$/,'')+'/'};
+          const positive=expected.filter(x=>x.public>0);
+          const expectedMap=new Map(positive.map(x=>[norm(x.url),x]));
+          const zero=new Set(expected.filter(x=>x.public<=0).map(x=>norm(x.url)));
+          async function inspect(page,width,height,url){
+            await page.setViewport({width,height});
+            const res=await page.goto(url,{waitUntil:'domcontentloaded',timeout:90000});
+            if(!res||res.status()>=400) throw new Error(`HTTP ${res?.status()}`);
+            await page.waitForSelector('.emo-category-card__content small',{timeout:30000});
+            await new Promise(r=>setTimeout(r,1000));
+            return page.evaluate(()=>[...document.querySelectorAll('.emo-category-card')].map(card=>{
+              const c=card.querySelector('.emo-category-card__content'),s=c?.querySelector('strong'),m=c?.querySelector('small');
+              const sr=s?.getBoundingClientRect(),mr=m?.getBoundingClientRect(),cs=c?getComputedStyle(c):null,ss=s?getComputedStyle(s):null;
+              return {href:card.href,name:s?.textContent.trim()||'',countText:m?.textContent.trim()||'',display:cs?.display||'',direction:cs?.flexDirection||'',gap:mr&&sr?mr.top-sr.bottom:null,strongH:sr?.height||0,lineHeight:parseFloat(ss?.lineHeight)||0};
+            }));
+          }
+          function validate(cards,label){
+            if(cards.length!==positive.length) throw new Error(`${label}: ${cards.length} cards, expected ${positive.length}`);
+            for(const c of cards){
+              const href=norm(c.href);
+              if(zero.has(href)) throw new Error(`${label}: zero-public category visible ${c.name}`);
+              const e=expectedMap.get(href); if(!e) throw new Error(`${label}: unexpected ${c.href}`);
+              const shown=parseInt(c.countText.replace(/[^0-9]/g,''),10);
+              if(shown!==e.public) throw new Error(`${label}: ${c.name} shows ${shown}, expected ${e.public}`);
+              if(c.display!=='flex'||c.direction!=='column') throw new Error(`${label}: ${c.name} layout ${c.display}/${c.direction}`);
+              if(c.gap===null||c.gap<5) throw new Error(`${label}: ${c.name} gap ${c.gap}`);
+            }
+            const wrapped=cards.filter(c=>c.lineHeight>0&&c.strongH>c.lineHeight*1.55).map(c=>c.name);
+            if(label.startsWith('desktop')&&wrapped.length) throw new Error(`${label}: wrapped ${wrapped.join(', ')}`);
+            return wrapped;
+          }
+          (async()=>{
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              const page=await browser.newPage();
+              const base=process.env.PRODUCTION_SITEURL.replace(/\/$/,'');
+              const desktop=await inspect(page,1440,1000,`${base}/`);
+              const mobile=await inspect(page,390,844,`${base}/`);
+              const bypass=await inspect(page,1440,1000,`${base}/?chrome-home-010212-v4=${Date.now()}`);
+              const wrapped=validate(desktop,'desktop-cache'); validate(mobile,'mobile-cache'); validate(bypass,'desktop-bypass');
+              console.log('PRODUCTION_010212_HOME_V4_BROWSER_OK',JSON.stringify({expected,desktop,mobile,bypass,wrapped}));
+            } finally { await browser.close(); }
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node prod-home-010212-v4.cjs
+
+      - name: Finalize successful release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$PREDEPLOY_OLD_PATH' '$REMOTE_TMP'; rm -f '$PRODUCTION_WP_PATH/${OPCACHE_PROBE:-never}'"
+          echo 'PRODUCTION_010212_HOME_V4_OK'
+          echo "Previous: $PREVIOUS_VERSION"
+          echo "Current: $CURRENT_VERSION"
+          echo "Rollback backup: $BACKUP_NAME"
+          echo "Counts: $COUNTS_JSON"
+
+      - name: Automatic rollback and OPcache reset on failure
+        if: failure()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          [ -n "${PRODUCTION_WP_PATH:-}" ] || exit 0
+          [ -n "${PREDEPLOY_OLD_PATH:-}" ] || exit 0
+          [ -n "${ROLLBACK_BACKUP_DIR:-}" ] || exit 0
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PRODUCTION_WP_PATH' '$PREDEPLOY_OLD_PATH' '$ROLLBACK_BACKUP_DIR'" <<'REMOTE'
+          set -eu
+          prod="$1"; old="$2"; backup_dir="$3"; target="$prod/wp-content/themes/elmercadodeorigen-child"; dropin="$prod/wp-content/advanced-cache.php"
+          if [ -d "$old" ]; then rm -rf "$target"; mv "$old" "$target"; fi
+          if [ "$(cat "$backup_dir/advanced-cache-state.txt" 2>/dev/null || echo absent)" = 'present' ] && [ -f "$backup_dir/advanced-cache.php" ]; then cp "$backup_dir/advanced-cache.php" "$dropin"; else rm -f "$dropin"; fi
+          rm -f "$prod/wp-content/uploads/elmercado-home-static/index.html" "$prod/wp-content/cache/elmercado-home-static/index.html"
+          rm -f "$prod/wp-content/uploads/elmercado-home-static"/home-deferred-*.css
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"; wp_bin="$(command -v wp || true)"
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          REMOTE
+          RPROBE="elmercado-opcache-rollback-${GITHUB_RUN_ID}-$(openssl rand -hex 8).php"
+          sshpass -e scp $SSH_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PRODUCTION_WP_PATH/$RPROBE"
+          rbody="$(curl -sS -L -H 'Cache-Control: no-store' --connect-timeout 15 --max-time 30 "${PRODUCTION_SITEURL%/}/$RPROBE" || true)"
+          printf '%s\n' "$rbody"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PRODUCTION_WP_PATH/$RPROBE' '$PRODUCTION_WP_PATH/${OPCACHE_PROBE:-never}'"
+          echo 'ROLLBACK_010212_V4_OK'
