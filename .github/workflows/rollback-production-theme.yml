@@ -1,0 +1,136 @@
+name: Rollback production child theme
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup:
+        description: 'Backup directory name under the production rollback store, or latest'
+        required: false
+        default: 'latest'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SSH_HOST: ${{ secrets.STAGING_HOST }}
+      SSH_PORT: ${{ secrets.STAGING_PORT }}
+      SSH_USER: ${{ secrets.STAGING_USER }}
+      SSH_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      PRODUCTION_DOMAIN: elmercadodeorigen.com
+      PRODUCTION_URL: https://elmercadodeorigen.com
+      REQUESTED_BACKUP: ${{ inputs.backup }}
+
+    steps:
+      - name: Validate connection secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?Missing SSH host secret}"
+          : "${SSH_USER:?Missing SSH user secret}"
+          : "${SSH_PASSWORD:?Missing SSH password secret}"
+          PORT="${SSH_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Restore production child theme backup
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PRODUCTION_DOMAIN' '$REQUESTED_BACKUP'" <<'REMOTE'
+          set -eu
+          domain="$1"
+          requested="$2"
+
+          candidates="$(mktemp)"
+          trap 'rm -f "$candidates"' EXIT
+          for base in "$HOME" /var/www /home /srv /opt /data /web /www; do
+            [ -d "$base" ] || continue
+            find "$base" -maxdepth 9 -type f -name wp-config.php \
+              ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
+              2>/dev/null >> "$candidates" || true
+          done
+          config="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+          [ -n "$config" ] || { echo "Production WordPress installation for ${domain} not found." >&2; exit 1; }
+          wp_path="$(dirname "$config")"
+          [ "$(basename "$wp_path")" = "$domain" ] || { echo 'Resolved path is not the production domain.' >&2; exit 1; }
+          case "$wp_path" in *dev.elmercadodeorigen.com*) echo 'Refusing to rollback staging.' >&2; exit 1 ;; esac
+
+          rollback_root="$HOME/.elmercado-rollbacks/$domain"
+          [ -d "$rollback_root" ] || { echo 'Rollback store does not exist.' >&2; exit 1; }
+          if [ "$requested" = 'latest' ] || [ -z "$requested" ]; then
+            backup_dir="$(find "$rollback_root" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+          else
+            case "$requested" in *[!A-Za-z0-9._-]*) echo 'Invalid backup name.' >&2; exit 1 ;; esac
+            backup_dir="$rollback_root/$requested"
+          fi
+          [ -n "$backup_dir" ] && [ -f "$backup_dir/theme.tar.gz" ] || { echo 'Requested backup archive not found.' >&2; exit 1; }
+          [ -f "$backup_dir/theme.tar.gz.sha256" ] && ( cd "$backup_dir" && sha256sum -c theme.tar.gz.sha256 )
+
+          theme_parent="$wp_path/wp-content/themes"
+          theme_path="$theme_parent/elmercadodeorigen-child"
+          safety="$rollback_root/pre-rollback-$(date -u +%Y%m%dT%H%M%SZ)"
+          mkdir -p "$safety"
+          if [ -d "$theme_path" ]; then
+            tar -czf "$safety/theme.tar.gz" -C "$theme_parent" elmercadodeorigen-child
+            ( cd "$safety" && sha256sum theme.tar.gz > theme.tar.gz.sha256 )
+          fi
+
+          rm -rf "$theme_path"
+          tar -xzf "$backup_dir/theme.tar.gz" -C "$theme_parent"
+          test -f "$theme_path/functions.php"
+          find "$theme_path" -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI unavailable.' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -x "$php_bin" ] || { echo 'PHP CLI unavailable.' >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$wp_path" --skip-plugins --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$wp_path" --skip-plugins --allow-root || true
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
+          [ "$active" = 'elmercadodeorigen-child' ]
+          version="$(grep -o "ELMERCADO_THEME_VERSION', '[^']*" "$theme_path/functions.php" | head -n1 | sed "s/.*'//" || true)"
+          printf 'Rollback restored backup: %s\n' "$(basename "$backup_dir")"
+          printf 'Active theme version after rollback: %s\n' "${version:-unknown}"
+          REMOTE
+
+      - name: Verify production after rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in / /tienda/ /categoria-producto/jamones-paletas/; do
+            status="$(curl -sS -L --max-time 30 -o /tmp/prod.html -w '%{http_code}' "$PRODUCTION_URL$path?rollback-check=${GITHUB_RUN_ID}")"
+            [ "$status" = '200' ] || { echo "$path returned HTTP $status" >&2; exit 1; }
+            grep -q 'elmercado-child-theme' /tmp/prod.html || { echo "$path is not serving the child theme" >&2; exit 1; }
+          done
