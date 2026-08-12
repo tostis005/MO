@@ -1,0 +1,36 @@
+name: Canonicalize El Catedrático in production
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-canonicalize-catedratico.yml']
+permissions:
+  contents: read
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DOMAIN: elmercadodeorigen.com
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      PASS: ${{ secrets.STAGING_PASSWORD }}
+      HINT: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Canonicalize producer display name
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh; ssh-keyscan -T 15 -p "$P" -H "$HOST" > ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+          sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$HINT' '$DOMAIN'" <<'REMOTE'
+          set -eu
+          hint="${1%/}"; target="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1 || true)"; fi
+          f="$(mktemp)"; trap 'rm -f "$f"' EXIT; for b in "$(dirname "$hint")" "$HOME" /var/www/vhosts /var/www /home; do [ -d "$b" ]||continue; find "$b" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' 2>/dev/null>>"$f"||true; done
+          path=""; while IFS= read -r c; do p="$(dirname "$c")"; s="$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true)"; n="$(printf '%s' "$s"|sed -E 's#^https?://##;s#^www\.##;s#/*$##')"; if [ "$n" = "$target" ]; then path="$p"; break; fi; done < "$f"; [ -n "$path" ] || exit 2
+          "$php" -d memory_limit=768M "$wp" eval '
+          global $wpdb;$table=$wpdb->prefix."mdo_suppliers";$row=$wpdb->get_row($wpdb->prepare("SELECT id,code,name,vendor_user_id FROM {$table} WHERE code=%s","el-catedratico"),ARRAY_A);if(!$row||empty($row["vendor_user_id"]))throw new Exception("Proveedor El Catedrático no encontrado");$id=(int)$row["vendor_user_id"];$u=get_user_by("id",$id);if(!$u)throw new Exception("Usuario vendedor no encontrado");$before=$u->display_name;$r=wp_update_user(["ID"=>$id,"display_name"=>"El Catedrático","nickname"=>"El Catedrático"]);if(is_wp_error($r))throw new Exception($r->get_error_message());update_user_meta($id,"nickname","El Catedrático");$after=get_user_by("id",$id);if(!$after||$after->display_name!=="El Catedrático")throw new Exception("No se persistió el nombre canónico");echo wp_json_encode(["status"=>"completed","siteurl"=>get_option("siteurl"),"vendor_id"=>$id,"before"=>$before,"after"=>$after->display_name],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' --path="$path" --allow-root
+          REMOTE
