@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.8
+ * Version: 1.0.9
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.8' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.9' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -39,6 +39,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-direct-clo
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-cured-catalog.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-cured-producer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-adobados-catalog.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-accessories-catalog.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';
@@ -77,6 +78,12 @@ add_action(
 			MDO_Adobados_Catalog::migrate_catalog( false );
 		} catch ( Throwable $error ) {
 			error_log( '[EMDO adobados catalog] Migración: ' . $error->getMessage() );
+		}
+		MDO_Accessories_Catalog::init();
+		try {
+			MDO_Accessories_Catalog::migrate_catalog( false );
+		} catch ( Throwable $error ) {
+			error_log( '[EMDO accessories catalog] Migración: ' . $error->getMessage() );
 		}
 		MDO_Variable_Upgrade::init();
 		MDO_Description_Guard::init();
