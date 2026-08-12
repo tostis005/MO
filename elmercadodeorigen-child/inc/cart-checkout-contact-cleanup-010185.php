@@ -1,6 +1,6 @@
 <?php
 /**
- * Ajustes solicitados de carrito, checkout y formularios de contacto 0.10.185.
+ * Ajustes solicitados de carrito, checkout y formularios de contacto 0.10.186.
  *
  * @package ElMercadoDeOrigen
  */
@@ -10,27 +10,30 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Corrige el texto de destino de envío del carrito sin depender del catálogo
- * de traducciones instalado en cada entorno.
+ * Fuerza "Enviar a" en el destino de envío del carrito, con independencia
+ * del dominio o del catálogo de traducciones activo en cada entorno.
  */
 add_filter(
 	'gettext',
 	static function ( string $translation, string $text, string $domain ): string {
-		if ( 'woocommerce' !== $domain ) {
-			return $translation;
-		}
+		if ( function_exists( 'is_cart' ) && is_cart() ) {
+			if ( 'Shipping to %s.' === $text ) {
+				return 'Enviar a %s.';
+			}
 
-		if ( 'Shipping to %s.' === $text ) {
-			return 'Enviar a %s.';
-		}
+			if ( 'Shipping to %s' === $text ) {
+				return 'Enviar a %s';
+			}
 
-		if ( 'Shipping to %s' === $text ) {
-			return 'Enviar a %s';
+			$corrected = preg_replace( '/^Enviará\s+a(?=\s|$)/u', 'Enviar a', $translation, 1 );
+			if ( is_string( $corrected ) && $corrected !== $translation ) {
+				return $corrected;
+			}
 		}
 
 		return $translation;
 	},
-	20,
+	PHP_INT_MAX,
 	3
 );
 
@@ -56,7 +59,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-contact-checkout-cleanup-010185">
+		<style id="elmercado-contact-checkout-cleanup-010186">
 			/* Fallback para gateways que imprimen su logo sin usar woocommerce_gateway_icon. */
 			body.elmercado-child-theme.woocommerce-checkout #payment .wc_payment_method > label img,
 			body.elmercado-child-theme.woocommerce-checkout #payment .payment_methods > li > label img,
@@ -87,12 +90,23 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-contact-empty-fieldset-guard-010185">
+		<script id="elmercado-cart-contact-runtime-guard-010186">
 		(() => {
 			'use strict';
 
+			const normalizeCartDestination = (root = document) => {
+				if (!document.body.classList.contains('woocommerce-cart')) return;
+				root.querySelectorAll?.('.woocommerce-shipping-destination').forEach((element) => {
+					Array.from(element.childNodes).forEach((node) => {
+						if (node.nodeType !== Node.TEXT_NODE) return;
+						const value = node.nodeValue || '';
+						const corrected = value.replace(/^\s*Enviará\s+a(?=\s|$)/u, (match) => match.replace(/Enviará\s+a/u, 'Enviar a'));
+						if (corrected !== value) node.nodeValue = corrected;
+					});
+				});
+			};
+
 			const path = (window.location.pathname || '').toLowerCase();
-			if (!path.includes('contact')) return;
 
 			const isRendered = (element) => {
 				if (!(element instanceof Element)) return false;
@@ -130,9 +144,15 @@ add_action(
 				}
 			};
 
-			const scan = (root = document) => {
+			const scanContactFieldsets = (root = document) => {
+				if (!path.includes('contact')) return;
 				if (root instanceof HTMLFieldSetElement) normalizeFieldset(root);
 				root.querySelectorAll?.('form fieldset').forEach(normalizeFieldset);
+			};
+
+			const scan = (root = document) => {
+				normalizeCartDestination(root);
+				scanContactFieldsets(root);
 			};
 
 			const start = () => {
