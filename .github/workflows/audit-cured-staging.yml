@@ -101,7 +101,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           REMOTE_SCRIPT="/tmp/emdo-cured-audit-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SSH_OPTIONS scripts/cured-catalog-audit-export.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "cat > '$REMOTE_SCRIPT'" < scripts/cured-catalog-audit-export.php
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_WP_PATH' '$REMOTE_SCRIPT'" > cured-audit.json <<'REMOTE'
           set -eu
           wp_path="$1"
