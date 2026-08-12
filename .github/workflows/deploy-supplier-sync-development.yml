@@ -100,7 +100,7 @@ jobs:
           : "${WP_PATH:?Could not resolve staging WordPress path}"
           echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
 
-      - name: Deploy activate and provision cron
+      - name: Deploy activate classify and provision cron
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -127,6 +127,9 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active mdo-supplier-sync --path="$wp_path" --allow-root
           db_version="$("$php_bin" -d memory_limit=512M "$wp_bin" option get mdo_supplier_sync_db_version --path="$wp_path" --allow-root)"
           [ "$db_version" = '1.2.0' ]
+
+          taxonomy_report="$("$php_bin" -d memory_limit=768M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Taxonomy::migrate_catalog( false ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'Jamones/Paletas taxonomy: %s\n' "$taxonomy_report"
 
           # WP-Cron no puede depender del tráfico nocturno. Gestionamos únicamente
           # nuestro bloque de crontab y conservamos cualquier otra entrada existente.
