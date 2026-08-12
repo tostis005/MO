@@ -32,7 +32,7 @@ jobs:
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Read-only server diagnosis
+      - name: Identify hot PHP workload read-only
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -53,79 +53,73 @@ jobs:
             [ -n "$cfg" ] && dev_path="$(dirname "$cfg")"
           fi
           prod_path="$(dirname "$dev_path")/httpdocs"
+          vhost_root="$(dirname "$prod_path")"
           php_bin="$(command -v php)"
           [ -x "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           wp_bin="$(command -v wp)"
 
-          echo '===== CLOCK / LOAD ====='
-          date -Is
-          uptime
-          echo '-- /proc/loadavg --'
-          cat /proc/loadavg
-          echo '-- memory --'
-          free -m
-          echo '-- vmstat --'
-          vmstat 1 3
+          echo '===== LOAD / HOT WORKERS ====='
+          date -Is; uptime
+          ps -eo pid,ppid,user,stat,lstart,etime,time,%cpu,%mem,comm,args --sort=-%cpu | grep -E 'PID|php-fpm: pool elmercadodeorigen.com|mysqld' | head -n 40
 
-          echo '===== TOP SNAPSHOT ====='
-          top -b -n 1 | head -n 80
-          echo '===== PROCESSES SORTED BY CPU ====='
-          ps -eo pid,ppid,user,stat,etime,%cpu,%mem,comm,args --sort=-%cpu | head -n 100
-          echo '===== PROCESS CPU AGGREGATE ====='
-          ps -eo comm=,%cpu=,%mem= | awk '{cpu[$1]+=$2; mem[$1]+=$3; n[$1]++} END {for (p in cpu) printf "%8.1f %8.1f %5d %s\n",cpu[p],mem[p],n[p],p}' | sort -nr | head -n 40
-          echo '===== PHP/MYSQL/WEB PROCESSES ====='
-          pgrep -af 'php|php-fpm|mysqld|mariadbd|nginx|apache2|httpd|wp-cron' | head -n 160
-
-          echo '===== WORDPRESS ROOTS ====='
-          echo "DEV=$dev_path"
-          echo "PROD=$prod_path"
-
-          diagnose_wp() {
-            label="$1"; path="$2"
-            echo "===== $label WORDPRESS ====="
-            [ -f "$path/wp-config.php" ] || { echo 'wp-config missing'; return; }
-            "$php_bin" "$wp_bin" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
-            echo '-- active theme/plugin EMDO --'
-            "$php_bin" "$wp_bin" option get stylesheet --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
-            "$php_bin" "$wp_bin" plugin status mdo-supplier-sync --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 20
-            prefix="$("$php_bin" "$wp_bin" db prefix --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
-            echo "DB_PREFIX=$prefix"
-            echo '-- MySQL processlist --'
-            "$php_bin" "$wp_bin" db query 'SHOW FULL PROCESSLIST' --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 100
-            echo '-- Action Scheduler summary --'
-            table="${prefix}actionscheduler_actions"
-            exists="$("$php_bin" "$wp_bin" db query "SHOW TABLES LIKE '$table'" --skip-column-names --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
-            if [ "$exists" = "$table" ]; then
-              "$php_bin" "$wp_bin" db query "SELECT status,hook,COUNT(*) AS total,MIN(scheduled_date_gmt) AS oldest,MAX(scheduled_date_gmt) AS newest FROM $table GROUP BY status,hook ORDER BY total DESC LIMIT 60" --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
-              echo '-- due/pending/in-progress actions --'
-              "$php_bin" "$wp_bin" db query "SELECT action_id,hook,status,scheduled_date_gmt,attempts,last_attempt_gmt FROM $table WHERE status IN ('pending','in-progress') ORDER BY scheduled_date_gmt ASC LIMIT 100" --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
-            else
-              echo 'Action Scheduler table not found'
-            fi
-            echo '-- WP Cron first events --'
-            "$php_bin" "$wp_bin" cron event list --fields=hook,next_run_gmt,next_run_relative,recurrence --format=table --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 100
-            echo '-- EMDO tables --'
-            "$php_bin" "$wp_bin" db query "SHOW TABLES LIKE '${prefix}mdo%'" --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 100
-          }
-
-          diagnose_wp PROD "$prod_path"
-          diagnose_wp DEV "$dev_path"
-
-          echo '===== RECENT ACCESS LOG ====='
-          vhost_root="$(dirname "$prod_path")"
-          log=''
-          for candidate in "$vhost_root/logs/access_log" "$vhost_root/logs/proxy_access_log" /var/www/vhosts/system/elmercadodeorigen.com/logs/access_log /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_log; do
-            if [ -f "$candidate" ]; then log="$candidate"; break; fi
+          echo '===== HOT PHP /PROC DETAILS ====='
+          pids="$(pgrep -f 'php-fpm: pool elmercadodeorigen.com' | head -n 20)"
+          for pid in $pids; do
+            echo "--- PID $pid ---"
+            ps -p "$pid" -o pid,ppid,user,stat,lstart,etime,time,%cpu,%mem,wchan:32,args
+            printf 'cwd='; readlink "/proc/$pid/cwd" 2>&1
+            printf 'exe='; readlink "/proc/$pid/exe" 2>&1
+            printf 'cmd='; tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null; echo
+            printf 'wchan='; cat "/proc/$pid/wchan" 2>/dev/null; echo
+            echo 'fd targets:'
+            for fd in /proc/$pid/fd/*; do readlink "$fd" 2>/dev/null; done | sort | uniq -c | sort -nr | head -n 30
           done
-          echo "ACCESS_LOG=$log"
-          if [ -n "$log" ]; then
-            echo '-- top IPs last 20000 --'
-            tail -n 20000 "$log" | awk '{print $1}' | sort | uniq -c | sort -nr | head -n 30
-            echo '-- top URLs last 20000 --'
-            tail -n 20000 "$log" | awk '{print $7}' | sort | uniq -c | sort -nr | head -n 50
-            echo '-- requests around 19:40-19:55 local/server time --'
-            grep -E '12/Aug/2026:19:(4[0-9]|5[0-5]):' "$log" | tail -n 300
-          else
-            echo 'No access log located'
-          fi
+
+          echo '===== PHP-FPM DOMAIN CONFIG ====='
+          grep -RniE 'elmercadodeorigen\.com|pm\.|request_slowlog_timeout|slowlog|access\.log|access\.format|status_path|catch_workers_output' /opt/plesk/php/8.2/etc/php-fpm.d /var/www/vhosts/system 2>/dev/null | grep -E 'elmercadodeorigen|pm\.|slowlog|access\.|status_path|catch_workers' | head -n 250
+
+          echo '===== EMDO RUNS PROD ====='
+          prefix="$("$php_bin" "$wp_bin" db prefix --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
+          "$php_bin" "$wp_bin" db query "SELECT id,supplier_id,trigger_type,status,started_at,finished_at,products_found,products_new,products_updated,products_excluded,errors_count,message FROM ${prefix}mdo_sync_runs WHERE started_at >= '2026-08-12 18:30:00' ORDER BY id DESC LIMIT 100" --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+          echo '-- EMDO event counts since 18:30 --'
+          "$php_bin" "$wp_bin" db query "SELECT run_id,supplier_id,event_type,severity,COUNT(*) AS n,MIN(created_at) AS first_at,MAX(created_at) AS last_at FROM ${prefix}mdo_sync_events WHERE created_at >= '2026-08-12 18:30:00' GROUP BY run_id,supplier_id,event_type,severity ORDER BY last_at DESC LIMIT 150" --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+
+          echo '===== ACTION SCHEDULER TABLE DISCOVERY PROD ====='
+          "$php_bin" "$wp_bin" db query "SHOW TABLES LIKE '%action%'" --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+          "$php_bin" "$wp_bin" db query "SHOW TABLES LIKE '%schedul%'" --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+          for table in "${prefix}actionscheduler_actions" "${prefix}actionscheduler_logs"; do
+            exists="$("$php_bin" "$wp_bin" db query "SHOW TABLES LIKE '$table'" --skip-column-names --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
+            if [ "$exists" = "$table" ]; then
+              echo "-- $table --"
+              "$php_bin" "$wp_bin" db query "SELECT status,hook,COUNT(*) total,MIN(scheduled_date_gmt) oldest,MAX(scheduled_date_gmt) newest FROM ${prefix}actionscheduler_actions GROUP BY status,hook ORDER BY total DESC LIMIT 100" --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+              "$php_bin" "$wp_bin" db query "SELECT action_id,hook,status,scheduled_date_gmt,attempts,last_attempt_gmt FROM ${prefix}actionscheduler_actions WHERE status IN ('pending','in-progress') ORDER BY scheduled_date_gmt ASC LIMIT 150" --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+              break
+            fi
+          done
+
+          echo '===== VHOST LOG FILES ====='
+          find -L "$vhost_root/logs" /var/www/vhosts/system/elmercadodeorigen.com/logs -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM:%TS %12s %p\n' 2>/dev/null | sort | tail -n 100
+
+          echo '===== ACCESS LOG ANALYSIS ====='
+          logs="$(find -L "$vhost_root/logs" /var/www/vhosts/system/elmercadodeorigen.com/logs -maxdepth 2 -type f \( -name '*access*log*' -o -name '*proxy*access*' \) 2>/dev/null | sort -u)"
+          for log in $logs; do
+            [ -s "$log" ] || continue
+            echo "--- LOG $log size=$(stat -c %s "$log" 2>/dev/null) ---"
+            tail -n 5 "$log"
+            echo 'top IP last 5000:'
+            tail -n 5000 "$log" | awk '{print $1}' | sort | uniq -c | sort -nr | head -n 15
+            echo 'top request lines last 5000:'
+            tail -n 5000 "$log" | awk -F'"' '{print $2}' | sort | uniq -c | sort -nr | head -n 25
+            echo '19:30-20:00 local-like timestamps:'
+            grep -E '12/Aug/2026:19:(3[0-9]|4[0-9]|5[0-9]):' "$log" | tail -n 80
+            echo '17:30-18:00 UTC-like timestamps:'
+            grep -E '12/Aug/2026:17:(3[0-9]|4[0-9]|5[0-9]):' "$log" | tail -n 80
+          done
+
+          echo '===== PHP-FPM / WEB ERROR LOG TAILS ====='
+          for log in $(find -L "$vhost_root/logs" /var/www/vhosts/system/elmercadodeorigen.com/logs -maxdepth 2 -type f \( -name '*error*log*' -o -name '*php*log*' \) 2>/dev/null | sort -u); do
+            [ -s "$log" ] || continue
+            echo "--- $log ---"
+            tail -n 80 "$log"
+          done
           REMOTE
