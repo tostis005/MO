@@ -1,0 +1,89 @@
+name: Inspect production catalog temp
+
+on:
+  push:
+    branches:
+      - ops/inspect-production-catalog-20260812
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.STAGING_HOST }}
+      SSH_PORT: ${{ secrets.STAGING_PORT }}
+      SSH_USER: ${{ secrets.STAGING_USER }}
+      SSH_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      PROD_DOMAIN: elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?Missing SSH host}"
+          : "${SSH_USER:?Missing SSH user}"
+          : "${SSH_PASSWORD:?Missing SSH password}"
+          PORT="${SSH_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Inspect production WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PROD_DOMAIN'" <<'REMOTE'
+          set -eu
+          domain="$1"
+          candidates="$(mktemp)"
+          trap 'rm -f "$candidates"' EXIT
+          for base in "$HOME" /var/www /home /srv /opt /data /web /www; do
+            [ -d "$base" ] || continue
+            find "$base" -maxdepth 9 -type f -name wp-config.php \
+              ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
+              2>/dev/null >> "$candidates" || true
+          done
+          preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | grep -v '/dev\.' | head -n 1 || true)"
+          [ -n "$preferred" ] || { echo "PROD_FOUND=no"; exit 3; }
+          wp_path="$(dirname "$preferred")"
+          [ "$(basename "$wp_path")" = "$domain" ] || { echo "Unexpected production path: $wp_path" >&2; exit 4; }
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI unavailable' >&2; exit 5; }
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -x "$php_bin" ] || { echo 'PHP CLI unavailable' >&2; exit 6; }
+          WP="$php_bin -d memory_limit=768M $wp_bin --path=$wp_path --allow-root"
+          echo "PROD_FOUND=yes"
+          echo "HOME_URL=$($WP option get home --skip-plugins --skip-themes)"
+          echo "SITE_URL=$($WP option get siteurl --skip-plugins --skip-themes)"
+          echo "PLUGIN_ACTIVE=$($WP plugin is-active mdo-supplier-sync >/dev/null 2>&1 && echo yes || echo no)"
+          echo "PLUGIN_VERSION=$($WP plugin get mdo-supplier-sync --field=version 2>/dev/null || echo missing)"
+          $WP eval '
+            echo "HAS_CURED_CLASS=" . ( class_exists("MDO_Cured_Catalog") ? "yes" : "no" ) . PHP_EOL;
+            echo "HAS_PRODUCER_CLASS=" . ( class_exists("MDO_Cured_Producer") ? "yes" : "no" ) . PHP_EOL;
+            $all = wc_get_products(["limit"=>-1,"return"=>"ids","status"=>["publish","private","draft","pending"]]);
+            echo "PRODUCTS_TOTAL=" . count($all) . PHP_EOL;
+            foreach (["embutidos-y-curados","packs-y-lotes"] as $slug) {
+              $term = get_term_by("slug", $slug, "product_cat");
+              echo strtoupper(str_replace("-","_",$slug)) . "_TERM=" . ($term instanceof WP_Term ? $term->term_id : "missing") . PHP_EOL;
+              $ids = wc_get_products(["limit"=>-1,"return"=>"ids","status"=>["publish","private","draft","pending"],"category"=>[$slug]]);
+              echo strtoupper(str_replace("-","_",$slug)) . "_COUNT=" . count($ids) . PHP_EOL;
+            }
+            foreach (["tipo-producto","raza-iberica","alimentacion","preparacion","productor"] as $attr) {
+              $tax = wc_attribute_taxonomy_name($attr);
+              echo "ATTR_" . strtoupper(str_replace("-","_",$attr)) . "=" . (taxonomy_exists($tax) ? "yes" : "no") . PHP_EOL;
+            }
+          '
+          REMOTE
