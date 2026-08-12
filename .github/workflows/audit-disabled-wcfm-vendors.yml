@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install SSH tools
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass curl
       - name: Configure SSH
         shell: bash
         run: |
@@ -31,7 +31,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           test -s ~/.ssh/known_hosts
-      - name: Audit production WCFM vendor status and products
+      - name: Audit disabled vendors and products in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -42,7 +42,6 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
           set -eu
           raw="${1%/}"
-          dev=""
           case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
           if [ ! -f "$dev/wp-config.php" ]; then
             cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
@@ -50,36 +49,47 @@ jobs:
             dev="$(dirname "$cfg")"
           fi
           prod="$(dirname "$dev")/httpdocs"
-          [ -f "$prod/wp-config.php" ] || exit 1
           php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           wp_bin="$(command -v wp || true)"
           siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
-          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Unexpected siteurl=$siteurl" >&2; exit 1 ;; esac
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) exit 1 ;; esac
           echo "SITEURL=$siteurl"
-          echo "--- WCFM VERSION ---"
-          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --path="$prod" --allow-root --format=csv | grep -Ei 'wcfm|marketplace' || true
-          echo "--- STATUS SOURCE HINTS ---"
-          for dir in "$prod/wp-content/plugins/wc-multivendor-marketplace" "$prod/wp-content/plugins/wc-frontend-manager"; do
-            [ -d "$dir" ] || continue
-            grep -RInE --include='*.php' 'vendor[_ -]?status|store[_ -]?status|disable[_ -]?vendor|vendor[_ -]?disable|is_vendor|is_store|wcfmmp_vendor' "$dir" 2>/dev/null | head -n 140 || true
-          done
-          echo "--- VENDOR STATUS META ---"
+          echo "--- WCFM OFFLINE SOURCE ---"
+          src="$prod/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php"
+          grep -n "function wcfmmp_vendor_product_offline\|function wcfmmp_vendor_product_online\|_wcfm_product_offline" "$src" 2>/dev/null | head -n 80 || true
+          echo "--- DISABLED/OFFLINE VENDORS ---"
           "$php_bin" -d memory_limit=512M "$wp_bin" eval '
-          $users = get_users(array("role__in"=>array("wcfm_vendor","dc_vendor","vendor","seller"),"orderby"=>"ID"));
+          $users = get_users(array("fields"=>"all_with_meta","orderby"=>"ID"));
           foreach ($users as $u) {
+            $roles = array_map("sanitize_key", (array)$u->roles);
+            $disabled = get_user_meta($u->ID,"_disable_vendor",true);
+            $offline = get_user_meta($u->ID,"_wcfm_store_offline",true);
+            if (!in_array("disable_vendor",$roles,true) && !$disabled && !$offline) continue;
             $settings = get_user_meta($u->ID,"wcfmmp_profile_settings",true);
-            $name = is_array($settings) && !empty($settings["store_name"]) ? $settings["store_name"] : $u->display_name;
-            $published = count(get_posts(array("post_type"=>"product","post_status"=>"publish","author"=>$u->ID,"fields"=>"ids","posts_per_page"=>-1,"suppress_filters"=>true)));
-            echo "VENDOR|{$u->ID}|" . sanitize_text_field($name) . "|published={$published}\n";
-            $all = get_user_meta($u->ID);
-            foreach ($all as $key=>$vals) {
-              if (!preg_match("/(wcfm|vendor|store|disable|active|status)/i", (string)$key)) continue;
-              foreach ((array)$vals as $v) {
-                if (!is_string($v) || strlen($v)>180) continue;
-                $v = preg_replace("/\\s+/", " ", $v);
-                echo "META|{$u->ID}|{$key}|{$v}\n";
-              }
+            $name = is_array($settings) && !empty($settings["store_name"]) ? $settings["store_name"] : (get_user_meta($u->ID,"store_name",true) ?: $u->display_name);
+            $ids = get_posts(array("post_type"=>"product","post_status"=>"publish","author"=>$u->ID,"fields"=>"ids","posts_per_page"=>-1,"suppress_filters"=>true));
+            echo "VENDOR|{$u->ID}|".sanitize_text_field($name)."|roles=".implode(",",$roles)."|disable=".var_export($disabled,true)."|offline=".var_export($offline,true)."|published=".count($ids)."\n";
+            foreach ($ids as $pid) {
+              $p = get_post($pid);
+              $poff = get_post_meta($pid,"_wcfm_product_offline",true);
+              echo "PRODUCT|{$u->ID}|{$pid}|".sanitize_title($p->post_name)."|offline=".var_export($poff,true)."|url=".get_permalink($pid)."|title=".sanitize_text_field(get_the_title($pid))."\n";
             }
           }
-          ' --path="$prod" --allow-root --skip-themes
+          ' --path="$prod" --allow-root --skip-themes 2>/dev/null
+          echo "--- PUBLIC CHECKS ---"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          $users = get_users(array("fields"=>"all_with_meta"));
+          foreach ($users as $u) {
+            $roles=(array)$u->roles; $disabled=get_user_meta($u->ID,"_disable_vendor",true); $offline=get_user_meta($u->ID,"_wcfm_store_offline",true);
+            if (!in_array("disable_vendor",$roles,true) && !$disabled && !$offline) continue;
+            $ids=get_posts(array("post_type"=>"product","post_status"=>"publish","author"=>$u->ID,"fields"=>"ids","posts_per_page"=>5,"suppress_filters"=>true));
+            foreach ($ids as $pid) echo get_permalink($pid)."\t".get_the_title($pid)."\n";
+          }
+          ' --path="$prod" --allow-root --skip-themes 2>/dev/null | while IFS='	' read -r url title; do
+            [ -n "$url" ] || continue
+            code="$(curl -ksS -L -o /tmp/disabled-product.html -w '%{http_code}' --max-time 30 "$url?guest-audit=1" || true)"
+            present=0
+            grep -Fqi "$title" /tmp/disabled-product.html && present=1 || true
+            echo "PUBLIC_PRODUCT|HTTP=$code|title_present=$present|$url|$title"
+          done
           REMOTE
