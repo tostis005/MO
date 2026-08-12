@@ -37,34 +37,21 @@ jobs:
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
           if [ ! -f "$wp_path/wp-config.php" ]; then wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"; [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"; fi
           wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
-          WP="$php_bin -d display_errors=1 -d memory_limit=768M $wp_bin --path=$wp_path --allow-root"
-          plugin='woocommerce-eu-vat-assistant'
-          was_active=no
-          if $WP plugin is-active "$plugin" >/dev/null 2>&1; then was_active=yes; fi
-          echo "AELIA_WAS_ACTIVE=$was_active"
+          WP="$php_bin -d memory_limit=768M $wp_bin --path=$wp_path --allow-root"
           before="$(curl -k -sS -o /tmp/before.out -w '%{http_code}' --max-time 20 "https://$domain/" || true)"
           echo "HTTP_BEFORE=$before"
-          if [ "$was_active" = yes ]; then $WP plugin deactivate "$plugin" --quiet; fi
+          echo '== STALE TRANSIENT BEFORE =='
+          $WP db query "SELECT option_name, LOCATE('httpdocs/wp-content/plugins/woocommerce',option_value) AS has_prod_path, LENGTH(option_value) AS bytes FROM wp_options WHERE option_name IN ('_site_transient_woocommerce_blocks_patterns','_site_transient_timeout_woocommerce_blocks_patterns')" --skip-column-names 2>&1 || true
+          $WP db query "DELETE FROM wp_options WHERE option_name IN ('_site_transient_woocommerce_blocks_patterns','_site_transient_timeout_woocommerce_blocks_patterns')" 2>&1
+          echo 'TRANSIENT_DELETED=yes'
           sleep 2
-          after="$(curl -k -sS -o /tmp/after.out -w '%{http_code}' --max-time 20 "https://$domain/" || true)"
-          echo "HTTP_AFTER_DEACTIVATE=$after"
-          case "$after" in
-            2*|3*)
-              echo 'RECOVERY_RESULT=restored_by_aelia_deactivation'
-              echo 'AELIA_LEFT_ACTIVE=no'
-              ;;
-            *)
-              echo 'RECOVERY_RESULT=aelia_not_root_or_additional_fatal'
-              if [ "$was_active" = yes ]; then $WP plugin activate "$plugin" --quiet || true; fi
-              echo "AELIA_RESTORED=$was_active"
-              echo 'BODY_AFTER_BEGIN'; head -c 1500 /tmp/after.out || true; echo; echo 'BODY_AFTER_END'
-              tail -n 100 "$wp_path/wp-content/debug.log" 2>/dev/null || true
-              exit 2
-              ;;
-          esac
-          echo '== FINAL ACTIVE CHECK =='
-          $WP plugin status "$plugin" || true
-          echo '== FINAL HTTP =='
-          curl -k -sS -o /tmp/final.out -D /tmp/final.hdr --max-time 20 "https://$domain/" || true
-          head -n 12 /tmp/final.hdr || true
+          after="$(curl -k -sS -o /tmp/after.out -D /tmp/after.hdr -w '%{http_code}' --max-time 25 "https://$domain/" || true)"
+          echo "HTTP_AFTER=$after"
+          head -n 12 /tmp/after.hdr || true
+          case "$after" in 2*|3*) ;; *) echo 'RECOVERY_FAILED=yes'; tail -n 80 "$wp_path/wp-content/debug.log" 2>/dev/null || true; exit 2 ;; esac
+          echo '== REGENERATED TRANSIENT =='
+          $WP db query "SELECT option_name, LOCATE('httpdocs/wp-content/plugins/woocommerce',option_value) AS has_prod_path, LOCATE('dev.elmercadodeorigen.com/wp-content/plugins/woocommerce',option_value) AS has_dev_path, LENGTH(option_value) AS bytes FROM wp_options WHERE option_name='_site_transient_woocommerce_blocks_patterns'" --skip-column-names 2>&1 || true
+          echo '== CHECK KEY PAGES =='
+          for path in / /tienda/ /mi-cuenta/; do code="$(curl -k -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://$domain$path" || true)"; echo "HTTP $path $code"; done
+          echo 'RECOVERY_OK=yes'
           REMOTE
