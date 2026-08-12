@@ -100,7 +100,7 @@ jobs:
           REMOTE_SCRIPT="/tmp/emdo-ham-catalog-audit-${GITHUB_RUN_ID}.php"
           REMOTE_JSON="/tmp/emdo-ham-catalog-audit-${GITHUB_RUN_ID}.json"
           REMOTE_ERR="/tmp/emdo-ham-catalog-audit-${GITHUB_RUN_ID}.stderr.log"
-          sshpass -e scp $SSH_OPTIONS scripts/ham-catalog-audit-export.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" scripts/ham-catalog-audit-export.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_WP_PATH' '$REMOTE_SCRIPT' '$REMOTE_JSON' '$REMOTE_ERR'" <<'REMOTE'
           set -eu
           wp_path="$1"
@@ -118,8 +118,8 @@ jobs:
           test -s "$json"
           "$php_bin" -r '$j=json_decode(file_get_contents($argv[1]),true); if(!is_array($j)||!isset($j["items"])) exit(2); echo count($j["items"]),"\n";' "$json"
           REMOTE
-          sshpass -e scp $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST:$REMOTE_JSON" ham-catalog-audit.json
-          sshpass -e scp $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST:$REMOTE_ERR" ham-catalog-audit.stderr.log || true
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" "$STAGING_USER@$STAGING_HOST:$REMOTE_JSON" ham-catalog-audit.json
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" "$STAGING_USER@$STAGING_HOST:$REMOTE_ERR" ham-catalog-audit.stderr.log || true
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_SCRIPT' '$REMOTE_JSON' '$REMOTE_ERR'" || true
           jq '{generated_at, count}' ham-catalog-audit.json
           jq -e '.count > 0 and (.items | length) == .count' ham-catalog-audit.json >/dev/null
