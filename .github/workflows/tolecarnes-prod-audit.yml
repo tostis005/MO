@@ -35,7 +35,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
           OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
-          set +e
+          set -euo pipefail
           raw="${1%/}"
           case "$raw" in
             */wp-content/*) dev="${raw%%/wp-content/*}" ;;
@@ -47,74 +47,104 @@ jobs:
             [ -n "$cfg" ] && dev="$(dirname "$cfg")"
           fi
           prod="$(dirname "$dev")/httpdocs"
-          php="$(command -v php)"
-          wp="$(command -v wp)"
-          prefix="$("$php" "$wp" db prefix --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
-          echo "PROD=$prod PREFIX=$prefix"
+          php_bin="$(ls -1 /opt/plesk/php/*/bin/php 2>/dev/null | sort -V | tail -n1)"
+          [ -x "$php_bin" ] || { echo 'No Plesk PHP found'; exit 2; }
+          echo "PROD=$prod PHP=$php_bin"
 
-          echo '=== RELEVANT USERS ==='
-          "$php" "$wp" db query "
-          SELECT u.ID,u.user_login,u.display_name,u.user_email,
-            MAX(CASE WHEN um.meta_key='${prefix}capabilities' THEN LEFT(um.meta_value,300) END) capabilities,
-            MAX(CASE WHEN um.meta_key='_disable_vendor' THEN um.meta_value END) disable_vendor,
-            MAX(CASE WHEN um.meta_key='_wcfm_store_offline' THEN um.meta_value END) store_offline,
-            MAX(CASE WHEN um.meta_key='store_name' THEN LEFT(um.meta_value,120) END) store_name
-          FROM ${prefix}users u
-          LEFT JOIN ${prefix}usermeta um ON um.user_id=u.ID
-          WHERE LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
-             OR (um.meta_key='store_name' AND LOWER(um.meta_value) REGEXP 'tole|catedr|puente|roble')
-          GROUP BY u.ID,u.user_login,u.display_name,u.user_email
-          ORDER BY u.ID;" --path="$prod" --skip-plugins --skip-themes --allow-root
+          PROD="$prod" "$php_bin" <<'PHP'
+<?php
+$prod = getenv('PROD');
+require $prod . '/wp-load.php';
 
-          echo '=== PRODUCT COUNTS BY MATCHED VENDOR ==='
-          "$php" "$wp" db query "
-          SELECT p.post_author,u.user_login,u.display_name,p.post_status,COUNT(*) products
-          FROM ${prefix}posts p
-          JOIN ${prefix}users u ON u.ID=p.post_author
-          WHERE p.post_type='product'
-            AND LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
-          GROUP BY p.post_author,u.user_login,u.display_name,p.post_status
-          ORDER BY u.display_name,p.post_status;" --path="$prod" --skip-plugins --skip-themes --allow-root
+function audit_norm($s) {
+    $s = remove_accents(strtolower((string) $s));
+    return preg_replace('/[^a-z0-9]+/', ' ', $s);
+}
+function audit_store_name($uid) {
+    $profile = get_user_meta($uid, 'wcfmmp_profile_settings', true);
+    if (is_array($profile) && !empty($profile['store_name'])) return trim((string)$profile['store_name']);
+    $store = get_user_meta($uid, 'store_name', true);
+    return is_string($store) ? trim($store) : '';
+}
+function audit_match($text) {
+    $n = audit_norm($text);
+    return strpos($n,'tole') !== false || strpos($n,'catedr') !== false || strpos($n,'puente') !== false || strpos($n,'roble') !== false;
+}
 
-          echo '=== CARNES TERM ==='
-          "$php" "$wp" db query "
-          SELECT t.term_id,t.name,t.slug,tt.term_taxonomy_id,tt.count
-          FROM ${prefix}terms t JOIN ${prefix}term_taxonomy tt ON tt.term_id=t.term_id
-          WHERE tt.taxonomy='product_cat' AND (LOWER(t.name)='carnes' OR LOWER(t.slug)='carnes');" --path="$prod" --skip-plugins --skip-themes --allow-root
+echo "=== THEME / VISIBILITY FUNCTIONS ===\n";
+echo 'template=' . get_template() . ' stylesheet=' . get_stylesheet() . "\n";
+echo 'can_view_fn=' . (function_exists('elmercado_wcfm_disabled_visibility_can_view_010210') ? 'yes':'no') . "\n";
+echo 'vendor_disabled_fn=' . (function_exists('elmercado_wcfm_vendor_is_disabled_010210') ? 'yes':'no') . "\n";
 
-          echo '=== PRODUCT CATEGORIES FOR MATCHED VENDORS ==='
-          "$php" "$wp" db query "
-          SELECT p.ID,p.post_title,p.post_status,p.post_author,u.display_name,
-            GROUP_CONCAT(DISTINCT CONCAT(t.name,'[',t.slug,']') ORDER BY t.name SEPARATOR ', ') categories
-          FROM ${prefix}posts p
-          JOIN ${prefix}users u ON u.ID=p.post_author
-          LEFT JOIN ${prefix}term_relationships tr ON tr.object_id=p.ID
-          LEFT JOIN ${prefix}term_taxonomy tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='product_cat'
-          LEFT JOIN ${prefix}terms t ON t.term_id=tt.term_id
-          WHERE p.post_type='product'
-            AND LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
-          GROUP BY p.ID,p.post_title,p.post_status,p.post_author,u.display_name
-          ORDER BY u.display_name,p.ID;" --path="$prod" --skip-plugins --skip-themes --allow-root
+$matched = [];
+foreach (get_users(['fields'=>'all']) as $u) {
+    $store = audit_store_name($u->ID);
+    $hay = $u->user_login . ' ' . $u->display_name . ' ' . $u->user_email . ' ' . $store;
+    if (!audit_match($hay)) continue;
+    $matched[$u->ID] = $u;
+    $caps = array_keys(array_filter((array)$u->caps));
+    printf("USER id=%d login=%s display=%s store=%s roles=%s disable=%s offline=%s\n",
+        $u->ID, $u->user_login, $u->display_name, $store, implode(',', $u->roles),
+        json_encode(get_user_meta($u->ID,'_disable_vendor',true)),
+        json_encode(get_user_meta($u->ID,'_wcfm_store_offline',true))
+    );
+}
 
-          echo '=== MDO TABLES ==='
-          "$php" "$wp" db query "SHOW TABLES LIKE '${prefix}mdo%';" --path="$prod" --skip-plugins --skip-themes --allow-root
+echo "=== CARNES CATEGORY ===\n";
+$carnes = get_term_by('slug','carnes','product_cat');
+if (!$carnes) $carnes = get_term_by('name','Carnes','product_cat');
+if ($carnes && !is_wp_error($carnes)) printf("CARNES term_id=%d slug=%s count=%d\n",$carnes->term_id,$carnes->slug,$carnes->count);
+else echo "CARNES missing\n";
 
-          echo '=== PRODUCT META/TITLES CONTAINING TOLE ==='
-          "$php" "$wp" db query "
-          SELECT DISTINCT p.ID,p.post_title,p.post_status,p.post_author,COALESCE(u.display_name,'') author_name,
-            pm.meta_key,LEFT(pm.meta_value,180) meta_value
-          FROM ${prefix}posts p
-          LEFT JOIN ${prefix}users u ON u.ID=p.post_author
-          LEFT JOIN ${prefix}postmeta pm ON pm.post_id=p.ID
-          WHERE p.post_type='product'
-            AND (LOWER(p.post_title) LIKE '%tole%' OR LOWER(COALESCE(pm.meta_value,'')) LIKE '%tole%')
-          LIMIT 250;" --path="$prod" --skip-plugins --skip-themes --allow-root
+$admin_ids = get_users(['role'=>'administrator','fields'=>'ID','number'=>20]);
+$admin_id = 0;
+foreach ($admin_ids as $aid) { wp_set_current_user((int)$aid); if (current_user_can('manage_options')) { $admin_id=(int)$aid; break; } }
+wp_set_current_user(0);
+echo "ADMIN_ID=$admin_id\n";
 
-          echo '=== RELEVANT USERMETA KEYS ==='
-          "$php" "$wp" db query "
-          SELECT u.ID,u.display_name,um.meta_key,LEFT(um.meta_value,400) meta_value
-          FROM ${prefix}users u JOIN ${prefix}usermeta um ON um.user_id=u.ID
-          WHERE LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
-            AND (um.meta_key LIKE '%wcfm%' OR um.meta_key LIKE '%store%' OR um.meta_key LIKE '%vendor%' OR um.meta_key LIKE '%capabil%' OR um.meta_key LIKE '%disable%')
-          ORDER BY u.ID,um.meta_key;" --path="$prod" --skip-plugins --skip-themes --allow-root
+echo "=== MATCHED VENDOR PRODUCTS ===\n";
+foreach ($matched as $uid=>$u) {
+    $ids = get_posts(['post_type'=>'product','post_status'=>['publish','private','draft','pending','future'],'author'=>(int)$uid,'posts_per_page'=>-1,'fields'=>'ids','orderby'=>'ID','order'=>'ASC']);
+    $trash = get_posts(['post_type'=>'product','post_status'=>'trash','author'=>(int)$uid,'posts_per_page'=>-1,'fields'=>'ids']);
+    $status_counts=[]; $in_carnes=0;
+    foreach ($ids as $id) {
+        $st=get_post_status($id); $status_counts[$st]=($status_counts[$st]??0)+1;
+        $cats=wp_get_post_terms($id,'product_cat',['fields'=>'slugs']);
+        if (in_array('carnes',(array)$cats,true)) $in_carnes++;
+    }
+    if ($trash) $status_counts['trash']=count($trash);
+    $disabled = function_exists('elmercado_wcfm_vendor_is_disabled_010210') ? (elmercado_wcfm_vendor_is_disabled_010210((int)$uid)?'yes':'no') : 'fn-missing';
+    printf("VENDOR id=%d name=%s disabled=%s total=%d carnes=%d statuses=%s\n",$uid,$u->display_name,$disabled,count($ids)+count($trash),$in_carnes,json_encode($status_counts));
+    foreach ($ids as $id) {
+        $cats=wp_get_post_terms($id,'product_cat',['fields'=>'slugs']);
+        wp_set_current_user(0);
+        $p=wc_get_product($id); $public_visible=$p ? ($p->is_visible()?'yes':'no'):'no-product';
+        if ($admin_id) wp_set_current_user($admin_id);
+        $p2=wc_get_product($id); $admin_visible=$p2 ? ($p2->is_visible()?'yes':'no'):'no-product';
+        wp_set_current_user(0);
+        printf("PRODUCT id=%d author=%d status=%s public=%s admin=%s cats=%s title=%s\n",$id,$uid,get_post_status($id),$public_visible,$admin_visible,implode(',',(array)$cats),str_replace(["\n","\r"],' ',get_the_title($id)));
+    }
+}
+
+// Search all products for Tolecarnes clues even if author mapping is wrong.
+echo "=== TOLE CLUES OUTSIDE MATCHED AUTHORS ===\n";
+global $wpdb;
+$rows = $wpdb->get_results("SELECT DISTINCT p.ID,p.post_title,p.post_status,p.post_author,pm.meta_key,LEFT(pm.meta_value,180) meta_value FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID WHERE p.post_type='product' AND (LOWER(p.post_title) LIKE '%tole%' OR LOWER(COALESCE(pm.meta_value,'')) LIKE '%tole%') LIMIT 200");
+foreach ($rows as $r) {
+    printf("CLUE id=%d author=%d status=%s meta=%s value=%s title=%s\n",$r->ID,$r->post_author,$r->post_status,$r->meta_key,str_replace(["\n","\r"],' ',(string)$r->meta_value),str_replace(["\n","\r"],' ',$r->post_title));
+}
+
+// Query behavior: compare public vs admin for each matched vendor's published products.
+echo "=== QUERY VISIBILITY COUNTS ===\n";
+foreach ($matched as $uid=>$u) {
+    wp_set_current_user(0);
+    $q0 = new WP_Query(['post_type'=>'product','post_status'=>'publish','author'=>(int)$uid,'posts_per_page'=>-1,'fields'=>'ids','no_found_rows'=>true]);
+    $pub_count=count($q0->posts);
+    if ($admin_id) wp_set_current_user($admin_id);
+    $q1 = new WP_Query(['post_type'=>'product','post_status'=>'publish','author'=>(int)$uid,'posts_per_page'=>-1,'fields'=>'ids','no_found_rows'=>true]);
+    $adm_count=count($q1->posts);
+    printf("QUERY vendor=%d name=%s public=%d admin=%d\n",$uid,$u->display_name,$pub_count,$adm_count);
+}
+wp_set_current_user(0);
+PHP
           REMOTE
