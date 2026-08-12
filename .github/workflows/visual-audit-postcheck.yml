@@ -16,24 +16,53 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - name: Capture desktop category
+      - name: Capture active filters
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?visual-postcheck=2'
+          URL='https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_calidad=bellota-100-iberico&filter_dop=los-pedroches&visual-postcheck=3'
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
           test -n "$CHROME"
           COMMON='--headless --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --disable-background-networking --disable-component-update --disable-sync --metrics-recording-only --no-first-run --virtual-time-budget=7000 --run-all-compositor-stages-before-draw'
-          timeout 35s "$CHROME" $COMMON --window-size=1440,2200 --force-device-scale-factor=1 --screenshot=filters-postcheck.png "$URL" || test -s filters-postcheck.png
-          timeout 35s "$CHROME" $COMMON --window-size=1440,1200 --dump-dom "$URL" > filters-postcheck-dom.html || test -s filters-postcheck-dom.html
-          test -s filters-postcheck.png
-          test -s filters-postcheck-dom.html
+          timeout 35s "$CHROME" $COMMON --window-size=1440,2200 --force-device-scale-factor=1 --screenshot=filters-active.png "$URL" || test -s filters-active.png
+          timeout 35s "$CHROME" $COMMON --window-size=1440,1200 --dump-dom "$URL" > filters-active-dom.html || test -s filters-active-dom.html
+          test -s filters-active.png
+          test -s filters-active-dom.html
+
+      - name: Verify individual removal links
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from html import unescape
+          from pathlib import Path
+          import re
+
+          html = Path('filters-active-dom.html').read_text(errors='ignore')
+          assert 'emo-active-filter-chips' in html
+          assert 'Limpiar todo' in html
+          assert 'Bellota 100% ibérico' in html
+          assert 'Los Pedroches' in html
+
+          def href_for(label):
+              pattern = rf'<a[^>]+href="([^"]+)"[^>]+aria-label="Quitar {re.escape(label)}"'
+              match = re.search(pattern, html)
+              assert match, f'No se encontró chip {label}'
+              return unescape(match.group(1))
+
+          quality = href_for('Calidad: Bellota 100% ibérico')
+          dop = href_for('Denominación de origen: Los Pedroches')
+          assert 'filter_calidad=' not in quality
+          assert 'filter_dop=los-pedroches' in quality
+          assert 'filter_dop=' not in dop
+          assert 'filter_calidad=bellota-100-iberico' in dop
+          PY
+
       - name: Upload screenshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dev-filter-postcheck
+          name: dev-active-filter-chips
           path: |
-            filters-postcheck.png
-            filters-postcheck-dom.html
+            filters-active.png
+            filters-active-dom.html
           retention-days: 1
