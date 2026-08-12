@@ -1,0 +1,99 @@
+name: Audit production Home cache layer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-production-home-cache-layer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      PROD_URL: https://www.elmercadodeorigen.com
+    steps:
+      - name: External HTTP diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          q="audit-home-cache-${GITHUB_RUN_ID}"
+          echo '=== DNS ==='
+          getent ahosts www.elmercadodeorigen.com || true
+          echo '=== QUERY, NO FOLLOW ==='
+          curl -sS --connect-timeout 15 --max-time 60 -D /tmp/q-head -o /tmp/q-body -w 'status=%{http_code} effective=%{url_effective} redirects=%{num_redirects}\n' "$PROD_URL/?$q=1" || true
+          tr -d '\r' < /tmp/q-head | grep -Eiv '^(set-cookie:|date:)' || true
+          printf 'body_bytes=%s marker_010212=%s marker_010211=%s deferred_010212=%s deferred_010211=%s\n' \
+            "$(wc -c < /tmp/q-body 2>/dev/null || echo 0)" \
+            "$(grep -c 'elmercado-home-category-visibility-010212' /tmp/q-body 2>/dev/null || true)" \
+            "$(grep -c 'wcfm-disabled-vendor-ui-010211' /tmp/q-body 2>/dev/null || true)" \
+            "$(grep -c 'home-deferred-0.10.212.css' /tmp/q-body 2>/dev/null || true)" \
+            "$(grep -c 'home-deferred-0.10.211.css' /tmp/q-body 2>/dev/null || true)"
+          echo '=== QUERY, FOLLOW ==='
+          curl -sS -L --connect-timeout 15 --max-time 90 -D /tmp/ql-head -o /tmp/ql-body -w 'status=%{http_code} effective=%{url_effective} redirects=%{num_redirects}\n' "$PROD_URL/?$q=2" || true
+          tr -d '\r' < /tmp/ql-head | grep -Eiv '^(set-cookie:|date:)' || true
+          printf 'body_bytes=%s marker_010212=%s marker_010211=%s deferred_010212=%s deferred_010211=%s\n' \
+            "$(wc -c < /tmp/ql-body 2>/dev/null || echo 0)" \
+            "$(grep -c 'elmercado-home-category-visibility-010212' /tmp/ql-body 2>/dev/null || true)" \
+            "$(grep -c 'wcfm-disabled-vendor-ui-010211' /tmp/ql-body 2>/dev/null || true)" \
+            "$(grep -c 'home-deferred-0.10.212.css' /tmp/ql-body 2>/dev/null || true)" \
+            "$(grep -c 'home-deferred-0.10.211.css' /tmp/ql-body 2>/dev/null || true)"
+          echo '=== ROOT ==='
+          curl -sS --connect-timeout 15 --max-time 60 -D /tmp/r-head -o /tmp/r-body -w 'status=%{http_code} effective=%{url_effective} redirects=%{num_redirects}\n' "$PROD_URL/" || true
+          tr -d '\r' < /tmp/r-head | grep -Eiv '^(set-cookie:|date:)' || true
+          printf 'body_bytes=%s deferred_010212=%s deferred_010211=%s early_marker=%s\n' \
+            "$(wc -c < /tmp/r-body 2>/dev/null || echo 0)" \
+            "$(grep -c 'home-deferred-0.10.212.css' /tmp/r-body 2>/dev/null || true)" \
+            "$(grep -c 'home-deferred-0.10.211.css' /tmp/r-body 2>/dev/null || true)" \
+            "$(grep -c 'elmercado-home-first-view-css' /tmp/r-body 2>/dev/null || true)"
+
+      - name: Server cache and plugin diagnostics
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"; [ -n "$cfg" ] || exit 1; dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          echo '=== PRODUCTION VERSION / WP_CACHE ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo "theme=".(defined("ELMERCADO_THEME_VERSION")?ELMERCADO_THEME_VERSION:"missing")."\n";' --path="$prod" --skip-plugins --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" config get WP_CACHE --path="$prod" --allow-root || true
+          echo '=== ACTIVE CACHE-RELATED PLUGINS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --status=active --field=name --path="$prod" --allow-root 2>/dev/null | grep -Ei 'cache|rocket|lite|speed|perf|smush|optimi|redis|cloud|varnish' || true
+          echo '=== ALL ACTIVE PLUGINS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --status=active --field=name --path="$prod" --allow-root 2>/dev/null || true
+          echo '=== CACHE FILES ==='
+          ls -la "$prod/wp-content/advanced-cache.php" "$prod/wp-content/object-cache.php" 2>/dev/null || true
+          find "$prod/wp-content/cache" -maxdepth 3 -type f -printf '%p %s bytes %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | head -n 80 || true
+          find "$prod/wp-content/uploads/elmercado-home-static" -maxdepth 1 -type f -printf '%p %s bytes %TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null || true
+          echo '=== .HTACCESS CACHE LINES ==='
+          grep -Ein 'cache|rocket|litespeed|expires|headers' "$prod/.htaccess" 2>/dev/null | head -n 100 || true
+          echo '=== SERVER DNS ==='
+          getent ahosts www.elmercadodeorigen.com || true
+          echo '=== LOCAL ORIGIN HTTP HOST HEADER ==='
+          curl -sS --connect-timeout 5 --max-time 20 -D /tmp/local-http-h -o /tmp/local-http-b -H 'Host: www.elmercadodeorigen.com' http://127.0.0.1/ || true
+          tr -d '\r' < /tmp/local-http-h | grep -Eiv '^(set-cookie:|date:)' || true
+          printf 'local_http_body=%s deferred_010211=%s\n' "$(wc -c < /tmp/local-http-b 2>/dev/null || echo 0)" "$(grep -c 'home-deferred-0.10.211.css' /tmp/local-http-b 2>/dev/null || true)"
+          echo 'AUDIT_PRODUCTION_HOME_CACHE_LAYER_OK'
+          REMOTE
