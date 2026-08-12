@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.208' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.209' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -137,6 +137,7 @@ $elmercado_modules = array(
 	'inc/category-specific-filters-010185.php',
 	'inc/cart-shipping-copy-final-010192.php',
 	'inc/catalog-filter-system-final-010207.php',
+	'inc/mobile-price-slider-alignment-010209.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
