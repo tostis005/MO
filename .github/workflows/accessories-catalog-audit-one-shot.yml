@@ -1,4 +1,4 @@
-name: Accessories catalog audit one-shot
+name: Accessories catalog final audit one-shot
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Audit matching products in development and production
+      - name: Verify exact accessory data in development and production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -53,7 +53,7 @@ jobs:
           esac
           if [ ! -f "$dev_path/wp-config.php" ]; then
             cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
-            [ -n "$cfg" ] || { echo 'Cannot resolve staging WordPress root.' >&2; exit 1; }
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root.' >&2; exit 1; }
             dev_path="$(dirname "$cfg")"
           fi
           prod_path="$(dirname "$dev_path")/httpdocs"
@@ -64,26 +64,38 @@ jobs:
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
           [ -n "$wp_bin" ] && [ -x "$php_bin" ]
 
-          code="$(cat <<'PHP'
-          $ids = wc_get_products(array('limit'=>-1,'return'=>'ids','status'=>array('publish','private','draft','pending')));
-          $out = array();
-          foreach ($ids as $id) {
-              $p = wc_get_product($id);
-              if (!$p instanceof WC_Product || $p->is_type('variation')) { continue; }
-              $n = strtolower(remove_accents(wp_strip_all_tags($p->get_name())));
-              if (!preg_match('/\\b(cuchillo|cuchillos|jamonero|jamoneros)\\b/u', $n)) { continue; }
-              $cats = wp_get_post_terms($p->get_id(), 'product_cat', array('fields'=>'names'));
-              $types = taxonomy_exists('pa_tipo-producto') ? wp_get_post_terms($p->get_id(), 'pa_tipo-producto', array('fields'=>'names')) : array();
-              $out[] = array('id'=>$p->get_id(),'name'=>$p->get_name(),'categories'=>is_wp_error($cats)?array():$cats,'tipo_producto'=>is_wp_error($types)?array():$types);
+          make_code() {
+            jamonero_id="$1"
+            cuchillo_id="$2"
+            cat <<PHP
+          if ('1.0.1' !== (string) get_option('mdo_accessories_catalog_version','')) { fwrite(STDERR,"Wrong accessories migration version\n"); exit(41); }
+          \$term = get_term_by('slug','accesorios','product_cat');
+          if (!\$term instanceof WP_Term) { fwrite(STDERR,"Accesorios category missing\n"); exit(42); }
+          \$ids = get_objects_in_term((int)\$term->term_id,'product_cat');
+          if (is_wp_error(\$ids)) { fwrite(STDERR,\$ids->get_error_message()."\n"); exit(43); }
+          \$ids = array_values(array_unique(array_map('intval',\$ids)));
+          sort(\$ids);
+          \$expected = array(${jamonero_id},${cuchillo_id}); sort(\$expected);
+          if (\$ids !== \$expected) { fwrite(STDERR,"Unexpected Accesorios IDs: ".wp_json_encode(\$ids)."\n"); exit(44); }
+          \$checks = array(${jamonero_id}=>'Jamonero',${cuchillo_id}=>'Cuchillo');
+          foreach (\$checks as \$id=>\$expected_type) {
+            \$p=wc_get_product(\$id);
+            if (!\$p instanceof WC_Product) { fwrite(STDERR,"Missing accessory \$id\n"); exit(45); }
+            \$types=wp_get_post_terms(\$id,'pa_tipo-producto',array('fields'=>'names'));
+            if (is_wp_error(\$types) || \$types !== array(\$expected_type)) { fwrite(STDERR,"Wrong type for \$id: ".wp_json_encode(\$types)."\n"); exit(46); }
           }
-          echo wp_json_encode($out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);
+          echo wp_json_encode(array('category'=>'Accesorios','ids'=>\$ids,'jamonero'=>${jamonero_id},'cuchillo'=>${cuchillo_id}),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
           PHP
-          )"
+          }
 
-          echo '=== DEVELOPMENT ACCESSORIES MATCHES ==='
-          "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$code" --path="$dev_path" --allow-root
+          echo '=== DEVELOPMENT FINAL ACCESSORIES ==='
+          dev_code="$(make_code 4067 11403)"
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$dev_code" --path="$dev_path" --allow-root
           echo
-          echo '=== PRODUCTION ACCESSORIES MATCHES ==='
-          "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$code" --path="$prod_path" --allow-root
+
+          echo '=== PRODUCTION FINAL ACCESSORIES ==='
+          prod_code="$(make_code 4067 12587)"
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$prod_code" --path="$prod_path" --allow-root
           echo
+          echo 'ACCESSORIES_BOTH_ENVIRONMENTS_QA=passed'
           REMOTE
