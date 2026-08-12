@@ -1,0 +1,131 @@
+name: CPU diagnostic one-shot
+
+on:
+  push:
+    branches: [diag-cpu-20260812]
+    paths:
+      - '.github/workflows/cpu-diagnostic-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read-only server diagnosis
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set +e
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev_path="${raw%%/wp-content/*}" ;;
+            */wp-content) dev_path="$(dirname "$raw")" ;;
+            *) dev_path="$raw" ;;
+          esac
+          if [ ! -f "$dev_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1)"
+            [ -n "$cfg" ] && dev_path="$(dirname "$cfg")"
+          fi
+          prod_path="$(dirname "$dev_path")/httpdocs"
+          php_bin="$(command -v php)"
+          [ -x "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp)"
+
+          echo '===== CLOCK / LOAD ====='
+          date -Is
+          uptime
+          echo '-- /proc/loadavg --'
+          cat /proc/loadavg
+          echo '-- memory --'
+          free -m
+          echo '-- vmstat --'
+          vmstat 1 3
+
+          echo '===== TOP SNAPSHOT ====='
+          top -b -n 1 | head -n 80
+          echo '===== PROCESSES SORTED BY CPU ====='
+          ps -eo pid,ppid,user,stat,etime,%cpu,%mem,comm,args --sort=-%cpu | head -n 100
+          echo '===== PROCESS CPU AGGREGATE ====='
+          ps -eo comm=,%cpu=,%mem= | awk '{cpu[$1]+=$2; mem[$1]+=$3; n[$1]++} END {for (p in cpu) printf "%8.1f %8.1f %5d %s\n",cpu[p],mem[p],n[p],p}' | sort -nr | head -n 40
+          echo '===== PHP/MYSQL/WEB PROCESSES ====='
+          pgrep -af 'php|php-fpm|mysqld|mariadbd|nginx|apache2|httpd|wp-cron' | head -n 160
+
+          echo '===== WORDPRESS ROOTS ====='
+          echo "DEV=$dev_path"
+          echo "PROD=$prod_path"
+
+          diagnose_wp() {
+            label="$1"; path="$2"
+            echo "===== $label WORDPRESS ====="
+            [ -f "$path/wp-config.php" ] || { echo 'wp-config missing'; return; }
+            "$php_bin" "$wp_bin" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+            echo '-- active theme/plugin EMDO --'
+            "$php_bin" "$wp_bin" option get stylesheet --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+            "$php_bin" "$wp_bin" plugin status mdo-supplier-sync --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 20
+            prefix="$("$php_bin" "$wp_bin" db prefix --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
+            echo "DB_PREFIX=$prefix"
+            echo '-- MySQL processlist --'
+            "$php_bin" "$wp_bin" db query 'SHOW FULL PROCESSLIST' --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 100
+            echo '-- Action Scheduler summary --'
+            table="${prefix}actionscheduler_actions"
+            exists="$("$php_bin" "$wp_bin" db query "SHOW TABLES LIKE '$table'" --skip-column-names --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
+            if [ "$exists" = "$table" ]; then
+              "$php_bin" "$wp_bin" db query "SELECT status,hook,COUNT(*) AS total,MIN(scheduled_date_gmt) AS oldest,MAX(scheduled_date_gmt) AS newest FROM $table GROUP BY status,hook ORDER BY total DESC LIMIT 60" --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+              echo '-- due/pending/in-progress actions --'
+              "$php_bin" "$wp_bin" db query "SELECT action_id,hook,status,scheduled_date_gmt,attempts,last_attempt_gmt FROM $table WHERE status IN ('pending','in-progress') ORDER BY scheduled_date_gmt ASC LIMIT 100" --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null
+            else
+              echo 'Action Scheduler table not found'
+            fi
+            echo '-- WP Cron first events --'
+            "$php_bin" "$wp_bin" cron event list --fields=hook,next_run_gmt,next_run_relative,recurrence --format=table --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 100
+            echo '-- EMDO tables --'
+            "$php_bin" "$wp_bin" db query "SHOW TABLES LIKE '${prefix}mdo%'" --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null | head -n 100
+          }
+
+          diagnose_wp PROD "$prod_path"
+          diagnose_wp DEV "$dev_path"
+
+          echo '===== RECENT ACCESS LOG ====='
+          vhost_root="$(dirname "$prod_path")"
+          log=''
+          for candidate in "$vhost_root/logs/access_log" "$vhost_root/logs/proxy_access_log" /var/www/vhosts/system/elmercadodeorigen.com/logs/access_log /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_log; do
+            if [ -f "$candidate" ]; then log="$candidate"; break; fi
+          done
+          echo "ACCESS_LOG=$log"
+          if [ -n "$log" ]; then
+            echo '-- top IPs last 20000 --'
+            tail -n 20000 "$log" | awk '{print $1}' | sort | uniq -c | sort -nr | head -n 30
+            echo '-- top URLs last 20000 --'
+            tail -n 20000 "$log" | awk '{print $7}' | sort | uniq -c | sort -nr | head -n 50
+            echo '-- requests around 19:40-19:55 local/server time --'
+            grep -E '12/Aug/2026:19:(4[0-9]|5[0-5]):' "$log" | tail -n 300
+          else
+            echo 'No access log located'
+          fi
+          REMOTE
