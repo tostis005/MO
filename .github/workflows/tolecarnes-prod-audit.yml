@@ -47,11 +47,18 @@ jobs:
             [ -n "$cfg" ] && dev="$(dirname "$cfg")"
           fi
           prod="$(dirname "$dev")/httpdocs"
-          php_bin="$(ls -1 /opt/plesk/php/*/bin/php 2>/dev/null | sort -V | tail -n1)"
-          [ -x "$php_bin" ] || { echo 'No Plesk PHP found'; exit 2; }
-          echo "PROD=$prod PHP=$php_bin"
+          pool_pid="$(pgrep -f 'php-fpm: pool elmercadodeorigen.com' | head -n1 || true)"
+          fpm_exe=''
+          [ -n "$pool_pid" ] && fpm_exe="$(readlink -f "/proc/$pool_pid/exe" 2>/dev/null || true)"
+          if [[ "$fpm_exe" == */sbin/php-fpm ]]; then
+            php_bin="${fpm_exe%/sbin/php-fpm}/bin/php"
+          else
+            php_bin='/opt/plesk/php/8.2/bin/php'
+          fi
+          [ -x "$php_bin" ] || { echo "No matching PHP found: pool=$pool_pid exe=$fpm_exe"; exit 2; }
+          echo "PROD=$prod POOL_PID=$pool_pid FPM=$fpm_exe PHP=$php_bin"
 
-          PROD="$prod" "$php_bin" <<'PHP'
+          PROD="$prod" "$php_bin" -d display_errors=1 -d error_reporting=32767 <<'PHP'
           <?php
           $prod = getenv('PROD');
           require $prod . '/wp-load.php';
