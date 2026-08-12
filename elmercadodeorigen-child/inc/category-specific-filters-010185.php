@@ -44,6 +44,12 @@ function elmercado_catalog_filter_profiles(): array {
 				'productor'     => 'Productor',
 			),
 		),
+		'adobados' => array(
+			'label'      => 'Adobados',
+			'attributes' => array(
+				'tipo-producto' => 'Tipo de producto',
+			),
+		),
 	);
 }
 
@@ -73,6 +79,10 @@ function elmercado_catalog_filter_profile(): ?array {
 		$candidate = get_term( $term_id, 'product_cat' );
 		if ( ! $candidate instanceof WP_Term ) {
 			continue;
+		}
+
+		if ( 'adobados' === $candidate->slug ) {
+			return $profiles['adobados'];
 		}
 
 		if ( 'embutidos-y-curados' === $candidate->slug ) {
