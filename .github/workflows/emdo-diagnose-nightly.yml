@@ -1,0 +1,110 @@
+name: Diagnose EMDO nightly and Puente Robles
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-diagnose-nightly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+      - name: Diagnose staging
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; domain="$2"; wp_path=""
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
+            [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"
+          fi
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP="$php_bin -d memory_limit=768M $wp_bin --path=$wp_path --allow-root"
+          script="$(mktemp /tmp/emdo-diagnose.XXXXXX.php)"; trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          global $wpdb;
+          echo 'NOW=' . current_datetime()->format('Y-m-d H:i:s P') . "\n";
+          $runs = MDO_Database::table('sync_runs');
+          $events = MDO_Database::table('sync_events');
+          $sources = MDO_Database::table('source_products');
+          $suppliers = MDO_Database::table('suppliers');
+
+          echo "== RECENT RUNS ==\n";
+          $rows = $wpdb->get_results("SELECT r.id,r.supplier_id,s.name,r.trigger_type,r.status,r.started_at,r.finished_at,r.products_found,r.products_new,r.products_updated,r.products_excluded,r.errors_count,r.message FROM {$runs} r LEFT JOIN {$suppliers} s ON s.id=r.supplier_id ORDER BY r.id DESC LIMIT 12", ARRAY_A);
+          foreach ($rows as $r) echo wp_json_encode($r, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+
+          $running = $wpdb->get_results("SELECT id,supplier_id,started_at,products_found FROM {$runs} WHERE status='running' ORDER BY id", ARRAY_A);
+          foreach ($running as $r) {
+              $rid=(int)$r['id'];
+              echo "== RUN {$rid} EVENT COUNTS ==\n";
+              $counts=$wpdb->get_results($wpdb->prepare("SELECT event_type,severity,COUNT(*) c,MAX(created_at) last_at FROM {$events} WHERE run_id=%d GROUP BY event_type,severity ORDER BY event_type,severity",$rid),ARRAY_A);
+              foreach($counts as $c) echo wp_json_encode($c,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              echo "== RUN {$rid} LAST EVENTS ==\n";
+              $last=$wpdb->get_results($wpdb->prepare("SELECT id,event_type,severity,message,created_at,payload FROM {$events} WHERE run_id=%d ORDER BY id DESC LIMIT 12",$rid),ARRAY_A);
+              foreach($last as $e) echo wp_json_encode($e,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          }
+
+          if ( function_exists('as_get_scheduled_actions') ) {
+              echo "== ACTION SCHEDULER EMDO ==\n";
+              $actions=as_get_scheduled_actions(array('group'=>'mdo-supplier-sync','per_page'=>40,'orderby'=>'date','order'=>'ASC'), 'ARRAY_A');
+              foreach($actions as $a) echo wp_json_encode($a,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          }
+
+          echo "== PUENTE SAMPLE ==\n";
+          $puente_id=(int)$wpdb->get_var("SELECT id FROM {$suppliers} WHERE connector='puente-robles' LIMIT 1");
+          $prows=$wpdb->get_results($wpdb->prepare("SELECT id,title,source_url,status,wc_product_id,source_payload FROM {$sources} WHERE supplier_id=%d ORDER BY id DESC LIMIT 8",$puente_id),ARRAY_A);
+          foreach($prows as $p){
+              $payload=json_decode((string)$p['source_payload'],true);
+              echo 'SOURCE=' . wp_json_encode(array('id'=>$p['id'],'title'=>$p['title'],'url'=>$p['source_url'],'status'=>$p['status'],'wc'=>$p['wc_product_id'],'variation_count'=>$payload['variation_count']??null,'option_groups'=>$payload['option_groups']??array(),'extra_groups'=>$payload['extra_groups']??array()),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          }
+          if ($prows) {
+              $url=(string)$prows[0]['source_url'];
+              $resp=wp_safe_remote_get($url,array('timeout'=>20,'redirection'=>4,'user-agent'=>'EMDO Puente diagnose'));
+              if (!is_wp_error($resp)) {
+                  $html=(string)wp_remote_retrieve_body($resp);
+                  echo 'PUENTE_HTML_BYTES='.strlen($html)."\n";
+                  $dom=new DOMDocument(); $prev=libxml_use_internal_errors(true); $dom->loadHTML('<?xml encoding="utf-8" ?>'.$html,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET); libxml_clear_errors(); libxml_use_internal_errors($prev); $xp=new DOMXPath($dom);
+                  foreach($xp->query('//select') ?: array() as $sel){
+                      if(!$sel instanceof DOMElement) continue;
+                      $opts=[]; foreach($xp->query('.//option',$sel) ?: array() as $o){$opts[]=trim(preg_replace('/\\s+/u',' ',(string)$o->textContent));}
+                      echo 'SELECT='.wp_json_encode(array('name'=>$sel->getAttribute('name'),'id'=>$sel->getAttribute('id'),'class'=>$sel->getAttribute('class'),'options'=>$opts),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+                  }
+                  foreach(array('kg','aprox','formato','prepar','cortado','lonche','deshues','peso','gramos') as $needle){
+                      $pos=mb_stripos($html,$needle);
+                      if($pos!==false){echo 'NEEDLE='.$needle.' SNIP='.trim(preg_replace('/\\s+/u',' ',strip_tags(mb_substr($html,max(0,$pos-700),1800))))."\n";}
+                  }
+              }
+          }
+          PHP
+          $WP eval-file "$script" 2>/dev/null
+          REMOTE
