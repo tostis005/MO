@@ -1,6 +1,6 @@
 <?php
 /**
- * Acabado estable de cabecera y búsqueda, refinado en 0.10.183.
+ * Acabado estable de cabecera y búsqueda, refinado en 0.10.184.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,7 +16,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-header-search-finish-010183">
+		<style id="elmercado-header-search-finish-010184">
 			@media (min-width: 992px) {
 				body.elmercado-child-theme .site-header .site-tools {
 					gap: .5rem !important;
@@ -69,15 +69,19 @@ add_action(
 				align-items: center !important;
 				justify-content: center !important;
 				padding: clamp(18px,4vw,56px) !important;
+				overflow-x: hidden !important;
+				overflow-y: auto !important;
 				background: rgba(13,31,25,.78) !important;
 				-webkit-backdrop-filter: blur(10px) saturate(.9);
 				backdrop-filter: blur(10px) saturate(.9);
 			}
 
 			body.elmercado-child-theme .site-dialog-search .dialog-search-content {
+				box-sizing: border-box !important;
 				width: min(760px,100%) !important;
 				max-width: 760px !important;
 				min-width: 0 !important;
+				margin: auto !important;
 				border: 1px solid rgba(23,63,50,.14) !important;
 				border-radius: 26px !important;
 				background: linear-gradient(145deg,#fffdf8 0%,#faf6ed 100%) !important;
@@ -157,11 +161,18 @@ add_action(
 				height: 18px !important;
 			}
 
+			/*
+			 * Woostify coloca el submit en absoluto sobre el campo. Aquí anulamos
+			 * explícitamente ese layout y hacemos que campo y CTA formen una rejilla real.
+			 */
 			body.elmercado-child-theme .site-dialog-search .search-form,
 			body.elmercado-child-theme .site-dialog-search .woocommerce-product-search {
-				display: flex !important;
+				box-sizing: border-box !important;
+				display: grid !important;
+				grid-template-columns: minmax(0,1fr) max-content !important;
+				width: 100% !important;
 				height: auto !important;
-				align-items: center !important;
+				align-items: stretch !important;
 				gap: 10px !important;
 				margin: 0 !important;
 				padding: 0 36px 36px !important;
@@ -171,19 +182,19 @@ add_action(
 			body.elmercado-child-theme .site-dialog-search .search-form label,
 			body.elmercado-child-theme .site-dialog-search .woocommerce-product-search label {
 				display: block !important;
+				width: 100% !important;
 				min-width: 0 !important;
-				flex: 1 1 auto !important;
 				margin: 0 !important;
 			}
 
 			body.elmercado-child-theme .site-dialog-search .search-field,
 			body.elmercado-child-theme .site-dialog-search input[type="search"] {
 				box-sizing: border-box !important;
+				position: static !important;
 				width: 100% !important;
 				height: 62px !important;
 				min-height: 62px !important;
 				min-width: 0 !important;
-				flex: 1 1 auto !important;
 				padding: 0 20px !important;
 				border: 1px solid rgba(23,63,50,.19) !important;
 				border-radius: 16px !important;
@@ -194,6 +205,8 @@ add_action(
 				font-style: normal !important;
 				line-height: 1.2 !important;
 				outline: none !important;
+				visibility: visible !important;
+				opacity: 1 !important;
 				transition: border-color 160ms ease,box-shadow 160ms ease,background-color 160ms ease !important;
 			}
 
@@ -215,10 +228,18 @@ add_action(
 			body.elmercado-child-theme .site-dialog-search .search-submit {
 				box-sizing: border-box !important;
 				display: block !important;
+				position: static !important;
+				top: auto !important;
+				right: auto !important;
+				bottom: auto !important;
+				left: auto !important;
+				z-index: auto !important;
+				overflow: visible !important;
+				width: auto !important;
 				height: 62px !important;
 				min-height: 62px !important;
 				min-width: 112px !important;
-				flex: 0 0 auto !important;
+				margin: 0 !important;
 				padding: 0 20px !important;
 				border: 1px solid #173f32 !important;
 				border-radius: 16px !important;
@@ -228,9 +249,15 @@ add_action(
 				font-size: 13px !important;
 				font-weight: 800 !important;
 				font-style: normal !important;
+				line-height: 1 !important;
 				letter-spacing: .02em !important;
+				text-indent: 0 !important;
 				text-transform: none !important;
+				white-space: nowrap !important;
 				cursor: pointer !important;
+				visibility: visible !important;
+				opacity: 1 !important;
+				transform: none !important;
 				transition: background-color 160ms ease,border-color 160ms ease,transform 160ms ease,box-shadow 160ms ease !important;
 			}
 
@@ -243,10 +270,10 @@ add_action(
 				border-color: #2f7d5d !important;
 				background: #2f7d5d !important;
 				box-shadow: 0 12px 28px rgba(47,125,93,.22) !important;
-				transform: translateY(-1px);
+				transform: translateY(-1px) !important;
 			}
 
-			/* Woostify añade un span decorativo después del submit; aquí el CTA ya lleva texto. */
+			/* Woostify añade un icono decorativo tras el submit; el CTA ya es explícito. */
 			body.elmercado-child-theme .site-dialog-search .search-form-icon {
 				display: none !important;
 			}
@@ -298,32 +325,35 @@ add_action(
 
 			@media (max-width: 600px) {
 				body.elmercado-child-theme .site-dialog-search.woostify-search-wrap {
+					align-items: flex-start !important;
 					padding: 12px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search .dialog-search-content {
 					width: 100% !important;
 					max-width: 100% !important;
+					margin: auto 0 !important;
 					border-radius: 22px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search .dialog-search-header {
-					padding: 28px 66px 16px 24px !important;
+					padding: 26px 64px 14px 22px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search .dialog-search-title {
-					font-size: 28px !important;
+					font-size: 27px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search .dialog-search-title::after {
 					font-size: 13px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search .dialog-search-close-icon {
-					top: 18px !important;
-					right: 18px !important;
+					top: 16px !important;
+					right: 16px !important;
 					width: 42px !important;
 					height: 42px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search .search-form,
 				body.elmercado-child-theme .site-dialog-search .woocommerce-product-search {
-					gap: 8px !important;
-					padding: 0 24px 24px !important;
+					grid-template-columns: minmax(0,1fr) !important;
+					gap: 10px !important;
+					padding: 0 22px 22px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search .search-field,
 				body.elmercado-child-theme .site-dialog-search input[type="search"],
@@ -337,22 +367,9 @@ add_action(
 				body.elmercado-child-theme .site-dialog-search button[type="submit"],
 				body.elmercado-child-theme .site-dialog-search input[type="submit"],
 				body.elmercado-child-theme .site-dialog-search .search-submit {
-					min-width: 96px !important;
-					padding: 0 16px !important;
-				}
-			}
-
-			@media (max-width: 420px) {
-				body.elmercado-child-theme .site-dialog-search .search-form,
-				body.elmercado-child-theme .site-dialog-search .woocommerce-product-search {
-					display: grid !important;
-					grid-template-columns: minmax(0,1fr) !important;
-				}
-				body.elmercado-child-theme .site-dialog-search button[type="submit"],
-				body.elmercado-child-theme .site-dialog-search input[type="submit"],
-				body.elmercado-child-theme .site-dialog-search .search-submit {
 					width: 100% !important;
 					min-width: 0 !important;
+					padding: 0 16px !important;
 				}
 			}
 
