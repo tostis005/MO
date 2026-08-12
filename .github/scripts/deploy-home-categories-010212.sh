@@ -7,11 +7,11 @@ set -Eeuo pipefail
 : "${STAGING_REMOTE_PATH:?Missing STAGING_REMOTE_PATH}"
 : "${GITHUB_ENV:?Missing GITHUB_ENV}"
 
-EXPECTED_VERSION="${EXPECTED_VERSION:-0.10.212}"
+EXPECTED_VERSION="${EXPECTED_VERSION:-0.10.215}"
 PORT="${STAGING_PORT:-22}"
 SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-REMOTE_TMP="/tmp/elmercado-prod-home-010212-${GITHUB_RUN_ID:-manual}"
-BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-before-home-010212-${GITHUB_SHA:0:10}"
+REMOTE_TMP="/tmp/elmercado-prod-home-010215-${GITHUB_RUN_ID:-manual}"
+BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-before-home-010215-${GITHUB_SHA:0:10}"
 
 export SSHPASS="$STAGING_PASSWORD"
 
@@ -19,8 +19,9 @@ test -f elmercadodeorigen-child/functions.php
 test -f elmercadodeorigen-child/style.css
 test -f elmercadodeorigen-child/dropins/advanced-cache.php
 test -f elmercadodeorigen-child/inc/home-category-visibility-010212.php
+test -f elmercadodeorigen-child/inc/home-category-edge-align-010215.php
 grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
-grep -Eq '^Version:[[:space:]]*0\.10\.212$' elmercadodeorigen-child/style.css
+grep -Eq '^Version:[[:space:]]*0\.10\.215$' elmercadodeorigen-child/style.css
 find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
 
 sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme'"
@@ -62,7 +63,8 @@ esac
 
 find "$incoming" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
 grep -q "ELMERCADO_THEME_VERSION', '$expected'" "$incoming/functions.php"
-grep -Eq '^Version:[[:space:]]*0\.10\.212$' "$incoming/style.css"
+grep -Eq '^Version:[[:space:]]*0\.10\.215$' "$incoming/style.css"
+grep -q 'home-category-edge-align-010215.php' "$incoming/functions.php"
 
 parent="$prod/wp-content/themes"
 target="$parent/elmercadodeorigen-child"
@@ -138,27 +140,29 @@ rm -f "$prod/wp-content/uploads/elmercado-home-static/index.html"
 rm -f "$prod/wp-content/uploads/elmercado-home-static"/home-deferred-*.css
 
 COUNTS_OUT="$("$php_bin" -d memory_limit=512M "$wp_bin" eval '
-if(!function_exists("elmercado_home_public_category_count_010212")){fwrite(STDERR,"Missing Home public-count helper.\n");exit(2);}
-$admins=get_users(array("role"=>"administrator","number"=>1,"fields"=>"ID")); if(!$admins){fwrite(STDERR,"No administrator.\n");exit(3);} wp_set_current_user((int)$admins[0]);
-$disabled=function_exists("elmercado_wcfm_disabled_vendor_ids_010210") ? array_values(array_filter(array_map("absint",elmercado_wcfm_disabled_vendor_ids_010210()))) : array();
+if(!function_exists("elmercado_home_public_category_count_010212") || !function_exists("elmercado_wcfm_disabled_visibility_can_view_010210")){fwrite(STDERR,"Missing Home visibility helpers.\n");exit(2);}
 $exclude=array_filter(array((int)get_option("default_product_cat")));
 $terms=get_terms(array("taxonomy"=>"product_cat","hide_empty"=>true,"number"=>6,"orderby"=>"count","order"=>"DESC","exclude"=>$exclude));
-$rows=array();
+if(is_wp_error($terms)){exit(3);} $rows=array();
+$baseFor=function($term_id){return array("post_type"=>"product","post_status"=>"publish","fields"=>"ids","posts_per_page"=>1,"no_found_rows"=>false,"ignore_sticky_posts"=>true,"suppress_filters"=>false,"tax_query"=>array(array("taxonomy"=>"product_cat","field"=>"term_id","terms"=>array((int)$term_id),"include_children"=>true)));};
+wp_set_current_user(0);
 foreach((array)$terms as $term){
-  if(!($term instanceof WP_Term)) continue;
-  $link=get_term_link($term); if(is_wp_error($link)) continue;
-  $base=array("post_type"=>"product","post_status"=>"publish","fields"=>"ids","posts_per_page"=>1,"no_found_rows"=>false,"ignore_sticky_posts"=>true,"tax_query"=>array(array("taxonomy"=>"product_cat","field"=>"term_id","terms"=>array((int)$term->term_id),"include_children"=>true)));
-  $all=new WP_Query($base); $published=(int)$all->found_posts;
-  $disabled_count=0;
-  if($disabled){$d=$base;$d["author__in"]=$disabled;$dq=new WP_Query($d);$disabled_count=(int)$dq->found_posts;}
-  $public=(int)elmercado_home_public_category_count_010212((int)$term->term_id);
-  if($public!==max(0,$published-$disabled_count)){fwrite(STDERR,"Count identity failed for {$term->name}: published={$published} disabled={$disabled_count} public={$public}\n");exit(4);}
-  $rows[]=array("id"=>(int)$term->term_id,"name"=>$term->name,"url"=>$link,"legacy"=>(int)$term->count,"published"=>$published,"disabled"=>$disabled_count,"public"=>$public);
+  if(!($term instanceof WP_Term))continue; $link=get_term_link($term);if(is_wp_error($link))continue;
+  $q=new WP_Query($baseFor($term->term_id));$archive=(int)$q->found_posts;$home=(int)elmercado_home_public_category_count_010212((int)$term->term_id);
+  if($home!==$archive){fwrite(STDERR,"Public parity failed {$term->name}: home={$home} archive={$archive}\n");exit(4);}
+  $rows[$term->term_id]=array("id"=>(int)$term->term_id,"name"=>$term->name,"url"=>$link,"public"=>$home,"public_archive"=>$archive);
 }
-echo "__COUNTS__=".base64_encode(wp_json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))."\n";
+$admins=get_users(array("role"=>"administrator","number"=>1));if(!$admins)exit(5);$admin=$admins[0];wp_set_current_user((int)$admin->ID);
+if(!elmercado_wcfm_disabled_visibility_can_view_010210()){exit(6);}
+foreach((array)$terms as $term){
+  if(!isset($rows[$term->term_id]))continue;$q=new WP_Query($baseFor($term->term_id));$archive=(int)$q->found_posts;$home=(int)elmercado_home_public_category_count_010212((int)$term->term_id);
+  if($home!==$archive){fwrite(STDERR,"Admin parity failed {$term->name}: home={$home} archive={$archive}\n");exit(7);}
+  $rows[$term->term_id]["admin"]=$home;$rows[$term->term_id]["admin_archive"]=$archive;
+}
+echo "__COUNTS__=".base64_encode(wp_json_encode(array_values($rows),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))."\n";
 ' --path="$prod" --allow-root)"
 counts_b64="$(printf '%s\n' "$COUNTS_OUT" | sed -n 's/^__COUNTS__=//p' | tail -n1)"
-[ -n "$counts_b64" ] || { echo 'Production count payload missing.' >&2; exit 1; }
+[ -n "$counts_b64" ] || { echo 'Production parity payload missing.' >&2; exit 1; }
 
 swapped=0
 trap - EXIT HUP INT TERM
@@ -182,7 +186,7 @@ OLD="$(printf '%s\n' "$OUT" | sed -n 's/^__OLD__=//p' | tail -n1)"
 BACKUP_DIR="$(printf '%s\n' "$OUT" | sed -n 's/^__BACKUP_DIR__=//p' | tail -n1)"
 : "${SITEURL:?Missing production site URL}"
 : "${PROD:?Missing production path}"
-: "${COUNTS_B64:?Missing count payload}"
+: "${COUNTS_B64:?Missing parity payload}"
 : "${OLD:?Missing predeploy path}"
 : "${BACKUP_DIR:?Missing rollback backup path}"
 COUNTS_JSON="$(printf '%s' "$COUNTS_B64" | base64 -d)"
@@ -200,4 +204,4 @@ COUNTS_JSON="$(printf '%s' "$COUNTS_B64" | base64 -d)"
 } >> "$GITHUB_ENV"
 
 printf '%s\n' "$COUNTS_JSON" | jq .
-echo "SERVER_HOME_010212_OK before=$BEFORE after=$AFTER"
+echo "SERVER_HOME_010215_OK before=$BEFORE after=$AFTER"
