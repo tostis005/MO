@@ -1,4 +1,4 @@
-name: CPU diagnostic quick
+name: CPU emergency Meta block
 on:
   push:
     branches: [diag-cpu-20260812]
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  probe:
+  mitigate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -14,8 +14,9 @@ jobs:
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
-      - name: Count traffic around spike
+      - name: Block meta-externalagent before PHP and verify
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -25,29 +26,59 @@ jobs:
           PORT="${STAGING_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
           OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
-          set +e
-          f=/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log
-          tmp=$(mktemp)
-          # User's 19:35-19:50 local = server log 17:35-17:50 UTC.
-          grep -E '12/Aug/2026:17:(3[5-9]|4[0-9]|50):' "$f" > "$tmp"
-          echo '=== TOTAL REQUESTS 19:35-19:50 LOCAL ==='
-          wc -l < "$tmp"
-          echo '=== REQUESTS PER MINUTE ==='
-          awk -F'[:[]' '{print $3":"$4}' "$tmp" | sort | uniq -c
-          echo '=== TOP USER AGENTS ==='
-          awk -F'"' '{print $6}' "$tmp" | sort | uniq -c | sort -nr | head -n 15
-          echo '=== META REQUEST COUNT ==='
-          grep -ci 'meta-externalagent' "$tmp"
-          echo '=== META REQUESTS PER MINUTE ==='
-          grep -i 'meta-externalagent' "$tmp" | awk -F'[:[]' '{print $3":"$4}' | sort | uniq -c
-          echo '=== TOP IPS ==='
-          awk '{print $1}' "$tmp" | sort | uniq -c | sort -nr | head -n 20
-          echo '=== TOP META PATH FAMILIES ==='
-          grep -i 'meta-externalagent' "$tmp" | awk -F'"' '{print $2}' | sed -E 's#^(GET|POST|HEAD) ##; s# HTTP/[0-9.]+$##; s#\?.*$##' | sort | uniq -c | sort -nr | head -n 30
-          echo '=== META DYNAMIC QUERY COUNT ==='
-          grep -i 'meta-externalagent' "$tmp" | grep -Ec '\?(.*filter_|.*query_type_|.*add-to-cart|.*add_to_wishlist|.*remove_item|.*vendor_id)' || true
-          echo '=== SAMPLE 19:44-19:47 LOCAL ==='
-          grep -E '12/Aug/2026:17:4[4-7]:' "$tmp" | grep -i 'meta-externalagent' | head -n 30
-          rm -f "$tmp"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] && dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          ht="$prod/.htaccess"
+          marker='# BEGIN EMDO META CRAWLER EMERGENCY BLOCK'
+          backup="$prod/.htaccess.pre-meta-block-20260812-2213"
+
+          echo '=== BEFORE ==='
+          date -Is
+          uptime
+          ps -eo %cpu,etime,args --sort=-%cpu | grep 'php-fpm: pool elmercadodeorigen.com' | head -n 12 || true
+
+          [ -f "$ht" ] || touch "$ht"
+          if ! grep -Fq "$marker" "$ht"; then
+            cp -p "$ht" "$backup"
+            tmp="$(mktemp "$prod/.htaccess.meta.XXXXXX")"
+            cat > "$tmp" <<'BLOCK'
+# BEGIN EMDO META CRAWLER EMERGENCY BLOCK
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteCond %{HTTP_USER_AGENT} meta-externalagent [NC]
+RewriteRule ^ - [F,L]
+</IfModule>
+# END EMDO META CRAWLER EMERGENCY BLOCK
+
+BLOCK
+            cat "$ht" >> "$tmp"
+            cat "$tmp" > "$ht"
+            rm -f "$tmp"
+            echo "BLOCK_ADDED=1"
+            echo "BACKUP=$backup"
+          else
+            echo "BLOCK_ADDED=0 (already present)"
+          fi
+
+          echo '=== HTACCESS HEAD ==='
+          head -n 16 "$ht"
+
+          echo '=== HTTP VERIFY VIA LOCAL VHOST ==='
+          curl -k -sS --max-time 10 --resolve www.elmercadodeorigen.com:443:127.0.0.1 -A 'meta-externalagent/1.1' -o /dev/null -w 'META_HTTP=%{http_code} TOTAL=%{time_total}\n' https://www.elmercadodeorigen.com/ || true
+          curl -k -sS --max-time 15 --resolve www.elmercadodeorigen.com:443:127.0.0.1 -A 'Mozilla/5.0' -o /dev/null -w 'NORMAL_HTTP=%{http_code} TOTAL=%{time_total}\n' https://www.elmercadodeorigen.com/ || true
+
+          echo '=== AFTER ==='
+          uptime
+          ps -eo %cpu,etime,args --sort=-%cpu | grep 'php-fpm: pool elmercadodeorigen.com' | head -n 12 || true
           REMOTE
