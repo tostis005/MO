@@ -1,10 +1,14 @@
 name: CPU emergency Meta block
+
 on:
   push:
     branches: [diag-cpu-20260812]
-    paths: ['.github/workflows/cpu-diagnostic-quick.yml']
+    paths:
+      - '.github/workflows/cpu-diagnostic-quick.yml'
+
 permissions:
   contents: read
+
 jobs:
   mitigate:
     runs-on: ubuntu-latest
@@ -22,9 +26,13 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh
-          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
           OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
           set -euo pipefail
@@ -52,23 +60,23 @@ jobs:
           if ! grep -Fq "$marker" "$ht"; then
             cp -p "$ht" "$backup"
             tmp="$(mktemp "$prod/.htaccess.meta.XXXXXX")"
-            cat > "$tmp" <<'BLOCK'
-# BEGIN EMDO META CRAWLER EMERGENCY BLOCK
-<IfModule mod_rewrite.c>
-RewriteEngine On
-RewriteCond %{HTTP_USER_AGENT} meta-externalagent [NC]
-RewriteRule ^ - [F,L]
-</IfModule>
-# END EMDO META CRAWLER EMERGENCY BLOCK
-
-BLOCK
-            cat "$ht" >> "$tmp"
+            {
+              echo '# BEGIN EMDO META CRAWLER EMERGENCY BLOCK'
+              echo '<IfModule mod_rewrite.c>'
+              echo 'RewriteEngine On'
+              echo 'RewriteCond %{HTTP_USER_AGENT} meta-externalagent [NC]'
+              echo 'RewriteRule ^ - [F,L]'
+              echo '</IfModule>'
+              echo '# END EMDO META CRAWLER EMERGENCY BLOCK'
+              echo
+              cat "$ht"
+            } > "$tmp"
             cat "$tmp" > "$ht"
             rm -f "$tmp"
-            echo "BLOCK_ADDED=1"
+            echo 'BLOCK_ADDED=1'
             echo "BACKUP=$backup"
           else
-            echo "BLOCK_ADDED=0 (already present)"
+            echo 'BLOCK_ADDED=0 (already present)'
           fi
 
           echo '=== HTACCESS HEAD ==='
