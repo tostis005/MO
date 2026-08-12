@@ -34,14 +34,24 @@ function elmercado_catalog_filter_profiles(): array {
 				'productor'    => 'Productor',
 			),
 		),
+		'cured' => array(
+			'label'      => 'Embutidos y curados',
+			'attributes' => array(
+				'tipo-producto' => 'Tipo de producto',
+				'raza-iberica'  => 'Raza ibérica',
+				'alimentacion'  => 'Alimentación',
+				'preparacion'   => 'Preparación',
+				'productor'     => 'Productor',
+			),
+		),
 	);
 }
 
 /**
  * Devuelve el perfil aplicable a la categoría actual.
  *
- * También considera ancestros, de modo que una futura subcategoría de
- * Jamones y paletas herede automáticamente estos filtros.
+ * También considera ancestros, de modo que futuras subcategorías hereden
+ * automáticamente los filtros de su familia.
  */
 function elmercado_catalog_filter_profile(): ?array {
 	if ( ! function_exists( 'is_product_category' ) || ! is_product_category() ) {
@@ -57,6 +67,7 @@ function elmercado_catalog_filter_profile(): ?array {
 		array( (int) $term->term_id ),
 		array_map( 'intval', get_ancestors( (int) $term->term_id, 'product_cat', 'taxonomy' ) )
 	);
+	$profiles = elmercado_catalog_filter_profiles();
 
 	foreach ( array_values( array_unique( $term_ids ) ) as $term_id ) {
 		$candidate = get_term( $term_id, 'product_cat' );
@@ -64,12 +75,15 @@ function elmercado_catalog_filter_profile(): ?array {
 			continue;
 		}
 
+		if ( 'embutidos-y-curados' === $candidate->slug ) {
+			return $profiles['cured'];
+		}
+
 		$haystack = remove_accents( strtolower( $candidate->name . ' ' . $candidate->slug ) );
 		$has_ham  = (bool) preg_match( '/\bjamon(?:es)?\b/u', $haystack );
 		$has_pork = (bool) preg_match( '/\bpaleta(?:s)?\b/u', $haystack );
 
 		if ( $has_ham && $has_pork ) {
-			$profiles = elmercado_catalog_filter_profiles();
 			return $profiles['ham'];
 		}
 	}
