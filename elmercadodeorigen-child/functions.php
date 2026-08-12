@@ -13,27 +13,6 @@ define( 'ELMERCADO_THEME_VERSION', '0.10.181' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
-/* Diagnóstico temporal de fatal de staging. Se retirará en cuanto quede aislado. */
-register_shutdown_function(
-	static function (): void {
-		$error = error_get_last();
-		if ( ! $error || ! in_array( $error['type'], array( E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR ), true ) ) {
-			return;
-		}
-
-		file_put_contents(
-			ELMERCADO_THEME_PATH . '/fatal-debug.log',
-			wp_json_encode(
-				array(
-					'message' => $error['message'],
-					'file'    => $error['file'],
-					'line'    => $error['line'],
-				)
-			)
-		);
-	}
-);
-
 $elmercado_modules = array(
 	'inc/setup.php',
 	'inc/woocommerce.php',
