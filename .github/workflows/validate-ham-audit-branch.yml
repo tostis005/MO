@@ -1,0 +1,31 @@
+name: Validate ham audit branch
+
+on:
+  push:
+    branches: [dev/ham-catalog-audit]
+    paths:
+      - 'mdo-supplier-sync/**'
+      - '.github/workflows/deploy-supplier-sync-development.yml'
+      - '.github/workflows/validate-ham-audit-branch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Lint EMDO PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Check whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check origin/main...HEAD
