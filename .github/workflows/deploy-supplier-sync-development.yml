@@ -100,7 +100,7 @@ jobs:
           : "${WP_PATH:?Could not resolve staging WordPress path}"
           echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
 
-      - name: Deploy activate classify audit rescue finalize and provision cron
+      - name: Deploy activate classify audit rescue finalize precision and provision cron
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -139,6 +139,9 @@ jobs:
 
           final_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Catalog_Final::apply_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
           printf 'Jamones/Paletas special finalization: %s\n' "$final_report"
+
+          precision_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Catalog_Precision::apply_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'Jamones/Paletas precision: %s\n' "$precision_report"
 
           existing="$(mktemp)"
           cleaned="$(mktemp)"
