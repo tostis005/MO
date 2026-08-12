@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * productos de jamón/paleta no se consideran accesorios.
  */
 final class MDO_Accessories_Catalog {
-	private const VERSION        = '1.0.2';
+	private const VERSION        = '1.0.3';
 	private const VERSION_OPTION = 'mdo_accessories_catalog_version';
 	private const REPORT_OPTION  = 'mdo_accessories_catalog_last_report';
 	private const SNAPSHOT_META  = '_emdo_accessories_catalog_snapshot';
@@ -333,8 +333,9 @@ final class MDO_Accessories_Catalog {
 	}
 
 	private static function normalize( string $value ): string {
-		$value = remove_accents( wp_strip_all_tags( $value ) );
-		$value = strtolower( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		$value = html_entity_decode( wp_strip_all_tags( $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$value = remove_accents( $value );
+		$value = strtolower( $value );
 		$value = preg_replace( '/[^a-z0-9]+/u', ' ', $value );
 		return trim( preg_replace( '/\s+/u', ' ', (string) $value ) );
 	}
