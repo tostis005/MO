@@ -1,0 +1,66 @@
+name: Audit disabled WCFM query baseline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-disabled-wcfm-query-baseline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Install SSH
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+      - name: Verify current production query behavior
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"; [ -n "$cfg" ] || exit 1; dev="$(dirname "$cfg")"; fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          global $wpdb;
+          $authors=array_map("intval",$wpdb->get_col("SELECT DISTINCT post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND post_author>0 ORDER BY post_author DESC"));
+          $sample=null;
+          foreach($authors as $author){
+            $u=get_userdata($author); if(!$u) continue;
+            $roles=(array)$u->roles; $disabled=get_user_meta($author,"_disable_vendor",true); $offline=get_user_meta($author,"_wcfm_store_offline",true);
+            if(!in_array("disable_vendor",$roles,true) && !$disabled && !$offline) continue;
+            $pid=(int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type=%s AND post_status=%s AND post_author=%d ORDER BY ID DESC LIMIT 1","product","publish",$author));
+            if($pid){$sample=array("vendor"=>$author,"id"=>$pid,"title"=>get_the_title($pid));break;}
+          }
+          if(!$sample){fwrite(STDERR,"No production sample found\n");exit(2);}
+          wp_set_current_user(0);
+          $anon=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>$sample["id"],"posts_per_page"=>1));
+          $admins=get_users(array("role"=>"administrator","number"=>1,"fields"=>"ID")); wp_set_current_user((int)$admins[0]);
+          $admin=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>$sample["id"],"posts_per_page"=>1));
+          echo "BASELINE|vendor={$sample["vendor"]}|product={$sample["id"]}|anon=".count($anon->posts)."|admin=".count($admin->posts)."|title={$sample["title"]}\n";
+          if(count($anon->posts)!==1 || count($admin->posts)!==1) exit(3);
+          ' --path="$prod" --allow-root --skip-plugins
+          REMOTE
