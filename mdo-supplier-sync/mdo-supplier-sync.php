@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.3' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.4' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -33,6 +33,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-audit.php'
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-rescue.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-final.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-precision.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-tag-closure.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';
@@ -61,6 +62,7 @@ add_action(
 		MDO_Ham_Catalog_Rescue::init();
 		MDO_Ham_Catalog_Final::init();
 		MDO_Ham_Catalog_Precision::init();
+		MDO_Ham_Catalog_Tag_Closure::init();
 		MDO_Variable_Upgrade::init();
 		MDO_Description_Guard::init();
 		MDO_Product_Slugs::init();
