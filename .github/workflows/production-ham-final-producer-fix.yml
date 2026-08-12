@@ -1,0 +1,294 @@
+name: Final exact producer closure for production hams
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-ham-final-producer-fix.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-ham-final-producer
+  cancel-in-progress: false
+
+jobs:
+  close-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOMAIN: elmercadodeorigen.com
+      HOST: ${{ secrets.STAGING_HOST }}
+      PORT: ${{ secrets.STAGING_PORT }}
+      USER: ${{ secrets.STAGING_USER }}
+      PASS: ${{ secrets.STAGING_PASSWORD }}
+      HINT: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract approved Dev map
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re, base64, zlib, json
+          source = open('.github/workflows/production-ham-apply-exact.yml', encoding='utf-8').read()
+          match = re.search(r"cat > /tmp/map\.b64 <<'MAP'\n\s*([A-Za-z0-9+/=]+)\n\s*MAP", source)
+          assert match, 'Approved Dev map was not found.'
+          data = zlib.decompress(base64.b64decode(match.group(1)))
+          obj = json.loads(data)
+          assert obj['n'] == 145 and len(obj['i']) == 145
+          open('/tmp/ham-approved-map.json', 'wb').write(data)
+          print('Approved Dev map:', len(obj['i']), 'products')
+          PY
+
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Resolve production and upload approved map
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$P" -H "$HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+
+          OUTPUT="$(sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$HINT' '$DOMAIN'" <<'REMOTE'
+          set -eu
+          hint="${1%/}"
+          target="$2"
+          wp="$(command -v wp)"
+          php="$(command -v php || true)"
+          if [ -z "$php" ]; then
+            php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          fi
+          [ -x "$php" ]
+          candidates="$(mktemp)"
+          matches="$(mktemp)"
+          trap 'rm -f "$candidates" "$matches"' EXIT
+          for base in "$(dirname "$hint")" "$HOME" /var/www/vhosts /var/www /home; do
+            [ -d "$base" ] || continue
+            find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null >> "$candidates" || true
+          done
+          sort -u "$candidates" -o "$candidates"
+          while IFS= read -r config; do
+            [ -n "$config" ] || continue
+            path="$(dirname "$config")"
+            siteurl="$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            home="$("$php" -d memory_limit=256M "$wp" option get home --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            ns="$(printf '%s' "$siteurl" | sed -E 's#^https?://##; s#^www\.##; s#/*$##')"
+            nh="$(printf '%s' "$home" | sed -E 's#^https?://##; s#^www\.##; s#/*$##')"
+            if [ "$ns" = "$target" ] || [ "$nh" = "$target" ]; then
+              printf '%s\n' "$path" >> "$matches"
+            fi
+          done < "$candidates"
+          count="$(sort -u "$matches" | sed '/^$/d' | wc -l | tr -d ' ')"
+          [ "$count" = '1' ] || { echo "Expected one production WordPress, found $count." >&2; exit 2; }
+          wp_path="$(sort -u "$matches" | head -n1)"
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          printf '__SITEURL__=%s\n' "$("$php" -d memory_limit=256M "$wp" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
+          REMOTE
+          )"
+          printf '%s\n' "$OUTPUT"
+          WP_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__WP_PATH__=//p' | tail -n1)"
+          : "${WP_PATH:?Production WordPress not resolved}"
+          echo "WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+          REMOTE_MAP="/tmp/elmercado-ham-approved-${GITHUB_SHA}.json"
+          sshpass -e rsync -az -e "ssh $OPT" /tmp/ham-approved-map.json "$USER@$HOST:$REMOTE_MAP"
+          echo "REMOTE_MAP=$REMOTE_MAP" >> "$GITHUB_ENV"
+
+      - name: Fix exact approved producer terms without product save
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+          sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$WP_PATH' '$REMOTE_MAP'" <<'REMOTE'
+          set -eu
+          path="$1"
+          map="$2"
+          wp="$(command -v wp)"
+          php="$(command -v php || true)"
+          if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"; fi
+          script="$(mktemp --suffix=.php)"
+          trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          function emo_resolve_approved_product( array $row ): int {
+              global $wpdb;
+              $source_table = $wpdb->prefix . 'mdo_source_products';
+              if ( ! empty( $row['surl'] ) && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $source_table ) ) === $source_table ) {
+                  $id = (int) $wpdb->get_var(
+                      $wpdb->prepare(
+                          "SELECT wc_product_id FROM {$source_table} WHERE source_url = %s AND wc_product_id > 0 ORDER BY id DESC LIMIT 1",
+                          (string) $row['surl']
+                      )
+                  );
+                  if ( $id > 0 && 'product' === get_post_type( $id ) && 'trash' !== get_post_status( $id ) ) {
+                      return $id;
+                  }
+              }
+              if ( ! empty( $row['slug'] ) ) {
+                  $product = get_page_by_path( (string) $row['slug'], OBJECT, 'product' );
+                  if ( $product ) {
+                      return (int) $product->ID;
+                  }
+              }
+              return 0;
+          }
+
+          $map = json_decode( file_get_contents( $args[0] ), true );
+          if ( ! is_array( $map ) || count( $map['i'] ?? array() ) !== 145 ) {
+              fwrite( STDERR, "Invalid approved map.\n" );
+              exit( 3 );
+          }
+          if ( ! defined( 'MDO_SUPPLIER_SYNC_VERSION' ) || '1.0.6' !== MDO_SUPPLIER_SYNC_VERSION ) {
+              fwrite( STDERR, 'Expected active EMDO 1.0.6, got ' . ( defined( 'MDO_SUPPLIER_SYNC_VERSION' ) ? MDO_SUPPLIER_SYNC_VERSION : 'none' ) . "\n" );
+              exit( 4 );
+          }
+
+          $resolved = array();
+          $changed = 0;
+          $already = 0;
+          $errors = array();
+          foreach ( $map['i'] as $row ) {
+              $id = emo_resolve_approved_product( $row );
+              if ( ! $id ) {
+                  $errors[] = array( 'slug' => $row['slug'] ?? '', 'error' => 'not_found' );
+                  continue;
+              }
+              if ( isset( $resolved[ $id ] ) ) {
+                  $errors[] = array( 'id' => $id, 'error' => 'duplicate_resolution' );
+                  continue;
+              }
+              $resolved[ $id ] = true;
+              $expected = array_values( array_map( 'strval', (array) ( $row['a']['pa_productor'] ?? array() ) ) );
+              if ( count( $expected ) !== 1 ) {
+                  $errors[] = array( 'id' => $id, 'error' => 'unexpected_approved_producer', 'expected' => $expected );
+                  continue;
+              }
+              $actual = wp_get_post_terms( $id, 'pa_productor', array( 'fields' => 'names' ) );
+              $actual = is_wp_error( $actual ) ? array() : array_values( array_map( 'strval', $actual ) );
+              $cmp_actual = $actual;
+              $cmp_expected = $expected;
+              sort( $cmp_actual, SORT_NATURAL | SORT_FLAG_CASE );
+              sort( $cmp_expected, SORT_NATURAL | SORT_FLAG_CASE );
+              if ( $cmp_actual === $cmp_expected ) {
+                  ++$already;
+                  continue;
+              }
+
+              $term = term_exists( $expected[0], 'pa_productor' );
+              if ( ! $term ) {
+                  $term = wp_insert_term( $expected[0], 'pa_productor' );
+              }
+              if ( is_wp_error( $term ) ) {
+                  $errors[] = array( 'id' => $id, 'error' => $term->get_error_message() );
+                  continue;
+              }
+              $term_id = (int) ( is_array( $term ) ? $term['term_id'] : $term );
+              $result = wp_set_object_terms( $id, array( $term_id ), 'pa_productor', false );
+              if ( is_wp_error( $result ) ) {
+                  $errors[] = array( 'id' => $id, 'error' => $result->get_error_message() );
+                  continue;
+              }
+
+              $snapshot = json_decode( (string) get_post_meta( $id, '_emdo_ham_taxonomy_snapshot', true ), true );
+              $snapshot = is_array( $snapshot ) ? $snapshot : array();
+              $snapshot['productor'] = $expected;
+              update_post_meta( $id, '_emdo_ham_taxonomy_snapshot', wp_json_encode( $snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+              update_post_meta( $id, '_emdo_ham_direct_producer_replica', '2026-08-12-dev-approved' );
+              clean_post_cache( $id );
+              wc_delete_product_transients( $id );
+              ++$changed;
+          }
+
+          echo wp_json_encode(
+              array(
+                  'status' => $errors ? 'failed' : 'completed',
+                  'siteurl' => get_option( 'siteurl' ),
+                  'resolved' => count( $resolved ),
+                  'changed' => $changed,
+                  'already_correct' => $already,
+                  'errors' => $errors,
+              ),
+              JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
+          ) . PHP_EOL;
+          if ( count( $resolved ) !== 145 || $errors ) {
+              exit( 5 );
+          }
+          PHP
+          "$php" -d memory_limit=1024M "$wp" eval-file "$script" "$map" --path="$path" --allow-root
+          REMOTE
+
+      - name: Verify exact Dev equality in a separate process
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+          sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$WP_PATH' '$REMOTE_MAP'" <<'REMOTE'
+          set -eu
+          path="$1"; map="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"; fi
+          script="$(mktemp --suffix=.php)"; trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          function rr( array $row ): int { global $wpdb; $st=$wpdb->prefix.'mdo_source_products'; if(!empty($row['surl'])){$id=(int)$wpdb->get_var($wpdb->prepare("SELECT wc_product_id FROM {$st} WHERE source_url=%s AND wc_product_id>0 ORDER BY id DESC LIMIT 1",$row['surl']));if($id&&get_post_type($id)==='product')return$id;} if(!empty($row['slug'])){$p=get_page_by_path($row['slug'],OBJECT,'product');if($p)return(int)$p->ID;} return 0; }
+          $m=json_decode(file_get_contents($args[0]),true);$errors=[];$checked=0;$coverage=[];$cat=get_term_by('slug','jamones-paletas','product_cat');$default=(int)get_option('default_product_cat',0);
+          foreach(($m['i']??[]) as $row){$id=rr($row);if(!$id){$errors[]=['slug'=>$row['slug'],'error'=>'not_found'];continue;}if(!$cat||!has_term((int)$cat->term_id,'product_cat',$id))$errors[]=['id'=>$id,'error'=>'category'];if($default&&has_term($default,'product_cat',$id))$errors[]=['id'=>$id,'error'=>'uncategorized'];foreach(['pa_tipo-pieza','pa_calidad','pa_raza-iberica','pa_alimentacion','pa_con-dop','pa_dop','pa_origen','pa_preparacion','pa_rango-peso','pa_curacion','pa_productor'] as $tax){$a=wp_get_post_terms($id,$tax,['fields'=>'names']);$e=$row['a'][$tax]??[];$a=is_wp_error($a)?[]:array_values(array_map('strval',$a));$e=array_values(array_map('strval',$e));sort($a,SORT_NATURAL|SORT_FLAG_CASE);sort($e,SORT_NATURAL|SORT_FLAG_CASE);if($a!==$e)$errors[]=['id'=>$id,'name'=>get_the_title($id),'error'=>$tax,'actual'=>$a,'expected'=>$e];if($a)$coverage[$tax]=($coverage[$tax]??0)+1;}$a=wp_get_post_terms($id,'product_tag',['fields'=>'names']);$e=array_values(array_map('strval',$row['t']??[]));$a=is_wp_error($a)?[]:array_values(array_map('strval',$a));sort($a,SORT_NATURAL|SORT_FLAG_CASE);sort($e,SORT_NATURAL|SORT_FLAG_CASE);if($a!==$e)$errors[]=['id'=>$id,'name'=>get_the_title($id),'error'=>'product_tag'];$checked++;}
+          ksort($coverage); echo wp_json_encode(['status'=>$errors?'failed':'completed','siteurl'=>get_option('siteurl'),'checked'=>$checked,'mismatch_count'=>count($errors),'coverage'=>$coverage,'mismatches'=>array_slice($errors,0,20)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL; if($checked!==145||$errors)exit(6);
+          PHP
+          "$php" -d memory_limit=1024M "$wp" eval-file "$script" "$map" --path="$path" --allow-root
+          REMOTE
+
+      - name: Durability test through a real WooCommerce save
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+          sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$WP_PATH'" <<'REMOTE'
+          set -eu
+          path="$1"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"; fi
+          "$php" -d memory_limit=1024M "$wp" eval '$p=wc_get_product(12631);if(!$p)throw new Exception("Sample product missing");$p->save();echo wp_json_encode(["saved"=>$p->get_id(),"name"=>$p->get_name()]);' --path="$path" --allow-root
+          REMOTE
+
+      - name: Verify durability in a new process
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P="${PORT:-22}"
+          OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+          sshpass -e ssh $OPT "$USER@$HOST" "sh -s -- '$WP_PATH' '$REMOTE_MAP'" <<'REMOTE'
+          set -eu
+          path="$1"; map="$2"; wp="$(command -v wp)"; php="$(command -v php || true)"; if [ -z "$php" ]; then php="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"; fi
+          "$php" -d memory_limit=1024M "$wp" eval '$producer=wp_get_post_terms(12631,"pa_productor",["fields"=>"names"]);$weight=wp_get_post_terms(12460,"pa_rango-peso",["fields"=>"names"]);$ok=$producer===["El Catedrático"]&&$weight===["4,5–5,5 kg","5,5–6,5 kg"];echo wp_json_encode(["status"=>$ok?"completed":"failed","producer_12631"=>$producer,"weight_12460"=>$weight],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL;if(!$ok)exit(7);' --path="$path" --allow-root
+          REMOTE
+
+      - name: Cleanup temporary map
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          if [ -n "${REMOTE_MAP:-}" ]; then
+            P="${PORT:-22}"
+            OPT="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $P"
+            sshpass -e ssh $OPT "$USER@$HOST" "rm -f -- '$REMOTE_MAP'"
+          fi

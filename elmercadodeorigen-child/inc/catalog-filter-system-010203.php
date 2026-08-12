@@ -393,6 +393,7 @@ add_action(
 				display:grid !important; grid-template-columns:minmax(0,1fr) auto !important; align-items:center !important;
 				gap:10px !important; padding-top:12px !important; padding-bottom:12px !important;
 			}
+			body.home.elmercadodeorigen-child-theme .emo-category-card__content small,
 			body.home.elmercado-child-theme .emo-category-card__content small { margin:0 !important; white-space:nowrap !important; text-align:right !important; }
 
 			@media (min-width:1101px) {
@@ -404,6 +405,21 @@ add_action(
 			}
 
 			#emo-category-context[hidden], #emo-global-vendor-filter[hidden], #emo-category-attribute-filters[hidden] { display:none !important; }
+
+			/* Las categorías no muestran el árbol nativo: arriba ya existe el contexto activo. */
+			body.elmercado-child-theme.tax-product_cat :is(#secondary.widget-area,.shop-widget-area) > :is(
+				.widget_product_categories,.wc-block-product-categories,.wp-block-woocommerce-product-categories,
+				.widget_product_tag_cloud,.widget_tag_cloud,.wc-block-product-categories-list
+			) { display:none !important; visibility:hidden !important; }
+			body.elmercado-child-theme.tax-product_cat :is(#secondary.widget-area,.shop-widget-area) > .widget_block:has(:is(
+				.wc-block-product-categories,.wp-block-woocommerce-product-categories
+			)) { display:none !important; visibility:hidden !important; }
+
+			/* Los dos bloques propios sí son visibles cuando el controlador retira hidden. */
+			body.elmercado-child-theme.tax-product_cat :is(#secondary.widget-area,.shop-widget-area) > #emo-global-vendor-filter:not([hidden]),
+			body.elmercado-child-theme.tax-product_cat :is(#secondary.widget-area,.shop-widget-area) > #emo-category-attribute-filters:not([hidden]) {
+				display:block !important; visibility:visible !important; opacity:1 !important;
+			}
 
 			body.elmercado-child-theme.tax-product_cat #emo-category-context {
 				box-sizing:border-box !important; width:100% !important; margin:0 0 14px !important; padding:0 !important;
