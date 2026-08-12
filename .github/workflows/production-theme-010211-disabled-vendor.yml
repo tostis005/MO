@@ -1,0 +1,338 @@
+name: Production theme 0.10.211 disabled vendor guard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-theme-010211-disabled-vendor.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      EXPECTED_VERSION: 0.10.211
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate exact release locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/inc/wcfm-disabled-vendor-visibility-010210.php
+          test -f elmercadodeorigen-child/inc/wcfm-disabled-vendor-ui-010211.php
+          grep -q '^Template: woostify$' elmercadodeorigen-child/style.css
+          grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
+          grep -q "wcfm-disabled-vendor-visibility-010210.php" elmercadodeorigen-child/functions.php
+          grep -q "wcfm-disabled-vendor-ui-010211.php" elmercadodeorigen-child/functions.php
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+          echo "LOCAL_RELEASE_OK $EXPECTED_VERSION"
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass google-chrome-stable jq
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node -e "require('puppeteer-core'); console.log('PUPPETEER_OK')"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage exact theme release on server
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/elmercado-prod-010211-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' --exclude='*.map' -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/"
+
+      - name: Backup, deploy and validate production server-side
+        id: release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-before-010211-${GITHUB_SHA:0:10}"
+          echo "BACKUP_NAME=$BACKUP_NAME" >> "$GITHUB_ENV"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP/theme' '$GITHUB_SHA' '$BACKUP_NAME' '$EXPECTED_VERSION'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"; backup_name="$4"; expected="$5"
+
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] && [ -d "$prod/wp-content/themes" ] || { echo 'Production WordPress path invalid.' >&2; exit 1; }
+
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
+
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in
+            https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;;
+            *) echo "Refusing production deploy: unexpected siteurl=$siteurl" >&2; exit 1 ;;
+          esac
+          base="${siteurl%/}"
+
+          find "$incoming" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          grep -q "ELMERCADO_THEME_VERSION', '$expected'" "$incoming/functions.php"
+
+          parent="$prod/wp-content/themes"
+          target="$parent/elmercadodeorigen-child"
+          [ -d "$target" ] || { echo 'Existing child theme missing; refusing without rollback source.' >&2; exit 1; }
+          active_before="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          version_before="$(grep -o "ELMERCADO_THEME_VERSION', '[^']*" "$target/functions.php" | head -n1 | sed "s/.*'//" || true)"
+
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          backup_dir="$rollback_root/$backup_name"
+          mkdir -p "$backup_dir"
+          tar -czf "$backup_dir/theme.tar.gz" -C "$parent" elmercadodeorigen-child
+          (cd "$backup_dir" && sha256sum theme.tar.gz > theme.tar.gz.sha256 && sha256sum -c theme.tar.gz.sha256)
+          printf '%s\n' "$active_before" > "$backup_dir/active-stylesheet.txt"
+          printf '%s\n' "${version_before:-unknown}" > "$backup_dir/theme-version.txt"
+          printf '%s\n' "$siteurl" > "$backup_dir/siteurl.txt"
+          printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
+
+          old="$parent/.elmercadodeorigen-child.predeploy-$commit"
+          rm -rf "$old"
+          swapped=0
+          rollback() {
+            code=$?
+            if [ "$swapped" -eq 1 ] && [ "$code" -ne 0 ]; then
+              echo 'Remote validation failed; restoring previous production theme.' >&2
+              rm -rf "$target"
+              [ ! -d "$old" ] || mv "$old" "$target"
+              "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$active_before" --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$incoming"
+            exit "$code"
+          }
+          trap rollback EXIT HUP INT TERM
+
+          mv "$target" "$old"
+          mv "$incoming" "$target"
+          swapped=1
+          find "$target" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$prod" --skip-plugins --allow-root >/dev/null
+          active_after="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active_after" = 'elmercadodeorigen-child' ] || { echo "Unexpected active stylesheet $active_after" >&2; exit 1; }
+          runtime="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$prod" --skip-plugins --allow-root)"
+          [ "$runtime" = "$expected" ] || { echo "Runtime $runtime != $expected" >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root || true
+
+          SAMPLE_OUT="$("$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          global $wpdb;
+          $authors=array_map("intval",$wpdb->get_col("SELECT DISTINCT post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND post_author>0 ORDER BY post_author DESC"));
+          $preferred=array(4509,4508,93);
+          $ordered=array_values(array_unique(array_merge($preferred,$authors)));
+          $sample=null;
+          foreach($ordered as $author){
+            if(!function_exists("elmercado_wcfm_vendor_is_disabled_010210") || !elmercado_wcfm_vendor_is_disabled_010210((int)$author)) continue;
+            $pid=(int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type=%s AND post_status=%s AND post_author=%d ORDER BY ID DESC LIMIT 1","product","publish",$author));
+            if(!$pid) continue;
+            $post=get_post($pid);
+            $cat_slug=(string)$wpdb->get_var($wpdb->prepare("SELECT t.slug FROM {$wpdb->terms} t INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id INNER JOIN {$wpdb->term_relationships} tr ON tr.term_taxonomy_id=tt.term_taxonomy_id WHERE tr.object_id=%d AND tt.taxonomy=%s ORDER BY tt.parent DESC,t.term_id ASC LIMIT 1",$pid,"product_cat"));
+            $sample=array(
+              "vendor"=>(int)$author,
+              "id"=>$pid,
+              "title"=>html_entity_decode((string)$post->post_title,ENT_QUOTES|ENT_HTML5,"UTF-8"),
+              "url"=>home_url("/producto/".$post->post_name."/"),
+              "category"=>$cat_slug?home_url("/categoria-producto/".$cat_slug."/"):""
+            );
+            break;
+          }
+          if(!$sample){fwrite(STDERR,"No disabled production vendor with a published product found.\n");exit(2);}
+          wp_set_current_user(0);
+          $anon=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>(int)$sample["id"],"posts_per_page"=>1));
+          $_GET["vendor_id"]=(string)$sample["vendor"];
+          $filtered=new WP_Query(array("post_type"=>"product","post_status"=>"publish","posts_per_page"=>10));
+          unset($_GET["vendor_id"]);
+          $admins=get_users(array("role"=>"administrator","number"=>1,"fields"=>"ID")); if(!$admins) exit(3);
+          wp_set_current_user((int)$admins[0]);
+          $admin=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>(int)$sample["id"],"posts_per_page"=>1));
+          echo "__SAMPLE__=".base64_encode(wp_json_encode($sample,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))."\n";
+          echo "__ANON__=".count($anon->posts)."\n";
+          echo "__FILTERED__=".count($filtered->posts)."\n";
+          echo "__ADMIN__=".count($admin->posts)."\n";
+          ' --path="$prod" --allow-root --skip-plugins)"
+          printf '%s\n' "$SAMPLE_OUT"
+          sample_b64="$(printf '%s\n' "$SAMPLE_OUT" | sed -n 's/^__SAMPLE__=//p' | tail -n1)"
+          anon="$(printf '%s\n' "$SAMPLE_OUT" | sed -n 's/^__ANON__=//p' | tail -n1)"
+          filtered="$(printf '%s\n' "$SAMPLE_OUT" | sed -n 's/^__FILTERED__=//p' | tail -n1)"
+          admin="$(printf '%s\n' "$SAMPLE_OUT" | sed -n 's/^__ADMIN__=//p' | tail -n1)"
+          [ "$anon" = '0' ] && [ "$filtered" = '0' ] && [ "$admin" = '1' ] || { echo "Visibility query guard failed anon=$anon filtered=$filtered admin=$admin" >&2; exit 1; }
+
+          sample_json="$(printf '%s' "$sample_b64" | base64 -d)"
+          sample_vendor="$(printf '%s' "$sample_json" | sed -n 's/.*"vendor":\([0-9][0-9]*\).*/\1/p')"
+          sample_id="$(printf '%s' "$sample_json" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+          sample_url="$(printf '%s' "$sample_json" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')"
+          sample_category="$(printf '%s' "$sample_json" | sed -n 's/.*"category":"\([^"]*\)".*/\1/p')"
+          [ -n "$sample_vendor" ] && [ -n "$sample_id" ] && [ -n "$sample_url" ] || { echo 'Could not parse production sample.' >&2; exit 1; }
+
+          direct_code="$(curl -ksS -o /tmp/prod-disabled-direct.html -w '%{http_code}' --max-time 45 "$sample_url?disabled-vendor-release=$commit" || true)"
+          [ "$direct_code" = '404' ] || { echo "Disabled product direct HTTP $direct_code" >&2; exit 1; }
+          ! grep -Eqi "postid-${sample_id}([^0-9]|$)" /tmp/prod-disabled-direct.html || { echo 'Disabled product leaked on direct URL.' >&2; exit 1; }
+
+          shop_code="$(curl -ksS -o /tmp/prod-disabled-shop.html -w '%{http_code}' --max-time 45 "$base/tienda/?vendor_id=${sample_vendor}&disabled-vendor-release=$commit" || true)"
+          [ "$shop_code" = '200' ] || { echo "Shop HTTP $shop_code" >&2; exit 1; }
+          ! grep -Eqi "post-${sample_id}([^0-9]|$)" /tmp/prod-disabled-shop.html || { echo 'Disabled product leaked in Shop.' >&2; exit 1; }
+
+          if [ -n "$sample_category" ]; then
+            category_code="$(curl -ksS -o /tmp/prod-disabled-category.html -w '%{http_code}' --max-time 45 "$sample_category?vendor_id=${sample_vendor}&disabled-vendor-release=$commit" || true)"
+            [ "$category_code" = '200' ] || { echo "Category HTTP $category_code" >&2; exit 1; }
+            ! grep -Eqi "post-${sample_id}([^0-9]|$)" /tmp/prod-disabled-category.html || { echo 'Disabled product leaked in category.' >&2; exit 1; }
+          fi
+
+          rm -rf "$old"
+          swapped=0
+          trap - EXIT HUP INT TERM
+          printf '__SITEURL__=%s\n' "$siteurl"
+          printf '__PROD__=%s\n' "$prod"
+          printf '__BEFORE__=%s\n' "${version_before:-unknown}"
+          printf '__AFTER__=%s\n' "$runtime"
+          printf '__SAMPLE_B64__=%s\n' "$sample_b64"
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          SITEURL="$(printf '%s\n' "$OUT" | sed -n 's/^__SITEURL__=//p' | tail -n1)"
+          PROD="$(printf '%s\n' "$OUT" | sed -n 's/^__PROD__=//p' | tail -n1)"
+          BEFORE="$(printf '%s\n' "$OUT" | sed -n 's/^__BEFORE__=//p' | tail -n1)"
+          AFTER="$(printf '%s\n' "$OUT" | sed -n 's/^__AFTER__=//p' | tail -n1)"
+          SAMPLE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__SAMPLE_B64__=//p' | tail -n1)"
+          : "${SITEURL:?}"; : "${PROD:?}"; : "${SAMPLE_B64:?}"
+          SAMPLE_JSON="$(printf '%s' "$SAMPLE_B64" | base64 -d)"
+          {
+            echo "PRODUCTION_SITEURL=$SITEURL"
+            echo "PRODUCTION_WP_PATH=$PROD"
+            echo "PREVIOUS_VERSION=$BEFORE"
+            echo "CURRENT_VERSION=$AFTER"
+            echo "SAMPLE_JSON=$SAMPLE_JSON"
+          } >> "$GITHUB_ENV"
+          echo "SERVER_SIDE_PRODUCTION_GUARD_OK before=$BEFORE after=$AFTER"
+
+      - name: Verify production in real Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > production-disabled-vendor-010211.cjs <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const sample=JSON.parse(process.env.SAMPLE_JSON);
+            const base=(process.env.PRODUCTION_SITEURL||'https://www.elmercadodeorigen.com').replace(/\/$/,'');
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              const page=await browser.newPage();
+              await page.setViewport({width:1440,height:1000});
+              const errors=[]; page.on('pageerror',e=>errors.push(String(e.message||e)));
+
+              const direct=await page.goto(`${sample.url}?prod-disabled-chrome=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              const directData=await page.evaluate(id=>({postBody:document.body.classList.contains(`postid-${id}`),h1:document.querySelector('h1')?.textContent?.trim()||''}),sample.id);
+              if((direct?.status()||0)!==404||directData.postBody) throw new Error(`Direct disabled product leak ${direct?.status()} ${JSON.stringify(directData)}`);
+
+              await page.goto(`${base}/tienda/?vendor_id=${sample.vendor}&prod-disabled-chrome=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await new Promise(r=>setTimeout(r,600));
+              const shop=await page.evaluate(({id,vendor})=>({
+                productPresent:!!document.querySelector(`.post-${id}`),
+                vendorNodePresent:!!document.querySelector(`#emo-global-vendor-filter [data-vendor-id="${vendor}"]`),
+                vendorRowVisible:[...document.querySelectorAll(`#emo-global-vendor-filter [data-vendor-id="${vendor}"]`)].some(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0}),
+                vendorChip:[...document.querySelectorAll('.emo-active-filter-chip')].some(el=>/Vendedor/i.test(el.textContent||''))
+              }),sample);
+              if(shop.productPresent||shop.vendorNodePresent||shop.vendorRowVisible||shop.vendorChip) throw new Error(`Shop disabled vendor leak ${JSON.stringify(shop)}`);
+
+              let category=null;
+              if(sample.category){
+                const u=new URL(sample.category); u.searchParams.set('vendor_id',String(sample.vendor)); u.searchParams.set('prod-disabled-chrome',String(Date.now()));
+                await page.goto(u.toString(),{waitUntil:'domcontentloaded',timeout:60000});
+                await new Promise(r=>setTimeout(r,600));
+                category=await page.evaluate(({id,vendor})=>({
+                  productPresent:!!document.querySelector(`.post-${id}`),
+                  vendorNodePresent:!!document.querySelector(`#emo-global-vendor-filter [data-vendor-id="${vendor}"]`),
+                  vendorChip:[...document.querySelectorAll('.emo-active-filter-chip')].some(el=>/Vendedor/i.test(el.textContent||''))
+                }),sample);
+                if(category.productPresent||category.vendorNodePresent||category.vendorChip) throw new Error(`Category disabled vendor leak ${JSON.stringify(category)}`);
+              }
+
+              console.log('PRODUCTION_010211_DISABLED_VENDOR_BROWSER_OK',JSON.stringify({sample,direct:{status:direct.status(),...directData},shop,category,pageErrors:errors}));
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node production-disabled-vendor-010211.cjs
+
+      - name: Release success
+        if: success()
+        run: |
+          echo "PRODUCTION_010211_DISABLED_VENDOR_OK"
+          echo "Site: $PRODUCTION_SITEURL"
+          echo "Previous: $PREVIOUS_VERSION"
+          echo "Current: $CURRENT_VERSION"
+          echo "Rollback backup: $BACKUP_NAME"
+          echo "Sample: $SAMPLE_JSON"
+
+      - name: Automatic rollback if browser validation fails
+        if: failure() && steps.release.outcome == 'success'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$BACKUP_NAME'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; backup="$2"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"; [ -n "$cfg" ] || exit 1; dev="$(dirname "$cfg")"; fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing rollback: $siteurl" >&2; exit 1 ;; esac
+          dir="$HOME/.elmercado-rollbacks/elmercadodeorigen.com/$backup"
+          [ -f "$dir/theme.tar.gz" ] && [ -f "$dir/theme.tar.gz.sha256" ] || { echo 'Rollback backup missing.' >&2; exit 1; }
+          (cd "$dir" && sha256sum -c theme.tar.gz.sha256)
+          rm -rf "$prod/wp-content/themes/elmercadodeorigen-child"
+          tar -xzf "$dir/theme.tar.gz" -C "$prod/wp-content/themes"
+          prev="$(cat "$dir/active-stylesheet.txt" 2>/dev/null || true)"; [ -n "$prev" ] || prev='elmercadodeorigen-child'
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$prev" --path="$prod" --skip-plugins --allow-root >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root || true
+          restored="$(grep -o "ELMERCADO_THEME_VERSION', '[^']*" "$prod/wp-content/themes/elmercadodeorigen-child/functions.php" | head -n1 | sed "s/.*'//" || true)"
+          echo "PRODUCTION_ROLLBACK_OK backup=$backup restored_version=${restored:-unknown}"
+          REMOTE
