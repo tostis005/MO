@@ -9,55 +9,58 @@ permissions:
   contents: read
 
 jobs:
-  inspect-secret-names:
+  inspect-production-path:
     runs-on: ubuntu-latest
     env:
-      PROD_HOST: ${{ secrets.PROD_HOST }}
-      PROD_PORT: ${{ secrets.PROD_PORT }}
-      PROD_USER: ${{ secrets.PROD_USER }}
-      PROD_PASSWORD: ${{ secrets.PROD_PASSWORD }}
-      PROD_REMOTE_PATH: ${{ secrets.PROD_REMOTE_PATH }}
-      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-      PRODUCTION_PORT: ${{ secrets.PRODUCTION_PORT }}
-      PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-      PRODUCTION_PASSWORD: ${{ secrets.PRODUCTION_PASSWORD }}
-      PRODUCTION_REMOTE_PATH: ${{ secrets.PRODUCTION_REMOTE_PATH }}
-      PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
-      PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
-      PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
-      PROD_SSH_PASSWORD: ${{ secrets.PROD_SSH_PASSWORD }}
-      PRODUCTION_SSH_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
-      PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
-      PRODUCTION_SSH_USER: ${{ secrets.PRODUCTION_SSH_USER }}
-      PRODUCTION_SSH_PASSWORD: ${{ secrets.PRODUCTION_SSH_PASSWORD }}
-      LIVE_HOST: ${{ secrets.LIVE_HOST }}
-      LIVE_PORT: ${{ secrets.LIVE_PORT }}
-      LIVE_USER: ${{ secrets.LIVE_USER }}
-      LIVE_PASSWORD: ${{ secrets.LIVE_PASSWORD }}
-      LIVE_REMOTE_PATH: ${{ secrets.LIVE_REMOTE_PATH }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_PORT: ${{ secrets.SSH_PORT }}
-      SSH_USER: ${{ secrets.SSH_USER }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-      FTP_HOST: ${{ secrets.FTP_HOST }}
-      FTP_USER: ${{ secrets.FTP_USER }}
-      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      SSH_HOST: ${{ secrets.STAGING_HOST }}
+      SSH_PORT: ${{ secrets.STAGING_PORT }}
+      SSH_USER: ${{ secrets.STAGING_USER }}
+      SSH_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Report only whether candidate secrets exist
+      - uses: actions/checkout@v4
+      - name: Install SSH tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
         shell: bash
         run: |
           set -euo pipefail
-          for key in \
-            PROD_HOST PROD_PORT PROD_USER PROD_PASSWORD PROD_REMOTE_PATH \
-            PRODUCTION_HOST PRODUCTION_PORT PRODUCTION_USER PRODUCTION_PASSWORD PRODUCTION_REMOTE_PATH \
-            PROD_SSH_HOST PROD_SSH_PORT PROD_SSH_USER PROD_SSH_PASSWORD \
-            PRODUCTION_SSH_HOST PRODUCTION_SSH_PORT PRODUCTION_SSH_USER PRODUCTION_SSH_PASSWORD \
-            LIVE_HOST LIVE_PORT LIVE_USER LIVE_PASSWORD LIVE_REMOTE_PATH \
-            SSH_HOST SSH_PORT SSH_USER SSH_PASSWORD \
-            FTP_HOST FTP_USER FTP_PASSWORD; do
-            if [ -n "${!key:-}" ]; then
-              echo "$key=yes"
-            else
-              echo "$key=no"
-            fi
+          PORT="${SSH_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Inspect all WordPress installs on server
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI unavailable' >&2; exit 5; }
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -x "$php_bin" ] || { echo 'PHP CLI unavailable' >&2; exit 6; }
+
+          candidates="$(mktemp)"
+          trap 'rm -f "$candidates"' EXIT
+          for base in "$HOME" /var/www/vhosts /var/www /home; do
+            [ -d "$base" ] || continue
+            find "$base" -maxdepth 10 -type f -name wp-config.php \
+              ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
+              2>/dev/null >> "$candidates" || true
           done
+          sort -u "$candidates" | while IFS= read -r config; do
+            [ -n "$config" ] || continue
+            wp_path="$(dirname "$config")"
+            home="$($php_bin -d memory_limit=512M "$wp_bin" option get home --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            site="$($php_bin -d memory_limit=512M "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            printf 'WP_PATH=%s\nHOME=%s\nSITE=%s\n---\n' "$wp_path" "$home" "$site"
+          done
+          REMOTE
