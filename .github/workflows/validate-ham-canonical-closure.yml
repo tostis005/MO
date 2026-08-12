@@ -1,0 +1,28 @@
+name: Validate ham canonical closure
+on:
+  push:
+    branches: [dev/ham-canonical-closure]
+    paths:
+      - 'mdo-supplier-sync/**'
+      - '.github/workflows/validate-ham-canonical-closure.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Lint EMDO PHP
+        run: find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Verify canonical closure wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "Version: 1.0.5" mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q "MDO_Ham_Catalog_Canonical_Closure::init" mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q "El Catedrático" mdo-supplier-sync/includes/class-mdo-ham-catalog-canonical-closure.php
+          grep -q "4,5–5,5 kg.*5,5–6,5 kg" mdo-supplier-sync/includes/class-mdo-ham-catalog-canonical-closure.php
+      - name: Check whitespace
+        run: git diff --check HEAD~1 HEAD
