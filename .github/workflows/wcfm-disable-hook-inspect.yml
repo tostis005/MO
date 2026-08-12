@@ -1,0 +1,38 @@
+name: Inspect WCFM disable hooks
+on:
+  push:
+    branches: [diag-cpu-20260812]
+    paths: ['.github/workflows/wcfm-disable-hook-inspect.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Inspect installed WCFM source
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts; chmod 600 ~/.ssh/known_hosts
+          OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"; case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}";; */wp-content) dev="$(dirname "$raw")";; *) dev="$raw";; esac
+          if [ ! -f "$dev/wp-config.php" ]; then cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"; [ -n "$cfg" ] && dev="$(dirname "$cfg")"; fi
+          prod="$(dirname "$dev")/httpdocs"
+          f="$prod/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php"
+          echo '=== CONSTRUCTOR HOOKS ==='; sed -n '115,145p' "$f"
+          echo '=== OFFLINE/ONLINE METHODS ==='; sed -n '2758,2800p' "$f"
+          echo '=== WCFM SUPPORT RESET METHOD ==='; sed -n '2405,2455p' "$prod/wp-content/plugins/wc-frontend-manager/core/class-wcfm-vendor-support.php"
+          REMOTE
