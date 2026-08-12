@@ -5,23 +5,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Reconstruye las variaciones de peso que El Catedrático publica dentro de una
- * misma ficha de producto. Los formatos (pieza, deshuesado, corte, etc.) se
- * mantienen como fichas distintas porque la tienda origen los enlaza mediante
- * URLs de producto independientes.
+ * Reconstruye las variaciones de peso que las tiendas ibéricas publican dentro
+ * de una misma ficha de producto. Los formatos (pieza, deshuesado, corte, etc.)
+ * se mantienen como extras YITH independientes de la variación de tamaño.
  */
 final class MDO_Iberico_Variations {
 	private const IMPORT_HOOK = 'mdo_supplier_sync_import_product';
 	private const MAX_VARIATIONS = 80;
 
 	public static function init(): void {
-		// Los productos analizados antes de esta versión también deben poder
-		// enriquecerse justo antes de importarlos.
 		add_action( self::IMPORT_HOOK, array( __CLASS__, 'prepare_source_before_import' ), 5, 1 );
 	}
 
 	public static function enrich_product( array $product ): array {
-		if ( 'el-catedratico' !== (string) ( $product['connector'] ?? '' ) ) {
+		$connector = (string) ( $product['connector'] ?? '' );
+		if ( ! in_array( $connector, array( 'el-catedratico', 'puente-robles' ), true ) ) {
 			return $product;
 		}
 		if ( ! self::looks_like_weight_product( (string) ( $product['title'] ?? '' ) ) ) {
@@ -39,9 +37,6 @@ final class MDO_Iberico_Variations {
 		try {
 			$matrix = self::matrix_from_url( $url, $product );
 		} catch ( Throwable $error ) {
-			// Las variaciones son una mejora del producto. Si la ficha origen no se
-			// puede validar, no inventamos datos y dejamos que la protección del
-			// importador mantenga el producto pendiente cuando corresponda.
 			return $product;
 		}
 
@@ -56,9 +51,9 @@ final class MDO_Iberico_Variations {
 				'options' => $matrix['options'],
 			),
 		);
-		$product['variations']      = $matrix['variations'];
-		$product['variation_count'] = count( $matrix['variations'] );
-		$product['variation_source'] = 'el-catedratico-weight-range';
+		$product['variations']       = $matrix['variations'];
+		$product['variation_count']  = count( $matrix['variations'] );
+		$product['variation_source'] = $connector . '-weight-range';
 		$product['unit_price']       = $matrix['unit_price'];
 
 		$current_prices = array_column( $matrix['variations'], 'display_price' );
@@ -79,10 +74,7 @@ final class MDO_Iberico_Variations {
 			$product['discount_percent'] = 0;
 		}
 
-		// Si ya había una ficha EMDO importada como simple, la dejamos preparada
-		// para que la sincronización pueda convertirla en variable sin duplicarla.
 		self::prepare_existing_product_type_by_url( $url );
-
 		return $product;
 	}
 
@@ -102,15 +94,14 @@ final class MDO_Iberico_Variations {
 		}
 
 		$payload = json_decode( (string) $row['source_payload'], true );
-		if ( ! is_array( $payload ) || 'el-catedratico' !== (string) ( $payload['connector'] ?? '' ) ) {
+		$connector = is_array( $payload ) ? (string) ( $payload['connector'] ?? '' ) : '';
+		if ( ! is_array( $payload ) || ! in_array( $connector, array( 'el-catedratico', 'puente-robles' ), true ) ) {
 			return;
 		}
 		if ( empty( $payload['source_url'] ) ) {
 			$payload['source_url'] = (string) $row['source_url'];
 		}
 
-		// Completa primero el precio normal/rebajado del producto base para poder
-		// trasladar el mismo descuento proporcional a cada tramo de peso.
 		if ( class_exists( 'MDO_Pricing' ) ) {
 			$payload = MDO_Pricing::enrich_product( $payload );
 		}
@@ -163,28 +154,46 @@ final class MDO_Iberico_Variations {
 			return array( 'options' => array(), 'variations' => array(), 'unit_price' => null );
 		}
 
-		$unit_current = self::unit_price_from_text( $text );
+		$visible_unit = self::unit_price_from_text( $text );
 		$base_current = self::number( $product['price'] ?? null );
 		$base_regular = self::number( $product['regular_price'] ?? null );
 		$first_weight = (float) $weights[0]['midpoint'];
+		if ( $first_weight <= 0 ) {
+			return array( 'options' => array(), 'variations' => array(), 'unit_price' => null );
+		}
 
-		if ( null === $unit_current && null !== $base_current && $first_weight > 0 ) {
+		$unit_current = null;
+		$unit_regular = null;
+
+		/*
+		 * El Catedrático suele publicar el €/Kg vigente. Puente Robles, cuando hay
+		 * promoción, mantiene visible el €/Kg normal mientras el total ya viene
+		 * rebajado. Comprobamos contra ambos totales para identificar qué unidad
+		 * estamos leyendo sin asumir el comportamiento de un proveedor concreto.
+		 */
+		if ( null !== $visible_unit && null !== $base_current && abs( ( $visible_unit * $first_weight ) - $base_current ) <= 0.10 ) {
+			$unit_current = $visible_unit;
+		} elseif ( null !== $visible_unit && null !== $base_regular && abs( ( $visible_unit * $first_weight ) - $base_regular ) <= 0.10 ) {
+			$unit_regular = $visible_unit;
+		}
+
+		if ( null === $unit_current && null !== $base_current ) {
 			$unit_current = $base_current / $first_weight;
 		}
-		if ( null === $unit_current || $unit_current <= 0 || $first_weight <= 0 ) {
+		if ( null === $unit_regular ) {
+			if ( null !== $base_regular && $base_regular > 0 ) {
+				$unit_regular = $base_regular / $first_weight;
+			} else {
+				$unit_regular = $unit_current;
+			}
+		}
+		if ( null === $unit_current || $unit_current <= 0 || null === $unit_regular || $unit_regular <= 0 ) {
 			return array( 'options' => array(), 'variations' => array(), 'unit_price' => null );
 		}
 
-		// La primera opción visible debe justificar el precio base publicado. Esta
-		// comprobación evita construir una matriz si el proveedor cambia su modelo.
 		$expected_first = round( $unit_current * $first_weight, 2 );
-		if ( null !== $base_current && abs( $expected_first - $base_current ) > 0.08 ) {
+		if ( null !== $base_current && abs( $expected_first - $base_current ) > 0.10 ) {
 			return array( 'options' => array(), 'variations' => array(), 'unit_price' => null );
-		}
-
-		$unit_regular = $unit_current;
-		if ( null !== $base_regular && null !== $base_current && $base_regular > $base_current && $first_weight > 0 ) {
-			$unit_regular = $base_regular / $first_weight;
 		}
 
 		$instock    = 'outofstock' !== (string) ( $product['stock_status'] ?? '' );
@@ -198,14 +207,11 @@ final class MDO_Iberico_Variations {
 				'value'    => sanitize_title( $label ),
 				'label'    => $label,
 				'disabled' => ! $instock,
-				'data'     => array(
-					'weight-midpoint' => (float) $weight['midpoint'],
-				),
+				'data'     => array( 'weight-midpoint' => (float) $weight['midpoint'] ),
 			);
-			$attributes = array( 'peso' => $label );
 			$variations[] = array(
 				'variation_id'          => substr( hash( 'sha256', $url . '|' . $label ), 0, 24 ),
-				'attributes'            => $attributes,
+				'attributes'            => array( 'peso' => $label ),
 				'display_price'         => $current,
 				'display_regular_price' => max( $current, $regular ),
 				'is_in_stock'           => $instock,
@@ -224,9 +230,9 @@ final class MDO_Iberico_Variations {
 		$matches = array();
 		$weights = array();
 
-		// Rango habitual: "Piezas entre 7,200 kg - 7,400 kg aprox.".
+		// Admite tanto "... 7,400 kg aprox." como el formato de Puente Robles sin "aprox".
 		preg_match_all(
-			'/Piezas?\s+entre\s+([0-9]{1,2}(?:[.,][0-9]{1,3})?)\s*kg\s*[-–]\s*([0-9]{1,2}(?:[.,][0-9]{1,3})?)\s*kg\s*aprox\.?/iu',
+			'/Piezas?\s+entre\s+([0-9]{1,2}(?:[.,][0-9]{1,3})?)\s*kg\.?\s*[-–]\s*([0-9]{1,2}(?:[.,][0-9]{1,3})?)\s*kg\.?(?:\s*aprox\.?)?/iu',
 			$text,
 			$matches,
 			PREG_SET_ORDER
@@ -244,10 +250,9 @@ final class MDO_Iberico_Variations {
 			);
 		}
 
-		// Algunas referencias pueden publicarse con un peso único aproximado.
 		if ( ! $weights ) {
 			preg_match_all(
-				'/Piezas?\s+(?:de\s+)?([0-9]{1,2}(?:[.,][0-9]{1,3})?)\s*kg\s*aprox\.?/iu',
+				'/Piezas?\s+(?:de\s+)?([0-9]{1,2}(?:[.,][0-9]{1,3})?)\s*kg\.?(?:\s*aprox\.?)?/iu',
 				$text,
 				$matches,
 				PREG_SET_ORDER
