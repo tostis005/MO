@@ -7,29 +7,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Planificador nocturno para las sincronizaciones automáticas de EMDO.
  *
- * - El dispatcher automático se ancla a las 03:00 de la zona horaria de WP.
- * - Los productores/proveedores se ordenan de forma estable por su ID de EMDO.
- * - Cada productor comienza 30 minutos después del anterior: 03:00, 03:30, 04:00…
- * - Una vez iniciado un productor, MDO_Scheduler procesa su catálogo completo
- *   con el comportamiento normal; no se espacian las fichas individuales.
- * - Las importaciones manuales conservan el comportamiento inmediato existente.
+ * El dispatcher se ancla a las 03:00 de la zona horaria de WordPress y cada
+ * productor se separa 30 minutos. Un watchdog independiente evita que una
+ * ejecución rota permanezca indefinidamente en estado running.
  */
 final class MDO_Nightly_Scheduler {
-	private const DISPATCH_HOOK = 'mdo_supplier_sync_dispatch';
-	private const RUN_HOOK      = 'mdo_supplier_sync_run_supplier';
-	private const GROUP         = 'mdo-supplier-sync';
-	private const SLOT_SECONDS  = 30 * MINUTE_IN_SECONDS;
-	private const SCHEDULE_VERSION = '4';
+	private const DISPATCH_HOOK    = 'mdo_supplier_sync_dispatch';
+	private const RUN_HOOK         = 'mdo_supplier_sync_run_supplier';
+	private const WATCHDOG_HOOK    = 'mdo_supplier_sync_watchdog';
+	private const GROUP            = 'mdo-supplier-sync';
+	private const SLOT_SECONDS     = 30 * MINUTE_IN_SECONDS;
+	private const WATCHDOG_SECONDS = 15 * MINUTE_IN_SECONDS;
+	private const STALE_SECONDS    = 2 * HOUR_IN_SECONDS;
+	private const SCHEDULE_VERSION = '5';
 
 	public static function init(): void {
 		remove_action( self::DISPATCH_HOOK, array( 'MDO_Scheduler', 'dispatch' ) );
 		add_action( self::DISPATCH_HOOK, array( __CLASS__, 'dispatch' ), 10, 0 );
+		add_action( self::WATCHDOG_HOOK, array( __CLASS__, 'recover_stale_runs' ), 10, 0 );
 
 		/*
-		 * Action Scheduler puede existir como función antes de que su almacén de
-		 * datos esté listo. Esperamos a action_scheduler_init para poder inspeccionar,
-		 * borrar y recrear realmente el evento recurrente. Esto también corrige
-		 * instalaciones que conservasen un dispatcher antiguo a otra hora.
+		 * Action Scheduler puede exponer sus funciones antes de inicializar el
+		 * almacén. Esperamos a action_scheduler_init para inspeccionar y recrear
+		 * realmente las acciones recurrentes.
 		 */
 		if ( did_action( 'action_scheduler_init' ) ) {
 			self::ensure_nightly_dispatcher();
@@ -41,6 +41,8 @@ final class MDO_Nightly_Scheduler {
 	}
 
 	public static function dispatch(): void {
+		self::recover_stale_runs();
+
 		$suppliers = MDO_Supplier_Repository::active();
 		usort(
 			$suppliers,
@@ -49,13 +51,11 @@ final class MDO_Nightly_Scheduler {
 
 		$slot = 0;
 		$base = time() + 5;
-
 		foreach ( $suppliers as $supplier ) {
 			$supplier_id = (int) ( $supplier['id'] ?? 0 );
 			if ( $supplier_id <= 0 || ! self::is_due( $supplier ) || self::has_recent_running_run( $supplier_id ) ) {
 				continue;
 			}
-
 			self::schedule_supplier(
 				$base + ( $slot * self::SLOT_SECONDS ),
 				array( $supplier_id, 'scheduled' )
@@ -73,8 +73,10 @@ final class MDO_Nightly_Scheduler {
 		if ( $needs_reset ) {
 			if ( function_exists( 'as_unschedule_all_actions' ) ) {
 				as_unschedule_all_actions( self::DISPATCH_HOOK, array(), self::GROUP );
+				as_unschedule_all_actions( self::WATCHDOG_HOOK, array(), self::GROUP );
 			}
 			wp_clear_scheduled_hook( self::DISPATCH_HOOK );
+			wp_clear_scheduled_hook( self::WATCHDOG_HOOK );
 			$existing_next = 0;
 		}
 
@@ -83,12 +85,69 @@ final class MDO_Nightly_Scheduler {
 			if ( $existing_next <= 0 && ! as_has_scheduled_action( self::DISPATCH_HOOK, array(), self::GROUP ) ) {
 				as_schedule_recurring_action( $next, DAY_IN_SECONDS, self::DISPATCH_HOOK, array(), self::GROUP );
 			}
-		} elseif ( $existing_next <= 0 && ! wp_next_scheduled( self::DISPATCH_HOOK ) ) {
-			wp_schedule_event( $next, 'daily', self::DISPATCH_HOOK );
+			if ( ! as_has_scheduled_action( self::WATCHDOG_HOOK, array(), self::GROUP ) ) {
+				as_schedule_recurring_action( time() + 60, self::WATCHDOG_SECONDS, self::WATCHDOG_HOOK, array(), self::GROUP );
+			}
+		} else {
+			if ( $existing_next <= 0 && ! wp_next_scheduled( self::DISPATCH_HOOK ) ) {
+				wp_schedule_event( $next, 'daily', self::DISPATCH_HOOK );
+			}
+			if ( ! wp_next_scheduled( self::WATCHDOG_HOOK ) ) {
+				wp_schedule_event( time() + 60, 'hourly', self::WATCHDOG_HOOK );
+			}
 		}
 
 		if ( $needs_reset || self::SCHEDULE_VERSION !== $version ) {
 			update_option( 'mdo_nightly_schedule_version', self::SCHEDULE_VERSION, false );
+		}
+	}
+
+	/**
+	 * Cierra ejecuciones que llevan demasiado tiempo abiertas. Con el runner de
+	 * servidor una sincronización normal avanza continuamente; dos horas sin
+	 * terminar se consideran una ejecución interrumpida y no debe bloquear el
+	 * proveedor durante 36 horas.
+	 */
+	public static function recover_stale_runs(): void {
+		global $wpdb;
+		$runs   = MDO_Database::table( 'sync_runs' );
+		$events = MDO_Database::table( 'sync_events' );
+		$cutoff = wp_date( 'Y-m-d H:i:s', time() - self::STALE_SECONDS );
+		$stale  = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, supplier_id, errors_count FROM {$runs} WHERE status = 'running' AND started_at < %s ORDER BY id ASC",
+				$cutoff
+			),
+			ARRAY_A
+		);
+		foreach ( $stale ?: array() as $run ) {
+			$run_id      = (int) $run['id'];
+			$supplier_id = (int) $run['supplier_id'];
+			$message     = 'Ejecución cerrada automáticamente por el watchdog tras superar 2 horas en estado running. Puede volver a lanzarse con seguridad.';
+			$updated = $wpdb->update(
+				$runs,
+				array(
+					'status'       => 'warning',
+					'finished_at'  => current_time( 'mysql' ),
+					'errors_count' => max( 1, (int) $run['errors_count'] ),
+					'message'      => $message,
+				),
+				array( 'id' => $run_id, 'status' => 'running' )
+			);
+			if ( $updated ) {
+				$wpdb->insert(
+					$events,
+					array(
+						'run_id'      => $run_id,
+						'supplier_id' => $supplier_id,
+						'event_type'  => 'run_watchdog_timeout',
+						'severity'    => 'error',
+						'message'     => $message,
+						'payload'     => null,
+						'created_at'  => current_time( 'mysql' ),
+					)
+				);
+			}
 		}
 	}
 
@@ -126,9 +185,9 @@ final class MDO_Nightly_Scheduler {
 
 	private static function has_recent_running_run( int $supplier_id ): bool {
 		global $wpdb;
-		$table = MDO_Database::table( 'sync_runs' );
-		$cutoff = wp_date( 'Y-m-d H:i:s', time() - ( 36 * HOUR_IN_SECONDS ) );
-		$count = (int) $wpdb->get_var(
+		$table  = MDO_Database::table( 'sync_runs' );
+		$cutoff = wp_date( 'Y-m-d H:i:s', time() - self::STALE_SECONDS );
+		$count  = (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM {$table} WHERE supplier_id = %d AND status = 'running' AND started_at >= %s",
 				$supplier_id,
