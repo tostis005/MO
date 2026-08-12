@@ -1,0 +1,145 @@
+name: Verify cured filters in staging
+
+on:
+  push:
+    branches:
+      - verify/cured-filters-staging-20260812
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Verify catalog data and rendered filters
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          domain="$2"
+          case "$raw" in
+            */wp-content/*) wp_path="${raw%%/wp-content/*}" ;;
+            */wp-content) wp_path="$(dirname "$raw")" ;;
+            *) wp_path="$raw" ;;
+          esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            candidates="$(mktemp)"
+            trap 'rm -f "$candidates"' EXIT
+            for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www; do
+              [ -d "$base" ] || continue
+              find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null >> "$candidates" || true
+            done
+            preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+            [ -n "$preferred" ] || exit 2
+            wp_path="$(dirname "$preferred")"
+          fi
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          REMOTE
+          )"
+          WP_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__WP_PATH__=//p' | tail -n 1)"
+          : "${WP_PATH:?Could not resolve staging WordPress path}"
+
+          cat > verify-cured-filters.php <<'PHP'
+          <?php
+          $migration = MDO_Cured_Producer::migrate_catalog( true );
+          $category  = get_term_by( 'slug', 'embutidos-y-curados', 'product_cat' );
+          if ( ! $category instanceof WP_Term ) {
+              throw new RuntimeException( 'No existe Embutidos y curados.' );
+          }
+          $url = get_term_link( $category );
+          if ( is_wp_error( $url ) ) {
+              throw new RuntimeException( $url->get_error_message() );
+          }
+          $ids = wc_get_products( array(
+              'limit'    => -1,
+              'return'   => 'ids',
+              'status'   => array( 'publish', 'private', 'draft', 'pending' ),
+              'category' => array( 'embutidos-y-curados' ),
+          ) );
+          $coverage = 0;
+          $producer_counts = array();
+          foreach ( array_map( 'intval', $ids ) as $id ) {
+              $names = wp_get_post_terms( $id, 'pa_productor', array( 'fields' => 'names' ) );
+              if ( is_wp_error( $names ) || ! $names ) {
+                  continue;
+              }
+              ++$coverage;
+              foreach ( $names as $name ) {
+                  $producer_counts[ $name ] = ( $producer_counts[ $name ] ?? 0 ) + 1;
+              }
+          }
+          ksort( $producer_counts, SORT_NATURAL | SORT_FLAG_CASE );
+          echo wp_json_encode( array(
+              'migration'        => $migration,
+              'category_id'      => (int) $category->term_id,
+              'category_url'     => (string) $url,
+              'product_count'    => count( $ids ),
+              'producer_coverage'=> $coverage,
+              'producer_counts'  => $producer_counts,
+          ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+          PHP
+
+          REMOTE_SCRIPT="/tmp/emdo-verify-cured-filters-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS verify-cured-filters.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          REPORT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$WP_PATH' '$REMOTE_SCRIPT'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          script="$2"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          trap 'rm -f "$script"' EXIT
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file "$script" --path="$wp_path" --allow-root
+          REMOTE
+          )"
+          printf '%s\n' "$REPORT"
+
+          CATEGORY_URL="$(printf '%s' "$REPORT" | php -r '$d=json_decode(stream_get_contents(STDIN), true); echo (string)($d["category_url"] ?? "");')"
+          PRODUCT_COUNT="$(printf '%s' "$REPORT" | php -r '$d=json_decode(stream_get_contents(STDIN), true); echo (int)($d["product_count"] ?? 0);')"
+          COVERAGE="$(printf '%s' "$REPORT" | php -r '$d=json_decode(stream_get_contents(STDIN), true); echo (int)($d["producer_coverage"] ?? 0);')"
+          ERRORS="$(printf '%s' "$REPORT" | php -r '$d=json_decode(stream_get_contents(STDIN), true); echo count((array)($d["migration"]["errors"] ?? array()));')"
+          : "${CATEGORY_URL:?Missing category URL}"
+          [ "$PRODUCT_COUNT" -ge 63 ]
+          [ "$COVERAGE" -eq "$PRODUCT_COUNT" ]
+          [ "$ERRORS" -eq 0 ]
+
+          VERIFY_URL="${CATEGORY_URL}?filter-verify=${GITHUB_RUN_ID}"
+          STATUS="$(curl -sS -L --max-time 90 -o /tmp/cured-category.html -w '%{http_code}' "$VERIFY_URL")"
+          [ "$STATUS" = '200' ]
+          grep -q 'id="emo-category-attribute-filters"' /tmp/cured-category.html
+          grep -q 'emo-category-filter-tipo-producto' /tmp/cured-category.html
+          grep -q 'emo-category-filter-raza-iberica' /tmp/cured-category.html
+          grep -q 'emo-category-filter-alimentacion' /tmp/cured-category.html
+          grep -q 'emo-category-filter-preparacion' /tmp/cured-category.html
+          grep -q 'emo-category-filter-productor' /tmp/cured-category.html
+          echo "Rendered cured filters verified at $CATEGORY_URL"
