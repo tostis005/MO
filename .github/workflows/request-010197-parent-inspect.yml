@@ -1,0 +1,21 @@
+name: Request 010197 parent inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/request-010197-parent-inspect.cjs'
+      - '.github/workflows/request-010197-parent-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - run: node .github/scripts/request-010197-parent-inspect.cjs
