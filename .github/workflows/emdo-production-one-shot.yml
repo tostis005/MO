@@ -23,7 +23,6 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
-      PRODUCTION_DOMAIN: elmercadodeorigen.com
     steps:
       - uses: actions/checkout@v4
 
@@ -70,9 +69,9 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$PRODUCTION_DOMAIN' '$REMOTE_TMP' '$GITHUB_SHA'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP' '$GITHUB_SHA'" <<'REMOTE'
           set -eu
-          raw="${1%/}"; domain="$2"; incoming="$3"; commit="$4"
+          raw="${1%/}"; incoming="$2"; commit="$3"
           dev_path=""
           case "$raw" in */wp-content/*) dev_path="${raw%%/wp-content/*}" ;; */wp-content) dev_path="$(dirname "$raw")" ;; *) dev_path="$raw" ;; esac
           if [ ! -f "$dev_path/wp-config.php" ]; then
@@ -90,7 +89,8 @@ jobs:
           [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
 
           siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod_path" --allow-root 2>/dev/null || true)"
-          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*) ;; *) echo "Refusing deployment: unexpected production siteurl=$siteurl" >&2; exit 1 ;; esac
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing deployment: unexpected production siteurl=$siteurl" >&2; exit 1 ;; esac
+          smoke_base="${siteurl%/}"
 
           find "$incoming" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/tmp/emdo-prod-lint.log
           target="$prod_path/wp-content/plugins/mdo-supplier-sync"
@@ -118,8 +118,8 @@ jobs:
           grep -q "El proveedor no tiene un usuario vendedor válido asignado" "$target/includes/class-mdo-woo-importer.php"
           ! grep -q "in_array( 'wcfm_vendor'" "$target/includes/class-mdo-woo-importer.php"
 
-          home="$(curl -ksS -o /tmp/emdo-prod-home -w '%{http_code}' --max-time 25 "https://$domain/" || true)"
-          shop="$(curl -ksS -o /tmp/emdo-prod-shop -w '%{http_code}' --max-time 25 "https://$domain/tienda/" || true)"
+          home="$(curl -ksS -o /tmp/emdo-prod-home -w '%{http_code}' --max-time 25 "$smoke_base/" || true)"
+          shop="$(curl -ksS -o /tmp/emdo-prod-shop -w '%{http_code}' --max-time 25 "$smoke_base/tienda/" || true)"
           case "$home" in 2*|3*) ;; *) echo "Production home HTTP $home" >&2; exit 1 ;; esac
           case "$shop" in 2*|3*) ;; *) echo "Production shop HTTP $shop" >&2; exit 1 ;; esac
 
