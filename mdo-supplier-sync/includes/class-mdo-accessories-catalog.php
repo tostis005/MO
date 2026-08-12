@@ -185,7 +185,7 @@ final class MDO_Accessories_Catalog {
 		if ( preg_match( '/\bcuchillo(?:s)?\b/u', $title ) ) {
 			return 'Cuchillo';
 		}
-		if ( preg_match( '/\bjamonero(?:s)?\b/u', $title ) ) {
+		if ( preg_match( '/\bjamoner[oa](?:s)?\b/u', $title ) ) {
 			return 'Jamonero';
 		}
 		return '';
