@@ -1,0 +1,133 @@
+name: Verify cured catalog in staging
+
+on:
+  push:
+    branches: [verify/embutidos-curados-packs-20260812]
+    paths:
+      - '.github/workflows/verify-cured-catalog-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify catalog read-only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          domain="$2"
+          wp_path=""
+          case "$raw" in
+            */wp-content/*) wp_path="${raw%%/wp-content/*}" ;;
+            */wp-content) wp_path="$(dirname "$raw")" ;;
+            *) wp_path="$raw" ;;
+          esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            candidates="$(mktemp)"
+            trap 'rm -f "$candidates"' EXIT
+            for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www; do
+              [ -d "$base" ] || continue
+              find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null >> "$candidates" || true
+            done
+            preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+            [ -n "$preferred" ] || exit 2
+            wp_path="$(dirname "$preferred")"
+          fi
+          [ "$(basename "$wp_path")" = "$domain" ] || exit 3
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          REMOTE
+          )"
+          WP_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__WP_PATH__=//p' | tail -n 1)"
+          : "${WP_PATH:?Could not resolve staging WordPress path}"
+
+          cat > verify-cured.php <<'PHP'
+          <?php
+          $category_slugs = array( 'embutidos-y-curados', 'packs-y-lotes', 'jamones-y-paletas' );
+          $categories = array();
+          foreach ( $category_slugs as $slug ) {
+              $term = get_term_by( 'slug', $slug, 'product_cat' );
+              $categories[ $slug ] = $term instanceof WP_Term ? array(
+                  'id' => (int) $term->term_id,
+                  'name' => $term->name,
+                  'count' => (int) $term->count,
+              ) : null;
+          }
+          $legacy = get_term_by( 'slug', 'embutidos', 'product_cat' );
+          $ids = array( 11322, 11310, 1695, 5343, 11418, 11424, 5065, 4188, 5080, 11178, 11211 );
+          $products = array();
+          foreach ( $ids as $id ) {
+              $product = wc_get_product( $id );
+              if ( ! $product ) {
+                  $products[ $id ] = null;
+                  continue;
+              }
+              $cats = wp_get_post_terms( $id, 'product_cat', array( 'fields' => 'slugs' ) );
+              $attrs = array();
+              foreach ( array( 'pa_tipo-producto', 'pa_raza-iberica', 'pa_alimentacion', 'pa_preparacion' ) as $taxonomy ) {
+                  if ( taxonomy_exists( $taxonomy ) ) {
+                      $values = wp_get_post_terms( $id, $taxonomy, array( 'fields' => 'names' ) );
+                      $attrs[ $taxonomy ] = is_wp_error( $values ) ? array() : array_values( $values );
+                  }
+              }
+              $products[ $id ] = array(
+                  'name' => $product->get_name(),
+                  'categories' => is_wp_error( $cats ) ? array() : array_values( $cats ),
+                  'attributes' => $attrs,
+              );
+          }
+          echo wp_json_encode( array(
+              'categories' => $categories,
+              'legacy_embutidos_exists' => $legacy instanceof WP_Term,
+              'products' => $products,
+          ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ) . PHP_EOL;
+          PHP
+
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          REMOTE_SCRIPT="/tmp/emdo-verify-cured-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS verify-cured.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$WP_PATH' '$REMOTE_SCRIPT'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          script="$2"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          trap 'rm -f "$script"' EXIT
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file "$script" --path="$wp_path" --allow-root
+          REMOTE
