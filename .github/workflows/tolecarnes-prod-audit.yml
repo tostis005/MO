@@ -1,0 +1,120 @@
+name: Tolecarnes production audit
+
+on:
+  push:
+    branches:
+      - diag-cpu-20260812
+    paths:
+      - '.github/workflows/tolecarnes-prod-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Audit production data
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set +e
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] && dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          php="$(command -v php)"
+          wp="$(command -v wp)"
+          prefix="$("$php" "$wp" db prefix --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null | tail -n1)"
+          echo "PROD=$prod PREFIX=$prefix"
+
+          echo '=== RELEVANT USERS ==='
+          "$php" "$wp" db query "
+          SELECT u.ID,u.user_login,u.display_name,u.user_email,
+            MAX(CASE WHEN um.meta_key='${prefix}capabilities' THEN LEFT(um.meta_value,300) END) capabilities,
+            MAX(CASE WHEN um.meta_key='_disable_vendor' THEN um.meta_value END) disable_vendor,
+            MAX(CASE WHEN um.meta_key='_wcfm_store_offline' THEN um.meta_value END) store_offline,
+            MAX(CASE WHEN um.meta_key='store_name' THEN LEFT(um.meta_value,120) END) store_name
+          FROM ${prefix}users u
+          LEFT JOIN ${prefix}usermeta um ON um.user_id=u.ID
+          WHERE LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
+             OR (um.meta_key='store_name' AND LOWER(um.meta_value) REGEXP 'tole|catedr|puente|roble')
+          GROUP BY u.ID,u.user_login,u.display_name,u.user_email
+          ORDER BY u.ID;" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== PRODUCT COUNTS BY MATCHED VENDOR ==='
+          "$php" "$wp" db query "
+          SELECT p.post_author,u.user_login,u.display_name,p.post_status,COUNT(*) products
+          FROM ${prefix}posts p
+          JOIN ${prefix}users u ON u.ID=p.post_author
+          WHERE p.post_type='product'
+            AND LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
+          GROUP BY p.post_author,u.user_login,u.display_name,p.post_status
+          ORDER BY u.display_name,p.post_status;" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== CARNES TERM ==='
+          "$php" "$wp" db query "
+          SELECT t.term_id,t.name,t.slug,tt.term_taxonomy_id,tt.count
+          FROM ${prefix}terms t JOIN ${prefix}term_taxonomy tt ON tt.term_id=t.term_id
+          WHERE tt.taxonomy='product_cat' AND (LOWER(t.name)='carnes' OR LOWER(t.slug)='carnes');" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== PRODUCT CATEGORIES FOR MATCHED VENDORS ==='
+          "$php" "$wp" db query "
+          SELECT p.ID,p.post_title,p.post_status,p.post_author,u.display_name,
+            GROUP_CONCAT(DISTINCT CONCAT(t.name,'[',t.slug,']') ORDER BY t.name SEPARATOR ', ') categories
+          FROM ${prefix}posts p
+          JOIN ${prefix}users u ON u.ID=p.post_author
+          LEFT JOIN ${prefix}term_relationships tr ON tr.object_id=p.ID
+          LEFT JOIN ${prefix}term_taxonomy tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='product_cat'
+          LEFT JOIN ${prefix}terms t ON t.term_id=tt.term_id
+          WHERE p.post_type='product'
+            AND LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
+          GROUP BY p.ID,p.post_title,p.post_status,p.post_author,u.display_name
+          ORDER BY u.display_name,p.ID;" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== MDO TABLES ==='
+          "$php" "$wp" db query "SHOW TABLES LIKE '${prefix}mdo%';" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== PRODUCT META/TITLES CONTAINING TOLE ==='
+          "$php" "$wp" db query "
+          SELECT DISTINCT p.ID,p.post_title,p.post_status,p.post_author,COALESCE(u.display_name,'') author_name,
+            pm.meta_key,LEFT(pm.meta_value,180) meta_value
+          FROM ${prefix}posts p
+          LEFT JOIN ${prefix}users u ON u.ID=p.post_author
+          LEFT JOIN ${prefix}postmeta pm ON pm.post_id=p.ID
+          WHERE p.post_type='product'
+            AND (LOWER(p.post_title) LIKE '%tole%' OR LOWER(COALESCE(pm.meta_value,'')) LIKE '%tole%')
+          LIMIT 250;" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== RELEVANT USERMETA KEYS ==='
+          "$php" "$wp" db query "
+          SELECT u.ID,u.display_name,um.meta_key,LEFT(um.meta_value,400) meta_value
+          FROM ${prefix}users u JOIN ${prefix}usermeta um ON um.user_id=u.ID
+          WHERE LOWER(CONCAT_WS(' ',u.user_login,u.display_name,u.user_email)) REGEXP 'tole|catedr|puente|roble'
+            AND (um.meta_key LIKE '%wcfm%' OR um.meta_key LIKE '%store%' OR um.meta_key LIKE '%vendor%' OR um.meta_key LIKE '%capabil%' OR um.meta_key LIKE '%disable%')
+          ORDER BY u.ID,um.meta_key;" --path="$prod" --skip-plugins --skip-themes --allow-root
+          REMOTE
