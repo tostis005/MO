@@ -125,6 +125,28 @@ function elmercado_wcfm_product_is_from_disabled_vendor_010210( int $product_id 
 }
 
 /**
+ * Devuelve el vendedor solicitado por el filtro público, si existe.
+ */
+function elmercado_wcfm_requested_vendor_id_010210(): int {
+	return isset( $_GET['vendor_id'] ) ? absint( wp_unslash( $_GET['vendor_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+}
+
+/**
+ * Si se conserva una URL de filtro de un vendedor bloqueado, la consulta debe
+ * ser vacía en lugar de caer de nuevo al catálogo general.
+ */
+function elmercado_wcfm_block_disabled_vendor_filter_010210( WP_Query $query ): void {
+	$requested_vendor = elmercado_wcfm_requested_vendor_id_010210();
+	if ( $requested_vendor <= 0 || ! elmercado_wcfm_vendor_is_disabled_010210( $requested_vendor ) ) {
+		return;
+	}
+
+	$current = array_map( 'intval', (array) $query->get( 'post__in' ) );
+	$query->set( 'post__in', $current ? array_values( array_intersect( $current, array( 0 ) ) ) : array( 0 ) );
+	$query->set( 'author', 0 );
+}
+
+/**
  * Determina si una WP_Query puede devolver productos en el frontend.
  */
 function elmercado_wcfm_query_targets_products_010210( WP_Query $query ): bool {
@@ -169,6 +191,13 @@ function elmercado_wcfm_exclude_disabled_authors_from_args_010210( array $args )
 
 	$current                = isset( $args['author__not_in'] ) ? array_map( 'intval', (array) $args['author__not_in'] ) : array();
 	$args['author__not_in'] = array_values( array_unique( array_merge( $current, $disabled ) ) );
+
+	$requested_vendor = elmercado_wcfm_requested_vendor_id_010210();
+	if ( $requested_vendor > 0 && in_array( $requested_vendor, $disabled, true ) ) {
+		$args['post__in'] = array( 0 );
+		unset( $args['author'] );
+	}
+
 	return $args;
 }
 
@@ -190,6 +219,7 @@ add_action(
 
 		$current = array_map( 'intval', (array) $query->get( 'author__not_in' ) );
 		$query->set( 'author__not_in', array_values( array_unique( array_merge( $current, $disabled ) ) ) );
+		elmercado_wcfm_block_disabled_vendor_filter_010210( $query );
 	},
 	999
 );
@@ -220,6 +250,12 @@ add_action(
 		}
 		$current = array_map( 'intval', (array) $query->get( 'author__not_in' ) );
 		$query->set( 'author__not_in', array_values( array_unique( array_merge( $current, $disabled ) ) ) );
+
+		$requested_vendor = elmercado_wcfm_requested_vendor_id_010210();
+		if ( $requested_vendor > 0 && in_array( $requested_vendor, $disabled, true ) ) {
+			$query->set( 'post__in', array( 0 ) );
+			$query->set( 'author', 0 );
+		}
 	},
 	999
 );
