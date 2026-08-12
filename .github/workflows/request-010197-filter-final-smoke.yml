@@ -1,0 +1,38 @@
+name: Request 010197 filter final smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/catalog-filter-unification-010196.php'
+      - 'elmercadodeorigen-child/inc/catalog-filter-final-010197.php'
+      - '.github/scripts/request-010197-filter-final-smoke.cjs'
+      - '.github/workflows/request-010197-filter-final-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: request-010197-filter-final-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser dependency
+        run: npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Validate smoke syntax
+        run: node --check .github/scripts/request-010197-filter-final-smoke.cjs
+      - name: Review final filter system on staging
+        run: node .github/scripts/request-010197-filter-final-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: request-010197-filter-final-smoke
+          path: qa/
+          retention-days: 14
