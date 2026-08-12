@@ -56,13 +56,12 @@ jobs:
           echo "PROD=$prod"
           echo "STATE_FILE=$state_file"
 
-          # Capture exact pre-change state for a narrow rollback.
           "$php_bin" "$wp" db query "SELECT ID,post_status,post_author,post_title FROM wp_posts WHERE post_type='product' AND post_author=4507 ORDER BY ID" --path="$prod" --skip-plugins --skip-themes --allow-root --batch --raw > "$state_file"
           echo '=== BEFORE COUNTS ==='
           "$php_bin" "$wp" db query "SELECT post_status,COUNT(*) c FROM wp_posts WHERE post_type='product' AND post_author=4507 GROUP BY post_status ORDER BY post_status" --path="$prod" --skip-plugins --skip-themes --allow-root
 
           echo '=== APPLY ==='
-          "$php_bin" "$wp" eval '
+          "$php_bin" -d memory_limit=512M "$wp" eval '
           $vendor_id = 4507;
           $carnes_id = 382;
           global $wpdb;
@@ -98,7 +97,7 @@ jobs:
           echo "published=" . count($ids) . "\n";
           ' --path="$prod" --allow-root
 
-          "$php_bin" "$wp" cache flush --path="$prod" --allow-root || true
+          "$php_bin" -d memory_limit=512M "$wp" cache flush --path="$prod" --allow-root || true
 
           echo '=== AFTER DATABASE COUNTS ==='
           "$php_bin" "$wp" db query "SELECT post_status,COUNT(*) c FROM wp_posts WHERE post_type='product' AND post_author=4507 GROUP BY post_status ORDER BY post_status" --path="$prod" --skip-plugins --skip-themes --allow-root
@@ -107,7 +106,7 @@ jobs:
           "$php_bin" "$wp" db query "SELECT user_id,meta_key,meta_value FROM wp_usermeta WHERE user_id=4507 AND meta_key IN ('wp_capabilities','_disable_vendor','_wcfm_store_offline') ORDER BY meta_key" --path="$prod" --skip-plugins --skip-themes --allow-root
 
           echo '=== VERIFY THEME VISIBILITY LOGIC ==='
-          "$php_bin" "$wp" eval '
+          "$php_bin" -d memory_limit=512M "$wp" eval '
           $vendor = 4507;
           $product_ids = get_posts(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"fields"=>"ids","suppress_filters"=>true]);
           echo "raw_published=" . count($product_ids) . "\n";
@@ -115,12 +114,10 @@ jobs:
           if (function_exists("elmercado_wcfm_vendor_is_disabled_010210")) {
               echo "vendor_disabled=" . (elmercado_wcfm_vendor_is_disabled_010210($vendor) ? "yes" : "no") . "\n";
           }
-
           wp_set_current_user(0);
           echo "public_can_view_disabled=" . (function_exists("elmercado_wcfm_disabled_visibility_can_view_010210") && elmercado_wcfm_disabled_visibility_can_view_010210() ? "yes" : "no") . "\n";
           $public_q = new WP_Query(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"fields"=>"ids","no_found_rows"=>true]);
           echo "public_query_count=" . count($public_q->posts) . "\n";
-
           $admin_id = 0;
           foreach (get_users(["role"=>"administrator","fields"=>"ID"]) as $aid) {
               wp_set_current_user((int)$aid);
@@ -131,7 +128,6 @@ jobs:
           echo "admin_can_view_disabled=" . (function_exists("elmercado_wcfm_disabled_visibility_can_view_010210") && elmercado_wcfm_disabled_visibility_can_view_010210() ? "yes" : "no") . "\n";
           $admin_q = new WP_Query(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"fields"=>"ids","no_found_rows"=>true]);
           echo "admin_query_count=" . count($admin_q->posts) . "\n";
-
           $sample = reset($product_ids);
           if ($sample) {
               wp_set_current_user(0);
