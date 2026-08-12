@@ -1,0 +1,157 @@
+name: Request 010210 disabled WCFM vendor smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/request-010210-disabled-vendor-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+      - name: Resolve disabled vendor sample and verify admin bypass
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            wp_path="$(dirname "$cfg")"
+          fi
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          runtime="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$wp_path" --allow-root --skip-plugins)"
+          [ "$runtime" = '0.10.210' ] || { echo "Expected 0.10.210, got $runtime" >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          global $wpdb;
+          $authors=array_map("intval",$wpdb->get_col("SELECT DISTINCT post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND post_author>0 ORDER BY post_author DESC"));
+          $sample=null;
+          foreach($authors as $author){
+            if(!function_exists("elmercado_wcfm_vendor_is_disabled_010210") || !elmercado_wcfm_vendor_is_disabled_010210($author)) continue;
+            $pid=(int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type=%s AND post_status=%s AND post_author=%d ORDER BY ID DESC LIMIT 1","product","publish",$author));
+            if(!$pid) continue;
+            $post=get_post($pid);
+            $terms=get_the_terms($pid,"product_cat");
+            $category="";
+            if(is_array($terms)&&!empty($terms)){ $link=get_term_link($terms[0]); if(!is_wp_error($link)) $category=$link; }
+            $sample=array("vendor"=>$author,"id"=>$pid,"slug"=>$post->post_name,"title"=>$post->post_title,"url"=>get_permalink($pid),"category"=>$category);
+            break;
+          }
+          if(!$sample){ fwrite(STDERR,"No disabled vendor with published product found in staging.\n"); exit(2); }
+          echo "__SAMPLE__=".base64_encode(wp_json_encode($sample))."\n";
+          wp_set_current_user(0);
+          $anon=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>$sample["id"],"posts_per_page"=>1));
+          echo "__ANON_QUERY__=".count($anon->posts)."\n";
+          $admins=get_users(array("role"=>"administrator","number"=>1,"fields"=>"ID"));
+          if(!$admins){ fwrite(STDERR,"No administrator found.\n"); exit(3); }
+          wp_set_current_user((int)$admins[0]);
+          $admin=new WP_Query(array("post_type"=>"product","post_status"=>"publish","p"=>$sample["id"],"posts_per_page"=>1));
+          echo "__ADMIN_QUERY__=".count($admin->posts)."\n";
+          ' --path="$wp_path" --allow-root
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          SAMPLE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__SAMPLE__=//p' | tail -n1)"
+          ANON_QUERY="$(printf '%s\n' "$OUT" | sed -n 's/^__ANON_QUERY__=//p' | tail -n1)"
+          ADMIN_QUERY="$(printf '%s\n' "$OUT" | sed -n 's/^__ADMIN_QUERY__=//p' | tail -n1)"
+          [ "$ANON_QUERY" = '0' ] || { echo "Anonymous WP_Query still sees product: $ANON_QUERY" >&2; exit 1; }
+          [ "$ADMIN_QUERY" = '1' ] || { echo "Administrator WP_Query cannot see product: $ADMIN_QUERY" >&2; exit 1; }
+          SAMPLE_JSON="$(printf '%s' "$SAMPLE_B64" | base64 -d)"
+          echo "SAMPLE_JSON=$SAMPLE_JSON" >> "$GITHUB_ENV"
+          echo "SAMPLE_VENDOR=$(printf '%s' "$SAMPLE_JSON" | jq -r '.vendor')" >> "$GITHUB_ENV"
+          echo "SAMPLE_TITLE=$(printf '%s' "$SAMPLE_JSON" | jq -r '.title')" >> "$GITHUB_ENV"
+          echo "SAMPLE_URL=$(printf '%s' "$SAMPLE_JSON" | jq -r '.url')" >> "$GITHUB_ENV"
+          echo "SAMPLE_CATEGORY=$(printf '%s' "$SAMPLE_JSON" | jq -r '.category')" >> "$GITHUB_ENV"
+          echo "WPCLI_VISIBILITY_OK anonymous=0 admin=1"
+      - name: Verify anonymous HTTP behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIRECT_CODE="$(curl -ksS -L -o /tmp/direct.html -w '%{http_code}' --max-time 35 "${SAMPLE_URL}?disabled-vendor-smoke=1" || true)"
+          echo "DIRECT_HTTP=$DIRECT_CODE"
+          [ "$DIRECT_CODE" = '404' ] || { echo "Disabled product direct URL is not 404" >&2; exit 1; }
+          ! grep -Fqi "$SAMPLE_TITLE" /tmp/direct.html || { echo "Disabled product title leaked on direct 404" >&2; exit 1; }
+
+          SHOP_URL="${STAGING_URL}/tienda/?vendor_id=${SAMPLE_VENDOR}&disabled-vendor-smoke=1"
+          SHOP_CODE="$(curl -ksS -L -o /tmp/shop.html -w '%{http_code}' --max-time 35 "$SHOP_URL" || true)"
+          [ "$SHOP_CODE" = '200' ]
+          ! grep -Fqi "$SAMPLE_TITLE" /tmp/shop.html || { echo "Disabled product leaked in Shop" >&2; exit 1; }
+
+          if [ -n "$SAMPLE_CATEGORY" ]; then
+            sep='?'; case "$SAMPLE_CATEGORY" in *\?*) sep='&' ;; esac
+            CATEGORY_URL="${SAMPLE_CATEGORY}${sep}vendor_id=${SAMPLE_VENDOR}&disabled-vendor-smoke=1"
+            CATEGORY_CODE="$(curl -ksS -L -o /tmp/category.html -w '%{http_code}' --max-time 35 "$CATEGORY_URL" || true)"
+            [ "$CATEGORY_CODE" = '200' ]
+            ! grep -Fqi "$SAMPLE_TITLE" /tmp/category.html || { echo "Disabled product leaked in category" >&2; exit 1; }
+          fi
+          echo "HTTP_VISIBILITY_OK"
+      - name: Verify anonymous behavior in real Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > disabled-vendor-smoke.cjs <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const sample=JSON.parse(process.env.SAMPLE_JSON);
+            const base='https://dev.elmercadodeorigen.com';
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              const page=await browser.newPage();
+              await page.setRequestInterception(true);
+              page.on('request',req=>req.isNavigationRequest()&&req.frame()===page.mainFrame()?req.continue():req.abort());
+              const go=url=>page.goto(url,{waitUntil:'domcontentloaded',timeout:35000});
+              const direct=await go(`${sample.url}?chrome-disabled-vendor=1`);
+              const directData=await page.evaluate(title=>({titleFound:document.body.innerText.includes(title),h1:document.querySelector('h1')?.textContent?.trim()||''}),sample.title);
+              if((direct?.status()||0)!==404 || directData.titleFound) throw new Error(`Direct leak ${direct?.status()} ${JSON.stringify(directData)}`);
+
+              await go(`${base}/tienda/?vendor_id=${sample.vendor}&chrome-disabled-vendor=1`);
+              const shop=await page.evaluate(({title,vendor})=>({titleFound:document.body.innerText.includes(title),vendorRowVisible:[...document.querySelectorAll(`[data-vendor-id="${vendor}"]`)].some(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0})}),{title:sample.title,vendor:sample.vendor});
+              if(shop.titleFound) throw new Error(`Shop leak ${JSON.stringify(shop)}`);
+
+              let category=null;
+              if(sample.category){
+                const u=new URL(sample.category);u.searchParams.set('vendor_id',String(sample.vendor));u.searchParams.set('chrome-disabled-vendor','1');
+                await go(u.toString());
+                category=await page.evaluate(title=>({titleFound:document.body.innerText.includes(title)}),sample.title);
+                if(category.titleFound) throw new Error(`Category leak ${JSON.stringify(category)}`);
+              }
+              console.log('REQUEST_010210_DISABLED_VENDOR_OK',JSON.stringify({sample,direct:{status:direct.status(),...directData},shop,category}));
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node disabled-vendor-smoke.cjs
