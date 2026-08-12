@@ -66,56 +66,56 @@ jobs:
           [ -n "$wp_bin" ] && [ -x "$php_bin" ] || { echo 'WP-CLI/PHP unavailable.' >&2; exit 1; }
 
           qa_code="$(cat <<'PHP'
-$report = MDO_Adobados_Catalog::migrate_catalog( true );
-$errors = array();
-$adobados = get_term_by( 'slug', 'adobados', 'product_cat' );
-$cured = get_term_by( 'slug', 'embutidos-y-curados', 'product_cat' );
-if ( ! $adobados instanceof WP_Term ) { $errors[] = 'Falta categoría Adobados'; }
-if ( ! $cured instanceof WP_Term ) { $errors[] = 'Falta categoría Embutidos y curados'; }
-if ( ! taxonomy_exists( 'pa_tipo-producto' ) ) { $errors[] = 'Falta taxonomía pa_tipo-producto'; }
+          $report = MDO_Adobados_Catalog::migrate_catalog( true );
+          $errors = array();
+          $adobados = get_term_by( 'slug', 'adobados', 'product_cat' );
+          $cured = get_term_by( 'slug', 'embutidos-y-curados', 'product_cat' );
+          if ( ! $adobados instanceof WP_Term ) { $errors[] = 'Falta categoría Adobados'; }
+          if ( ! $cured instanceof WP_Term ) { $errors[] = 'Falta categoría Embutidos y curados'; }
+          if ( ! taxonomy_exists( 'pa_tipo-producto' ) ) { $errors[] = 'Falta taxonomía pa_tipo-producto'; }
 
-$ad_rows = array();
-$ad_ids = wc_get_products( array( 'limit' => -1, 'return' => 'ids', 'category' => array( 'adobados' ), 'status' => array( 'publish', 'private', 'draft', 'pending' ) ) );
-foreach ( array_map( 'intval', $ad_ids ) as $id ) {
-    $p = wc_get_product( $id );
-    if ( ! $p instanceof WC_Product ) { continue; }
-    $name = $p->get_name();
-    $norm = strtolower( remove_accents( $name ) );
-    $expected = '';
-    if ( preg_match( '/\bcostilla(?:s)?\b/u', $norm ) ) { $expected = 'Costilla'; }
-    elseif ( preg_match( '/\blomo\b/u', $norm ) ) { $expected = 'Lomo'; }
-    elseif ( preg_match( '/\bpanceta\b/u', $norm ) ) { $expected = 'Panceta'; }
-    if ( '' === $expected || false === strpos( $norm, 'adobad' ) ) { $errors[] = 'Producto ajeno en Adobados: ' . $name; }
-    if ( preg_match( '/\bchorizo(?:s)?\b/u', $norm ) ) { $errors[] = 'Chorizo dentro de Adobados: ' . $name; }
-    $terms = wp_get_post_terms( $id, 'pa_tipo-producto', array( 'fields' => 'names' ) );
-    if ( is_wp_error( $terms ) ) { $terms = array(); }
-    if ( '' !== $expected && ! in_array( $expected, $terms, true ) ) { $errors[] = 'Tipo incorrecto en ' . $name . ': ' . implode( ',', $terms ); }
-    if ( $cured instanceof WP_Term && has_term( (int) $cured->term_id, 'product_cat', $id ) ) { $errors[] = 'Adobado también en Embutidos y curados: ' . $name; }
-    $ad_rows[] = array( 'id' => $id, 'name' => $name, 'tipo' => $terms );
-}
-if ( 3 !== count( $ad_rows ) ) { $errors[] = 'Adobados debe contener 3 productos y contiene ' . count( $ad_rows ); }
+          $ad_rows = array();
+          $ad_ids = wc_get_products( array( 'limit' => -1, 'return' => 'ids', 'category' => array( 'adobados' ), 'status' => array( 'publish', 'private', 'draft', 'pending' ) ) );
+          foreach ( array_map( 'intval', $ad_ids ) as $id ) {
+              $p = wc_get_product( $id );
+              if ( ! $p instanceof WC_Product ) { continue; }
+              $name = $p->get_name();
+              $norm = strtolower( remove_accents( $name ) );
+              $expected = '';
+              if ( preg_match( '/\bcostilla(?:s)?\b/u', $norm ) ) { $expected = 'Costilla'; }
+              elseif ( preg_match( '/\blomo\b/u', $norm ) ) { $expected = 'Lomo'; }
+              elseif ( preg_match( '/\bpanceta\b/u', $norm ) ) { $expected = 'Panceta'; }
+              if ( '' === $expected || false === strpos( $norm, 'adobad' ) ) { $errors[] = 'Producto ajeno en Adobados: ' . $name; }
+              if ( preg_match( '/\bchorizo(?:s)?\b/u', $norm ) ) { $errors[] = 'Chorizo dentro de Adobados: ' . $name; }
+              $terms = wp_get_post_terms( $id, 'pa_tipo-producto', array( 'fields' => 'names' ) );
+              if ( is_wp_error( $terms ) ) { $terms = array(); }
+              if ( '' !== $expected && ! in_array( $expected, $terms, true ) ) { $errors[] = 'Tipo incorrecto en ' . $name . ': ' . implode( ',', $terms ); }
+              if ( $cured instanceof WP_Term && has_term( (int) $cured->term_id, 'product_cat', $id ) ) { $errors[] = 'Adobado también en Embutidos y curados: ' . $name; }
+              $ad_rows[] = array( 'id' => $id, 'name' => $name, 'tipo' => $terms );
+          }
+          if ( 3 !== count( $ad_rows ) ) { $errors[] = 'Adobados debe contener 3 productos y contiene ' . count( $ad_rows ); }
 
-$chorizos = array();
-$all_ids = wc_get_products( array( 'limit' => -1, 'return' => 'ids', 'status' => array( 'publish', 'private', 'draft', 'pending' ) ) );
-foreach ( array_map( 'intval', $all_ids ) as $id ) {
-    $p = wc_get_product( $id );
-    if ( ! $p instanceof WC_Product || $p->is_type( 'variation' ) ) { continue; }
-    $name = $p->get_name();
-    $norm = strtolower( remove_accents( $name ) );
-    if ( ! preg_match( '/\bchorizo(?:s)?\b.*\b(?:para\s+)?asar\b/u', $norm ) ) { continue; }
-    $in_ad = $adobados instanceof WP_Term && has_term( (int) $adobados->term_id, 'product_cat', $id );
-    $in_cured = $cured instanceof WP_Term && has_term( (int) $cured->term_id, 'product_cat', $id );
-    if ( $in_ad ) { $errors[] = 'Chorizo para asar sigue en Adobados: ' . $name; }
-    if ( ! $in_cured ) { $errors[] = 'Chorizo para asar no está en Embutidos y curados: ' . $name; }
-    $chorizos[] = array( 'id' => $id, 'name' => $name, 'adobados' => $in_ad, 'embutidos_y_curados' => $in_cured );
-}
-if ( 0 === count( $chorizos ) ) { $errors[] = 'No se encontró ningún chorizo para asar'; }
-if ( ! empty( $report['errors'] ) ) { $errors[] = 'La migración devolvió errores'; }
+          $chorizos = array();
+          $all_ids = wc_get_products( array( 'limit' => -1, 'return' => 'ids', 'status' => array( 'publish', 'private', 'draft', 'pending' ) ) );
+          foreach ( array_map( 'intval', $all_ids ) as $id ) {
+              $p = wc_get_product( $id );
+              if ( ! $p instanceof WC_Product || $p->is_type( 'variation' ) ) { continue; }
+              $name = $p->get_name();
+              $norm = strtolower( remove_accents( $name ) );
+              if ( ! preg_match( '/\bchorizo(?:s)?\b.*\b(?:para\s+)?asar\b/u', $norm ) ) { continue; }
+              $in_ad = $adobados instanceof WP_Term && has_term( (int) $adobados->term_id, 'product_cat', $id );
+              $in_cured = $cured instanceof WP_Term && has_term( (int) $cured->term_id, 'product_cat', $id );
+              if ( $in_ad ) { $errors[] = 'Chorizo para asar sigue en Adobados: ' . $name; }
+              if ( ! $in_cured ) { $errors[] = 'Chorizo para asar no está en Embutidos y curados: ' . $name; }
+              $chorizos[] = array( 'id' => $id, 'name' => $name, 'adobados' => $in_ad, 'embutidos_y_curados' => $in_cured );
+          }
+          if ( 0 === count( $chorizos ) ) { $errors[] = 'No se encontró ningún chorizo para asar'; }
+          if ( ! empty( $report['errors'] ) ) { $errors[] = 'La migración devolvió errores'; }
 
-$out = array( 'report' => $report, 'adobados' => $ad_rows, 'chorizo_para_asar' => $chorizos, 'errors' => $errors );
-echo wp_json_encode( $out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
-if ( $errors ) { exit( 1 ); }
-PHP
+          $out = array( 'report' => $report, 'adobados' => $ad_rows, 'chorizo_para_asar' => $chorizos, 'errors' => $errors );
+          echo wp_json_encode( $out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+          if ( $errors ) { exit( 1 ); }
+          PHP
           )"
           "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$qa_code" --path="$wp_path" --allow-root
           REMOTE
