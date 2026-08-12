@@ -1,0 +1,295 @@
+name: Replicate Jamones y Paletas catalog to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-ham-catalog-migration.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-ham-catalog-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PROD_DOMAIN: elmercadodeorigen.com
+      SSH_HOST: ${{ secrets.STAGING_HOST }}
+      SSH_PORT: ${{ secrets.STAGING_PORT }}
+      SSH_USER: ${{ secrets.STAGING_USER }}
+      SSH_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SEARCH_HINT: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate plugin and connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f mdo-supplier-sync/mdo-supplier-sync.php
+          test -f mdo-supplier-sync/includes/class-mdo-ham-taxonomy.php
+          test -f mdo-supplier-sync/includes/class-mdo-ham-catalog-audit.php
+          test -f mdo-supplier-sync/includes/class-mdo-ham-catalog-rescue.php
+          test -f mdo-supplier-sync/includes/class-mdo-ham-catalog-final.php
+          test -f mdo-supplier-sync/includes/class-mdo-ham-catalog-precision.php
+          test -f mdo-supplier-sync/includes/class-mdo-ham-catalog-tag-closure.php
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          grep -q "Version: 1.0.4" mdo-supplier-sync/mdo-supplier-sync.php
+          : "${SSH_HOST:?Missing STAGING_HOST secret}"
+          : "${SSH_USER:?Missing STAGING_USER secret}"
+          : "${SSH_PASSWORD:?Missing STAGING_PASSWORD secret}"
+          : "${SEARCH_HINT:?Missing STAGING_REMOTE_PATH secret}"
+          PORT="${SSH_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Resolve production WordPress by site URL
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$SEARCH_HINT' '$PROD_DOMAIN'" <<'REMOTE'
+          set -eu
+          hint="${1%/}"
+          target="$2"
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI is unavailable.' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -x "$php_bin" ] || { echo 'No usable PHP CLI binary found.' >&2; exit 1; }
+
+          candidates="$(mktemp)"
+          matches="$(mktemp)"
+          trap 'rm -f "$candidates" "$matches"' EXIT
+          parent="$(dirname "$hint")"
+          for base in "$parent" "$HOME" /var/www/vhosts /var/www /home /srv /opt /data /web /www; do
+            [ -d "$base" ] || continue
+            find "$base" -maxdepth 9 -type f -name wp-config.php \
+              ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
+              2>/dev/null >> "$candidates" || true
+          done
+          sort -u "$candidates" -o "$candidates"
+
+          while IFS= read -r config; do
+            [ -n "$config" ] || continue
+            path="$(dirname "$config")"
+            siteurl="$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            home="$("$php_bin" -d memory_limit=256M "$wp_bin" option get home --path="$path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)"
+            norm_site="$(printf '%s' "$siteurl" | sed -E 's#^https?://##; s#^www\.##; s#/*$##')"
+            norm_home="$(printf '%s' "$home" | sed -E 's#^https?://##; s#^www\.##; s#/*$##')"
+            if [ "$norm_site" = "$target" ] || [ "$norm_home" = "$target" ]; then
+              printf '%s\n' "$path" >> "$matches"
+            fi
+          done < "$candidates"
+
+          count="$(sort -u "$matches" | sed '/^$/d' | wc -l | tr -d ' ')"
+          [ "$count" = '1' ] || { echo "Expected exactly one production WordPress for ${target}; found ${count}." >&2; cat "$matches" >&2; exit 1; }
+          wp_path="$(sort -u "$matches" | head -n 1)"
+          siteurl="$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          printf '__SITEURL__=%s\n' "$siteurl"
+          REMOTE
+          )"
+          printf '%s\n' "$OUTPUT"
+          WP_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__WP_PATH__=//p' | tail -n 1)"
+          : "${WP_PATH:?Production WordPress path was not resolved}"
+          echo "PROD_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+
+      - name: Preflight production catalog
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PROD_WP_PATH'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"; fi
+          [ -x "$php_bin" ]
+          siteurl="$("$php_bin" "$wp_bin" option get siteurl --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
+          printf 'Production siteurl: %s\n' "$siteurl"
+          current_version="$("$php_bin" "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$wp_path" --allow-root 2>/dev/null || true)"
+          printf 'Current EMDO version before migration: %s\n' "${current_version:-not-installed}"
+          total_products="$("$php_bin" "$wp_bin" post list --post_type=product --post_status=publish,private,draft,pending --format=count --path="$wp_path" --allow-root)"
+          printf 'Production products before migration: %s\n' "$total_products"
+          REMOTE
+
+      - name: Deploy validated EMDO 1.0.4 to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          TARGET="${PROD_WP_PATH%/}/wp-content/plugins/mdo-supplier-sync/"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "mkdir -p -- '$TARGET'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' -e "ssh $SSH_OPTIONS" mdo-supplier-sync/ "$SSH_USER@$SSH_HOST:$TARGET"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "test -f '$TARGET/mdo-supplier-sync.php'"
+
+      - name: Apply exact Dev ham catalog pipeline in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PROD_WP_PATH'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"; fi
+          [ -x "$php_bin" ]
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin activate mdo-supplier-sync --path="$wp_path" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active mdo-supplier-sync --path="$wp_path" --allow-root
+          version="$("$php_bin" "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$wp_path" --allow-root)"
+          [ "$version" = '1.0.4' ] || { echo "Unexpected EMDO version: $version" >&2; exit 1; }
+
+          taxonomy_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Taxonomy::migrate_catalog( true ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'PROD taxonomy: %s\n' "$taxonomy_report"
+
+          audit_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Catalog_Audit::apply_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'PROD exhaustive audit: %s\n' "$audit_report"
+
+          rescue_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Catalog_Rescue::apply_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'PROD rescue: %s\n' "$rescue_report"
+
+          final_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Catalog_Final::apply_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'PROD special finalization: %s\n' "$final_report"
+
+          precision_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Catalog_Precision::apply_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'PROD precision: %s\n' "$precision_report"
+
+          tag_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval '
+            $ids = wc_get_products(["limit"=>-1,"return"=>"ids","status"=>["publish","private","draft","pending"]]);
+            $synced=0;
+            foreach(array_map("intval",$ids) as $id){$p=wc_get_product($id);if($p instanceof WC_Product && !$p->is_type("variation") && get_post_meta($id,"_emdo_ham_precision_version",true)){MDO_Ham_Catalog_Tag_Closure::sync_saved_product($p);$synced++;}}
+            echo wp_json_encode(["status"=>"completed","synced_precision_products"=>$synced],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          ' --path="$wp_path" --allow-root)"
+          printf 'PROD preparation tag closure: %s\n' "$tag_report"
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$wp_path" --allow-root || true
+          REMOTE
+
+      - name: Verify production matches validated Dev catalog
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PROD_WP_PATH'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"; fi
+          [ -x "$php_bin" ]
+          script="$(mktemp --suffix=.php)"
+          trap 'rm -f "$script"' EXIT
+          cat > "$script" <<'PHP'
+          <?php
+          $cat = get_term_by( 'slug', 'jamones-paletas', 'product_cat' );
+          if ( ! $cat ) { fwrite( STDERR, "No existe la categoría jamones-paletas.\n" ); exit( 2 ); }
+          $ids = get_posts([
+              'post_type'=>'product', 'post_status'=>['publish','private','draft','pending'],
+              'posts_per_page'=>-1, 'fields'=>'ids',
+              'tax_query'=>[['taxonomy'=>'product_cat','field'=>'term_id','terms'=>[(int)$cat->term_id]]],
+              'orderby'=>'ID','order'=>'ASC'
+          ]);
+          $ids = array_values(array_unique(array_map('intval',$ids)));
+          sort($ids);
+
+          $attrs = [
+              'tipo-pieza'=>'pa_tipo-pieza', 'calidad'=>'pa_calidad', 'raza-iberica'=>'pa_raza-iberica',
+              'alimentacion'=>'pa_alimentacion', 'con-dop'=>'pa_con-dop', 'dop'=>'pa_dop',
+              'origen'=>'pa_origen', 'preparacion'=>'pa_preparacion', 'rango-peso'=>'pa_rango-peso',
+              'curacion'=>'pa_curacion', 'productor'=>'pa_productor'
+          ];
+          $coverage = array_fill_keys(array_keys($attrs),0);
+          $quality=[]; $race=[]; $feed=[]; $dop_products=0; $uncategorized=[]; $tag_divergences=[];
+          $default_cat=(int)get_option('default_product_cat',0);
+
+          foreach($ids as $id){
+              foreach($attrs as $key=>$tax){
+                  $terms=taxonomy_exists($tax)?wp_get_post_terms($id,$tax,['fields'=>'names']):[];
+                  if(!is_wp_error($terms) && !empty($terms)){$coverage[$key]++;}
+                  if($key==='calidad' && !is_wp_error($terms)){foreach($terms as $t){$quality[$t]=($quality[$t]??0)+1;}}
+                  if($key==='raza-iberica' && !is_wp_error($terms)){foreach($terms as $t){$race[$t]=($race[$t]??0)+1;}}
+                  if($key==='alimentacion' && !is_wp_error($terms)){foreach($terms as $t){$feed[$t]=($feed[$t]??0)+1;}}
+                  if($key==='dop' && !is_wp_error($terms) && !empty($terms)){$dop_products++;}
+              }
+              if($default_cat>0 && has_term($default_cat,'product_cat',$id)){$uncategorized[]=$id;}
+              $prep=wp_get_post_terms($id,'pa_preparacion',['fields'=>'names']);
+              $tags=wp_get_post_terms($id,'product_tag',['fields'=>'names']);
+              if(!is_wp_error($prep) && !is_wp_error($tags)){
+                  foreach($prep as $p){if($p!=='Pieza entera' && !in_array($p,$tags,true)){$tag_divergences[]=['id'=>$id,'preparacion'=>$p];}}
+              }
+          }
+          ksort($quality); ksort($race); ksort($feed);
+          $report=[
+              'status'=>'completed','products'=>count($ids),'coverage'=>$coverage,
+              'quality_distribution'=>$quality,'race_distribution'=>$race,'feeding_distribution'=>$feed,
+              'dop_products'=>$dop_products,'uncategorized'=>$uncategorized,'tag_divergences'=>$tag_divergences
+          ];
+          echo wp_json_encode($report,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL;
+
+          $expected_quality=[
+              'Bellota 100% ibérico'=>33,'Bellota ibérico'=>41,'Cebo de campo ibérico'=>31,
+              'Cebo ibérico'=>21,'Duroc'=>11,'Selección gourmet'=>8
+          ];
+          $expected_race=['100% ibérico'=>36,'50% ibérico'=>69,'75% ibérico'=>21];
+          $expected_feed=['Bellota'=>74,'Cebo'=>21,'Cebo de campo'=>31];
+          ksort($expected_quality);ksort($expected_race);ksort($expected_feed);
+          $expected_coverage=[
+              'tipo-pieza'=>145,'calidad'=>145,'raza-iberica'=>126,'alimentacion'=>126,'con-dop'=>145,
+              'dop'=>7,'origen'=>145,'preparacion'=>145,'rango-peso'=>98,'curacion'=>136,'productor'=>145
+          ];
+          $errors=[];
+          if(count($ids)!==145)$errors[]='products!='.count($ids);
+          foreach($expected_coverage as $k=>$v){if(($coverage[$k]??-1)!==$v)$errors[]="coverage:$k=".($coverage[$k]??-1)." expected=$v";}
+          if($quality!==$expected_quality)$errors[]='quality_distribution';
+          if($race!==$expected_race)$errors[]='race_distribution';
+          if($feed!==$expected_feed)$errors[]='feeding_distribution';
+          if($dop_products!==7)$errors[]="dop_products=$dop_products";
+          if($uncategorized)$errors[]='uncategorized='.implode(',',$uncategorized);
+          if($tag_divergences)$errors[]='tag_divergences='.count($tag_divergences);
+          if($errors){fwrite(STDERR,"Verification failed: ".implode(' | ',$errors)."\n");exit(3);}
+          PHP
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval-file "$script" --path="$wp_path" --allow-root
+          REMOTE
