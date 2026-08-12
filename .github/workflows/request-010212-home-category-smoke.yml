@@ -1,0 +1,132 @@
+name: Request 010212 Home category smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/request-010212-home-category-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+      - name: Read expected public category counts
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            wp_path="$(dirname "$cfg")"
+          fi
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          tries=0
+          while :; do
+            runtime="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$wp_path" --allow-root --skip-plugins 2>/dev/null || true)"
+            [ "$runtime" = '0.10.212' ] && break
+            tries=$((tries+1)); [ "$tries" -lt 24 ] || { echo "Expected 0.10.212, got $runtime" >&2; exit 1; }
+            sleep 5
+          done
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          if(function_exists("elmercado_flush_home_cache")) elmercado_flush_home_cache();
+          $exclude=array_filter(array((int)get_option("default_product_cat")));
+          $terms=get_terms(array("taxonomy"=>"product_cat","hide_empty"=>true,"number"=>6,"orderby"=>"count","order"=>"DESC","exclude"=>$exclude));
+          $rows=array();
+          foreach((array)$terms as $term){
+            if(!($term instanceof WP_Term)) continue;
+            $link=get_term_link($term); if(is_wp_error($link)) continue;
+            $public=function_exists("elmercado_home_public_category_count_010212") ? elmercado_home_public_category_count_010212((int)$term->term_id) : -1;
+            $rows[]=array("id"=>(int)$term->term_id,"name"=>$term->name,"url"=>$link,"raw"=>(int)$term->count,"public"=>(int)$public);
+          }
+          echo "__COUNTS__=".base64_encode(wp_json_encode($rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))."\n";
+          ' --path="$wp_path" --allow-root --skip-plugins
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          COUNTS_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COUNTS__=//p' | tail -n1)"
+          [ -n "$COUNTS_B64" ] || exit 1
+          COUNTS_JSON="$(printf '%s' "$COUNTS_B64" | base64 -d)"
+          echo "COUNTS_JSON=$COUNTS_JSON" >> "$GITHUB_ENV"
+          echo "$COUNTS_JSON" | jq .
+          jq -e 'length > 0 and all(.[]; .public >= 0 and .public <= .raw)' <<< "$COUNTS_JSON" >/dev/null
+      - name: Verify Home in real Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > home-category-010212.cjs <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const expected=JSON.parse(process.env.COUNTS_JSON);
+          const norm=u=>{try{const x=new URL(u);return x.origin+x.pathname.replace(/\/$/,'')+'/';}catch{return u}};
+          const expectedMap=new Map(expected.filter(x=>x.public>0).map(x=>[norm(x.url),x]));
+          async function inspect(page,width,height,label){
+            await page.setViewport({width,height});
+            const res=await page.goto(`${process.env.STAGING_URL}/?home-category-010212=${Date.now()}-${label}`,{waitUntil:'domcontentloaded',timeout:90000});
+            if(!res || res.status()>=400) throw new Error(`${label} Home HTTP ${res?.status()}`);
+            await page.waitForSelector('.emo-category-card__content small',{timeout:30000});
+            await new Promise(r=>setTimeout(r,1200));
+            return page.evaluate(()=>[...document.querySelectorAll('.emo-category-card')].map(card=>{
+              const content=card.querySelector('.emo-category-card__content');
+              const strong=content?.querySelector('strong'); const small=content?.querySelector('small');
+              const cr=content?.getBoundingClientRect(); const sr=strong?.getBoundingClientRect(); const mr=small?.getBoundingClientRect();
+              const cs=content?getComputedStyle(content):null; const ss=strong?getComputedStyle(strong):null;
+              return {href:card.href,name:strong?.textContent.trim()||'',countText:small?.textContent.trim()||'',display:cs?.display||'',direction:cs?.flexDirection||'',content:{x:cr?.x,y:cr?.y,w:cr?.width,h:cr?.height},strong:{x:sr?.x,y:sr?.y,w:sr?.width,h:sr?.height,lineHeight:parseFloat(ss?.lineHeight)||0},small:{x:mr?.x,y:mr?.y,w:mr?.width,h:mr?.height},gap:mr&&sr?mr.top-sr.bottom:null};
+            }));
+          }
+          (async()=>{
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              const page=await browser.newPage();
+              const desktop=await inspect(page,1440,1000,'desktop');
+              const mobile=await inspect(page,390,844,'mobile');
+              for(const [label,cards] of [['desktop',desktop],['mobile',mobile]]){
+                if(!cards.length) throw new Error(`${label}: no category cards`);
+                for(const card of cards){
+                  const exp=expectedMap.get(norm(card.href));
+                  if(!exp) throw new Error(`${label}: unexpected card ${card.href}`);
+                  const shown=parseInt(card.countText.replace(/[^0-9]/g,''),10);
+                  if(shown!==exp.public) throw new Error(`${label}: ${card.name} shows ${shown}, expected ${exp.public}, raw ${exp.raw}`);
+                  if(card.display!=='flex'||card.direction!=='column') throw new Error(`${label}: ${card.name} content layout ${card.display}/${card.direction}`);
+                  if(card.gap===null||card.gap<3) throw new Error(`${label}: ${card.name} title/count overlap gap=${card.gap}`);
+                }
+              }
+              const desktopWrapped=desktop.filter(c=>c.strong.lineHeight>0 && c.strong.h>c.strong.lineHeight*1.55).map(c=>c.name);
+              console.log('REQUEST_010212_HOME_CATEGORY_OK',JSON.stringify({expected,desktop,mobile,desktopWrapped}));
+            } finally { await browser.close(); }
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node home-category-010212.cjs
