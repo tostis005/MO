@@ -179,3 +179,25 @@ add_filter(
 	20,
 	2
 );
+
+/**
+ * La traducción española de WooCommerce muestra actualmente «Enviará a» en
+ * cada paquete del carrito. El mensaje describe una acción/configuración, por
+ * lo que usamos «Enviar a» sin sobrescribir la plantilla de WooCommerce.
+ *
+ * @param string $translation Texto traducido.
+ * @param string $text        Texto original.
+ * @param string $domain      Dominio de traducción.
+ */
+add_filter(
+	'gettext',
+	static function ( string $translation, string $text, string $domain ): string {
+		if ( 'woocommerce' === $domain && 'Shipping to %s.' === $text ) {
+			return 'Enviar a %s.';
+		}
+
+		return $translation;
+	},
+	20,
+	3
+);
