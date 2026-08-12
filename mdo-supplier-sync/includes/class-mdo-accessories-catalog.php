@@ -5,17 +5,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Clasifica jamoneros y cuchillos dentro de Accesorios y reutiliza el atributo global Tipo de producto.
+ * Clasifica jamoneros y cuchillos independientes dentro de Accesorios y reutiliza
+ * el atributo global Tipo de producto. Las menciones promocionales o de corte en
+ * productos de jamón/paleta no se consideran accesorios.
  */
 final class MDO_Accessories_Catalog {
-	private const VERSION        = '1.0.0';
+	private const VERSION        = '1.0.1';
 	private const VERSION_OPTION = 'mdo_accessories_catalog_version';
 	private const REPORT_OPTION  = 'mdo_accessories_catalog_last_report';
 	private const SNAPSHOT_META  = '_emdo_accessories_catalog_snapshot';
 
-	private const CATEGORY_NAME = 'Accesorios';
-	private const CATEGORY_SLUG = 'accesorios';
-	private const ATTRIBUTE_SLUG  = 'tipo-producto';
+	private const CATEGORY_NAME  = 'Accesorios';
+	private const CATEGORY_SLUG  = 'accesorios';
+	private const ATTRIBUTE_SLUG = 'tipo-producto';
 	private const ATTRIBUTE_LABEL = 'Tipo de producto';
 	private const TYPE_TERMS      = array( 'Jamonero', 'Cuchillo' );
 
@@ -86,6 +88,7 @@ final class MDO_Accessories_Catalog {
 				'accessories' => 0,
 				'jamoneros'   => 0,
 				'cuchillos'   => 0,
+				'cleaned'     => 0,
 				'updated'     => 0,
 				'errors'      => array(),
 				'finished_at' => current_time( 'mysql' ),
@@ -95,6 +98,10 @@ final class MDO_Accessories_Catalog {
 				++$report['scanned'];
 				try {
 					$result = self::classify_product( $id );
+					if ( ! empty( $result['cleaned'] ) ) {
+						++$report['cleaned'];
+						++$report['updated'];
+					}
 					if ( empty( $result['target'] ) ) {
 						continue;
 					}
@@ -124,18 +131,21 @@ final class MDO_Accessories_Catalog {
 	public static function classify_product( int $product_id ): array {
 		$product = $product_id > 0 ? wc_get_product( $product_id ) : false;
 		if ( ! $product instanceof WC_Product ) {
-			return array( 'target' => false );
+			return array( 'target' => false, 'cleaned' => false );
 		}
 		if ( $product->is_type( 'variation' ) ) {
 			$product = wc_get_product( $product->get_parent_id() );
 			if ( ! $product instanceof WC_Product ) {
-				return array( 'target' => false );
+				return array( 'target' => false, 'cleaned' => false );
 			}
 		}
 
 		$type = self::detect_type( self::normalize( $product->get_name() ) );
 		if ( '' === $type ) {
-			return array( 'target' => false );
+			return array(
+				'target'  => false,
+				'cleaned' => self::cleanup_managed_product( $product ),
+			);
 		}
 
 		self::ensure_structures();
@@ -165,18 +175,65 @@ final class MDO_Accessories_Catalog {
 			self::$writing = false;
 		}
 
-		return array( 'target' => true, 'type' => $type );
+		return array( 'target' => true, 'cleaned' => false, 'type' => $type );
 	}
 
 	private static function detect_type( string $title ): string {
-		// “Cuchillo jamonero” es un cuchillo: la palabra jamonero describe el uso, no el tipo de objeto.
-		if ( preg_match( '/\\bcuchillo(?:s)?\\b/u', $title ) ) {
+		// Solo productos cuyo objeto principal es el accesorio. Así se excluyen
+		// “cortado a cuchillo” y “jamón + jamonero/cuchillo gratis”.
+		if ( preg_match( '/^cuchillo(?:s)?\b/u', $title ) ) {
 			return 'Cuchillo';
 		}
-		if ( preg_match( '/\\bjamonero(?:s)?\\b/u', $title ) ) {
+		if ( preg_match( '/^(?:blister|estuche|set|kit|pack)(?:\s+de)?\s+cuchillo(?:s)?\b/u', $title ) ) {
+			return 'Cuchillo';
+		}
+		if ( preg_match( '/^jamonero(?:s)?\b/u', $title ) ) {
+			return 'Jamonero';
+		}
+		if ( preg_match( '/^soporte\s+jamonero(?:s)?\b/u', $title ) ) {
 			return 'Jamonero';
 		}
 		return '';
+	}
+
+	private static function cleanup_managed_product( WC_Product $product ): bool {
+		$snapshot = (string) get_post_meta( $product->get_id(), self::SNAPSHOT_META, true );
+		if ( '' === $snapshot ) {
+			return false;
+		}
+
+		$category_ids = array_values( array_unique( array_map( 'intval', $product->get_category_ids() ) ) );
+		$category = get_term_by( 'slug', self::CATEGORY_SLUG, 'product_cat' );
+		if ( $category instanceof WP_Term ) {
+			$category_ids = array_values( array_diff( $category_ids, array( (int) $category->term_id ) ) );
+		}
+
+		$attributes = $product->get_attributes();
+		$taxonomy = wc_attribute_taxonomy_name( self::ATTRIBUTE_SLUG );
+		if ( isset( $attributes[ $taxonomy ] ) && $attributes[ $taxonomy ] instanceof WC_Product_Attribute ) {
+			$managed_term_ids = array();
+			foreach ( self::TYPE_TERMS as $term_name ) {
+				$term = get_term_by( 'name', $term_name, $taxonomy );
+				if ( $term instanceof WP_Term ) {
+					$managed_term_ids[] = (int) $term->term_id;
+				}
+			}
+			$options = array_values( array_map( 'intval', $attributes[ $taxonomy ]->get_options() ) );
+			if ( $options && ! array_diff( $options, $managed_term_ids ) ) {
+				unset( $attributes[ $taxonomy ] );
+			}
+		}
+
+		self::$writing = true;
+		try {
+			$product->set_category_ids( $category_ids );
+			$product->set_attributes( $attributes );
+			$product->save();
+			delete_post_meta( $product->get_id(), self::SNAPSHOT_META );
+		} finally {
+			self::$writing = false;
+		}
+		return true;
 	}
 
 	private static function ensure_structures(): void {
@@ -279,6 +336,6 @@ final class MDO_Accessories_Catalog {
 		$value = remove_accents( wp_strip_all_tags( $value ) );
 		$value = strtolower( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 		$value = preg_replace( '/[^a-z0-9]+/u', ' ', $value );
-		return trim( preg_replace( '/\\s+/u', ' ', (string) $value ) );
+		return trim( preg_replace( '/\s+/u', ' ', (string) $value ) );
 	}
 }
