@@ -36,33 +36,31 @@ jobs:
           raw="${1%/}"; domain="$2"; wp_path=""
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
           if [ ! -f "$wp_path/wp-config.php" ]; then wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"; [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"; fi
-          wc="$wp_path/wp-content/plugins/woocommerce"
-          prod="$(dirname "$wp_path")/httpdocs/wp-content/plugins/woocommerce"
-          echo "WP_PATH=$wp_path"
-          echo "WC_PATH=$wc"
-          echo "PROD_WC_PATH=$prod"
-          echo '== PATH TYPES =='
-          ls -ld "$wc" "$wc/patterns" "$wc/src" "$wc/src/Blocks/Templates" 2>&1 || true
-          printf 'WC_REAL='; readlink -f "$wc" || true
-          printf 'PATTERNS_REAL='; readlink -f "$wc/patterns" || true
-          printf 'PATTERN_FILE_REAL='; readlink -f "$wc/patterns/coming-soon-entire-site.php" || true
-          printf 'TEMPLATE_REAL='; readlink -f "$wc/src/Blocks/Templates/ComingSoonTemplate.php" || true
-          echo '== LINKS INSIDE WC =='
-          find "$wc" -maxdepth 3 -type l -printf '%p -> %l\n' 2>/dev/null | head -n 100 || true
-          echo '== VERSIONS =='
-          grep -m1 -E '^ \* Version:' "$wc/woocommerce.php" 2>/dev/null || true
-          grep -m1 -E '^ \* Version:' "$prod/woocommerce.php" 2>/dev/null || true
-          echo '== METHOD CHECK =='
-          grep -n 'function get_font_families' "$wc/src/Blocks/Templates/ComingSoonTemplate.php" 2>/dev/null || true
-          grep -n 'function get_font_families' "$prod/src/Blocks/Templates/ComingSoonTemplate.php" 2>/dev/null || true
-          echo '== PATTERN HEADS =='
-          echo '--- staging resolved'; sed -n '1,45p' "$wc/patterns/coming-soon-entire-site.php" 2>/dev/null || true
-          echo '--- production direct'; sed -n '1,45p' "$prod/patterns/coming-soon-entire-site.php" 2>/dev/null || true
-          echo '== STAT =='
-          stat "$wc/patterns/coming-soon-entire-site.php" "$wc/src/Blocks/Templates/ComingSoonTemplate.php" 2>/dev/null || true
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp)"
+          wc="$wp_path/wp-content/plugins/woocommerce"; prod="$(dirname "$wp_path")/httpdocs/wp-content/plugins/woocommerce"
+          echo '== PHP OPCACHE =='
+          "$php_bin" -i 2>/dev/null | grep -E 'opcache.enable =>|opcache.use_cwd =>|opcache.validate_timestamps =>|opcache.revalidate_freq =>' || true
+          echo '== SOURCE PATH CONSTRUCTION =='
+          grep -RIn --exclude-dir=node_modules --exclude-dir=vendor -E 'patterns_path|PatternRegistry|WC_ABSPATH|coming-soon-entire-site' "$wc/src/Blocks" "$wc/includes" 2>/dev/null | head -n 120 || true
+          echo '== WP RUNTIME (before init fatal where possible) =='
+          "$php_bin" -d memory_limit=768M "$wp_bin" --path="$wp_path" --allow-root eval '
+            echo "ABSPATH=".ABSPATH."\n";
+            echo "WP_PLUGIN_DIR=".WP_PLUGIN_DIR."\n";
+            echo "WC_PLUGIN_FILE=".(defined("WC_PLUGIN_FILE")?WC_PLUGIN_FILE:"undef")."\n";
+            echo "WC_ABSPATH=".(defined("WC_ABSPATH")?WC_ABSPATH:"undef")."\n";
+            if(class_exists("WooCommerce")){ $r=new ReflectionClass("WooCommerce"); echo "WooCommerceClass=".$r->getFileName()."\n"; }
+            if(class_exists("Automattic\\WooCommerce\\Blocks\\Patterns\\PatternRegistry")){ $r=new ReflectionClass("Automattic\\WooCommerce\\Blocks\\Patterns\\PatternRegistry"); echo "PatternRegistryClass=".$r->getFileName()."\n"; }
+            if(class_exists("Automattic\\WooCommerce\\Blocks\\Templates\\ComingSoonTemplate")){ $r=new ReflectionClass("Automattic\\WooCommerce\\Blocks\\Templates\\ComingSoonTemplate"); echo "ComingSoonClass=".$r->getFileName()." method=".(method_exists("Automattic\\WooCommerce\\Blocks\\Templates\\ComingSoonTemplate","get_font_families")?"yes":"no")."\n"; }
+          ' 2>&1 || true
+          echo '== DATABASE SEARCH FOR HTTPDOCS WOOCOMMERCE PATH =='
+          "$php_bin" -d memory_limit=768M "$wp_bin" --path="$wp_path" --allow-root db query "SELECT option_name, LEFT(option_value,500) AS value FROM $(printf '%s' wp_)options WHERE option_value LIKE '%httpdocs/wp-content/plugins/woocommerce%' LIMIT 30" --skip-column-names 2>&1 || true
+          echo '== CACHE FILE SEARCH =='
+          grep -RIl --exclude='debug.log' --exclude='*.sql' 'httpdocs/wp-content/plugins/woocommerce' "$wp_path/wp-content/cache" "$wp_path/wp-content/uploads" 2>/dev/null | head -n 50 || true
+          echo '== CROSS-PATH REFERENCES IN STAGING PHP =='
+          grep -RIn --include='*.php' 'httpdocs/wp-content/plugins/woocommerce' "$wp_path/wp-content" 2>/dev/null | head -n 50 || true
+          echo '== SERVER/PHP ENV PATHS =='
+          env | grep -E 'DOCUMENT_ROOT|SCRIPT_FILENAME|PWD' || true
           echo '== HTTP =='
-          curl -k -sS -o /tmp/out -D /tmp/hdr --max-time 20 "https://$domain/" || true
-          head -n 12 /tmp/hdr || true
-          echo '== LAST FATALS =='
-          grep 'PHP Fatal error' "$wp_path/wp-content/debug.log" 2>/dev/null | tail -n 12 || true
+          curl -k -sS -o /tmp/out -D /tmp/hdr --max-time 20 "https://$domain/" || true; head -n 10 /tmp/hdr || true
           REMOTE
