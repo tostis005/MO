@@ -1,0 +1,130 @@
+name: Home category parity 0.10.213 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-category-parity-010213-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_URL: https://dev.elmercadodeorigen.com
+      EXPECTED_VERSION: 0.10.213
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate smoke assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check .github/scripts/home-category-parity-010213-browser.cjs
+          grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
+          grep -Eq '^Version:[[:space:]]*0\.10\.213$' elmercadodeorigen-child/style.css
+          php -l elmercadodeorigen-child/inc/home-category-visibility-010212.php >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+
+      - name: Install browser and SSH tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Resolve staging and collect parity expectations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$EXPECTED_VERSION'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; expected="$2"
+          case "$raw" in
+            */wp-content/*) wp_path="${raw%%/wp-content/*}" ;;
+            */wp-content) wp_path="$(dirname "$raw")" ;;
+            *) wp_path="$raw" ;;
+          esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 2
+            wp_path="$(dirname "$cfg")"
+          fi
+          theme="$wp_path/wp-content/themes/elmercadodeorigen-child"
+          i=0
+          while [ "$i" -lt 30 ]; do
+            version="$(grep -o "ELMERCADO_THEME_VERSION', '[^']*" "$theme/functions.php" 2>/dev/null | head -n1 | sed "s/.*'//" || true)"
+            [ "$version" = "$expected" ] && break
+            i=$((i+1)); sleep 2
+          done
+          [ "${version:-}" = "$expected" ] || { echo 'Staging did not receive expected theme version.' >&2; exit 3; }
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"; [ -x "$php_bin" ] && [ -n "$wp_bin" ] || exit 4
+          PAYLOAD="$("$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          if(!function_exists("elmercado_home_public_category_count_010212") || !function_exists("elmercado_wcfm_disabled_visibility_can_view_010210")){exit(10);}
+          $exclude=array_filter(array((int)get_option("default_product_cat")));
+          $terms=get_terms(array("taxonomy"=>"product_cat","hide_empty"=>true,"number"=>6,"orderby"=>"count","order"=>"DESC","exclude"=>$exclude));
+          if(is_wp_error($terms)){exit(11);} $rows=array();
+          $baseFor=function($term_id){return array("post_type"=>"product","post_status"=>"publish","fields"=>"ids","posts_per_page"=>1,"no_found_rows"=>false,"ignore_sticky_posts"=>true,"tax_query"=>array(array("taxonomy"=>"product_cat","field"=>"term_id","terms"=>array((int)$term_id),"include_children"=>true)));};
+          wp_set_current_user(0);
+          foreach((array)$terms as $term){if(!($term instanceof WP_Term))continue;$q=new WP_Query($baseFor($term->term_id));$publicArchive=(int)$q->found_posts;$public=(int)elmercado_home_public_category_count_010212((int)$term->term_id);if($public!==$publicArchive){fwrite(STDERR,"Public parity failed {$term->name}: home=$public archive=$publicArchive\n");exit(12);} $link=get_term_link($term);if(is_wp_error($link))continue;$rows[$term->term_id]=array("id"=>(int)$term->term_id,"name"=>$term->name,"url"=>$link,"public"=>$public,"public_archive"=>$publicArchive);}
+          $admins=get_users(array("role"=>"administrator","number"=>1));if(!$admins)exit(13);$admin=$admins[0];wp_set_current_user((int)$admin->ID);
+          if(!elmercado_wcfm_disabled_visibility_can_view_010210()){exit(14);}
+          foreach((array)$terms as $term){if(!isset($rows[$term->term_id]))continue;$q=new WP_Query($baseFor($term->term_id));$adminArchive=(int)$q->found_posts;$adminCount=(int)elmercado_home_public_category_count_010212((int)$term->term_id);if($adminCount!==$adminArchive){fwrite(STDERR,"Admin parity failed {$term->name}: home=$adminCount archive=$adminArchive\n");exit(15);} $rows[$term->term_id]["admin"]=$adminCount;$rows[$term->term_id]["admin_archive"]=$adminArchive;}
+          $expiration=time()+900;$cookie=wp_generate_auth_cookie((int)$admin->ID,$expiration,"logged_in");
+          echo "__ROWS__=".base64_encode(wp_json_encode(array_values($rows),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES))."\n";
+          echo "__COOKIE_NAME__=".base64_encode(LOGGED_IN_COOKIE)."\n";
+          echo "__COOKIE_VALUE__=".base64_encode($cookie)."\n";
+          ' --path="$wp_path" --allow-root 2>/dev/null)"
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          printf '%s\n' "$PAYLOAD"
+          REMOTE
+          )"
+          WP_PATH="$(printf '%s\n' "$OUT" | sed -n 's/^__WP_PATH__=//p' | tail -n1)"
+          ROWS_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__ROWS__=//p' | tail -n1)"
+          NAME_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_NAME__=//p' | tail -n1)"
+          VALUE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_VALUE__=//p' | tail -n1)"
+          : "${WP_PATH:?}"; : "${ROWS_B64:?}"; : "${NAME_B64:?}"; : "${VALUE_B64:?}"
+          ROWS="$(printf '%s' "$ROWS_B64" | base64 -d)"
+          COOKIE_NAME="$(printf '%s' "$NAME_B64" | base64 -d)"
+          COOKIE_VALUE="$(printf '%s' "$VALUE_B64" | base64 -d)"
+          echo "::add-mask::$COOKIE_VALUE"
+          echo "CATEGORY_PARITY_JSON=$ROWS" >> "$GITHUB_ENV"
+          echo "ADMIN_COOKIE_NAME=$COOKIE_NAME" >> "$GITHUB_ENV"
+          echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
+          echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+          echo "HOME_CATEGORY_PARITY_010213_DATA_OK"
+
+      - name: Reset staging PHP-FPM OPcache
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROBE="elmercado-opcache-parity-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$STAGING_WP_PATH/$PROBE"
+          BODY="$(curl -fsSL --max-time 30 "$STAGING_URL/$PROBE")"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$STAGING_WP_PATH/$PROBE'"
+          printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
+
+      - name: Verify anonymous and administrator Home in Chrome
+        shell: bash
+        run: node .github/scripts/home-category-parity-010213-browser.cjs
