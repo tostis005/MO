@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/home-category-parity-010213-staging.yml'
+      - '.github/scripts/home-category-parity-010213-browser.cjs'
   workflow_dispatch:
 
 permissions:
