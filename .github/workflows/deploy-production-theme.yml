@@ -1,0 +1,364 @@
+name: Deploy child theme to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-production-theme.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SSH_HOST: ${{ secrets.STAGING_HOST }}
+      SSH_PORT: ${{ secrets.STAGING_PORT }}
+      SSH_USER: ${{ secrets.STAGING_USER }}
+      SSH_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      PRODUCTION_DOMAIN: elmercadodeorigen.com
+      PRODUCTION_URL: https://elmercadodeorigen.com
+      EXPECTED_THEME_VERSION: 0.10.208
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate release before production
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/style.css
+          test -f elmercadodeorigen-child/functions.php
+          grep -q '^Template: woostify$' elmercadodeorigen-child/style.css
+          grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_THEME_VERSION'" elmercadodeorigen-child/functions.php
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${SSH_HOST:?Missing SSH host secret}"
+          : "${SSH_USER:?Missing SSH user secret}"
+          : "${SSH_PASSWORD:?Missing SSH password secret}"
+          PORT="${SSH_PORT:-22}"
+          [[ "$PORT" =~ ^[0-9]{1,5}$ ]]
+          echo "Local release validation passed for $EXPECTED_THEME_VERSION."
+
+      - name: Install deployment tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Resolve production WordPress and preflight
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PRODUCTION_DOMAIN'" <<'REMOTE'
+          set -eu
+          domain="$1"
+          candidates="$(mktemp)"
+          trap 'rm -f "$candidates"' EXIT
+          for base in "$HOME" /var/www /home /srv /opt /data /web /www; do
+            [ -d "$base" ] || continue
+            find "$base" -maxdepth 9 -type f -name wp-config.php \
+              ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' \
+              2>/dev/null >> "$candidates" || true
+          done
+          config="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+          [ -n "$config" ] || { echo "Production WordPress installation for ${domain} not found." >&2; exit 1; }
+          wp_path="$(dirname "$config")"
+          [ "$(basename "$wp_path")" = "$domain" ] || { echo "Resolved path $wp_path does not exactly match ${domain}." >&2; exit 1; }
+          case "$wp_path" in *dev.elmercadodeorigen.com*) echo 'Refusing to deploy to staging path.' >&2; exit 1 ;; esac
+          theme_path="$wp_path/wp-content/themes/elmercadodeorigen-child"
+          [ -d "$wp_path/wp-content/themes" ]
+          [ -f "$wp_path/wp-config.php" ]
+
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI is unavailable.' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -x "$php_bin" ] || { echo 'No usable PHP CLI binary found.' >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" core is-installed --path="$wp_path" --skip-plugins --skip-themes --allow-root
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
+          current_version='unknown'
+          if [ -f "$theme_path/functions.php" ]; then
+            current_version="$(grep -o "ELMERCADO_THEME_VERSION', '[^']*" "$theme_path/functions.php" | head -n1 | sed "s/.*'//" || true)"
+            [ -n "$current_version" ] || current_version='unknown'
+          fi
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          printf '__THEME_PATH__=%s\n' "$theme_path"
+          printf '__PHP_BIN__=%s\n' "$php_bin"
+          printf '__CURRENT_VERSION__=%s\n' "$current_version"
+          printf '__ACTIVE_STYLESHEET__=%s\n' "$active"
+          REMOTE
+          )"
+          printf '%s\n' "$OUTPUT"
+          WP_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__WP_PATH__=//p' | tail -n1)"
+          THEME_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__THEME_PATH__=//p' | tail -n1)"
+          PHP_BIN="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__PHP_BIN__=//p' | tail -n1)"
+          CURRENT_VERSION="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__CURRENT_VERSION__=//p' | tail -n1)"
+          ACTIVE_STYLESHEET="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__ACTIVE_STYLESHEET__=//p' | tail -n1)"
+          : "${WP_PATH:?Production WordPress path not resolved}"
+          : "${THEME_PATH:?Production theme path not resolved}"
+          echo "PRODUCTION_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+          echo "PRODUCTION_THEME_PATH=$THEME_PATH" >> "$GITHUB_ENV"
+          echo "PRODUCTION_PHP_BIN=$PHP_BIN" >> "$GITHUB_ENV"
+          echo "PREVIOUS_THEME_VERSION=$CURRENT_VERSION" >> "$GITHUB_ENV"
+          echo "PREVIOUS_ACTIVE_STYLESHEET=$ACTIVE_STYLESHEET" >> "$GITHUB_ENV"
+          echo "Production preflight passed. Current child theme version: $CURRENT_VERSION; active stylesheet: $ACTIVE_STYLESHEET"
+
+      - name: Backup current production child theme
+        id: backup
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-before-${EXPECTED_THEME_VERSION//./_}-${GITHUB_SHA:0:10}"
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PRODUCTION_WP_PATH' '$PRODUCTION_DOMAIN' '$BACKUP_NAME' '$PREVIOUS_ACTIVE_STYLESHEET' '$PREVIOUS_THEME_VERSION'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          domain="$2"
+          backup_name="$3"
+          previous_stylesheet="$4"
+          previous_version="$5"
+          [ "$(basename "$wp_path")" = "$domain" ]
+          theme_parent="$wp_path/wp-content/themes"
+          theme_path="$theme_parent/elmercadodeorigen-child"
+          [ -d "$theme_path" ] || { echo 'Existing production child theme directory not found; refusing deployment without rollback source.' >&2; exit 1; }
+          rollback_root="$HOME/.elmercado-rollbacks/$domain"
+          backup_dir="$rollback_root/$backup_name"
+          mkdir -p "$backup_dir"
+          tar -czf "$backup_dir/theme.tar.gz" -C "$theme_parent" elmercadodeorigen-child
+          ( cd "$backup_dir" && sha256sum theme.tar.gz > theme.tar.gz.sha256 )
+          printf '%s\n' "$previous_stylesheet" > "$backup_dir/active-stylesheet.txt"
+          printf '%s\n' "$previous_version" > "$backup_dir/theme-version.txt"
+          printf '%s\n' "$wp_path" > "$backup_dir/wp-path.txt"
+          printf '%s\n' "${GITHUB_SHA:-unknown}" > "$backup_dir/release-sha.txt"
+          test -s "$backup_dir/theme.tar.gz"
+          ( cd "$backup_dir" && sha256sum -c theme.tar.gz.sha256 )
+          echo "Rollback backup created at $backup_dir"
+          REMOTE
+          echo "BACKUP_NAME=$BACKUP_NAME" >> "$GITHUB_ENV"
+          echo "backup_name=$BACKUP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and activate exact child theme release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          TARGET="${PRODUCTION_THEME_PATH%/}/"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+
+          sshpass -e rsync -az --delete \
+            --exclude='.DS_Store' --exclude='*.map' \
+            -e "ssh $SSH_OPTIONS" \
+            elmercadodeorigen-child/ \
+            "$SSH_USER@$SSH_HOST:$TARGET"
+
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PRODUCTION_WP_PATH' '$PRODUCTION_DOMAIN' '$EXPECTED_THEME_VERSION'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          domain="$2"
+          expected="$3"
+          [ "$(basename "$wp_path")" = "$domain" ]
+          case "$wp_path" in *dev.elmercadodeorigen.com*) echo 'Refusing staging path.' >&2; exit 1 ;; esac
+          theme_path="$wp_path/wp-content/themes/elmercadodeorigen-child"
+          test -f "$theme_path/functions.php"
+
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -x "$php_bin" ] || { echo 'No usable PHP CLI binary found.' >&2; exit 1; }
+          find "$theme_path" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          grep -q "ELMERCADO_THEME_VERSION', '$expected'" "$theme_path/functions.php"
+
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI is unavailable.' >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$wp_path" --skip-plugins --allow-root
+          active="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
+          [ "$active" = 'elmercadodeorigen-child' ]
+          runtime_version="$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo defined("ELMERCADO_THEME_VERSION") ? ELMERCADO_THEME_VERSION : "missing";' --path="$wp_path" --skip-plugins --allow-root)"
+          [ "$runtime_version" = "$expected" ] || { echo "Theme runtime version is $runtime_version, expected $expected" >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$wp_path" --skip-plugins --allow-root || true
+          echo "Production WordPress loaded child theme $runtime_version successfully."
+          REMOTE
+
+      - name: Verify public production HTTP
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in / /tienda/ /categoria-producto/jamones-paletas/ /contacto/ /carrito/; do
+            url="$PRODUCTION_URL$path?release-check=${GITHUB_SHA}"
+            status="$(curl -sS -L --max-time 35 -o /tmp/prod.html -w '%{http_code}' "$url" || true)"
+            [ "$status" = '200' ] || { echo "$path returned HTTP ${status:-unknown}" >&2; exit 1; }
+            grep -q 'elmercado-child-theme' /tmp/prod.html || { echo "$path did not serve the child theme" >&2; exit 1; }
+            if grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/prod.html; then
+              echo "PHP/WordPress fatal marker detected on $path" >&2
+              exit 1
+            fi
+            echo "$path -> HTTP 200"
+          done
+          asset_status="$(curl -sS -L --max-time 30 -o /tmp/style.css -w '%{http_code}' "$PRODUCTION_URL/wp-content/themes/elmercadodeorigen-child/style.css?release=$GITHUB_SHA")"
+          [ "$asset_status" = '200' ]
+          grep -q 'Theme Name:' /tmp/style.css
+
+      - name: Smoke production in real Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/production-smoke.cjs <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const BASE = 'https://elmercadodeorigen.com';
+          const chrome = process.env.CHROME_PATH || '/usr/bin/google-chrome';
+          const marketing = [
+            'BUSCAR EN EL MERCADO',
+            'Encuentra productos seleccionados con criterio, directamente desde su origen.'
+          ];
+          const browser = await puppeteer.launch({headless:true, executablePath:chrome, args:['--no-sandbox','--disable-dev-shm-usage']});
+          const report = {};
+          try {
+            const page = await browser.newPage();
+            await page.setViewport({width:1440,height:1000});
+            const pageErrors = [];
+            page.on('pageerror', err => pageErrors.push(String(err.message || err)));
+            await page.goto(`${BASE}/?prod-smoke=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
+            const trigger = await page.$('.header-search-icon, [class*="header-search"] a, .site-tools .search-icon');
+            if (!trigger) throw new Error('Search trigger not found on production Home');
+            await trigger.click();
+            await page.waitForSelector('.site-dialog-search', {visible:true, timeout:10000});
+            const search = await page.evaluate(() => {
+              const root = document.querySelector('.site-dialog-search');
+              const title = root?.querySelector('.dialog-search-title')?.textContent?.trim() || '';
+              const input = root?.querySelector('input[type="search"], .search-field');
+              const submit = root?.querySelector('button[type="submit"], input[type="submit"], .search-submit');
+              const submitText = submit?.tagName === 'INPUT' ? submit.value : (submit?.textContent || '').trim();
+              const before = root?.querySelector('.dialog-search-title') ? getComputedStyle(root.querySelector('.dialog-search-title'),'::before').content : '';
+              const after = root?.querySelector('.dialog-search-title') ? getComputedStyle(root.querySelector('.dialog-search-title'),'::after').content : '';
+              return {title, placeholder:input?.getAttribute('placeholder') || '', submit:submitText, before, after, text:root?.innerText || ''};
+            });
+            if (search.title !== 'Buscar productos') throw new Error(`Unexpected search title: ${search.title}`);
+            if (search.placeholder !== 'Buscar productos') throw new Error(`Unexpected placeholder: ${search.placeholder}`);
+            if (search.submit !== 'Buscar') throw new Error(`Unexpected submit: ${search.submit}`);
+            for (const phrase of marketing) if (search.text.includes(phrase)) throw new Error(`Marketing search copy still visible: ${phrase}`);
+            report.search = search;
+
+            await page.goto(`${BASE}/tienda/?prod-smoke=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
+            const shop = await page.evaluate(() => {
+              const bodyText = document.body?.innerText || '';
+              const tags = [...document.querySelectorAll('.widget_product_tag_cloud,.widget_tag_cloud,.tagcloud')].filter(el => {
+                const s = getComputedStyle(el); const r = el.getBoundingClientRect();
+                return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+              }).length;
+              const sidebar = document.querySelector('#secondary.widget-area,.shop-widget-area');
+              return {hasTheme:document.body.classList.contains('elmercado-child-theme'), tags, etiquetas:/\bEtiquetas\b/i.test(sidebar?.innerText || ''), products:document.querySelectorAll('.products .product, li.product').length};
+            });
+            if (!shop.hasTheme) throw new Error('Child theme body class missing on shop');
+            if (shop.tags !== 0 || shop.etiquetas) throw new Error('Etiquetas visible on production shop');
+            if (shop.products < 1) throw new Error('No products rendered on production shop');
+            report.shop = shop;
+
+            await page.goto(`${BASE}/categoria-producto/jamones-paletas/?prod-smoke=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
+            const category = await page.evaluate(() => {
+              const sidebar = document.querySelector('#secondary.widget-area,.shop-widget-area');
+              const text = sidebar?.innerText || '';
+              const visible = (sel) => [...document.querySelectorAll(sel)].filter(el => { const s=getComputedStyle(el), r=el.getBoundingClientRect(); return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0; }).length;
+              return {
+                hasTheme:document.body.classList.contains('elmercado-child-theme'),
+                vendorVisible:visible('#emo-global-vendor-filter') > 0,
+                specificVisible:visible('#emo-category-attribute-filters') > 0,
+                tags:visible('.widget_product_tag_cloud,.widget_tag_cloud,.tagcloud'),
+                etiquetas:/\bEtiquetas\b/i.test(text),
+                products:document.querySelectorAll('.products .product, li.product').length
+              };
+            });
+            if (!category.hasTheme) throw new Error('Child theme body class missing on category');
+            if (!category.vendorVisible || !category.specificVisible) throw new Error('Production category filters are not visible');
+            if (category.tags !== 0 || category.etiquetas) throw new Error('Etiquetas visible on production category');
+            if (category.products < 1) throw new Error('No products rendered on production category');
+            report.category = category;
+            report.pageErrors = pageErrors;
+            console.log('PRODUCTION_THEME_SMOKE_OK', JSON.stringify(report));
+          } finally {
+            await browser.close();
+          }
+          NODE
+          node /tmp/production-smoke.cjs
+
+      - name: Production deployment summary
+        if: success()
+        shell: bash
+        run: |
+          echo "Production child theme deployed successfully."
+          echo "Previous version: ${PREVIOUS_THEME_VERSION:-unknown}"
+          echo "Current version: $EXPECTED_THEME_VERSION"
+          echo "Rollback backup: ${BACKUP_NAME:-unknown}"
+
+      - name: Automatic rollback on failure
+        if: failure() && steps.backup.outcome == 'success'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          echo "A post-backup production step failed. Restoring rollback backup $BACKUP_NAME ..."
+          sshpass -e ssh $SSH_OPTIONS "$SSH_USER@$SSH_HOST" "sh -s -- '$PRODUCTION_WP_PATH' '$PRODUCTION_DOMAIN' '$BACKUP_NAME' '$PREVIOUS_ACTIVE_STYLESHEET'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          domain="$2"
+          backup_name="$3"
+          previous_stylesheet="$4"
+          [ "$(basename "$wp_path")" = "$domain" ]
+          rollback_root="$HOME/.elmercado-rollbacks/$domain"
+          backup_dir="$rollback_root/$backup_name"
+          [ -f "$backup_dir/theme.tar.gz" ]
+          ( cd "$backup_dir" && sha256sum -c theme.tar.gz.sha256 )
+          theme_parent="$wp_path/wp-content/themes"
+          theme_path="$theme_parent/elmercadodeorigen-child"
+          rm -rf "$theme_path"
+          tar -xzf "$backup_dir/theme.tar.gz" -C "$theme_parent"
+          test -f "$theme_path/functions.php"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"; fi
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ]
+          if [ -n "$previous_stylesheet" ]; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$previous_stylesheet" --path="$wp_path" --skip-plugins --allow-root || "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$wp_path" --skip-plugins --allow-root
+          else
+            "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$wp_path" --skip-plugins --allow-root
+          fi
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$wp_path" --skip-plugins --allow-root || true
+          echo "Automatic rollback completed from $backup_name."
+          REMOTE
+          for path in / /tienda/; do
+            status="$(curl -sS -L --max-time 30 -o /tmp/rollback.html -w '%{http_code}' "$PRODUCTION_URL$path?automatic-rollback=${GITHUB_RUN_ID}" || true)"
+            [ "$status" = '200' ] || { echo "Rollback verification failed for $path: HTTP $status" >&2; exit 1; }
+          done
