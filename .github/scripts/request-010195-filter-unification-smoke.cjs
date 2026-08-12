@@ -8,7 +8,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function go(page, path, delay = 1200) {
   const url = new URL(path, BASE);
-  url.searchParams.set('request-010195-qa', Date.now().toString());
+  url.searchParams.set('request-010196-qa', Date.now().toString());
   const response = await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 60000 });
   if (!response || response.status() >= 400) failures.push(`${url.pathname}: HTTP ${response?.status() || 'none'}`);
   await page.addStyleTag({ content: '#cookie-law-info-bar,#cookie-law-info-again,#ht-ctc-chat{display:none!important;visibility:hidden!important}' }).catch(() => {});
@@ -18,11 +18,11 @@ async function go(page, path, delay = 1200) {
 async function waitForRelease(page) {
   for (let i = 0; i < 24; i += 1) {
     await go(page, '/tienda/', 400);
-    const ready = await page.evaluate(() => !!document.getElementById('elmercado-catalog-filter-unification-010195'));
+    const ready = await page.evaluate(() => !!document.getElementById('elmercado-catalog-filter-unification-010196'));
     if (ready) return;
     await sleep(5000);
   }
-  throw new Error('0.10.195 did not become visible on staging');
+  throw new Error('0.10.196 did not become visible on staging');
 }
 
 const catalogSnapshot = () => {
@@ -71,7 +71,7 @@ const catalogSnapshot = () => {
       price: style(titleOf(price)),
       categories: style(titleOf(categories)),
       vendor: style(vendor?.querySelector('.emo-global-vendor-filter__title')),
-      firstSpecific: style(specific?.querySelector('.emo-category-filter-group__title')),
+      firstSpecific: style(specific?.querySelector('.emo-category-filter-title')),
     },
     vendor: {
       ids: rows(vendor, '.emo-global-vendor-filter__item').map((n) => Number(n.dataset.vendorId || 0)),
@@ -126,7 +126,7 @@ function sameHeading(a, b, label) {
     sameHeading(report.shop.titles.categories, report.shop.titles.vendor, 'shop categories/vendor headings');
     sameHeading(report.shop.titles.price, report.shop.titles.vendor, 'shop price/vendor headings');
     if (report.shop.titles.vendor?.background === 'rgb(23, 63, 50)') failures.push('shop vendor heading still uses old dark background');
-    await page.screenshot({ path: 'qa/request-010195-shop.png', fullPage: true });
+    await page.screenshot({ path: 'qa/request-010196-shop.png', fullPage: true });
 
     await go(page, '/categoria-producto/jamones-paletas/', 1900);
     report.jamones = await page.evaluate(catalogSnapshot);
@@ -138,15 +138,15 @@ function sameHeading(a, b, label) {
     if (!report.jamones.specific.groups || !report.jamones.specific.counts.length) failures.push(`jamones specific filters/counts missing: ${JSON.stringify(report.jamones.specific)}`);
     sameHeading(report.jamones.titles.firstSpecific, report.jamones.titles.vendor, 'jamones specific/vendor headings');
     sameHeading(report.jamones.titles.price, report.jamones.titles.vendor, 'jamones price/vendor headings');
-    await page.screenshot({ path: 'qa/request-010195-jamones.png', fullPage: true });
+    await page.screenshot({ path: 'qa/request-010196-jamones.png', fullPage: true });
 
     const chosenHref = await page.evaluate(() => document.querySelector('#emo-global-vendor-filter .emo-global-vendor-filter__item > a')?.href || '');
     if (chosenHref) {
       await go(page, chosenHref, 1800);
       report.jamonesVendor = await page.evaluate(catalogSnapshot);
       if (!report.jamonesVendor.activeLocation?.visible) failures.push(`selected vendor applied filters missing: ${JSON.stringify(report.jamonesVendor.activeLocation)}`);
-      if (report.jamonesVendor.activeLocation?.parentId !== 'emo-category-attribute-filters' && report.jamonesVendor.activeLocation?.parentId !== 'emo-category-applied-filters-slot-010195') failures.push(`selected vendor applied filters in wrong place: ${JSON.stringify(report.jamonesVendor.activeLocation)}`);
-      await page.screenshot({ path: 'qa/request-010195-jamones-vendor.png', fullPage: true });
+      if (report.jamonesVendor.activeLocation?.parentId !== 'emo-category-attribute-filters' && report.jamonesVendor.activeLocation?.parentId !== 'emo-category-applied-filters-slot-010196') failures.push(`selected vendor applied filters in wrong place: ${JSON.stringify(report.jamonesVendor.activeLocation)}`);
+      await page.screenshot({ path: 'qa/request-010196-jamones-vendor.png', fullPage: true });
     }
 
     await go(page, '/', 1600);
@@ -168,17 +168,17 @@ function sameHeading(a, b, label) {
     if (!report.home.card || !/productos?/i.test(report.home.countText)) failures.push(`home category count missing: ${JSON.stringify(report.home)}`);
     if (report.home.arrowDisplay !== 'none') failures.push(`home category arrow still visible: ${JSON.stringify(report.home)}`);
     if (report.home.contentDisplay !== 'grid') failures.push(`home category content not compact grid: ${JSON.stringify(report.home)}`);
-    await page.screenshot({ path: 'qa/request-010195-home.png', fullPage: true });
+    await page.screenshot({ path: 'qa/request-010196-home.png', fullPage: true });
   } finally {
     await browser.close();
   }
 
-  fs.writeFileSync('qa/request-010195-filter-unification.json', JSON.stringify({ failures, report }, null, 2));
+  fs.writeFileSync('qa/request-010196-filter-unification.json', JSON.stringify({ failures, report }, null, 2));
   if (failures.length) {
-    console.error('REQUEST_010195_FAIL ' + JSON.stringify(failures));
+    console.error('REQUEST_010196_FAIL ' + JSON.stringify(failures));
     process.exitCode = 2;
   } else {
-    console.log('REQUEST_010195_OK ' + JSON.stringify(report));
+    console.log('REQUEST_010196_OK ' + JSON.stringify(report));
   }
 })().catch((error) => {
   console.error(error);
