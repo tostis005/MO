@@ -1,0 +1,110 @@
+name: Deploy disabled vendor publish policy
+
+on:
+  push:
+    branches:
+      - diag-cpu-20260812
+    paths:
+      - '.github/workflows/wcfm-publish-policy-prod.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Checkout production source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Deploy policy and clean Tolecarnes offline flags
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD=$(sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] && dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production path not found' >&2; exit 2; }
+          printf '%s' "$prod"
+          REMOTE
+          )
+          echo "PROD=$PROD"
+
+          INC="$PROD/wp-content/themes/elmercadodeorigen-child/inc"
+          BACKUP="$HOME/.elmercado-rollbacks/wcfm-publish-policy-$(date -u +%Y%m%dT%H%M%SZ)"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$BACKUP' && cp -p '$INC/wcfm-disabled-vendor-ui-010211.php' '$BACKUP/'"
+
+          sshpass -e scp $SCP_OPTS \
+            elmercadodeorigen-child/inc/wcfm-disabled-vendor-ui-010211.php \
+            elmercadodeorigen-child/inc/wcfm-disabled-vendor-publish-policy-010216.php \
+            "$STAGING_USER@$STAGING_HOST:$INC/"
+
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD' '$BACKUP'" <<'REMOTE'
+          set -euo pipefail
+          prod="$1"; backup="$2"
+          php='/opt/plesk/php/8.2/bin/php'; wp='/usr/local/bin/wp'
+          inc="$prod/wp-content/themes/elmercadodeorigen-child/inc"
+
+          echo "BACKUP=$backup"
+          echo '=== PHP SYNTAX ==='
+          "$php" -l "$inc/wcfm-disabled-vendor-ui-010211.php"
+          "$php" -l "$inc/wcfm-disabled-vendor-publish-policy-010216.php"
+
+          echo '=== TOLE OFFLINE FLAGS BEFORE ==='
+          "$php" "$wp" db query "SELECT COUNT(*) offline_flags FROM wp_postmeta pm JOIN wp_posts p ON p.ID=pm.post_id WHERE p.post_type='product' AND p.post_author=4507 AND pm.meta_key='_wcfm_product_offline' AND pm.meta_value='yes'" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          "$php" "$wp" db query "DELETE pm FROM wp_postmeta pm JOIN wp_posts p ON p.ID=pm.post_id WHERE p.post_type='product' AND p.post_author=4507 AND pm.meta_key='_wcfm_product_offline'" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          "$php" -d memory_limit=512M "$wp" cache flush --path="$prod" --allow-root || true
+
+          echo '=== POLICY / VISIBILITY VERIFY ==='
+          "$php" -d memory_limit=512M "$wp" eval '
+          echo "status_reset_allowed=" . (apply_filters("wcfm_is_allow_offline_vendor_product_status_reset", true) ? "yes" : "no") . "\n";
+          $vendor=4507;
+          echo "vendor_disabled=" . (function_exists("elmercado_wcfm_vendor_is_disabled_010210") && elmercado_wcfm_vendor_is_disabled_010210($vendor) ? "yes" : "no") . "\n";
+          $ids=get_posts(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"fields"=>"ids","suppress_filters"=>true]);
+          echo "published_raw=" . count($ids) . "\n";
+          wp_set_current_user(0);
+          $p=wc_get_product(11058);
+          echo "public_sample_visible=" . ($p && $p->is_visible() ? "yes" : "no") . " purchasable=" . ($p && $p->is_purchasable() ? "yes" : "no") . "\n";
+          $admin=0; foreach(get_users(["role"=>"administrator","fields"=>"ID"]) as $aid){ wp_set_current_user((int)$aid); if(current_user_can("manage_options")){ $admin=(int)$aid; break; } }
+          $p=wc_get_product(11058);
+          echo "admin_id=$admin admin_sample_visible=" . ($p && $p->is_visible() ? "yes" : "no") . "\n";
+          ' --path="$prod" --allow-root
+
+          echo '=== FINAL DATABASE STATE ==='
+          "$php" "$wp" db query "SELECT post_status,COUNT(*) c FROM wp_posts WHERE post_type='product' AND post_author=4507 GROUP BY post_status ORDER BY post_status" --path="$prod" --skip-plugins --skip-themes --allow-root
+          "$php" "$wp" db query "SELECT COUNT(DISTINCT p.ID) carnes_published FROM wp_posts p JOIN wp_term_relationships tr ON tr.object_id=p.ID JOIN wp_term_taxonomy tt ON tt.term_taxonomy_id=tr.term_taxonomy_id WHERE p.post_type='product' AND p.post_author=4507 AND p.post_status='publish' AND tt.taxonomy='product_cat' AND tt.term_id=382" --path="$prod" --skip-plugins --skip-themes --allow-root
+          "$php" "$wp" db query "SELECT COUNT(*) offline_flags FROM wp_postmeta pm JOIN wp_posts p ON p.ID=pm.post_id WHERE p.post_type='product' AND p.post_author=4507 AND pm.meta_key='_wcfm_product_offline'" --path="$prod" --skip-plugins --skip-themes --allow-root
+          REMOTE
