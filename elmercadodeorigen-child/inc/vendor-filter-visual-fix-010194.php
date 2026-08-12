@@ -2,8 +2,8 @@
 /**
  * Ajuste final de consistencia visual del filtro Vendedor 0.10.194.
  *
- * La cascada real de Tienda deja las filas de Categorías en 34 px y 12.5 px.
- * Esta capa iguala Vendedor a esas métricas efectivas.
+ * Replica las métricas efectivas de las filas de Categorías en Tienda para que
+ * Vendedor no tenga una presentación paralela o ligeramente distinta.
  *
  * @package ElMercadoDeOrigen
  */
@@ -23,9 +23,12 @@ add_action(
 			body.elmercado-child-theme.woocommerce-shop :is(#secondary.widget-area,.shop-widget-area) #emo-global-vendor-filter .emo-global-vendor-filter__item > a {
 				min-height:34px !important;
 				padding:6px 1px !important;
+				border-radius:9px !important;
+				color:#173f32 !important;
 				font-size:12.5px !important;
 				font-weight:700 !important;
-				line-height:1.3 !important;
+				line-height:1.25 !important;
+				text-align:start !important;
 			}
 		</style>
 		<?php
