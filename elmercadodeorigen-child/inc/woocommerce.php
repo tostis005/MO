@@ -64,22 +64,15 @@ add_filter(
 );
 
 /**
- * El formulario de consulta de WCFM no se ofrece en la ficha de producto.
- * Se corta en el filtro del plugin antes de que el botón llegue al HTML.
+ * Las consultas de WCFM no se ofrecen en el frontal.
  *
- * @param bool $allow Estado original del módulo de consultas.
+ * WCFM decide si imprime el botón de consulta mediante
+ * `wcfm_is_pref_enquiry_button`; además conservamos el filtro específico del
+ * botón de producto para cubrir versiones que lo evalúan de forma separada.
+ * De este modo el botón no llega nunca al HTML y no depende de CSS o JavaScript.
  */
-add_filter(
-	'wcfm_is_allow_enquiry',
-	static function ( $allow ): bool {
-		if ( ! is_admin() && function_exists( 'is_product' ) && is_product() ) {
-			return false;
-		}
-
-		return (bool) $allow;
-	},
-	PHP_INT_MAX
-);
+add_filter( 'wcfm_is_pref_enquiry_button', '__return_false', PHP_INT_MAX );
+add_filter( 'wcfm_is_allow_product_enquiry_bubtton', '__return_false', PHP_INT_MAX );
 
 /**
  * Seis productos relacionados en una rejilla responsiva compacta.
