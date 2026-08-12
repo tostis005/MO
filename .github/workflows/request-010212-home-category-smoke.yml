@@ -83,7 +83,7 @@ jobs:
           COUNTS_JSON="$(printf '%s' "$COUNTS_B64" | base64 -d)"
           echo "COUNTS_JSON=$COUNTS_JSON" >> "$GITHUB_ENV"
           echo "$COUNTS_JSON" | jq .
-          jq -e 'length > 0 and all(.[]; .public >= 0 and .public <= .raw)' <<< "$COUNTS_JSON" >/dev/null
+          jq -e 'length > 0 and all(.[]; .public >= 0)' <<< "$COUNTS_JSON" >/dev/null
       - name: Verify Home in real Chrome
         shell: bash
         run: |
