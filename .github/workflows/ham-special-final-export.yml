@@ -69,7 +69,18 @@ jobs:
           REMOTE_SCRIPT="/tmp/ham-special-${GITHUB_RUN_ID}.php"
           REMOTE_JSON="/tmp/ham-special-${GITHUB_RUN_ID}.json"
           sshpass -e rsync -az -e "ssh $SSH_OPTIONS" scripts/ham-special-final-export.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php /usr/local/bin/wp eval-file '$REMOTE_SCRIPT' --path='$WP_PATH' --allow-root > '$REMOTE_JSON'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$WP_PATH' '$REMOTE_SCRIPT' '$REMOTE_JSON'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; script="$2"; json="$3"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -x "$php_bin" ] || exit 1
+          wp_bin="$(command -v wp || true)"
+          [ -n "$wp_bin" ] || exit 1
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file "$script" --path="$wp_path" --allow-root > "$json"
+          REMOTE
           sshpass -e rsync -az -e "ssh $SSH_OPTIONS" "$STAGING_USER@$STAGING_HOST:$REMOTE_JSON" ham-special-final.json
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_SCRIPT' '$REMOTE_JSON'" || true
       - name: Upload
