@@ -1,4 +1,4 @@
-name: Home category parity 0.10.213 staging
+name: Home category parity 0.10.214 staging
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
       STAGING_URL: https://dev.elmercadodeorigen.com
-      EXPECTED_VERSION: 0.10.213
+      EXPECTED_VERSION: 0.10.214
 
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           node --check .github/scripts/home-category-parity-010213-browser.cjs
           grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
-          grep -Eq '^Version:[[:space:]]*0\.10\.213$' elmercadodeorigen-child/style.css
+          grep -Eq '^Version:[[:space:]]*0\.10\.214$' elmercadodeorigen-child/style.css
           php -l elmercadodeorigen-child/inc/home-category-visibility-010212.php >/dev/null
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
 
@@ -109,7 +109,7 @@ jobs:
           echo "ADMIN_COOKIE_NAME=$COOKIE_NAME" >> "$GITHUB_ENV"
           echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
           echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
-          echo "HOME_CATEGORY_PARITY_010213_DATA_OK"
+          echo "HOME_CATEGORY_PARITY_010214_DATA_OK"
 
       - name: Reset staging PHP-FPM OPcache
         shell: bash
