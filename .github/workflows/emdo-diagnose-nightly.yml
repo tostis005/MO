@@ -1,4 +1,4 @@
-name: Diagnose EMDO cron and Puente variations
+name: Inspect Puente variation attributes
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -21,89 +21,38 @@ jobs:
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
       STAGING_DOMAIN: dev.elmercadodeorigen.com
     steps:
-      - name: Install sshpass
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
-      - name: Configure SSH
-        shell: bash
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - shell: bash
         run: |
           set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          PORT="${STAGING_PORT:-22}"; mkdir -p ~/.ssh; chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-      - name: Diagnose staging
-        shell: bash
+      - shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
           set -eu
-          echo '== CRONTAB =='
-          crontab -l 2>&1 || true
           raw="${1%/}"; domain="$2"; wp_path=""
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
-          if [ ! -f "$wp_path/wp-config.php" ]; then
-            wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
-            [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"
-          fi
-          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
-          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
-          WP="$php_bin -d memory_limit=768M $wp_bin --path=$wp_path --allow-root"
-          echo '== WP CRON FLAGS =='
-          $WP eval 'echo "DISABLE_WP_CRON=".(defined("DISABLE_WP_CRON")?(DISABLE_WP_CRON?"true":"false"):"undefined")."\n"; echo "ALTERNATE_WP_CRON=".(defined("ALTERNATE_WP_CRON")?(ALTERNATE_WP_CRON?"true":"false"):"undefined")."\n";' 2>/dev/null
-          echo '== ACTION SCHEDULER CLI =='
-          $WP help action-scheduler 2>/dev/null | head -n 40 || true
-
-          script="$(mktemp /tmp/emdo-diag2.XXXXXX.php)"; trap 'rm -f "$script"' EXIT
+          if [ ! -f "$wp_path/wp-config.php" ]; then wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"; [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"; fi
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP="$php_bin -d memory_limit=512M $wp_bin --path=$wp_path --allow-root"
+          script="$(mktemp /tmp/puente-attrs.XXXXXX.php)"; trap 'rm -f "$script"' EXIT
           cat > "$script" <<'PHP'
           <?php
-          global $wpdb;
-          $events=MDO_Database::table('sync_events');
-          $runs=MDO_Database::table('sync_runs');
-          $sources=MDO_Database::table('source_products');
-          $suppliers=MDO_Database::table('suppliers');
-          echo "== RUN 11 TIMELINE ==\n";
-          $ev=$wpdb->get_results("SELECT id,event_type,severity,message,created_at FROM {$events} WHERE run_id=11 ORDER BY id ASC",ARRAY_A);
-          $prev=null; $maxgap=0; $maxpair='';
-          foreach($ev as $e){
-            $ts=strtotime((string)$e['created_at']);
-            $gap=$prev?($ts-$prev['ts']):0;
-            if($gap>$maxgap){$maxgap=$gap;$maxpair=($prev['event_type']??'start').' -> '.$e['event_type'];}
-            echo wp_json_encode(array('id'=>$e['id'],'type'=>$e['event_type'],'sev'=>$e['severity'],'at'=>$e['created_at'],'gap_s'=>$gap,'message'=>$e['message']),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-            $prev=array('ts'=>$ts,'event_type'=>$e['event_type']);
+          $url='https://www.puenterobles.com/es/jamon-de-bellota-iberico-100-raza-iberica';
+          $r=wp_safe_remote_get($url,array('timeout'=>20,'user-agent'=>'EMDO Puente attrs'));
+          if(is_wp_error($r)) throw new RuntimeException($r->get_error_message());
+          $html=(string)wp_remote_retrieve_body($r);
+          $dom=new DOMDocument();$prev=libxml_use_internal_errors(true);$dom->loadHTML('<?xml encoding="utf-8" ?>'.$html,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET);libxml_clear_errors();libxml_use_internal_errors($prev);$xp=new DOMXPath($dom);
+          foreach($xp->query("//*[contains(concat(' ',normalize-space(@class),' '),' propiedad ')]//li | //*[contains(concat(' ',normalize-space(@class),' '),' propiedad ')]//a | //*[contains(concat(' ',normalize-space(@class),' '),' propiedad ')]//input")?:array() as $n){
+            if(!$n instanceof DOMElement) continue; $attrs=[]; foreach($n->attributes?:array() as $a){$attrs[$a->name]=$a->value;} $txt=trim(preg_replace('/\s+/u',' ',(string)$n->textContent));
+            echo wp_json_encode(array('tag'=>$n->tagName,'text'=>$txt,'attrs'=>$attrs),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
           }
-          echo "MAX_GAP_SECONDS={$maxgap} BETWEEN={$maxpair}\n";
-          echo "== RUN 11 ERRORS ==\n";
-          $errs=$wpdb->get_results("SELECT id,event_type,severity,message,created_at,payload FROM {$events} WHERE run_id=11 AND severity='error' ORDER BY id",ARRAY_A);
-          foreach($errs as $e) echo wp_json_encode($e,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-
-          $as_actions=$wpdb->prefix.'actionscheduler_actions';
-          $as_groups=$wpdb->prefix.'actionscheduler_groups';
-          $as_logs=$wpdb->prefix.'actionscheduler_logs';
-          echo "== EMDO ACTIONS LAST 12H ==\n";
-          if($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$as_actions))===$as_actions){
-            $rows=$wpdb->get_results("SELECT a.action_id,a.hook,a.status,a.scheduled_date_local,a.last_attempt_local,a.attempts,a.args,g.slug AS group_slug FROM {$as_actions} a LEFT JOIN {$as_groups} g ON g.group_id=a.group_id WHERE g.slug='mdo-supplier-sync' AND a.scheduled_date_local >= DATE_SUB(NOW(),INTERVAL 12 HOUR) ORDER BY a.action_id DESC LIMIT 80",ARRAY_A);
-            foreach($rows as $r) echo wp_json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-          }
-
-          echo "== PUENTE JAMON/PALETA SOURCES ==\n";
-          $pid=(int)$wpdb->get_var("SELECT id FROM {$suppliers} WHERE connector='puente-robles' LIMIT 1");
-          $rows=$wpdb->get_results($wpdb->prepare("SELECT id,title,source_url,status,wc_product_id,source_payload FROM {$sources} WHERE supplier_id=%d AND (LOWER(title) LIKE '%%jam%%n%%' OR LOWER(title) LIKE '%%paleta%%') ORDER BY id ASC LIMIT 12",$pid),ARRAY_A);
-          foreach($rows as $r){$p=json_decode((string)$r['source_payload'],true);echo 'SOURCE='.wp_json_encode(array('id'=>$r['id'],'title'=>$r['title'],'url'=>$r['source_url'],'status'=>$r['status'],'wc'=>$r['wc_product_id'],'variation_count'=>$p['variation_count']??null,'option_groups'=>$p['option_groups']??array(),'extra_groups'=>$p['extra_groups']??array()),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
-          $target=null; foreach($rows as $r){if((string)$r['status']!=='excluded'){$target=$r;break;}}
-          if($target){
-            $url=(string)$target['source_url']; echo "TARGET_URL={$url}\n";
-            $resp=wp_safe_remote_get($url,array('timeout'=>20,'redirection'=>4,'user-agent'=>'EMDO Puente inspect'));
-            if(!is_wp_error($resp)){
-              $html=(string)wp_remote_retrieve_body($resp); echo 'HTML_BYTES='.strlen($html)."\n";
-              $dom=new DOMDocument();$prevlib=libxml_use_internal_errors(true);$dom->loadHTML('<?xml encoding="utf-8" ?>'.$html,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET);libxml_clear_errors();libxml_use_internal_errors($prevlib);$xp=new DOMXPath($dom);
-              foreach($xp->query('//select')?:array() as $sel){if(!$sel instanceof DOMElement)continue;$opts=[];foreach($xp->query('.//option',$sel)?:array() as $o){$attrs=[];if($o instanceof DOMElement){foreach($o->attributes?:array() as $a){$attrs[$a->name]=$a->value;}}$opts[]=array('text'=>trim(preg_replace('/\s+/u',' ',(string)$o->textContent)),'value'=>$o instanceof DOMElement?$o->getAttribute('value'):'','attrs'=>$attrs);}echo 'SELECT='.wp_json_encode(array('name'=>$sel->getAttribute('name'),'id'=>$sel->getAttribute('id'),'class'=>$sel->getAttribute('class'),'options'=>$opts),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
-              foreach($xp->query("//*[contains(@class,'formatos') or contains(@class,'propiedad') or contains(@class,'desplegable')]")?:array() as $node){if(!$node instanceof DOMElement)continue;$txt=trim(preg_replace('/\s+/u',' ',(string)$node->textContent));if($txt!=='')echo 'NODE='.wp_json_encode(array('tag'=>$node->tagName,'class'=>$node->getAttribute('class'),'data_valor'=>$node->getAttribute('data-valor'),'text'=>mb_substr($txt,0,1200)),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
-              foreach(array('Piezas entre','kg aprox','€/Kg','formato','cortado','loncheado','deshuesado','peso') as $needle){$pos=mb_stripos($html,$needle);if($pos!==false)echo 'NEEDLE='.$needle.' SNIP='.trim(preg_replace('/\s+/u',' ',strip_tags(mb_substr($html,max(0,$pos-900),2400))))."\n";}
-            }
-          }
+          foreach($xp->query("//script[contains(.,'273.3855') or contains(.,'propiedad') or contains(.,'precio')]")?:array() as $s){$txt=trim((string)$s->textContent); if($txt!=='') echo 'SCRIPT='.mb_substr(preg_replace('/\s+/u',' ',$txt),0,6000)."\n";}
           PHP
           $WP eval-file "$script" 2>/dev/null
           REMOTE
