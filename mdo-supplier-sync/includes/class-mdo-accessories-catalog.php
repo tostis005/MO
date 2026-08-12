@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * productos de jamón/paleta no se consideran accesorios.
  */
 final class MDO_Accessories_Catalog {
-	private const VERSION        = '1.0.3';
+	private const VERSION        = '1.0.4';
 	private const VERSION_OPTION = 'mdo_accessories_catalog_version';
 	private const REPORT_OPTION  = 'mdo_accessories_catalog_last_report';
 	private const SNAPSHOT_META  = '_emdo_accessories_catalog_snapshot';
@@ -179,14 +179,9 @@ final class MDO_Accessories_Catalog {
 	}
 
 	private static function detect_type( string $title ): string {
-		// Los productos alimentarios cuyo título empieza por Jamón o Paleta pueden
-		// mencionar “cortado a cuchillo” o regalos de jamonero/cuchillo; no son accesorios.
 		if ( preg_match( '/^(?:jamon|paleta)\b/u', $title ) ) {
 			return '';
 		}
-
-		// En los accesorios reales el término puede aparecer después de “blíster”,
-		// “set”, “soporte”, etc. Cuchillo prevalece sobre jamonero (p. ej. cuchillo jamonero).
 		if ( preg_match( '/\bcuchillo(?:s)?\b/u', $title ) ) {
 			return 'Cuchillo';
 		}
@@ -210,16 +205,20 @@ final class MDO_Accessories_Catalog {
 
 		$attributes = $product->get_attributes();
 		$taxonomy = wc_attribute_taxonomy_name( self::ATTRIBUTE_SLUG );
-		if ( isset( $attributes[ $taxonomy ] ) && $attributes[ $taxonomy ] instanceof WC_Product_Attribute ) {
-			$managed_term_ids = array();
-			foreach ( self::TYPE_TERMS as $term_name ) {
-				$term = get_term_by( 'name', $term_name, $taxonomy );
-				if ( $term instanceof WP_Term ) {
-					$managed_term_ids[] = (int) $term->term_id;
-				}
+		$managed_term_ids = array();
+		foreach ( self::TYPE_TERMS as $term_name ) {
+			$term = get_term_by( 'name', $term_name, $taxonomy );
+			if ( $term instanceof WP_Term ) {
+				$managed_term_ids[] = (int) $term->term_id;
 			}
+		}
+
+		if ( isset( $attributes[ $taxonomy ] ) && $attributes[ $taxonomy ] instanceof WC_Product_Attribute ) {
 			$options = array_values( array_map( 'intval', $attributes[ $taxonomy ]->get_options() ) );
-			if ( $options && ! array_diff( $options, $managed_term_ids ) ) {
+			$remaining = array_values( array_diff( $options, $managed_term_ids ) );
+			if ( $remaining ) {
+				$attributes[ $taxonomy ]->set_options( $remaining );
+			} else {
 				unset( $attributes[ $taxonomy ] );
 			}
 		}
@@ -229,6 +228,13 @@ final class MDO_Accessories_Catalog {
 			$product->set_category_ids( $category_ids );
 			$product->set_attributes( $attributes );
 			$product->save();
+
+			if ( $managed_term_ids && taxonomy_exists( $taxonomy ) ) {
+				$removed = wp_remove_object_terms( $product->get_id(), $managed_term_ids, $taxonomy );
+				if ( is_wp_error( $removed ) ) {
+					throw new RuntimeException( 'No se pudieron limpiar términos residuales de Tipo de producto: ' . $removed->get_error_message() );
+				}
+			}
 			delete_post_meta( $product->get_id(), self::SNAPSHOT_META );
 		} finally {
 			self::$writing = false;
