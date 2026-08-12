@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.201' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.202' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -138,18 +138,10 @@ $elmercado_modules = array(
 	'inc/announcement-rotator-final-010171.php',
 	'inc/cart-checkout-contact-cleanup-010185.php',
 	'inc/category-specific-filters-010185.php',
-	'inc/category-filter-design-010187.php',
-	'inc/category-filter-display-fix-010189.php',
 	'inc/active-filter-chips-010193.php',
-	'inc/active-filter-clear-guard-010191.php',
 	'inc/cart-shipping-copy-final-010192.php',
 	'inc/catalog-core-filters-010193.php',
-	'inc/vendor-filter-visual-fix-010194.php',
-	'inc/catalog-filter-unification-010196.php',
-	'inc/catalog-filter-final-010197.php',
-	'inc/catalog-filter-layout-lock-010198.php',
-	'inc/catalog-filter-visual-refinement-010199.php',
-	'inc/catalog-filter-visual-lock-010200.php',
+	'inc/catalog-filter-system-010202.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
