@@ -1,6 +1,6 @@
 <?php
 /**
- * Carga continua estable del catálogo, refinada en 0.10.180.
+ * Carga continua estable del catálogo, refinada en 0.10.181.
  *
  * Conserva la paginación HTML para rastreo y navegación sin JavaScript, pero
  * sustituye la experiencia visual de scroll infinito de Woostify por una carga
@@ -18,7 +18,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 function elmercado_is_continuous_catalog_surface_010176(): bool {
 	$is_archive = function_exists( 'is_shop' ) && ( is_shop() || ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) );
-	$is_vendor  = ( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() ) || ( function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page() );
+	$is_vendor  = ( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() ) ||
+		( function_exists( 'wcfmmp_is_store_page' ) && wcfmmp_is_store_page() ) ||
+		( function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page() );
+
+	if ( ! $is_vendor ) {
+		$store_query_var = function_exists( 'wcfm_get_option' ) ? (string) wcfm_get_option( 'wcfm_store_url', 'store' ) : 'store';
+		$is_vendor       = '' !== $store_query_var && '' !== (string) get_query_var( $store_query_var );
+	}
 
 	return $is_archive || $is_vendor;
 }
@@ -50,16 +57,16 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-continuous-catalog-010180">
+		<style id="elmercado-continuous-catalog-010181">
 			/* El cargador nativo residual es el segundo spinner que no debe verse. */
 			body.emo-continuous-catalog .emo-catalog-native-pagination,
-			body.emo-continuous-catalog ul.products ~ #infscr-loading,
-			body.emo-continuous-catalog ul.products ~ .infinite-scroll-status,
-			body.emo-continuous-catalog ul.products ~ .infinite-scroll-request,
-			body.emo-continuous-catalog ul.products ~ .infinite-scroll-loader,
-			body.emo-continuous-catalog ul.products ~ .woostify-infinite-scroll-loading,
-			body.emo-continuous-catalog ul.products ~ .woostify-load-more,
-			body.emo-continuous-catalog ul.products ~ .woocommerce-load-more {
+			body.emo-continuous-catalog #infscr-loading,
+			body.emo-continuous-catalog .infinite-scroll-status,
+			body.emo-continuous-catalog .infinite-scroll-request,
+			body.emo-continuous-catalog .infinite-scroll-loader,
+			body.emo-continuous-catalog .woostify-infinite-scroll-loading,
+			body.emo-continuous-catalog .woostify-load-more,
+			body.emo-continuous-catalog .woocommerce-load-more {
 				display: none !important;
 			}
 
@@ -116,7 +123,7 @@ add_action(
 				border: 2px solid rgba(23,63,50,.18);
 				border-top-color: #173f32;
 				border-radius: 50%;
-				animation: emo-catalog-spin-010180 .7s linear infinite;
+				animation: emo-catalog-spin-010181 .7s linear infinite;
 			}
 
 			body.emo-continuous-catalog .emo-catalog-load-state.is-loading .emo-catalog-spinner {
@@ -142,7 +149,7 @@ add_action(
 				display: none !important;
 			}
 
-			@keyframes emo-catalog-spin-010180 {
+			@keyframes emo-catalog-spin-010181 {
 				to { transform: rotate(360deg); }
 			}
 
@@ -152,7 +159,7 @@ add_action(
 				}
 			}
 		</style>
-		<script id="elmercado-continuous-catalog-history-010180">
+		<script id="elmercado-continuous-catalog-history-010181">
 		(() => {
 			'use strict';
 
@@ -220,7 +227,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-continuous-catalog-loader-010180">
+		<script id="elmercado-continuous-catalog-loader-010181">
 		(() => {
 			'use strict';
 
@@ -235,78 +242,153 @@ add_action(
 
 			const surface = grid.closest('#wcfmmp-store, main, #primary, .content-area') || document;
 			const currentUrl = new URL(window.location.href);
+			const paginationKeys = ['paged', 'product-page', 'product_page', 'page'];
 
-			const pageNumber = (value) => {
+			const pageFromUrl = (value) => {
 				try {
-					const url = new URL(value, window.location.href);
+					const url = new URL(value, currentUrl.href);
 					const pathMatch = url.pathname.match(/\/page\/(\d+)(?:\/|$)/i);
 					if (pathMatch) return Math.max(1, Number.parseInt(pathMatch[1], 10) || 1);
-					for (const key of ['paged', 'product-page', 'product_page', 'page']) {
+					for (const key of paginationKeys) {
 						const parsed = Number.parseInt(url.searchParams.get(key) || '', 10);
 						if (Number.isFinite(parsed) && parsed > 0) return parsed;
 					}
 				} catch (_) {}
-				return 1;
+				return 0;
 			};
 
-			const pageUrl = (value, targetPage) => {
+			const resolveHref = (element, baseUrl) => {
+				const raw = element?.getAttribute?.('href');
+				if (!raw || raw === '#' || /^javascript:/i.test(raw)) return '';
 				try {
-					const url = new URL(value, window.location.href);
-					if (/\/page\/\d+(?:\/|$)/i.test(url.pathname)) {
-						url.pathname = url.pathname.replace(/\/page\/\d+(?:\/|$)/i, `/page/${targetPage}/`);
-						return url.href;
-					}
-					for (const key of ['paged', 'product-page', 'product_page']) {
-						if (!url.searchParams.has(key)) continue;
-						url.searchParams.set(key, String(targetPage));
-						return url.href;
-					}
-					const path = url.pathname.replace(/\/+$/, '');
-					url.pathname = `${path}/page/${targetPage}/`;
-					return url.href;
+					return new URL(raw, baseUrl).href;
 				} catch (_) {
 					return '';
 				}
 			};
 
-			const initialPage = pageNumber(currentUrl.href);
-			let highestPage = initialPage;
-			let loading = false;
-			let retryTimer = 0;
-			let continuationTimer = 0;
-			let nextUrl = '';
+			const catalogFamily = (value) => {
+				try {
+					const url = new URL(value, currentUrl.href);
+					url.pathname = url.pathname.replace(/\/page\/\d+\/?$/i, '/').replace(/\/+$/, '/');
+					paginationKeys.forEach((key) => url.searchParams.delete(key));
+					url.hash = '';
+					return `${url.origin}${url.pathname}`;
+				} catch (_) {
+					return '';
+				}
+			};
 
-			const pagerScopeSelector = [
+			const pageFromElement = (element, baseUrl) => {
+				if (!element) return 0;
+				for (const key of ['page', 'paged', 'pageNumber', 'page-number']) {
+					const attrName = `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+					const parsed = Number.parseInt(element.getAttribute?.(attrName) || '', 10);
+					if (Number.isFinite(parsed) && parsed > 0) return parsed;
+				}
+				const text = (element.textContent || '').trim();
+				if (/^\d+$/.test(text)) return Number.parseInt(text, 10) || 0;
+				const href = resolveHref(element, baseUrl);
+				return href ? pageFromUrl(href) : 0;
+			};
+
+			const pagerScopes = [
 				'.woocommerce-pagination',
 				'.woostify-pagination',
 				'.wcfm-pagination',
+				'.wcfmmp-pagination',
+				'.wcfm_pagination',
+				'.wcfmmp-store-product-pagination',
 				'.navigation.pagination',
 				'.products-pagination',
 				'.product-pagination',
 				'.infinite-scroll-pagination',
 				'.woostify-load-more',
 				'.woocommerce-load-more'
+			];
+			const pagerScopeSelector = pagerScopes.join(',');
+			const pagerLinkSelector = [
+				...pagerScopes.map((selector) => `${selector} a[href]`),
+				'a.page-numbers[href]',
+				'a[rel~="next"][href]',
+				'a[rel~="prev"][href]'
 			].join(',');
 
-			const pagerLinks = (root) => [...root.querySelectorAll('a[href]')].filter((link) => {
-				if (link.closest(pagerScopeSelector)) return true;
-				if (link.matches('a.page-numbers, a[rel="next"], a[rel="prev"]')) return true;
-				return /^(ver|cargar|load)\s+(más|more|anterior|previous|siguiente|next)/i.test((link.textContent || '').trim());
-			});
+			const pagerLinks = (root) => [...new Set(root.querySelectorAll(pagerLinkSelector))];
 
-			const findPageUrl = (root, direction, pivot) => {
+			const currentPageFromDocument = (root, baseUrl) => {
+				const selectors = [
+					'[aria-current="page"]',
+					'.page-numbers.current',
+					'.woocommerce-pagination .current',
+					'.wcfmmp-pagination .current',
+					'.wcfm-pagination .current',
+					'.pagination .current',
+					'.pagination .active'
+				];
+				for (const selector of selectors) {
+					const marker = root.querySelector(selector);
+					const page = pageFromElement(marker, baseUrl) || pageFromElement(marker?.querySelector?.('a[href]'), baseUrl);
+					if (page) return page;
+				}
+				return pageFromUrl(baseUrl) || 1;
+			};
+
+			const directionMatches = (link, direction) => {
+				const rel = (link.getAttribute('rel') || '').toLowerCase().split(/\s+/);
+				if (rel.includes(direction)) return true;
+				if (link.classList.contains(direction)) return true;
+				const words = `${link.getAttribute('aria-label') || ''} ${link.getAttribute('title') || ''} ${link.textContent || ''}`.replace(/\s+/g, ' ').trim().toLowerCase();
+				return direction === 'next'
+					? /\b(next|siguiente|más|more)\b/.test(words)
+					: /\b(prev|previous|anterior)\b/.test(words);
+			};
+
+			const findPageUrl = (root, direction, baseUrl, pivot) => {
+				const family = catalogFamily(baseUrl);
+				const headLink = root.querySelector(`link[rel~="${direction}"][href]`);
+				const headHref = resolveHref(headLink, baseUrl);
+				if (headHref && catalogFamily(headHref) === family) return headHref;
+
 				const links = pagerLinks(root);
 				const direct = links.find((link) => {
-					if (link.getAttribute('rel') === direction) return true;
-					return link.closest(pagerScopeSelector) && link.matches(`a.${direction}, a.page-numbers.${direction}`);
+					if (!directionMatches(link, direction)) return false;
+					const href = resolveHref(link, baseUrl);
+					return href && catalogFamily(href) === family;
 				});
-				if (direct?.href) return direct.href;
+				if (direct) return resolveHref(direct, baseUrl);
 
+				const desiredPage = direction === 'next' ? pivot + 1 : Math.max(1, pivot - 1);
 				const candidates = links
-					.map((link) => ({ href: link.href, page: pageNumber(link.href) }))
+					.map((link) => ({ href: resolveHref(link, baseUrl), page: pageFromElement(link, baseUrl) }))
+					.filter((item) => item.href && catalogFamily(item.href) === family && item.page > 0)
 					.filter((item) => direction === 'next' ? item.page > pivot : item.page < pivot)
-					.sort((a, b) => direction === 'next' ? a.page - b.page : b.page - a.page);
-				return candidates[0]?.href || '';
+					.sort((a, b) => {
+						if (a.page === desiredPage && b.page !== desiredPage) return -1;
+						if (b.page === desiredPage && a.page !== desiredPage) return 1;
+						return direction === 'next' ? a.page - b.page : b.page - a.page;
+					});
+				if (candidates[0]?.href) return candidates[0].href;
+
+				/*
+				 * Última lectura de compatibilidad: si WCFM/tema cambia las clases del
+				 * paginador, seguimos exigiendo un href REAL del HTML recibido que sea
+				 * exactamente la página contigua de esta misma superficie.
+				 */
+				const exact = [...root.querySelectorAll('a[href]')].find((link) => {
+					const href = resolveHref(link, baseUrl);
+					return href && catalogFamily(href) === family && pageFromUrl(href) === desiredPage;
+				});
+				return exact ? resolveHref(exact, baseUrl) : '';
+			};
+
+			const paginationSnapshot = (root, baseUrl) => {
+				const current = currentPageFromDocument(root, baseUrl);
+				return {
+					current,
+					next: findPageUrl(root, 'next', baseUrl, current),
+					prev: current > 1 ? findPageUrl(root, 'prev', baseUrl, current) : ''
+				};
 			};
 
 			const hideNativePagination = (root = document) => {
@@ -322,8 +404,14 @@ add_action(
 				});
 			};
 
-			nextUrl = findPageUrl(document, 'next', highestPage);
-			const previousUrl = initialPage > 1 ? findPageUrl(document, 'prev', initialPage) : '';
+			const initialPagination = paginationSnapshot(document, currentUrl.href);
+			const initialPage = initialPagination.current || 1;
+			let highestPage = initialPage;
+			let loading = false;
+			let retryTimer = 0;
+			let continuationTimer = 0;
+			let nextUrl = initialPagination.next;
+			const previousUrl = initialPagination.prev;
 			hideNativePagination();
 
 			if (previousUrl) {
@@ -344,8 +432,9 @@ add_action(
 			const message = state.querySelector('.emo-catalog-load-message');
 			const button = state.querySelector('.emo-catalog-load-button');
 			const countNode = surface.querySelector('.woocommerce-result-count');
-			const totalMatch = countNode?.textContent?.replace(/\./g, '').match(/(\d+)\s+resultados?/i);
-			const total = totalMatch ? Number.parseInt(totalMatch[1], 10) : 0;
+			const countText = countNode?.textContent?.replace(/\s+/g, ' ').trim() || '';
+			const totalMatch = countText.match(/(?:de|of)\s+([\d.,]+)\s+(?:resultados?|results?)/i) || countText.match(/([\d.,]+)\s+(?:resultados?|results?)/i);
+			const total = totalMatch ? Number.parseInt(totalMatch[1].replace(/[.,]/g, ''), 10) || 0 : 0;
 			let shown = grid.querySelectorAll(':scope > li.product').length;
 			const preloadDistance = Math.max(1800, Math.min(3200, Math.round(window.innerHeight * 2.6)));
 
@@ -367,13 +456,13 @@ add_action(
 				state.classList.toggle('is-loading', active);
 				state.classList.toggle('is-failure', failure);
 				message.textContent = active || failure ? text : '';
-				button.hidden = !failure;
+				button.hidden = !failure || !nextUrl;
 			};
 
 			const showIdle = () => setState('idle');
 			const showLoading = () => setState('loading', 'Cargando más productos…');
 			const showRetrying = () => setState('retrying', 'Cargando más productos…');
-			const showFailure = () => setState('failure', 'No se ha podido continuar la carga automática.');
+			const showFailure = (text = 'No se ha podido continuar la carga automática.') => setState('failure', text);
 			const showFinished = () => setState('finished');
 
 			const stateIsNearViewport = () => {
@@ -391,7 +480,11 @@ add_action(
 						headers: { 'Accept': 'text/html' }
 					});
 					if (!response.ok) throw new Error(`HTTP ${response.status}`);
-					return new DOMParser().parseFromString(await response.text(), 'text/html');
+					const html = await response.text();
+					return {
+						doc: new DOMParser().parseFromString(html, 'text/html'),
+						responseUrl: response.url || url
+					};
 				} finally {
 					window.clearTimeout(timeout);
 				}
@@ -401,8 +494,18 @@ add_action(
 				window.clearTimeout(continuationTimer);
 				continuationTimer = window.setTimeout(() => {
 					if (!loading && nextUrl && stateIsNearViewport()) loadNext(true);
-				}, 40);
+				}, 60);
 			};
+
+			const debugState = {};
+			Object.defineProperties(debugState, {
+				initialUrl: { enumerable: true, get: () => currentUrl.href },
+				nextUrl: { enumerable: true, get: () => nextUrl },
+				highestPage: { enumerable: true, get: () => highestPage },
+				shown: { enumerable: true, get: () => shown },
+				loading: { enumerable: true, get: () => loading }
+			});
+			window.__emoCatalogLoaderState = debugState;
 
 			const loadNext = async (allowAutomaticRetry = true) => {
 				if (loading || !nextUrl) return;
@@ -411,7 +514,7 @@ add_action(
 				const requestedUrl = nextUrl;
 
 				try {
-					const doc = await fetchPage(requestedUrl);
+					const { doc, responseUrl } = await fetchPage(requestedUrl);
 					const sourceGrid = doc.querySelector(gridSelector);
 					if (!sourceGrid) throw new Error('Product grid not found');
 
@@ -426,23 +529,27 @@ add_action(
 					});
 					if (!appended) throw new Error('No new products returned');
 
-					highestPage = Math.max(highestPage + 1, pageNumber(requestedUrl));
+					const responsePagination = paginationSnapshot(doc, responseUrl);
+					highestPage = Math.max(highestPage, responsePagination.current || pageFromUrl(requestedUrl) || highestPage + 1);
 					shown += appended;
-					let discoveredNext = findPageUrl(doc, 'next', highestPage);
-					if (!discoveredNext && total && shown < total) {
-						discoveredNext = pageUrl(requestedUrl, highestPage + 1);
-					}
-					nextUrl = discoveredNext;
+					nextUrl = responsePagination.next;
 					updateCount();
-					document.body.dispatchEvent(new CustomEvent('emo:catalog-products-appended', { detail: { count: appended, page: highestPage } }));
+					document.body.dispatchEvent(new CustomEvent('emo:catalog-products-appended', { detail: { count: appended, page: highestPage, nextUrl } }));
 					window.__emoCatalogHistoryGuard?.restore?.();
 					loading = false;
+
 					if (nextUrl) {
 						showIdle();
 						scheduleContinuation();
-					} else {
-						showFinished();
+						return;
 					}
+
+					if (total && shown < total) {
+						showFailure('No se ha podido localizar la siguiente página del catálogo.');
+						return;
+					}
+
+					showFinished();
 				} catch (_) {
 					loading = false;
 					window.__emoCatalogHistoryGuard?.restore?.();
@@ -468,7 +575,11 @@ add_action(
 			});
 
 			if (!nextUrl) {
-				showFinished();
+				if (total && shown < total) {
+					showFailure('No se ha podido localizar la siguiente página del catálogo.');
+				} else {
+					showFinished();
+				}
 				return;
 			}
 
