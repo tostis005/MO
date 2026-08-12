@@ -1,0 +1,39 @@
+name: Visual audit postcheck
+
+on:
+  push:
+    branches: [dev/filter-visual-postcheck]
+    paths:
+      - '.github/workflows/visual-audit-postcheck.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture desktop category
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?visual-postcheck=1'
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME"
+          COMMON='--headless --no-sandbox --disable-gpu --disable-dev-shm-usage --hide-scrollbars --disable-background-networking --disable-component-update --disable-sync --metrics-recording-only --no-first-run --virtual-time-budget=7000 --run-all-compositor-stages-before-draw'
+          timeout 35s "$CHROME" $COMMON --window-size=1440,2200 --force-device-scale-factor=1 --screenshot=filters-postcheck.png "$URL" || test -s filters-postcheck.png
+          timeout 35s "$CHROME" $COMMON --window-size=1440,1200 --dump-dom "$URL" > filters-postcheck-dom.html || test -s filters-postcheck-dom.html
+          test -s filters-postcheck.png
+          test -s filters-postcheck-dom.html
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-filter-postcheck
+          path: |
+            filters-postcheck.png
+            filters-postcheck-dom.html
+          retention-days: 1
