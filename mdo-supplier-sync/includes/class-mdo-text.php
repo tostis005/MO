@@ -8,20 +8,26 @@ final class MDO_Text {
 	private const PRESERVE_UPPERCASE = array( 'DOP', 'IGP', 'DO', 'ETG', 'IVA', 'SKU' );
 
 	public static function normalize_title( string $title ): string {
+		/*
+		 * Los orígenes pueden entregar títulos con entidades (&oacute;, &iacute;,
+		 * &amp;oacute;...). Si WooCommerce genera el slug antes de decodificarlas,
+		 * WordPress elimina la entidad completa y aparecen URLs como "jamn" o
+		 * "ibrico". Decodificamos primero (también el caso doble) para que después
+		 * remove_accents()/sanitize_title() puedan transliterar jamón -> jamon.
+		 */
+		for ( $i = 0; $i < 4; $i++ ) {
+			$decoded = html_entity_decode( $title, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			if ( $decoded === $title ) {
+				break;
+			}
+			$title = $decoded;
+		}
+
 		$title = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $title ) ) );
 		if ( '' === $title || ! function_exists( 'mb_strtoupper' ) || ! function_exists( 'mb_strtolower' ) ) {
 			return $title;
 		}
 
-		/*
-		 * Usamos una estrategia determinista de formato frase:
-		 * 1. Protegemos solo siglas conocidas que ya vienen realmente en mayúsculas.
-		 * 2. Pasamos TODO el resto del título a minúsculas con Unicode.
-		 * 3. Recuperamos las siglas y ponemos en mayúscula únicamente el inicio del
-		 *    título y el inicio de un descriptor entre paréntesis.
-		 *
-		 * Esto elimina también errores heredados como JamÓn, JamóN, PAnceta, etc.
-		 */
 		$protected = array();
 		$title = preg_replace_callback(
 			'/(?<![\p{L}\p{N}])(?:' . implode( '|', array_map( 'preg_quote', self::PRESERVE_UPPERCASE ) ) . ')(?![\p{L}\p{N}])/u',
@@ -34,12 +40,10 @@ final class MDO_Text {
 		);
 
 		$title = mb_strtolower( (string) $title, 'UTF-8' );
-
 		foreach ( $protected as $marker => $value ) {
 			$title = str_replace( $marker, $value, $title );
 		}
 
-		// Primera letra real del título en mayúscula, independientemente de tildes.
 		$title = preg_replace_callback(
 			'/\p{L}/u',
 			static fn( array $match ): string => mb_strtoupper( (string) $match[0], 'UTF-8' ),
@@ -47,7 +51,6 @@ final class MDO_Text {
 			1
 		);
 
-		// Descriptor entre paréntesis: "(deshuesado)" -> "(Deshuesado)".
 		$title = preg_replace_callback(
 			'/(\(\s*)(\p{L})/u',
 			static function ( array $match ): string {
@@ -65,9 +68,6 @@ final class MDO_Text {
 	 */
 	public static function normalize_description( string $description ): string {
 		$value = $description;
-
-		// Algunos proveedores entregan entidades HTML doblemente codificadas.
-		// Repetimos unas pocas veces y paramos en cuanto el contenido sea estable.
 		for ( $i = 0; $i < 4; $i++ ) {
 			$decoded = html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			if ( $decoded === $value ) {
@@ -76,10 +76,7 @@ final class MDO_Text {
 			$value = $decoded;
 		}
 
-		// No queremos que &nbsp; termine visible ni que introduzca espacios no separables
-		// difíciles de editar en WooCommerce.
 		$value = str_replace( array( "\xC2\xA0", "\u{00A0}" ), ' ', $value );
-
 		return wp_kses_post( $value );
 	}
 
@@ -91,16 +88,12 @@ final class MDO_Text {
 			$product['description'] = self::normalize_description( (string) $product['description'] );
 		}
 
-		// Primero resolvemos el precio normal/oferta de la ficha base. El Catedrático
-		// publica después los tramos de peso dentro de esa misma ficha y necesitamos
-		// ambos precios para construir cada variación sin perder el descuento.
 		if ( class_exists( 'MDO_Pricing' ) ) {
 			$product = MDO_Pricing::enrich_product( $product );
 		}
 		if ( class_exists( 'MDO_Iberico_Variations' ) ) {
 			$product = MDO_Iberico_Variations::enrich_product( $product );
 		}
-		// Recalculamos el resumen del producto desde la matriz final de variaciones.
 		if ( class_exists( 'MDO_Pricing' ) ) {
 			$product = MDO_Pricing::enrich_product( $product );
 		}
@@ -108,11 +101,6 @@ final class MDO_Text {
 		$hash_payload = $product;
 		unset( $hash_payload['source_hash'] );
 		if ( isset( $hash_payload['description'] ) ) {
-			/*
-			 * La estructura HTML segura también es información de producto: <strong>,
-			 * listas, párrafos, saltos, etc. deben provocar resincronización aunque el
-			 * texto visible sea idéntico. El contenido ya ha pasado por wp_kses_post().
-			 */
 			$hash_payload['description_hash'] = hash( 'sha256', (string) $hash_payload['description'] );
 			unset( $hash_payload['description'] );
 		}
