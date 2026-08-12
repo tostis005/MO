@@ -1,0 +1,29 @@
+name: Validate ham direct closure
+on:
+  push:
+    branches: [dev/ham-canonical-no-resave]
+    paths:
+      - 'mdo-supplier-sync/**'
+      - '.github/workflows/validate-ham-direct-closure.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Lint PHP
+        run: find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Verify no product resave in direct closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'Version: 1.0.6' mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q 'MDO_Ham_Catalog_Direct_Closure::init' mdo-supplier-sync/mdo-supplier-sync.php
+          ! grep -q -- '->save()' mdo-supplier-sync/includes/class-mdo-ham-catalog-direct-closure.php
+          grep -q 'wp_set_object_terms' mdo-supplier-sync/includes/class-mdo-ham-catalog-direct-closure.php
+          grep -q 'El Catedrático' mdo-supplier-sync/includes/class-mdo-ham-catalog-direct-closure.php
+      - name: Whitespace
+        run: git diff --check HEAD~1 HEAD
