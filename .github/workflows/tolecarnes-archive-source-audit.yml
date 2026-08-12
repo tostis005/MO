@@ -1,0 +1,61 @@
+name: Tolecarnes archived status source audit
+
+on:
+  push:
+    branches:
+      - diag-cpu-20260812
+    paths:
+      - '.github/workflows/tolecarnes-archive-source-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Search archive status writers
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}";; */wp-content) dev="$(dirname "$raw")";; *) dev="$raw";; esac
+          if [ ! -f "$dev/wp-config.php" ]; then cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"; [ -n "$cfg" ] && dev="$(dirname "$cfg")"; fi
+          prod="$(dirname "$dev")/httpdocs"
+          echo '=== ARCHIVED WRITERS IN RELEVANT PLUGINS/THEME ==='
+          for path in \
+            "$prod/wp-content/plugins/mdo-supplier-sync" \
+            "$prod/wp-content/plugins/wc-frontend-manager" \
+            "$prod/wp-content/plugins/wc-frontend-manager-ultimate" \
+            "$prod/wp-content/plugins/wc-multivendor-marketplace" \
+            "$prod/wp-content/themes/elmercadodeorigen-child"; do
+            [ -e "$path" ] || continue
+            echo "-- $path"
+            grep -RniE --include='*.php' "['\"]archived['\"]|post_status.{0,80}archiv|archiv.{0,80}post_status|register_post_status.{0,80}archiv" "$path" 2>/dev/null | head -n 160 || true
+          done
+          echo '=== DISABLE VENDOR CODE ==='
+          for path in "$prod/wp-content/plugins/wc-frontend-manager" "$prod/wp-content/plugins/wc-frontend-manager-ultimate" "$prod/wp-content/plugins/wc-multivendor-marketplace"; do
+            [ -e "$path" ] || continue
+            grep -RniE --include='*.php' "disable_vendor|_disable_vendor|vendor.*disable|disable.*vendor" "$path" 2>/dev/null | head -n 160 || true
+          done
+          echo '=== CURRENT TOLE STATE ==='
+          /opt/plesk/php/8.2/bin/php /usr/local/bin/wp db query "SELECT post_status,COUNT(*) c FROM wp_posts WHERE post_type='product' AND post_author=4507 GROUP BY post_status" --path="$prod" --skip-plugins --skip-themes --allow-root
+          REMOTE
