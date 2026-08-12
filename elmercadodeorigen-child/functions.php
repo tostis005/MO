@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.210' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.211' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -138,6 +138,7 @@ $elmercado_modules = array(
 	'inc/cart-shipping-copy-final-010192.php',
 	'inc/wcfm-disabled-vendor-visibility-010210.php',
 	'inc/catalog-filter-system-final-010207.php',
+	'inc/wcfm-disabled-vendor-ui-010211.php',
 	'inc/mobile-price-slider-alignment-010209.php',
 );
 
