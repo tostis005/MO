@@ -39,15 +39,20 @@ jobs:
               for(const s of samples){
                 const page=await browser.newPage();
                 await page.setViewport({width:1440,height:1000});
-                const response=await page.goto(`${s.url}?disabled-vendor-audit=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
+                const nav=async url=>{
+                  const response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
+                  await new Promise(r=>setTimeout(r,1200));
+                  return response;
+                };
+                const response=await nav(`${s.url}?disabled-vendor-audit=${Date.now()}`);
                 const direct=await page.evaluate((title)=>({titleFound:document.body.innerText.includes(title),h1:document.querySelector('h1')?.textContent?.trim()||'',bodyClass:document.body.className}),s.title);
-                const categoryHref=await page.evaluate(()=>document.querySelector('.product_meta .posted_in a, .posted_in a, a[rel="tag"]')?.href||'');
-                await page.goto(`${base}/tienda/?vendor_id=${s.vendor}&disabled-vendor-audit=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
+                const categoryHref=await page.evaluate(()=>document.querySelector('.product_meta .posted_in a, .posted_in a')?.href||'');
+                await nav(`${base}/tienda/?vendor_id=${s.vendor}&disabled-vendor-audit=${Date.now()}`);
                 const shop=await page.evaluate((title)=>({titleFound:document.body.innerText.includes(title),products:[...document.querySelectorAll('.products .product h2,.products .product .woocommerce-loop-product__title,li.product h2')].map(e=>e.textContent.trim()).slice(0,20)}),s.title);
                 let category=null;
                 if(categoryHref){
                   const u=new URL(categoryHref); u.searchParams.set('vendor_id',String(s.vendor)); u.searchParams.set('disabled-vendor-audit',String(Date.now()));
-                  await page.goto(u.toString(),{waitUntil:'networkidle2',timeout:60000});
+                  await nav(u.toString());
                   category=await page.evaluate((title)=>({url:location.href,titleFound:document.body.innerText.includes(title),products:[...document.querySelectorAll('.products .product h2,.products .product .woocommerce-loop-product__title,li.product h2')].map(e=>e.textContent.trim()).slice(0,20)}),s.title);
                 }
                 results.push({vendor:s.vendor,title:s.title,direct:{status:response?.status()||0,finalUrl:response?.url()||'',...direct,categoryHref},shop,category});
