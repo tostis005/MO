@@ -2,6 +2,7 @@
 /**
  * Export exhaustivo de Jamones y Paletas para auditoría.
  * Ejecutar con WP-CLI: wp eval-file <este archivo>
+ * Reexport post-deploy: 2026-08-12.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
