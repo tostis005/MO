@@ -134,7 +134,7 @@ add_filter(
 					$card = (string) $matches[0];
 					$card = (string) preg_replace(
 						'~<div class="emo-category-card__content">~',
-						'<div class="emo-category-card__content" style="display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-end!important;gap:0!important;min-width:0!important;width:100%!important;">',
+						'<div class="emo-category-card__content" style="display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-end!important;gap:0!important;min-width:0!important;width:100%!important;max-width:100%!important;">',
 						$card,
 						1
 					);
@@ -146,7 +146,7 @@ add_filter(
 					);
 					$card = (string) preg_replace(
 						'~<small>.*?</small>~s',
-						'<small style="display:block!important;width:100%!important;margin:0!important;line-height:1.2!important;text-align:right!important;align-self:stretch!important;">' . $label . '</small>',
+						'<small style="display:block!important;width:100%!important;max-width:100%!important;margin:0!important;line-height:1.2!important;text-align:right!important;align-self:stretch!important;">' . $label . '</small>',
 						$card,
 						1
 					);
@@ -217,6 +217,7 @@ add_action(
 				gap: 0 !important;
 				min-width: 0 !important;
 				width: 100% !important;
+				max-width: 100% !important;
 			}
 
 			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content > strong {
@@ -231,6 +232,7 @@ add_action(
 			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content > small {
 				display: block !important;
 				width: 100% !important;
+				max-width: 100% !important;
 				margin: 0 !important;
 				line-height: 1.2 !important;
 				text-align: right !important;
