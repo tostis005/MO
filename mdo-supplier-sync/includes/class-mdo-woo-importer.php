@@ -26,8 +26,11 @@ final class MDO_Woo_Importer {
 		}
 		$vendor_id = (int) $supplier['vendor_user_id'];
 		$vendor    = $vendor_id ? get_user_by( 'id', $vendor_id ) : false;
-		if ( ! $vendor || ! in_array( 'wcfm_vendor', (array) $vendor->roles, true ) ) {
-			throw new RuntimeException( 'El proveedor no tiene un vendedor WCFM válido asignado.' );
+		// WCFM puede retirar o sustituir temporalmente el rol wcfm_vendor al desactivar
+		// un vendedor. La asignación EMDO sigue siendo válida mientras el usuario exista;
+		// WCFM conserva la responsabilidad de ocultar al vendedor/productos desactivados.
+		if ( ! $vendor ) {
+			throw new RuntimeException( 'El proveedor no tiene un usuario vendedor válido asignado.' );
 		}
 
 		$payload = json_decode( (string) $row['source_payload'], true );
