@@ -1,0 +1,104 @@
+name: Home category parity 0.10.215 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-category-parity-010215-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_URL: https://dev.elmercadodeorigen.com
+      EXPECTED_VERSION: 0.10.215
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release and probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
+          grep -Eq '^Version:[[:space:]]*0\.10\.215$' elmercadodeorigen-child/style.css
+          grep -q 'home-category-edge-align-010215.php' elmercadodeorigen-child/functions.php
+          php -l .github/scripts/home-category-parity-data-010215.php >/dev/null
+          php -l .github/scripts/elmercado-opcache-reset.php >/dev/null
+          node --check .github/scripts/home-category-parity-010213-browser.cjs
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+
+      - name: Install browser and SSH tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Resolve staging and collect public/admin expectations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\""
+          )"
+          : "${WP_PATH:?}"
+          echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+
+          ok=0
+          for attempt in {1..30}; do
+            VERSION="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -o \"ELMERCADO_THEME_VERSION', '[^']*\" '$WP_PATH/wp-content/themes/elmercadodeorigen-child/functions.php' | head -n1 | sed \"s/.*'//\"" || true)"
+            if [ "$VERSION" = "$EXPECTED_VERSION" ]; then ok=1; break; fi
+            sleep 2
+          done
+          [ "$ok" = 1 ] || { echo "Staging version $VERSION != $EXPECTED_VERSION" >&2; exit 2; }
+
+          REMOTE_DATA="/tmp/home-category-parity-data-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/home-category-parity-data-010215.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DATA"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DATA' --path='$WP_PATH' --allow-root; rm -f '$REMOTE_DATA'" )"
+          ROWS_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__ROWS__=//p' | tail -n1)"
+          NAME_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_NAME__=//p' | tail -n1)"
+          VALUE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_VALUE__=//p' | tail -n1)"
+          : "${ROWS_B64:?}"; : "${NAME_B64:?}"; : "${VALUE_B64:?}"
+          ROWS="$(printf '%s' "$ROWS_B64" | base64 -d)"
+          COOKIE_NAME="$(printf '%s' "$NAME_B64" | base64 -d)"
+          COOKIE_VALUE="$(printf '%s' "$VALUE_B64" | base64 -d)"
+          echo "::add-mask::$COOKIE_VALUE"
+          echo "CATEGORY_PARITY_JSON=$ROWS" >> "$GITHUB_ENV"
+          echo "ADMIN_COOKIE_NAME=$COOKIE_NAME" >> "$GITHUB_ENV"
+          echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
+          echo 'HOME_CATEGORY_010215_DATA_OK'
+
+      - name: Reset staging PHP-FPM OPcache
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROBE="elmercado-opcache-home-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$STAGING_WP_PATH/$PROBE"
+          BODY="$(curl -fsSL --max-time 30 "$STAGING_URL/$PROBE")"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$STAGING_WP_PATH/$PROBE'"
+          printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
+
+      - name: Verify anonymous and administrator Home in Chrome
+        shell: bash
+        run: node .github/scripts/home-category-parity-010213-browser.cjs
