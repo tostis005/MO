@@ -1,0 +1,30 @@
+name: Validate ham tag closure
+
+on:
+  push:
+    branches: [dev/ham-audit-tag-closure]
+    paths:
+      - 'mdo-supplier-sync/**'
+      - '.github/workflows/validate-ham-tag-closure.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Lint EMDO PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Check whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check origin/main...HEAD
