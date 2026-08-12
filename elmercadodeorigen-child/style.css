@@ -4,13 +4,13 @@ Theme URI: https://www.elmercadodeorigen.com/
 Description: Tema hijo premium de Woostify para El Mercado de Origen.
 Author: El Mercado de Origen
 Template: woostify
-Version: 0.10.180
+Version: 0.10.181
 Text Domain: elmercadodeorigen
 Requires at least: 6.4
 Requires PHP: 8.0
 */
 
-/* Release 0.10.180: extiende la carga continua a tiendas de productor, elimina el parpadeo del filtro nativo y suprime la consulta en ficha de producto. */
+/* Release 0.10.181: resuelve la paginación WCFM desde cada respuesta, retira el filtro nativo antes del render y elimina el botón Consultar desde PHP. */
 
 @media (min-width: 768px) {
 	body.single-product.elmercado-child-theme .summary.emo-wapo-price-unified.emo-final-price-active #wapo-total-order {
@@ -27,9 +27,9 @@ Requires PHP: 8.0
 		text-align: left !important;
 	}
 
-	body.single-product.elmercado-child-theme .summary.emo-wapo-price-unified.emo-final-price-active #wapo-total-order-price,
-	body.single-product.elmercado-child-theme .summary.emo-wapo-price-unified.emo-final-price-active #wapo-total-order-price .amount,
-	body.single-product.elmercado-child-theme .summary.emo-wapo-price-unified.emo-final-price-active #wapo-total-order-price .price {
+	body.single-product.elmercadodeorigen-child-theme .summary.emo-wapo-price-unified.emo-final-price-active #wapo-total-order-price,
+	body.single-product.elmercadodeorigen-child-theme .summary.emo-wapo-price-unified.emo-final-price-active #wapo-total-order-price .amount,
+	body.single-product.elmercadodeorigen-child-theme .summary.emo-wapo-price-unified.emo-final-price-active #wapo-total-order-price .price {
 		text-align: left !important;
 	}
 }
