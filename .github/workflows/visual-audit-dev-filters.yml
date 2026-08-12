@@ -1,0 +1,49 @@
+name: Visual audit Dev filters
+
+on:
+  push:
+    branches: [dev/filter-visual-review]
+    paths:
+      - '.github/workflows/visual-audit-dev-filters.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Capture rendered category in desktop and mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?visual-audit=1'
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME"
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars \
+            --window-size=1440,2400 --force-device-scale-factor=1 \
+            --virtual-time-budget=12000 --run-all-compositor-stages-before-draw \
+            --screenshot=filters-desktop.png "$URL"
+          "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars \
+            --window-size=390,1800 --force-device-scale-factor=1 \
+            --virtual-time-budget=12000 --run-all-compositor-stages-before-draw \
+            --screenshot=filters-mobile.png "$URL"
+          "$CHROME" --headless --no-sandbox --disable-gpu \
+            --virtual-time-budget=12000 --dump-dom "$URL" > filters-dom.html
+          test -s filters-desktop.png
+          test -s filters-mobile.png
+          test -s filters-dom.html
+
+      - name: Upload visual audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-filter-visual-audit
+          path: |
+            filters-desktop.png
+            filters-mobile.png
+            filters-dom.html
+          retention-days: 1
