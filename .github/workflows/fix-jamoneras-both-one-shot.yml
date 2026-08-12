@@ -36,10 +36,6 @@ jobs:
           from pathlib import Path
           p=Path('mdo-supplier-sync/includes/class-mdo-accessories-catalog.php')
           s=p.read_text()
-          old="private const VERSION        = '1.0.5';"
-          new="private const VERSION        = '1.0.6';"
-          assert s.count(old)==1
-          s=s.replace(old,new)
           old="preg_match( '/\\bjamonero(?:s)?\\b/u', $title )"
           new="preg_match( '/\\bjamoner[oa](?:s)?\\b/u', $title )"
           assert s.count(old)==1
@@ -54,7 +50,7 @@ jobs:
           s=s.replace("MDO_SUPPLIER_SYNC_VERSION', '1.0.9","MDO_SUPPLIER_SYNC_VERSION', '1.0.10")
           p.write_text(s)
           PY
-          grep -q "private const VERSION        = '1.0.6'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
+          grep -q "private const VERSION        = '1.0.5'" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           grep -Fq "jamoner[oa](?:s)?" mdo-supplier-sync/includes/class-mdo-accessories-catalog.php
           grep -q "Version: 1.0.10" mdo-supplier-sync/mdo-supplier-sync.php
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
@@ -144,18 +140,13 @@ jobs:
           "$php_bin" "$wp_bin" plugin is-active mdo-supplier-sync --path="$dev_path" --allow-root >/dev/null
           "$php_bin" "$wp_bin" plugin is-active mdo-supplier-sync --path="$prod_path" --allow-root >/dev/null
 
-          migrate_and_verify() {
+          classify_and_verify() {
             env_name="$1"; wp_path="$2"; gondola="$3"; bellota="$4"; basculante="$5"; cuchillo="$6"
-            report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode(MDO_Accessories_Catalog::migrate_catalog(true),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' --path="$wp_path" --allow-root)"
-            echo "$env_name report: $report"
-            accessories="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true);echo (int)($d["accessories"]??0);')"
-            jamoneros="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true);echo (int)($d["jamoneros"]??0);')"
-            cuchillos="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true);echo (int)($d["cuchillos"]??0);')"
-            errors="$(printf '%s' "$report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN),true);echo count((array)($d["errors"]??array()));')"
-            [ "$accessories" -eq 5 ] && [ "$jamoneros" -eq 4 ] && [ "$cuchillos" -eq 1 ] && [ "$errors" -eq 0 ]
-
             code="$(cat <<PHP
-          if ('1.0.6' !== (string)get_option('mdo_accessories_catalog_version','')) { exit(31); }
+          foreach (array(${gondola},${bellota},${basculante}) as \$id) {
+            \$result=MDO_Accessories_Catalog::classify_product(\$id);
+            if (empty(\$result['target']) || 'Jamonero'!==(\$result['type']??'')) { fwrite(STDERR,'Could not classify jamonera '.\$id."\n"); exit(31); }
+          }
           foreach (array(${gondola},${bellota},${basculante}) as \$id) {
             \$p=wc_get_product(\$id);
             if (!\$p instanceof WC_Product || 'publish'!==\$p->get_status() || !has_term('accesorios','product_cat',\$id)) { exit(32); }
@@ -169,15 +160,18 @@ jobs:
           \$expected=array(${gondola},${bellota},${basculante},${cuchillo}); sort(\$expected);
           if (\$ids!==\$expected) { fwrite(STDERR,'Unexpected public accessories: '.wp_json_encode(\$ids)."\n"); exit(35); }
           foreach (\$ids as \$id) { if (!wc_get_product(\$id)->is_in_stock()) exit(36); }
+          foreach (array(${gondola},${bellota},${basculante}) as \$id) {
+            if (in_array((int)get_option('default_product_cat',0),wc_get_product(\$id)->get_category_ids(),true)) { exit(37); }
+          }
           echo 'PUBLIC_ACCESSORIES_OK';
           PHP
             )"
-            "$php_bin" -d memory_limit=1024M "$wp_bin" eval "$code" --path="$wp_path" --allow-root | grep -q PUBLIC_ACCESSORIES_OK
+            "$php_bin" -d memory_limit=512M "$wp_bin" eval "$code" --path="$wp_path" --allow-root | grep -q PUBLIC_ACCESSORIES_OK
             echo "$env_name=passed"
           }
 
-          migrate_and_verify DEVELOPMENT "$dev_path" 11382 11391 11397 11403
-          migrate_and_verify PRODUCTION "$prod_path" 12566 12575 12581 12587
+          classify_and_verify DEVELOPMENT "$dev_path" 11382 11391 11397 11403
+          classify_and_verify PRODUCTION "$prod_path" 12566 12575 12581 12587
           "$php_bin" "$wp_bin" cache flush --path="$dev_path" --skip-plugins --allow-root >/dev/null 2>&1 || true
           "$php_bin" "$wp_bin" cache flush --path="$prod_path" --skip-plugins --allow-root >/dev/null 2>&1 || true
           echo 'JAMONERAS_BOTH_ENVIRONMENTS_QA=passed'
