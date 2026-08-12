@@ -1,11 +1,10 @@
 <?php
 /**
- * Eliminación visual desde el primer pintado del trigger nativo redundante de filtros 0.10.180.
+ * Eliminación visual desde el primer pintado de triggers redundantes de filtros.
  *
- * El catálogo ya dispone de rail visible en escritorio y del trigger canónico
- * del child theme en compacto. El botón `.filter` de Woostify no aporta una
- * segunda acción útil, así que se oculta en CSS crítico antes del primer pintado,
- * sin retirada posterior mediante JavaScript.
+ * El catálogo ya dispone de rail visible en escritorio y de un trigger propio
+ * en compacto. Los controles nativos de Woostify se ocultan en CSS crítico,
+ * antes de que el navegador pinte el body, para evitar cualquier parpadeo.
  *
  * @package ElMercadoDeOrigen
  */
@@ -27,9 +26,13 @@ add_action(
 		}
 		?>
 		<style id="elmercado-native-filter-remove-010180">
-			html body.elmercado-child-theme .woostify-sorting button.filter:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle),
-			html body.elmercado-child-theme .woostify-sorting a.filter:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle),
-			html body.elmercado-child-theme .woostify-sorting .filter.show:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle) {
+			/*
+			 * No dependemos de una clase del body: este CSS se emite sólo en catálogo
+			 * y debe poder aplicarse incluso antes de que el body exista en el DOM.
+			 */
+			html .woostify-sorting button.filter:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle),
+			html .woostify-sorting a.filter:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle),
+			html .woostify-sorting .filter.show:not(#emo-premium-filter-toggle):not(.emo-mobile-filter-toggle) {
 				display: none !important;
 				visibility: hidden !important;
 				opacity: 0 !important;
@@ -42,6 +45,22 @@ add_action(
 				border: 0 !important;
 				overflow: hidden !important;
 				pointer-events: none !important;
+			}
+
+			/*
+			 * El botón propio de filtros sólo pertenece al layout compacto. En PC
+			 * nace oculto desde el head, en lugar de esperar a CSS/JS posterior.
+			 */
+			@media (min-width: 1101px) {
+				html #emo-premium-filter-toggle,
+				html .emo-mobile-filter-toggle,
+				html #emo-premium-filter-shell,
+				html .emo-mobile-filter-shell {
+					display: none !important;
+					visibility: hidden !important;
+					opacity: 0 !important;
+					pointer-events: none !important;
+				}
 			}
 		</style>
 		<?php
