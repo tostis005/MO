@@ -36,26 +36,33 @@ jobs:
           raw="${1%/}"; domain="$2"; wp_path=""
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
           if [ ! -f "$wp_path/wp-config.php" ]; then wpconfig="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"; [ -n "$wpconfig" ] || exit 1; wp_path="$(dirname "$wpconfig")"; fi
-          wp_bin="$(command -v wp || true)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wc="$wp_path/wp-content/plugins/woocommerce"
+          prod="$(dirname "$wp_path")/httpdocs/wp-content/plugins/woocommerce"
           echo "WP_PATH=$wp_path"
-          echo "PHP=$php_bin"
+          echo "WC_PATH=$wc"
+          echo "PROD_WC_PATH=$prod"
+          echo '== PATH TYPES =='
+          ls -ld "$wc" "$wc/patterns" "$wc/src" "$wc/src/Blocks/Templates" 2>&1 || true
+          printf 'WC_REAL='; readlink -f "$wc" || true
+          printf 'PATTERNS_REAL='; readlink -f "$wc/patterns" || true
+          printf 'PATTERN_FILE_REAL='; readlink -f "$wc/patterns/coming-soon-entire-site.php" || true
+          printf 'TEMPLATE_REAL='; readlink -f "$wc/src/Blocks/Templates/ComingSoonTemplate.php" || true
+          echo '== LINKS INSIDE WC =='
+          find "$wc" -maxdepth 3 -type l -printf '%p -> %l\n' 2>/dev/null | head -n 100 || true
+          echo '== VERSIONS =='
+          grep -m1 -E '^ \* Version:' "$wc/woocommerce.php" 2>/dev/null || true
+          grep -m1 -E '^ \* Version:' "$prod/woocommerce.php" 2>/dev/null || true
+          echo '== METHOD CHECK =='
+          grep -n 'function get_font_families' "$wc/src/Blocks/Templates/ComingSoonTemplate.php" 2>/dev/null || true
+          grep -n 'function get_font_families' "$prod/src/Blocks/Templates/ComingSoonTemplate.php" 2>/dev/null || true
+          echo '== PATTERN HEADS =='
+          echo '--- staging resolved'; sed -n '1,45p' "$wc/patterns/coming-soon-entire-site.php" 2>/dev/null || true
+          echo '--- production direct'; sed -n '1,45p' "$prod/patterns/coming-soon-entire-site.php" 2>/dev/null || true
+          echo '== STAT =='
+          stat "$wc/patterns/coming-soon-entire-site.php" "$wc/src/Blocks/Templates/ComingSoonTemplate.php" 2>/dev/null || true
           echo '== HTTP =='
-          curl -k -sS -o /tmp/emdo-home.out -D /tmp/emdo-home.hdr --max-time 20 "https://$domain/" || true
-          head -n 20 /tmp/emdo-home.hdr || true
-          echo 'BODY_BEGIN'; head -c 2000 /tmp/emdo-home.out || true; echo; echo 'BODY_END'
-          echo '== PHP LINT EMDO =='
-          find "$wp_path/wp-content/plugins/mdo-supplier-sync" -type f -name '*.php' -print0 2>/dev/null | xargs -0 -r -n1 "$php_bin" -l || true
-          echo '== WP CLI =='
-          if [ -n "$wp_bin" ]; then
-            "$php_bin" -d display_errors=1 -d memory_limit=768M "$wp_bin" --path="$wp_path" --allow-root core version 2>&1 || true
-            "$php_bin" -d display_errors=1 -d memory_limit=768M "$wp_bin" --path="$wp_path" --allow-root plugin status mdo-supplier-sync 2>&1 || true
-            "$php_bin" -d display_errors=1 -d memory_limit=768M "$wp_bin" --path="$wp_path" --allow-root option get active_plugins --format=json 2>&1 || true
-          fi
-          echo '== DEBUG LOG =='
-          tail -n 150 "$wp_path/wp-content/debug.log" 2>/dev/null || true
-          echo '== RECENT LOGS =='
-          for f in "$wp_path"/error_log "$wp_path"/../logs/error_log "$wp_path"/../logs/proxy_error_log "$wp_path"/../logs/php_errors.log; do [ -f "$f" ] && { echo "--- $f"; tail -n 120 "$f"; }; done
-          find "$wp_path/wp-content" -maxdepth 3 -type f \( -name '*error*.log' -o -name 'debug.log' \) -mmin -180 -print 2>/dev/null | while read f; do echo "--- $f"; tail -n 80 "$f"; done
-          echo '== RECENT PLUGIN CHANGES =='
-          find "$wp_path/wp-content/plugins" -maxdepth 3 -type f -mmin -180 -printf '%TY-%Tm-%Td %TH:%TM:%TS %p\n' 2>/dev/null | sort | tail -n 120 || true
+          curl -k -sS -o /tmp/out -D /tmp/hdr --max-time 20 "https://$domain/" || true
+          head -n 12 /tmp/hdr || true
+          echo '== LAST FATALS =='
+          grep 'PHP Fatal error' "$wp_path/wp-content/debug.log" 2>/dev/null | tail -n 12 || true
           REMOTE
