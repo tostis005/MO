@@ -1,0 +1,95 @@
+name: Tolecarnes production verify
+
+on:
+  push:
+    branches:
+      - diag-cpu-20260812
+    paths:
+      - '.github/workflows/tolecarnes-prod-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Verify production visibility
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -euo pipefail
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] && dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin='/opt/plesk/php/8.2/bin/php'
+          wp='/usr/local/bin/wp'
+
+          echo '=== DB STATE ==='
+          "$php_bin" "$wp" db query "SELECT post_status,COUNT(*) c FROM wp_posts WHERE post_type='product' AND post_author=4507 GROUP BY post_status ORDER BY post_status" --path="$prod" --skip-plugins --skip-themes --allow-root
+          "$php_bin" "$wp" db query "SELECT COUNT(DISTINCT p.ID) carnes_published FROM wp_posts p JOIN wp_term_relationships tr ON tr.object_id=p.ID JOIN wp_term_taxonomy tt ON tt.term_taxonomy_id=tr.term_taxonomy_id WHERE p.post_type='product' AND p.post_author=4507 AND p.post_status='publish' AND tt.taxonomy='product_cat' AND tt.term_id=382" --path="$prod" --skip-plugins --skip-themes --allow-root
+          "$php_bin" "$wp" db query "SELECT ID,post_name,post_title FROM wp_posts WHERE ID IN (11058,11067,11120)" --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== WORDPRESS EXPLICIT VISIBILITY ==='
+          "$php_bin" -d memory_limit=512M "$wp" eval '
+          $vendor=4507; $sample_ids=[11058,11067,11120];
+          echo "disabled_vendor=" . (function_exists("elmercado_wcfm_vendor_is_disabled_010210") && elmercado_wcfm_vendor_is_disabled_010210($vendor) ? "yes":"no") . "\n";
+
+          wp_set_current_user(0);
+          echo "public_can_view_disabled=" . (function_exists("elmercado_wcfm_disabled_visibility_can_view_010210") && elmercado_wcfm_disabled_visibility_can_view_010210() ? "yes":"no") . "\n";
+          foreach($sample_ids as $id){
+              $post=get_post($id); $p=wc_get_product($id);
+              echo "PUBLIC id=$id author=" . ($post?$post->post_author:0) . " status=" . ($post?$post->post_status:"none") . " disabled_product=" . (function_exists("elmercado_wcfm_product_is_from_disabled_vendor_010210") && elmercado_wcfm_product_is_from_disabled_vendor_010210($id)?"yes":"no") . " is_visible=" . ($p && $p->is_visible()?"yes":"no") . " purchasable=" . ($p && $p->is_purchasable()?"yes":"no") . "\n";
+          }
+          $q0=new WP_Query(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"no_found_rows"=>true]);
+          $authors=[]; foreach($q0->posts as $post){$authors[(int)$post->post_author]=($authors[(int)$post->post_author]??0)+1;}
+          echo "public_query_total=".count($q0->posts)." authors=".json_encode($authors)." contains_tole=".(isset($authors[$vendor])?"yes":"no")."\n";
+
+          $admin_id=0;
+          foreach(get_users(["role"=>"administrator","fields"=>"ID"]) as $aid){wp_set_current_user((int)$aid); if(current_user_can("manage_options")){ $admin_id=(int)$aid; break; }}
+          echo "admin_id=$admin_id admin_can_view_disabled=" . (function_exists("elmercado_wcfm_disabled_visibility_can_view_010210") && elmercado_wcfm_disabled_visibility_can_view_010210()?"yes":"no") . "\n";
+          foreach($sample_ids as $id){$post=get_post($id);$p=wc_get_product($id);echo "ADMIN id=$id author=".($post?$post->post_author:0)." status=".($post?$post->post_status:"none")." is_visible=".($p&&$p->is_visible()?"yes":"no")."\n";}
+          $q1=new WP_Query(["post_type"=>"product","post_status"=>"publish","author"=>$vendor,"posts_per_page"=>-1,"no_found_rows"=>true]);
+          $authors=[]; foreach($q1->posts as $post){$authors[(int)$post->post_author]=($authors[(int)$post->post_author]??0)+1;}
+          echo "admin_query_total=".count($q1->posts)." authors=".json_encode($authors)." tole_count=".($authors[$vendor]??0)."\n";
+          ' --path="$prod" --allow-root
+
+          echo '=== EXTERNAL PRODUCT URLS AS PUBLIC ==='
+          for slug in carne-picada-extra chuleton-de-lomo-alto tira-de-churrasco-argentino; do
+            code=$(curl -k -L -sS --max-time 20 -A 'Mozilla/5.0' -o "/tmp/$slug.html" -w '%{http_code}' "https://www.elmercadodeorigen.com/producto/$slug/") || code=000
+            title_hits=$(grep -Eio 'Carne picada extra|Chuletón de lomo alto|Chuleton de lomo alto|Tira de churrasco argentino' "/tmp/$slug.html" | wc -l || true)
+            product_class_hits=$(grep -Eio 'product_title|single-product' "/tmp/$slug.html" | wc -l || true)
+            echo "slug=$slug http=$code title_hits=$title_hits product_markup=$product_class_hits"
+          done
+          echo '=== EXTERNAL CARNES TITLES ==='
+          curl -k -L -sS --max-time 20 -A 'Mozilla/5.0' https://www.elmercadodeorigen.com/categoria-producto/carnes/ -o /tmp/carnes.html
+          for needle in 'Carne picada extra' 'Chuletón de lomo alto' 'Tira de churrasco argentino'; do
+            hits=$(grep -Fio "$needle" /tmp/carnes.html | wc -l || true)
+            echo "$needle hits=$hits"
+          done
+          REMOTE
