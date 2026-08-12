@@ -1,4 +1,4 @@
-name: Inspect post-block traffic
+name: Check recovery after Meta block
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect traffic after block
+      - name: Check current recovery
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -37,27 +37,15 @@ jobs:
           sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set +e
           log=/var/www/vhosts/system/elmercadodeorigen.com/logs/access_ssl_log
-          tmp=$(mktemp)
-          grep -E '12/Aug/2026:20:(1[5-9]|2[0-9]):' "$log" > "$tmp"
           echo '=== CLOCK / LOAD ==='
           date -Is
           uptime
-          echo '=== REQUESTS SINCE 20:15 UTC ==='
-          wc -l < "$tmp"
-          echo '=== STATUS CODES ==='
-          awk '{c[$9]++} END {for (x in c) print x,c[x]}' "$tmp" | sort -n
-          echo '=== TOP USER AGENTS ==='
-          awk -F'"' '{print $6}' "$tmp" | sort | uniq -c | sort -nr | head -n 20
-          echo '=== TOP USER AGENTS NON-403 ==='
-          awk '$9 != 403' "$tmp" | awk -F'"' '{print $6}' | sort | uniq -c | sort -nr | head -n 20
-          echo '=== TOP PATHS NON-403 ==='
-          awk '$9 != 403' "$tmp" | awk -F'"' '{print $2}' | sed -E 's#^(GET|POST|HEAD) ##; s# HTTP/[0-9.]+$##; s#\?.*$##' | sort | uniq -c | sort -nr | head -n 35
-          echo '=== TOP IPS NON-403 ==='
-          awk '$9 != 403 {print $1}' "$tmp" | sort | uniq -c | sort -nr | head -n 25
-          echo '=== SPECIAL ENDPOINTS NON-403 ==='
-          awk '$9 != 403' "$tmp" | grep -E 'wp-cron|admin-ajax|as_async|add-to-cart|add_to_wishlist|remove_item|filter_|query_type_|vendor_id' | awk -F'"' '{print $2}' | sed -E 's# HTTP/[0-9.]+$##' | head -n 80
-          echo '=== CURRENT PHP COUNT / LOAD ==='
-          pgrep -fc 'php-fpm: pool elmercadodeorigen.com'
-          top -b -d 1 -n 2 | grep -E 'php-fpm|Cpu\(s\)|load average' | tail -n 35
-          rm -f "$tmp"
+          echo '=== HOT PHP ==='
+          ps -eo pid,etime,time,%cpu,%mem,args --sort=-%cpu | grep 'php-fpm' | head -n 24
+          echo '=== LAST 200 META STATUS ==='
+          tail -n 5000 "$log" | grep -i 'meta-externalagent' | tail -n 200 | awk '{c[$9]++} END {for (x in c) print x,c[x]}' | sort -n
+          echo '=== NORMAL HTTP ==='
+          curl -k -sS --max-time 10 -A 'Mozilla/5.0' -o /dev/null -w 'NORMAL_HTTP=%{http_code} TOTAL=%{time_total}\n' https://www.elmercadodeorigen.com/ || true
+          echo '=== FINAL LOAD ==='
+          uptime
           REMOTE
