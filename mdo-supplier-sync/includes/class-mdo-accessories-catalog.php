@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * productos de jamón/paleta no se consideran accesorios.
  */
 final class MDO_Accessories_Catalog {
-	private const VERSION        = '1.0.1';
+	private const VERSION        = '1.0.2';
 	private const VERSION_OPTION = 'mdo_accessories_catalog_version';
 	private const REPORT_OPTION  = 'mdo_accessories_catalog_last_report';
 	private const SNAPSHOT_META  = '_emdo_accessories_catalog_snapshot';
@@ -179,18 +179,18 @@ final class MDO_Accessories_Catalog {
 	}
 
 	private static function detect_type( string $title ): string {
-		// Solo productos cuyo objeto principal es el accesorio. Así se excluyen
-		// “cortado a cuchillo” y “jamón + jamonero/cuchillo gratis”.
-		if ( preg_match( '/^cuchillo(?:s)?\b/u', $title ) ) {
+		// Los productos alimentarios cuyo título empieza por Jamón o Paleta pueden
+		// mencionar “cortado a cuchillo” o regalos de jamonero/cuchillo; no son accesorios.
+		if ( preg_match( '/^(?:jamon|paleta)\b/u', $title ) ) {
+			return '';
+		}
+
+		// En los accesorios reales el término puede aparecer después de “blíster”,
+		// “set”, “soporte”, etc. Cuchillo prevalece sobre jamonero (p. ej. cuchillo jamonero).
+		if ( preg_match( '/\bcuchillo(?:s)?\b/u', $title ) ) {
 			return 'Cuchillo';
 		}
-		if ( preg_match( '/^(?:blister|estuche|set|kit|pack)(?:\s+de)?\s+cuchillo(?:s)?\b/u', $title ) ) {
-			return 'Cuchillo';
-		}
-		if ( preg_match( '/^jamonero(?:s)?\b/u', $title ) ) {
-			return 'Jamonero';
-		}
-		if ( preg_match( '/^soporte\s+jamonero(?:s)?\b/u', $title ) ) {
+		if ( preg_match( '/\bjamonero(?:s)?\b/u', $title ) ) {
 			return 'Jamonero';
 		}
 		return '';
