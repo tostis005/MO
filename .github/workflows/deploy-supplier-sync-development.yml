@@ -100,7 +100,7 @@ jobs:
           : "${WP_PATH:?Could not resolve staging WordPress path}"
           echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
 
-      - name: Deploy activate classify audit rescue finalize precision and provision cron
+      - name: Deploy activate classify catalogs and provision cron
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -142,6 +142,15 @@ jobs:
 
           precision_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Ham_Catalog_Precision::apply_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
           printf 'Jamones/Paletas precision: %s\n' "$precision_report"
+
+          cured_report="$("$php_bin" -d memory_limit=1024M "$wp_bin" eval 'echo wp_json_encode( MDO_Cured_Catalog::migrate_catalog( true ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );' --path="$wp_path" --allow-root)"
+          printf 'Embutidos/Curados + Packs/Lotes: %s\n' "$cured_report"
+          individual_count="$(printf '%s' "$cured_report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo (int)($d["individual_cured"] ?? 0);')"
+          packs_count="$(printf '%s' "$cured_report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo (int)($d["packs"] ?? 0);')"
+          errors_count="$(printf '%s' "$cured_report" | "$php_bin" -r '$d=json_decode(stream_get_contents(STDIN), true); echo count((array)($d["errors"] ?? array()));')"
+          [ "$individual_count" -ge 50 ] || { echo "Expected at least 50 individual cured products, got $individual_count" >&2; exit 1; }
+          [ "$packs_count" -ge 48 ] || { echo "Expected at least 48 packs/lots, got $packs_count" >&2; exit 1; }
+          [ "$errors_count" -eq 0 ] || { echo "Cured catalog migration reported $errors_count errors" >&2; exit 1; }
 
           existing="$(mktemp)"
           cleaned="$(mktemp)"
