@@ -171,14 +171,46 @@ add_action(
 			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat) #emo-global-vendor-filter {
 				box-sizing:border-box !important;
 				width:100% !important;
+				box-shadow:none !important;
+			}
+
+			/* Tienda: Vendedor replica la misma jerarquía visual que Precio y Categorías. */
+			body.elmercado-child-theme.woocommerce-shop #emo-global-vendor-filter {
+				margin:0 0 18px !important;
+				padding:0 !important;
+				border:0 !important;
+				border-radius:0 !important;
+				background:transparent !important;
+			}
+			body.elmercado-child-theme.woocommerce-shop #emo-global-vendor-filter .emo-global-vendor-filter__title {
+				display:flex !important;
+				min-height:40px !important;
+				align-items:center !important;
+				justify-content:center !important;
+				margin:0 0 14px !important;
+				padding:8px 12px !important;
+				border:0 !important;
+				border-radius:11px !important;
+				background:#173f32 !important;
+				color:#fff !important;
+				font-family:inherit !important;
+				font-size:12px !important;
+				font-weight:850 !important;
+				letter-spacing:.06em !important;
+				line-height:1.2 !important;
+				text-align:center !important;
+				text-transform:uppercase !important;
+			}
+
+			/* Categoría: Vendedor pertenece al sistema compacto de refinamientos específicos. */
+			body.elmercado-child-theme.tax-product_cat #emo-global-vendor-filter {
 				margin:0 !important;
 				padding:12px 0 10px !important;
 				border:0 !important;
 				border-bottom:1px solid rgba(23,63,50,.085) !important;
 				background:transparent !important;
-				box-shadow:none !important;
 			}
-			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat) #emo-global-vendor-filter .emo-global-vendor-filter__title {
+			body.elmercado-child-theme.tax-product_cat #emo-global-vendor-filter .emo-global-vendor-filter__title {
 				display:block !important;
 				width:100% !important;
 				min-height:0 !important;
@@ -190,10 +222,12 @@ add_action(
 				font-family:inherit !important;
 				font-size:12.5px !important;
 				font-weight:750 !important;
+				letter-spacing:0 !important;
 				line-height:1.3 !important;
 				text-align:left !important;
 				text-transform:none !important;
 			}
+
 			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat) #emo-global-vendor-filter .emo-global-vendor-filter__clear {
 				display:inline-block !important;
 				margin:0 2px 7px !important;
