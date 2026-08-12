@@ -84,7 +84,7 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/plugin'"
           sshpass -e rsync -az --delete --exclude='.DS_Store' -e "ssh $SSH_OPTIONS" mdo-supplier-sync/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/plugin/"
 
-      - name: Deploy and verify both environments
+      - name: Deploy classify and verify both environments
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -108,10 +108,9 @@ jobs:
           fi
           prod_path="$(dirname "$dev_path")/httpdocs"
           [ -f "$dev_path/wp-config.php" ] && [ -f "$prod_path/wp-config.php" ]
-          wp_bin="$(command -v wp || true)"
           php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
-          [ -n "$wp_bin" ] && [ -x "$php_bin" ]
+          [ -x "$php_bin" ]
 
           dev_target="$dev_path/wp-content/plugins/mdo-supplier-sync"
           prod_target="$prod_path/wp-content/plugins/mdo-supplier-sync"
@@ -120,10 +119,38 @@ jobs:
           rm -rf "$dev_backup" "$prod_backup"
           cp -a "$dev_target" "$dev_backup"
           cp -a "$prod_target" "$prod_backup"
+
+          restore_data() {
+            wp_path="$1"; gondola="$2"; bellota="$3"; basculante="$4"
+            script="/tmp/emdo-jamoneras-restore-$$.php"
+            cat > "$script" <<PHP
+          <?php
+          ini_set('memory_limit','512M');
+          if (!defined('WP_MEMORY_LIMIT')) define('WP_MEMORY_LIMIT','512M');
+          if (!defined('WP_MAX_MEMORY_LIMIT')) define('WP_MAX_MEMORY_LIMIT','512M');
+          require '${wp_path}/wp-load.php';
+          \$default=(int)get_option('default_product_cat',0);
+          foreach (array(${gondola},${bellota},${basculante}) as \$id) {
+            \$p=wc_get_product(\$id);
+            if (!\$p instanceof WC_Product) continue;
+            \$attrs=\$p->get_attributes();
+            unset(\$attrs['pa_tipo-producto']);
+            \$p->set_attributes(\$attrs);
+            if (\$default>0) \$p->set_category_ids(array(\$default));
+            \$p->save();
+            if (taxonomy_exists('pa_tipo-producto')) wp_remove_object_terms(\$id,array('Jamonero'),'pa_tipo-producto');
+          }
+          PHP
+            "$php_bin" -d memory_limit=512M "$script" >/dev/null 2>&1 || true
+            rm -f "$script"
+          }
+
           rollback() {
             code=$?
             if [ "$code" -ne 0 ]; then
-              echo 'Jamoneras QA failed; restoring both plugin copies.' >&2
+              echo 'Jamoneras QA failed; restoring plugin files and the three table assignments.' >&2
+              restore_data "$dev_path" 11382 11391 11397
+              restore_data "$prod_path" 12566 12575 12581
               rm -rf "$dev_target" "$prod_target"
               mv "$dev_backup" "$dev_target"
               mv "$prod_backup" "$prod_target"
@@ -137,43 +164,47 @@ jobs:
 
           rsync -a --delete "$incoming/plugin/" "$dev_target/"
           rsync -a --delete "$incoming/plugin/" "$prod_target/"
-          "$php_bin" "$wp_bin" plugin is-active mdo-supplier-sync --path="$dev_path" --allow-root >/dev/null
-          "$php_bin" "$wp_bin" plugin is-active mdo-supplier-sync --path="$prod_path" --allow-root >/dev/null
 
           classify_and_verify() {
-            env_name="$1"; wp_path="$2"; gondola="$3"; bellota="$4"; basculante="$5"; cuchillo="$6"
-            code="$(cat <<PHP
+            env_name="$1"; wp_path="$2"; gondola="$3"; bellota="$4"; basculante="$5"; cuchillo="$6"; false1="$7"; false2="$8"
+            script="/tmp/emdo-jamoneras-${env_name}-$$.php"
+            cat > "$script" <<PHP
+          <?php
+          ini_set('memory_limit','512M');
+          if (!defined('WP_MEMORY_LIMIT')) define('WP_MEMORY_LIMIT','512M');
+          if (!defined('WP_MAX_MEMORY_LIMIT')) define('WP_MAX_MEMORY_LIMIT','512M');
+          require '${wp_path}/wp-load.php';
+          if (!class_exists('MDO_Accessories_Catalog')) { fwrite(STDERR,"Classifier missing\n"); exit(30); }
           foreach (array(${gondola},${bellota},${basculante}) as \$id) {
             \$result=MDO_Accessories_Catalog::classify_product(\$id);
-            if (empty(\$result['target']) || 'Jamonero'!==(\$result['type']??'')) { fwrite(STDERR,'Could not classify jamonera '.\$id."\n"); exit(31); }
+            if (empty(\$result['target']) || 'Jamonero'!==(string)(\$result['type']??'')) { fwrite(STDERR,"Could not classify jamonera \$id\n"); exit(31); }
           }
           foreach (array(${gondola},${bellota},${basculante}) as \$id) {
             \$p=wc_get_product(\$id);
-            if (!\$p instanceof WC_Product || 'publish'!==\$p->get_status() || !has_term('accesorios','product_cat',\$id)) { exit(32); }
+            if (!\$p instanceof WC_Product || 'publish'!==\$p->get_status() || !\$p->is_in_stock() || !has_term('accesorios','product_cat',\$id)) { fwrite(STDERR,"Bad jamonera \$id\n"); exit(32); }
             \$types=wp_get_post_terms(\$id,'pa_tipo-producto',array('fields'=>'names'));
-            if (is_wp_error(\$types) || \$types!==array('Jamonero')) { exit(33); }
+            if (is_wp_error(\$types) || \$types!==array('Jamonero')) { fwrite(STDERR,"Bad type for \$id\n"); exit(33); }
+            if (in_array((int)get_option('default_product_cat',0),\$p->get_category_ids(),true)) { fwrite(STDERR,"Still uncategorized \$id\n"); exit(34); }
           }
-          \$types=wp_get_post_terms(${cuchillo},'pa_tipo-producto',array('fields'=>'names'));
-          if (!has_term('accesorios','product_cat',${cuchillo}) || is_wp_error(\$types) || \$types!==array('Cuchillo')) { exit(34); }
+          \$knife_types=wp_get_post_terms(${cuchillo},'pa_tipo-producto',array('fields'=>'names'));
+          if (!has_term('accesorios','product_cat',${cuchillo}) || is_wp_error(\$knife_types) || \$knife_types!==array('Cuchillo')) { fwrite(STDERR,"Knife invalid\n"); exit(35); }
+          foreach (array(${false1},${false2}) as \$id) {
+            \$types=wp_get_post_terms(\$id,'pa_tipo-producto',array('fields'=>'names'));
+            if (has_term('accesorios','product_cat',\$id) || (!is_wp_error(\$types) && array_intersect(array('Jamonero','Cuchillo'),\$types))) { fwrite(STDERR,"False positive \$id\n"); exit(36); }
+          }
           \$q=new WP_Query(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','tax_query'=>array(array('taxonomy'=>'product_cat','field'=>'slug','terms'=>array('accesorios')))));
           \$ids=array_values(array_unique(array_map('intval',\$q->posts))); sort(\$ids);
           \$expected=array(${gondola},${bellota},${basculante},${cuchillo}); sort(\$expected);
-          if (\$ids!==\$expected) { fwrite(STDERR,'Unexpected public accessories: '.wp_json_encode(\$ids)."\n"); exit(35); }
-          foreach (\$ids as \$id) { if (!wc_get_product(\$id)->is_in_stock()) exit(36); }
-          foreach (array(${gondola},${bellota},${basculante}) as \$id) {
-            if (in_array((int)get_option('default_product_cat',0),wc_get_product(\$id)->get_category_ids(),true)) { exit(37); }
-          }
-          echo 'PUBLIC_ACCESSORIES_OK';
+          if (\$ids!==\$expected) { fwrite(STDERR,'Unexpected public accessories: '.wp_json_encode(\$ids)."\n"); exit(37); }
+          echo wp_json_encode(array('environment'=>'${env_name}','published_accessories'=>\$ids,'jamoneros'=>array(${gondola},${bellota},${basculante}),'cuchillo'=>${cuchillo}),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
           PHP
-            )"
-            "$php_bin" -d memory_limit=512M "$wp_bin" eval "$code" --path="$wp_path" --allow-root | grep -q PUBLIC_ACCESSORIES_OK
-            echo "$env_name=passed"
+            result="$("$php_bin" -d memory_limit=512M "$script")"
+            rm -f "$script"
+            echo "$env_name QA: $result"
           }
 
-          classify_and_verify DEVELOPMENT "$dev_path" 11382 11391 11397 11403
-          classify_and_verify PRODUCTION "$prod_path" 12566 12575 12581 12587
-          "$php_bin" "$wp_bin" cache flush --path="$dev_path" --skip-plugins --allow-root >/dev/null 2>&1 || true
-          "$php_bin" "$wp_bin" cache flush --path="$prod_path" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          classify_and_verify DEVELOPMENT "$dev_path" 11382 11391 11397 11403 11379 11415
+          classify_and_verify PRODUCTION "$prod_path" 12566 12575 12581 12587 12563 12599
           echo 'JAMONERAS_BOTH_ENVIRONMENTS_QA=passed'
           rm -rf "$dev_backup" "$prod_backup" "$incoming"
           trap - EXIT HUP INT TERM
@@ -187,4 +218,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add mdo-supplier-sync/includes/class-mdo-accessories-catalog.php mdo-supplier-sync/mdo-supplier-sync.php
           git commit -m 'Reconoce tablas jamoneras como accesorios'
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
