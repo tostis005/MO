@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.189' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.190' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -140,6 +140,7 @@ $elmercado_modules = array(
 	'inc/category-specific-filters-010185.php',
 	'inc/category-filter-design-010187.php',
 	'inc/category-filter-display-fix-010189.php',
+	'inc/active-filter-chips-010190.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
