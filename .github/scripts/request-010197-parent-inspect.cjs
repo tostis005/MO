@@ -4,7 +4,7 @@ const puppeteer = require('puppeteer-core');
   const browser = await puppeteer.launch({ executablePath:'/usr/bin/google-chrome', headless:'new', args:['--no-sandbox','--disable-dev-shm-usage'] });
   const page = await browser.newPage();
   await page.setViewport({ width:1440, height:1100 });
-  await page.goto('https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?parent-inspect=1', { waitUntil:'domcontentloaded', timeout:60000 });
+  await page.goto('https://dev.elmercadodeorigen.com/categoria-producto/jamones-paletas/?parent-inspect=2', { waitUntil:'domcontentloaded', timeout:60000 });
   await new Promise((r) => setTimeout(r, 2400));
   const data = await page.evaluate(() => {
     const nodes = {
