@@ -37,6 +37,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-tag-closur
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-canonical-closure.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-catalog-direct-closure.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-cured-catalog.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-cured-producer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';
@@ -69,6 +70,7 @@ add_action(
 		MDO_Ham_Catalog_Canonical_Closure::init();
 		MDO_Ham_Catalog_Direct_Closure::init();
 		MDO_Cured_Catalog::init();
+		MDO_Cured_Producer::init();
 		MDO_Variable_Upgrade::init();
 		MDO_Description_Guard::init();
 		MDO_Product_Slugs::init();
