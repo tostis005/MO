@@ -1,11 +1,11 @@
 <?php
 /**
- * Conteo publico y jerarquia visual de las categorias de la Home 0.10.212.
+ * Conteo contextual y jerarquia visual de las categorias de la Home.
  *
- * La portada no debe usar el count persistido del termino porque ese valor
- * sigue incluyendo productos publicados de vendedores WCFM que hemos decidido
- * tratar como inexistentes para el publico. Este modulo calcula el total con
- * las mismas exclusiones y separa nombre y numero de productos en dos lineas.
+ * La portada no debe usar el count persistido del termino para visitantes
+ * publicos, porque ese valor incluye productos publicados de vendedores WCFM
+ * desactivados. Los administradores, en cambio, deben ver exactamente el mismo
+ * catalogo completo que ya ven en Tienda y en los archivos de categoria.
  *
  * @package ElMercadoDeOrigen
  */
@@ -15,12 +15,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Cuenta productos publicados realmente disponibles para el catalogo publico
- * dentro de una categoria, incluyendo sus categorias hijas.
+ * Cuenta productos publicados visibles para el usuario actual dentro de una
+ * categoria, incluyendo sus categorias hijas.
  *
- * El resultado es deliberadamente publico incluso para administradores: la
- * Home puede estar cacheada y su contador debe ser unico y coherente para
- * cualquier visitante.
+ * Reutiliza deliberadamente la misma capacidad que gobierna Tienda: los
+ * administradores con manage_options no excluyen vendedores desactivados; el
+ * resto de usuarios si.
  */
 function elmercado_home_public_category_count_010212( int $term_id ): int {
 	static $counts = array();
@@ -30,11 +30,16 @@ function elmercado_home_public_category_count_010212( int $term_id ): int {
 		return 0;
 	}
 
-	if ( isset( $counts[ $term_id ] ) ) {
-		return $counts[ $term_id ];
+	$can_view_disabled = function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' )
+		&& elmercado_wcfm_disabled_visibility_can_view_010210();
+	$scope_key         = $can_view_disabled ? 'admin' : 'public';
+	$cache_key         = $scope_key . ':' . $term_id;
+
+	if ( isset( $counts[ $cache_key ] ) ) {
+		return $counts[ $cache_key ];
 	}
 
-	$disabled_vendor_ids = function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' )
+	$disabled_vendor_ids = ! $can_view_disabled && function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' )
 		? array_values( array_filter( array_map( 'absint', elmercado_wcfm_disabled_vendor_ids_010210() ) ) )
 		: array();
 
@@ -64,17 +69,17 @@ function elmercado_home_public_category_count_010212( int $term_id ): int {
 		$args['author__not_in'] = $disabled_vendor_ids;
 	}
 
-	$query              = new WP_Query( $args );
-	$counts[ $term_id ] = max( 0, (int) $query->found_posts );
+	$query                = new WP_Query( $args );
+	$counts[ $cache_key ] = max( 0, (int) $query->found_posts );
 	wp_reset_postdata();
 
-	return $counts[ $term_id ];
+	return $counts[ $cache_key ];
 }
 
 /**
  * Sustituye en el HTML ya compuesto de la Home el count persistido de cada
- * tarjeta por el total publico. Una categoria que se haya quedado sin ningun
- * producto visible deja de ocupar una tarjeta.
+ * tarjeta por el total que corresponde al usuario actual. Una categoria sin
+ * ningun producto visible para ese usuario deja de ocupar una tarjeta.
  */
 add_filter(
 	'the_content',
@@ -129,19 +134,19 @@ add_filter(
 					$card = (string) $matches[0];
 					$card = (string) preg_replace(
 						'~<div class="emo-category-card__content">~',
-						'<div class="emo-category-card__content" style="display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-end!important;gap:0!important;min-width:0!important;">',
+						'<div class="emo-category-card__content" style="display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-end!important;gap:0!important;min-width:0!important;width:100%!important;">',
 						$card,
 						1
 					);
 					$card = (string) preg_replace(
 						'~<strong>~',
-						'<strong style="display:block!important;width:100%!important;max-width:100%!important;margin:0 0 6px!important;line-height:1.14!important;">',
+						'<strong style="display:block!important;width:100%!important;max-width:100%!important;margin:0 0 6px!important;line-height:1.14!important;text-align:left!important;">',
 						$card,
 						1
 					);
 					$card = (string) preg_replace(
 						'~<small>.*?</small>~s',
-						'<small style="display:block!important;width:100%!important;margin:0!important;line-height:1.2!important;">' . $label . '</small>',
+						'<small style="display:block!important;width:100%!important;margin:0!important;line-height:1.2!important;text-align:right!important;align-self:stretch!important;">' . $label . '</small>',
 						$card,
 						1
 					);
@@ -160,7 +165,7 @@ add_filter(
 /**
  * La Home dispone de cache HTML/estatica. Si WCFM cambia el estado de una
  * tienda hay que invalidarla en ese mismo momento para que el nuevo count sea
- * visible sin esperar a que expire la cache.
+ * visible sin esperar a que expire la cache anonima.
  *
  * El primer parametro es int al crear/actualizar metadata y array al borrarla,
  * por eso se mantiene deliberadamente sin type hint.
@@ -203,14 +208,15 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-home-category-visibility-010212">
+		<style id="elmercado-home-category-visibility-010213">
 			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content {
 				display: flex !important;
 				flex-direction: column !important;
-				align-items: flex-start !important;
+				align-items: stretch !important;
 				justify-content: flex-end !important;
 				gap: 0 !important;
 				min-width: 0 !important;
+				width: 100% !important;
 			}
 
 			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content > strong {
@@ -219,6 +225,7 @@ add_action(
 				max-width: 100% !important;
 				margin: 0 0 6px !important;
 				line-height: 1.14 !important;
+				text-align: left !important;
 			}
 
 			html body.home.elmercado-child-theme .emo-home .emo-category-card .emo-category-card__content > small {
@@ -226,6 +233,8 @@ add_action(
 				width: 100% !important;
 				margin: 0 !important;
 				line-height: 1.2 !important;
+				text-align: right !important;
+				align-self: stretch !important;
 			}
 		</style>
 		<?php
