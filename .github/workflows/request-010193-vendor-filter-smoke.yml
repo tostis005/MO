@@ -1,0 +1,38 @@
+name: Request 010193 vendor filter smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/catalog-core-filters-010193.php'
+      - 'elmercadodeorigen-child/inc/active-filter-chips-010193.php'
+      - '.github/scripts/request-010193-vendor-filter-smoke.cjs'
+      - '.github/workflows/request-010193-vendor-filter-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: request-010193-vendor-filter-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser audit dependency
+        run: npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Validate smoke test syntax
+        run: node --check .github/scripts/request-010193-vendor-filter-smoke.cjs
+      - name: Review vendor filter on staging
+        run: node .github/scripts/request-010193-vendor-filter-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: request-010193-vendor-filter-smoke
+          path: qa/
+          retention-days: 14
