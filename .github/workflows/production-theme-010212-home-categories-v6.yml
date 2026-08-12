@@ -1,0 +1,102 @@
+name: Production theme 0.10.212 Home categories v6
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-theme-010212-home-categories-v6.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      EXPECTED_VERSION: 0.10.212
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release and deployment scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.212'" elmercadodeorigen-child/functions.php
+          grep -Eq '^Version:[[:space:]]*0\.10\.212$' elmercadodeorigen-child/style.css
+          grep -q 'home-category-visibility-010212.php' elmercadodeorigen-child/functions.php
+          php -l .github/scripts/elmercado-opcache-reset.php >/dev/null
+          php -l .github/scripts/elmercado-runtime-probe.php >/dev/null
+          bash -n .github/scripts/deploy-home-categories-010212.sh
+          bash -n .github/scripts/verify-home-categories-010212-runtime.sh
+          bash -n .github/scripts/rollback-home-categories-010212.sh
+          node --check .github/scripts/home-categories-010212-browser.cjs
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          echo 'LOCAL_HOME_010212_V6_OK'
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass jq google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node -e "require('puppeteer-core')"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Backup deploy and calculate production category counts
+        shell: bash
+        run: bash .github/scripts/deploy-home-categories-010212.sh
+
+      - name: Verify production PHP-FPM runtime and Home response
+        shell: bash
+        run: bash .github/scripts/verify-home-categories-010212-runtime.sh
+
+      - name: Verify production Home in real Chrome
+        shell: bash
+        run: node .github/scripts/home-categories-010212-browser.cjs
+
+      - name: Finalize successful release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$PREDEPLOY_OLD_PATH' '$REMOTE_TMP'"
+          echo 'PRODUCTION_HOME_010212_V6_OK'
+          echo "Previous: $PREVIOUS_VERSION"
+          echo "Current: $CURRENT_VERSION"
+          echo "Rollback backup: $BACKUP_NAME"
+          echo "Counts: $COUNTS_JSON"
+
+      - name: Automatic rollback on post-deploy failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "${PRODUCTION_WP_PATH:-}" ] && [ -n "${PREDEPLOY_OLD_PATH:-}" ] && [ -n "${ROLLBACK_BACKUP_DIR:-}" ]; then
+            bash .github/scripts/rollback-home-categories-010212.sh
+          else
+            echo 'No completed production swap to roll back.'
+          fi
