@@ -1,6 +1,6 @@
 <?php
 /**
- * Acabado estable de cabecera y búsqueda, refinado en 0.10.182.
+ * Acabado estable de cabecera y búsqueda, refinado en 0.10.183.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,7 +16,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-header-search-finish-010182">
+		<style id="elmercado-header-search-finish-010183">
 			@media (min-width: 992px) {
 				body.elmercado-child-theme .site-header .site-tools {
 					gap: .5rem !important;
@@ -64,10 +64,7 @@ add_action(
 				}
 			}
 
-			/*
-			 * Overlay nativo de Woostify. Conservamos su apertura/cierre y su formulario,
-			 * pero lo llevamos al lenguaje visual editorial del sitio.
-			 */
+			/* Rediseño del diálogo nativo de Woostify, sin sustituir su comportamiento. */
 			body.elmercado-child-theme .site-dialog-search.woostify-search-wrap {
 				align-items: center !important;
 				justify-content: center !important;
@@ -215,9 +212,9 @@ add_action(
 
 			body.elmercado-child-theme .site-dialog-search button[type="submit"],
 			body.elmercado-child-theme .site-dialog-search input[type="submit"],
-			body.elmercado-child-theme .site-dialog-search .search-submit,
-			body.elmercado-child-theme .site-dialog-search .search-form-icon {
+			body.elmercado-child-theme .site-dialog-search .search-submit {
 				box-sizing: border-box !important;
+				display: block !important;
 				height: 62px !important;
 				min-height: 62px !important;
 				min-width: 112px !important;
@@ -233,6 +230,7 @@ add_action(
 				font-style: normal !important;
 				letter-spacing: .02em !important;
 				text-transform: none !important;
+				cursor: pointer !important;
 				transition: background-color 160ms ease,border-color 160ms ease,transform 160ms ease,box-shadow 160ms ease !important;
 			}
 
@@ -241,13 +239,16 @@ add_action(
 			body.elmercado-child-theme .site-dialog-search input[type="submit"]:hover,
 			body.elmercado-child-theme .site-dialog-search input[type="submit"]:focus-visible,
 			body.elmercado-child-theme .site-dialog-search .search-submit:hover,
-			body.elmercado-child-theme .site-dialog-search .search-submit:focus-visible,
-			body.elmercado-child-theme .site-dialog-search .search-form-icon:hover,
-			body.elmercado-child-theme .site-dialog-search .search-form-icon:focus-visible {
+			body.elmercado-child-theme .site-dialog-search .search-submit:focus-visible {
 				border-color: #2f7d5d !important;
 				background: #2f7d5d !important;
 				box-shadow: 0 12px 28px rgba(47,125,93,.22) !important;
 				transform: translateY(-1px);
+			}
+
+			/* Woostify añade un span decorativo después del submit; aquí el CTA ya lleva texto. */
+			body.elmercado-child-theme .site-dialog-search .search-form-icon {
+				display: none !important;
 			}
 
 			/* Mantener coherente cualquier buscador/sugerencia complementaria ya existente. */
@@ -328,16 +329,14 @@ add_action(
 				body.elmercado-child-theme .site-dialog-search input[type="search"],
 				body.elmercado-child-theme .site-dialog-search button[type="submit"],
 				body.elmercado-child-theme .site-dialog-search input[type="submit"],
-				body.elmercado-child-theme .site-dialog-search .search-submit,
-				body.elmercado-child-theme .site-dialog-search .search-form-icon {
+				body.elmercado-child-theme .site-dialog-search .search-submit {
 					height: 56px !important;
 					min-height: 56px !important;
 					border-radius: 14px !important;
 				}
 				body.elmercado-child-theme .site-dialog-search button[type="submit"],
 				body.elmercado-child-theme .site-dialog-search input[type="submit"],
-				body.elmercado-child-theme .site-dialog-search .search-submit,
-				body.elmercado-child-theme .site-dialog-search .search-form-icon {
+				body.elmercado-child-theme .site-dialog-search .search-submit {
 					min-width: 96px !important;
 					padding: 0 16px !important;
 				}
@@ -351,8 +350,7 @@ add_action(
 				}
 				body.elmercado-child-theme .site-dialog-search button[type="submit"],
 				body.elmercado-child-theme .site-dialog-search input[type="submit"],
-				body.elmercado-child-theme .site-dialog-search .search-submit,
-				body.elmercado-child-theme .site-dialog-search .search-form-icon {
+				body.elmercado-child-theme .site-dialog-search .search-submit {
 					width: 100% !important;
 					min-width: 0 !important;
 				}
