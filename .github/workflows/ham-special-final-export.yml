@@ -1,0 +1,80 @@
+name: Export ham special final cases
+
+on:
+  push:
+    branches: [dev/ham-catalog-audit]
+    paths:
+      - 'scripts/ham-special-final-export.php'
+      - '.github/workflows/ham-special-final-export.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate
+        run: php -l scripts/ham-special-final-export.php
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass rsync
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Resolve and export
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; domain="$2"; wp_path=""
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; *) wp_path="$raw" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            candidates="$(mktemp)"; trap 'rm -f "$candidates"' EXIT
+            for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www; do
+              [ -d "$base" ] || continue
+              find "$base" -maxdepth 9 -type f -name wp-config.php 2>/dev/null >> "$candidates" || true
+            done
+            preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+            [ -n "$preferred" ] || exit 1
+            wp_path="$(dirname "$preferred")"
+          fi
+          printf '__WP_PATH__=%s\n' "$wp_path"
+          REMOTE
+          )"
+          WP_PATH="$(printf '%s\n' "$OUTPUT" | sed -n 's/^__WP_PATH__=//p' | tail -n1)"
+          : "${WP_PATH:?Missing WP path}"
+          REMOTE_SCRIPT="/tmp/ham-special-${GITHUB_RUN_ID}.php"
+          REMOTE_JSON="/tmp/ham-special-${GITHUB_RUN_ID}.json"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" scripts/ham-special-final-export.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php /usr/local/bin/wp eval-file '$REMOTE_SCRIPT' --path='$WP_PATH' --allow-root > '$REMOTE_JSON'"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" "$STAGING_USER@$STAGING_HOST:$REMOTE_JSON" ham-special-final.json
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_SCRIPT' '$REMOTE_JSON'" || true
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ham-special-final
+          path: ham-special-final.json
+          retention-days: 2
