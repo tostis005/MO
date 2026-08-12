@@ -72,6 +72,103 @@ function elmercado_home_public_category_count_010212( int $term_id ): int {
 }
 
 /**
+ * Sustituye en el HTML ya compuesto de la Home el count persistido de cada
+ * tarjeta por el total publico. Una categoria que se haya quedado sin ningun
+ * producto visible deja de ocupar una tarjeta.
+ */
+add_filter(
+	'the_content',
+	static function ( string $content ): string {
+		if ( is_admin() || ! is_front_page() || ! in_the_loop() || ! is_main_query() || false === strpos( $content, 'emo-category-card' ) ) {
+			return $content;
+		}
+
+		$exclude = array_filter( array( (int) get_option( 'default_product_cat' ) ) );
+		$terms   = get_terms(
+			array(
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => true,
+				'number'     => 6,
+				'orderby'    => 'count',
+				'order'      => 'DESC',
+				'exclude'    => $exclude,
+			)
+		);
+
+		if ( is_wp_error( $terms ) || empty( $terms ) ) {
+			return $content;
+		}
+
+		foreach ( $terms as $term ) {
+			if ( ! $term instanceof WP_Term ) {
+				continue;
+			}
+
+			$link = get_term_link( $term );
+			if ( is_wp_error( $link ) ) {
+				continue;
+			}
+
+			$count        = elmercado_home_public_category_count_010212( (int) $term->term_id );
+			$escaped_link = esc_url( $link );
+			$card_pattern = '~<a class="emo-category-card" href="' . preg_quote( $escaped_link, '~' ) . '"[^>]*>.*?</a>~s';
+
+			if ( $count <= 0 ) {
+				$content = (string) preg_replace( $card_pattern, '', $content, 1 );
+				continue;
+			}
+
+			$label = sprintf(
+				esc_html( _n( '%s producto', '%s productos', $count, 'elmercadodeorigen' ) ),
+				number_format_i18n( $count )
+			);
+
+			$content = (string) preg_replace_callback(
+				$card_pattern,
+				static function ( array $matches ) use ( $label ): string {
+					return (string) preg_replace( '~<small>.*?</small>~s', '<small>' . $label . '</small>', $matches[0], 1 );
+				},
+				$content,
+				1
+			);
+		}
+
+		return $content;
+	},
+	1000
+);
+
+/**
+ * La Home dispone de cache HTML/estatica. Si WCFM cambia el estado de una
+ * tienda hay que invalidarla en ese mismo momento para que el nuevo count sea
+ * visible sin esperar a que expire la cache.
+ */
+function elmercado_flush_home_for_wcfm_vendor_state_010212( int $meta_id, int $user_id, string $meta_key ): void {
+	unset( $meta_id, $user_id );
+	if ( in_array( $meta_key, array( '_disable_vendor', '_wcfm_store_offline' ), true ) && function_exists( 'elmercado_flush_home_cache' ) ) {
+		elmercado_flush_home_cache();
+	}
+}
+add_action( 'added_user_meta', 'elmercado_flush_home_for_wcfm_vendor_state_010212', 10, 3 );
+add_action( 'updated_user_meta', 'elmercado_flush_home_for_wcfm_vendor_state_010212', 10, 3 );
+add_action( 'deleted_user_meta', 'elmercado_flush_home_for_wcfm_vendor_state_010212', 10, 3 );
+
+add_action(
+	'set_user_role',
+	static function ( int $user_id, string $role, array $old_roles ): void {
+		unset( $user_id );
+		$watched_roles = array( 'wcfm_vendor', 'vendor', 'disable_vendor' );
+		if ( in_array( $role, $watched_roles, true ) || array_intersect( $watched_roles, $old_roles ) ) {
+			if ( function_exists( 'elmercado_flush_home_cache' ) ) {
+				elmercado_flush_home_cache();
+			}
+		}
+	},
+	10,
+	3
+);
+
+/**
  * Acabado final de las tarjetas: nombre arriba y contador debajo.
  */
 add_action(
