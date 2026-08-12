@@ -1,0 +1,38 @@
+name: Request 010192 smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/cart-shipping-copy-final-010192.php'
+      - 'elmercadodeorigen-child/inc/catalog-core-filters-010192.php'
+      - '.github/scripts/request-010192-smoke.cjs'
+      - '.github/workflows/request-010192-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: request-010192-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser audit dependency
+        run: npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Validate smoke test syntax
+        run: node --check .github/scripts/request-010192-smoke.cjs
+      - name: Review cart and catalog on staging
+        run: node .github/scripts/request-010192-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: request-010192-smoke
+          path: qa/
+          retention-days: 14
