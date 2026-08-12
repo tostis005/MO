@@ -1,0 +1,60 @@
+name: Browser audit disabled WCFM vendor visibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-disabled-wcfm-browser.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Chrome and Puppeteer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Guest browser audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > disabled-vendor-audit.cjs <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          (async()=>{
+            const base='https://www.elmercadodeorigen.com';
+            const samples=[
+              {vendor:4509,title:'Taco de jamón reserva',url:`${base}/producto/taco-de-jamon-reserva-2/`},
+              {vendor:4508,title:'Jamón de bellota ibérico 75% raza ibérica',url:`${base}/producto/jamon-de-bellota-iberico-75-raza-iberica-2/`},
+              {vendor:93,title:'Carne de cerdo de bellota 100% ibérica con DOP Los Pedroches',url:`${base}/producto/carne-de-cerdo-de-bellota-100-iberico-con-dop-los-pedroches/`}
+            ];
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            const results=[];
+            try{
+              for(const s of samples){
+                const page=await browser.newPage();
+                await page.setViewport({width:1440,height:1000});
+                const response=await page.goto(`${s.url}?disabled-vendor-audit=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
+                const direct=await page.evaluate((title)=>({titleFound:document.body.innerText.includes(title),h1:document.querySelector('h1')?.textContent?.trim()||'',bodyClass:document.body.className}),s.title);
+                const categoryHref=await page.evaluate(()=>document.querySelector('.product_meta .posted_in a, .posted_in a, a[rel="tag"]')?.href||'');
+                await page.goto(`${base}/tienda/?vendor_id=${s.vendor}&disabled-vendor-audit=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
+                const shop=await page.evaluate((title)=>({titleFound:document.body.innerText.includes(title),products:[...document.querySelectorAll('.products .product h2,.products .product .woocommerce-loop-product__title,li.product h2')].map(e=>e.textContent.trim()).slice(0,20)}),s.title);
+                let category=null;
+                if(categoryHref){
+                  const u=new URL(categoryHref); u.searchParams.set('vendor_id',String(s.vendor)); u.searchParams.set('disabled-vendor-audit',String(Date.now()));
+                  await page.goto(u.toString(),{waitUntil:'networkidle2',timeout:60000});
+                  category=await page.evaluate((title)=>({url:location.href,titleFound:document.body.innerText.includes(title),products:[...document.querySelectorAll('.products .product h2,.products .product .woocommerce-loop-product__title,li.product h2')].map(e=>e.textContent.trim()).slice(0,20)}),s.title);
+                }
+                results.push({vendor:s.vendor,title:s.title,direct:{status:response?.status()||0,finalUrl:response?.url()||'',...direct,categoryHref},shop,category});
+                await page.close();
+              }
+              console.log('DISABLED_VENDOR_BROWSER_AUDIT',JSON.stringify(results));
+            } finally { await browser.close(); }
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node disabled-vendor-audit.cjs
