@@ -27,7 +27,6 @@ add_action(
 		$is_catalog = ( function_exists( 'is_shop' ) && is_shop() ) ||
 			( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) ||
 			( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() ) ||
-			( function_exists( 'wcfmmp_is_store_page' ) && wcfmmp_is_store_page() ) ||
 			( function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page() );
 
 		if ( is_admin() || ! $is_catalog ) {
@@ -45,7 +44,6 @@ add_action(
 		$is_catalog = ( function_exists( 'is_shop' ) && is_shop() ) ||
 			( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) ||
 			( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() ) ||
-			( function_exists( 'wcfmmp_is_store_page' ) && wcfmmp_is_store_page() ) ||
 			( function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page() );
 
 		if ( is_admin() || ! $is_catalog ) {
