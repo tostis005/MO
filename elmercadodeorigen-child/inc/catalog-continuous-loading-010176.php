@@ -19,13 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 function elmercado_is_continuous_catalog_surface_010176(): bool {
 	$is_archive = function_exists( 'is_shop' ) && ( is_shop() || ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) );
 	$is_vendor  = ( function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page() ) ||
-		( function_exists( 'wcfmmp_is_store_page' ) && wcfmmp_is_store_page() ) ||
 		( function_exists( 'is_wcfm_store_page' ) && is_wcfm_store_page() );
-
-	if ( ! $is_vendor ) {
-		$store_query_var = function_exists( 'wcfm_get_option' ) ? (string) wcfm_get_option( 'wcfm_store_url', 'store' ) : 'store';
-		$is_vendor       = '' !== $store_query_var && '' !== (string) get_query_var( $store_query_var );
-	}
 
 	return $is_archive || $is_vendor;
 }
