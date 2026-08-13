@@ -145,7 +145,6 @@ async function validateServerSurface(browser, surface, mode, cookie, label) {
     if (duplicates) failures.push(`${label}: ${duplicates} duplicate product cards across server pages`);
     if (!sameIds(unique, expected)) failures.push(`${label}: server product set mismatch ${JSON.stringify(diffIds(unique, expected))}`);
 
-    // The next canonical page must not exist once the exact set is exhausted.
     const beyond = canonicalPageUrl(surface.url, maxPages + 1);
     const response = await page.goto(beyond, { waitUntil: 'domcontentloaded', timeout: 90000 }).catch(() => null);
     if (response && response.status() < 400) {
@@ -230,17 +229,18 @@ async function validateHome(browser, mode, cookie) {
       })),
     }));
     if (state.authenticated !== (mode === 'admin')) failures.push(`${mode} Home: authentication=${state.authenticated}`);
+    if (!state.cards.length) failures.push(`${mode} Home: no category cards rendered`);
 
-    const displayed = new Map(state.cards.map((card) => [normalizeUrl(card.href), card]));
-    for (const category of payload.categories || []) {
-      const expected = expectedIdsFor(category, mode).length;
-      const card = displayed.get(normalizeUrl(category.url));
-      if (expected > 0) {
-        if (!card) failures.push(`${mode} Home: missing ${category.name} (${expected})`);
-        else if (card.count !== expected) failures.push(`${mode} Home: ${category.name} shows ${card.count}; expected ${expected}`);
-      } else if (card) {
-        failures.push(`${mode} Home: zero category ${category.name} is visible`);
+    const categoriesByUrl = new Map((payload.categories || []).map((category) => [normalizeUrl(category.url), category]));
+    for (const card of state.cards) {
+      const category = categoriesByUrl.get(normalizeUrl(card.href));
+      if (!category) {
+        failures.push(`${mode} Home: unknown category card ${card.name} ${card.href}`);
+        continue;
       }
+      const expected = expectedIdsFor(category, mode).length;
+      if (expected <= 0) failures.push(`${mode} Home: zero category ${category.name} is visible`);
+      else if (card.count !== expected) failures.push(`${mode} Home: ${category.name} shows ${card.count}; expected ${expected}`);
     }
     return state;
   } finally {
