@@ -49,3 +49,20 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/**
+ * El cierre geométrico de las tiendas de productor debe registrarse después de
+ * que functions.php haya cargado el módulo principal 0.10.225. Se difiere a
+ * after_setup_theme para que sus callbacks de wp_head/wp_footer sean los últimos
+ * dentro de su prioridad y puedan neutralizar reglas históricas de WCFM.
+ */
+add_action(
+	'after_setup_theme',
+	static function (): void {
+		$layout_lock = ELMERCADO_THEME_PATH . '/inc/vendor-store-catalog-layout-lock-010225.php';
+		if ( is_readable( $layout_lock ) ) {
+			require_once $layout_lock;
+		}
+	},
+	PHP_INT_MAX
+);
