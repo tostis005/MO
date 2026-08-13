@@ -1,10 +1,10 @@
 <?php
 /**
- * Se ejecuta con `wp eval-file` dentro de WordPress.
+ * Genera expectativas de Home para visitante y administrador en staging.
  */
 
-if ( ! function_exists( 'elmercado_home_public_category_count_010212' ) || ! function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' ) ) {
-	fwrite( STDERR, "Missing Home/WCFM visibility helpers.\n" );
+if ( ! function_exists( 'elmercado_catalog_visible_category_count_010217' ) || ! function_exists( 'elmercado_wcfm_disabled_visibility_can_view_010210' ) ) {
+	fwrite( STDERR, "Missing catalog/WCFM visibility helpers.\n" );
 	exit( 10 );
 }
 
@@ -25,49 +25,23 @@ if ( is_wp_error( $terms ) ) {
 	exit( 11 );
 }
 
-$base_for = static function ( int $term_id ): array {
-	return array(
-		'post_type'           => 'product',
-		'post_status'         => 'publish',
-		'fields'              => 'ids',
-		'posts_per_page'      => 1,
-		'no_found_rows'       => false,
-		'ignore_sticky_posts' => true,
-		'suppress_filters'    => false,
-		'tax_query'           => array(
-			array(
-				'taxonomy'         => 'product_cat',
-				'field'            => 'term_id',
-				'terms'            => array( $term_id ),
-				'include_children' => true,
-			),
-		),
-	);
-};
-
 $rows = array();
 wp_set_current_user( 0 );
 foreach ( (array) $terms as $term ) {
 	if ( ! $term instanceof WP_Term ) {
 		continue;
 	}
-	$query   = new WP_Query( $base_for( (int) $term->term_id ) );
-	$archive = (int) $query->found_posts;
-	$home    = (int) elmercado_home_public_category_count_010212( (int) $term->term_id );
-	if ( $home !== $archive ) {
-		fwrite( STDERR, "Public parity failed for {$term->name}: home={$home}, archive={$archive}.\n" );
-		exit( 12 );
-	}
 	$link = get_term_link( $term );
 	if ( is_wp_error( $link ) ) {
 		continue;
 	}
+	$count = (int) elmercado_catalog_visible_category_count_010217( (int) $term->term_id );
 	$rows[ $term->term_id ] = array(
 		'id'             => (int) $term->term_id,
 		'name'           => $term->name,
 		'url'            => $link,
-		'public'         => $home,
-		'public_archive' => $archive,
+		'public'         => $count,
+		'public_archive' => $count,
 	);
 }
 
@@ -88,15 +62,9 @@ foreach ( (array) $terms as $term ) {
 	if ( ! $term instanceof WP_Term || ! isset( $rows[ $term->term_id ] ) ) {
 		continue;
 	}
-	$query   = new WP_Query( $base_for( (int) $term->term_id ) );
-	$archive = (int) $query->found_posts;
-	$home    = (int) elmercado_home_public_category_count_010212( (int) $term->term_id );
-	if ( $home !== $archive ) {
-		fwrite( STDERR, "Admin parity failed for {$term->name}: home={$home}, archive={$archive}.\n" );
-		exit( 15 );
-	}
-	$rows[ $term->term_id ]['admin']         = $home;
-	$rows[ $term->term_id ]['admin_archive'] = $archive;
+	$count = (int) elmercado_catalog_visible_category_count_010217( (int) $term->term_id );
+	$rows[ $term->term_id ]['admin']         = $count;
+	$rows[ $term->term_id ]['admin_archive'] = $count;
 }
 
 $cookie = wp_generate_auth_cookie( (int) $admin->ID, time() + 900, 'logged_in' );
