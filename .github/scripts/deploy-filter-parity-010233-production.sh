@@ -53,17 +53,31 @@ PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
 THEME_PATH="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
 BACKUP_DIR="/tmp/elmercado-filter-010233-${GITHUB_RUN_ID:-manual}"
 REMOTE_PAYLOAD="/tmp/elmercado-filter-payload-010233-${GITHUB_RUN_ID:-manual}"
-export PROD_PATH THEME_PATH BACKUP_DIR REMOTE_PAYLOAD
+BACKUP_READY=0
+DEPLOY_DONE=0
 
 rollback() {
   set +e
-  echo 'ROLLBACK_FILTER_PARITY_010233_START'
+  if [ "$BACKUP_READY" -ne 1 ]; then
+    return 0
+  fi
+  echo ROLLBACK_FILTER_PARITY_010233_START
   sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set +e; if [ -f '$BACKUP_DIR/functions.php' ]; then cp -p '$BACKUP_DIR/functions.php' '$THEME_PATH/functions.php'; fi; for f in ${FILTER_FILES[*]}; do if [ -f '$BACKUP_DIR/inc/.missing-'\"\$f\" ]; then rm -f '$THEME_PATH/inc/'\"\$f\"; elif [ -f '$BACKUP_DIR/inc/'\"\$f\" ]; then cp -p '$BACKUP_DIR/inc/'\"\$f\" '$THEME_PATH/inc/'\"\$f\"; fi; done; rm -rf '$REMOTE_PAYLOAD' '$BACKUP_DIR'" || true
   echo PRODUCTION_FILTER_PARITY_ROLLED_BACK
 }
-trap rollback ERR
+
+finish() {
+  rc=$?
+  trap - EXIT
+  if [ "$rc" -ne 0 ]; then
+    rollback
+  fi
+  exit "$rc"
+}
+trap finish EXIT
 
 sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; test -d '$THEME_PATH/inc'; mkdir -p '$BACKUP_DIR/inc' '$REMOTE_PAYLOAD/inc'; cp -p '$THEME_PATH/functions.php' '$BACKUP_DIR/functions.php'; for f in ${FILTER_FILES[*]}; do if [ -f '$THEME_PATH/inc/'\"\$f\" ]; then cp -p '$THEME_PATH/inc/'\"\$f\" '$BACKUP_DIR/inc/'\"\$f\"; else : > '$BACKUP_DIR/inc/.missing-'\"\$f\"; fi; done"
+BACKUP_READY=1
 
 for f in "${FILTER_FILES[@]}"; do
   sshpass -e scp $SCP_OPTIONS "$SOURCE_DIR/elmercadodeorigen-child/inc/$f" "$STAGING_USER@$STAGING_HOST:$REMOTE_PAYLOAD/inc/$f"
@@ -116,6 +130,7 @@ python3 -m py_compile /tmp/patch-filter-functions-010233.py
 sshpass -e scp $SCP_OPTIONS /tmp/patch-filter-functions-010233.py "$STAGING_USER@$STAGING_HOST:$REMOTE_PAYLOAD/patch-functions.py"
 
 sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -euo pipefail; cp -p '$THEME_PATH/functions.php' '$REMOTE_PAYLOAD/functions.php'; python3 '$REMOTE_PAYLOAD/patch-functions.py' '$REMOTE_PAYLOAD/functions.php'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE_PAYLOAD/functions.php' >/dev/null; for f in '$REMOTE_PAYLOAD'/inc/*.php; do \"\$php_bin\" -l \"\$f\" >/dev/null; done; install -m 0644 '$REMOTE_PAYLOAD/functions.php' '$THEME_PATH/functions.php'; for f in '$REMOTE_PAYLOAD'/inc/*.php; do install -m 0644 \"\$f\" '$THEME_PATH/inc/'\"\$(basename \"\$f\")\"; done; grep -Fq 'FILTER_PARITY_010233_PRODUCTION' '$THEME_PATH/functions.php'; grep -Fq 'emo_vendor_cat' '$THEME_PATH/inc/vendor-store-catalog-filters-010225.php'; grep -Fq 'elmercado-catalog-filter-mobile-hitarea-010233-v2' '$THEME_PATH/inc/catalog-filter-mobile-hitarea-010233.php'"
+DEPLOY_DONE=1
 echo FILTER_FILES_DEPLOYED_010233_OK
 
 sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
@@ -124,7 +139,7 @@ PROBE="elmercado-opcache-filter-${GITHUB_RUN_ID:-manual}.php"
 sshpass -e scp $SCP_OPTIONS "$SOURCE_DIR/.github/scripts/elmercado-opcache-reset.php" "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
 BODY="$(curl -fsSL -H 'Cache-Control: no-store' -H 'Pragma: no-cache' --max-time 30 "$BASE_URL/$PROBE?run=${GITHUB_RUN_ID:-manual}")"
 sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
-printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
+grep -q '^OPCACHE_RESET_OK$' <<<"$BODY"
 echo FILTER_CACHE_RESET_010233_OK
 
 runtime_ok=0
@@ -141,11 +156,15 @@ for i in $(seq 1 45); do
   fi
   sleep 3
 done
-test "$runtime_ok" -eq 1
+if [ "$runtime_ok" -ne 1 ]; then
+  echo PRODUCTION_FILTER_RUNTIME_010233_MISSING >&2
+  exit 1
+fi
 echo PRODUCTION_FILTER_RUNTIME_010233_OK
 
 BASE_URL="$BASE_URL" node "$SOURCE_DIR/.github/scripts/catalog-filter-unified-010229-browser.cjs"
 
-esshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR' '$REMOTE_PAYLOAD'"
-trap - ERR
+sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR' '$REMOTE_PAYLOAD'"
+BACKUP_READY=0
+trap - EXIT
 echo PRODUCTION_FILTER_PARITY_010233_OK
