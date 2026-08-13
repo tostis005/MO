@@ -1,5 +1,4 @@
-# Final verification trigger after deploying the hover-parity theme patch.
-name: Catalog filter unified 0.10.229 staging
+name: Catalog filter unified 0.10.233 staging
 
 on:
   push:
@@ -30,9 +29,10 @@ jobs:
           php -l elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php >/dev/null
           php -l elmercadodeorigen-child/inc/catalog-filter-unified-010229.php >/dev/null
           node --check .github/scripts/catalog-filter-unified-010229-browser.cjs
-          grep -q "catalog-filter-unified-010229.php" elmercadodeorigen-child/functions.php
-          grep -Fq "elmercado-catalog-filter-shared-interaction-010232" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
-          grep -Fq ":is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -Fq "ELMERCADO_THEME_VERSION', '0.10.233'" elmercadodeorigen-child/functions.php
+          grep -Fq "elmercado-catalog-filter-shared-interaction-010233" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -Fq "elmercado-vendor-filter-lean-runtime-010233" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -Fq "elmercado_catalog_remove_vendor_legacy_ui_010233" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "vendor-store-catalog-layout-lock-010225.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "vendor-store-shop-parity-010226.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "catalog-filter-stability-010228.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
@@ -43,11 +43,11 @@ jobs:
           for i in $(seq 1 90); do
             shop="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
             vendor="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
-            if grep -Fq 'elmercado-catalog-filter-unified-010229' <<<"${shop}" \
-              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010232' <<<"${shop}" \
-              && grep -Fq 'elmercado-catalog-filter-unified-010229' <<<"${vendor}" \
-              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010232' <<<"${vendor}"; then
-              echo CATALOG_FILTER_UNIFIED_LIVE_010232_OK
+            if grep -Fq 'elmercado-catalog-filter-shared-interaction-010233' <<<"${shop}" \
+              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010233' <<<"${vendor}" \
+              && grep -Fq 'elmercado-vendor-filter-lean-runtime-010233' <<<"${vendor}" \
+              && ! grep -Fq 'elmercado-vendor-store-catalog-010225' <<<"${vendor}"; then
+              echo CATALOG_FILTER_UNIFIED_LIVE_010233_OK
               exit 0
             fi
             sleep 4
@@ -59,47 +59,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends google-chrome-stable
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-      - name: Vendor sticky exact reproduction diagnostic
-        run: |
-          node <<'NODE'
-          const puppeteer=require('puppeteer-core');
-          (async()=>{
-            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const p=await b.newPage();
-            await p.setViewport({width:1440,height:1000});
-            await p.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?qa-dom=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
-            await p.waitForSelector('#elmercado-catalog-filter-shared-interaction-010232',{timeout:20000});
-            await new Promise(r=>setTimeout(r,1200));
-            const dismiss=()=>p.evaluate(()=>{
-              document.querySelectorAll('.hustle-ui,.hustle-popup,.hustle-overlay,.hustle-module-content').forEach(node=>node.remove());
-              document.documentElement.classList.remove('hustle-scroll-forbidden');
-              document.body?.classList.remove('hustle-scroll-forbidden');
-              if(document.documentElement.style.overflow==='hidden') document.documentElement.style.removeProperty('overflow');
-              if(document.body?.style.overflow==='hidden') document.body.style.removeProperty('overflow');
-            });
-            await dismiss();
-            await p.$eval('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229',async el=>{for(let i=0;i<18;i++){el.getBoundingClientRect().top;await new Promise(r=>setTimeout(r,100));}});
-            await dismiss();
-            await p.hover('#emo-vendor-category-filter .emo-filter-link-shared-010229');
-            const before=await p.evaluate(()=>{
-              const rail=document.querySelector('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229');
-              const ancestors=[]; let n=rail;
-              while(n){const s=getComputedStyle(n),r=n.getBoundingClientRect();ancestors.push({tag:n.tagName,id:n.id,cls:n.className||'',position:s.position,overflow:s.overflow,overflowX:s.overflowX,overflowY:s.overflowY,transform:s.transform,contain:s.contain,display:s.display,height:r.height,top:r.top,inline:n.getAttribute('style')||''});n=n.parentElement;}
-              return {scrollY:scrollY,railTop:rail.getBoundingClientRect().top,ancestors};
-            });
-            console.log('VENDOR_STICKY_EXACT_BEFORE',JSON.stringify(before));
-            await p.evaluate(()=>window.scrollTo(0,1200));
-            await new Promise(r=>setTimeout(r,400));
-            const after=await p.evaluate(()=>{
-              const rail=document.querySelector('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229');
-              const ancestors=[]; let n=rail;
-              while(n){const s=getComputedStyle(n),r=n.getBoundingClientRect();ancestors.push({tag:n.tagName,id:n.id,cls:n.className||'',position:s.position,overflow:s.overflow,overflowX:s.overflowX,overflowY:s.overflowY,transform:s.transform,contain:s.contain,display:s.display,height:r.height,top:r.top,inline:n.getAttribute('style')||''});n=n.parentElement;}
-              return {scrollY:scrollY,railTop:rail.getBoundingClientRect().top,cssPosition:getComputedStyle(rail).position,cssTop:getComputedStyle(rail).top,ancestors};
-            });
-            console.log('VENDOR_STICKY_EXACT_AFTER',JSON.stringify(after));
-            await b.close();
-          })().catch(e=>{console.error(e);process.exit(1)});
-          NODE
       - name: Exact browser parity QA
         run: |
           set -euo pipefail
