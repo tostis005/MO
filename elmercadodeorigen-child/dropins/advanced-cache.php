@@ -1,11 +1,13 @@
 <?php
 /**
- * Early anonymous Home cache for El Mercado de Origen.
+ * El Mercado de Origen early cache drop-in.
  *
- * Loaded by WordPress before plugins/themes when WP_CACHE is enabled. It only
- * serves a fresh static copy of the public Home for anonymous, cookie-free GET
- * requests. Every personalized, cart, logged-in or query-string request falls
- * through to normal WordPress execution.
+ * The public Home HTML cache is intentionally disabled. Home copy changes must
+ * be visible immediately and consistently across devices, so WordPress must
+ * render the current Home instead of serving a previously generated HTML file.
+ *
+ * WP_CACHE may remain enabled for compatibility with WordPress, but this
+ * drop-in deliberately does not serve cached HTML.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,92 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'ELMERCADO_EARLY_HOME_CACHE' ) ) {
-	define( 'ELMERCADO_EARLY_HOME_CACHE', true );
+	define( 'ELMERCADO_EARLY_HOME_CACHE', false );
 }
 
-$method      = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( (string) $_SERVER['REQUEST_METHOD'] ) : 'GET';
-$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '/';
-$parts       = parse_url( $request_uri );
-$path        = is_array( $parts ) && isset( $parts['path'] ) ? (string) $parts['path'] : '/';
-$query       = is_array( $parts ) && isset( $parts['query'] ) ? (string) $parts['query'] : '';
-
-if ( 'GET' !== $method || '/' !== $path || '' !== $query ) {
-	return;
-}
-
-$cookie_header = isset( $_SERVER['HTTP_COOKIE'] ) ? (string) $_SERVER['HTTP_COOKIE'] : '';
-$sensitive     = array(
-	'wordpress_logged_in_',
-	'wp_woocommerce_session_',
-	'woocommerce_items_in_cart=',
-	'woocommerce_cart_hash=',
-	'wp-postpass_',
-);
-
-foreach ( $sensitive as $needle ) {
-	if ( false !== stripos( $cookie_header, $needle ) ) {
-		return;
-	}
-}
-
-/* Uploads is writable by the WordPress PHP user and is available pre-bootstrap. */
-$cache_file    = __DIR__ . '/uploads/elmercado-home-static/index.html';
-$ttl           = 10 * 60;
-$mtime         = is_file( $cache_file ) ? @filemtime( $cache_file ) : false;
-$dropin_mtime  = @filemtime( __FILE__ );
-
-if ( ! is_readable( $cache_file ) || false === $mtime ) {
-	if ( ! headers_sent() ) {
-		header( 'X-El-Mercado-Early-Cache: MISS-NOFILE' );
-	}
-	return;
-}
-
-/*
- * La portada optimizada enlaza una hoja diferida versionada con la versión
- * del tema hijo. Antes de servir HTML estático, exige que esa versión coincida
- * con la que está desplegada. Así un rsync que conserve mtimes nunca puede
- * mantener viva una Home de una release anterior.
- */
-$theme_style   = __DIR__ . '/themes/elmercadodeorigen-child/style.css';
-$style_head    = is_readable( $theme_style ) ? @file_get_contents( $theme_style, false, null, 0, 2048 ) : false;
-$theme_version = '';
-
-if ( is_string( $style_head ) && preg_match( '/^\s*Version:\s*([0-9]+(?:\.[0-9]+)+)\s*$/mi', $style_head, $version_match ) ) {
-	$theme_version = trim( (string) $version_match[1] );
-}
-
-$cache_head = @file_get_contents( $cache_file, false, null, 0, 262144 );
-$expected_deferred_css = '' !== $theme_version ? 'home-deferred-' . $theme_version . '.css' : '';
-
-if ( '' === $expected_deferred_css || ! is_string( $cache_head ) || false === strpos( $cache_head, $expected_deferred_css ) ) {
-	if ( ! headers_sent() ) {
-		header( 'X-El-Mercado-Early-Cache: MISS-VERSION' );
-	}
-	return;
-}
-
-/* Every deployment recopies this drop-in. Never serve HTML generated before it. */
-if ( false !== $dropin_mtime && (int) $mtime < (int) $dropin_mtime ) {
-	if ( ! headers_sent() ) {
-		header( 'X-El-Mercado-Early-Cache: MISS-RELEASE' );
-	}
-	return;
-}
-
-if ( ( time() - (int) $mtime ) > $ttl ) {
-	if ( ! headers_sent() ) {
-		header( 'X-El-Mercado-Early-Cache: MISS-STALE' );
-	}
-	return;
-}
-
-if ( ! headers_sent() ) {
-	header( 'Content-Type: text/html; charset=UTF-8' );
-	header( 'Cache-Control: public, max-age=0, must-revalidate' );
-	header( 'Vary: Cookie', false );
-	header( 'X-El-Mercado-Early-Cache: HIT' );
-}
-
-readfile( $cache_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
-exit;
+return;
