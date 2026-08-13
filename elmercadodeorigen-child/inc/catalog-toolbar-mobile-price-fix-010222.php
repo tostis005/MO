@@ -23,8 +23,8 @@ add_action(
 		?>
 		<style id="elmercado-catalog-toolbar-mobile-price-fix-010222">
 			/* El contador sigue siendo único, pero la ordenación vuelve a estar disponible. */
-			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat) .site-main .woocommerce-ordering,
-			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat) .woostify-sorting .woocommerce-ordering {
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) .site-main .woocommerce-ordering,
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag) .woostify-sorting .woocommerce-ordering {
 				display: block !important;
 				visibility: visible !important;
 				opacity: 1 !important;
