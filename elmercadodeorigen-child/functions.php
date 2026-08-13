@@ -148,6 +148,7 @@ $elmercado_modules = array(
 	'inc/catalog-toolbar-mobile-price-fix-010222.php',
 	'inc/catalog-query-parity-010224.php',
 	'inc/vendor-store-catalog-filters-010225.php',
+	'inc/home-category-truth-before-legacy-010226.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
