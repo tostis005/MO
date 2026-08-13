@@ -24,7 +24,6 @@ $category_ids = array_values(
 		array_filter(
 			array_merge( array( (int) $category->term_id ), array_map( 'absint', (array) $children ) )
 		)
-	)
 );
 
 $profiles = elmercado_catalog_filter_profiles();
@@ -41,17 +40,18 @@ if ( ! $admins ) {
 	exit( 23 );
 }
 
-$hide_out_of_stock = 'yes' === get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
-$visibility_ids    = array();
+$woocommerce_hide_option = 'yes' === get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
+$visibility_ids          = array();
+$outofstock_id           = 0;
 if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
-	$visibility = wc_get_product_visibility_term_ids();
-	$catalog_id = isset( $visibility['exclude-from-catalog'] ) ? absint( $visibility['exclude-from-catalog'] ) : 0;
-	$stock_id   = isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
+	$visibility  = wc_get_product_visibility_term_ids();
+	$catalog_id  = isset( $visibility['exclude-from-catalog'] ) ? absint( $visibility['exclude-from-catalog'] ) : 0;
+	$outofstock_id = isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
 	if ( $catalog_id > 0 ) {
 		$visibility_ids[] = $catalog_id;
 	}
-	if ( $hide_out_of_stock && $stock_id > 0 ) {
-		$visibility_ids[] = $stock_id;
+	if ( $outofstock_id > 0 ) {
+		$visibility_ids[] = $outofstock_id;
 	}
 }
 $visibility_ids = array_values( array_unique( array_filter( $visibility_ids ) ) );
@@ -201,16 +201,18 @@ $payload = array(
 		'slug' => (string) $category->slug,
 		'url'  => get_term_link( $category ),
 	),
-	'hide_out_of_stock'    => $hide_out_of_stock,
-	'visibility_term_ids'  => $visibility_ids,
-	'disabled_vendor_ids'  => $disabled,
-	'totals'               => array(
+	'woocommerce_hide_out_of_stock_option' => $woocommerce_hide_option,
+	'force_exclude_out_of_stock'            => true,
+	'outofstock_term_id'                    => $outofstock_id,
+	'visibility_term_ids'                   => $visibility_ids,
+	'disabled_vendor_ids'                   => $disabled,
+	'totals'                                => array(
 		'public_shop'     => $compute_total( $disabled, false ),
 		'admin_shop'      => $compute_total( array(), false ),
 		'public_category' => $compute_total( $disabled, true ),
 		'admin_category'  => $compute_total( array(), true ),
 	),
-	'rows'                 => $rows,
+	'rows'                                  => $rows,
 );
 
 echo '__ATTRIBUTE_ROWS__=' . base64_encode( wp_json_encode( $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ) . "\n";
