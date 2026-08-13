@@ -22,6 +22,30 @@ async function probe(page, kind) {
       const rs = rail ? getComputedStyle(rail) : null;
       const hs = handle ? getComputedStyle(handle) : null;
       const ss = slider ? getComputedStyle(slider) : null;
+      const ancestors = [];
+      if (kind === 'vendor' && rail) {
+        let node = rail.parentElement;
+        let guard = 0;
+        while (node && node !== document.body && guard < 14) {
+          const style = getComputedStyle(node);
+          ancestors.push({
+            tag:node.tagName.toLowerCase(),
+            id:node.id || '',
+            cls:(node.className || '').toString().replace(/\s+/g,' ').trim().slice(0,180),
+            display:style.display,
+            position:style.position,
+            overflow:style.overflow,
+            overflowX:style.overflowX,
+            overflowY:style.overflowY,
+            transform:style.transform,
+            contain:style.contain,
+            height:style.height,
+            minHeight:style.minHeight,
+          });
+          node = node.parentElement;
+          guard += 1;
+        }
+      }
       return {
         railTop: rail?.getBoundingClientRect().top ?? null,
         toolbarTop: toolbar?.getBoundingClientRect().top ?? null,
@@ -30,6 +54,7 @@ async function probe(page, kind) {
         overflowY: rs?.overflowY || '',
         handle: hs ? [hs.width,hs.height,hs.top,hs.marginTop,hs.marginLeft,hs.borderWidth,hs.borderColor,hs.backgroundColor,hs.transform] : null,
         slider: ss ? [ss.height,ss.marginTop,ss.marginRight,ss.marginBottom,ss.marginLeft,ss.backgroundColor] : null,
+        ancestors,
       };
     };
     await wait(2200);
@@ -47,13 +72,11 @@ async function probe(page, kind) {
   const browser = await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',protocolTimeout:60000,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
   try {
     const shop = await open(browser, '/tienda/');
-    console.log('QA_010228_SHOP_OPEN');
     const shopProbe = await probe(shop, 'shop');
     console.log('QA_010228_SHOP_PROBED', JSON.stringify(shopProbe));
     await shop.close();
 
     const vendor = await open(browser, '/tienda/hidalgo-de-la-jara/');
-    console.log('QA_010228_VENDOR_OPEN');
     const vendorProbe = await probe(vendor, 'vendor');
     console.log('QA_010228_VENDOR_PROBED', JSON.stringify(vendorProbe));
     await vendor.close();
