@@ -1,0 +1,120 @@
+name: Fresh Home HTML production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-fresh-production.yml'
+      - 'elmercadodeorigen-child/dropins/advanced-cache.php'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-home-fresh
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate fresh Home files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php >/dev/null
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php >/dev/null
+          grep -q 'ELMERCADO_EARLY_HOME_CACHE.*false' elmercadodeorigen-child/dropins/advanced-cache.php
+          grep -q 'X-El-Mercado-Home-Fresh: BYPASS' elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Install fresh Home guard in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          remote_advanced="/tmp/elmercado-advanced-cache-${GITHUB_RUN_ID}.php"
+          remote_fresh="/tmp/elmercado-home-fresh-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/dropins/advanced-cache.php "$STAGING_USER@$STAGING_HOST:$remote_advanced"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php "$STAGING_USER@$STAGING_HOST:$remote_fresh"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e;
+            mkdir -p '$PROD_PATH/wp-content/mu-plugins';
+            [ ! -f '$PROD_PATH/wp-content/advanced-cache.php' ] || cp -p '$PROD_PATH/wp-content/advanced-cache.php' '$PROD_PATH/wp-content/advanced-cache.php.pre-home-fresh';
+            [ ! -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php' ] || cp -p '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh';
+            cp '$remote_advanced' '$PROD_PATH/wp-content/advanced-cache.php';
+            cp '$remote_fresh' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php';
+            rm -f '$remote_advanced' '$remote_fresh';
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html';
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1);
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/advanced-cache.php' >/dev/null;
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php' >/dev/null"
+
+      - name: Verify Home always bypasses HTML cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://www.elmercadodeorigen.com/'
+          for n in 1 2; do
+            curl -fsSL --retry 2 -A "Mozilla/5.0 EMDO Home fresh verify $n" -D "/tmp/home-$n.head" -o "/tmp/home-$n.body" "$URL"
+            echo "=== HOME $n ==="
+            tr -d '\r' < "/tmp/home-$n.head" | grep -Ei '^(HTTP/|cache-control:|pragma:|expires:|x-el-mercado-|vary:)' || true
+            grep -Eiq '^cache-control:.*no-store' "/tmp/home-$n.head"
+            grep -Eiq '^cache-control:.*no-cache' "/tmp/home-$n.head"
+            grep -Eiq '^x-el-mercado-home-fresh:[[:space:]]*BYPASS' "/tmp/home-$n.head"
+            if grep -Eiq '^x-el-mercado-early-cache:[[:space:]]*HIT' "/tmp/home-$n.head"; then
+              echo 'Early Home cache still serving HTML' >&2
+              exit 7
+            fi
+            if grep -Eiq '^x-el-mercado-cache:[[:space:]]*HIT' "/tmp/home-$n.head"; then
+              echo 'WordPress Home transient cache still serving HTML' >&2
+              exit 8
+            fi
+          done
+          echo 'HOME_FRESH_PRODUCTION_OK'
+
+      - name: Roll back on failure
+        if: failure()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          [ -n "${PROD_PATH:-}" ] || exit 0
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            if [ -f '$PROD_PATH/wp-content/advanced-cache.php.pre-home-fresh' ]; then mv -f '$PROD_PATH/wp-content/advanced-cache.php.pre-home-fresh' '$PROD_PATH/wp-content/advanced-cache.php'; fi;
+            if [ -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh' ]; then mv -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php'; else rm -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php'; fi"
