@@ -96,3 +96,10 @@
 .elmercado-premium-home .emo-vendor-cta__inner p {
 	color: #46554e !important;
 }
+
+/* El rail exterior aporta los 18px de Tienda; el contenedor interior no suma otro padding. */
+@media (min-width: 1101px) {
+	html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .body_area > .left_sidebar.emo-vendor-filter-rail-010225 > #emo-vendor-filters {
+		padding: 0 !important;
+	}
+}
