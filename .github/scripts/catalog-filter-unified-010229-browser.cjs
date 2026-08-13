@@ -15,6 +15,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
     async function open(path) {
       await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}qa-unified=${Date.now()}`, {waitUntil:'domcontentloaded', timeout:60000});
       await page.waitForSelector('#elmercado-catalog-filter-unified-010229', {timeout:20000});
+      await page.waitForSelector('#elmercado-catalog-filter-shared-interaction-010230', {timeout:20000});
       await wait(1200);
     }
 
@@ -40,6 +41,37 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
       });
     }
 
+    async function hoverState(rowSelector) {
+      return page.$eval(rowSelector, el => {
+        const link=el.querySelector('.emo-filter-link-shared-010229');
+        const r=link.getBoundingClientRect();
+        const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+        const finalStyle=document.getElementById('elmercado-catalog-filter-shared-interaction-010230');
+        const matching=[];
+        try {
+          for (const rule of finalStyle?.sheet?.cssRules || []) {
+            if (!rule.selectorText) continue;
+            try { if (link.matches(rule.selectorText) || el.matches(rule.selectorText)) matching.push(rule.selectorText); } catch (_) {}
+          }
+        } catch (_) {}
+        return {
+          row:getComputedStyle(el).backgroundColor,
+          decoration:getComputedStyle(link).textDecorationLine,
+          rowHover:el.matches(':hover'),
+          linkHover:link.matches(':hover'),
+          hitTag:hit?.tagName || '',
+          hitClass:hit?.className || '',
+          linkClass:link.className,
+          rowClass:el.className,
+          closestPage:!!link.closest('#page'),
+          closestDoublePage:!!link.closest('#page#page'),
+          finalStyle:!!finalStyle,
+          finalCssHasDoublePage:finalStyle?.textContent?.includes('#page#page .emo-filter-rail-shared-010229') || false,
+          matching
+        };
+      });
+    }
+
     await open('/tienda/');
     const shopLegacy = await page.evaluate(() => [
       'elmercado-vendor-store-layout-lock-js-010225',
@@ -58,7 +90,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
     const shopIdle = await idleVariance('.emo-filter-rail-shared-010229');
     if (shopIdle.max-shopIdle.min > 1) fail('Shop rail moves while idle', shopIdle);
     await page.hover('.emo-global-category-filter-010229 .emo-filter-link-shared-010229');
-    const shopHover = await page.$eval('.emo-global-category-filter-010229 .emo-filter-row-shared-010229', el => ({row:getComputedStyle(el).backgroundColor, decoration:getComputedStyle(el.querySelector('.emo-filter-link-shared-010229')).textDecorationLine}));
+    const shopHover = await hoverState('.emo-global-category-filter-010229 .emo-filter-row-shared-010229');
     if (!shopHover.decoration.includes('underline')) fail('Shop hover is not underlined', shopHover);
 
     await open('/tienda/hidalgo-de-la-jara/');
@@ -91,7 +123,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
     const vendorIdle = await idleVariance('#wcfmmp-store .emo-filter-rail-shared-010229');
     if (vendorIdle.max-vendorIdle.min > 1) fail('producer rail moves while idle', vendorIdle);
     await page.hover('#emo-vendor-category-filter .emo-filter-link-shared-010229');
-    const vendorHover = await page.$eval('#emo-vendor-category-filter .emo-filter-row-shared-010229', el => ({row:getComputedStyle(el).backgroundColor, decoration:getComputedStyle(el.querySelector('.emo-filter-link-shared-010229')).textDecorationLine}));
+    const vendorHover = await hoverState('#emo-vendor-category-filter .emo-filter-row-shared-010229');
     if (!vendorHover.decoration.includes('underline')) fail('producer hover is not underlined', vendorHover);
     if (vendorHover.row !== shopHover.row) fail('hover backgrounds differ', {shopHover,vendorHover});
 
