@@ -154,16 +154,101 @@ add_filter(
 );
 
 /**
- * La Home usa exactamente el mismo count central que categorías/filtros.
+ * Reescribe los counts de tarjetas de Home con la misma fuente central que usa
+ * el widget de categorías. Se ejecuta después de la capa histórica 0.10.212.
  */
 add_filter(
-	'elmercado_home_category_count_010224',
-	static function ( int $count, int $term_id ): int {
-		if ( function_exists( 'elmercado_catalog_visible_category_count_010217' ) ) {
-			return elmercado_catalog_visible_category_count_010217( $term_id );
+	'the_content',
+	static function ( string $content ): string {
+		if ( is_admin() || ! is_front_page() || ! in_the_loop() || ! is_main_query() || false === strpos( $content, 'emo-category-card' ) ) {
+			return $content;
 		}
-		return $count;
+		if ( ! function_exists( 'elmercado_catalog_visible_category_count_010217' ) ) {
+			return $content;
+		}
+
+		$terms = get_terms(
+			array(
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => false,
+			)
+		);
+		if ( is_wp_error( $terms ) || ! $terms ) {
+			return $content;
+		}
+
+		foreach ( $terms as $term ) {
+			if ( ! $term instanceof WP_Term ) {
+				continue;
+			}
+			$link = get_term_link( $term );
+			if ( is_wp_error( $link ) ) {
+				continue;
+			}
+
+			$count        = elmercado_catalog_visible_category_count_010217( (int) $term->term_id );
+			$escaped_link = esc_url( $link );
+			$card_pattern = '~<a class="emo-category-card" href="' . preg_quote( $escaped_link, '~' ) . '"[^>]*>.*?</a>~s';
+
+			if ( $count <= 0 ) {
+				$content = (string) preg_replace( $card_pattern, '', $content, 1 );
+				continue;
+			}
+
+			$label = sprintf(
+				esc_html( _n( '%s producto', '%s productos', $count, 'elmercadodeorigen' ) ),
+				number_format_i18n( $count )
+			);
+			$content = (string) preg_replace_callback(
+				$card_pattern,
+				static function ( array $matches ) use ( $label ): string {
+					return (string) preg_replace( '~<small[^>]*>.*?</small>~s', '<small>' . $label . '</small>', (string) $matches[0], 1 );
+				},
+				$content,
+				1
+			);
+		}
+
+		return $content;
 	},
-	10,
-	2
+	2000
+);
+
+/**
+ * La carga continua histórica cambia el copy del total a "Mostrando…" conforme
+ * añade páginas. El total exacto debe seguir siendo una única cifra estable.
+ */
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() || ! function_exists( 'elmercado_core_filters_is_catalog' ) || ! elmercado_core_filters_is_catalog() ) {
+			return;
+		}
+		$total = function_exists( 'elmercado_catalog_exact_result_total_010220' )
+			? max( 0, (int) elmercado_catalog_exact_result_total_010220() )
+			: 0;
+		?>
+		<script id="elmercado-catalog-query-parity-010224">
+		(() => {
+			'use strict';
+			const node = document.querySelector('.emo-catalog-result-count-010220');
+			if (!node) return;
+			const total = <?php echo wp_json_encode( $total ); ?>;
+			const label = `${total.toLocaleString('es-ES')} ${total === 1 ? 'resultado' : 'resultados'}`;
+			let normalizing = false;
+			const normalize = () => {
+				if (normalizing) return;
+				const current = (node.textContent || '').replace(/\s+/g, ' ').trim();
+				if (current === label) return;
+				normalizing = true;
+				node.textContent = label;
+				normalizing = false;
+			};
+			normalize();
+			new MutationObserver(normalize).observe(node, { childList: true, characterData: true, subtree: true });
+		})();
+		</script>
+		<?php
+	},
+	PHP_INT_MAX
 );
