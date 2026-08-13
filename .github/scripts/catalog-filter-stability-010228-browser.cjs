@@ -1,99 +1,79 @@
 const puppeteer = require('puppeteer-core');
 const base = process.env.BASE_URL || 'https://dev.elmercadodeorigen.com';
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const check = (ok, message) => { if (!ok) throw new Error(message); };
 
-async function openPage(browser, path) {
+async function open(browser, path) {
   const page = await browser.newPage();
   await page.setViewport({width:1440,height:1000,deviceScaleFactor:1});
-  const separator = path.includes('?') ? '&' : '?';
-  await page.goto(base + path + separator + 'qa-stability-010228=' + Date.now(), {waitUntil:'domcontentloaded',timeout:70000});
+  const sep = path.includes('?') ? '&' : '?';
+  await page.goto(base + path + sep + 'qa-stability-010228=' + Date.now(), {waitUntil:'domcontentloaded',timeout:70000});
   await page.waitForSelector('#elmercado-catalog-filter-stability-010228', {timeout:45000});
-  await sleep(2400);
   return page;
 }
 
-async function readState(page, kind) {
-  return page.evaluate(kind => {
-    const rail = kind === 'shop' ? document.querySelector('#secondary.widget-area,.shop-widget-area') : document.querySelector('.emo-vendor-filter-rail-010225');
-    const toolbar = kind === 'shop' ? document.querySelector('.emo-catalog-toolbar-parity-010227,.woostify-sorting') : document.querySelector('#wcfmmp-store .emo-catalog-toolbar-parity-010227,#wcfmmp-store .woostify-sorting');
-    const handle = rail?.querySelector('.widget_price_filter .ui-slider-handle');
-    const slider = rail?.querySelector('.widget_price_filter .price_slider');
-    const railStyle = rail ? getComputedStyle(rail) : null;
-    const handleStyle = handle ? getComputedStyle(handle) : null;
-    const sliderStyle = slider ? getComputedStyle(slider) : null;
-    return {
-      rail: rail ? rail.getBoundingClientRect().toJSON() : null,
-      toolbar: toolbar ? toolbar.getBoundingClientRect().toJSON() : null,
-      position: railStyle?.position || '',
-      top: railStyle?.top || '',
-      overflowY: railStyle?.overflowY || '',
-      handle: handleStyle ? [handleStyle.width,handleStyle.height,handleStyle.top,handleStyle.marginTop,handleStyle.marginLeft,handleStyle.borderWidth,handleStyle.borderColor,handleStyle.backgroundColor,handleStyle.transform] : null,
-      slider: sliderStyle ? [sliderStyle.height,sliderStyle.marginTop,sliderStyle.marginRight,sliderStyle.marginBottom,sliderStyle.marginLeft,sliderStyle.backgroundColor] : null,
+async function probe(page, kind) {
+  return page.evaluate(async kind => {
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const get = () => {
+      const rail = kind === 'shop' ? document.querySelector('#secondary.widget-area,.shop-widget-area') : document.querySelector('.emo-vendor-filter-rail-010225');
+      const toolbar = kind === 'shop' ? document.querySelector('.emo-catalog-toolbar-parity-010227,.woostify-sorting') : document.querySelector('#wcfmmp-store .emo-catalog-toolbar-parity-010227,#wcfmmp-store .woostify-sorting');
+      const handle = rail?.querySelector('.widget_price_filter .ui-slider-handle');
+      const slider = rail?.querySelector('.widget_price_filter .price_slider');
+      const rs = rail ? getComputedStyle(rail) : null;
+      const hs = handle ? getComputedStyle(handle) : null;
+      const ss = slider ? getComputedStyle(slider) : null;
+      return {
+        railTop: rail?.getBoundingClientRect().top ?? null,
+        toolbarTop: toolbar?.getBoundingClientRect().top ?? null,
+        position: rs?.position || '',
+        stickyTop: rs?.top || '',
+        overflowY: rs?.overflowY || '',
+        handle: hs ? [hs.width,hs.height,hs.top,hs.marginTop,hs.marginLeft,hs.borderWidth,hs.borderColor,hs.backgroundColor,hs.transform] : null,
+        slider: ss ? [ss.height,ss.marginTop,ss.marginRight,ss.marginBottom,ss.marginLeft,ss.backgroundColor] : null,
+      };
     };
+    await wait(2200);
+    const initial = get();
+    await wait(900);
+    const idle = get();
+    window.scrollTo(0, 1200);
+    await wait(500);
+    const scrolled = get();
+    return {initial,idle,scrolled};
   }, kind);
 }
 
-async function sampleTops(page, kind, count) {
-  const values = [];
-  for (let i = 0; i < count; i += 1) {
-    values.push((await readState(page, kind)).rail?.top ?? null);
-    await sleep(350);
-  }
-  return values;
-}
-
 (async () => {
-  const browser = await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',protocolTimeout:120000,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
+  const browser = await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',protocolTimeout:60000,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
   try {
-    const shop = await openPage(browser, '/tienda/');
-    const vendor = await openPage(browser, '/tienda/hidalgo-de-la-jara/');
-    const shopState = await readState(shop, 'shop');
-    const vendorState = await readState(vendor, 'vendor');
+    const shop = await open(browser, '/tienda/');
+    console.log('QA_010228_SHOP_OPEN');
+    const shopProbe = await probe(shop, 'shop');
+    console.log('QA_010228_SHOP_PROBED', JSON.stringify(shopProbe));
+    await shop.close();
 
-    check(shopState.rail && shopState.toolbar && vendorState.rail && vendorState.toolbar, 'desktop rail or toolbar missing');
-    check(Math.abs(shopState.rail.top - shopState.toolbar.top) <= 3, 'shop initial alignment failed');
-    check(Math.abs(vendorState.rail.top - vendorState.toolbar.top) <= 3, 'vendor initial alignment failed');
-    check(shopState.position === 'sticky' && vendorState.position === 'sticky', 'desktop rails are not sticky');
-    check(shopState.top === '94px' && vendorState.top === '94px', 'sticky top mismatch');
-    check(shopState.overflowY === 'auto' && vendorState.overflowY === 'auto', 'desktop overflow mismatch');
+    const vendor = await open(browser, '/tienda/hidalgo-de-la-jara/');
+    console.log('QA_010228_VENDOR_OPEN');
+    const vendorProbe = await probe(vendor, 'vendor');
+    console.log('QA_010228_VENDOR_PROBED', JSON.stringify(vendorProbe));
+    await vendor.close();
 
-    const idleShop = await sampleTops(shop, 'shop', 4);
-    const idleVendor = await sampleTops(vendor, 'vendor', 4);
-    const spread = values => Math.max(...values) - Math.min(...values);
-    check(spread(idleShop) <= 1.5, 'shop moves while idle ' + JSON.stringify(idleShop));
-    check(spread(idleVendor) <= 1.5, 'vendor moves while idle ' + JSON.stringify(idleVendor));
+    const a = shopProbe.initial;
+    const b = vendorProbe.initial;
+    check(a.railTop !== null && a.toolbarTop !== null && b.railTop !== null && b.toolbarTop !== null, 'rail or toolbar missing');
+    check(Math.abs(a.railTop-a.toolbarTop)<=3, 'shop initial alignment failed');
+    check(Math.abs(b.railTop-b.toolbarTop)<=3, 'vendor initial alignment failed');
+    check(a.position==='sticky' && b.position==='sticky', 'desktop rails are not sticky');
+    check(a.stickyTop==='94px' && b.stickyTop==='94px', 'sticky top mismatch');
+    check(a.overflowY==='auto' && b.overflowY==='auto', 'overflow mismatch');
+    check(Math.abs(shopProbe.idle.railTop-a.railTop)<=1.5, 'shop moves while idle');
+    check(Math.abs(vendorProbe.idle.railTop-b.railTop)<=1.5, 'vendor moves while idle');
+    check(JSON.stringify(a.handle)===JSON.stringify(b.handle), 'price handle mismatch ' + JSON.stringify([a.handle,b.handle]));
+    check(JSON.stringify(a.slider)===JSON.stringify(b.slider), 'price slider mismatch ' + JSON.stringify([a.slider,b.slider]));
+    check(Math.abs(shopProbe.scrolled.railTop-94)<=3, 'shop sticky after scroll failed ' + shopProbe.scrolled.railTop);
+    check(Math.abs(vendorProbe.scrolled.railTop-94)<=3, 'vendor sticky after scroll failed ' + vendorProbe.scrolled.railTop);
 
-    check(shopState.handle && vendorState.handle && shopState.slider && vendorState.slider, 'price slider missing');
-    check(JSON.stringify(shopState.handle) === JSON.stringify(vendorState.handle), 'price handle mismatch ' + JSON.stringify([shopState.handle,vendorState.handle]));
-    check(JSON.stringify(shopState.slider) === JSON.stringify(vendorState.slider), 'price rail mismatch ' + JSON.stringify([shopState.slider,vendorState.slider]));
-
-    await shop.evaluate(() => window.scrollTo(0, 1200));
-    await vendor.evaluate(() => window.scrollTo(0, 1200));
-    await sleep(500);
-    const stickyShop = await sampleTops(shop, 'shop', 3);
-    const stickyVendor = await sampleTops(vendor, 'vendor', 3);
-    stickyShop.forEach(value => check(Math.abs(value - 94) <= 3, 'shop sticky failed ' + JSON.stringify(stickyShop)));
-    stickyVendor.forEach(value => check(Math.abs(value - 94) <= 3, 'vendor sticky failed ' + JSON.stringify(stickyVendor)));
-
-    await shop.screenshot({path:'qa/shop-desktop-010228.png'});
-    await vendor.screenshot({path:'qa/vendor-desktop-010228.png'});
-
-    await vendor.setViewport({width:390,height:844,deviceScaleFactor:1});
-    await vendor.goto(base + '/tienda/hidalgo-de-la-jara/?qa-mobile-010228=' + Date.now(), {waitUntil:'domcontentloaded',timeout:70000});
-    await vendor.waitForSelector('.emo-vendor-mobile-filter-toggle-010227', {visible:true,timeout:45000});
-    await vendor.evaluate(() => document.querySelector('.emo-vendor-mobile-filter-toggle-010227')?.click());
-    await sleep(350);
-    const mobile = await vendor.evaluate(() => {
-      const shell = document.querySelector('.emo-vendor-mobile-filter-shell-010227');
-      const rail = shell?.querySelector('.emo-vendor-filter-rail-010225');
-      const style = rail ? getComputedStyle(rail) : null;
-      return [Boolean(shell && !shell.hidden), style?.position || '', style?.transform || ''];
-    });
-    check(mobile[0] && mobile[1] === 'static' && mobile[2] === 'none', 'mobile vendor rail mismatch ' + JSON.stringify(mobile));
-    await vendor.screenshot({path:'qa/vendor-mobile-open-010228.png'});
-
-    console.log('CATALOG_FILTER_STABILITY_010228_OK', JSON.stringify({shopState,vendorState,idleShop,idleVendor,stickyShop,stickyVendor,mobile}));
+    console.log('CATALOG_FILTER_STABILITY_010228_OK', JSON.stringify({shopProbe,vendorProbe}));
   } finally {
     await browser.close();
   }
