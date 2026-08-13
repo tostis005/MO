@@ -30,7 +30,7 @@ jobs:
           php -l elmercadodeorigen-child/inc/catalog-filter-unified-010229.php >/dev/null
           node --check .github/scripts/catalog-filter-unified-010229-browser.cjs
           grep -q "catalog-filter-unified-010229.php" elmercadodeorigen-child/functions.php
-          grep -Fq "elmercado-catalog-filter-shared-interaction-010231" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -Fq "elmercado-catalog-filter-shared-interaction-010232" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           grep -Fq ":is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "vendor-store-catalog-layout-lock-010225.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "vendor-store-shop-parity-010226.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
@@ -43,10 +43,10 @@ jobs:
             shop="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
             vendor="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
             if grep -Fq 'elmercado-catalog-filter-unified-010229' <<<"${shop}" \
-              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010231' <<<"${shop}" \
+              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010232' <<<"${shop}" \
               && grep -Fq 'elmercado-catalog-filter-unified-010229' <<<"${vendor}" \
-              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010231' <<<"${vendor}"; then
-              echo CATALOG_FILTER_UNIFIED_LIVE_010231_OK
+              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010232' <<<"${vendor}"; then
+              echo CATALOG_FILTER_UNIFIED_LIVE_010232_OK
               exit 0
             fi
             sleep 4
@@ -67,7 +67,7 @@ jobs:
             const p=await b.newPage();
             await p.setViewport({width:1440,height:1000});
             await p.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?qa-dom=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
-            await p.waitForSelector('#elmercado-catalog-filter-shared-interaction-010231',{timeout:20000});
+            await p.waitForSelector('#elmercado-catalog-filter-shared-interaction-010232',{timeout:20000});
             await new Promise(r=>setTimeout(r,1500));
             const d=await p.evaluate(()=>({
               categoryIds:[...document.querySelectorAll('#emo-vendor-category-filter')].map((n,i)=>({i,rect:[n.getBoundingClientRect().x,n.getBoundingClientRect().y,n.getBoundingClientRect().width,n.getBoundingClientRect().height],display:getComputedStyle(n).display,visibility:getComputedStyle(n).visibility,hidden:n.hidden,rail:n.closest('.left_sidebar')?.className||''})),
