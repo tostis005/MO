@@ -1,14 +1,6 @@
 <?php
 /**
- * Estabilidad definitiva de los filtros de Tienda y productor.
- *
- * - elimina el reajuste visual continuo del rail en escritorio;
- * - fija una sola alineacion respecto a la barra de resultados/ordenacion;
- * - mantiene el rail sticky y acota su altura para evitar saltos con filtros largos;
- * - hace que el precio del productor use exactamente el slider visual de Tienda;
- * - restaura el subrayado de hover/foco en enlaces de filtros;
- * - neutraliza la geometria inline antigua cuando el rail del productor entra
- *   en el drawer movil nuevo.
+ * Estabilidad definitiva de filtros para Tienda y tiendas de productor.
  *
  * @package ElMercadoDeOrigen
  */
@@ -21,13 +13,10 @@ function elmercado_catalog_filter_stability_target_010228(): bool {
 	if ( is_admin() ) {
 		return false;
 	}
-
 	if ( function_exists( 'elmercado_core_filters_is_catalog' ) && elmercado_core_filters_is_catalog() ) {
 		return true;
 	}
-
-	return function_exists( 'elmercado_vendor_store_is_request_010225' )
-		&& elmercado_vendor_store_is_request_010225();
+	return function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225();
 }
 
 add_action(
@@ -38,17 +27,15 @@ add_action(
 		}
 		?>
 		<style id="elmercado-catalog-filter-stability-010228">
-			/*
-			 * Escritorio: mismo comportamiento en Tienda y productor.
-			 * El offset inicial lo fija una sola vez el script; despues el navegador
-			 * gobierna el sticky sin mediciones continuas ni transforms.
-			 */
+			/* Escritorio: una sola geometria y sticky nativo, sin transforms. */
 			@media (min-width:1101px) {
 				html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area).emo-filter-rail-parity-010227,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225.emo-filter-rail-parity-010227 {
 					position:sticky !important;
 					top:94px !important;
+					right:auto !important;
 					bottom:auto !important;
+					left:auto !important;
 					align-self:flex-start !important;
 					height:auto !important;
 					max-height:calc(100dvh - 112px) !important;
@@ -60,7 +47,6 @@ add_action(
 					transition:none !important;
 					will-change:auto !important;
 				}
-
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .wcfmmp-store-page-wrap,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .body_area {
@@ -70,12 +56,9 @@ add_action(
 				}
 			}
 
-			/*
-			 * Slider de precio unico. El productor ya usa widget_price_filter, asi
-			 * que forzamos aqui los mismos valores finales que gobiernan Tienda.
-			 */
-			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider,
-			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_wrapper .ui-slider-horizontal {
+			/* Slider: la misma regla final y la misma geometria para ambos rails. */
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area).emo-filter-rail-parity-010227 .widget_price_filter .price_slider,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225.emo-filter-rail-parity-010227 #emo-vendor-filters .emo-vendor-price-filter.widget_price_filter .price_slider {
 				position:relative !important;
 				height:4px !important;
 				min-height:4px !important;
@@ -86,7 +69,8 @@ add_action(
 				background:#d9e1dc !important;
 				box-shadow:none !important;
 			}
-			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .ui-slider-range {
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area).emo-filter-rail-parity-010227 .widget_price_filter .ui-slider-range,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225.emo-filter-rail-parity-010227 #emo-vendor-filters .emo-vendor-price-filter.widget_price_filter .ui-slider-range {
 				top:0 !important;
 				height:4px !important;
 				border:0 !important;
@@ -94,7 +78,8 @@ add_action(
 				background:#2f7d5d !important;
 				box-shadow:none !important;
 			}
-			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .ui-slider-handle {
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area).emo-filter-rail-parity-010227 .widget_price_filter .ui-slider-handle,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225.emo-filter-rail-parity-010227 #emo-vendor-filters .emo-vendor-price-filter.widget_price_filter .ui-slider-handle {
 				top:-6px !important;
 				width:16px !important;
 				height:16px !important;
@@ -111,8 +96,9 @@ add_action(
 				transform:none !important;
 			}
 
-			/* El bloque inferior del precio tambien queda comun y sin floats heredados. */
-			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount {
+			/* Bloque inferior del precio sin floats y con el mismo ritmo. */
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area).emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225.emo-filter-rail-parity-010227 #emo-vendor-filters .emo-vendor-price-filter.widget_price_filter .price_slider_amount {
 				display:flex !important;
 				align-items:center !important;
 				justify-content:space-between !important;
@@ -126,19 +112,18 @@ add_action(
 				font-family:inherit !important;
 				text-align:left !important;
 			}
+			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount .clear,
 			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount::before,
-			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount::after,
-			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount .clear {
+			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount::after {
 				display:none !important;
 				content:none !important;
 			}
 			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_slider_amount .button {
+				float:none !important;
 				flex:0 0 auto !important;
-				min-width:0 !important;
 				min-height:38px !important;
 				margin:0 !important;
 				padding:0 14px !important;
-				float:none !important;
 				border-radius:999px !important;
 				font-family:inherit !important;
 				font-size:12px !important;
@@ -148,26 +133,26 @@ add_action(
 			html body.elmercado-child-theme .emo-filter-rail-parity-010227 .widget_price_filter .price_label {
 				position:static !important;
 				display:block !important;
+				float:none !important;
 				flex:1 1 auto !important;
 				min-width:0 !important;
 				margin:0 0 0 auto !important;
 				padding:0 !important;
-				float:none !important;
 				color:#42564e !important;
-				font-family:inherit !important;
 				font-size:11.5px !important;
 				font-weight:700 !important;
 				line-height:1.25 !important;
-				letter-spacing:0 !important;
 				text-align:right !important;
-				text-transform:none !important;
 				white-space:nowrap !important;
 			}
 
-			/* Hover/foco igual al comportamiento que ya tenia Tienda. */
-			html body.elmercado-child-theme .emo-filter-row-parity-010227:hover > a,
-			html body.elmercado-child-theme .emo-filter-row-parity-010227 > a:hover,
-			html body.elmercado-child-theme .emo-filter-row-parity-010227 > a:focus-visible {
+			/* Hover y foco: fondo comun + texto subrayado, igual en ambos. */
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area) .emo-filter-row-parity-010227:hover > a,
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area) .emo-filter-row-parity-010227 > a:hover,
+			html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag):not(.wcfmmp-store-page) :is(#secondary.widget-area,.shop-widget-area) .emo-filter-row-parity-010227 > a:focus-visible,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225 .emo-filter-row-parity-010227:hover > a,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225 .emo-filter-row-parity-010227 > a:hover,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .left_sidebar.emo-vendor-filter-rail-010225 .emo-filter-row-parity-010227 > a:focus-visible {
 				color:#2f7d5d !important;
 				text-decoration:underline !important;
 				text-decoration-thickness:1px !important;
@@ -180,7 +165,7 @@ add_action(
 				text-underline-offset:3px !important;
 			}
 
-			/* En el drawer movil manda solo la geometria nueva, no el lock antiguo. */
+			/* Drawer movil: neutraliza por completo el antiguo drawer derecho. */
 			@media (max-width:991px) {
 				html body.elmercado-child-theme .emo-vendor-mobile-filter-shell-010227 .emo-mobile-filter-content .emo-vendor-filter-rail-010225 {
 					position:static !important;
@@ -214,148 +199,83 @@ add_action(
 		<script id="elmercado-catalog-filter-stability-script-010228">
 		(() => {
 			'use strict';
-
-			const desktopQuery = window.matchMedia('(min-width:1101px)');
+			const desktop = matchMedia('(min-width:1101px)');
 			const locks = new WeakMap();
-			const observers = new WeakMap();
+			const watched = new WeakSet();
 			let resizeTimer = 0;
 
-			const setImportant = (node, property, value) => {
+			const put = (node, property, value) => {
 				if (!node) return;
-				const current = node.style.getPropertyValue(property).trim();
-				const priority = node.style.getPropertyPriority(property);
-				if (current === value && priority === 'important') return;
+				if (node.style.getPropertyValue(property).trim() === value && node.style.getPropertyPriority(property) === 'important') return;
 				node.style.setProperty(property, value, 'important');
 			};
-
-			const desktopLock = (rail, marginTop) => {
-				const values = {
-					'position':'sticky',
-					'top':'94px',
-					'right':'auto',
-					'bottom':'auto',
-					'left':'auto',
-					'margin-top':`${marginTop}px`,
-					'margin-right':'0px',
-					'margin-bottom':'0px',
-					'margin-left':'0px',
-					'height':'auto',
-					'max-height':'calc(100dvh - 112px)',
-					'overflow-x':'hidden',
-					'overflow-y':'auto',
-					'transform':'none',
-					'transition':'none',
-					'will-change':'auto'
-				};
+			const apply = (rail, values) => {
 				locks.set(rail, values);
-				Object.entries(values).forEach(([property, value]) => setImportant(rail, property, value));
+				Object.entries(values).forEach(([key, value]) => put(rail, key, value));
+				if (watched.has(rail)) return;
+				watched.add(rail);
+				new MutationObserver(() => {
+					const current = locks.get(rail);
+					if (current) Object.entries(current).forEach(([key, value]) => put(rail, key, value));
+				}).observe(rail, {attributes:true, attributeFilter:['style']});
 			};
+			const docTop = node => node ? node.getBoundingClientRect().top + scrollY : 0;
 
-			const mobileVendorLock = (rail) => {
-				const values = {
-					'position':'static',
-					'top':'auto',
-					'right':'auto',
-					'bottom':'auto',
-					'left':'auto',
-					'width':'100%',
-					'min-width':'0px',
-					'max-width':'none',
-					'height':'auto',
-					'max-height':'none',
-					'overflow':'visible',
-					'margin':'0px',
-					'padding':'0px',
-					'border':'0px',
-					'box-shadow':'none',
-					'transform':'none'
-				};
-				locks.set(rail, values);
-				Object.entries(values).forEach(([property, value]) => setImportant(rail, property, value));
-			};
-
-			const enforceLock = (rail) => {
-				const values = locks.get(rail);
-				if (!values) return;
-				Object.entries(values).forEach(([property, value]) => setImportant(rail, property, value));
-			};
-
-			const observeRail = (rail) => {
-				if (!rail || observers.has(rail)) return;
-				const observer = new MutationObserver(() => enforceLock(rail));
-				observer.observe(rail, { attributes:true, attributeFilter:['style'] });
-				observers.set(rail, observer);
-			};
-
-			const documentTop = (node) => node ? node.getBoundingClientRect().top + window.scrollY : 0;
-
-			const shopParts = () => {
-				if (!document.body.matches('.woocommerce-shop,.tax-product_cat,.tax-product_tag') || document.body.classList.contains('wcfmmp-store-page')) return null;
+			function parts() {
+				const vendorStore = document.querySelector('#wcfmmp-store');
+				if (vendorStore) {
+					const rail = vendorStore.querySelector('.emo-vendor-filter-rail-010225');
+					const toolbar = vendorStore.querySelector('.emo-catalog-toolbar-parity-010227,.woostify-sorting,.elmercado-vendor-toolbar');
+					const host = vendorStore.querySelector('.body_area');
+					return rail && toolbar && host ? {rail, toolbar, host} : null;
+				}
+				if (!document.body.matches('.woocommerce-shop,.tax-product_cat,.tax-product_tag')) return null;
 				const rail = document.querySelector('#secondary.widget-area,.shop-widget-area');
 				const toolbar = document.querySelector('.emo-catalog-toolbar-parity-010227,.woostify-sorting');
 				const host = document.querySelector('#content.site-content > .woostify-container');
-				return rail && toolbar && host ? { rail, toolbar, host } : null;
-			};
-
-			const vendorParts = () => {
-				const store = document.querySelector('#wcfmmp-store');
-				if (!store) return null;
-				const rail = document.querySelector('.emo-vendor-filter-rail-010225');
-				const toolbar = store.querySelector('.emo-catalog-toolbar-parity-010227,.woostify-sorting,.elmercado-vendor-toolbar');
-				const host = store.querySelector('.body_area');
-				return rail && toolbar && host ? { rail, toolbar, host } : null;
-			};
-
-			const lockDesktopPair = (parts) => {
-				if (!parts) return;
-				const offset = Math.max(0, Math.round(documentTop(parts.toolbar) - documentTop(parts.host)));
-				desktopLock(parts.rail, offset);
-				observeRail(parts.rail);
-			};
-
-			const stabilize = () => {
-				const shop = shopParts();
-				const vendor = vendorParts();
-
-				if (desktopQuery.matches) {
-					lockDesktopPair(shop);
-					lockDesktopPair(vendor);
-					return;
-				}
-
-				if (vendor?.rail?.closest('.emo-vendor-mobile-filter-shell-010227')) {
-					mobileVendorLock(vendor.rail);
-					observeRail(vendor.rail);
-				}
-			};
-
-			const delayedStabilize = () => {
-				requestAnimationFrame(() => requestAnimationFrame(stabilize));
-			};
-
-			delayedStabilize();
-			setTimeout(delayedStabilize, 160);
-			setTimeout(delayedStabilize, 700);
-			setTimeout(delayedStabilize, 1450);
-			window.addEventListener('load', delayedStabilize, { once:true, passive:true });
-			window.addEventListener('pageshow', delayedStabilize, { passive:true });
-			window.addEventListener('resize', () => {
-				window.clearTimeout(resizeTimer);
-				resizeTimer = window.setTimeout(delayedStabilize, 140);
-			}, { passive:true });
-			document.fonts?.ready?.then(delayedStabilize).catch(() => {});
-
-			/* Solo detecta el montaje del drawer; no vuelve a medir posiciones. */
-			if (!desktopQuery.matches) {
-				const mountObserver = new MutationObserver(() => {
-					const vendor = vendorParts();
-					if (vendor?.rail?.closest('.emo-vendor-mobile-filter-shell-010227')) {
-						mobileVendorLock(vendor.rail);
-						observeRail(vendor.rail);
-					}
-				});
-				mountObserver.observe(document.body, { childList:true, subtree:true });
+				return rail && toolbar && host ? {rail, toolbar, host} : null;
 			}
+
+			function lockDesktop() {
+				if (!desktop.matches) return;
+				const p = parts();
+				if (!p) return;
+				const marginTop = Math.max(0, Math.round(docTop(p.toolbar) - docTop(p.host)));
+				apply(p.rail, {
+					'position':'sticky','top':'94px','right':'auto','bottom':'auto','left':'auto',
+					'margin-top':`${marginTop}px`,'margin-right':'0px','margin-bottom':'0px','margin-left':'0px',
+					'height':'auto','max-height':'calc(100dvh - 112px)','overflow-x':'hidden','overflow-y':'auto',
+					'transform':'none','transition':'none','will-change':'auto'
+				});
+			}
+
+			function lockMobileVendor() {
+				if (desktop.matches) return;
+				const rail = document.querySelector('.emo-vendor-mobile-filter-shell-010227 .emo-vendor-filter-rail-010225');
+				if (!rail) return;
+				apply(rail, {
+					'position':'static','top':'auto','right':'auto','bottom':'auto','left':'auto',
+					'width':'100%','min-width':'0px','max-width':'none','height':'auto','max-height':'none',
+					'overflow':'visible','margin':'0px','padding':'0px','border':'0px','box-shadow':'none','transform':'none'
+				});
+			}
+
+			/* Una sola medicion al montar; despues el sticky es puramente CSS. */
+			requestAnimationFrame(() => requestAnimationFrame(() => {
+				lockDesktop();
+				lockMobileVendor();
+			}));
+			window.addEventListener('pageshow', () => requestAnimationFrame(lockDesktop), {passive:true});
+			window.addEventListener('resize', () => {
+				clearTimeout(resizeTimer);
+				resizeTimer = setTimeout(() => {
+					lockDesktop();
+					lockMobileVendor();
+				}, 120);
+			}, {passive:true});
+			document.addEventListener('click', event => {
+				if (event.target.closest('.emo-vendor-mobile-filter-toggle-010227')) requestAnimationFrame(() => requestAnimationFrame(lockMobileVendor));
+			});
 		})();
 		</script>
 		<?php
