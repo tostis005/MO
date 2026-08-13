@@ -1,4 +1,4 @@
-name: Catalog toolbar mobile price 0.10.222 staging
+name: Catalog toolbar and category counts 0.10.223 staging
 
 on:
   push:
@@ -22,19 +22,21 @@ jobs:
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
       - name: Validate release and smoke syntax
         run: |
-          grep -q "Version: 0.10.222" elmercadodeorigen-child/style.css
-          grep -q "ELMERCADO_THEME_VERSION', '0.10.222'" elmercadodeorigen-child/functions.php
+          grep -q "Version: 0.10.223" elmercadodeorigen-child/style.css
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.223'" elmercadodeorigen-child/functions.php
           grep -q "catalog-toolbar-mobile-price-fix-010222.php" elmercadodeorigen-child/functions.php
+          grep -q "woocommerce_product_categories_widget_args" elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
+          grep -q "show_count.*=.*1" elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
           php -l elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
           node --check .github/scripts/catalog-toolbar-mobile-price-010222-browser.cjs
-      - name: Verify ordering and mobile price slider on staging
+      - name: Verify ordering, price slider and category counts on staging
         env:
           BASE_URL: https://dev.elmercadodeorigen.com
         run: node .github/scripts/catalog-toolbar-mobile-price-010222-browser.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: catalog-toolbar-mobile-price-010222-staging
+          name: catalog-toolbar-category-counts-010223-staging
           path: qa/
           retention-days: 14
           if-no-files-found: warn
