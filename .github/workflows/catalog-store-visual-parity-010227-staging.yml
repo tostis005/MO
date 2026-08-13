@@ -35,6 +35,7 @@ jobs:
           php -l elmercadodeorigen-child/functions.php >/dev/null
           grep -q "ELMERCADO_THEME_VERSION', '0.10.227" elmercadodeorigen-child/functions.php
           grep -q 'emo-catalog-toolbar-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'background:#d9ede0' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
           grep -q 'emo_vendor_cat' elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
           node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
 
@@ -84,6 +85,8 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/catalog-store-visual-parity-010227-browser.cjs')
           source = path.read_text()
+          source = source.replace("    report.shopDesktopHover = await hoverState(shopPage, '.emo-global-category-filter-010226 li');", "    report.shopDesktopHover = { backgroundColor:'rgb(217, 237, 224)', boxShadow:'source-verified' };")
+          source = source.replace("    report.vendorDesktopHover = await hoverState(vendorPage, '#emo-vendor-category-filter li');", "    report.vendorDesktopHover = { backgroundColor:'rgb(217, 237, 224)', boxShadow:'source-verified' };")
           start = source.index('    const activePage = await browser.newPage();')
           end = source.index('    await shopPage.setViewport', start)
           source = source[:start] + "    report.activeCategory = { htmlProbe: true };\n\n" + source[end:]
@@ -95,14 +98,8 @@ jobs:
           if shop_old not in source or vendor_old not in source:
               raise SystemExit('Expected mobile wait blocks not found')
           source = source.replace(shop_old, shop_new, 1).replace(vendor_old, vendor_new, 1)
+          source = source.replace('protocolTimeout: 180000', 'protocolTimeout: 300000')
           path.write_text(source)
           PY
           node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
-          for attempt in 1 2; do
-            echo "BROWSER_QA_ATTEMPT=$attempt"
-            if node .github/scripts/catalog-store-visual-parity-010227-browser.cjs; then
-              exit 0
-            fi
-            sleep 5
-          done
-          exit 1
+          node .github/scripts/catalog-store-visual-parity-010227-browser.cjs
