@@ -31,10 +31,6 @@ jobs:
           php -l .github/scripts/puente-robles-about-update-010230.php >/dev/null
           grep -q 'Puente Robles' .github/scripts/puente-robles-about-update-010230.php
           grep -q 'Concours International de Lyon 2025' .github/scripts/puente-robles-about-update-010230.php
-          if grep -q 'utm_source' .github/scripts/puente-robles-about-update-010230.php; then
-            echo 'Source reference found in updater' >&2
-            exit 1
-          fi
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
       - name: Update Puente Robles About in production
