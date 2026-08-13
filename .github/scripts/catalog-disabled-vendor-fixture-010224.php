@@ -6,45 +6,79 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$action = getenv( 'EMO_FIXTURE_ACTION' ) ?: 'setup';
-$login  = 'emo_catalog_fixture_vendor_010224';
-$marker = 'emo_catalog_fixture_010224';
+$action          = getenv( 'EMO_FIXTURE_ACTION' ) ?: 'setup';
+$marker          = 'emo_catalog_fixture_010224';
+$active_login    = 'emo_catalog_fixture_active_010224';
+$disabled_login  = 'emo_catalog_fixture_disabled_010224';
 
-$cleanup = static function () use ( $login, $marker ): void {
-	$fixture_products = get_posts(
-		array(
-			'post_type'      => 'product',
-			'post_status'    => 'any',
-			'posts_per_page' => -1,
-			'fields'         => 'ids',
-			'meta_key'       => '_emo_catalog_fixture',
-			'meta_value'     => $marker,
+/**
+ * Limpieza por SQL directo para que ningún filtro de catálogo pueda ocultar los
+ * propios fixtures durante el teardown.
+ */
+$cleanup = static function () use ( $marker, $active_login, $disabled_login ): void {
+	global $wpdb;
+
+	$product_ids = $wpdb->get_col(
+		$wpdb->prepare(
+			"SELECT DISTINCT pm.post_id
+			FROM {$wpdb->postmeta} pm
+			INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+			WHERE pm.meta_key = %s
+			AND pm.meta_value = %s
+			AND p.post_type = 'product'",
+			'_emo_catalog_fixture',
+			$marker
 		)
-	);
-	foreach ( array_map( 'absint', (array) $fixture_products ) as $product_id ) {
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+	foreach ( array_map( 'absint', (array) $product_ids ) as $product_id ) {
 		if ( $product_id > 0 ) {
 			wp_delete_post( $product_id, true );
 		}
 	}
 
-	$user = get_user_by( 'login', $login );
-	if ( $user instanceof WP_User ) {
-		if ( ! function_exists( 'wp_delete_user' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/user.php';
+	if ( ! function_exists( 'wp_delete_user' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/user.php';
+	}
+	foreach ( array( $active_login, $disabled_login, 'emo_catalog_fixture_vendor_010224' ) as $login ) {
+		$user = get_user_by( 'login', $login );
+		if ( $user instanceof WP_User ) {
+			wp_delete_user( (int) $user->ID );
 		}
-		wp_delete_user( (int) $user->ID );
+	}
+
+	$remaining = $wpdb->get_col(
+		$wpdb->prepare(
+			"SELECT DISTINCT pm.post_id
+			FROM {$wpdb->postmeta} pm
+			INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+			WHERE pm.meta_key = %s
+			AND pm.meta_value = %s
+			AND p.post_type = 'product'",
+			'_emo_catalog_fixture',
+			$marker
+		)
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+	if ( $remaining ) {
+		throw new RuntimeException( 'Fixture cleanup left product IDs: ' . implode( ',', array_map( 'absint', $remaining ) ) );
 	}
 };
-
-if ( 'cleanup' === $action ) {
-	$cleanup();
-	echo 'CATALOG_DISABLED_VENDOR_FIXTURE_010224_CLEANUP_OK' . PHP_EOL;
-	return;
-}
 
 if ( false === strpos( home_url( '/' ), 'dev.elmercadodeorigen.com' ) ) {
 	fwrite( STDERR, 'Fixture refused outside development.' . PHP_EOL );
 	exit( 3 );
+}
+
+if ( 'cleanup' === $action ) {
+	try {
+		$cleanup();
+		echo 'CATALOG_DISABLED_VENDOR_FIXTURE_010224_CLEANUP_OK' . PHP_EOL;
+	} catch ( Throwable $error ) {
+		fwrite( STDERR, 'Cleanup failed: ' . $error->getMessage() . PHP_EOL );
+		exit( 8 );
+	}
+	return;
 }
 
 $cleanup();
@@ -60,21 +94,35 @@ if ( ! $category instanceof WP_Term ) {
 	exit( 5 );
 }
 
-$password = wp_generate_password( 32, true, true );
-$user_id  = wp_create_user( $login, $password, $login . '@example.invalid' );
-if ( is_wp_error( $user_id ) ) {
-	fwrite( STDERR, $user_id->get_error_message() . PHP_EOL );
+$make_vendor = static function ( string $login, string $name, bool $disabled ) {
+	$password = wp_generate_password( 32, true, true );
+	$user_id  = wp_create_user( $login, $password, $login . '@example.invalid' );
+	if ( is_wp_error( $user_id ) ) {
+		return $user_id;
+	}
+	$user = get_userdata( (int) $user_id );
+	if ( $user instanceof WP_User ) {
+		$user->set_role( 'wcfm_vendor' );
+	}
+	update_user_meta( (int) $user_id, 'store_name', $name );
+	update_user_meta( (int) $user_id, 'wcfmmp_profile_settings', array( 'store_name' => $name ) );
+	if ( $disabled ) {
+		update_user_meta( (int) $user_id, '_disable_vendor', 1 );
+	} else {
+		delete_user_meta( (int) $user_id, '_disable_vendor' );
+	}
+	return (int) $user_id;
+};
+
+$active_vendor_id   = $make_vendor( $active_login, 'Fixture vendedor activo 010224', false );
+$disabled_vendor_id = $make_vendor( $disabled_login, 'Fixture vendedor desactivado 010224', true );
+if ( is_wp_error( $active_vendor_id ) || is_wp_error( $disabled_vendor_id ) || $active_vendor_id <= 0 || $disabled_vendor_id <= 0 ) {
+	$cleanup();
+	fwrite( STDERR, 'Fixture vendors could not be created.' . PHP_EOL );
 	exit( 6 );
 }
-$user = get_userdata( (int) $user_id );
-if ( $user instanceof WP_User ) {
-	$user->set_role( 'wcfm_vendor' );
-}
-update_user_meta( (int) $user_id, '_disable_vendor', 1 );
-update_user_meta( (int) $user_id, 'store_name', 'Fixture vendedor desactivado 010224' );
-update_user_meta( (int) $user_id, 'wcfmmp_profile_settings', array( 'store_name' => 'Fixture vendedor desactivado 010224' ) );
 
-$make_product = static function ( string $name, string $sku, bool $in_stock ) use ( $category, $user_id, $marker ): int {
+$make_product = static function ( string $name, string $sku, int $author_id, bool $in_stock ) use ( $category, $marker ): int {
 	$product = new WC_Product_Simple();
 	$product->set_name( $name );
 	$product->set_status( 'publish' );
@@ -92,7 +140,8 @@ $make_product = static function ( string $name, string $sku, bool $in_stock ) us
 	wp_update_post(
 		array(
 			'ID'          => $product_id,
-			'post_author' => (int) $user_id,
+			'post_author' => $author_id,
+			'post_status' => 'publish',
 		)
 	);
 	update_post_meta( $product_id, '_emo_catalog_fixture', $marker );
@@ -100,10 +149,11 @@ $make_product = static function ( string $name, string $sku, bool $in_stock ) us
 	return $product_id;
 };
 
-$instock_id    = $make_product( 'Fixture admin visible in stock 010224', 'EMO-FIXTURE-INSTOCK-010224', true );
-$outofstock_id = $make_product( 'Fixture admin hidden out of stock 010224', 'EMO-FIXTURE-OUTOFSTOCK-010224', false );
+$active_instock_id     = $make_product( 'Fixture público visible en stock 010224', 'EMO-FIXTURE-ACTIVE-INSTOCK-010224', $active_vendor_id, true );
+$disabled_instock_id   = $make_product( 'Fixture solo admin vendedor desactivado 010224', 'EMO-FIXTURE-DISABLED-INSTOCK-010224', $disabled_vendor_id, true );
+$disabled_outstock_id  = $make_product( 'Fixture agotado vendedor desactivado 010224', 'EMO-FIXTURE-DISABLED-OUTOFSTOCK-010224', $disabled_vendor_id, false );
 
-if ( $instock_id <= 0 || $outofstock_id <= 0 ) {
+if ( $active_instock_id <= 0 || $disabled_instock_id <= 0 || $disabled_outstock_id <= 0 ) {
 	$cleanup();
 	fwrite( STDERR, 'Fixture products could not be created.' . PHP_EOL );
 	exit( 7 );
@@ -117,11 +167,13 @@ clean_term_cache( array( (int) $category->term_id ), 'product_cat' );
 echo '__FIXTURE__=' . base64_encode(
 	wp_json_encode(
 		array(
-			'vendor_id'      => (int) $user_id,
-			'instock_id'     => $instock_id,
-			'outofstock_id'  => $outofstock_id,
-			'category_id'    => (int) $category->term_id,
-			'category_slug'  => (string) $category->slug,
+			'active_vendor_id'       => $active_vendor_id,
+			'disabled_vendor_id'     => $disabled_vendor_id,
+			'active_instock_id'      => $active_instock_id,
+			'disabled_instock_id'    => $disabled_instock_id,
+			'disabled_outofstock_id' => $disabled_outstock_id,
+			'category_id'            => (int) $category->term_id,
+			'category_slug'          => (string) $category->slug,
 		)
 	)
 ) . PHP_EOL;
