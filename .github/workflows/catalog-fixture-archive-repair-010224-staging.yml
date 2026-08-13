@@ -1,0 +1,115 @@
+name: Catalog fixture archive repair 0.10.224 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-fixture-archive-repair-010224-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-development-catalog-mutation
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate guarded repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/catalog-fixture-archive-repair-010224.php >/dev/null
+          grep -q "25 !== count" .github/scripts/catalog-fixture-archive-repair-010224.php
+          grep -q "08:53:20" .github/scripts/catalog-fixture-archive-repair-010224.php
+          grep -q "08:53:24" .github/scripts/catalog-fixture-archive-repair-010224.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+
+      - name: Install SSH and JSON tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq
+
+      - name: Resolve development WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?}"
+          case "$WP_PATH" in *dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-development path: $WP_PATH" >&2; exit 3;; esac
+          echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+
+      - name: Dry-run and verify exact incident set
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          REMOTE_REPAIR="/tmp/catalog-fixture-archive-repair-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-fixture-archive-repair-010224.php "$STAGING_USER@$STAGING_HOST:$REMOTE_REPAIR"
+          echo "REMOTE_REPAIR=$REMOTE_REPAIR" >> "$GITHUB_ENV"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMO_REPAIR_ACTION=dry-run \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_REPAIR' --path='$STAGING_WP_PATH' --allow-root" )"
+          printf '%s\n' "$OUT"
+          grep -q '^CATALOG_FIXTURE_ARCHIVE_REPAIR_010224_DRY_RUN_OK$' <<< "$OUT"
+          B64="$(printf '%s\n' "$OUT" | sed -n 's/^__ARCHIVE_REPAIR__=//p' | tail -n1)"
+          : "${B64:?}"
+          JSON="$(printf '%s' "$B64" | base64 -d)"
+          printf '%s\n' "$JSON" | jq .
+          [ "$(jq -r '.candidate_count' <<< "$JSON")" = '25' ]
+          [ "$(jq -r '.missing_known_baseline_ids | length' <<< "$JSON")" = '0' ]
+          [ "$(jq -r '[.candidates[].post_status] | all(. == "archived")' <<< "$JSON")" = 'true' ]
+          echo 'CATALOG_FIXTURE_ARCHIVE_REPAIR_010224_GUARD_OK count=25'
+
+      - name: Apply guarded development repair
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMO_REPAIR_ACTION=apply \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_REPAIR' --path='$STAGING_WP_PATH' --allow-root" )"
+          printf '%s\n' "$OUT"
+          grep -q '^CATALOG_FIXTURE_ARCHIVE_REPAIR_010224_APPLY_OK updated=25$' <<< "$OUT"
+
+      - name: Verify repair and remove temporary script
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ -n "${REMOTE_REPAIR:-}" ]; then
+            if [ "${{ job.status }}" = "success" ]; then
+              OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMO_REPAIR_ACTION=dry-run \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_REPAIR' --path='$STAGING_WP_PATH' --allow-root" )"
+              B64="$(printf '%s\n' "$OUT" | sed -n 's/^__ARCHIVE_REPAIR__=//p' | tail -n1)"
+              JSON="$(printf '%s' "$B64" | base64 -d)"
+              [ "$(jq -r '.candidate_count' <<< "$JSON")" = '0' ]
+              echo 'CATALOG_FIXTURE_ARCHIVE_REPAIR_010224_POSTCHECK_OK count=0'
+            fi
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_REPAIR'"
+          fi
