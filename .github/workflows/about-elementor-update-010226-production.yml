@@ -65,4 +65,8 @@ jobs:
             echo 'ABOUT_ELEMENTOR_PUBLIC_ABORT: old visible copy remains' >&2
             exit 7
           fi
-          echo "ABOUT_ELEMENTOR_PUBLIC_OK new=$(grep -Fc "$NEW" /tmp/about.html || true) old=$(grep -Fc "$OLD" /tmp/about.html || true)"
+          if grep -Fq '<h2>Nuestra historia</h2>' /tmp/about.html; then
+            echo 'ABOUT_ELEMENTOR_PUBLIC_ABORT: duplicate Nuestra historia heading remains' >&2
+            exit 8
+          fi
+          echo "ABOUT_ELEMENTOR_PUBLIC_OK new=$(grep -Fc "$NEW" /tmp/about.html || true) old=$(grep -Fc "$OLD" /tmp/about.html || true) duplicate_heading=0"
