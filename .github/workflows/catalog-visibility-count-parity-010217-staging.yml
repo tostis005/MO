@@ -1,5 +1,5 @@
 name: Catalog visibility count parity 0.10.217 staging
-# Probe revision 2: validate only category counts that are actually rendered.
+# Probe revision 3: compare layered-nav counts with independent catalog SQL.
 
 on:
   push:
@@ -36,6 +36,7 @@ jobs:
           grep -q 'catalog-visibility-counts-010217.php' elmercadodeorigen-child/functions.php
           php -l elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php >/dev/null
           php -l .github/scripts/home-category-parity-data-010215.php >/dev/null
+          php -l .github/scripts/catalog-attribute-count-data-010217.php >/dev/null
           php -l .github/scripts/elmercado-opcache-reset.php >/dev/null
           node --check .github/scripts/home-category-parity-010213-browser.cjs
           node --check .github/scripts/catalog-visibility-count-parity-010217-browser.cjs
@@ -71,12 +72,12 @@ jobs:
           done
           [ "$ok" = 1 ] || { echo "Staging version $VERSION != $EXPECTED_VERSION" >&2; exit 2; }
 
-          REMOTE_DATA="/tmp/home-category-parity-data-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/home-category-parity-data-010215.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DATA"
-          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DATA' --path='$WP_PATH' --allow-root; rm -f '$REMOTE_DATA'" )"
-          ROWS_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__ROWS__=//p' | tail -n1)"
-          NAME_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_NAME__=//p' | tail -n1)"
-          VALUE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_VALUE__=//p' | tail -n1)"
+          REMOTE_HOME="/tmp/home-category-parity-data-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/home-category-parity-data-010215.php "$STAGING_USER@$STAGING_HOST:$REMOTE_HOME"
+          HOME_OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_HOME' --path='$WP_PATH' --allow-root; rm -f '$REMOTE_HOME'" )"
+          ROWS_B64="$(printf '%s\n' "$HOME_OUT" | sed -n 's/^__ROWS__=//p' | tail -n1)"
+          NAME_B64="$(printf '%s\n' "$HOME_OUT" | sed -n 's/^__COOKIE_NAME__=//p' | tail -n1)"
+          VALUE_B64="$(printf '%s\n' "$HOME_OUT" | sed -n 's/^__COOKIE_VALUE__=//p' | tail -n1)"
           : "${ROWS_B64:?}"; : "${NAME_B64:?}"; : "${VALUE_B64:?}"
           ROWS="$(printf '%s' "$ROWS_B64" | base64 -d)"
           COOKIE_NAME="$(printf '%s' "$NAME_B64" | base64 -d)"
@@ -85,6 +86,14 @@ jobs:
           echo "CATEGORY_PARITY_JSON=$ROWS" >> "$GITHUB_ENV"
           echo "ADMIN_COOKIE_NAME=$COOKIE_NAME" >> "$GITHUB_ENV"
           echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
+
+          REMOTE_ATTR="/tmp/catalog-attribute-count-data-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-attribute-count-data-010217.php "$STAGING_USER@$STAGING_HOST:$REMOTE_ATTR"
+          ATTR_OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_ATTR' --path='$WP_PATH' --allow-root; rm -f '$REMOTE_ATTR'" )"
+          ATTR_B64="$(printf '%s\n' "$ATTR_OUT" | sed -n 's/^__ATTRIBUTE_ROWS__=//p' | tail -n1)"
+          : "${ATTR_B64:?}"
+          ATTR_JSON="$(printf '%s' "$ATTR_B64" | base64 -d)"
+          echo "ATTRIBUTE_PARITY_JSON=$ATTR_JSON" >> "$GITHUB_ENV"
           echo 'CATALOG_VISIBILITY_010217_DATA_OK'
 
       - name: Reset staging PHP-FPM OPcache
@@ -106,6 +115,6 @@ jobs:
         shell: bash
         run: node .github/scripts/home-category-parity-010213-browser.cjs
 
-      - name: Verify anonymous catalog filter counts in Chrome
+      - name: Verify public/admin catalog filter counts in Chrome
         shell: bash
         run: node .github/scripts/catalog-visibility-count-parity-010217-browser.cjs
