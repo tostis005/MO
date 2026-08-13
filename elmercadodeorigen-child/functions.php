@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.229' );
-/* 0.10.229 comparte un único contrato visual y de interacción entre Tienda y productor. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.233' );
+/* 0.10.233 unifica el filtro visual y retira el observer histórico del productor. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
