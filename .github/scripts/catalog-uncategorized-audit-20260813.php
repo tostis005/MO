@@ -12,10 +12,46 @@ function emdo_audit_text( $value, int $limit = 6000 ): string {
 	$text = html_entity_decode( wp_strip_all_tags( (string) $value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 	$text = preg_replace( '/\s+/u', ' ', $text );
 	$text = trim( (string) $text );
-	if ( function_exists( 'mb_substr' ) ) {
-		return mb_substr( $text, 0, $limit, 'UTF-8' );
+	return function_exists( 'mb_substr' ) ? mb_substr( $text, 0, $limit, 'UTF-8' ) : substr( $text, 0, $limit );
+}
+
+function emdo_audit_norm( string $text ): string {
+	$text = remove_accents( strtolower( html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) );
+	$text = preg_replace( '/[^a-z0-9]+/u', ' ', $text );
+	return trim( (string) preg_replace( '/\s+/u', ' ', (string) $text ) );
+}
+
+function emdo_audit_vendor_name( int $user_id ): string {
+	$name = '';
+	if ( function_exists( 'wcfm_get_vendor_store_name' ) && $user_id > 0 ) {
+		$name = trim( (string) wcfm_get_vendor_store_name( $user_id ) );
 	}
-	return substr( $text, 0, $limit );
+	if ( '' === $name && $user_id > 0 ) {
+		$settings = get_user_meta( $user_id, 'wcfmmp_profile_settings', true );
+		if ( is_array( $settings ) && ! empty( $settings['store_name'] ) ) {
+			$name = trim( (string) $settings['store_name'] );
+		}
+	}
+	if ( '' === $name && $user_id > 0 ) {
+		$name = trim( (string) get_user_meta( $user_id, 'store_name', true ) );
+	}
+	if ( '' === $name && $user_id > 0 ) {
+		$user = get_userdata( $user_id );
+		if ( $user instanceof WP_User ) {
+			$name = trim( (string) $user->display_name );
+		}
+	}
+	return $name;
+}
+
+function emdo_audit_vendor_target( string $vendor ): bool {
+	$n = emdo_audit_norm( $vendor );
+	return str_contains( $n, '1957' )
+		|| str_contains( $n, 'hidalgo de la jara' )
+		|| str_contains( $n, 'tolecarnes' )
+		|| str_contains( $n, 'tole carnes' )
+		|| str_contains( $n, 'el catedratico' )
+		|| str_contains( $n, 'puente robles' );
 }
 
 function emdo_audit_term_rows( int $product_id, string $taxonomy ): array {
@@ -28,11 +64,7 @@ function emdo_audit_term_rows( int $product_id, string $taxonomy ): array {
 	}
 	return array_values( array_map(
 		static function ( WP_Term $term ): array {
-			return array(
-				'id'   => (int) $term->term_id,
-				'name' => (string) $term->name,
-				'slug' => (string) $term->slug,
-			);
+			return array( 'id' => (int) $term->term_id, 'name' => (string) $term->name, 'slug' => (string) $term->slug );
 		},
 		$terms
 	) );
@@ -57,167 +89,100 @@ function emdo_audit_attributes( WC_Product $product ): array {
 			$options = array_values( array_map( 'strval', $attribute->get_options() ) );
 		}
 		$rows[] = array(
-			'key'       => (string) $key,
-			'name'      => $name,
-			'taxonomy'  => (bool) $attribute->is_taxonomy(),
-			'visible'   => (bool) $attribute->get_visible(),
+			'key' => (string) $key,
+			'name' => $name,
+			'taxonomy' => (bool) $attribute->is_taxonomy(),
+			'visible' => (bool) $attribute->get_visible(),
 			'variation' => (bool) $attribute->get_variation(),
-			'options'   => $options,
+			'options' => $options,
 		);
 	}
 	return $rows;
 }
 
-function emdo_audit_context_meta( int $product_id ): array {
-	$all = get_post_meta( $product_id );
-	$out = array();
-	foreach ( $all as $key => $values ) {
-		$needle = strtolower( (string) $key );
-		if ( ! preg_match( '/(?:mdo|emdo|supplier|vendor|source|import|wcfm)/', $needle ) ) {
-			continue;
-		}
-		$clean = array();
-		foreach ( (array) $values as $value ) {
-			$value = maybe_unserialize( $value );
-			if ( is_scalar( $value ) || null === $value ) {
-				$clean[] = emdo_audit_text( (string) $value, 1200 );
-			} else {
-				$encoded = wp_json_encode( $value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
-				$clean[] = emdo_audit_text( (string) $encoded, 2400 );
-			}
-		}
-		$out[ (string) $key ] = $clean;
-	}
-	ksort( $out );
-	return $out;
-}
-
-$default_category_id = (int) get_option( 'default_product_cat', 0 );
-$default_category = $default_category_id > 0 ? get_term( $default_category_id, 'product_cat' ) : null;
-
-$statuses = array( 'publish', 'private', 'draft', 'pending' );
 $ids = wc_get_products(
 	array(
-		'limit'  => -1,
+		'limit' => -1,
 		'return' => 'ids',
-		'status' => $statuses,
+		'status' => array( 'publish' ),
 		'orderby' => 'ID',
-		'order'   => 'ASC',
+		'order' => 'ASC',
 	)
 );
 
-$candidates = array();
+$products = array();
+$vendors = array();
 foreach ( array_map( 'intval', $ids ) as $product_id ) {
 	$product = wc_get_product( $product_id );
 	if ( ! $product instanceof WC_Product || $product->is_type( 'variation' ) ) {
 		continue;
 	}
-
-	$category_ids = array_values( array_unique( array_filter( array_map( 'intval', $product->get_category_ids() ) ) ) );
-	$meaningful_category_ids = $category_ids;
-	if ( $default_category_id > 0 ) {
-		$meaningful_category_ids = array_values( array_diff( $meaningful_category_ids, array( $default_category_id ) ) );
-	}
-	if ( $meaningful_category_ids ) {
+	$author_id = (int) get_post_field( 'post_author', $product_id );
+	$vendor_name = emdo_audit_vendor_name( $author_id );
+	if ( ! emdo_audit_vendor_target( $vendor_name ) ) {
 		continue;
 	}
-
-	$author_id = (int) get_post_field( 'post_author', $product_id );
-	$author = $author_id > 0 ? get_userdata( $author_id ) : false;
-	$vendor_name = '';
-	if ( function_exists( 'wcfm_get_vendor_store_name' ) && $author_id > 0 ) {
-		$vendor_name = (string) wcfm_get_vendor_store_name( $author_id );
-	}
-	if ( '' === trim( $vendor_name ) && $author_id > 0 ) {
-		$vendor_name = (string) get_user_meta( $author_id, 'store_name', true );
-	}
-
-	$taxonomy_terms = array();
-	foreach ( get_object_taxonomies( 'product', 'objects' ) as $taxonomy => $object ) {
-		if ( in_array( $taxonomy, array( 'product_cat', 'product_tag', 'product_type', 'product_visibility', 'product_shipping_class' ), true ) ) {
-			continue;
-		}
-		$terms = emdo_audit_term_rows( $product_id, (string) $taxonomy );
-		if ( $terms ) {
-			$taxonomy_terms[ (string) $taxonomy ] = $terms;
-		}
-	}
-
-	$candidates[] = array(
-		'id'          => $product_id,
-		'status'      => (string) $product->get_status(),
-		'type'        => (string) $product->get_type(),
-		'name'        => (string) $product->get_name(),
-		'slug'        => (string) $product->get_slug(),
-		'sku'         => (string) $product->get_sku(),
-		'permalink'   => (string) get_permalink( $product_id ),
-		'author_id'   => $author_id,
-		'author'      => $author ? (string) $author->display_name : '',
+	$vendors[ $vendor_name ] = ( $vendors[ $vendor_name ] ?? 0 ) + 1;
+	$products[] = array(
+		'id' => $product_id,
+		'status' => (string) $product->get_status(),
+		'type' => (string) $product->get_type(),
+		'name' => (string) $product->get_name(),
+		'slug' => (string) $product->get_slug(),
+		'sku' => (string) $product->get_sku(),
+		'catalog_visibility' => (string) $product->get_catalog_visibility(),
+		'author_id' => $author_id,
 		'vendor_name' => $vendor_name,
-		'categories'  => emdo_audit_term_rows( $product_id, 'product_cat' ),
-		'tags'        => emdo_audit_term_rows( $product_id, 'product_tag' ),
-		'attributes'  => emdo_audit_attributes( $product ),
-		'taxonomies'  => $taxonomy_terms,
+		'categories' => emdo_audit_term_rows( $product_id, 'product_cat' ),
+		'attributes' => emdo_audit_attributes( $product ),
 		'short_description' => emdo_audit_text( $product->get_short_description(), 5000 ),
 		'description' => emdo_audit_text( $product->get_description(), 8000 ),
-		'context_meta' => emdo_audit_context_meta( $product_id ),
 	);
 }
+ksort( $vendors, SORT_NATURAL | SORT_FLAG_CASE );
 
 $categories = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false ) );
 $category_rows = array();
 if ( ! is_wp_error( $categories ) ) {
 	foreach ( $categories as $term ) {
-		$category_rows[] = array(
-			'id'     => (int) $term->term_id,
-			'name'   => (string) $term->name,
-			'slug'   => (string) $term->slug,
-			'parent' => (int) $term->parent,
-			'count'  => (int) $term->count,
-		);
+		$category_rows[] = array( 'id' => (int) $term->term_id, 'name' => (string) $term->name, 'slug' => (string) $term->slug, 'parent' => (int) $term->parent, 'count' => (int) $term->count );
 	}
 }
 
 $attribute_schema = array();
-if ( function_exists( 'wc_get_attribute_taxonomies' ) ) {
-	foreach ( (array) wc_get_attribute_taxonomies() as $attribute ) {
-		$taxonomy = wc_attribute_taxonomy_name( (string) $attribute->attribute_name );
-		$terms = taxonomy_exists( $taxonomy ) ? get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => false ) ) : array();
-		$term_rows = array();
-		if ( ! is_wp_error( $terms ) ) {
-			foreach ( $terms as $term ) {
-				$term_rows[] = array( 'id' => (int) $term->term_id, 'name' => (string) $term->name, 'slug' => (string) $term->slug, 'count' => (int) $term->count );
-			}
+foreach ( (array) wc_get_attribute_taxonomies() as $attribute ) {
+	$taxonomy = wc_attribute_taxonomy_name( (string) $attribute->attribute_name );
+	$terms = taxonomy_exists( $taxonomy ) ? get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => false ) ) : array();
+	$term_rows = array();
+	if ( ! is_wp_error( $terms ) ) {
+		foreach ( $terms as $term ) {
+			$term_rows[] = array( 'id' => (int) $term->term_id, 'name' => (string) $term->name, 'slug' => (string) $term->slug, 'count' => (int) $term->count );
 		}
-		$attribute_schema[] = array(
-			'id'       => (int) $attribute->attribute_id,
-			'name'     => (string) $attribute->attribute_label,
-			'slug'     => (string) $attribute->attribute_name,
-			'taxonomy' => $taxonomy,
-			'terms'    => $term_rows,
-		);
 	}
+	$attribute_schema[] = array(
+		'id' => (int) $attribute->attribute_id,
+		'name' => (string) $attribute->attribute_label,
+		'slug' => (string) $attribute->attribute_name,
+		'taxonomy' => $taxonomy,
+		'terms' => $term_rows,
+	);
 }
 
 $report = array(
 	'generated_at' => current_time( 'mysql' ),
 	'site_url' => (string) get_option( 'siteurl' ),
-	'total_products_scanned' => count( $ids ),
-	'candidate_count' => count( $candidates ),
-	'default_product_category' => $default_category instanceof WP_Term ? array(
-		'id' => (int) $default_category->term_id,
-		'name' => (string) $default_category->name,
-		'slug' => (string) $default_category->slug,
-	) : null,
+	'published_products_scanned' => count( $ids ),
+	'target_product_count' => count( $products ),
+	'target_vendors' => $vendors,
 	'classifiers_available' => array(
-		'ham'         => class_exists( 'MDO_Ham_Taxonomy' ),
-		'cured'       => class_exists( 'MDO_Cured_Catalog' ),
-		'adobados'    => class_exists( 'MDO_Adobados_Catalog' ),
+		'ham' => class_exists( 'MDO_Ham_Taxonomy' ),
+		'cured' => class_exists( 'MDO_Cured_Catalog' ),
+		'adobados' => class_exists( 'MDO_Adobados_Catalog' ),
 		'accessories' => class_exists( 'MDO_Accessories_Catalog' ),
 	),
 	'categories' => $category_rows,
 	'attribute_schema' => $attribute_schema,
-	'candidates' => $candidates,
+	'products' => $products,
 );
 
 echo wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ) . PHP_EOL;
