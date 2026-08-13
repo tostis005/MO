@@ -1,5 +1,5 @@
-name: Catalog visibility count parity 0.10.219 staging
-# Probe revision 3: zero-stock Home categories may legitimately shrink the card set.
+name: Catalog visibility count parity 0.10.220 staging
+# Probe revision 4: exact result total is independent of the broad WordPress main query.
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
       STAGING_URL: https://dev.elmercadodeorigen.com
-      EXPECTED_VERSION: 0.10.219
+      EXPECTED_VERSION: 0.10.220
 
     steps:
       - uses: actions/checkout@v4
@@ -32,10 +32,12 @@ jobs:
         run: |
           set -euo pipefail
           grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
-          grep -Eq '^Version:[[:space:]]*0\.10\.219$' elmercadodeorigen-child/style.css
+          grep -Eq '^Version:[[:space:]]*0\.10\.220$' elmercadodeorigen-child/style.css
+          grep -q 'catalog-result-total-010220.php' elmercadodeorigen-child/functions.php
+          grep -q 'elmercado_catalog_exact_result_total_010220' elmercadodeorigen-child/inc/catalog-result-total-010220.php
           grep -q 'elmercado_catalog_force_in_stock_tax_query_010219' elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
-          grep -q 'emo-catalog-result-count-010218' elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
           php -l elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php >/dev/null
+          php -l elmercadodeorigen-child/inc/catalog-result-total-010220.php >/dev/null
           php -l .github/scripts/home-category-parity-data-010215.php >/dev/null
           php -l .github/scripts/catalog-attribute-count-data-010217.php >/dev/null
           php -l .github/scripts/elmercado-opcache-reset.php >/dev/null
@@ -112,6 +114,6 @@ jobs:
         shell: bash
         run: node .github/scripts/home-category-parity-010213-browser.cjs
 
-      - name: Verify stock-aware filters and result totals in Chrome
+      - name: Verify stock-aware filters and exact result totals in Chrome
         shell: bash
         run: node .github/scripts/catalog-visibility-count-parity-010217-browser.cjs
