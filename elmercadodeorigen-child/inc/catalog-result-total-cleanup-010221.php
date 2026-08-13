@@ -59,3 +59,19 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/*
+ * La capa de estabilidad debe registrarse después del cierre visual 0.10.227.
+ * wp_loaded ocurre después de after_setup_theme, pero todavía antes de wp_head
+ * y wp_footer, por lo que sus reglas quedan realmente al final de la cascada.
+ */
+add_action(
+	'wp_loaded',
+	static function (): void {
+		$module = ELMERCADO_THEME_PATH . '/inc/catalog-filter-stability-010228.php';
+		if ( is_readable( $module ) ) {
+			require_once $module;
+		}
+	},
+	PHP_INT_MAX
+);
