@@ -18,14 +18,18 @@ async function open(browser, slug, params = '', viewport = { width: 1440, height
   if (!response || response.status() >= 400) throw new Error(`${slug}: HTTP ${response?.status()} ${url}`);
   await page.waitForSelector('#wcfmmp-store', { timeout: 30000 });
   await page.waitForFunction(() => document.querySelector('#emo-vendor-filters') && /^\d+\s+resultados?$/.test((document.querySelector('#wcfmmp-store .woocommerce-result-count')?.textContent || '').trim()), { timeout: 30000 });
+  await sleep(350);
   return page;
 }
 
 async function state(page) {
   return page.evaluate(() => {
+    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim().replace(/[.!?…]+$/u, '');
+    const unwanted = 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa';
     const store = document.querySelector('#wcfmmp-store');
     const sidebar = store.querySelector('.left_sidebar');
     const products = store.querySelector('.right_side, .right_side_full, .products-wrapper, .wcfmmp-store-product, .product_area');
+    const panel = sidebar?.querySelector('#emo-vendor-filters');
     const resultText = (store.querySelector('.woocommerce-result-count')?.textContent || '').replace(/\s+/g, ' ').trim();
     const total = Number.parseInt(resultText.replace(/[^0-9]/g, ''), 10) || 0;
     const productIds = [...store.querySelectorAll('ul.products li.product')].map((item) => {
@@ -49,6 +53,10 @@ async function state(page) {
     }));
     const sidebarBox = sidebar?.getBoundingClientRect();
     const productBox = products?.getBoundingClientRect();
+    const sidebarStyle = sidebar ? getComputedStyle(sidebar) : null;
+    const directFilters = [...(panel?.children || [])];
+    const priceNode = panel?.querySelector('.emo-vendor-price-filter');
+    const contextNode = panel?.querySelector('#emo-vendor-category-context');
     return {
       pathname: location.pathname,
       search: location.search,
@@ -60,11 +68,23 @@ async function state(page) {
       price: Boolean(store.querySelector('.emo-vendor-price-filter .price_slider_wrapper')),
       context: (store.querySelector('#emo-vendor-category-context strong')?.textContent || '').trim(),
       clearCategory: store.querySelector('#emo-vendor-category-context a')?.href || '',
+      clearCategoryText: (store.querySelector('#emo-vendor-category-context a')?.textContent || '').replace(/\s+/g, ' ').trim(),
       oldCategoryWidgets: store.querySelectorAll('.left_sidebar > .widget_product_categories:not(#emo-vendor-category-filter), .left_sidebar .widget_product_tag_cloud').length,
       vendorFilter: Boolean(store.querySelector('#emo-global-vendor-filter, [data-attribute="productor"], .emo-vendor-attribute-filter[data-attribute="productor"]')),
       ordering: Boolean(store.querySelector('.woocommerce-ordering')),
       rightRail: Boolean(sidebarBox && productBox && sidebarBox.left > productBox.right - 2),
       sidebarWidth: sidebarBox ? Math.round(sidebarBox.width) : 0,
+      sidebarVisual: sidebarStyle ? {
+        padding: sidebarStyle.padding,
+        borderWidth: sidebarStyle.borderWidth,
+        borderStyle: sidebarStyle.borderStyle,
+        borderRadius: sidebarStyle.borderRadius,
+        background: sidebarStyle.backgroundColor,
+        boxShadow: sidebarStyle.boxShadow,
+      } : null,
+      filterOrder: directFilters.map((node) => node.id || node.className || node.tagName),
+      contextBeforePrice: Boolean(contextNode && priceNode && directFilters.indexOf(contextNode) < directFilters.indexOf(priceNode)),
+      taglinePresent: [...store.querySelectorAll('p')].some((node) => normalize(node.textContent) === unwanted),
       bodyOrder: [...(store.querySelector('.body_area')?.children || [])].map((node) => node.className || node.id || node.tagName),
       toggleVisible: (() => {
         const toggle = store.querySelector('.emo-vendor-filter-toggle-010225');
@@ -101,6 +121,22 @@ async function loadAll(page, expected) {
   }).filter(Boolean))]);
 }
 
+async function categoryTruth(browser, path, selector) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+  const separator = path.includes('?') ? '&' : '?';
+  const response = await page.goto(`${base}${path}${separator}qa-categories-010226=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
+  if (!response || response.status() >= 400) throw new Error(`Categories HTTP ${response?.status()} ${path}`);
+  await page.waitForSelector(selector, { timeout: 30000 });
+  await sleep(500);
+  const categories = await page.evaluate((selector) => [...document.querySelectorAll(selector)].map((node) => ({
+    name: (node.querySelector('a, strong')?.textContent || '').replace(/\s+/g, ' ').trim(),
+    count: Number.parseInt((node.querySelector('.count, small')?.textContent || '').replace(/[^0-9]/g, ''), 10) || 0,
+  })).filter((item) => item.name), selector);
+  await page.close();
+  return categories;
+}
+
 (async () => {
   const browser = await puppeteer.launch({
     headless: true,
@@ -121,7 +157,12 @@ async function loadAll(page, expected) {
     assert(!oil.vendorFilter, '1957: vendor/productor filter must not exist');
     assert(oil.oldCategoryWidgets === 0, `1957: stale WCFM widgets remain (${oil.oldCategoryWidgets})`);
     assert(oil.rightRail, '1957: filters are not geometrically to the right of products');
-    assert(oil.sidebarWidth >= 230 && oil.sidebarWidth <= 270, `1957: sidebar width ${oil.sidebarWidth}`);
+    assert(oil.sidebarWidth === 250, `1957: sidebar width ${oil.sidebarWidth} != 250`);
+    assert(oil.sidebarVisual?.padding === '18px', `1957: sidebar padding ${oil.sidebarVisual?.padding} != 18px`);
+    assert(oil.sidebarVisual?.borderWidth === '1px' && oil.sidebarVisual?.borderStyle === 'solid', `1957: sidebar border ${JSON.stringify(oil.sidebarVisual)}`);
+    assert(oil.sidebarVisual?.borderRadius === '18px', `1957: sidebar radius ${oil.sidebarVisual?.borderRadius} != 18px`);
+    assert(oil.sidebarVisual?.background === 'rgb(255, 255, 255)', `1957: sidebar background ${oil.sidebarVisual?.background} is not white`);
+    assert(!oil.taglinePresent, '1957: redundant Productos tagline is still visible');
     const oilAll = await loadAll(oilPage, oil.total);
     assert(oilAll.length === 4, `1957: loaded ${oilAll.length} unique products, expected 4`);
     await oilPage.close();
@@ -139,6 +180,11 @@ async function loadAll(page, expected) {
     assert(!hidalgo.vendorFilter, 'Hidalgo: vendor/productor filter must not exist');
     assert(hidalgo.oldCategoryWidgets === 0, `Hidalgo: stale WCFM widgets remain (${hidalgo.oldCategoryWidgets})`);
     assert(hidalgo.rightRail, 'Hidalgo: filters are not geometrically to the right of products');
+    assert(hidalgo.sidebarWidth === 250, `Hidalgo: sidebar width ${hidalgo.sidebarWidth} != 250`);
+    assert(hidalgo.sidebarVisual?.padding === '18px', `Hidalgo: sidebar padding ${hidalgo.sidebarVisual?.padding} != 18px`);
+    assert(hidalgo.sidebarVisual?.borderRadius === '18px', `Hidalgo: sidebar radius ${hidalgo.sidebarVisual?.borderRadius} != 18px`);
+    assert(hidalgo.sidebarVisual?.background === 'rgb(255, 255, 255)', `Hidalgo: sidebar background ${hidalgo.sidebarVisual?.background} is not white`);
+    assert(!hidalgo.taglinePresent, 'Hidalgo: redundant Productos tagline is still visible');
     assert(hidalgo.categories.every((item) => item.count > 0), `Hidalgo: zero category visible ${JSON.stringify(hidalgo.categories)}`);
     assert(hidalgo.categories.every((item) => new URL(item.href).pathname.includes('/tienda/hidalgo-de-la-jara/')), 'Hidalgo: a category link escapes producer store');
 
@@ -147,13 +193,17 @@ async function loadAll(page, expected) {
     if (jamones) {
       await hidalgoPage.goto(`${jamones.href}&qa-vendor-cat-010225=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
       await hidalgoPage.waitForSelector('#emo-vendor-category-context', { timeout: 30000 });
+      await sleep(350);
       const cat = await state(hidalgoPage);
       report.jamones = cat;
       assert(cat.context.toLowerCase().includes('jamon') || cat.context.toLowerCase().includes('paleta'), `Jamones: wrong context ${cat.context}`);
       assert(cat.clearCategory, 'Jamones: Quitar category link missing');
+      assert(/Quitar/.test(cat.clearCategoryText), `Jamones: shop-like Quitar control missing (${cat.clearCategoryText})`);
+      assert(cat.contextBeforePrice, `Jamones: active category is not above price ${JSON.stringify(cat.filterOrder)}`);
       assert(cat.total === jamones.count, `Jamones: total ${cat.total} != category count ${jamones.count}`);
       assert(cat.attributes.length > 0, 'Jamones: category-specific attributes missing');
       assert(!cat.vendorFilter, 'Jamones: redundant productor filter appeared');
+      assert(!cat.taglinePresent, 'Jamones: redundant Productos tagline is still visible');
       assert(cat.attributes.every((group) => group.options.every((item) => item.count > 0 || item.chosen)), `Jamones: zero attribute option visible ${JSON.stringify(cat.attributes)}`);
       assert(cat.attributes.every((group) => group.options.every((item) => new URL(item.href).pathname.includes('/tienda/hidalgo-de-la-jara/'))), 'Jamones: an attribute link escapes producer store');
 
@@ -166,6 +216,7 @@ async function loadAll(page, expected) {
         report.filtered = filtered;
         assert(filtered.total > 0 && filtered.total <= cat.total, `Attribute filter total ${filtered.total} invalid against ${cat.total}`);
         assert(filtered.context === cat.context, `Attribute filter lost category context (${filtered.context})`);
+        assert(filtered.contextBeforePrice, 'Attribute filter: category context moved below price');
         assert(filtered.attributes.some((group) => group.options.some((item) => item.chosen)), 'Attribute filter did not remain selected');
         assert(!filtered.vendorFilter, 'Attribute state exposes producer filter');
       }
@@ -179,6 +230,11 @@ async function loadAll(page, expected) {
     assert(mobile.toggleVisible, 'Mobile: Filtrar button is not visible');
     await mobilePage.click('.emo-vendor-filter-toggle-010225');
     await mobilePage.waitForFunction(() => document.documentElement.classList.contains('emo-vendor-filters-open-010225'), { timeout: 5000 });
+    await mobilePage.waitForFunction(() => {
+      const sidebar = document.querySelector('#wcfmmp-store .left_sidebar');
+      const box = sidebar?.getBoundingClientRect();
+      return Boolean(box && box.right <= innerWidth + 2 && box.left < innerWidth);
+    }, { timeout: 5000 });
     const drawerOpen = await mobilePage.evaluate(() => {
       const sidebar = document.querySelector('#wcfmmp-store .left_sidebar');
       const box = sidebar?.getBoundingClientRect();
@@ -186,6 +242,26 @@ async function loadAll(page, expected) {
     });
     assert(drawerOpen, 'Mobile: filter drawer did not open');
     await mobilePage.close();
+
+    // Home and Shop must expose the same real visible root categories. Aceites is
+    // a normal category, so it must appear wherever its four visible products do.
+    const shopCategories = await categoryTruth(browser, '/tienda/', '.emo-global-category-filter-010226 li');
+    const homeCategories = await categoryTruth(browser, '/', '.emo-categories .emo-category-card');
+    report.shopCategories = shopCategories;
+    report.homeCategories = homeCategories;
+    assert(shopCategories.length > 0, 'Shop: visible category widget is empty');
+    assert(homeCategories.length > 0, 'Home: visible category cards are empty');
+    assert(shopCategories.every((item) => item.count > 0), `Shop: zero-count category visible ${JSON.stringify(shopCategories)}`);
+    assert(homeCategories.every((item) => item.count > 0), `Home: zero-count category visible ${JSON.stringify(homeCategories)}`);
+    assert(shopCategories.some((item) => /aceite/i.test(item.name)), `Shop: Aceites missing ${JSON.stringify(shopCategories)}`);
+    assert(homeCategories.some((item) => /aceite/i.test(item.name)), `Home: Aceites missing ${JSON.stringify(homeCategories)}`);
+    const shopMap = new Map(shopCategories.map((item) => [item.name.toLowerCase(), item.count]));
+    const homeMap = new Map(homeCategories.map((item) => [item.name.toLowerCase(), item.count]));
+    assert(shopMap.size === homeMap.size, `Home/Shop category count differs ${shopMap.size} != ${homeMap.size}`);
+    for (const [name, count] of shopMap) {
+      assert(homeMap.has(name), `Home: category ${name} exists in Shop but is missing`);
+      assert(homeMap.get(name) === count, `Home/Shop: ${name} count ${homeMap.get(name)} != ${count}`);
+    }
   } finally {
     await browser.close();
   }
