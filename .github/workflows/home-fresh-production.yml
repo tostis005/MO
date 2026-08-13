@@ -118,3 +118,5 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             if [ -f '$PROD_PATH/wp-content/advanced-cache.php.pre-home-fresh' ]; then mv -f '$PROD_PATH/wp-content/advanced-cache.php.pre-home-fresh' '$PROD_PATH/wp-content/advanced-cache.php'; fi;
             if [ -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh' ]; then mv -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php'; else rm -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php'; fi"
+
+# Triggered intentionally after workflow creation so GitHub runs this deployment.
