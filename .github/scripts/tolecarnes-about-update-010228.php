@@ -38,6 +38,58 @@ if ( ! is_string( $direct ) || ! isset( $settings['shop_description'] ) ) {
     exit( 3 );
 }
 
+/*
+ * Catálogo: Tolecarnes vende carne de vacuno. Solo se corrigen productos
+ * publicados y visibles en catálogo de este vendedor. La categoría Carnes debe
+ * existir ya: este updater nunca crea categorías nuevas.
+ */
+$meat_category = get_term_by( 'slug', 'carnes', 'product_cat' );
+if ( ! $meat_category instanceof WP_Term ) {
+    fwrite( STDERR, "TOLE_CATALOG_ABORT: existing category carnes not found\n" );
+    exit( 7 );
+}
+
+$product_ids = get_posts( array(
+    'post_type'        => 'product',
+    'post_status'      => 'publish',
+    'author'           => $user_id,
+    'posts_per_page'   => -1,
+    'fields'           => 'ids',
+    'orderby'          => 'ID',
+    'order'            => 'ASC',
+    'suppress_filters' => true,
+) );
+
+$catalog_updated = 0;
+$catalog_skipped_hidden = 0;
+foreach ( array_map( 'intval', $product_ids ) as $product_id ) {
+    $product = wc_get_product( $product_id );
+    if ( ! $product instanceof WC_Product || 'publish' !== $product->get_status() ) { continue; }
+    if ( 'hidden' === $product->get_catalog_visibility() ) {
+        ++$catalog_skipped_hidden;
+        continue;
+    }
+
+    $result = wp_set_object_terms( $product_id, array( (int) $meat_category->term_id ), 'product_cat', false );
+    if ( is_wp_error( $result ) ) {
+        fwrite( STDERR, 'TOLE_CATALOG_ABORT: product ' . $product_id . ': ' . $result->get_error_message() . "\n" );
+        exit( 8 );
+    }
+    clean_post_cache( $product_id );
+    wc_delete_product_transients( $product_id );
+
+    $slugs = wp_get_post_terms( $product_id, 'product_cat', array( 'fields' => 'slugs' ) );
+    if ( is_wp_error( $slugs ) || array( 'carnes' ) !== array_values( $slugs ) ) {
+        fwrite( STDERR, 'TOLE_CATALOG_ABORT: category verification failed for product ' . $product_id . "\n" );
+        exit( 9 );
+    }
+    ++$catalog_updated;
+    echo 'TOLE_CATALOG_PRODUCT=' . $product_id . '|Carnes' . "\n";
+}
+
+echo "TOLE_CATALOG_UPDATED={$catalog_updated}\n";
+echo "TOLE_CATALOG_SKIPPED_HIDDEN={$catalog_skipped_hidden}\n";
+
 $new_needle = 'La historia de <strong>Tolecarnes</strong> está ligada a la ganadería de vacuno desde <strong>1960</strong>.';
 $new_description = <<<'HTML'
 <p>La historia de <strong>Tolecarnes</strong> está ligada a la ganadería de vacuno desde <strong>1960</strong>. Son tres generaciones dedicadas a la cría de ganado en los Montes de Toledo, una experiencia que ha ido pasando de una generación a la siguiente y que sigue marcando su forma de entender la ganadería.</p>
@@ -50,6 +102,8 @@ HTML;
 
 if ( strpos( $direct, $new_needle ) !== false && strpos( $shop, $new_needle ) !== false ) {
     echo "TOLE_UPDATE=already_applied\n";
+    echo "TOLE_USER_ID={$user_id}\n";
+    echo "TOLE_STORE_SLUG=" . (string) ( $settings['store_slug'] ?? '' ) . "\n";
     exit( 0 );
 }
 
