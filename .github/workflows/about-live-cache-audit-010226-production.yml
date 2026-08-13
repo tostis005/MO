@@ -39,8 +39,17 @@ jobs:
               "$(grep -Fc 'Todo comenzó en 2014 cuando empezamos a especializarnos' "/tmp/$mode.body" || true)" \
               "$(wc -c < "/tmp/$mode.body")" \
               "$(sha256sum "/tmp/$mode.body" | awk '{print $1}')"
-            echo '--- 2014 snippets ---'
-            grep -o -E '.{0,140}2014.{0,220}' "/tmp/$mode.body" | head -n 3 || true
+            echo '--- NEW CONTEXT ---'
+            python3 - "$mode" <<'PY'
+import pathlib, sys
+mode=sys.argv[1]
+s=pathlib.Path(f'/tmp/{mode}.body').read_text(errors='replace')
+for phrase in ['Nuestra historia comienza en 2014, cuando empezamos a especializarnos','Todo comenzó en 2014 cuando empezamos a especializarnos']:
+    i=s.find(phrase)
+    print('PHRASE', phrase[:25], 'POS', i)
+    if i >= 0:
+        print(s[max(0,i-500):i+1300].replace('\n',' ')[:1800])
+PY
           done
 
       - name: Inspect production cache plugins and files
