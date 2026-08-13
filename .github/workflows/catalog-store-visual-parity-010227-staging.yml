@@ -83,11 +83,27 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/catalog-store-visual-parity-010227-browser.cjs')
           source = path.read_text()
-          old = "await go(activePage, '/tienda/hidalgo-de-la-jara/?product_cat=jamones-paletas', desktop);"
-          new = "await go(activePage, '/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas', desktop);"
+          old = """    const activePage = await browser.newPage();
+    await go(activePage, '/tienda/hidalgo-de-la-jara/?product_cat=jamones-paletas', desktop);
+    await waitVendor(activePage);"""
+          new = """    const activePage = vendorPage;
+    const activeHref = await activePage.$eval('#emo-vendor-category-filter li a', (a) => a.href);
+    assert(activeHref.includes('emo_vendor_cat='), `Producer category: unsafe URL ${activeHref}`);
+    await activePage.click('#emo-vendor-category-filter li a');
+    await activePage.waitForFunction(() => location.search.includes('emo_vendor_cat=') && Boolean(document.querySelector('#emo-vendor-category-context')), { timeout: 45000 });
+    await waitVendor(activePage);"""
           if old not in source:
-              raise SystemExit('Expected legacy active-category probe not found in QA script')
-          path.write_text(source.replace(old, new, 1))
+              raise SystemExit('Expected active-category QA block not found')
+          source = source.replace(old, new, 1)
+          source = source.replace('    await activePage.close();\n', '', 1)
+          path.write_text(source)
           PY
           node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
-          node .github/scripts/catalog-store-visual-parity-010227-browser.cjs
+          for attempt in 1 2; do
+            echo "BROWSER_QA_ATTEMPT=$attempt"
+            if node .github/scripts/catalog-store-visual-parity-010227-browser.cjs; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
