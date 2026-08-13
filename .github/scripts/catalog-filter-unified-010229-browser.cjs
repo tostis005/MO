@@ -12,11 +12,22 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
     const page = await browser.newPage();
     await page.setViewport({width:1440,height:1000,deviceScaleFactor:1});
 
+    async function dismissOverlays() {
+      await page.evaluate(() => {
+        document.querySelectorAll('.hustle-ui,.hustle-popup,.hustle-overlay,.hustle-module-content').forEach(node => node.remove());
+        document.documentElement.classList.remove('hustle-scroll-forbidden');
+        document.body?.classList.remove('hustle-scroll-forbidden');
+        if (document.documentElement.style.overflow === 'hidden') document.documentElement.style.removeProperty('overflow');
+        if (document.body?.style.overflow === 'hidden') document.body.style.removeProperty('overflow');
+      });
+    }
+
     async function open(path) {
       await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}qa-unified=${Date.now()}`, {waitUntil:'domcontentloaded', timeout:60000});
       await page.waitForSelector('#elmercado-catalog-filter-unified-010229', {timeout:20000});
       await page.waitForSelector('#elmercado-catalog-filter-shared-interaction-010232', {timeout:20000});
       await wait(1200);
+      await dismissOverlays();
     }
 
     async function style(selector) {
@@ -89,6 +100,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
     const shopPrice = await page.$eval('.widget_price_filter .price_slider .ui-slider-handle', el => { const s=getComputedStyle(el),r=el.getBoundingClientRect(); return [r.width,r.height,s.marginTop,s.marginLeft,s.borderTopWidth,s.borderTopColor,s.backgroundColor]; });
     const shopIdle = await idleVariance('.emo-filter-rail-shared-010229');
     if (shopIdle.max-shopIdle.min > 1) fail('Shop rail moves while idle', shopIdle);
+    await dismissOverlays();
     await page.hover('.emo-global-category-filter-010229 .emo-filter-link-shared-010229');
     const shopHover = await hoverState('.emo-global-category-filter-010229 .emo-filter-row-shared-010229');
     if (!shopHover.decoration.includes('underline')) fail('Shop hover is not underlined', shopHover);
@@ -122,6 +134,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
 
     const vendorIdle = await idleVariance('#wcfmmp-store .emo-filter-rail-shared-010229');
     if (vendorIdle.max-vendorIdle.min > 1) fail('producer rail moves while idle', vendorIdle);
+    await dismissOverlays();
     await page.hover('#emo-vendor-category-filter .emo-filter-link-shared-010229');
     const vendorHover = await hoverState('#emo-vendor-category-filter .emo-filter-row-shared-010229');
     if (!vendorHover.decoration.includes('underline')) fail('producer hover is not underlined', vendorHover);
