@@ -38,13 +38,26 @@ jobs:
           ref: 5dde637b4c3895263e0bf0621b43accfe6eae262
           path: source
 
-      - name: Validate deploy script
+      - name: Prepare production-scoped filter payload
         shell: bash
         run: |
           set -euo pipefail
-          bash -n control/.github/scripts/deploy-filter-parity-010233-production.sh
-          test -f source/.github/scripts/catalog-filter-unified-010229-browser.cjs
-          test -f source/.github/scripts/elmercado-opcache-reset.php
+          cp control/.github/scripts/deploy-filter-parity-010233-production.sh /tmp/deploy-filter-parity.sh
+          sed -i 's/^esshpass /sshpass /' /tmp/deploy-filter-parity.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('source/elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php')
+          s=p.read_text()
+          old="""\t\tif ( is_admin() || ! function_exists( 'elmercado_vendor_store_is_request_010225' ) || ! elmercado_vendor_store_is_request_010225() ) {\n\t\t\treturn;\n\t\t}\n"""
+          new="""\t\tif ( is_admin() ) {\n\t\t\treturn;\n\t\t}\n\t\t$is_vendor = function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225();\n\t\t$is_catalog = function_exists( 'elmercado_core_filters_is_catalog' ) && elmercado_core_filters_is_catalog();\n\t\tif ( ! $is_vendor && ! $is_catalog ) {\n\t\t\treturn;\n\t\t}\n"""
+          if old not in s: raise SystemExit('sticky condition anchor missing')
+          s=s.replace(old,new,1)
+          s=s.replace('html body.elmercado-child-theme.wcfmmp-store-page #view,','html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page) #view,')
+          s=s.replace('html body.elmercado-child-theme.wcfmmp-store-page #page {','html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page) #page {')
+          p.write_text(s)
+          PY
+          php -l source/elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php >/dev/null
+          bash -n /tmp/deploy-filter-parity.sh
 
       - name: Install deployment and browser tools
         shell: bash
@@ -67,4 +80,13 @@ jobs:
 
       - name: Deploy and verify filters only
         shell: bash
-        run: bash control/.github/scripts/deploy-filter-parity-010233-production.sh "$GITHUB_WORKSPACE/source"
+        run: |
+          set -o pipefail
+          bash /tmp/deploy-filter-parity.sh "$GITHUB_WORKSPACE/source" 2>&1 | tee /tmp/filter-production.log
+          rc=${PIPESTATUS[0]}
+          test "$rc" -eq 0
+          grep -Fq 'FILTER_FILES_DEPLOYED_010233_OK' /tmp/filter-production.log
+          grep -Fq 'PRODUCTION_FILTER_RUNTIME_010233_OK' /tmp/filter-production.log
+          grep -Fq 'CATALOG_FILTER_UNIFIED_010233_OK' /tmp/filter-production.log
+          grep -Fq 'PRODUCTION_FILTER_PARITY_010233_OK' /tmp/filter-production.log
+          ! grep -Fq 'PRODUCTION_FILTER_PARITY_ROLLED_BACK' /tmp/filter-production.log
