@@ -43,39 +43,25 @@ add_action(
 	PHP_INT_MAX
 );
 
+/* Desde 0.10.229 la única capa visual del catálogo es catalog-filter-unified-010229.php. */
 add_action(
 	'after_setup_theme',
 	static function (): void {
-		$modules = array(
-			ELMERCADO_THEME_PATH . '/inc/vendor-store-catalog-layout-lock-010225.php',
-			ELMERCADO_THEME_PATH . '/inc/vendor-store-shop-parity-010226.php',
-			ELMERCADO_THEME_PATH . '/inc/home-visible-categories-final-010226.php',
-		);
-		foreach ( $modules as $module ) {
-			if ( is_readable( $module ) ) {
-				require_once $module;
-			}
+		$module = ELMERCADO_THEME_PATH . '/inc/home-visible-categories-final-010226.php';
+		if ( is_readable( $module ) ) {
+			require_once $module;
 		}
 	},
 	PHP_INT_MAX
 );
 
-/*
- * Las capas de estabilidad deben registrarse después del cierre visual 0.10.227.
- * wp_loaded ocurre después de after_setup_theme, pero todavía antes de wp_head
- * y wp_footer, por lo que estas reglas quedan realmente al final de la cascada.
- */
+/* #view de WCFM debe dejar que sticky se ancle al viewport real en escritorio. */
 add_action(
 	'wp_loaded',
 	static function (): void {
-		$modules = array(
-			ELMERCADO_THEME_PATH . '/inc/catalog-filter-stability-010228.php',
-			ELMERCADO_THEME_PATH . '/inc/vendor-sticky-root-fix-010228.php',
-		);
-		foreach ( $modules as $module ) {
-			if ( is_readable( $module ) ) {
-				require_once $module;
-			}
+		$module = ELMERCADO_THEME_PATH . '/inc/vendor-sticky-root-fix-010228.php';
+		if ( is_readable( $module ) ) {
+			require_once $module;
 		}
 	},
 	PHP_INT_MAX
