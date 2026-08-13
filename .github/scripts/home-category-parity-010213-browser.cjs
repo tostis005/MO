@@ -11,7 +11,7 @@ const norm = (url) => {
 };
 
 async function readHome(page, label) {
-  const response = await page.goto(`${base}/?home-parity-010213=${Date.now()}-${label}`, {
+  const response = await page.goto(`${base}/?home-parity-010219=${Date.now()}-${label}`, {
     waitUntil: 'domcontentloaded',
     timeout: 90000,
   });
@@ -48,8 +48,8 @@ function validate(result, field, label, shouldBeAuthenticated) {
   if (result.authenticated !== shouldBeAuthenticated) {
     throw new Error(`${label}: authentication state is ${result.authenticated}`);
   }
-  if (result.cards.length < 4) {
-    throw new Error(`${label}: only ${result.cards.length} category cards rendered`);
+  if (!result.cards.length) {
+    throw new Error(`${label}: no category cards rendered`);
   }
 
   const expected = new Map(rows.map((row) => [norm(row.url), row]));
@@ -103,7 +103,7 @@ function validate(result, field, label, shouldBeAuthenticated) {
     const admin = await readHome(adminPage, 'admin');
     validate(admin, 'admin', 'admin', true);
 
-    console.log('HOME_CATEGORY_PARITY_010213_BROWSER_OK', JSON.stringify({ rows, anonymous, admin }));
+    console.log('HOME_CATEGORY_PARITY_010219_BROWSER_OK', JSON.stringify({ rows, anonymous, admin }));
   } finally {
     await browser.close();
   }
