@@ -28,7 +28,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-      - name: Inspect PHP runtime
+      - name: Inspect PHP runtime and WCFM store hooks
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -41,45 +41,46 @@ jobs:
           cat > /tmp/vendor-store-inspect.php <<'PHP'
           <?php
           $functions = array('wcfmmp_is_store_page','wcfmmp_get_store_url','wcfm_get_vendor_id_by_post','wcfmmp_get_store','wcfm_is_store_page');
-          echo "FUNCTIONS=" . wp_json_encode(array_fill_keys($functions, false)) . "\n";
           $status = array(); foreach ($functions as $fn) $status[$fn] = function_exists($fn); echo "FUNCTION_STATUS=" . wp_json_encode($status) . "\n";
-          global $wp_rewrite, $WCFMmp;
+          global $WCFMmp;
           echo "STORE_ENDPOINT=" . get_option('wcfm_store_url','') . "\n";
           echo "WCFMMP_CLASS=" . (is_object($WCFMmp) ? get_class($WCFMmp) : '') . "\n";
-          echo "WCFMMP_STORE_QUERY_CLASS=" . (isset($WCFMmp->store->query) && is_object($WCFMmp->store->query) ? get_class($WCFMmp->store->query) : '') . "\n";
           $users = get_users(array('role__in'=>array('wcfm_vendor','vendor','seller'),'fields'=>array('ID','user_login','user_nicename','display_name')));
           foreach ($users as $u) {
             $count = count(get_posts(array('post_type'=>'product','post_status'=>'publish','author'=>$u->ID,'fields'=>'ids','posts_per_page'=>-1,'suppress_filters'=>true)));
             if (!$count) continue;
             $url = function_exists('wcfmmp_get_store_url') ? wcfmmp_get_store_url($u->ID) : home_url('/tienda/'.$u->user_nicename.'/');
-            echo "VENDOR=" . wp_json_encode(array('id'=>$u->ID,'login'=>$u->user_login,'nicename'=>$u->user_nicename,'name'=>$u->display_name,'products'=>$count,'url'=>$url)) . "\n";
+            echo "VENDOR=" . wp_json_encode(array('id'=>$u->ID,'nicename'=>$u->user_nicename,'name'=>$u->display_name,'products'=>$count,'url'=>$url)) . "\n";
           }
           PHP
           sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no /tmp/vendor-store-inspect.php "$STAGING_USER@$STAGING_HOST:/tmp/vendor-store-inspect.php"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/vendor-store-inspect.php --path='$WP_PATH' --allow-root; rm -f /tmp/vendor-store-inspect.php"
-      - name: Inspect browser markup and query vars
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/vendor-store-inspect.php --path='$WP_PATH' --allow-root; rm -f /tmp/vendor-store-inspect.php; echo '--- WCFM STORE QUERY HOOKS ---'; grep -RInE \"wcfmmp.*store.*(product|query)|store.*product.*query|woocommerce_product_query|pre_get_posts|get_store_id|wcfm_store\" '$WP_PATH/wp-content/plugins/wc-multivendor-marketplace' 2>/dev/null | head -n 180 || true"
+      - name: Inspect browser markup
         shell: bash
         run: |
           cat > /tmp/vendor-inspect.cjs <<'JS'
           const puppeteer = require('puppeteer-core');
           (async()=>{
             const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
-            const page=await browser.newPage();
-            await page.setViewport({width:1440,height:1000});
-            await page.goto(`${process.env.STAGING_URL}/tienda/hidalgo-de-la-jara/?emo-vendor-inspect=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:90000});
-            await page.waitForSelector('#wcfmmp-store',{timeout:30000});
-            const data=await page.evaluate(()=>{
-              const store=document.querySelector('#wcfmmp-store');
-              const result=store.querySelector('.woocommerce-result-count');
-              const ordering=store.querySelector('.woocommerce-ordering');
-              const body=store.querySelector('.body_area');
-              const sidebar=store.querySelector('.left_sidebar');
-              const products=store.querySelector('.right_side,.right_side_full,.products-wrapper,.wcfmmp-store-product,.product_area');
-              const widgets=[...store.querySelectorAll('.left_sidebar .widget')].map(w=>({cls:w.className,title:(w.querySelector('.widget-title,.widgettitle,.sidebar_heading')?.textContent||'').replace(/\s+/g,' ').trim(),text:(w.textContent||'').replace(/\s+/g,' ').trim().slice(0,220)}));
-              return {bodyClasses:document.body.className,resultText:(result?.textContent||'').replace(/\s+/g,' ').trim(),resultHTML:result?.outerHTML||'',ordering:!!ordering,bodyChildren:[...body?.children||[]].map(x=>x.className||x.id||x.tagName),sidebar:!!sidebar,productsClass:products?.className||'',widgets,productCount:store.querySelectorAll('ul.products li.product').length,storeHTML:store.outerHTML.slice(0,1500)};
-            });
-            console.log('VENDOR_BROWSER_INSPECT='+JSON.stringify(data));
+            for (const slug of ['hidalgo-de-la-jara','1957']) {
+              const page=await browser.newPage();
+              await page.setViewport({width:1440,height:1000});
+              await page.goto(`${process.env.STAGING_URL}/tienda/${slug}/?emo-vendor-inspect=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:90000});
+              await page.waitForSelector('#wcfmmp-store',{timeout:30000});
+              const data=await page.evaluate(()=>{
+                const store=document.querySelector('#wcfmmp-store');
+                const result=store.querySelector('.woocommerce-result-count');
+                const ordering=store.querySelector('.woocommerce-ordering');
+                const body=store.querySelector('.body_area');
+                const sidebar=store.querySelector('.left_sidebar');
+                const productHost=store.querySelector('.right_side,.right_side_full,.products-wrapper,.wcfmmp-store-product,.product_area');
+                const widgets=[...store.querySelectorAll('.left_sidebar .widget')].map(w=>({cls:w.className,title:(w.querySelector('.widget-title,.widgettitle,.sidebar_heading,.wcfmmp-store-rating')?.textContent||'').replace(/\s+/g,' ').trim(),text:(w.textContent||'').replace(/\s+/g,' ').trim().slice(0,220)}));
+                return {url:location.href,bodyClasses:document.body.className,resultText:(result?.textContent||'').replace(/\s+/g,' ').trim(),resultHTML:result?.outerHTML||'',ordering:!!ordering,bodyChildren:[...body?.children||[]].map(x=>x.className||x.id||x.tagName),sidebarClass:sidebar?.className||'',productHostClass:productHost?.className||'',widgets,productCount:store.querySelectorAll('ul.products li.product').length,productIds:[...store.querySelectorAll('ul.products li.product')].map(x=>([...x.classList].find(c=>/^post-\d+$/.test(c))||'').replace('post-','')).filter(Boolean)};
+              });
+              console.log('VENDOR_BROWSER_INSPECT='+JSON.stringify(data));
+              await page.close();
+            }
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
-          node /tmp/vendor-inspect.cjs
+          NODE_PATH="$PWD/node_modules" node /tmp/vendor-inspect.cjs
