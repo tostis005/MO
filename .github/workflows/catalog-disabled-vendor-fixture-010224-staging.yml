@@ -1,0 +1,147 @@
+name: Catalog disabled vendor rule 0.10.224 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-disabled-vendor-fixture-010224-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_URL: https://dev.elmercadodeorigen.com
+      EXPECTED_VERSION: 0.10.224
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release and fixture probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
+          php -l .github/scripts/catalog-disabled-vendor-fixture-010224.php >/dev/null
+          php -l .github/scripts/catalog-actual-loop-parity-010224.php >/dev/null
+          php -l .github/scripts/home-category-parity-data-010215.php >/dev/null
+          node --check .github/scripts/catalog-query-parity-010224-browser.cjs
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+
+      - name: Install browser and SSH tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Resolve staging
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\""
+          )"
+          : "${WP_PATH:?}"
+          echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+          ok=0
+          for attempt in {1..45}; do
+            VERSION="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -o \"ELMERCADO_THEME_VERSION', '[^']*\" '$WP_PATH/wp-content/themes/elmercadodeorigen-child/functions.php' | head -n1 | sed \"s/.*'//\"" || true)"
+            if [ "$VERSION" = "$EXPECTED_VERSION" ]; then ok=1; break; fi
+            sleep 2
+          done
+          [ "$ok" = 1 ] || { echo "Staging version $VERSION != $EXPECTED_VERSION" >&2; exit 2; }
+
+      - name: Create disabled-vendor fixture
+        id: fixture
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          REMOTE_FIXTURE="/tmp/catalog-disabled-vendor-fixture-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-disabled-vendor-fixture-010224.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FIXTURE"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMO_FIXTURE_ACTION=setup \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_FIXTURE' --path='$STAGING_WP_PATH' --allow-root" )"
+          printf '%s\n' "$OUT"
+          grep -q '^CATALOG_DISABLED_VENDOR_FIXTURE_010224_SETUP_OK$' <<< "$OUT"
+          FIXTURE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__FIXTURE__=//p' | tail -n1)"
+          : "${FIXTURE_B64:?}"
+          FIXTURE_JSON="$(printf '%s' "$FIXTURE_B64" | base64 -d)"
+          echo "FIXTURE_JSON=$FIXTURE_JSON" >> "$GITHUB_ENV"
+          echo "REMOTE_FIXTURE=$REMOTE_FIXTURE" >> "$GITHUB_ENV"
+
+      - name: Collect fixture-aware truth and administrator cookie
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          REMOTE_AUDIT="/tmp/catalog-fixture-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-actual-loop-parity-010224.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+          AUDIT_OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$STAGING_WP_PATH' --allow-root; rm -f '$REMOTE_AUDIT'" )"
+          AUDIT_B64="$(printf '%s\n' "$AUDIT_OUT" | sed -n 's/^__CATALOG_AUDIT__=//p' | tail -n1)"
+          : "${AUDIT_B64:?}"
+          CATALOG_JSON="$(printf '%s' "$AUDIT_B64" | base64 -d)"
+          echo "CATALOG_AUDIT_JSON=$CATALOG_JSON" >> "$GITHUB_ENV"
+
+          VENDOR_ID="$(jq -r '.vendor_id' <<< "$FIXTURE_JSON")"
+          INSTOCK_ID="$(jq -r '.instock_id' <<< "$FIXTURE_JSON")"
+          OUTOFSTOCK_ID="$(jq -r '.outofstock_id' <<< "$FIXTURE_JSON")"
+          jq -e --argjson vendor "$VENDOR_ID" '.disabled_vendor_ids | index($vendor) != null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$INSTOCK_ID" '.shop.admin | index($id) != null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$INSTOCK_ID" '.shop.public | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$OUTOFSTOCK_ID" '.shop.admin | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$OUTOFSTOCK_ID" '.shop.public | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
+          PUBLIC_TOTAL="$(jq '.shop.public | length' <<< "$CATALOG_JSON")"
+          ADMIN_TOTAL="$(jq '.shop.admin | length' <<< "$CATALOG_JSON")"
+          [ "$ADMIN_TOTAL" -eq $((PUBLIC_TOTAL + 1)) ]
+          PUBLIC_JAMONES="$(jq '[.categories[] | select(.slug=="jamones-paletas")][0].public | length' <<< "$CATALOG_JSON")"
+          ADMIN_JAMONES="$(jq '[.categories[] | select(.slug=="jamones-paletas")][0].admin | length' <<< "$CATALOG_JSON")"
+          [ "$ADMIN_JAMONES" -eq $((PUBLIC_JAMONES + 1)) ]
+          echo "FIXTURE_EXPECTATIONS_OK public_shop=$PUBLIC_TOTAL admin_shop=$ADMIN_TOTAL public_jamones=$PUBLIC_JAMONES admin_jamones=$ADMIN_JAMONES"
+
+          REMOTE_AUTH="/tmp/catalog-fixture-auth-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/home-category-parity-data-010215.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUTH"
+          AUTH_OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_AUTH' --path='$STAGING_WP_PATH' --allow-root; rm -f '$REMOTE_AUTH'" )"
+          NAME_B64="$(printf '%s\n' "$AUTH_OUT" | sed -n 's/^__COOKIE_NAME__=//p' | tail -n1)"
+          VALUE_B64="$(printf '%s\n' "$AUTH_OUT" | sed -n 's/^__COOKIE_VALUE__=//p' | tail -n1)"
+          : "${NAME_B64:?}"; : "${VALUE_B64:?}"
+          COOKIE_VALUE="$(printf '%s' "$VALUE_B64" | base64 -d)"
+          echo "::add-mask::$COOKIE_VALUE"
+          echo "ADMIN_COOKIE_NAME=$(printf '%s' "$NAME_B64" | base64 -d)" >> "$GITHUB_ENV"
+          echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
+
+      - name: Verify public/admin split plus stock rule in real Chrome
+        shell: bash
+        run: node .github/scripts/catalog-query-parity-010224-browser.cjs
+
+      - name: Cleanup fixture
+        if: always() && steps.fixture.outcome == 'success'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMO_FIXTURE_ACTION=cleanup \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_FIXTURE' --path='$STAGING_WP_PATH' --allow-root; rm -f '$REMOTE_FIXTURE'"
