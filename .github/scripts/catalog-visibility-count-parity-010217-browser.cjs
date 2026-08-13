@@ -7,7 +7,7 @@ const adminCookieValue = process.env.ADMIN_COOKIE_VALUE || '';
 
 function addBust(url, label) {
   const parsed = new URL(url, base);
-  parsed.searchParams.set('count-parity-010217', `${Date.now()}-${label}`);
+  parsed.searchParams.set('count-parity-010218', `${Date.now()}-${label}`);
   return parsed.toString();
 }
 
@@ -22,18 +22,30 @@ async function goto(page, url, label) {
   await new Promise((resolve) => setTimeout(resolve, 500));
 }
 
-async function resultTotal(page, label) {
+async function resultState(page, label) {
   return page.evaluate((context) => {
-    const text = document.querySelector('.woocommerce-result-count')?.textContent?.trim() || '';
-    if (/único resultado|un resultado/i.test(text)) return 1;
-    const numbers = [...text.matchAll(/[0-9][0-9.,]*/g)].map((m) => Number.parseInt(m[0].replace(/[^0-9]/g, ''), 10));
-    if (numbers.length) return numbers[numbers.length - 1];
-
-    const products = document.querySelectorAll('ul.products li.product, .products .product');
-    const next = document.querySelector('.woocommerce-pagination .next, a.next.page-numbers');
-    if (!next) return products.length;
-    throw new Error(`${context}: no se pudo obtener el total de resultados`);
+    const node = document.querySelector('.woocommerce-result-count');
+    const text = node?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    const match = text.match(/^(\d[\d.,]*)\s+resultado(?:s)?$/i);
+    if (!match) {
+      throw new Error(`${context}: texto de resultados no simplificado: "${text}"`);
+    }
+    const total = Number.parseInt(match[1].replace(/[^0-9]/g, ''), 10);
+    const ordering = document.querySelector('.woocommerce-ordering');
+    const orderingVisible = Boolean(ordering && getComputedStyle(ordering).display !== 'none' && ordering.getClientRects().length);
+    return { text, total, orderingVisible };
   }, label);
+}
+
+async function assertResultState(page, expected, label) {
+  const state = await resultState(page, label);
+  if (state.total !== Number(expected)) {
+    throw new Error(`${label}: total visible ${state.total}; esperado ${expected}`);
+  }
+  if (state.orderingVisible) {
+    throw new Error(`${label}: el selector/texto de ordenación sigue visible`);
+  }
+  return state;
 }
 
 async function collectShopFilters(page, label) {
@@ -117,10 +129,7 @@ async function validateLinkedEntries(browser, entries, label, cookie = null) {
     if (cookie) await page.setCookie(cookie);
     try {
       await goto(page, entry.href, `${label}-${index}`);
-      const total = await resultTotal(page, `${label}:${entry.kind}:${entry.name}`);
-      if (total !== entry.count) {
-        throw new Error(`${label}: ${entry.kind} ${entry.name} muestra ${entry.count} en el filtro, pero su listado devuelve ${total}`);
-      }
+      await assertResultState(page, entry.count, `${label}:${entry.kind}:${entry.name}`);
     } finally {
       await page.close();
     }
@@ -168,9 +177,31 @@ function validateAttributes(entries, field, label) {
   }
 }
 
+async function validateAttributeResultLinks(browser, entries, field, label, cookie = null) {
+  const expectedRows = Array.isArray(attributePayload?.rows) ? attributePayload.rows : [];
+  for (const [index, entry] of entries.entries()) {
+    const expected = expectedRows.find((row) => row.attribute === entry.attribute && row.slug === entry.slug);
+    if (!expected) continue;
+    const expectedCount = Number(expected[field] || 0);
+    if (expectedCount <= 0) continue;
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 1000 });
+    if (cookie) await page.setCookie(cookie);
+    try {
+      await goto(page, entry.href, `${label}-${index}`);
+      await assertResultState(page, expectedCount, `${label}:${entry.kind}:${entry.name}`);
+    } finally {
+      await page.close();
+    }
+  }
+}
+
 (async () => {
   if (!attributePayload?.rows?.length) throw new Error('Missing ATTRIBUTE_PARITY_JSON');
+  if (!attributePayload?.totals) throw new Error('Missing catalog totals');
   if (!adminCookieName || !adminCookieValue) throw new Error('Missing administrator cookie');
+  if (attributePayload.hide_out_of_stock !== true) throw new Error('WooCommerce is not configured to hide out-of-stock products');
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -191,31 +222,43 @@ function validateAttributes(entries, field, label) {
     await publicPage.setViewport({ width: 1440, height: 1000 });
 
     const publicShop = await collectShopFilters(publicPage, 'shop-public');
+    const publicShopState = await assertResultState(publicPage, attributePayload.totals.public_shop, 'shop-public-total');
     await validateLinkedEntries(browser, publicShop.vendors, 'shop-vendors-public');
     if (publicShop.categories.length) {
       await validateLinkedEntries(browser, publicShop.categories, 'shop-categories-public');
     }
 
     const publicAttributes = await collectAttributeFilters(publicPage, 'attributes-public');
+    const publicCategoryState = await assertResultState(publicPage, attributePayload.totals.public_category, 'category-public-total');
     validateAttributes(publicAttributes, 'public', 'category-attributes-public');
+    await validateAttributeResultLinks(browser, publicAttributes, 'public', 'category-attribute-results-public');
 
     const adminPage = await browser.newPage();
     await adminPage.setViewport({ width: 1440, height: 1000 });
     await adminPage.setCookie(adminCookie);
-    const adminState = await goto(adminPage, `${base}/tienda/`, 'admin-auth-check');
-    void adminState;
+    await goto(adminPage, `${base}/tienda/`, 'admin-auth-check');
     const authenticated = await adminPage.evaluate(() => document.body.classList.contains('logged-in') || Boolean(document.querySelector('#wpadminbar')));
     if (!authenticated) throw new Error('administrator browser session is not authenticated');
 
     const adminShop = await collectShopFilters(adminPage, 'shop-admin');
+    const adminShopState = await assertResultState(adminPage, attributePayload.totals.admin_shop, 'shop-admin-total');
     await validateLinkedEntries(browser, adminShop.vendors, 'shop-vendors-admin', adminCookie);
+
     const adminAttributes = await collectAttributeFilters(adminPage, 'attributes-admin');
+    const adminCategoryState = await assertResultState(adminPage, attributePayload.totals.admin_category, 'category-admin-total');
     validateAttributes(adminAttributes, 'admin', 'category-attributes-admin');
+    await validateAttributeResultLinks(browser, adminAttributes, 'admin', 'category-attribute-results-admin', adminCookie);
 
     const lomo = attributePayload.rows.filter((row) => /lomo/i.test(`${row.slug} ${row.name}`));
-    console.log('CATALOG_VISIBILITY_COUNT_PARITY_010217_OK', JSON.stringify({
+    console.log('CATALOG_VISIBILITY_COUNT_PARITY_010218_OK', JSON.stringify({
+      hideOutOfStock: attributePayload.hide_out_of_stock,
       disabledVendorIds: attributePayload.disabled_vendor_ids || [],
+      totals: attributePayload.totals,
       lomo,
+      publicShopState,
+      adminShopState,
+      publicCategoryState,
+      adminCategoryState,
       publicVendors: publicShop.vendors,
       adminVendors: adminShop.vendors,
       publicAttributes,
