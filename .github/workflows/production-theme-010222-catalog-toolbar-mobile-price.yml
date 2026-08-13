@@ -1,4 +1,4 @@
-name: Production theme 0.10.222 catalog toolbar mobile price
+name: Production theme 0.10.223 catalog category counts
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
-      EXPECTED_VERSION: 0.10.222
+      EXPECTED_VERSION: 0.10.223
 
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
-          grep -Eq '^Version:[[:space:]]*0\.10\.222$' elmercadodeorigen-child/style.css
+          grep -Eq '^Version:[[:space:]]*0\.10\.223$' elmercadodeorigen-child/style.css
           test -f elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
           grep -q 'woocommerce_catalog_ordering' elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
+          grep -q 'woocommerce_product_categories_widget_args' elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
+          grep -q 'show_count.*=.*1' elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
           grep -q 'catalog-toolbar-mobile-price-fix-010222.php' elmercadodeorigen-child/functions.php
           test -f elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
           test -f elmercadodeorigen-child/inc/catalog-result-total-010220.php
@@ -48,7 +50,7 @@ jobs:
           node --check .github/scripts/home-category-parity-010213-browser.cjs
           node --check .github/scripts/catalog-toolbar-mobile-price-010222-browser.cjs
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
-          echo 'LOCAL_PRODUCTION_010222_OK'
+          echo 'LOCAL_PRODUCTION_010223_OK'
 
       - name: Install deployment and browser tools
         shell: bash
@@ -69,25 +71,25 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Prepare proven deployment script for 0.10.222
+      - name: Prepare proven deployment script for 0.10.223
         shell: bash
         run: |
           set -euo pipefail
-          cp .github/scripts/deploy-home-categories-010212.sh /tmp/deploy-production-010222.sh
+          cp .github/scripts/deploy-home-categories-010212.sh /tmp/deploy-production-010223.sh
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('/tmp/deploy-production-010222.sh')
+          p = Path('/tmp/deploy-production-010223.sh')
           s = p.read_text()
-          s = s.replace(r'0\.10\.215', r'0\.10\.222')
-          s = s.replace('0.10.215', '0.10.222')
+          s = s.replace(r'0\.10\.215', r'0\.10\.223')
+          s = s.replace('0.10.215', '0.10.223')
           p.write_text(s)
           PY
-          grep -q 'EXPECTED_VERSION="${EXPECTED_VERSION:-0.10.222}"' /tmp/deploy-production-010222.sh
-          bash -n /tmp/deploy-production-010222.sh
+          grep -q 'EXPECTED_VERSION="${EXPECTED_VERSION:-0.10.223}"' /tmp/deploy-production-010223.sh
+          bash -n /tmp/deploy-production-010223.sh
 
       - name: Backup and deploy exact child theme to production
         shell: bash
-        run: bash /tmp/deploy-production-010222.sh
+        run: bash /tmp/deploy-production-010223.sh
 
       - name: Reset production PHP-FPM OPcache
         shell: bash
@@ -115,8 +117,8 @@ jobs:
           OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); runtime=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo defined(\"ELMERCADO_THEME_VERSION\") ? ELMERCADO_THEME_VERSION : \"missing\";' --path='$PRODUCTION_WP_PATH' --skip-plugins --allow-root); style=\$(grep -o '^Version:[[:space:]]*[^[:space:]]*' '$PRODUCTION_WP_PATH/wp-content/themes/elmercadodeorigen-child/style.css' | awk '{print \$2}'); printf 'runtime=%s\\nstyle=%s\\n' \"\$runtime\" \"\$style\""
           )"
           printf '%s\n' "$OUT"
-          grep -q '^runtime=0\.10\.222$' <<< "$OUT"
-          grep -q '^style=0\.10\.222$' <<< "$OUT"
+          grep -q '^runtime=0\.10\.223$' <<< "$OUT"
+          grep -q '^style=0\.10\.223$' <<< "$OUT"
 
       - name: Collect production visibility expectations
         shell: bash
@@ -154,7 +156,7 @@ jobs:
           STAGING_URL: ${{ env.PRODUCTION_SITEURL }}
         run: node .github/scripts/home-category-parity-010213-browser.cjs
 
-      - name: Verify production ordering and mobile price slider in Chrome
+      - name: Verify production ordering, price slider and category counts in Chrome
         shell: bash
         env:
           BASE_URL: ${{ env.PRODUCTION_SITEURL }}
@@ -170,7 +172,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$PREDEPLOY_OLD_PATH' '$REMOTE_TMP'"
-          echo "PRODUCTION_010222_OK previous=$PREVIOUS_VERSION current=$CURRENT_VERSION backup=$BACKUP_NAME"
+          echo "PRODUCTION_010223_OK previous=$PREVIOUS_VERSION current=$CURRENT_VERSION backup=$BACKUP_NAME"
 
       - name: Automatic rollback on post-deploy failure
         if: failure()
