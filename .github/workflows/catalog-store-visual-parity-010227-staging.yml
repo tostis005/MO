@@ -63,15 +63,7 @@ jobs:
           grep -q 'emo-vendor-category-context' /tmp/active.html
           grep -q 'emo-vendor-price-filter' /tmp/active.html
           grep -q '>Quitar<' /tmp/active.html
-          python3 - <<'PY'
-          from pathlib import Path
-          html = Path('/tmp/active.html').read_text(errors='ignore')
-          context = html.find('id="emo-vendor-category-context"')
-          price = html.find('emo-vendor-price-filter')
-          if context < 0 or price < 0 or context > price:
-              raise SystemExit(f'active category must precede price: {context=} {price=}')
-          print('ACTIVE_CATEGORY_CONTEXT_010227_OK')
-          PY
+          echo 'ACTIVE_CATEGORY_ROUTE_010227_OK'
 
       - name: Install Chrome
         shell: bash
@@ -87,10 +79,13 @@ jobs:
           mkdir -p qa
           shop_url="${BASE_URL}/tienda/?qa-chrome-mobile=${GITHUB_RUN_ID}"
           vendor_url="${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-chrome-mobile=${GITHUB_RUN_ID}"
+          active_url="${BASE_URL}/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&qa-chrome-active=${GITHUB_RUN_ID}"
           timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=9000 --dump-dom "$shop_url" > qa/shop-mobile.html 2>qa/shop-chrome.log || true
           timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=9000 --dump-dom "$vendor_url" > qa/vendor-mobile.html 2>qa/vendor-chrome.log || true
+          timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=9000 --dump-dom "$active_url" > qa/vendor-active-mobile.html 2>qa/vendor-active-chrome.log || true
           test -s qa/shop-mobile.html
           test -s qa/vendor-mobile.html
+          test -s qa/vendor-active-mobile.html
           grep -q 'emo-catalog-toolbar-parity-010227' qa/shop-mobile.html
           grep -q 'emo-mobile-filter-toggle' qa/shop-mobile.html
           grep -q 'emo-mobile-filter-shell' qa/shop-mobile.html
@@ -100,6 +95,18 @@ jobs:
           grep -q 'emo-vendor-mobile-filter-shell-010227' qa/vendor-mobile.html
           grep -q 'Filtrar productos' qa/vendor-mobile.html
           grep -q 'aria-label="Cerrar filtros">×<' qa/vendor-mobile.html
+          grep -q 'emo-vendor-category-context' qa/vendor-active-mobile.html
+          grep -q '>Quitar<' qa/vendor-active-mobile.html
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('qa/vendor-active-mobile.html').read_text(errors='ignore')
+          body = html[html.find('<body'):]
+          context = body.find('id="emo-vendor-category-context"')
+          price = body.find('emo-vendor-price-filter')
+          if context < 0 or price < 0 or context > price:
+              raise SystemExit(f'active category runtime order invalid: {context=} {price=}')
+          print('ACTIVE_CATEGORY_RUNTIME_ORDER_010227_OK')
+          PY
           ! grep -q 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa' qa/shop-mobile.html
           ! grep -q 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa' qa/vendor-mobile.html
           timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=7000 --screenshot=qa/shop-mobile.png "$shop_url" >/dev/null 2>&1 || true
@@ -117,4 +124,5 @@ jobs:
             qa/vendor-mobile.png
             qa/shop-mobile.html
             qa/vendor-mobile.html
+            qa/vendor-active-mobile.html
           retention-days: 7
