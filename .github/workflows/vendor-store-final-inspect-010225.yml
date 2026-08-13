@@ -1,0 +1,68 @@
+name: Vendor store final inspect 0.10.225
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-store-final-inspect-010225.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Chrome
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Inspect storefront
+        shell: bash
+        env:
+          STAGING_URL: https://dev.elmercadodeorigen.com
+        run: |
+          cat > /tmp/final-inspect.cjs <<'JS'
+          const puppeteer = require('puppeteer-core');
+          (async () => {
+            const base = process.env.STAGING_URL;
+            const browser = await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page = await browser.newPage();
+            await page.setViewport({width:1440,height:1000});
+            async function read(url) {
+              await page.goto(url,{waitUntil:'domcontentloaded',timeout:90000});
+              await page.waitForFunction(() => document.querySelector('#emo-vendor-filters'),{timeout:30000});
+              return page.evaluate(() => {
+                const store=document.querySelector('#wcfmmp-store');
+                const order=store.querySelector('.woocommerce-ordering');
+                const min=store.querySelector('#min_price');
+                const max=store.querySelector('#max_price');
+                const result=(store.querySelector('.woocommerce-result-count')?.textContent||'').replace(/\s+/g,' ').trim();
+                return {
+                  result,
+                  total:Number.parseInt(result.replace(/[^0-9]/g,''),10)||0,
+                  orderingExists:Boolean(order),
+                  orderingDisplay:order?getComputedStyle(order).display:'',
+                  orderingVisibility:order?getComputedStyle(order).visibility:'',
+                  min:Number.parseFloat(min?.dataset.min||'0'),
+                  max:Number.parseFloat(max?.dataset.max||'0'),
+                  categoryLinks:[...store.querySelectorAll('#emo-vendor-category-filter a')].map(a=>a.href)
+                };
+              });
+            }
+            const initial=await read(`${base}/tienda/hidalgo-de-la-jara/?final-inspect=${Date.now()}`);
+            const mid=Math.floor((initial.min+initial.max)/2);
+            const low=await read(`${base}/tienda/hidalgo-de-la-jara/?max_price=${mid}&final-price=${Date.now()}`);
+            const high=await read(`${base}/tienda/hidalgo-de-la-jara/?min_price=${mid}&final-price=${Date.now()}`);
+            console.log('VENDOR_FINAL_INSPECT='+JSON.stringify({initial,mid,low,high}));
+            if (!(initial.max>initial.min)) throw new Error('Invalid price bounds');
+            if (!(low.total>0 && low.total<=initial.total)) throw new Error('max_price filter invalid');
+            if (!(high.total>0 && high.total<=initial.total)) throw new Error('min_price filter invalid');
+            if (!(low.total<initial.total || high.total<initial.total)) throw new Error('Price filter never reduces total');
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          NODE_PATH="$PWD/node_modules" node /tmp/final-inspect.cjs
