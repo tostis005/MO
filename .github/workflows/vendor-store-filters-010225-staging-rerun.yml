@@ -26,8 +26,12 @@ jobs:
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php >/dev/null
           php -l elmercadodeorigen-child/inc/vendor-store-catalog-layout-lock-010225.php >/dev/null
+          php -l elmercadodeorigen-child/inc/vendor-store-shop-parity-010226.php >/dev/null
+          php -l elmercadodeorigen-child/inc/vendor-store-parity-runtime-final-010226.php >/dev/null
+          php -l elmercadodeorigen-child/inc/home-visible-categories-final-010226.php >/dev/null
           grep -q 'vendor-store-catalog-filters-010225.php' elmercadodeorigen-child/functions.php
-          grep -q 'vendor-store-catalog-layout-lock-010225.php' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -q 'vendor-store-parity-runtime-final-010226.php' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -q 'home-visible-categories-final-010226.php' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           node --check .github/scripts/vendor-store-filters-010225-browser.cjs
 
       - name: Install Chrome and browser driver
@@ -42,4 +46,4 @@ jobs:
         shell: bash
         run: node .github/scripts/vendor-store-filters-010225-browser.cjs
 
-# Rerun marker: validate current staging after producer/shop parity 0.10.226.
+# Rerun marker: full producer, Home and Shop parity after final 0.10.226 source.
