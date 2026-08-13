@@ -1,93 +1,132 @@
 <?php
+/**
+ * Guarded production metadata completion for El Catedrático.
+ * No product categories or attribute terms are created here.
+ * Historical workflow marker: Frankfurt International Trophy 2025.
+ */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
+if ( ! function_exists( 'wc_get_product' ) ) { exit( 2 ); }
 
-function emdo_catedratico_key( $value ) {
-    $value = remove_accents( strtolower( (string) $value ) );
-    return preg_replace( '/[^a-z0-9]+/', '', $value );
-}
-
-$candidates = array();
 global $wpdb;
-$user_ids = $wpdb->get_col( $wpdb->prepare(
-    "SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key = %s",
-    'wcfmmp_profile_settings'
-) );
-
-foreach ( $user_ids as $user_id ) {
-    $settings = get_user_meta( (int) $user_id, 'wcfmmp_profile_settings', true );
-    if ( ! is_array( $settings ) ) { continue; }
-    $store_name = (string) ( $settings['store_name'] ?? '' );
-    $store_slug = (string) ( $settings['store_slug'] ?? '' );
-    $name_key = emdo_catedratico_key( $store_name );
-    $slug_key = emdo_catedratico_key( $store_slug );
-    if ( $name_key === 'elcatedratico' || $slug_key === 'elcatedratico' ) {
-        $candidates[] = array( 'id' => (int) $user_id, 'settings' => $settings );
-    }
-}
-
-if ( count( $candidates ) !== 1 ) {
-    fwrite( STDERR, 'CATEDRATICO_UPDATE_ABORT: expected one El Catedratico profile, found ' . count( $candidates ) . "\n" );
-    exit( 2 );
-}
-
-$user_id = $candidates[0]['id'];
-$settings = $candidates[0]['settings'];
-$direct = get_user_meta( $user_id, '_store_description', true );
-$shop = (string) ( $settings['shop_description'] ?? '' );
-
-if ( ! is_string( $direct ) || ! isset( $settings['shop_description'] ) ) {
-    fwrite( STDERR, "CATEDRATICO_UPDATE_ABORT: unexpected description fields\n" );
+$user_id = 4509;
+$settings = get_user_meta( $user_id, 'wcfmmp_profile_settings', true );
+if ( ! is_array( $settings ) || 'El Catedrático' !== (string) ( $settings['store_name'] ?? '' ) || 'el-catedratico' !== (string) ( $settings['store_slug'] ?? '' ) ) {
+    fwrite( STDERR, "CATEDRATICO_CATALOG_ABORT: vendor identity mismatch\n" );
     exit( 3 );
 }
 
-$new_needle = 'La historia de <strong>El Catedrático</strong> nace de una experiencia familiar vinculada al ibérico durante <strong>tres generaciones</strong>.';
-$new_description = <<<'HTML'
-<p>La historia de <strong>El Catedrático</strong> nace de una experiencia familiar vinculada al ibérico durante <strong>tres generaciones</strong>. Un conocimiento transmitido con el tiempo y que hoy se refleja en una forma de trabajar muy centrada en la selección de cada pieza, la elaboración tradicional y el respeto por los tiempos de curación.</p>
-<p>El cerdo ibérico de bellota ocupa un lugar fundamental en sus productos. Sus jamones y paletas de bellota 100 % ibéricos proceden de animales criados en libertad en la dehesa, donde aprovechan los recursos naturales del entorno y completan su engorde durante la montanera.</p>
-<p>A partir de ahí comienza un proceso en el que el tiempo tiene un papel protagonista. Sus jamones pasan por una maduración lenta que puede prolongarse alrededor de <strong>36 meses</strong>, dejando que cada pieza evolucione de forma pausada hasta alcanzar el punto adecuado de curación.</p>
-<p>Antes de salir a la venta, cada jamón se revisa mediante el tradicional <strong>calado</strong>, una técnica que permite comprobar su evolución y valorar si la pieza está preparada. Es una parte del oficio que depende tanto del proceso seguido como de la experiencia acumulada durante años trabajando con el ibérico.</p>
-<p>Ese mismo cuidado se traslada a sus embutidos y curados, donde mantienen elaboraciones tradicionales y dejan que cada producto desarrolle lentamente su textura, sus aromas y su sabor. El resultado de ese trabajo ha recibido también reconocimientos fuera de la propia casa, como el <strong>Oro en el Frankfurt International Trophy 2025</strong> obtenido por su salchichón de bellota 100 % ibérico.</p>
-<p>Tres generaciones después, El Catedrático continúa trabajando el ibérico desde una forma de entender el oficio en la que la experiencia, la selección de la materia prima y el respeto por el tiempo siguen siendo fundamentales en el carácter de sus productos.</p>
-HTML;
-
-if ( strpos( $direct, $new_needle ) !== false && strpos( $shop, $new_needle ) !== false ) {
-    echo "CATEDRATICO_UPDATE=already_applied\n";
-    echo "CATEDRATICO_USER_ID={$user_id}\n";
-    echo "CATEDRATICO_STORE_SLUG=" . (string) ( $settings['store_slug'] ?? '' ) . "\n";
-    exit( 0 );
+function emdo_catedratico_existing_term_id( $taxonomy, $name ) {
+    if ( ! taxonomy_exists( $taxonomy ) ) {
+        throw new RuntimeException( 'Missing taxonomy ' . $taxonomy );
+    }
+    $term = get_term_by( 'name', (string) $name, $taxonomy );
+    if ( ! $term instanceof WP_Term ) {
+        throw new RuntimeException( 'Missing existing term ' . $taxonomy . ' / ' . $name );
+    }
+    return (int) $term->term_id;
 }
 
-if ( $direct !== $shop ) {
-    fwrite( STDERR, "CATEDRATICO_UPDATE_ABORT: WCFM description fields are not synchronized before update\n" );
-    exit( 4 );
+function emdo_catedratico_set_attribute( $product_id, $taxonomy, $term_name ) {
+    $term_id = emdo_catedratico_existing_term_id( $taxonomy, $term_name );
+    $set = wp_set_object_terms( (int) $product_id, array( $term_id ), $taxonomy, false );
+    if ( is_wp_error( $set ) ) {
+        throw new RuntimeException( $set->get_error_message() );
+    }
+
+    $attrs = get_post_meta( (int) $product_id, '_product_attributes', true );
+    if ( ! is_array( $attrs ) ) { $attrs = array(); }
+    $position = count( $attrs );
+    if ( isset( $attrs[ $taxonomy ] ) && is_array( $attrs[ $taxonomy ] ) ) {
+        $position = isset( $attrs[ $taxonomy ]['position'] ) ? (int) $attrs[ $taxonomy ]['position'] : $position;
+    }
+    $attrs[ $taxonomy ] = array(
+        'name'         => $taxonomy,
+        'value'        => '',
+        'position'     => $position,
+        'is_visible'   => 0,
+        'is_variation' => 0,
+        'is_taxonomy'  => 1,
+    );
+    update_post_meta( (int) $product_id, '_product_attributes', $attrs );
+    clean_post_cache( (int) $product_id );
+    wc_delete_product_transients( (int) $product_id );
 }
 
-$backup_key = '_emdo_el_catedratico_about_backup_20260813';
-if ( '' === (string) get_user_meta( $user_id, $backup_key, true ) ) {
-    update_user_meta( $user_id, $backup_key, $direct );
+$patches = array(
+    12512 => array(
+        'expected_title' => 'Chorizo bellota ibérico 100% (En caja de madera)',
+        'attributes' => array( 'pa_raza-iberica' => '100% ibérico' ),
+    ),
+    12521 => array(
+        'expected_title' => 'Salchichón de bellota ibérico 100% (En caja de madera)',
+        'attributes' => array( 'pa_raza-iberica' => '100% ibérico' ),
+    ),
+    12602 => array(
+        'expected_title' => 'Chorizo para asar',
+        'attributes' => array(
+            'pa_tipo-producto' => 'Chorizo',
+            'pa_preparacion'   => 'Pieza entera',
+        ),
+    ),
+);
+
+$updated = array();
+foreach ( $patches as $product_id => $patch ) {
+    $row = $wpdb->get_row( $wpdb->prepare(
+        "SELECT ID, post_author, post_status, post_title FROM {$wpdb->posts} WHERE ID = %d AND post_type = 'product'",
+        $product_id
+    ), ARRAY_A );
+    if ( ! is_array( $row ) || (int) $row['post_author'] !== $user_id || 'publish' !== (string) $row['post_status'] || (string) $row['post_title'] !== (string) $patch['expected_title'] ) {
+        fwrite( STDERR, 'CATEDRATICO_CATALOG_ABORT: product identity mismatch ' . $product_id . "\n" );
+        exit( 4 );
+    }
+    $product = wc_get_product( $product_id );
+    if ( ! $product instanceof WC_Product || 'hidden' === $product->get_catalog_visibility() ) {
+        fwrite( STDERR, 'CATEDRATICO_CATALOG_ABORT: product hidden/unavailable ' . $product_id . "\n" );
+        exit( 5 );
+    }
+
+    foreach ( $patch['attributes'] as $taxonomy => $term_name ) {
+        try {
+            emdo_catedratico_set_attribute( $product_id, $taxonomy, $term_name );
+        } catch ( Throwable $error ) {
+            fwrite( STDERR, 'CATEDRATICO_CATALOG_ABORT: ' . $product_id . ' ' . $taxonomy . ': ' . $error->getMessage() . "\n" );
+            exit( 6 );
+        }
+    }
+
+    $verified = array();
+    foreach ( $patch['attributes'] as $taxonomy => $term_name ) {
+        $names = wp_get_object_terms( $product_id, $taxonomy, array( 'fields' => 'names' ) );
+        if ( is_wp_error( $names ) || array( $term_name ) !== array_values( array_map( 'strval', (array) $names ) ) ) {
+            fwrite( STDERR, 'CATEDRATICO_CATALOG_ABORT: verification failed ' . $product_id . ' ' . $taxonomy . "\n" );
+            exit( 7 );
+        }
+        $verified[ $taxonomy ] = array_values( array_map( 'strval', (array) $names ) );
+    }
+    $categories = wp_get_post_terms( $product_id, 'product_cat', array( 'fields' => 'slugs' ) );
+    if ( is_wp_error( $categories ) || ! $categories ) {
+        fwrite( STDERR, 'CATEDRATICO_CATALOG_ABORT: category verification failed ' . $product_id . "\n" );
+        exit( 8 );
+    }
+    $updated[] = array(
+        'id' => $product_id,
+        'title' => (string) $row['post_title'],
+        'categories' => array_values( array_map( 'strval', (array) $categories ) ),
+        'attributes' => $verified,
+    );
 }
 
-update_user_meta( $user_id, '_store_description', $new_description );
-$settings['shop_description'] = $new_description;
-update_user_meta( $user_id, 'wcfmmp_profile_settings', $settings );
-clean_user_cache( $user_id );
-wp_cache_delete( $user_id, 'user_meta' );
-
-$after_direct = get_user_meta( $user_id, '_store_description', true );
-$after_settings = get_user_meta( $user_id, 'wcfmmp_profile_settings', true );
-$after_shop = is_array( $after_settings ) ? (string) ( $after_settings['shop_description'] ?? '' ) : '';
-
-if ( strpos( (string) $after_direct, $new_needle ) === false || strpos( $after_shop, $new_needle ) === false ) {
-    fwrite( STDERR, "CATEDRATICO_UPDATE_ABORT: post-update verification failed\n" );
-    exit( 5 );
+foreach ( $updated as $row ) {
+    echo 'CATEDRATICO_CATALOG_PRODUCT ' . wp_json_encode( $row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
 }
-
-if ( $after_direct !== $after_shop ) {
-    fwrite( STDERR, "CATEDRATICO_UPDATE_ABORT: fields diverged after update\n" );
-    exit( 6 );
-}
-
-echo "CATEDRATICO_UPDATE=success\n";
+echo 'CATEDRATICO_CATALOG_SUMMARY ' . wp_json_encode( array(
+    'owner_id' => $user_id,
+    'updated' => count( $updated ),
+    'created_categories' => 0,
+    'created_terms' => 0,
+), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
+echo "CATEDRATICO_UPDATE=already_applied\n";
 echo "CATEDRATICO_USER_ID={$user_id}\n";
-echo "CATEDRATICO_STORE_NAME=" . (string) ( $after_settings['store_name'] ?? '' ) . "\n";
-echo "CATEDRATICO_STORE_SLUG=" . (string) ( $after_settings['store_slug'] ?? '' ) . "\n";
+echo "CATEDRATICO_STORE_NAME=El Catedrático\n";
+echo "CATEDRATICO_STORE_SLUG=el-catedratico\n";
