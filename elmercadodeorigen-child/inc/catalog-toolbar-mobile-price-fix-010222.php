@@ -1,11 +1,11 @@
 <?php
 /**
- * Corrección de toolbar de catálogo y slider de precio móvil 0.10.222.
+ * Correcciones de toolbar y filtros de catálogo 0.10.222 / 0.10.223.
  *
  * Restaura el selector nativo de ordenación que las capas 0.10.220/0.10.221
- * ocultaron al simplificar el contador, y centra geométricamente los tiradores
- * del filtro de precio en el drawer móvil con una especificidad que prevalece
- * sobre las reglas históricas del sistema de filtros.
+ * ocultaron al simplificar el contador, centra geométricamente los tiradores
+ * del filtro de precio en móvil y fuerza el contador visible de categorías para
+ * mantener la misma lectura visual que Vendedor y los filtros de atributos.
  *
  * @package ElMercadoDeOrigen
  */
@@ -28,6 +28,45 @@ add_action(
 
 		remove_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
 		add_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
+	},
+	PHP_INT_MAX
+);
+
+/**
+ * El cálculo de cada categoría ya se corrige en catalog-visibility-counts-010217.
+ * Aquí únicamente obligamos al widget nativo a imprimir ese número.
+ *
+ * @param array<string,mixed> $args Argumentos de wp_list_categories().
+ * @return array<string,mixed>
+ */
+add_filter(
+	'woocommerce_product_categories_widget_args',
+	static function ( array $args ): array {
+		if ( is_admin() || ! function_exists( 'elmercado_core_filters_is_catalog' ) || ! elmercado_core_filters_is_catalog() ) {
+			return $args;
+		}
+
+		$args['show_count'] = 1;
+		return $args;
+	},
+	PHP_INT_MAX
+);
+
+/**
+ * Conserva el mismo comportamiento si el widget se cambia a desplegable.
+ *
+ * @param array<string,mixed> $args Argumentos del dropdown de categorías.
+ * @return array<string,mixed>
+ */
+add_filter(
+	'woocommerce_product_categories_widget_dropdown_args',
+	static function ( array $args ): array {
+		if ( is_admin() || ! function_exists( 'elmercado_core_filters_is_catalog' ) || ! elmercado_core_filters_is_catalog() ) {
+			return $args;
+		}
+
+		$args['show_count'] = 1;
+		return $args;
 	},
 	PHP_INT_MAX
 );
