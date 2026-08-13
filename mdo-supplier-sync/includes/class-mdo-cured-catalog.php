@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Reutiliza los atributos globales de ibérico creados para Jamones y Paletas.
  */
 final class MDO_Cured_Catalog {
-	private const VERSION        = '1.0.1';
+	private const VERSION        = '1.0.2';
 	private const VERSION_OPTION = 'mdo_cured_catalog_version';
 	private const REPORT_OPTION  = 'mdo_cured_catalog_last_report';
 	private const SNAPSHOT_META  = '_emdo_cured_catalog_snapshot';
@@ -44,6 +44,7 @@ final class MDO_Cured_Catalog {
 		'el catedratico seleccion',
 		'la catedra del sabor',
 		'la caja del estudiante',
+		'universidad iberica',
 	);
 
 	private static bool $writing = false;
@@ -100,7 +101,7 @@ final class MDO_Cured_Catalog {
 			$ids = wc_get_products( array(
 				'limit'  => -1,
 				'return' => 'ids',
-				'status' => array( 'publish', 'private', 'draft', 'pending' ),
+				'status' => array( 'publish', 'private', 'draft', 'pending', 'archived' ),
 			) );
 
 			$report = array(
@@ -186,8 +187,6 @@ final class MDO_Cured_Catalog {
 		$category_ids = array_map( 'intval', $product->get_category_ids() );
 		$category_ids = array_values( array_unique( $category_ids ) );
 
-		// Los lotes muy transversales viven únicamente en Packs y lotes. Así no
-		// contaminan categorías de familia cuando mezclan tres o más familias.
 		if ( $is_pack && $family_count > 2 ) {
 			$family_category_ids = array( self::$cured_category_id );
 			foreach ( array( 'jamones-paletas', 'jamones-y-paletas', 'quesos', 'carnes', 'aceites', 'naranjas' ) as $family_slug ) {
@@ -548,8 +547,6 @@ final class MDO_Cured_Catalog {
 		$families['honey']  = (bool) preg_match( '/\b(?:tarros?|botes?)\s+de\s+miel\b/u', $context );
 		$families['fruit']  = (bool) preg_match( '/\b(?:naranjas?|frutas?)\b/u', $title );
 
-		// Para lotes de carne se usa el título como señal principal, evitando que
-		// "carne" en ingredientes o "vaca" en un queso creen una familia falsa.
 		$families['meat'] = ! preg_match( '/\bquesos?\b/u', $title )
 			&& (bool) preg_match( '/\b(?:ternera|vaca|buey|tomahawk|chuleton|entrecot|filetes?|magro|barbacoa)\b/u', $title );
 		return $families;
