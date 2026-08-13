@@ -69,8 +69,11 @@ jobs:
           set -euo pipefail
           URL="https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/acercade/?emdo_verify=${GITHUB_RUN_ID}"
           HTML="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO production verifier' "$URL")"
-          printf '%s' "$HTML" | grep -Fq 'La historia de <strong>Hidalgo de la Jara</strong> está profundamente ligada'
-          if printf '%s' "$HTML" | grep -Fq 'Los ganaderos que integran Hidalgo de la Jara mantienen intacta'; then
+          if ! grep -Fq 'La historia de <strong>Hidalgo de la Jara</strong> está profundamente ligada' <<< "$HTML"; then
+            echo 'HIDALGO_PUBLIC_VERIFY_ABORT: new copy not found' >&2
+            exit 8
+          fi
+          if grep -Fq 'Los ganaderos que integran Hidalgo de la Jara mantienen intacta' <<< "$HTML"; then
             echo 'HIDALGO_PUBLIC_VERIFY_ABORT: old copy still present' >&2
             exit 7
           fi
