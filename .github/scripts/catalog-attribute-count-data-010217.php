@@ -24,6 +24,7 @@ $category_ids = array_values(
 		array_filter(
 			array_merge( array( (int) $category->term_id ), array_map( 'absint', (array) $children ) )
 		)
+	)
 );
 
 $profiles = elmercado_catalog_filter_profiles();
@@ -44,9 +45,9 @@ $woocommerce_hide_option = 'yes' === get_option( 'woocommerce_hide_out_of_stock_
 $visibility_ids          = array();
 $outofstock_id           = 0;
 if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
-	$visibility  = wc_get_product_visibility_term_ids();
-	$catalog_id  = isset( $visibility['exclude-from-catalog'] ) ? absint( $visibility['exclude-from-catalog'] ) : 0;
-	$outofstock_id = isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
+	$visibility     = wc_get_product_visibility_term_ids();
+	$catalog_id     = isset( $visibility['exclude-from-catalog'] ) ? absint( $visibility['exclude-from-catalog'] ) : 0;
+	$outofstock_id  = isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
 	if ( $catalog_id > 0 ) {
 		$visibility_ids[] = $catalog_id;
 	}
