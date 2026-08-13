@@ -7,7 +7,7 @@ const adminCookieValue = process.env.ADMIN_COOKIE_VALUE || '';
 
 function addBust(url, label) {
   const parsed = new URL(url, base);
-  parsed.searchParams.set('count-parity-010218', `${Date.now()}-${label}`);
+  parsed.searchParams.set('count-parity-010219', `${Date.now()}-${label}`);
   return parsed.toString();
 }
 
@@ -201,7 +201,8 @@ async function validateAttributeResultLinks(browser, entries, field, label, cook
   if (!attributePayload?.rows?.length) throw new Error('Missing ATTRIBUTE_PARITY_JSON');
   if (!attributePayload?.totals) throw new Error('Missing catalog totals');
   if (!adminCookieName || !adminCookieValue) throw new Error('Missing administrator cookie');
-  if (attributePayload.hide_out_of_stock !== true) throw new Error('WooCommerce is not configured to hide out-of-stock products');
+  if (attributePayload.force_exclude_out_of_stock !== true) throw new Error('Forced out-of-stock exclusion is not active');
+  if (!Number(attributePayload.outofstock_term_id || 0)) throw new Error('WooCommerce outofstock visibility term is missing');
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -250,8 +251,9 @@ async function validateAttributeResultLinks(browser, entries, field, label, cook
     await validateAttributeResultLinks(browser, adminAttributes, 'admin', 'category-attribute-results-admin', adminCookie);
 
     const lomo = attributePayload.rows.filter((row) => /lomo/i.test(`${row.slug} ${row.name}`));
-    console.log('CATALOG_VISIBILITY_COUNT_PARITY_010218_OK', JSON.stringify({
-      hideOutOfStock: attributePayload.hide_out_of_stock,
+    console.log('CATALOG_VISIBILITY_COUNT_PARITY_010219_OK', JSON.stringify({
+      wooHideOutOfStockOption: attributePayload.woocommerce_hide_out_of_stock_option,
+      forcedOutOfStockExclusion: attributePayload.force_exclude_out_of_stock,
       disabledVendorIds: attributePayload.disabled_vendor_ids || [],
       totals: attributePayload.totals,
       lomo,
