@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'elmercadodeorigen-child/inc/catalog-filter-stability-010228.php'
+      - 'elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php'
       - 'elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php'
       - '.github/scripts/catalog-filter-stability-010228-browser.cjs'
       - '.github/workflows/catalog-filter-stability-010228-staging.yml'
@@ -25,17 +26,22 @@ jobs:
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/catalog-filter-stability-010228.php >/dev/null
+          php -l elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php >/dev/null
           php -l elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php >/dev/null
           node --check .github/scripts/catalog-filter-stability-010228-browser.cjs
           grep -q 'elmercado-catalog-filter-stability-010228' elmercadodeorigen-child/inc/catalog-filter-stability-010228.php
-          grep -q 'catalog-filter-stability-010228.php' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -q 'text-decoration:underline !important' elmercadodeorigen-child/inc/catalog-filter-stability-010228.php
+          grep -q 'elmercado-vendor-sticky-root-fix-010228' elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php
+          grep -q 'vendor-sticky-root-fix-010228.php' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
       - name: Wait for development marker
         run: |
           set -euo pipefail
           for i in $(seq 1 75); do
             shop="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/?qa-stability=${GITHUB_RUN_ID}-${i}" || true)"
             vendor="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-stability=${GITHUB_RUN_ID}-${i}" || true)"
-            if grep -q 'elmercado-catalog-filter-stability-010228' <<<"${shop}" && grep -q 'elmercado-catalog-filter-stability-010228' <<<"${vendor}"; then
+            if grep -q 'elmercado-catalog-filter-stability-010228' <<<"${shop}" \
+              && grep -q 'elmercado-catalog-filter-stability-010228' <<<"${vendor}" \
+              && grep -q 'elmercado-vendor-sticky-root-fix-010228' <<<"${vendor}"; then
               echo CATALOG_FILTER_STABILITY_LIVE_010228_OK
               exit 0
             fi
