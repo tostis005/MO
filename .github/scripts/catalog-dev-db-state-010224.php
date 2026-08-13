@@ -1,0 +1,70 @@
+<?php
+/** Read-only development catalog database state diagnostic. */
+defined( 'ABSPATH' ) || exit;
+
+global $wpdb;
+
+$rows = $wpdb->get_results(
+	"SELECT p.ID, p.post_status, p.post_author,
+		MAX(CASE WHEN pm.meta_key = '_stock_status' THEN pm.meta_value END) AS stock_status,
+		MAX(CASE WHEN pm.meta_key = '_emo_catalog_fixture' THEN pm.meta_value END) AS fixture
+	FROM {$wpdb->posts} p
+	LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key IN ('_stock_status','_emo_catalog_fixture')
+	WHERE p.post_type = 'product'
+	GROUP BY p.ID, p.post_status, p.post_author
+	ORDER BY p.ID",
+	ARRAY_A
+); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+$visibility = array();
+$vis_rows = $wpdb->get_results(
+	"SELECT tr.object_id AS product_id, t.slug
+	FROM {$wpdb->term_relationships} tr
+	INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+	INNER JOIN {$wpdb->terms} t ON t.term_id = tt.term_id
+	WHERE tt.taxonomy = 'product_visibility'
+	ORDER BY tr.object_id, t.slug",
+	ARRAY_A
+); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+foreach ( (array) $vis_rows as $row ) {
+	$id = absint( $row['product_id'] ?? 0 );
+	if ( $id > 0 ) {
+		$visibility[ $id ][] = (string) ( $row['slug'] ?? '' );
+	}
+}
+
+$status_counts = array();
+$stock_counts  = array();
+$fixtures      = array();
+foreach ( (array) $rows as &$row ) {
+	$id = absint( $row['ID'] ?? 0 );
+	$row['ID'] = $id;
+	$row['post_author'] = absint( $row['post_author'] ?? 0 );
+	$row['visibility'] = $visibility[ $id ] ?? array();
+	$status = (string) ( $row['post_status'] ?? '' );
+	$stock  = (string) ( $row['stock_status'] ?? '' );
+	$status_counts[ $status ] = ( $status_counts[ $status ] ?? 0 ) + 1;
+	$stock_counts[ $stock ] = ( $stock_counts[ $stock ] ?? 0 ) + 1;
+	if ( ! empty( $row['fixture'] ) ) {
+		$fixtures[] = $id;
+	}
+}
+unset( $row );
+
+$users = $wpdb->get_results(
+	"SELECT u.ID, u.user_login FROM {$wpdb->users} u WHERE u.user_login LIKE 'emo_catalog_fixture_vendor_%' ORDER BY u.ID",
+	ARRAY_A
+); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
+echo '__DEV_DB_STATE__=' . base64_encode(
+	wp_json_encode(
+		array(
+			'product_count' => count( $rows ),
+			'status_counts' => $status_counts,
+			'stock_counts'  => $stock_counts,
+			'fixture_product_ids' => $fixtures,
+			'fixture_users' => $users,
+			'products' => $rows,
+		)
+	)
+) . PHP_EOL;
