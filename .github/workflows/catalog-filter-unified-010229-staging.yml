@@ -30,7 +30,8 @@ jobs:
           php -l elmercadodeorigen-child/inc/catalog-filter-unified-010229.php >/dev/null
           node --check .github/scripts/catalog-filter-unified-010229-browser.cjs
           grep -q "catalog-filter-unified-010229.php" elmercadodeorigen-child/functions.php
-          grep -q "#page#page .emo-filter-rail-shared-010229" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -Fq "elmercado-catalog-filter-shared-interaction-010231" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -Fq ":is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "vendor-store-catalog-layout-lock-010225.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "vendor-store-shop-parity-010226.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
           ! grep -q "catalog-filter-stability-010228.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
@@ -41,11 +42,11 @@ jobs:
           for i in $(seq 1 90); do
             shop="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
             vendor="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
-            if grep -q 'elmercado-catalog-filter-unified-010229' <<<"${shop}" \
-              && grep -q '#page#page .emo-filter-rail-shared-010229' <<<"${shop}" \
-              && grep -q 'elmercado-catalog-filter-unified-010229' <<<"${vendor}" \
-              && grep -q '#page#page .emo-filter-rail-shared-010229' <<<"${vendor}"; then
-              echo CATALOG_FILTER_UNIFIED_LATEST_LIVE_OK
+            if grep -Fq 'elmercado-catalog-filter-unified-010229' <<<"${shop}" \
+              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010231' <<<"${shop}" \
+              && grep -Fq 'elmercado-catalog-filter-unified-010229' <<<"${vendor}" \
+              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010231' <<<"${vendor}"; then
+              echo CATALOG_FILTER_UNIFIED_LIVE_010231_OK
               exit 0
             fi
             sleep 4
