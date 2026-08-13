@@ -1,0 +1,68 @@
+name: About Elementor update 0.10.226 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/about-elementor-update-010226-production.yml'
+      - '.github/scripts/about-elementor-update-010226.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Elementor updater
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/about-elementor-update-010226.php >/dev/null
+          grep -q "4807dca2" .github/scripts/about-elementor-update-010226.php
+          grep -q 'Nuestra historia comienza en 2014' .github/scripts/about-elementor-update-010226.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Update Elementor About widget in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/about-elementor-update-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/about-elementor-update-010226.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
+
+      - name: Verify live visible About copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/quienes-somos/?emdo_elementor_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO About Elementor verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/about.html "$URL"
+          NEW='Nuestra historia comienza en 2014, cuando empezamos a especializarnos en la administración de fincas agrícolas.'
+          OLD='Todo comenzó en 2014 cuando empezamos a especializarnos en la administración de fincas agrícolas.'
+          grep -Fq "$NEW" /tmp/about.html
+          grep -Fq 'Porque para nosotros el origen no es solo el lugar del que viene un producto.' /tmp/about.html
+          if grep -Fq "$OLD" /tmp/about.html; then
+            echo 'ABOUT_ELEMENTOR_PUBLIC_ABORT: old visible copy remains' >&2
+            exit 7
+          fi
+          echo "ABOUT_ELEMENTOR_PUBLIC_OK new=$(grep -Fc "$NEW" /tmp/about.html || true) old=$(grep -Fc "$OLD" /tmp/about.html || true)"
