@@ -152,6 +152,7 @@ $elmercado_modules = array(
 	'inc/home-category-truth-before-legacy-010226.php',
 	'inc/vendor-filter-spacing-010226.php',
 	'inc/home-category-output-final-010226.php',
+	'inc/catalog-filter-mobile-hitarea-010233.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
