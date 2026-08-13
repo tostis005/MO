@@ -1,4 +1,5 @@
 name: Catalog development DB state 0.10.224
+# Resolve the real development WordPress root before inspecting the database.
 
 on:
   push:
@@ -34,7 +35,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; printf '%s' \"\$p\"" )"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
           : "${WP_PATH:?}"
           REMOTE="/tmp/catalog-dev-db-state-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-dev-db-state-010224.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
