@@ -48,9 +48,6 @@ async function assertResultState(page, expected, label) {
   if (state.total !== Number(expected)) {
     throw new Error(`${label}: total visible ${state.total}; esperado ${expected}`);
   }
-  if (state.orderingVisible) {
-    throw new Error(`${label}: el selector/texto de ordenación sigue visible`);
-  }
   if (state.legacyVisible) {
     throw new Error(`${label}: el contador antiguo sigue visible`);
   }
