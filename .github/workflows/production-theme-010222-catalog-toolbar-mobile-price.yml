@@ -1,0 +1,184 @@
+name: Production theme 0.10.222 catalog toolbar mobile price
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-theme-010222-catalog-toolbar-mobile-price.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      EXPECTED_VERSION: 0.10.222
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "ELMERCADO_THEME_VERSION', '$EXPECTED_VERSION'" elmercadodeorigen-child/functions.php
+          grep -Eq '^Version:[[:space:]]*0\.10\.222$' elmercadodeorigen-child/style.css
+          test -f elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
+          grep -q 'woocommerce_catalog_ordering' elmercadodeorigen-child/inc/catalog-toolbar-mobile-price-fix-010222.php
+          grep -q 'catalog-toolbar-mobile-price-fix-010222.php' elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
+          test -f elmercadodeorigen-child/inc/catalog-result-total-010220.php
+          grep -q 'elmercado_catalog_force_in_stock_tax_query_010219' elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
+          grep -q 'elmercado_catalog_exact_result_total_010220' elmercadodeorigen-child/inc/catalog-result-total-010220.php
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          php -l .github/scripts/home-category-parity-data-010215.php >/dev/null
+          php -l .github/scripts/catalog-attribute-count-data-010217.php >/dev/null
+          php -l .github/scripts/elmercado-opcache-reset.php >/dev/null
+          node --check .github/scripts/home-category-parity-010213-browser.cjs
+          node --check .github/scripts/catalog-toolbar-mobile-price-010222-browser.cjs
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          echo 'LOCAL_PRODUCTION_010222_OK'
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass jq google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node -e "require('puppeteer-core')"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Prepare proven deployment script for 0.10.222
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/scripts/deploy-home-categories-010212.sh /tmp/deploy-production-010222.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/deploy-production-010222.sh')
+          s = p.read_text()
+          s = s.replace(r'0\.10\.215', r'0\.10\.222')
+          s = s.replace('0.10.215', '0.10.222')
+          p.write_text(s)
+          PY
+          grep -q 'EXPECTED_VERSION="${EXPECTED_VERSION:-0.10.222}"' /tmp/deploy-production-010222.sh
+          bash -n /tmp/deploy-production-010222.sh
+
+      - name: Backup and deploy exact child theme to production
+        shell: bash
+        run: bash /tmp/deploy-production-010222.sh
+
+      - name: Reset production PHP-FPM OPcache
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROBE="elmercado-opcache-prod-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PRODUCTION_WP_PATH/$PROBE"
+          BODY="$(curl -fsSL -H 'Cache-Control: no-store' -H 'Pragma: no-cache' --max-time 30 "$PRODUCTION_SITEURL/$PROBE")"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PRODUCTION_WP_PATH/$PROBE'"
+          printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
+
+      - name: Verify production runtime version
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); runtime=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo defined(\"ELMERCADO_THEME_VERSION\") ? ELMERCADO_THEME_VERSION : \"missing\";' --path='$PRODUCTION_WP_PATH' --skip-plugins --allow-root); style=\$(grep -o '^Version:[[:space:]]*[^[:space:]]*' '$PRODUCTION_WP_PATH/wp-content/themes/elmercadodeorigen-child/style.css' | awk '{print \$2}'); printf 'runtime=%s\\nstyle=%s\\n' \"\$runtime\" \"\$style\""
+          )"
+          printf '%s\n' "$OUT"
+          grep -q '^runtime=0\.10\.222$' <<< "$OUT"
+          grep -q '^style=0\.10\.222$' <<< "$OUT"
+
+      - name: Collect production visibility expectations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          REMOTE_HOME="/tmp/home-category-parity-prod-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/home-category-parity-data-010215.php "$STAGING_USER@$STAGING_HOST:$REMOTE_HOME"
+          HOME_OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_HOME' --path='$PRODUCTION_WP_PATH' --allow-root; rm -f '$REMOTE_HOME'" )"
+          ROWS_B64="$(printf '%s\n' "$HOME_OUT" | sed -n 's/^__ROWS__=//p' | tail -n1)"
+          NAME_B64="$(printf '%s\n' "$HOME_OUT" | sed -n 's/^__COOKIE_NAME__=//p' | tail -n1)"
+          VALUE_B64="$(printf '%s\n' "$HOME_OUT" | sed -n 's/^__COOKIE_VALUE__=//p' | tail -n1)"
+          : "${ROWS_B64:?}"; : "${NAME_B64:?}"; : "${VALUE_B64:?}"
+          echo "CATEGORY_PARITY_JSON=$(printf '%s' "$ROWS_B64" | base64 -d)" >> "$GITHUB_ENV"
+          echo "ADMIN_COOKIE_NAME=$(printf '%s' "$NAME_B64" | base64 -d)" >> "$GITHUB_ENV"
+          COOKIE_VALUE="$(printf '%s' "$VALUE_B64" | base64 -d)"
+          echo "::add-mask::$COOKIE_VALUE"
+          echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
+
+          REMOTE_ATTR="/tmp/catalog-attribute-count-prod-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-attribute-count-data-010217.php "$STAGING_USER@$STAGING_HOST:$REMOTE_ATTR"
+          ATTR_OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_ATTR' --path='$PRODUCTION_WP_PATH' --allow-root; rm -f '$REMOTE_ATTR'" )"
+          ATTR_B64="$(printf '%s\n' "$ATTR_OUT" | sed -n 's/^__ATTRIBUTE_ROWS__=//p' | tail -n1)"
+          : "${ATTR_B64:?}"
+          echo "ATTRIBUTE_PARITY_JSON=$(printf '%s' "$ATTR_B64" | base64 -d)" >> "$GITHUB_ENV"
+
+      - name: Verify production Home in Chrome
+        shell: bash
+        env:
+          STAGING_URL: ${{ env.PRODUCTION_SITEURL }}
+        run: node .github/scripts/home-category-parity-010213-browser.cjs
+
+      - name: Verify production ordering and mobile price slider in Chrome
+        shell: bash
+        env:
+          BASE_URL: ${{ env.PRODUCTION_SITEURL }}
+          ATTRIBUTE_PARITY_JSON: ${{ env.ATTRIBUTE_PARITY_JSON }}
+        run: node .github/scripts/catalog-toolbar-mobile-price-010222-browser.cjs
+
+      - name: Finalize successful production release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$PREDEPLOY_OLD_PATH' '$REMOTE_TMP'"
+          echo "PRODUCTION_010222_OK previous=$PREVIOUS_VERSION current=$CURRENT_VERSION backup=$BACKUP_NAME"
+
+      - name: Automatic rollback on post-deploy failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "${PRODUCTION_WP_PATH:-}" ] && [ -n "${PREDEPLOY_OLD_PATH:-}" ] && [ -n "${ROLLBACK_BACKUP_DIR:-}" ]; then
+            bash .github/scripts/rollback-home-categories-010212.sh
+          else
+            echo 'No completed production swap to roll back.'
+          fi
