@@ -1,0 +1,149 @@
+name: Cured archived catalog 0.10.231 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cured-archived-catalog-010231-production.yml'
+      - 'mdo-supplier-sync/includes/class-mdo-cured-catalog.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emdo-cured-archived-production
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate guarded catalog release
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mdo-supplier-sync/includes/class-mdo-cured-catalog.php >/dev/null
+          grep -Fq "private const VERSION        = '1.0.2';" mdo-supplier-sync/includes/class-mdo-cured-catalog.php
+          grep -Fq "'archived'" mdo-supplier-sync/includes/class-mdo-cured-catalog.php
+          grep -Fq "'universidad iberica'" mdo-supplier-sync/includes/class-mdo-cured-catalog.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy classifier and normalize target archived products
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          TARGET="$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-cured-catalog.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET'"
+          REMOTE_NEW="/tmp/class-mdo-cured-catalog-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-cured-catalog.php "$STAGING_USER@$STAGING_HOST:$REMOTE_NEW"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE_NEW' >/dev/null; cp '$TARGET' '${TARGET}.bak-${GITHUB_RUN_ID}'; cp '$REMOTE_NEW' '$TARGET'; rm -f '$REMOTE_NEW'"
+
+          cat > /tmp/emdo-archived-normalize.php <<'PHP'
+          <?php
+          if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
+          global $wpdb;
+          $owners = array( 4508 => 'Puente Robles', 4509 => 'El Catedrático' );
+          foreach ( $owners as $owner_id => $expected ) {
+              $settings = get_user_meta( $owner_id, 'wcfmmp_profile_settings', true );
+              if ( ! is_array( $settings ) || (string) ( $settings['store_name'] ?? '' ) !== $expected ) {
+                  throw new RuntimeException( 'Vendor identity mismatch for ' . $owner_id );
+              }
+          }
+          $category_count_before = (int) wp_count_terms( array( 'taxonomy'=>'product_cat', 'hide_empty'=>false ) );
+          $ids = array_map( 'intval', (array) $wpdb->get_col(
+              "SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_status='archived' AND post_author IN (4508,4509) ORDER BY ID ASC"
+          ) );
+          if ( 137 !== count( $ids ) ) {
+              throw new RuntimeException( 'Expected 137 archived target products, found ' . count( $ids ) );
+          }
+          $report = array( 'checked'=>count($ids), 'classifier_targets'=>0, 'individual_cured'=>0, 'packs'=>0, 'packs_with_ham'=>0, 'packs_with_cured'=>0 );
+          foreach ( $ids as $id ) {
+              $status_before = (string) get_post_status( $id );
+              $result = MDO_Cured_Catalog::classify_product( $id );
+              if ( ! empty( $result['target'] ) ) {
+                  ++$report['classifier_targets'];
+                  foreach ( array( 'individual_cured','packs_with_ham','packs_with_cured' ) as $key ) {
+                      if ( ! empty( $result[$key] ) ) { ++$report[$key]; }
+                  }
+                  if ( ! empty( $result['pack'] ) ) { ++$report['packs']; }
+                  if ( ( ! empty( $result['individual_cured'] ) || ! empty( $result['pack_with_cured'] ) ) && class_exists( 'MDO_Cured_Producer' ) ) {
+                      MDO_Cured_Producer::sync_after_save( wc_get_product( $id ) );
+                  }
+              }
+              if ( (string) get_post_status( $id ) !== $status_before ) {
+                  throw new RuntimeException( 'Product status changed for ' . $id );
+              }
+          }
+          $category_count_after = (int) wp_count_terms( array( 'taxonomy'=>'product_cat', 'hide_empty'=>false ) );
+          if ( $category_count_after !== $category_count_before ) {
+              throw new RuntimeException( 'Product category count changed' );
+          }
+
+          $errors = array();
+          foreach ( $ids as $id ) {
+              $product = wc_get_product( $id );
+              if ( ! $product instanceof WC_Product ) { $errors[] = array('id'=>$id,'error'=>'missing product'); continue; }
+              $title = remove_accents( strtolower( (string) $product->get_name( 'edit' ) ) );
+              $cats = wp_get_post_terms( $id, 'product_cat', array( 'fields'=>'slugs' ) );
+              $cats = is_wp_error( $cats ) ? array() : array_values( array_map( 'strval', $cats ) );
+              $is_pack = preg_match( '/\b(?:pack|megapack|lote|surtido|degustacion)\b/u', $title ) || in_array( $title, array('catedra iberica','el catedratico gourmet','el catedratico seleccion','la catedra del sabor','la caja del estudiante','universidad iberica'), true );
+              $is_cured = ! $is_pack && preg_match( '/\b(?:lomo|lomito|chorizo|salchichon|morcon|sobrasada|cecina)\b/u', $title ) && ! preg_match( '/\badobad|\bchorizo\s+para\s+asar/u', $title );
+              if ( $is_pack && ! in_array( 'packs-y-lotes', $cats, true ) ) { $errors[] = array('id'=>$id,'error'=>'pack missing category'); }
+              if ( $is_cured && ! in_array( 'embutidos-y-curados', $cats, true ) ) { $errors[] = array('id'=>$id,'error'=>'cured missing category'); }
+              if ( ( $is_pack || $is_cured ) && ( in_array( 'sin-categorizar', $cats, true ) || in_array( 'uncategorized', $cats, true ) ) ) { $errors[] = array('id'=>$id,'error'=>'target remains uncategorized'); }
+          }
+          if ( $errors ) {
+              echo 'ARCHIVED_CATALOG_ERRORS ' . wp_json_encode( $errors, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
+              throw new RuntimeException( 'Archived catalog verification errors: ' . count( $errors ) );
+          }
+          $report['category_count_before'] = $category_count_before;
+          $report['category_count_after'] = $category_count_after;
+          $report['errors'] = 0;
+          echo 'ARCHIVED_CATALOG_SUMMARY ' . wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . "\n";
+          PHP
+
+          REMOTE_SCRIPT="/tmp/emdo-archived-normalize-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS /tmp/emdo-archived-normalize.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
+
+      - name: Flush production object cache
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); for cfg in \$(find /var/www/vhosts \"\$HOME\" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do p=\$(dirname \"\$cfg\"); url=\$(\"\$php_bin\" \"\$wp_bin\" option get siteurl --path=\"\$p\" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case \"\$url\" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) \"\$php_bin\" \"\$wp_bin\" cache flush --path=\"\$p\" --allow-root >/dev/null 2>&1 || true; break;; esac; done"
