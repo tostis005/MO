@@ -151,7 +151,6 @@ $elmercado_modules = array(
 	'inc/home-category-truth-before-legacy-010226.php',
 	'inc/vendor-filter-spacing-010226.php',
 	'inc/home-category-output-final-010226.php',
-	'inc/catalog-store-visual-parity-010227.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
@@ -160,6 +159,21 @@ foreach ( $elmercado_modules as $elmercado_module ) {
 		require_once $elmercado_module_path;
 	}
 }
+
+/*
+ * Este cierre se registra después de los cargadores históricos del catálogo.
+ * Así sus hooks wp_head/wp_footer quedan al final y son la última palabra visual.
+ */
+add_action(
+	'after_setup_theme',
+	static function (): void {
+		$module = ELMERCADO_THEME_PATH . '/inc/catalog-store-visual-parity-010227.php';
+		if ( is_readable( $module ) ) {
+			require_once $module;
+		}
+	},
+	PHP_INT_MAX
+);
 
 remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );
 remove_action( 'wp_print_footer_scripts', 'elmercado_optimize_home_assets', 0 );
