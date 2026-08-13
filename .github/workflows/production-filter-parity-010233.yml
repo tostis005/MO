@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-filters-only:
+  diagnose-filter-sticky:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -27,18 +27,15 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
 
     steps:
-      - name: Checkout deployment control
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           path: control
-
-      - name: Checkout QA-approved filter source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: 5dde637b4c3895263e0bf0621b43accfe6eae262
           path: source
 
-      - name: Prepare production-scoped filter payload
+      - name: Prepare diagnostic payload
         shell: bash
         run: |
           set -euo pipefail
@@ -48,18 +45,44 @@ jobs:
           from pathlib import Path
           p=Path('source/elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php')
           s=p.read_text()
-          old="""\t\tif ( is_admin() || ! function_exists( 'elmercado_vendor_store_is_request_010225' ) || ! elmercado_vendor_store_is_request_010225() ) {\n\t\t\treturn;\n\t\t}\n"""
-          new="""\t\tif ( is_admin() ) {\n\t\t\treturn;\n\t\t}\n\t\t$is_vendor = function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225();\n\t\t$is_catalog = function_exists( 'elmercado_core_filters_is_catalog' ) && elmercado_core_filters_is_catalog();\n\t\tif ( ! $is_vendor && ! $is_catalog ) {\n\t\t\treturn;\n\t\t}\n"""
+          old="\t\tif ( is_admin() || ! function_exists( 'elmercado_vendor_store_is_request_010225' ) || ! elmercado_vendor_store_is_request_010225() ) {\n\t\t\treturn;\n\t\t}\n"
+          new="\t\tif ( is_admin() ) { return; }\n\t\t$is_vendor = function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225();\n\t\t$is_catalog = function_exists( 'elmercado_core_filters_is_catalog' ) && elmercado_core_filters_is_catalog();\n\t\tif ( ! $is_vendor && ! $is_catalog ) { return; }\n"
           if old not in s: raise SystemExit('sticky condition anchor missing')
           s=s.replace(old,new,1)
           s=s.replace('html body.elmercado-child-theme.wcfmmp-store-page #view,','html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page) #view,')
           s=s.replace('html body.elmercado-child-theme.wcfmmp-store-page #page {','html body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page) #page {')
           p.write_text(s)
+          deploy=Path('/tmp/deploy-filter-parity.sh')
+          d=deploy.read_text()
+          needle='BASE_URL="$BASE_URL" node "$SOURCE_DIR/.github/scripts/catalog-filter-unified-010229-browser.cjs"'
+          replacement='BASE_URL="$BASE_URL" node /tmp/sticky-diag.cjs; false'
+          if needle not in d: raise SystemExit('QA command anchor missing')
+          deploy.write_text(d.replace(needle,replacement,1))
           PY
-          php -l source/elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php >/dev/null
+          cat > /tmp/sticky-diag.cjs <<'NODE'
+          const puppeteer=require(process.cwd()+'/source/node_modules/puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage();
+            await p.setViewport({width:1440,height:1000});
+            await p.goto(`${process.env.BASE_URL}/tienda/?sticky-diag=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+            await p.waitForSelector('.emo-filter-rail-shared-010229',{timeout:20000});
+            await new Promise(r=>setTimeout(r,800));
+            const before=await p.$eval('.emo-filter-rail-shared-010229',el=>{
+              const chain=[]; let n=el;
+              while(n){const c=getComputedStyle(n),r=n.getBoundingClientRect();chain.push({tag:n.tagName,id:n.id||'',cls:typeof n.className==='string'?n.className:'',position:c.position,overflow:c.overflow,overflowX:c.overflowX,overflowY:c.overflowY,top:r.top,bottom:r.bottom,height:r.height,transform:c.transform,contain:c.contain});n=n.parentElement;}
+              return {scrollY:scrollY,chain};
+            });
+            await p.evaluate(()=>scrollTo(0,1200)); await new Promise(r=>setTimeout(r,350));
+            const after=await p.$eval('.emo-filter-rail-shared-010229',el=>({scrollY:scrollY,top:el.getBoundingClientRect().top,position:getComputedStyle(el).position}));
+            console.log('SHOP_STICKY_ANCESTORS_010233',JSON.stringify(before));
+            console.log('SHOP_STICKY_AFTER_010233',JSON.stringify(after));
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
           bash -n /tmp/deploy-filter-parity.sh
 
-      - name: Install deployment and browser tools
+      - name: Install tools
         shell: bash
         run: |
           set -euo pipefail
@@ -75,18 +98,13 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
-          test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy and verify filters only
+      - name: Deploy temporarily, diagnose, and require rollback
         shell: bash
         run: |
           set -o pipefail
-          bash /tmp/deploy-filter-parity.sh "$GITHUB_WORKSPACE/source" 2>&1 | tee /tmp/filter-production.log
-          rc=${PIPESTATUS[0]}
-          test "$rc" -eq 0
-          grep -Fq 'FILTER_FILES_DEPLOYED_010233_OK' /tmp/filter-production.log
-          grep -Fq 'PRODUCTION_FILTER_RUNTIME_010233_OK' /tmp/filter-production.log
-          grep -Fq 'CATALOG_FILTER_UNIFIED_010233_OK' /tmp/filter-production.log
-          grep -Fq 'PRODUCTION_FILTER_PARITY_010233_OK' /tmp/filter-production.log
-          ! grep -Fq 'PRODUCTION_FILTER_PARITY_ROLLED_BACK' /tmp/filter-production.log
+          bash /tmp/deploy-filter-parity.sh "$GITHUB_WORKSPACE/source" 2>&1 | tee /tmp/filter-diag.log || true
+          grep -Fq 'SHOP_STICKY_ANCESTORS_010233' /tmp/filter-diag.log
+          grep -Fq 'SHOP_STICKY_AFTER_010233' /tmp/filter-diag.log
+          grep -Fq 'PRODUCTION_FILTER_PARITY_ROLLED_BACK' /tmp/filter-diag.log
