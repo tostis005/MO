@@ -411,8 +411,8 @@ function elmercado_vendor_store_categories_010225( array $product_ids ): array {
  * Categoría explícita o implícita (si el productor solo trabaja una familia).
  */
 function elmercado_vendor_store_active_category_010225( array $categories ): ?WP_Term {
-	if ( isset( $_GET['product_cat'] ) && ! is_array( $_GET['product_cat'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$slug = sanitize_title( wp_unslash( (string) $_GET['product_cat'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	if ( isset( $_GET['emo_vendor_cat'] ) && ! is_array( $_GET['emo_vendor_cat'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$slug = sanitize_title( wp_unslash( (string) $_GET['emo_vendor_cat'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$term = get_term_by( 'slug', $slug, 'product_cat' );
 		if ( $term instanceof WP_Term ) {
 			foreach ( $categories as $data ) {
@@ -466,7 +466,7 @@ function elmercado_vendor_store_state_010225(): array {
 		'max_price'       => $max_price,
 		'filtered_ids'    => $filtered_ids,
 		'total'           => count( $filtered_ids ),
-		'implicit_cat'    => 1 === count( $categories ) && ! isset( $_GET['product_cat'] ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		'implicit_cat'    => 1 === count( $categories ) && ! isset( $_GET['emo_vendor_cat'] ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	);
 
 	return $state;
@@ -579,7 +579,7 @@ function elmercado_vendor_store_preserved_args_010225( array $exclude = array() 
 		if ( in_array( $key, $exclude, true ) || is_array( $value ) ) {
 			continue;
 		}
-		if ( 'product_cat' !== $key && 'min_price' !== $key && 'max_price' !== $key && 'orderby' !== $key && 0 !== strpos( $key, 'filter_' ) && 0 !== strpos( $key, 'query_type_' ) ) {
+		if ( 'emo_vendor_cat' !== $key && 'min_price' !== $key && 'max_price' !== $key && 'orderby' !== $key && 0 !== strpos( $key, 'filter_' ) && 0 !== strpos( $key, 'query_type_' ) ) {
 			continue;
 		}
 		$args[ $key ] = sanitize_text_field( wp_unslash( (string) $value ) );
@@ -613,7 +613,7 @@ function elmercado_vendor_store_filter_url_010225( array $changes, array $remove
 function elmercado_vendor_store_clear_category_url_010225(): string {
 	$args = elmercado_vendor_store_preserved_args_010225();
 	foreach ( array_keys( $args ) as $key ) {
-		if ( 'product_cat' === $key || 0 === strpos( $key, 'filter_' ) || 0 === strpos( $key, 'query_type_' ) ) {
+		if ( 'emo_vendor_cat' === $key || 0 === strpos( $key, 'filter_' ) || 0 === strpos( $key, 'query_type_' ) ) {
 			unset( $args[ $key ] );
 		}
 	}
@@ -758,7 +758,7 @@ function elmercado_vendor_store_filter_panel_010225( array $state ): string {
 						if ( $count <= 0 ) {
 							continue;
 						}
-						$url = elmercado_vendor_store_filter_url_010225( array( 'product_cat' => $term->slug ), array( 'product_cat' ) );
+						$url = elmercado_vendor_store_filter_url_010225( array( 'emo_vendor_cat' => $term->slug ), array( 'emo_vendor_cat' ) );
 						?>
 						<li><a href="<?php echo esc_url( $url ); ?>" rel="nofollow"><span><?php echo esc_html( $term->name ); ?></span><small><?php echo esc_html( number_format_i18n( $count ) ); ?></small></a></li>
 					<?php endforeach; ?>
