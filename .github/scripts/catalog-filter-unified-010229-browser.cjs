@@ -15,7 +15,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
     async function open(path) {
       await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}qa-unified=${Date.now()}`, {waitUntil:'domcontentloaded', timeout:60000});
       await page.waitForSelector('#elmercado-catalog-filter-unified-010229', {timeout:20000});
-      await page.waitForSelector('#elmercado-catalog-filter-shared-interaction-010231', {timeout:20000});
+      await page.waitForSelector('#elmercado-catalog-filter-shared-interaction-010232', {timeout:20000});
       await wait(1200);
     }
 
@@ -46,7 +46,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
         const link=el.querySelector('.emo-filter-link-shared-010229');
         const r=link.getBoundingClientRect();
         const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
-        const finalStyle=document.getElementById('elmercado-catalog-filter-shared-interaction-010231');
+        const finalStyle=document.getElementById('elmercado-catalog-filter-shared-interaction-010232');
         const matching=[];
         try {
           for (const rule of finalStyle?.sheet?.cssRules || []) {
