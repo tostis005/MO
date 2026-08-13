@@ -2,6 +2,8 @@ const fs = require('fs');
 const puppeteer = require('puppeteer-core');
 
 const BASE = process.env.BASE_URL || 'https://dev.elmercadodeorigen.com';
+const parityPayload = JSON.parse(process.env.ATTRIBUTE_PARITY_JSON || '{}');
+const expectedShopTotal = Number(parityPayload?.totals?.public_shop || 0);
 const failures = [];
 const report = {};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,10 +46,13 @@ async function inspectToolbar(page) {
     const legacy = document.querySelector('.emo-catalog-result-count-010218');
     const ordering = document.querySelector('.woocommerce-ordering');
     const select = ordering?.querySelector('select.orderby,select');
+    const exactText = (exact?.textContent || '').replace(/\s+/g, ' ').trim();
+    const totalMatch = exactText.match(/^(\d+)\s+resultados?$/i);
     return {
       release: !!document.getElementById('elmercado-catalog-toolbar-mobile-price-fix-010222'),
       exactVisible: visible(exact),
-      exactText: (exact?.textContent || '').replace(/\s+/g, ' ').trim(),
+      exactText,
+      exactTotal: totalMatch ? Number(totalMatch[1]) : null,
       legacyVisible: visible(legacy),
       orderingVisible: visible(ordering),
       selectVisible: visible(select),
@@ -101,6 +106,7 @@ function assertToolbar(name, data) {
   if (!data.release) failures.push(`${name}: 0.10.222 release marker missing`);
   if (!data.exactVisible) failures.push(`${name}: exact result count not visible`);
   if (!/^\d+\s+resultados?$/.test(data.exactText)) failures.push(`${name}: unexpected result text ${JSON.stringify(data.exactText)}`);
+  if (expectedShopTotal > 0 && data.exactTotal !== expectedShopTotal) failures.push(`${name}: exact total ${data.exactTotal}; expected ${expectedShopTotal}`);
   if (data.legacyVisible) failures.push(`${name}: legacy result count visible`);
   if (!data.orderingVisible) failures.push(`${name}: ordering form hidden`);
   if (!data.selectVisible) failures.push(`${name}: ordering select hidden`);
@@ -159,13 +165,13 @@ function assertMobilePrice(data) {
     }
 
     await page.screenshot({ path: 'qa/catalog-toolbar-mobile-price-010222.png', fullPage: true });
-    fs.writeFileSync('qa/catalog-toolbar-mobile-price-010222.json', JSON.stringify({ base: BASE, failures, report }, null, 2));
+    fs.writeFileSync('qa/catalog-toolbar-mobile-price-010222.json', JSON.stringify({ base: BASE, expectedShopTotal, failures, report }, null, 2));
 
     if (failures.length) {
       console.error('CATALOG_TOOLBAR_MOBILE_PRICE_010222_FAIL', JSON.stringify(failures));
       process.exitCode = 2;
     } else {
-      console.log('CATALOG_TOOLBAR_MOBILE_PRICE_010222_OK', JSON.stringify(report));
+      console.log('CATALOG_TOOLBAR_MOBILE_PRICE_010222_OK', JSON.stringify({ expectedShopTotal, ...report }));
     }
   } finally {
     await browser.close();
