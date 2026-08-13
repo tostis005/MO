@@ -1,0 +1,81 @@
+name: Catalog admin total diagnostic 0.10.224 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-admin-total-diagnostic-010224-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      BASE_URL: https://www.elmercadodeorigen.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate diagnostic probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/home-category-parity-data-010215.php >/dev/null
+          node --check .github/scripts/catalog-admin-total-diagnostic-010224-browser.cjs
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Install browser and SSH tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Resolve production and create administrator browser cookie
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PRODUCTION_WP_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          REMOTE_AUTH="/tmp/catalog-admin-total-auth-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/home-category-parity-data-010215.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUTH"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_AUTH' --path='$PROD_PATH' --allow-root; rm -f '$REMOTE_AUTH'" )"
+          NAME_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_NAME__=//p' | tail -n1)"
+          VALUE_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__COOKIE_VALUE__=//p' | tail -n1)"
+          : "${NAME_B64:?}"; : "${VALUE_B64:?}"
+          COOKIE_VALUE="$(printf '%s' "$VALUE_B64" | base64 -d)"
+          echo "::add-mask::$COOKIE_VALUE"
+          echo "ADMIN_COOKIE_NAME=$(printf '%s' "$NAME_B64" | base64 -d)" >> "$GITHUB_ENV"
+          echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
+
+      - name: Diagnose public and administrator catalog in Chrome
+        shell: bash
+        run: node .github/scripts/catalog-admin-total-diagnostic-010224-browser.cjs
