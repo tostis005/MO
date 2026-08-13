@@ -56,6 +56,17 @@ jobs:
           echo 'Safe 0.10.227 state did not appear on development in time' >&2
           exit 1
 
+      - name: Check active category HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 40 "${BASE_URL}/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&qa-active=${GITHUB_RUN_ID}" > /tmp/active.html
+          echo "ACTIVE_CATEGORY_BYTES=$(wc -c < /tmp/active.html)"
+          grep -q 'wcfmmp-store' /tmp/active.html
+          grep -q 'emo-vendor-category-context' /tmp/active.html
+          grep -q 'elmercado-catalog-store-visual-parity-010227' /tmp/active.html
+          echo 'ACTIVE_CATEGORY_HTML_OK'
+
       - name: Install Chrome and browser driver
         shell: bash
         run: |
