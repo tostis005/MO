@@ -1,0 +1,33 @@
+name: About residual copy audit 0.10.226 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/about-old-context-audit-010226-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Show residual old-copy context
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/quienes-somos/?emdo_residual=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 2 -A 'Mozilla/5.0 EMDO residual audit' -H 'Cache-Control: no-cache' -o /tmp/about.html "$URL"
+          OLD='Todo comenzó en 2014 cuando empezamos a especializarnos'
+          NEW='Nuestra historia comienza en 2014, cuando empezamos a especializarnos'
+          printf 'new=%s old=%s\n' "$(grep -Fc "$NEW" /tmp/about.html || true)" "$(grep -Fc "$OLD" /tmp/about.html || true)"
+          pos="$(grep -Fbo "$OLD" /tmp/about.html | head -n1 | cut -d: -f1 || true)"
+          if [ -n "$pos" ]; then
+            start=$(( pos > 700 ? pos - 700 : 0 ))
+            echo "OLD_POSITION=$pos"
+            dd if=/tmp/about.html bs=1 skip="$start" count=2600 2>/dev/null | tr '\n' ' '
+            echo
+          fi
