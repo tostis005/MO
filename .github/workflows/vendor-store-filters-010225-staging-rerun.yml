@@ -41,3 +41,5 @@ jobs:
       - name: Verify producer storefront totals and filters in Chrome
         shell: bash
         run: node .github/scripts/vendor-store-filters-010225-browser.cjs
+
+# Rerun marker: validate current staging after producer/shop parity 0.10.226.
