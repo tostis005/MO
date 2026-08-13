@@ -19,55 +19,44 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      SOURCE_REF: 5dde637b4c3895263e0bf0621b43accfe6eae262
       BASE_URL: https://www.elmercadodeorigen.com
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
 
     steps:
+      - name: Checkout deployment control
+        uses: actions/checkout@v4
+        with:
+          path: control
+
       - name: Checkout QA-approved filter source
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.SOURCE_REF }}
+          ref: 5dde637b4c3895263e0bf0621b43accfe6eae262
+          path: source
 
-      - name: Validate filter-only payload
+      - name: Validate deploy script
         shell: bash
         run: |
           set -euo pipefail
-          files=(
-            elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
-            elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
-            elmercadodeorigen-child/inc/vendor-filter-spacing-010226.php
-            elmercadodeorigen-child/inc/vendor-sticky-root-fix-010228.php
-            elmercadodeorigen-child/inc/catalog-filter-unified-010229.php
-            elmercadodeorigen-child/inc/catalog-filter-mobile-hitarea-010233.php
-          )
-          for f in "${files[@]}"; do
-            test -f "$f"
-            php -l "$f" >/dev/null
-          done
-          node --check .github/scripts/catalog-filter-unified-010229-browser.cjs
-          grep -Fq 'emo_vendor_cat' elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
-          grep -Fq 'elmercado-vendor-filter-lean-runtime-010233' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
-          grep -Fq 'elmercado-catalog-filter-shared-interaction-010233' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
-          grep -Fq 'elmercado-catalog-filter-mobile-hitarea-010233-v2' elmercadodeorigen-child/inc/catalog-filter-mobile-hitarea-010233.php
-          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
-          echo FILTER_PAYLOAD_010233_OK
+          bash -n control/.github/scripts/deploy-filter-parity-010233-production.sh
+          test -f source/.github/scripts/catalog-filter-unified-010229-browser.cjs
+          test -f source/.github/scripts/elmercado-opcache-reset.php
 
-      - name: Install SSH and browser tools
+      - name: Install deployment and browser tools
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
+          cd source
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
 
       - name: Configure SSH
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
@@ -76,164 +65,6 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Resolve production and deploy only filter files
+      - name: Deploy and verify filters only
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
-
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            [ -n "$wp_bin" ] || exit 1
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
-                  printf '%s' "$p"; break ;;
-              esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-          THEME_PATH="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
-          BACKUP_DIR="/tmp/elmercado-filter-010233-${GITHUB_RUN_ID}"
-          REMOTE_PAYLOAD="/tmp/elmercado-filter-payload-010233-${GITHUB_RUN_ID}"
-
-          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
-          echo "THEME_PATH=$THEME_PATH" >> "$GITHUB_ENV"
-          echo "BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
-          echo "REMOTE_PAYLOAD=$REMOTE_PAYLOAD" >> "$GITHUB_ENV"
-
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; test -d '$THEME_PATH/inc'; mkdir -p '$BACKUP_DIR/inc' '$REMOTE_PAYLOAD/inc'; cp -p '$THEME_PATH/functions.php' '$BACKUP_DIR/functions.php'; for f in catalog-result-total-cleanup-010221.php vendor-store-catalog-filters-010225.php vendor-filter-spacing-010226.php vendor-sticky-root-fix-010228.php catalog-filter-unified-010229.php catalog-filter-mobile-hitarea-010233.php; do if [ -f '$THEME_PATH/inc/'\"\$f\" ]; then cp -p '$THEME_PATH/inc/'\"\$f\" '$BACKUP_DIR/inc/'\"\$f\"; else : > '$BACKUP_DIR/inc/.missing-'\"\$f\"; fi; done"
-
-          for f in \
-            catalog-result-total-cleanup-010221.php \
-            vendor-store-catalog-filters-010225.php \
-            vendor-filter-spacing-010226.php \
-            vendor-sticky-root-fix-010228.php \
-            catalog-filter-unified-010229.php \
-            catalog-filter-mobile-hitarea-010233.php; do
-            sshpass -e scp $SCP_OPTIONS "elmercadodeorigen-child/inc/$f" "$STAGING_USER@$STAGING_HOST:$REMOTE_PAYLOAD/inc/$f"
-          done
-
-          cat > /tmp/patch-filter-functions-010233.py <<'PY'
-          from pathlib import Path
-          import sys
-
-          path = Path(sys.argv[1])
-          s = path.read_text()
-
-          # Only add the filter modules required by the QA-approved producer/shop parity.
-          anchor = "\t'inc/catalog-result-total-cleanup-010221.php',\n"
-          if anchor not in s:
-              raise SystemExit('catalog cleanup anchor missing')
-
-          module_lines = [
-              "\t'inc/vendor-store-catalog-filters-010225.php',\n",
-              "\t'inc/vendor-filter-spacing-010226.php',\n",
-              "\t'inc/catalog-filter-mobile-hitarea-010233.php',\n",
-          ]
-          insertion = ''.join(line for line in module_lines if line not in s)
-          if insertion:
-              s = s.replace(anchor, anchor + insertion, 1)
-
-          marker = "/* FILTER_PARITY_010233_PRODUCTION */"
-          if marker not in s:
-              loop_end = "}\n\nremove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );"
-              if loop_end not in s:
-                  raise SystemExit('module loop end anchor missing')
-              hook = """}
-
-/* FILTER_PARITY_010233_PRODUCTION */
-add_action(
-    'after_setup_theme',
-    static function (): void {
-        $module = ELMERCADO_THEME_PATH . '/inc/catalog-filter-unified-010229.php';
-        if ( is_readable( $module ) ) {
-            require_once $module;
-        }
-    },
-    PHP_INT_MAX
-);
-
-remove_action( 'wp_print_styles', 'elmercado_optimize_home_assets', 0 );"""
-              s = s.replace(loop_end, hook, 1)
-
-          path.write_text(s)
-          PY
-          sshpass -e scp $SCP_OPTIONS /tmp/patch-filter-functions-010233.py "$STAGING_USER@$STAGING_HOST:$REMOTE_PAYLOAD/patch-functions.py"
-
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -euo pipefail; cp -p '$THEME_PATH/functions.php' '$REMOTE_PAYLOAD/functions.php'; python3 '$REMOTE_PAYLOAD/patch-functions.py' '$REMOTE_PAYLOAD/functions.php'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE_PAYLOAD/functions.php' >/dev/null; for f in '$REMOTE_PAYLOAD'/inc/*.php; do \"\$php_bin\" -l \"\$f\" >/dev/null; done; install -m 0644 '$REMOTE_PAYLOAD/functions.php' '$THEME_PATH/functions.php'; for f in '$REMOTE_PAYLOAD'/inc/*.php; do install -m 0644 \"\$f\" '$THEME_PATH/inc/'\"\$(basename \"\$f\")\"; done; grep -Fq 'FILTER_PARITY_010233_PRODUCTION' '$THEME_PATH/functions.php'; grep -Fq 'emo_vendor_cat' '$THEME_PATH/inc/vendor-store-catalog-filters-010225.php'; grep -Fq 'elmercado-catalog-filter-mobile-hitarea-010233-v2' '$THEME_PATH/inc/catalog-filter-mobile-hitarea-010233.php'"
-
-          echo FILTER_FILES_DEPLOYED_010233_OK
-
-      - name: Reset production caches
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-          PROBE="elmercado-opcache-filter-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
-          BODY="$(curl -fsSL -H 'Cache-Control: no-store' -H 'Pragma: no-cache' --max-time 30 "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID")"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
-          printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
-          echo FILTER_CACHE_RESET_010233_OK
-
-      - name: Wait for exact production filter runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 45); do
-            shop="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "${BASE_URL}/tienda/?filter-prod=${GITHUB_RUN_ID}-${i}" || true)"
-            vendor="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "${BASE_URL}/tienda/hidalgo-de-la-jara/?filter-prod=${GITHUB_RUN_ID}-${i}" || true)"
-            if grep -Fq 'elmercado-catalog-filter-shared-interaction-010233' <<<"$shop" \
-              && grep -Fq 'elmercado-catalog-filter-shared-interaction-010233' <<<"$vendor" \
-              && grep -Fq 'elmercado-vendor-filter-lean-runtime-010233' <<<"$vendor" \
-              && grep -Fq 'elmercado-catalog-filter-mobile-hitarea-010233-v2' <<<"$vendor" \
-              && ! grep -Fq 'elmercado-vendor-store-catalog-010225' <<<"$vendor"; then
-              echo PRODUCTION_FILTER_RUNTIME_010233_OK
-              exit 0
-            fi
-            sleep 3
-          done
-          exit 1
-
-      - name: Exact production browser parity QA
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE_URL="$BASE_URL" node .github/scripts/catalog-filter-unified-010229-browser.cjs
-
-      - name: Remove temporary deployment files
-        if: success()
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR' '$REMOTE_PAYLOAD'"
-          echo PRODUCTION_FILTER_PARITY_010233_OK
-
-      - name: Roll back filter-only production deployment on failure
-        if: failure() && env.BACKUP_DIR != '' && env.THEME_PATH != ''
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set +e
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set +e; cp -p '$BACKUP_DIR/functions.php' '$THEME_PATH/functions.php'; for f in catalog-result-total-cleanup-010221.php vendor-store-catalog-filters-010225.php vendor-filter-spacing-010226.php vendor-sticky-root-fix-010228.php catalog-filter-unified-010229.php catalog-filter-mobile-hitarea-010233.php; do if [ -f '$BACKUP_DIR/inc/.missing-'\"\$f\" ]; then rm -f '$THEME_PATH/inc/'\"\$f\"; elif [ -f '$BACKUP_DIR/inc/'\"\$f\" ]; then cp -p '$BACKUP_DIR/inc/'\"\$f\" '$THEME_PATH/inc/'\"\$f\"; fi; done; rm -rf '$REMOTE_PAYLOAD' '$BACKUP_DIR'"
-          echo PRODUCTION_FILTER_PARITY_ROLLED_BACK
+        run: bash control/.github/scripts/deploy-filter-parity-010233-production.sh "$GITHUB_WORKSPACE/source"
