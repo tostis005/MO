@@ -1,6 +1,7 @@
 name: Hidalgo about update 0.10.225 production
 
 # One-time guarded production update. Re-runs are safe: the PHP guard exits if already applied.
+# Triggered after workflow registration on the default branch.
 on:
   push:
     branches: [main]
