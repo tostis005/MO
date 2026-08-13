@@ -24,7 +24,7 @@ foreach ( $user_ids as $user_id ) {
 }
 
 if ( count( $candidates ) !== 1 ) {
-    fwrite( STDERR, 'TOLE_UPDATE_ABORT: expected one ToleCarnes profile, found ' . count( $candidates ) . "\n" );
+    fwrite( STDERR, 'TOLE_UPDATE_ABORT: expected one Tolecarnes profile, found ' . count( $candidates ) . "\n" );
     exit( 2 );
 }
 
@@ -38,14 +38,14 @@ if ( ! is_string( $direct ) || ! isset( $settings['shop_description'] ) ) {
     exit( 3 );
 }
 
-$new_needle = 'La historia de <strong>ToleCarnes</strong> está ligada a la ganadería de vacuno desde <strong>1960</strong>.';
+$new_needle = 'La historia de <strong>Tolecarnes</strong> está ligada a la ganadería de vacuno desde <strong>1960</strong>.';
 $new_description = <<<'HTML'
-<p>La historia de <strong>ToleCarnes</strong> está ligada a la ganadería de vacuno desde <strong>1960</strong>. Son tres generaciones dedicadas a la cría de ganado en los Montes de Toledo, una experiencia que ha ido pasando de una generación a la siguiente y que sigue marcando su forma de entender la ganadería.</p>
+<p>La historia de <strong>Tolecarnes</strong> está ligada a la ganadería de vacuno desde <strong>1960</strong>. Son tres generaciones dedicadas a la cría de ganado en los Montes de Toledo, una experiencia que ha ido pasando de una generación a la siguiente y que sigue marcando su forma de entender la ganadería.</p>
 <p>Su explotación se encuentra en una dehesa situada en la cara norte de los <strong>Montes de Toledo</strong>, un entorno especialmente favorable para el crecimiento natural de los pastos. Durante buena parte del año, los animales pastan libremente y aprovechan directamente los recursos que ofrece el campo, manteniendo una crianza estrechamente vinculada al territorio.</p>
 <p>La alimentación se adapta a las condiciones de cada época. En los meses de mayor abundancia se recoge parte del pasto para disponer de él durante el invierno y, cuando es necesario complementar la dieta, utilizan <strong>piensos 100 % naturales elaborados exclusivamente con ingredientes de origen vegetal</strong>. Estos se producen en la cooperativa de Menasalbas de la que forman parte, una vinculación que les permite <strong>seguir de cerca su elaboración y mantener un mayor control sobre la alimentación de su ganado</strong>.</p>
 <p>A lo largo de los años han combinado esa crianza tradicional con un trabajo de selección del ganado en el que tienen en cuenta la genética, pero también todo lo que rodea al animal durante su vida. El entorno, la alimentación y la actividad forman parte de un mismo proceso orientado a conseguir una carne equilibrada y de calidad.</p>
 <p>La experiencia acumulada durante tres generaciones les ha permitido buscar una mayor regularidad en sus carnes, prestando especial atención a características como la <strong>terneza, la jugosidad y la infiltración de grasa</strong>, sin perder de vista el sabor propio de cada corte.</p>
-<p>Hoy, ToleCarnes continúa desarrollando su actividad ganadera en los Montes de Toledo, manteniendo una forma de trabajar en la que la dehesa, la alimentación y el conocimiento transmitido durante generaciones siguen siendo la base de sus carnes.</p>
+<p>Hoy, Tolecarnes continúa desarrollando su actividad ganadera en los Montes de Toledo, manteniendo una forma de trabajar en la que la dehesa, la alimentación y el conocimiento transmitido durante generaciones siguen siendo la base de sus carnes.</p>
 HTML;
 
 if ( strpos( $direct, $new_needle ) !== false && strpos( $shop, $new_needle ) !== false ) {
@@ -75,6 +75,10 @@ $after_shop = is_array( $after_settings ) ? (string) ( $after_settings['shop_des
 if ( strpos( (string) $after_direct, $new_needle ) === false || strpos( $after_shop, $new_needle ) === false ) {
     fwrite( STDERR, "TOLE_UPDATE_ABORT: post-update verification failed\n" );
     exit( 5 );
+}
+if ( strpos( (string) $after_direct, 'ToleCarnes' ) !== false || strpos( $after_shop, 'ToleCarnes' ) !== false ) {
+    fwrite( STDERR, "TOLE_UPDATE_ABORT: old capitalization remains\n" );
+    exit( 6 );
 }
 
 echo "TOLE_UPDATE=success\n";
