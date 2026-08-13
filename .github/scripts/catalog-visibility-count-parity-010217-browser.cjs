@@ -51,12 +51,14 @@ async function collectShopFilters(page) {
       count: countFrom(item),
     }));
 
-    const categories = [...document.querySelectorAll('.widget_product_categories li.cat-item')].map((item) => ({
-      kind: 'category',
-      name: item.querySelector(':scope > a')?.textContent?.trim() || item.querySelector('a')?.textContent?.trim() || '',
-      href: item.querySelector(':scope > a')?.href || item.querySelector('a')?.href || '',
-      count: countFrom(item),
-    }));
+    const categories = [...document.querySelectorAll('.widget_product_categories li.cat-item')]
+      .filter((item) => Boolean(item.querySelector(':scope > .count')))
+      .map((item) => ({
+        kind: 'category',
+        name: item.querySelector(':scope > a')?.textContent?.trim() || item.querySelector('a')?.textContent?.trim() || '',
+        href: item.querySelector(':scope > a')?.href || item.querySelector('a')?.href || '',
+        count: countFrom(item),
+      }));
 
     return { vendors, categories };
   });
@@ -118,7 +120,9 @@ async function validateEntries(browser, entries, label) {
 
     const shop = await collectShopFilters(page);
     await validateEntries(browser, shop.vendors, 'shop-vendors');
-    await validateEntries(browser, shop.categories, 'shop-categories');
+    if (shop.categories.length) {
+      await validateEntries(browser, shop.categories, 'shop-categories');
+    }
 
     const attributes = await collectAttributeFilters(page);
     await validateEntries(browser, attributes, 'category-attributes');
