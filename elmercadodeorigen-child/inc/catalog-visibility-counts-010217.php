@@ -1,10 +1,13 @@
 <?php
 /**
- * Coherencia de contadores del catálogo con la visibilidad de vendedores WCFM.
+ * Coherencia de contadores del catálogo con la visibilidad real de productos.
  *
- * Mantiene una única regla de negocio para Home, categorías, vendedores y
- * atributos: los administradores ven todo el catálogo publicado; el público
- * excluye los productos de vendedores desactivados u offline.
+ * Regla única:
+ * - solo productos publicados y visibles en catálogo;
+ * - productos sin existencias quedan fuera cuando WooCommerce los oculta;
+ * - el público excluye vendedores WCFM desactivados/offline;
+ * - los administradores conservan la visibilidad de esos vendedores, pero no
+ *   cuentan productos que el catálogo oculta por stock/visibilidad.
  *
  * @package ElMercadoDeOrigen
  */
@@ -41,10 +44,68 @@ function elmercado_catalog_counts_excluded_authors_010217(): array {
 }
 
 /**
- * Conteos de categorías equivalentes al resultado real de sus archivos.
+ * Indica si WooCommerce está configurado para ocultar productos sin existencias.
+ */
+function elmercado_catalog_hides_out_of_stock_010218(): bool {
+	return 'yes' === get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
+}
+
+/**
+ * Términos de product_visibility que no deben entrar en los conteos de catálogo.
+ *
+ * @return int[]
+ */
+function elmercado_catalog_excluded_visibility_term_ids_010218(): array {
+	static $cache = null;
+	if ( is_array( $cache ) ) {
+		return $cache;
+	}
+
+	$cache = array();
+	if ( ! function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+		return $cache;
+	}
+
+	$visibility = wc_get_product_visibility_term_ids();
+	$catalog_id = isset( $visibility['exclude-from-catalog'] ) ? absint( $visibility['exclude-from-catalog'] ) : 0;
+	$stock_id   = isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
+
+	if ( $catalog_id > 0 ) {
+		$cache[] = $catalog_id;
+	}
+	if ( elmercado_catalog_hides_out_of_stock_010218() && $stock_id > 0 ) {
+		$cache[] = $stock_id;
+	}
+
+	$cache = array_values( array_unique( array_filter( $cache ) ) );
+	return $cache;
+}
+
+/**
+ * SQL que elimina productos ocultos por product_visibility.
+ *
+ * @param string $post_reference Tabla/alias que contiene la columna ID.
+ */
+function elmercado_catalog_visibility_sql_clause_010218( string $post_reference ): string {
+	$term_ids = elmercado_catalog_excluded_visibility_term_ids_010218();
+	if ( ! $term_ids ) {
+		return '';
+	}
+
+	global $wpdb;
+	return ' AND NOT EXISTS ('
+		. 'SELECT 1 FROM ' . $wpdb->term_relationships . ' emo_vis_tr '
+		. 'INNER JOIN ' . $wpdb->term_taxonomy . ' emo_vis_tt ON emo_vis_tt.term_taxonomy_id = emo_vis_tr.term_taxonomy_id '
+		. 'WHERE emo_vis_tr.object_id = ' . $post_reference . '.ID '
+		. "AND emo_vis_tt.taxonomy = 'product_visibility' "
+		. 'AND emo_vis_tt.term_id IN (' . implode( ',', array_map( 'absint', $term_ids ) ) . '))';
+}
+
+/**
+ * Conteos de categorías equivalentes al catálogo realmente visible.
  *
  * Cada producto se propaga a los ancestros de sus categorías y se deduplica por
- * ID, igual que hace una consulta de product_cat con include_children=true.
+ * ID, igual que una consulta product_cat con include_children=true.
  *
  * @return array<int,int>
  */
@@ -52,9 +113,8 @@ function elmercado_catalog_visible_category_counts_010217(): array {
 	static $cache = array();
 
 	$excluded  = elmercado_catalog_counts_excluded_authors_010217();
-	$scope_key = elmercado_catalog_counts_can_view_disabled_010217()
-		? 'admin'
-		: 'public:' . implode( ',', $excluded );
+	$scope_key = ( elmercado_catalog_counts_can_view_disabled_010217() ? 'admin' : 'public:' . implode( ',', $excluded ) )
+		. ':stock:' . ( elmercado_catalog_hides_out_of_stock_010218() ? 'hidden' : 'shown' );
 
 	if ( isset( $cache[ $scope_key ] ) ) {
 		return $cache[ $scope_key ];
@@ -77,10 +137,10 @@ function elmercado_catalog_visible_category_counts_010217(): array {
 		}
 	}
 
-	$author_clause = '';
-	if ( $excluded ) {
-		$author_clause = ' AND p.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded ) ) . ')';
-	}
+	$author_clause = $excluded
+		? ' AND p.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded ) ) . ')'
+		: '';
+	$visibility_clause = elmercado_catalog_visibility_sql_clause_010218( 'p' );
 
 	$sql = "SELECT DISTINCT p.ID AS product_id, tt.term_id
 		FROM {$wpdb->posts} p
@@ -88,7 +148,7 @@ function elmercado_catalog_visible_category_counts_010217(): array {
 		INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
 		WHERE p.post_type = 'product'
 		AND p.post_status = 'publish'
-		AND tt.taxonomy = 'product_cat'{$author_clause}";
+		AND tt.taxonomy = 'product_cat'{$author_clause}{$visibility_clause}";
 
 	$rows = $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 	$sets = array();
@@ -133,7 +193,7 @@ function elmercado_catalog_visible_category_count_010217( int $term_id ): int {
 /**
  * Hace que el widget de categorías de Tienda use los mismos productos visibles
  * que el loop principal. Si hide_empty está activo, los términos a cero salen
- * directamente de la colección antes de renderizarse.
+ * de la colección antes de renderizarse.
  */
 add_filter(
 	'get_terms',
@@ -172,9 +232,8 @@ add_filter(
 );
 
 /**
- * Inserta la exclusión de vendedores desactivados en el SQL con el que
- * WooCommerce calcula los counts de navegación por capas. Al quedar count=0,
- * el propio widget omite las opciones no seleccionadas sin JS adicional.
+ * Inserta las mismas exclusiones en el SQL de counts de navegación por capas.
+ * Al quedar count=0, WooCommerce omite por sí mismo las opciones no elegidas.
  *
  * @param array<string,string> $query Partes de la consulta SQL de WooCommerce.
  * @return array<string,string>
@@ -182,17 +241,21 @@ add_filter(
 add_filter(
 	'woocommerce_get_filtered_term_product_counts_query',
 	static function ( array $query ): array {
-		if ( is_admin() || elmercado_catalog_counts_can_view_disabled_010217() ) {
-			return $query;
-		}
-
-		$excluded = elmercado_catalog_counts_excluded_authors_010217();
-		if ( ! $excluded || empty( $query['where'] ) ) {
+		if ( is_admin() || empty( $query['where'] ) ) {
 			return $query;
 		}
 
 		global $wpdb;
-		$query['where'] .= ' AND ' . $wpdb->posts . '.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded ) ) . ')';
+
+		$query['where'] .= elmercado_catalog_visibility_sql_clause_010218( $wpdb->posts );
+
+		if ( ! elmercado_catalog_counts_can_view_disabled_010217() ) {
+			$excluded = elmercado_catalog_counts_excluded_authors_010217();
+			if ( $excluded ) {
+				$query['where'] .= ' AND ' . $wpdb->posts . '.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded ) ) . ')';
+			}
+		}
+
 		return $query;
 	},
 	999
@@ -200,7 +263,7 @@ add_filter(
 
 /**
  * Conteos de vendedor en el contexto actual (Tienda o categoría), con la misma
- * política de autores que el listado principal.
+ * política de vendedor, stock y visibilidad que el catálogo.
  *
  * @return array<int,int>
  */
@@ -210,10 +273,11 @@ function elmercado_catalog_visible_vendor_counts_010217(): array {
 	$term_ids = function_exists( 'elmercado_catalog_context_term_ids_010207' )
 		? array_values( array_filter( array_map( 'absint', elmercado_catalog_context_term_ids_010207() ) ) )
 		: array();
-	$excluded      = elmercado_catalog_counts_excluded_authors_010217();
-	$author_clause = $excluded
+	$excluded          = elmercado_catalog_counts_excluded_authors_010217();
+	$author_clause     = $excluded
 		? ' AND p.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded ) ) . ')'
 		: '';
+	$visibility_clause = elmercado_catalog_visibility_sql_clause_010218( 'p' );
 
 	if ( $term_ids ) {
 		$placeholders = implode( ',', array_fill( 0, count( $term_ids ), '%d' ) );
@@ -224,14 +288,14 @@ function elmercado_catalog_visible_vendor_counts_010217(): array {
 			WHERE p.post_type = 'product'
 			AND p.post_status = 'publish'
 			AND tt.taxonomy = 'product_cat'
-			AND tt.term_id IN ({$placeholders}){$author_clause}
+			AND tt.term_id IN ({$placeholders}){$author_clause}{$visibility_clause}
 			GROUP BY p.post_author";
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ...$term_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 	} else {
 		$sql = "SELECT p.post_author, COUNT(p.ID) AS product_count
 			FROM {$wpdb->posts} p
 			WHERE p.post_type = 'product'
-			AND p.post_status = 'publish'{$author_clause}
+			AND p.post_status = 'publish'{$author_clause}{$visibility_clause}
 			GROUP BY p.post_author";
 		$rows = $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
@@ -250,8 +314,6 @@ function elmercado_catalog_visible_vendor_counts_010217(): array {
 
 /**
  * Corrige el marcado que genera el sistema 0.10.207 para el filtro de vendedor.
- * Se hace en servidor, antes de enviarlo al navegador, para no mostrar ni un
- * instante vendedores/counts que el usuario no puede consultar.
  */
 function elmercado_catalog_rewrite_vendor_filter_counts_010217( string $html ): string {
 	if ( false === strpos( $html, 'emo-global-vendor-filter' ) ) {
@@ -317,8 +379,7 @@ add_action(
 );
 
 /**
- * Evita que una portada autenticada pueda reutilizar HTML anónimo en capas de
- * caché que respeten las constantes/cabeceras estándar de WordPress.
+ * Evita que una portada autenticada pueda reutilizar HTML anónimo.
  */
 add_action(
 	'template_redirect',
@@ -334,9 +395,7 @@ add_action(
 );
 
 /**
- * Última normalización de las tarjetas de categoría de Home. No depende del
- * count persistido ni de que la categoría hubiera quedado en una lista auxiliar:
- * toma exactamente las tarjetas presentes y les aplica el count del usuario.
+ * Última normalización de las tarjetas de categoría de Home.
  */
 add_filter(
 	'the_content',
@@ -398,4 +457,65 @@ add_filter(
 		);
 	},
 	2000
+);
+
+/**
+ * Total real del catálogo actual después de aplicar categoría, atributos, precio,
+ * vendedor, stock y exclusiones de autor que ya forman parte de la consulta.
+ */
+function elmercado_catalog_current_result_total_010218(): int {
+	global $wp_query;
+	if ( ! $wp_query instanceof WP_Query ) {
+		return 0;
+	}
+
+	return max( 0, (int) $wp_query->found_posts );
+}
+
+/**
+ * Barra superior del catálogo: solo el total, sin rangos ni selector de orden.
+ */
+add_action(
+	'wp',
+	static function (): void {
+		if ( is_admin() || ! function_exists( 'elmercado_core_filters_is_catalog' ) || ! elmercado_core_filters_is_catalog() ) {
+			return;
+		}
+
+		remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 20 );
+		remove_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
+
+		add_action(
+			'woocommerce_before_shop_loop',
+			static function (): void {
+				$total = elmercado_catalog_current_result_total_010218();
+				$label = sprintf(
+					esc_html( _n( '%s resultado', '%s resultados', $total, 'elmercadodeorigen' ) ),
+					number_format_i18n( $total )
+				);
+				echo '<p class="woocommerce-result-count emo-catalog-result-count-010218" aria-live="polite">' . $label . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			},
+			20
+		);
+	},
+	999
+);
+
+/**
+ * Fallback visual por si el tema padre inyecta su propio control de ordenación.
+ */
+add_action(
+	'wp_head',
+	static function (): void {
+		if ( is_admin() || ! function_exists( 'elmercado_core_filters_is_catalog' ) || ! elmercado_core_filters_is_catalog() ) {
+			return;
+		}
+		?>
+		<style id="elmercado-catalog-result-count-010218">
+			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat) .woocommerce-ordering { display:none !important; }
+			body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat) .emo-catalog-result-count-010218 { white-space:nowrap; }
+		</style>
+		<?php
+	},
+	PHP_INT_MAX
 );
