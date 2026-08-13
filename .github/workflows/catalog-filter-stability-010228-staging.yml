@@ -1,0 +1,63 @@
+name: Catalog filter stability 0.10.228 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/catalog-filter-stability-010228.php'
+      - 'elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php'
+      - '.github/scripts/catalog-filter-stability-010228-browser.cjs'
+      - '.github/workflows/catalog-filter-stability-010228-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/catalog-filter-stability-010228.php >/dev/null
+          php -l elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php >/dev/null
+          node --check .github/scripts/catalog-filter-stability-010228-browser.cjs
+          grep -q 'elmercado-catalog-filter-stability-010228' elmercadodeorigen-child/inc/catalog-filter-stability-010228.php
+          grep -q 'catalog-filter-stability-010228.php' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+      - name: Wait for development marker
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 75); do
+            shop="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/?qa-stability=${GITHUB_RUN_ID}-${i}" || true)"
+            vendor="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-stability=${GITHUB_RUN_ID}-${i}" || true)"
+            if grep -q 'elmercado-catalog-filter-stability-010228' <<<"${shop}" && grep -q 'elmercado-catalog-filter-stability-010228' <<<"${vendor}"; then
+              echo CATALOG_FILTER_STABILITY_LIVE_010228_OK
+              exit 0
+            fi
+            sleep 4
+          done
+          exit 1
+      - name: Install Chrome and Puppeteer
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Browser QA
+        run: |
+          set -euo pipefail
+          mkdir -p qa
+          node .github/scripts/catalog-filter-stability-010228-browser.cjs
+      - name: Upload QA screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-filter-stability-010228
+          path: qa/*.png
+          if-no-files-found: ignore
+          retention-days: 7
