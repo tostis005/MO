@@ -1,0 +1,99 @@
+name: Production uncategorized catalog audit 2026-08-13
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-uncategorized-audit-20260813-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-catalog-maintenance
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate audit script
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/catalog-uncategorized-audit-20260813.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Install SSH tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq
+
+      - name: Resolve production WordPress and audit catalog
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            [ -x "$php_bin" ] || exit 3
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "Production WordPress resolved."
+
+          REMOTE_SCRIPT="/tmp/emdo-catalog-uncategorized-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-uncategorized-audit-20260813.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$REMOTE_SCRIPT'" > catalog-uncategorized-audit.json <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          script="$2"
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          [ -n "$wp_bin" ] || { echo 'WP-CLI unavailable' >&2; exit 4; }
+          [ -x "$php_bin" ] || { echo 'PHP CLI unavailable' >&2; exit 5; }
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$script" --path="$wp_path" --allow-root
+          rm -f "$script"
+          REMOTE
+
+          jq -e '.site_url | test("elmercadodeorigen\\.com")' catalog-uncategorized-audit.json >/dev/null
+          jq -e '.candidate_count == (.candidates | length)' catalog-uncategorized-audit.json >/dev/null
+          jq -c '{generated_at,site_url,total_products_scanned,candidate_count,default_product_category,classifiers_available}' catalog-uncategorized-audit.json | sed 's/^/AUDIT_SUMMARY /'
+          jq -c '.categories[] | {id,name,slug,parent,count}' catalog-uncategorized-audit.json | sed 's/^/CATEGORY /'
+          jq -c '.attribute_schema[] | {id,name,slug,taxonomy,terms:[.terms[].name]}' catalog-uncategorized-audit.json | sed 's/^/ATTRIBUTE_SCHEMA /'
+          jq -c '.candidates[] | {id,status,type,name,slug,sku,permalink,author_id,author,vendor_name,categories,tags,attributes,taxonomies,short_description,description,context_meta}' catalog-uncategorized-audit.json | sed 's/^/CANDIDATE /'
+
+      - name: Upload complete audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-uncategorized-audit-20260813
+          path: catalog-uncategorized-audit.json
+          retention-days: 3
