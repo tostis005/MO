@@ -68,9 +68,9 @@ add_action(
 );
 
 /*
- * Último cierre de especificidad para el contrato compartido. #page#page es el
- * mismo ancestro real de ambas vistas, repetido solo para ganar a selectores
- * históricos con ID sin introducir variantes entre Tienda y productor.
+ * Último cierre de especificidad para el contrato compartido. Se ancla a los
+ * dos raíles reales, pero todas las reglas internas usan exactamente las mismas
+ * clases compartidas y las mismas declaraciones en Tienda y productor.
  */
 add_action(
 	'wp_head',
@@ -79,50 +79,50 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-catalog-filter-shared-interaction-010230">
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-title-shared-010229 {
+		<style id="elmercado-catalog-filter-shared-interaction-010231">
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-title-shared-010229 {
 				display:grid !important; grid-template-columns:max-content minmax(24px,1fr) !important; align-items:center !important; column-gap:10px !important;
 				box-sizing:border-box !important; width:100% !important; min-height:0 !important; margin:0 0 8px !important; padding:1px 1px 7px !important;
 				border:0 !important; border-radius:0 !important; background:transparent !important; box-shadow:none !important;
 				color:#173f32 !important; font-size:10.5px !important; font-weight:800 !important; letter-spacing:.085em !important; line-height:1.25 !important; text-align:left !important; text-transform:uppercase !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-list-shared-010229 {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-list-shared-010229 {
 				display:grid !important; gap:3px !important; margin:0 !important; padding:0 !important; list-style:none !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-row-shared-010229 {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229 {
 				display:grid !important; grid-template-columns:minmax(0,1fr) auto !important; align-items:center !important; column-gap:8px !important;
 				box-sizing:border-box !important; min-height:32px !important; margin:0 !important; padding:1px 4px !important; border:0 !important; border-radius:8px !important; background:transparent !important; box-shadow:none !important; list-style:none !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-row-shared-010229 > .emo-filter-link-shared-010229 {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229 > .emo-filter-link-shared-010229 {
 				display:block !important; min-width:0 !important; min-height:0 !important; margin:0 !important; padding:6px 4px !important; border:0 !important; background:transparent !important;
 				color:#42584f !important; font-size:12px !important; font-weight:650 !important; line-height:1.3 !important; text-align:left !important; text-decoration:none !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-count-shared-010229 {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-count-shared-010229 {
 				display:inline-flex !important; align-items:center !important; justify-content:flex-end !important; min-width:22px !important; margin:0 1px 0 auto !important; padding:0 !important;
 				border:0 !important; background:transparent !important; color:#809088 !important; font-size:10.5px !important; font-weight:650 !important; line-height:1 !important; text-align:right !important; white-space:nowrap !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover,
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:is(.current-cat,.is-active,.chosen,.woocommerce-widget-layered-nav-list__item--chosen) {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:is(.current-cat,.is-active,.chosen,.woocommerce-widget-layered-nav-list__item--chosen) {
 				background-color:#d9ede0 !important; box-shadow:inset 0 0 0 1px rgba(47,125,93,.18) !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:hover,
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:focus-visible,
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover > .emo-filter-link-shared-010229,
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:is(.current-cat,.is-active,.chosen,.woocommerce-widget-layered-nav-list__item--chosen) > .emo-filter-link-shared-010229 {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:hover,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:focus-visible,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover > .emo-filter-link-shared-010229,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:is(.current-cat,.is-active,.chosen,.woocommerce-widget-layered-nav-list__item--chosen) > .emo-filter-link-shared-010229 {
 				color:#155b42 !important; font-weight:650 !important; text-decoration-line:underline !important; text-decoration-style:solid !important; text-decoration-thickness:1px !important; text-underline-offset:3px !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:hover > span,
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover > .emo-filter-link-shared-010229 > span { text-decoration:inherit !important; }
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:hover > span,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover > .emo-filter-link-shared-010229 > span { text-decoration:inherit !important; }
 
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-category-context__remove {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove {
 				display:inline-flex !important; flex:0 0 auto !important; align-items:center !important; gap:3px !important; min-width:max-content !important; margin:0 !important; padding:3px 2px !important;
 				border:0 !important; background:transparent !important; color:#687b72 !important; font-size:10.5px !important; font-weight:700 !important; line-height:1 !important;
 				text-decoration:none !important; white-space:nowrap !important; word-break:normal !important; overflow-wrap:normal !important;
 			}
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-category-context__remove::before,
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-category-context__remove::after { display:none !important; content:none !important; }
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-category-context__remove:hover > span:last-child,
-			html body.elmercado-child-theme #page#page .emo-filter-rail-shared-010229 .emo-category-context__remove:focus-visible > span:last-child {
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove::before,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove::after { display:none !important; content:none !important; }
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove:hover > span:last-child,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove:focus-visible > span:last-child {
 				color:#155b42 !important; text-decoration:underline !important; text-decoration-thickness:1px !important; text-underline-offset:3px !important;
 			}
 		</style>
