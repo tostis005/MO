@@ -9,9 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Oculta desde la primera pintura cualquier contador heredado y el ordenamiento.
- */
 add_action(
 	'wp_head',
 	static function (): void {
@@ -29,10 +26,6 @@ add_action(
 	PHP_INT_MAX
 );
 
-/**
- * Elimina del DOM el contador heredado para que accesibilidad, automatización y
- * cualquier script posterior encuentren una sola fuente de verdad.
- */
 add_action(
 	'wp_footer',
 	static function (): void {
@@ -50,10 +43,6 @@ add_action(
 	PHP_INT_MAX
 );
 
-/**
- * Los cierres geométricos y de paridad de las tiendas de productor deben
- * registrarse después de que functions.php haya cargado el módulo principal.
- */
 add_action(
 	'after_setup_theme',
 	static function (): void {
@@ -62,6 +51,7 @@ add_action(
 			ELMERCADO_THEME_PATH . '/inc/vendor-store-shop-parity-010226.php',
 			ELMERCADO_THEME_PATH . '/inc/vendor-store-parity-runtime-010226.php',
 			ELMERCADO_THEME_PATH . '/inc/vendor-store-parity-runtime-final-010226.php',
+			ELMERCADO_THEME_PATH . '/inc/home-visible-categories-final-010226.php',
 		);
 		foreach ( $modules as $module ) {
 			if ( is_readable( $module ) ) {
