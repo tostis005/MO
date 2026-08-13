@@ -1,7 +1,7 @@
 <?php
 /**
- * Genera expectativas de conteo de atributos para la categoría de embutidos.
- * Se ejecuta con `wp eval-file` dentro del staging.
+ * Genera expectativas independientes de conteo para el catálogo de staging.
+ * Se ejecuta con `wp eval-file` dentro de WordPress.
  */
 
 if ( ! function_exists( 'elmercado_catalog_filter_profiles' ) || ! function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
@@ -41,14 +41,44 @@ if ( ! $admins ) {
 	exit( 23 );
 }
 
+$hide_out_of_stock = 'yes' === get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
+$visibility_ids    = array();
+if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+	$visibility = wc_get_product_visibility_term_ids();
+	$catalog_id = isset( $visibility['exclude-from-catalog'] ) ? absint( $visibility['exclude-from-catalog'] ) : 0;
+	$stock_id   = isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
+	if ( $catalog_id > 0 ) {
+		$visibility_ids[] = $catalog_id;
+	}
+	if ( $hide_out_of_stock && $stock_id > 0 ) {
+		$visibility_ids[] = $stock_id;
+	}
+}
+$visibility_ids = array_values( array_unique( array_filter( $visibility_ids ) ) );
+
 /**
- * Cuenta productos publicados de cada término de atributo dentro de la familia
- * de categoría, deduplicando productos que estén asignados a varias hijas.
+ * Devuelve el SQL que excluye product_visibility no catalogable/outofstock.
+ */
+$visibility_clause = static function ( string $post_alias ) use ( $visibility_ids ): string {
+	if ( ! $visibility_ids ) {
+		return '';
+	}
+	global $wpdb;
+	return ' AND NOT EXISTS ('
+		. 'SELECT 1 FROM ' . $wpdb->term_relationships . ' probe_vis_tr '
+		. 'INNER JOIN ' . $wpdb->term_taxonomy . ' probe_vis_tt ON probe_vis_tt.term_taxonomy_id = probe_vis_tr.term_taxonomy_id '
+		. 'WHERE probe_vis_tr.object_id = ' . $post_alias . '.ID '
+		. "AND probe_vis_tt.taxonomy = 'product_visibility' "
+		. 'AND probe_vis_tt.term_id IN (' . implode( ',', array_map( 'absint', $visibility_ids ) ) . '))';
+};
+
+/**
+ * Cuenta productos publicados de cada término de atributo dentro de la familia.
  *
  * @param int[] $excluded_authors Autores a excluir.
  * @return array<string,array<int,int>> Taxonomía => term_id => count.
  */
-$compute = static function ( array $excluded_authors ) use ( $category_ids, $profile ): array {
+$compute_attributes = static function ( array $excluded_authors ) use ( $category_ids, $profile, $visibility_clause ): array {
 	global $wpdb;
 
 	$results = array();
@@ -57,10 +87,10 @@ $compute = static function ( array $excluded_authors ) use ( $category_ids, $pro
 	}
 
 	$cat_placeholders = implode( ',', array_fill( 0, count( $category_ids ), '%d' ) );
-	$author_clause    = '';
-	if ( $excluded_authors ) {
-		$author_clause = ' AND p.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded_authors ) ) . ')';
-	}
+	$author_clause    = $excluded_authors
+		? ' AND p.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded_authors ) ) . ')'
+		: '';
+	$visible_clause   = $visibility_clause( 'p' );
 
 	foreach ( array_keys( (array) $profile['attributes'] ) as $attribute_slug ) {
 		$taxonomy = wc_attribute_taxonomy_name( (string) $attribute_slug );
@@ -78,7 +108,7 @@ $compute = static function ( array $excluded_authors ) use ( $category_ids, $pro
 			AND p.post_status = 'publish'
 			AND cat_tt.taxonomy = 'product_cat'
 			AND cat_tt.term_id IN ({$cat_placeholders})
-			AND attr_tt.taxonomy = %s{$author_clause}
+			AND attr_tt.taxonomy = %s{$author_clause}{$visible_clause}
 			GROUP BY attr_tt.term_id";
 
 		$prepare_args = array_merge( $category_ids, array( $taxonomy ) );
@@ -96,8 +126,41 @@ $compute = static function ( array $excluded_authors ) use ( $category_ids, $pro
 	return $results;
 };
 
-$public_counts = $compute( $disabled );
-$admin_counts  = $compute( array() );
+/**
+ * Cuenta productos visibles de todo el catálogo o de la categoría objetivo.
+ *
+ * @param int[] $excluded_authors Autores a excluir.
+ */
+$compute_total = static function ( array $excluded_authors, bool $category_only ) use ( $category_ids, $visibility_clause ): int {
+	global $wpdb;
+
+	$author_clause  = $excluded_authors
+		? ' AND p.post_author NOT IN (' . implode( ',', array_map( 'absint', $excluded_authors ) ) . ')'
+		: '';
+	$visible_clause = $visibility_clause( 'p' );
+
+	if ( ! $category_only ) {
+		$sql = "SELECT COUNT(DISTINCT p.ID)
+			FROM {$wpdb->posts} p
+			WHERE p.post_type = 'product'
+			AND p.post_status = 'publish'{$author_clause}{$visible_clause}";
+		return max( 0, (int) $wpdb->get_var( $sql ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	}
+
+	$placeholders = implode( ',', array_fill( 0, count( $category_ids ), '%d' ) );
+	$sql = "SELECT COUNT(DISTINCT p.ID)
+		FROM {$wpdb->posts} p
+		INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+		INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+		WHERE p.post_type = 'product'
+		AND p.post_status = 'publish'
+		AND tt.taxonomy = 'product_cat'
+		AND tt.term_id IN ({$placeholders}){$author_clause}{$visible_clause}";
+	return max( 0, (int) $wpdb->get_var( $wpdb->prepare( $sql, ...$category_ids ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+};
+
+$public_counts = $compute_attributes( $disabled );
+$admin_counts  = $compute_attributes( array() );
 $rows          = array();
 
 foreach ( (array) $profile['attributes'] as $attribute_slug => $label ) {
@@ -133,12 +196,20 @@ foreach ( (array) $profile['attributes'] as $attribute_slug => $label ) {
 }
 
 $payload = array(
-	'category'             => array(
+	'category' => array(
 		'id'   => (int) $category->term_id,
 		'slug' => (string) $category->slug,
 		'url'  => get_term_link( $category ),
 	),
+	'hide_out_of_stock'    => $hide_out_of_stock,
+	'visibility_term_ids'  => $visibility_ids,
 	'disabled_vendor_ids'  => $disabled,
+	'totals'               => array(
+		'public_shop'     => $compute_total( $disabled, false ),
+		'admin_shop'      => $compute_total( array(), false ),
+		'public_category' => $compute_total( $disabled, true ),
+		'admin_category'  => $compute_total( array(), true ),
+	),
 	'rows'                 => $rows,
 );
 
