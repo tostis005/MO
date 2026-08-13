@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 define( 'ELMERCADO_THEME_VERSION', '0.10.227' );
+/* 0.10.227 mantiene los filtros de categoría dentro de cada tienda de productor. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
