@@ -1,0 +1,53 @@
+name: Catalog sticky live diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-sticky-live-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Chrome and Puppeteer
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Inspect production Shop sticky chain
+        shell: bash
+        env:
+          BASE_URL: https://www.elmercadodeorigen.com
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage();
+            await p.setViewport({width:1440,height:1000});
+            await p.goto(`${process.env.BASE_URL}/tienda/?sticky-live=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+            await new Promise(r=>setTimeout(r,1200));
+            const has=await p.$('.emo-filter-rail-shared-010229');
+            if(!has){console.log('SHOP_STICKY_SHARED_FILTER_ABSENT'); await b.close(); return;}
+            const before=await p.$eval('.emo-filter-rail-shared-010229',el=>{
+              const chain=[];let n=el;
+              while(n){const c=getComputedStyle(n),r=n.getBoundingClientRect();chain.push({tag:n.tagName,id:n.id||'',cls:typeof n.className==='string'?n.className:'',position:c.position,overflow:c.overflow,overflowX:c.overflowX,overflowY:c.overflowY,top:r.top,bottom:r.bottom,height:r.height,transform:c.transform,contain:c.contain,display:c.display});n=n.parentElement;}
+              return {scrollY:scrollY,chain};
+            });
+            await p.evaluate(()=>scrollTo(0,1200));
+            await new Promise(r=>setTimeout(r,350));
+            const after=await p.$eval('.emo-filter-rail-shared-010229',el=>({scrollY:scrollY,top:el.getBoundingClientRect().top,position:getComputedStyle(el).position}));
+            console.log('SHOP_STICKY_ANCESTORS_LIVE',JSON.stringify(before));
+            console.log('SHOP_STICKY_AFTER_LIVE',JSON.stringify(after));
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
