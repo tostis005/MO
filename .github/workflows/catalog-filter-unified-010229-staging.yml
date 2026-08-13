@@ -58,6 +58,26 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends google-chrome-stable
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Vendor filter DOM diagnostic
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage();
+            await p.setViewport({width:1440,height:1000});
+            await p.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?qa-dom=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+            await p.waitForSelector('#elmercado-catalog-filter-shared-interaction-010231',{timeout:20000});
+            await new Promise(r=>setTimeout(r,1500));
+            const d=await p.evaluate(()=>({
+              categoryIds:[...document.querySelectorAll('#emo-vendor-category-filter')].map((n,i)=>({i,rect:[n.getBoundingClientRect().x,n.getBoundingClientRect().y,n.getBoundingClientRect().width,n.getBoundingClientRect().height],display:getComputedStyle(n).display,visibility:getComputedStyle(n).visibility,hidden:n.hidden,rail:n.closest('.left_sidebar')?.className||''})),
+              rows:[...document.querySelectorAll('#emo-vendor-category-filter .emo-filter-row-shared-010229')].map((n,i)=>({i,text:(n.textContent||'').trim(),rect:[n.getBoundingClientRect().x,n.getBoundingClientRect().y,n.getBoundingClientRect().width,n.getBoundingClientRect().height],display:getComputedStyle(n).display,minHeight:getComputedStyle(n).minHeight,visibility:getComputedStyle(n).visibility,transform:getComputedStyle(n).transform,ulDisplay:getComputedStyle(n.parentElement).display,ulRect:[n.parentElement.getBoundingClientRect().width,n.parentElement.getBoundingClientRect().height]})),
+              rails:[...document.querySelectorAll('#wcfmmp-store .left_sidebar')].map((n,i)=>({i,className:n.className,rect:[n.getBoundingClientRect().x,n.getBoundingClientRect().y,n.getBoundingClientRect().width,n.getBoundingClientRect().height],display:getComputedStyle(n).display,visibility:getComputedStyle(n).visibility,transform:getComputedStyle(n).transform,parent:n.parentElement?.className||''}))
+            }));
+            console.log('VENDOR_FILTER_DOM_DIAGNOSTIC',JSON.stringify(d));
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
       - name: Exact browser parity QA
         run: |
           set -euo pipefail
