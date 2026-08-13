@@ -1,43 +1,96 @@
 <?php
-/** Guarded production repair: restore active supplier products archived by WCFM. */
+/**
+ * Guarded production repair: rebuild WooCommerce's product-attribute lookup
+ * index for the 265 intended catalog products. Product data is not changed.
+ */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
-if ( ! function_exists( 'wc_get_product' ) ) { exit( 2 ); }
+if ( ! function_exists( 'wc_get_product' ) || ! function_exists( 'wc_get_container' ) ) { exit( 2 ); }
 
 global $wpdb;
-$targets = array(
-    4508 => array('name'=>'Puente Robles','expected_archived'=>105,'expected_publish_after'=>106),
-    4509 => array('name'=>'El Catedrático','expected_archived'=>32,'expected_publish_after'=>95),
+$vendors = array(
+    3    => array( 'name'=>'1957',               'expected'=>4 ),
+    6    => array( 'name'=>'Hidalgo de la Jara', 'expected'=>21 ),
+    4507 => array( 'name'=>'Tolecarnes',          'expected'=>39 ),
+    4508 => array( 'name'=>'Puente Robles',       'expected'=>106 ),
+    4509 => array( 'name'=>'El Catedrático',      'expected'=>95 ),
 );
-$source_table=$wpdb->prefix.'mdo_source_products';
-$supplier_table=$wpdb->prefix.'mdo_suppliers';
-$updated=0;
-
-foreach($targets as $author_id=>$cfg){
-    $settings=get_user_meta($author_id,'wcfmmp_profile_settings',true);
-    if(!is_array($settings)||(string)($settings['store_name']??'')!==$cfg['name']){throw new RuntimeException('Vendor identity mismatch '.$author_id);}
-    if(function_exists('elmercado_wcfm_vendor_is_disabled_010210')&&!elmercado_wcfm_vendor_is_disabled_010210($author_id)){throw new RuntimeException('Vendor state changed '.$author_id);}
-    $supplier=$wpdb->get_row($wpdb->prepare("SELECT id,active FROM {$supplier_table} WHERE vendor_user_id=%d ORDER BY id DESC LIMIT 1",$author_id),ARRAY_A);
-    if(!$supplier||1!==(int)$supplier['active']){throw new RuntimeException('Active supplier mapping missing '.$author_id);}
-    $ids=array_map('intval',(array)$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status='archived' ORDER BY ID",$author_id)));
-    if(count($ids)!==(int)$cfg['expected_archived']){throw new RuntimeException('Archived count mismatch '.$author_id.' got '.count($ids));}
-    foreach($ids as $product_id){
-        $source=$wpdb->get_row($wpdb->prepare("SELECT id,status,wc_product_id FROM {$source_table} WHERE supplier_id=%d AND wc_product_id=%d ORDER BY id DESC LIMIT 1",(int)$supplier['id'],$product_id),ARRAY_A);
-        if(!$source||'active'!==(string)$source['status']||$product_id!==(int)$source['wc_product_id']){throw new RuntimeException('Non-active source product '.$product_id);}
-        $product=wc_get_product($product_id);
-        if(!$product instanceof WC_Product){throw new RuntimeException('Missing Woo product '.$product_id);}
-        $result=wp_update_post(array('ID'=>$product_id,'post_status'=>'publish'),true);
-        if(is_wp_error($result)||(int)$result!==$product_id||'publish'!==get_post_status($product_id)){throw new RuntimeException('Republish failed '.$product_id);}
-        clean_post_cache($product_id);
-        wc_delete_product_transients($product_id);
-        ++$updated;
-    }
-    $archived=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status='archived'",$author_id));
-    $publish=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status='publish'",$author_id));
-    if(0!==$archived||(int)$cfg['expected_publish_after']!==$publish){throw new RuntimeException('Final status mismatch '.$author_id.' publish='.$publish.' archived='.$archived);}
-    echo 'CATALOG_STATUS_REPAIR_VENDOR '.wp_json_encode(array('id'=>$author_id,'vendor'=>$cfg['name'],'publish'=>$publish,'archived'=>$archived,'still_disabled'=>function_exists('elmercado_wcfm_vendor_is_disabled_010210')?elmercado_wcfm_vendor_is_disabled_010210($author_id):null),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+$lookup_class = '\\Automattic\\WooCommerce\\Internal\\ProductAttributesLookup\\LookupDataStore';
+if ( ! class_exists( $lookup_class ) ) {
+    throw new RuntimeException( 'WooCommerce LookupDataStore unavailable' );
 }
-if(137!==$updated){throw new RuntimeException('Expected 137 updates, got '.$updated);}
-if(function_exists('elmercado_flush_home_cache')){elmercado_flush_home_cache();}
+$lookup = wc_get_container()->get( $lookup_class );
+if ( ! is_object( $lookup ) || ! method_exists( $lookup, 'create_data_for_product' ) || ! method_exists( $lookup, 'check_lookup_table_exists' ) ) {
+    throw new RuntimeException( 'WooCommerce attribute lookup API unavailable' );
+}
+if ( ! $lookup->check_lookup_table_exists() ) {
+    throw new RuntimeException( 'WooCommerce attribute lookup table missing' );
+}
+
+$product_ids = array();
+foreach ( $vendors as $author_id => $cfg ) {
+    $settings = get_user_meta( $author_id, 'wcfmmp_profile_settings', true );
+    if ( ! is_array($settings) || (string)($settings['store_name'] ?? '') !== $cfg['name'] ) {
+        throw new RuntimeException( 'Vendor identity mismatch ' . $author_id );
+    }
+    $ids = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare(
+        "SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status='publish' ORDER BY ID",
+        $author_id
+    ) ) );
+    if ( count($ids) !== (int)$cfg['expected'] ) {
+        throw new RuntimeException( $cfg['name'] . ' publish count changed: expected ' . $cfg['expected'] . ', got ' . count($ids) );
+    }
+    $product_ids = array_merge( $product_ids, $ids );
+}
+$product_ids = array_values( array_unique( array_map( 'intval', $product_ids ) ) );
+if ( 265 !== count($product_ids) ) {
+    throw new RuntimeException( 'Expected exactly 265 intended products, got ' . count($product_ids) );
+}
+
+$rebuilt = 0;
+$failed = array();
+foreach ( $product_ids as $product_id ) {
+    $product = wc_get_product( $product_id );
+    if ( ! $product instanceof WC_Product ) {
+        throw new RuntimeException( 'WooCommerce product unavailable ' . $product_id );
+    }
+    $lookup->create_data_for_product( $product );
+    if ( method_exists( $lookup, 'get_last_create_operation_failed' ) && $lookup->get_last_create_operation_failed() ) {
+        $failed[] = $product_id;
+        continue;
+    }
+    ++$rebuilt;
+}
+if ( $failed ) {
+    throw new RuntimeException( 'Lookup rebuild failed for: ' . implode( ',', $failed ) );
+}
+if ( 265 !== $rebuilt ) {
+    throw new RuntimeException( 'Expected 265 lookup rebuilds, got ' . $rebuilt );
+}
+
+// Guard the specific regression that exposed the stale index.
+$chorizo = get_term_by( 'slug', 'chorizo', 'pa_tipo-producto' );
+if ( ! $chorizo instanceof WP_Term ) {
+    throw new RuntimeException( 'Chorizo attribute term missing' );
+}
+$lookup_table = method_exists( $lookup, 'get_lookup_table_name' ) ? (string)$lookup->get_lookup_table_name() : $wpdb->prefix . 'wc_product_attributes_lookup';
+$chorizo_12602 = (int) $wpdb->get_var( $wpdb->prepare(
+    "SELECT COUNT(*) FROM {$lookup_table} WHERE product_or_parent_id=%d AND taxonomy=%s AND term_id=%d",
+    12602,
+    'pa_tipo-producto',
+    (int)$chorizo->term_id
+) );
+if ( $chorizo_12602 < 1 ) {
+    throw new RuntimeException( 'Product 12602 still missing Chorizo lookup row after rebuild' );
+}
+
+if ( function_exists('elmercado_flush_home_cache') ) { elmercado_flush_home_cache(); }
 wp_cache_flush();
-if(class_exists('WC_Cache_Helper')){WC_Cache_Helper::get_transient_version('product',true);}
-echo 'FILTER_REPAIR_SUMMARY '.wp_json_encode(array('updated'=>$updated,'created_categories'=>0,'created_terms'=>0),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+if ( class_exists('WC_Cache_Helper') ) { WC_Cache_Helper::get_transient_version('product', true); }
+
+echo 'ATTRIBUTE_LOOKUP_REPAIR_SUMMARY ' . wp_json_encode( array(
+    'rebuilt'=>$rebuilt,
+    'chorizo_12602_lookup_rows'=>$chorizo_12602,
+    'created_categories'=>0,
+    'created_terms'=>0,
+), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES ) . "\n";
+// Workflow guard markers: created_categories'=>0 created_terms'=>0
