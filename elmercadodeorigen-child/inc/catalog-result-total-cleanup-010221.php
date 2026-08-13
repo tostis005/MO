@@ -131,9 +131,13 @@ add_action(
 				display:inline-flex !important; align-items:center !important; justify-content:flex-end !important; min-width:22px !important; margin:0 1px 0 auto !important; padding:0 !important;
 				border:0 !important; background:transparent !important; color:#809088 !important; font-size:10.5px !important; font-weight:650 !important; line-height:1 !important; text-align:right !important; white-space:nowrap !important;
 			}
-			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover,
+			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover {
+				background:transparent !important;
+				box-shadow:none !important;
+			}
 			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:is(.current-cat,.is-active,.chosen,.woocommerce-widget-layered-nav-list__item--chosen) {
-				background-color:#d9ede0 !important; box-shadow:inset 0 0 0 1px rgba(47,125,93,.18) !important;
+				background:#d9ede0 !important;
+				box-shadow:inset 0 0 0 1px rgba(47,125,93,.18) !important;
 			}
 			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:hover,
 			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:focus-visible,
