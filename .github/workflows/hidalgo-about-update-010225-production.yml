@@ -1,7 +1,7 @@
 name: Hidalgo about update 0.10.225 production
 
 # One-time guarded production update. Re-runs are safe: the PHP guard exits if already applied.
-# Triggered after workflow registration on the default branch.
+# Includes a live public-page verification with a cache-busting query parameter.
 on:
   push:
     branches: [main]
@@ -62,3 +62,16 @@ jobs:
           REMOTE_SCRIPT="/tmp/hidalgo-about-update-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/hidalgo-about-update-010225.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
+
+      - name: Verify live public About copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/acercade/?emdo_verify=${GITHUB_RUN_ID}"
+          HTML="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO production verifier' "$URL")"
+          printf '%s' "$HTML" | grep -Fq 'La historia de <strong>Hidalgo de la Jara</strong> está profundamente ligada'
+          if printf '%s' "$HTML" | grep -Fq 'Los ganaderos que integran Hidalgo de la Jara mantienen intacta'; then
+            echo 'HIDALGO_PUBLIC_VERIFY_ABORT: old copy still present' >&2
+            exit 7
+          fi
+          echo '__HIDALGO_PUBLIC_VERIFY__=success'
