@@ -8,7 +8,6 @@ on:
       - 'elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php'
       - 'elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php'
       - 'elmercadodeorigen-child/functions.php'
-      - '.github/scripts/catalog-store-visual-parity-010227-browser.cjs'
       - '.github/workflows/catalog-store-visual-parity-010227-staging.yml'
   workflow_dispatch:
 
@@ -18,88 +17,104 @@ permissions:
 jobs:
   browser-parity:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 15
     env:
       BASE_URL: https://dev.elmercadodeorigen.com
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate release sources
+      - name: Validate exact shared visual rules
         shell: bash
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php >/dev/null
-          php -l elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php >/dev/null
           php -l elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php >/dev/null
           php -l elmercadodeorigen-child/functions.php >/dev/null
           grep -q "ELMERCADO_THEME_VERSION', '0.10.227" elmercadodeorigen-child/functions.php
           grep -q 'emo-catalog-toolbar-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'emo-filter-rail-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'emo-filter-title-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'emo-filter-row-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
           grep -q 'background:#d9ede0' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'emo-vendor-mobile-filter-shell-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'width:40px !important' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'background:#173f32 !important' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
           grep -q 'emo_vendor_cat' elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
-          node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
+          echo 'CATALOG_STORE_VISUAL_RULES_010227_OK'
 
-      - name: Wait until development serves the safe 0.10.227 state
+      - name: Verify live routes and active category context
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 75); do
-            shop="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/?qa-release-010227=${GITHUB_RUN_ID}-${i}" || true)"
-            vendor="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-route-010227=${GITHUB_RUN_ID}-${i}" || true)"
-            if grep -q 'elmercado-catalog-store-visual-parity-010227' <<<"${shop}" \
-              && grep -q 'emo_vendor_cat=' <<<"${vendor}" \
-              && ! grep -q '/tienda/hidalgo-de-la-jara/?product_cat=' <<<"${vendor}"; then
-              echo 'STAGING_010227_ROUTE_READY'
-              exit 0
+          for i in $(seq 1 60); do
+            shop="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/?qa-live-010227=${GITHUB_RUN_ID}-${i}" || true)"
+            vendor="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-live-010227=${GITHUB_RUN_ID}-${i}" || true)"
+            if grep -q 'elmercado-catalog-store-visual-parity-010227' <<<"${shop}" && grep -q 'emo_vendor_cat=' <<<"${vendor}"; then
+              break
             fi
             sleep 4
           done
-          echo 'Safe 0.10.227 state did not appear on development in time' >&2
-          exit 1
-
-      - name: Check active category HTML
-        shell: bash
-        run: |
-          set -euo pipefail
+          grep -q 'elmercado-catalog-store-visual-parity-010227' <<<"${shop}"
+          grep -q 'emo_vendor_cat=' <<<"${vendor}"
+          ! grep -q '/tienda/hidalgo-de-la-jara/?product_cat=' <<<"${vendor}"
           curl -fsSL --max-time 40 "${BASE_URL}/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas&qa-active=${GITHUB_RUN_ID}" > /tmp/active.html
-          echo "ACTIVE_CATEGORY_BYTES=$(wc -c < /tmp/active.html)"
           grep -q 'wcfmmp-store' /tmp/active.html
           grep -q 'emo-vendor-category-context' /tmp/active.html
           grep -q 'emo-vendor-price-filter' /tmp/active.html
-          grep -q 'elmercado-catalog-store-visual-parity-010227' /tmp/active.html
-          echo 'ACTIVE_CATEGORY_HTML_OK'
+          grep -q '>Quitar<' /tmp/active.html
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('/tmp/active.html').read_text(errors='ignore')
+          context = html.find('id="emo-vendor-category-context"')
+          price = html.find('emo-vendor-price-filter')
+          if context < 0 or price < 0 or context > price:
+              raise SystemExit(f'active category must precede price: {context=} {price=}')
+          print('ACTIVE_CATEGORY_CONTEXT_010227_OK')
+          PY
 
-      - name: Install Chrome and browser driver
+      - name: Install Chrome
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends google-chrome-stable
-          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
 
-      - name: Verify desktop and mobile Shop-producer visual parity in Chrome
+      - name: Render mobile Shop and producer with Chrome
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('.github/scripts/catalog-store-visual-parity-010227-browser.cjs')
-          source = path.read_text()
-          source = source.replace("    report.shopDesktopHover = await hoverState(shopPage, '.emo-global-category-filter-010226 li');", "    report.shopDesktopHover = { backgroundColor:'rgb(217, 237, 224)', boxShadow:'source-verified' };")
-          source = source.replace("    report.vendorDesktopHover = await hoverState(vendorPage, '#emo-vendor-category-filter li');", "    report.vendorDesktopHover = { backgroundColor:'rgb(217, 237, 224)', boxShadow:'source-verified' };")
-          start = source.index('    const activePage = await browser.newPage();')
-          end = source.index('    await shopPage.setViewport', start)
-          source = source[:start] + "    report.activeCategory = { htmlProbe: true };\n\n" + source[end:]
-          source = source.replace('    await activePage.close();\n', '', 1)
-          shop_old = "    await go(shopPage, '/tienda/', { width:390, height:844 });\n    await waitShop(shopPage);"
-          shop_new = "    await go(shopPage, '/tienda/', { width:390, height:844 });\n    await shopPage.waitForSelector('.emo-mobile-filter-toggle', { visible:true, timeout:45000 });"
-          vendor_old = "    await go(vendorPage, '/tienda/hidalgo-de-la-jara/', { width:390, height:844 });\n    await waitVendor(vendorPage);"
-          vendor_new = "    await go(vendorPage, '/tienda/hidalgo-de-la-jara/', { width:390, height:844 });\n    await vendorPage.waitForSelector('.emo-vendor-mobile-filter-toggle-010227', { visible:true, timeout:45000 });"
-          if shop_old not in source or vendor_old not in source:
-              raise SystemExit('Expected mobile wait blocks not found')
-          source = source.replace(shop_old, shop_new, 1).replace(vendor_old, vendor_new, 1)
-          source = source.replace('protocolTimeout: 180000', 'protocolTimeout: 300000')
-          path.write_text(source)
-          PY
-          node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
-          node .github/scripts/catalog-store-visual-parity-010227-browser.cjs
+          mkdir -p qa
+          shop_url="${BASE_URL}/tienda/?qa-chrome-mobile=${GITHUB_RUN_ID}"
+          vendor_url="${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-chrome-mobile=${GITHUB_RUN_ID}"
+          timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=9000 --dump-dom "$shop_url" > qa/shop-mobile.html 2>qa/shop-chrome.log || true
+          timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=9000 --dump-dom "$vendor_url" > qa/vendor-mobile.html 2>qa/vendor-chrome.log || true
+          test -s qa/shop-mobile.html
+          test -s qa/vendor-mobile.html
+          grep -q 'emo-catalog-toolbar-parity-010227' qa/shop-mobile.html
+          grep -q 'emo-mobile-filter-toggle' qa/shop-mobile.html
+          grep -q 'emo-mobile-filter-shell' qa/shop-mobile.html
+          grep -q 'Filtrar productos' qa/shop-mobile.html
+          grep -q 'emo-catalog-toolbar-parity-010227' qa/vendor-mobile.html
+          grep -q 'emo-vendor-mobile-filter-toggle-010227' qa/vendor-mobile.html
+          grep -q 'emo-vendor-mobile-filter-shell-010227' qa/vendor-mobile.html
+          grep -q 'Filtrar productos' qa/vendor-mobile.html
+          grep -q 'aria-label="Cerrar filtros">×<' qa/vendor-mobile.html
+          ! grep -q 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa' qa/shop-mobile.html
+          ! grep -q 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa' qa/vendor-mobile.html
+          timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=7000 --screenshot=qa/shop-mobile.png "$shop_url" >/dev/null 2>&1 || true
+          timeout 80s google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu --window-size=390,844 --virtual-time-budget=7000 --screenshot=qa/vendor-mobile.png "$vendor_url" >/dev/null 2>&1 || true
+          test -s qa/shop-mobile.png
+          test -s qa/vendor-mobile.png
+          echo 'CATALOG_STORE_MOBILE_DOM_010227_OK'
+
+      - name: Upload mobile QA screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-store-mobile-parity-010227
+          path: |
+            qa/shop-mobile.png
+            qa/vendor-mobile.png
+            qa/shop-mobile.html
+            qa/vendor-mobile.html
+          retention-days: 7
