@@ -1,0 +1,43 @@
+name: Vendor store filters 0.10.225 staging rerun
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-store-filters-010225-staging-rerun.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_URL: https://dev.elmercadodeorigen.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate producer filter sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php >/dev/null
+          php -l elmercadodeorigen-child/inc/vendor-store-catalog-layout-lock-010225.php >/dev/null
+          grep -q 'vendor-store-catalog-filters-010225.php' elmercadodeorigen-child/functions.php
+          grep -q 'vendor-store-catalog-layout-lock-010225.php' elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          node --check .github/scripts/vendor-store-filters-010225-browser.cjs
+
+      - name: Install Chrome and browser driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Verify producer storefront totals and filters in Chrome
+        shell: bash
+        run: node .github/scripts/vendor-store-filters-010225-browser.cjs
