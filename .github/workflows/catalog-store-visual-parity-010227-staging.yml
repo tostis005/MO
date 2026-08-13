@@ -52,6 +52,19 @@ jobs:
           echo '0.10.227 marker did not appear on staging in time' >&2
           exit 1
 
+      - name: Inspect producer category links
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 30 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-category-links=${GITHUB_RUN_ID}" > /tmp/vendor.html
+          python3 - <<'PY'
+          import html, re
+          source = open('/tmp/vendor.html', encoding='utf-8').read()
+          links = [html.unescape(x) for x in re.findall(r'href=["\']([^"\']*product_cat[^"\']*)', source)]
+          print('PRODUCER_CATEGORY_LINKS', links[:10])
+          print('PRODUCER_HTML_HAS_STORE', 'id="wcfmmp-store"' in source or "id='wcfmmp-store'" in source)
+          PY
+
       - name: Install Chrome and browser driver
         shell: bash
         run: |
@@ -69,7 +82,7 @@ jobs:
           path = Path('.github/scripts/catalog-store-visual-parity-010227-browser.cjs')
           source = path.read_text()
           old = "    await go(activePage, '/tienda/hidalgo-de-la-jara/?product_cat=jamones-paletas', desktop);"
-          new = """    await go(activePage, '/tienda/hidalgo-de-la-jara/', desktop);\n    await waitVendor(activePage);\n    await activePage.click('#emo-vendor-category-filter li a');\n    await activePage.waitForFunction(() => Boolean(document.querySelector('#emo-vendor-category-context')), { timeout: 45000 });\n    await sleep(500);"""
+          new = """    await go(activePage, '/tienda/hidalgo-de-la-jara/', desktop);\n    await waitVendor(activePage);\n    const activeHref = await activePage.$eval('#emo-vendor-category-filter li a', (a) => a.href);\n    console.log('PRODUCER_ACTIVE_HREF', activeHref);\n    await activePage.click('#emo-vendor-category-filter li a');\n    await sleep(2500);\n    console.log('PRODUCER_AFTER_CLICK_URL', activePage.url());\n    await activePage.waitForFunction(() => Boolean(document.querySelector('#emo-vendor-category-context')), { timeout: 12000 });"""
           if old not in source:
               raise SystemExit('Expected active-category QA line not found')
           path.write_text(source.replace(old, new, 1))
