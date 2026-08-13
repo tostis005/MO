@@ -6,13 +6,14 @@ on:
     paths:
       - 'elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php'
       - 'elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php'
+      - 'elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php'
       - 'elmercadodeorigen-child/functions.php'
       - '.github/scripts/catalog-store-visual-parity-010227-browser.cjs'
       - '.github/workflows/catalog-store-visual-parity-010227-staging.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   browser-parity:
@@ -23,63 +24,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Keep producer category filters inside vendor stores
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php')
-          source = path.read_text()
-          original = source
-
-          replacements = [
-              ("$_GET['product_cat']", "$_GET['emo_vendor_cat']"),
-              ("'product_cat' !== $key", "'emo_vendor_cat' !== $key"),
-              ("'product_cat' === $key", "'emo_vendor_cat' === $key"),
-              ("array( 'product_cat' => $term->slug ), array( 'product_cat' )", "array( 'emo_vendor_cat' => $term->slug ), array( 'emo_vendor_cat' )"),
-          ]
-
-          expected = {
-              "$_GET['product_cat']": 4,
-              "'product_cat' !== $key": 1,
-              "'product_cat' === $key": 1,
-              "array( 'product_cat' => $term->slug ), array( 'product_cat' )": 1,
-          }
-
-          for old, new in replacements:
-              count = source.count(old)
-              if count not in (0, expected[old]):
-                  raise SystemExit(f'Unexpected count for {old!r}: {count}')
-              source = source.replace(old, new)
-
-          if "$_GET['product_cat']" in source:
-              raise SystemExit('Legacy product_cat request access still present')
-          if "array( 'product_cat' => $term->slug )" in source:
-              raise SystemExit('Legacy producer category URL still present')
-
-          if source != original:
-              path.write_text(source)
-              print('PRODUCER_CATEGORY_ROUTE_PATCHED')
-          else:
-              print('PRODUCER_CATEGORY_ROUTE_ALREADY_PATCHED')
-          PY
-
-          php -l elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php >/dev/null
-
-          if ! git diff --quiet -- elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
-            git commit -m 'Keep producer category filters inside vendor stores'
-            git fetch origin main
-            git rebase origin/main
-            git push origin HEAD:main
-          fi
 
       - name: Validate release sources
         shell: bash
@@ -91,14 +35,14 @@ jobs:
           php -l elmercadodeorigen-child/functions.php >/dev/null
           grep -q "ELMERCADO_THEME_VERSION', '0.10.227" elmercadodeorigen-child/functions.php
           grep -q 'emo-catalog-toolbar-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
-          grep -q "emo_vendor_cat" elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
+          grep -q 'emo_vendor_cat' elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
           node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
 
-      - name: Wait until staging serves 0.10.227 and safe producer category links
+      - name: Wait until development serves the safe 0.10.227 state
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 90); do
+          for i in $(seq 1 75); do
             shop="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/?qa-release-010227=${GITHUB_RUN_ID}-${i}" || true)"
             vendor="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-route-010227=${GITHUB_RUN_ID}-${i}" || true)"
             if grep -q 'elmercado-catalog-store-visual-parity-010227' <<<"${shop}" \
@@ -107,9 +51,9 @@ jobs:
               echo 'STAGING_010227_ROUTE_READY'
               exit 0
             fi
-            sleep 5
+            sleep 4
           done
-          echo '0.10.227 or safe vendor category links did not appear on staging in time' >&2
+          echo 'Safe 0.10.227 state did not appear on development in time' >&2
           exit 1
 
       - name: Install Chrome and browser driver
@@ -128,10 +72,10 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/catalog-store-visual-parity-010227-browser.cjs')
           source = path.read_text()
-          old = "    await go(activePage, '/tienda/hidalgo-de-la-jara/?product_cat=jamones-paletas', desktop);"
-          new = """    await go(activePage, '/tienda/hidalgo-de-la-jara/', desktop);\n    await waitVendor(activePage);\n    const activeHref = await activePage.$eval('#emo-vendor-category-filter li a', (a) => a.href);\n    assert(activeHref.includes('emo_vendor_cat='), `Producer category: unsafe URL ${activeHref}`);\n    await activePage.click('#emo-vendor-category-filter li a');\n    await activePage.waitForSelector('#wcfmmp-store #emo-vendor-category-context', { timeout: 45000 });\n    await sleep(500);"""
+          old = "await go(activePage, '/tienda/hidalgo-de-la-jara/?product_cat=jamones-paletas', desktop);"
+          new = "await go(activePage, '/tienda/hidalgo-de-la-jara/?emo_vendor_cat=jamones-paletas', desktop);"
           if old not in source:
-              raise SystemExit('Expected active-category QA line not found')
+              raise SystemExit('Expected legacy active-category probe not found in QA script')
           path.write_text(source.replace(old, new, 1))
           PY
           node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
