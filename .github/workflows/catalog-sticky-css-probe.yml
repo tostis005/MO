@@ -1,0 +1,53 @@
+name: Catalog sticky CSS probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-sticky-css-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Probe sticky fixes in browser only
+        env:
+          BASE_URL: https://www.elmercadodeorigen.com
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const tests=[
+            ['baseline',''],
+            ['rail-visible','#secondary.widget-area,.shop-widget-area{overflow:visible!important}'],
+            ['body-clip','body{overflow-x:clip!important;overflow-y:visible!important}'],
+            ['html-clip','html{overflow-x:clip!important;overflow-y:visible!important}'],
+            ['root-clip','html,body{overflow-x:clip!important;overflow-y:visible!important}'],
+            ['root-and-rail','html,body{overflow-x:clip!important;overflow-y:visible!important}#secondary.widget-area,.shop-widget-area{overflow:visible!important}']
+          ];
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            for(const [name,css] of tests){
+              const p=await b.newPage(); await p.setViewport({width:1440,height:1000});
+              await p.goto(`${process.env.BASE_URL}/tienda/?sticky-probe=${name}-${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await p.waitForSelector('#secondary.widget-area,.shop-widget-area',{timeout:20000});
+              if(css) await p.addStyleTag({content:css});
+              await new Promise(r=>setTimeout(r,250));
+              const before=await p.$eval('#secondary.widget-area,.shop-widget-area',el=>({top:el.getBoundingClientRect().top,overflow:getComputedStyle(el).overflow,bodyOverflow:getComputedStyle(document.body).overflow,htmlOverflow:getComputedStyle(document.documentElement).overflow}));
+              await p.evaluate(()=>scrollTo(0,1200)); await new Promise(r=>setTimeout(r,350));
+              const after=await p.$eval('#secondary.widget-area,.shop-widget-area',el=>({scrollY,top:el.getBoundingClientRect().top,position:getComputedStyle(el).position}));
+              console.log('STICKY_PROBE',name,JSON.stringify({before,after}));
+              await p.close();
+            }
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
