@@ -2,8 +2,9 @@
 /**
  * Garantiza que la Home termine con las mismas categorías visibles que Tienda.
  *
- * Se aplica sobre el HTML final para que ningún corrector histórico del contenido
- * vuelva a limitar la sección después de calcular la visibilidad real.
+ * Este buffer se abre antes que las capas históricas de caché/optimización para
+ * ser el más exterior. Al vaciarse la respuesta, su callback corre el último y
+ * deja la sección de categorías con la verdad final del catálogo.
  *
  * @package ElMercadoDeOrigen
  */
@@ -37,5 +38,5 @@ add_action(
 			}
 		);
 	},
-	PHP_INT_MAX
+	-3000
 );
