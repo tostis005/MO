@@ -1,11 +1,12 @@
 name: Catalog query parity 0.10.224 staging
-# Revalidate the restored development baseline after the guarded fixture repair.
+# Revalidate the restored development baseline with curated Home-category parity.
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/catalog-query-parity-010224-staging.yml'
+      - '.github/scripts/catalog-query-parity-010224-browser.cjs'
   workflow_dispatch:
 
 permissions:
