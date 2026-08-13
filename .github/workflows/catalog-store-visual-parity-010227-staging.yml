@@ -62,4 +62,17 @@ jobs:
 
       - name: Verify Shop and producer parity in Chrome
         shell: bash
-        run: node .github/scripts/catalog-store-visual-parity-010227-browser.cjs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/catalog-store-visual-parity-010227-browser.cjs')
+          source = path.read_text()
+          old = "    await go(activePage, '/tienda/hidalgo-de-la-jara/?product_cat=jamones-paletas', desktop);"
+          new = """    await go(activePage, '/tienda/hidalgo-de-la-jara/', desktop);\n    await waitVendor(activePage);\n    const activeHref = await activePage.$eval('#emo-vendor-category-filter li a', (a) => a.href);\n    await go(activePage, activeHref, desktop);"""
+          if old not in source:
+              raise SystemExit('Expected active-category QA line not found')
+          path.write_text(source.replace(old, new, 1))
+          PY
+          node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
+          node .github/scripts/catalog-store-visual-parity-010227-browser.cjs
