@@ -1,0 +1,85 @@
+name: Vendor store runtime inspect 0.10.225 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-store-runtime-inspect-010225-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Inspect PHP runtime
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?}"
+          cat > /tmp/vendor-store-inspect.php <<'PHP'
+          <?php
+          $functions = array('wcfmmp_is_store_page','wcfmmp_get_store_url','wcfm_get_vendor_id_by_post','wcfmmp_get_store','wcfm_is_store_page');
+          echo "FUNCTIONS=" . wp_json_encode(array_fill_keys($functions, false)) . "\n";
+          $status = array(); foreach ($functions as $fn) $status[$fn] = function_exists($fn); echo "FUNCTION_STATUS=" . wp_json_encode($status) . "\n";
+          global $wp_rewrite, $WCFMmp;
+          echo "STORE_ENDPOINT=" . get_option('wcfm_store_url','') . "\n";
+          echo "WCFMMP_CLASS=" . (is_object($WCFMmp) ? get_class($WCFMmp) : '') . "\n";
+          echo "WCFMMP_STORE_QUERY_CLASS=" . (isset($WCFMmp->store->query) && is_object($WCFMmp->store->query) ? get_class($WCFMmp->store->query) : '') . "\n";
+          $users = get_users(array('role__in'=>array('wcfm_vendor','vendor','seller'),'fields'=>array('ID','user_login','user_nicename','display_name')));
+          foreach ($users as $u) {
+            $count = count(get_posts(array('post_type'=>'product','post_status'=>'publish','author'=>$u->ID,'fields'=>'ids','posts_per_page'=>-1,'suppress_filters'=>true)));
+            if (!$count) continue;
+            $url = function_exists('wcfmmp_get_store_url') ? wcfmmp_get_store_url($u->ID) : home_url('/tienda/'.$u->user_nicename.'/');
+            echo "VENDOR=" . wp_json_encode(array('id'=>$u->ID,'login'=>$u->user_login,'nicename'=>$u->user_nicename,'name'=>$u->display_name,'products'=>$count,'url'=>$url)) . "\n";
+          }
+          PHP
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no /tmp/vendor-store-inspect.php "$STAGING_USER@$STAGING_HOST:/tmp/vendor-store-inspect.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/vendor-store-inspect.php --path='$WP_PATH' --allow-root; rm -f /tmp/vendor-store-inspect.php"
+      - name: Inspect browser markup and query vars
+        shell: bash
+        run: |
+          cat > /tmp/vendor-inspect.cjs <<'JS'
+          const puppeteer = require('puppeteer-core');
+          (async()=>{
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();
+            await page.setViewport({width:1440,height:1000});
+            await page.goto(`${process.env.STAGING_URL}/tienda/hidalgo-de-la-jara/?emo-vendor-inspect=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:90000});
+            await page.waitForSelector('#wcfmmp-store',{timeout:30000});
+            const data=await page.evaluate(()=>{
+              const store=document.querySelector('#wcfmmp-store');
+              const result=store.querySelector('.woocommerce-result-count');
+              const ordering=store.querySelector('.woocommerce-ordering');
+              const body=store.querySelector('.body_area');
+              const sidebar=store.querySelector('.left_sidebar');
+              const products=store.querySelector('.right_side,.right_side_full,.products-wrapper,.wcfmmp-store-product,.product_area');
+              const widgets=[...store.querySelectorAll('.left_sidebar .widget')].map(w=>({cls:w.className,title:(w.querySelector('.widget-title,.widgettitle,.sidebar_heading')?.textContent||'').replace(/\s+/g,' ').trim(),text:(w.textContent||'').replace(/\s+/g,' ').trim().slice(0,220)}));
+              return {bodyClasses:document.body.className,resultText:(result?.textContent||'').replace(/\s+/g,' ').trim(),resultHTML:result?.outerHTML||'',ordering:!!ordering,bodyChildren:[...body?.children||[]].map(x=>x.className||x.id||x.tagName),sidebar:!!sidebar,productsClass:products?.className||'',widgets,productCount:store.querySelectorAll('ul.products li.product').length,storeHTML:store.outerHTML.slice(0,1500)};
+            });
+            console.log('VENDOR_BROWSER_INSPECT='+JSON.stringify(data));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/vendor-inspect.cjs
