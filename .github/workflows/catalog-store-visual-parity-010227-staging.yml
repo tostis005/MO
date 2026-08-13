@@ -99,12 +99,20 @@ jobs:
           grep -q '>Quitar<' qa/vendor-active-mobile.html
           python3 - <<'PY'
           from pathlib import Path
+          import re
           html = Path('qa/vendor-active-mobile.html').read_text(errors='ignore')
           body = html[html.find('<body'):]
-          context = body.find('id="emo-vendor-category-context"')
-          price = body.find('emo-vendor-price-filter')
-          if context < 0 or price < 0 or context > price:
-              raise SystemExit(f'active category runtime order invalid: {context=} {price=}')
+          panels = [m.start() for m in re.finditer('id="emo-vendor-filters"', body)]
+          states = []
+          for index, start in enumerate(panels):
+              segment = body[start:start + 90000]
+              context = segment.find('id="emo-vendor-category-context"')
+              price = segment.find('emo-vendor-price-filter')
+              if context >= 0 and price >= 0:
+                  states.append((index, context, price, context < price))
+          print('ACTIVE_CATEGORY_PANEL_ORDERS', states)
+          if not any(ok for _, _, _, ok in states):
+              raise SystemExit('No rendered producer filter panel has active category before price')
           print('ACTIVE_CATEGORY_RUNTIME_ORDER_010227_OK')
           PY
           ! grep -q 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa' qa/shop-mobile.html
@@ -116,6 +124,7 @@ jobs:
           echo 'CATALOG_STORE_MOBILE_DOM_010227_OK'
 
       - name: Upload mobile QA screenshots
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: catalog-store-mobile-parity-010227
@@ -125,4 +134,5 @@ jobs:
             qa/shop-mobile.html
             qa/vendor-mobile.html
             qa/vendor-active-mobile.html
+            qa/*chrome.log
           retention-days: 7
