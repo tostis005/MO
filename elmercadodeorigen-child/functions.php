@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.227' );
-/* 0.10.227 mantiene los filtros de categoría dentro de cada tienda de productor. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.229' );
+/* 0.10.229 comparte un único contrato visual y de interacción entre Tienda y productor. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -162,13 +162,13 @@ foreach ( $elmercado_modules as $elmercado_module ) {
 }
 
 /*
- * Este cierre se registra después de los cargadores históricos del catálogo.
- * Así sus hooks wp_head/wp_footer quedan al final y son la última palabra visual.
+ * El contrato 0.10.229 se registra después de los cargadores históricos del
+ * catálogo y es la única capa de paridad visual/geométrica que queda activa.
  */
 add_action(
 	'after_setup_theme',
 	static function (): void {
-		$module = ELMERCADO_THEME_PATH . '/inc/catalog-store-visual-parity-010227.php';
+		$module = ELMERCADO_THEME_PATH . '/inc/catalog-filter-unified-010229.php';
 		if ( is_readable( $module ) ) {
 			require_once $module;
 		}
