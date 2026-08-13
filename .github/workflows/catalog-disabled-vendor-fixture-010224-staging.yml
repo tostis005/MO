@@ -1,4 +1,5 @@
 name: Catalog disabled vendor rule 0.10.224 staging
+# Deterministic active/disabled/out-of-stock fixture; always self-cleans.
 
 on:
   push:
@@ -53,8 +54,7 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\""
-          )"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
           : "${WP_PATH:?}"
           echo "STAGING_WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
           ok=0
@@ -65,7 +65,7 @@ jobs:
           done
           [ "$ok" = 1 ] || { echo "Staging version $VERSION != $EXPECTED_VERSION" >&2; exit 2; }
 
-      - name: Create disabled-vendor fixture
+      - name: Create deterministic catalog fixture
         id: fixture
         shell: bash
         env:
@@ -104,20 +104,29 @@ jobs:
           CATALOG_JSON="$(printf '%s' "$AUDIT_B64" | base64 -d)"
           echo "CATALOG_AUDIT_JSON=$CATALOG_JSON" >> "$GITHUB_ENV"
 
-          VENDOR_ID="$(jq -r '.vendor_id' <<< "$FIXTURE_JSON")"
-          INSTOCK_ID="$(jq -r '.instock_id' <<< "$FIXTURE_JSON")"
-          OUTOFSTOCK_ID="$(jq -r '.outofstock_id' <<< "$FIXTURE_JSON")"
-          jq -e --argjson vendor "$VENDOR_ID" '.disabled_vendor_ids | index($vendor) != null' <<< "$CATALOG_JSON" >/dev/null
-          jq -e --argjson id "$INSTOCK_ID" '.shop.admin | index($id) != null' <<< "$CATALOG_JSON" >/dev/null
-          jq -e --argjson id "$INSTOCK_ID" '.shop.public | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
-          jq -e --argjson id "$OUTOFSTOCK_ID" '.shop.admin | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
+          ACTIVE_VENDOR="$(jq -r '.active_vendor_id' <<< "$FIXTURE_JSON")"
+          DISABLED_VENDOR="$(jq -r '.disabled_vendor_id' <<< "$FIXTURE_JSON")"
+          ACTIVE_ID="$(jq -r '.active_instock_id' <<< "$FIXTURE_JSON")"
+          DISABLED_ID="$(jq -r '.disabled_instock_id' <<< "$FIXTURE_JSON")"
+          OUTOFSTOCK_ID="$(jq -r '.disabled_outofstock_id' <<< "$FIXTURE_JSON")"
+
+          jq -e --argjson vendor "$DISABLED_VENDOR" '.disabled_vendor_ids | index($vendor) != null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson vendor "$ACTIVE_VENDOR" '.disabled_vendor_ids | index($vendor) == null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$ACTIVE_ID" '.shop.public | index($id) != null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$ACTIVE_ID" '.shop.admin | index($id) != null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$DISABLED_ID" '.shop.public | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$DISABLED_ID" '.shop.admin | index($id) != null' <<< "$CATALOG_JSON" >/dev/null
           jq -e --argjson id "$OUTOFSTOCK_ID" '.shop.public | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
+          jq -e --argjson id "$OUTOFSTOCK_ID" '.shop.admin | index($id) == null' <<< "$CATALOG_JSON" >/dev/null
+
           PUBLIC_TOTAL="$(jq '.shop.public | length' <<< "$CATALOG_JSON")"
           ADMIN_TOTAL="$(jq '.shop.admin | length' <<< "$CATALOG_JSON")"
           [ "$ADMIN_TOTAL" -eq $((PUBLIC_TOTAL + 1)) ]
           PUBLIC_JAMONES="$(jq '[.categories[] | select(.slug=="jamones-paletas")][0].public | length' <<< "$CATALOG_JSON")"
           ADMIN_JAMONES="$(jq '[.categories[] | select(.slug=="jamones-paletas")][0].admin | length' <<< "$CATALOG_JSON")"
           [ "$ADMIN_JAMONES" -eq $((PUBLIC_JAMONES + 1)) ]
+          [ "$PUBLIC_TOTAL" -ge 1 ]
+          [ "$PUBLIC_JAMONES" -ge 1 ]
           echo "FIXTURE_EXPECTATIONS_OK public_shop=$PUBLIC_TOTAL admin_shop=$ADMIN_TOTAL public_jamones=$PUBLIC_JAMONES admin_jamones=$ADMIN_JAMONES"
 
           REMOTE_AUTH="/tmp/catalog-fixture-auth-${GITHUB_RUN_ID}.php"
@@ -135,13 +144,15 @@ jobs:
         shell: bash
         run: node .github/scripts/catalog-query-parity-010224-browser.cjs
 
-      - name: Cleanup fixture
+      - name: Cleanup fixture and verify teardown
         if: always() && steps.fixture.outcome == 'success'
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set +e
+          set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMO_FIXTURE_ACTION=cleanup \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_FIXTURE' --path='$STAGING_WP_PATH' --allow-root; rm -f '$REMOTE_FIXTURE'"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); EMO_FIXTURE_ACTION=cleanup \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_FIXTURE' --path='$STAGING_WP_PATH' --allow-root; rm -f '$REMOTE_FIXTURE'" )"
+          printf '%s\n' "$OUT"
+          grep -q '^CATALOG_DISABLED_VENDOR_FIXTURE_010224_CLEANUP_OK$' <<< "$OUT"
