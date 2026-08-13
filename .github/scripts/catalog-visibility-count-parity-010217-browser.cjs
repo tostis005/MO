@@ -7,7 +7,7 @@ const adminCookieValue = process.env.ADMIN_COOKIE_VALUE || '';
 
 function addBust(url, label) {
   const parsed = new URL(url, base);
-  parsed.searchParams.set('count-parity-010219', `${Date.now()}-${label}`);
+  parsed.searchParams.set('count-parity-010220', `${Date.now()}-${label}`);
   return parsed.toString();
 }
 
@@ -24,7 +24,7 @@ async function goto(page, url, label) {
 
 async function resultState(page, label) {
   return page.evaluate((context) => {
-    const node = document.querySelector('.woocommerce-result-count');
+    const node = document.querySelector('.emo-catalog-result-count-010220');
     const text = node?.textContent?.replace(/\s+/g, ' ').trim() || '';
     const match = text.match(/^(\d[\d.,]*)\s+resultado(?:s)?$/i);
     if (!match) {
@@ -33,17 +33,26 @@ async function resultState(page, label) {
     const total = Number.parseInt(match[1].replace(/[^0-9]/g, ''), 10);
     const ordering = document.querySelector('.woocommerce-ordering');
     const orderingVisible = Boolean(ordering && getComputedStyle(ordering).display !== 'none' && ordering.getClientRects().length);
-    return { text, total, orderingVisible };
+    const legacy = document.querySelector('.emo-catalog-result-count-010218');
+    const legacyVisible = Boolean(legacy && getComputedStyle(legacy).display !== 'none' && legacy.getClientRects().length);
+    const visible = Boolean(node && getComputedStyle(node).display !== 'none' && node.getClientRects().length);
+    return { text, total, orderingVisible, legacyVisible, visible };
   }, label);
 }
 
 async function assertResultState(page, expected, label) {
   const state = await resultState(page, label);
+  if (!state.visible) {
+    throw new Error(`${label}: el contador exacto no está visible`);
+  }
   if (state.total !== Number(expected)) {
     throw new Error(`${label}: total visible ${state.total}; esperado ${expected}`);
   }
   if (state.orderingVisible) {
     throw new Error(`${label}: el selector/texto de ordenación sigue visible`);
+  }
+  if (state.legacyVisible) {
+    throw new Error(`${label}: el contador antiguo sigue visible`);
   }
   return state;
 }
@@ -251,7 +260,7 @@ async function validateAttributeResultLinks(browser, entries, field, label, cook
     await validateAttributeResultLinks(browser, adminAttributes, 'admin', 'category-attribute-results-admin', adminCookie);
 
     const lomo = attributePayload.rows.filter((row) => /lomo/i.test(`${row.slug} ${row.name}`));
-    console.log('CATALOG_VISIBILITY_COUNT_PARITY_010219_OK', JSON.stringify({
+    console.log('CATALOG_VISIBILITY_COUNT_PARITY_010220_OK', JSON.stringify({
       wooHideOutOfStockOption: attributePayload.woocommerce_hide_out_of_stock_option,
       forcedOutOfStockExclusion: attributePayload.force_exclude_out_of_stock,
       disabledVendorIds: attributePayload.disabled_vendor_ids || [],
