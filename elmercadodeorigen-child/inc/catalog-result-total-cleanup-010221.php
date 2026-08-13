@@ -79,7 +79,37 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-catalog-filter-shared-interaction-010231">
+		<style id="elmercado-catalog-filter-shared-interaction-010232">
+			/* WCFM ocultaba el rail del productor en escritorio con más especificidad. El mismo contrato gana ahora en ambos raíles. */
+			@media (min-width:1101px) {
+				html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 {
+					display:block !important;
+					visibility:visible !important;
+					opacity:1 !important;
+					box-sizing:border-box !important;
+					width:250px !important;
+					min-width:250px !important;
+					max-width:250px !important;
+					height:auto !important;
+					margin-bottom:0 !important;
+					padding:18px !important;
+					border:1px solid rgba(23,63,50,.11) !important;
+					border-radius:18px !important;
+					background:#fff !important;
+					box-shadow:0 12px 32px rgba(17,42,34,.07) !important;
+					position:sticky !important;
+					top:94px !important;
+					bottom:auto !important;
+					align-self:start !important;
+					max-height:calc(100dvh - 112px) !important;
+					overflow-x:hidden !important;
+					overflow-y:auto !important;
+					transform:none !important;
+					transition:none !important;
+					will-change:auto !important;
+				}
+			}
+
 			html body.elmercado-child-theme :is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-title-shared-010229 {
 				display:grid !important; grid-template-columns:max-content minmax(24px,1fr) !important; align-items:center !important; column-gap:10px !important;
 				box-sizing:border-box !important; width:100% !important; min-height:0 !important; margin:0 0 8px !important; padding:1px 1px 7px !important;
