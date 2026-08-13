@@ -1,0 +1,65 @@
+name: Catalog store visual parity 0.10.227 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php'
+      - 'elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php'
+      - 'elmercadodeorigen-child/functions.php'
+      - '.github/scripts/catalog-store-visual-parity-010227-browser.cjs'
+      - '.github/workflows/catalog-store-visual-parity-010227-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://dev.elmercadodeorigen.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php >/dev/null
+          php -l elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php >/dev/null
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.227" elmercadodeorigen-child/functions.php
+          grep -q 'catalog-store-visual-parity-010227.php' elmercadodeorigen-child/functions.php
+          grep -q 'emo-catalog-toolbar-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q 'emo-vendor-mobile-filter-shell-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
+
+      - name: Wait until staging serves 0.10.227
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            html="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/?qa-release-010227=${GITHUB_RUN_ID}-${i}" || true)"
+            if grep -q 'elmercado-catalog-store-visual-parity-010227' <<<"${html}"; then
+              echo 'STAGING_010227_READY'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo '0.10.227 marker did not appear on staging in time' >&2
+          exit 1
+
+      - name: Install Chrome and browser driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Verify Shop and producer parity in Chrome
+        shell: bash
+        run: node .github/scripts/catalog-store-visual-parity-010227-browser.cjs
