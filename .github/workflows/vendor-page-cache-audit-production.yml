@@ -1,0 +1,42 @@
+name: Vendor page cache audit production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-page-cache-audit-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Compare live vendor page responses
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/acercade/'
+          NEW='La historia de <strong>Hidalgo de la Jara</strong> está profundamente ligada'
+          OLD='Los ganaderos que integran Hidalgo de la Jara mantienen intacta'
+
+          fetch_case() {
+            label="$1"; url="$2"; shift 2
+            body="/tmp/${label}.body"; head="/tmp/${label}.head"
+            curl -fsSL --retry 2 --connect-timeout 15 --max-time 60 -A 'Mozilla/5.0 EMDO cache audit' "$@" -D "$head" -o "$body" "$url"
+            echo "=== $label ==="
+            tr -d '\r' < "$head" | grep -Eiv '^(set-cookie:|date:)' || true
+            printf 'bytes=%s sha256=%s new=%s old=%s\n' \
+              "$(wc -c < "$body")" \
+              "$(sha256sum "$body" | awk '{print $1}')" \
+              "$(grep -Fc "$NEW" "$body" || true)" \
+              "$(grep -Fc "$OLD" "$body" || true)"
+          }
+
+          fetch_case normal1 "$BASE"
+          fetch_case normal2 "$BASE"
+          fetch_case nocache "$BASE" -H 'Cache-Control: no-cache' -H 'Pragma: no-cache'
+          fetch_case query "${BASE}?emdo_cache_audit=${GITHUB_RUN_ID}"
