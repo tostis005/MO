@@ -10,7 +10,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function go(page, path, delay = 500) {
   const url = new URL(path, BASE);
-  url.searchParams.set('catalog-toolbar-010222', Date.now().toString());
+  url.searchParams.set('catalog-toolbar-010223', Date.now().toString());
   const response = await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
   if (response && response.status() >= 400) failures.push(`${url.pathname}: HTTP ${response.status()}`);
   await page.waitForSelector('body', { timeout: 10000 });
@@ -21,11 +21,16 @@ async function go(page, path, delay = 500) {
 async function waitForRelease(page) {
   for (let i = 0; i < 30; i += 1) {
     await go(page, '/tienda/', 200);
-    const ready = await page.evaluate(() => !!document.getElementById('elmercado-catalog-toolbar-mobile-price-fix-010222'));
+    const ready = await page.evaluate(() => {
+      const styleMarker = !!document.getElementById('elmercado-catalog-toolbar-mobile-price-fix-010222');
+      const categoryWidget = document.querySelector('.widget_product_categories');
+      const categoryCounts = categoryWidget ? categoryWidget.querySelectorAll('li.cat-item > .count').length : 0;
+      return styleMarker && categoryCounts > 0;
+    });
     if (ready) return;
     await sleep(3000);
   }
-  throw new Error('0.10.222 not visible');
+  throw new Error('0.10.223 category-count release not visible');
 }
 
 async function inspectToolbar(page) {
@@ -102,6 +107,60 @@ async function inspectMobilePrice(page) {
   });
 }
 
+async function inspectCategoryCounts(page) {
+  return page.evaluate(() => {
+    const visible = (node) => {
+      if (!node) return false;
+      const c = getComputedStyle(node);
+      const r = node.getBoundingClientRect();
+      return c.display !== 'none' && c.visibility !== 'hidden' && Number(c.opacity || 1) !== 0 && r.width > 0 && r.height > 0;
+    };
+    const widget = document.querySelector('.emo-mobile-filter-content .widget_product_categories,.widget_product_categories');
+    const items = [...(widget?.querySelectorAll('li.cat-item') || [])].filter((item) => visible(item));
+    return {
+      widgetVisible: visible(widget),
+      items: items.map((item) => {
+        const link = item.querySelector(':scope > a') || item.querySelector('a');
+        const countNode = item.querySelector(':scope > .count') || item.querySelector('.count');
+        const countText = (countNode?.textContent || '').replace(/[()\s]/g, '');
+        const parsed = Number.parseInt(countText.replace(/[^0-9]/g, ''), 10);
+        return {
+          name: (link?.textContent || '').replace(/\s+/g, ' ').trim(),
+          href: link?.href || '',
+          countText,
+          count: Number.isFinite(parsed) ? parsed : 0,
+          countVisible: visible(countNode)
+        };
+      })
+    };
+  });
+}
+
+async function verifyCategoryResultCounts(browser, categories) {
+  for (const [index, category] of categories.entries()) {
+    const page = await browser.newPage();
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      if (['image', 'media', 'font'].includes(request.resourceType())) request.abort();
+      else request.continue();
+    });
+    try {
+      await page.setViewport({ width: 360, height: 800, deviceScaleFactor: 1 });
+      await go(page, category.href, 450);
+      const state = await page.evaluate(() => {
+        const node = document.querySelector('.emo-catalog-result-count-010220');
+        const text = (node?.textContent || '').replace(/\s+/g, ' ').trim();
+        const match = text.match(/^(\d+)\s+resultados?$/i);
+        return { text, total: match ? Number(match[1]) : 0 };
+      });
+      if (state.total !== category.count) failures.push(`mobile: category ${category.name} count ${category.count} != result total ${state.total}`);
+      report[`categoryResult${index + 1}`] = { name: category.name, count: category.count, result: state.total };
+    } finally {
+      await page.close();
+    }
+  }
+}
+
 function assertToolbar(name, data) {
   if (!data.release) failures.push(`${name}: 0.10.222 release marker missing`);
   if (!data.exactVisible) failures.push(`${name}: exact result count not visible`);
@@ -125,6 +184,16 @@ function assertMobilePrice(data) {
   });
   data.alignmentDeltas.forEach((delta, index) => {
     if (delta > 0.75) failures.push(`mobile: handle ${index + 1} center differs from track by ${delta}px`);
+  });
+}
+
+function assertCategoryCounts(data) {
+  if (!data.widgetVisible) failures.push('mobile: category widget hidden after toggle');
+  if (!data.items.length) failures.push('mobile: no visible category rows');
+  data.items.forEach((item) => {
+    if (!item.countVisible) failures.push(`mobile: category ${item.name} count hidden`);
+    if (item.count <= 0) failures.push(`mobile: category ${item.name} invalid count ${JSON.stringify(item.countText)}`);
+    if (!item.href) failures.push(`mobile: category ${item.name} missing link`);
   });
 }
 
@@ -162,16 +231,19 @@ function assertMobilePrice(data) {
       await sleep(450);
       report.mobilePrice = await inspectMobilePrice(page);
       assertMobilePrice(report.mobilePrice);
+      report.mobileCategories = await inspectCategoryCounts(page);
+      assertCategoryCounts(report.mobileCategories);
+      await verifyCategoryResultCounts(browser, report.mobileCategories.items);
     }
 
-    await page.screenshot({ path: 'qa/catalog-toolbar-mobile-price-010222.png', fullPage: true });
-    fs.writeFileSync('qa/catalog-toolbar-mobile-price-010222.json', JSON.stringify({ base: BASE, expectedShopTotal, failures, report }, null, 2));
+    await page.screenshot({ path: 'qa/catalog-toolbar-mobile-price-010223.png', fullPage: true });
+    fs.writeFileSync('qa/catalog-toolbar-mobile-price-010223.json', JSON.stringify({ base: BASE, expectedShopTotal, failures, report }, null, 2));
 
     if (failures.length) {
-      console.error('CATALOG_TOOLBAR_MOBILE_PRICE_010222_FAIL', JSON.stringify(failures));
+      console.error('CATALOG_TOOLBAR_MOBILE_PRICE_010223_FAIL', JSON.stringify(failures));
       process.exitCode = 2;
     } else {
-      console.log('CATALOG_TOOLBAR_MOBILE_PRICE_010222_OK', JSON.stringify({ expectedShopTotal, ...report }));
+      console.log('CATALOG_TOOLBAR_MOBILE_PRICE_010223_OK', JSON.stringify({ expectedShopTotal, ...report }));
     }
   } finally {
     await browser.close();
