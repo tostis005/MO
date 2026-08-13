@@ -1,7 +1,8 @@
 <?php
 /**
  * Guarded production repair: rebuild WooCommerce's product-attribute lookup
- * index for the 265 intended catalog products. Product data is not changed.
+ * index for the 265 intended catalog products and invalidate layered-nav counts.
+ * Product data is not changed.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! function_exists( 'wc_get_product' ) || ! function_exists( 'wc_get_container' ) ) { exit( 2 ); }
@@ -67,7 +68,6 @@ if ( 265 !== $rebuilt ) {
     throw new RuntimeException( 'Expected 265 lookup rebuilds, got ' . $rebuilt );
 }
 
-// Guard the specific regression that exposed the stale index.
 $chorizo = get_term_by( 'slug', 'chorizo', 'pa_tipo-producto' );
 if ( ! $chorizo instanceof WP_Term ) {
     throw new RuntimeException( 'Chorizo attribute term missing' );
@@ -83,6 +83,21 @@ if ( $chorizo_12602 < 1 ) {
     throw new RuntimeException( 'Product 12602 still missing Chorizo lookup row after rebuild' );
 }
 
+// Native layered-nav counts are cached independently from the lookup table.
+// Clear every global attribute count cache so widgets read the rebuilt index now.
+if ( ! function_exists( 'wc_get_attribute_taxonomy_names' ) ) {
+    throw new RuntimeException( 'WooCommerce attribute taxonomy helper unavailable' );
+}
+$attribute_taxonomies = array_values( array_unique( array_map( 'strval', (array) wc_get_attribute_taxonomy_names() ) ) );
+$cleared = array();
+foreach ( $attribute_taxonomies as $taxonomy ) {
+    if ( '' === $taxonomy ) { continue; }
+    $transient = 'wc_layered_nav_counts_' . sanitize_title( $taxonomy );
+    delete_transient( $transient );
+    wp_cache_delete( $transient, 'transient' );
+    $cleared[] = $transient;
+}
+
 if ( function_exists('elmercado_flush_home_cache') ) { elmercado_flush_home_cache(); }
 wp_cache_flush();
 if ( class_exists('WC_Cache_Helper') ) { WC_Cache_Helper::get_transient_version('product', true); }
@@ -90,6 +105,7 @@ if ( class_exists('WC_Cache_Helper') ) { WC_Cache_Helper::get_transient_version(
 echo 'ATTRIBUTE_LOOKUP_REPAIR_SUMMARY ' . wp_json_encode( array(
     'rebuilt'=>$rebuilt,
     'chorizo_12602_lookup_rows'=>$chorizo_12602,
+    'layered_nav_caches_cleared'=>count($cleared),
     'created_categories'=>0,
     'created_terms'=>0,
 ), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES ) . "\n";
