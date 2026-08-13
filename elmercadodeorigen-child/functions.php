@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.215' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.217' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -142,6 +142,7 @@ $elmercado_modules = array(
 	'inc/mobile-price-slider-alignment-010209.php',
 	'inc/home-category-visibility-010212.php',
 	'inc/home-category-edge-align-010215.php',
+	'inc/catalog-visibility-counts-010217.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
