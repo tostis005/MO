@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.224' );
+define( 'ELMERCADO_THEME_VERSION', '0.10.227' );
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -151,6 +151,7 @@ $elmercado_modules = array(
 	'inc/home-category-truth-before-legacy-010226.php',
 	'inc/vendor-filter-spacing-010226.php',
 	'inc/home-category-output-final-010226.php',
+	'inc/catalog-store-visual-parity-010227.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
