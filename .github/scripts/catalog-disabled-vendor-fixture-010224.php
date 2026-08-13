@@ -12,8 +12,8 @@ $active_login    = 'emo_catalog_fixture_active_010224';
 $disabled_login  = 'emo_catalog_fixture_disabled_010224';
 
 /**
- * Limpieza por SQL directo para que ningún filtro de catálogo pueda ocultar los
- * propios fixtures durante el teardown.
+ * Limpieza por SQL directo para que ningún filtro de catálogo ni hook de borrado
+ * de WCFM pueda afectar a productos reales durante el teardown del fixture.
  */
 $cleanup = static function () use ( $marker, $active_login, $disabled_login ): void {
 	global $wpdb;
@@ -37,14 +37,21 @@ $cleanup = static function () use ( $marker, $active_login, $disabled_login ): v
 		}
 	}
 
-	if ( ! function_exists( 'wp_delete_user' ) ) {
-		require_once ABSPATH . 'wp-admin/includes/user.php';
-	}
+	/*
+	 * No usamos wp_delete_user(): WCFM engancha el borrado de vendedores y en
+	 * desarrollo demostró que puede cambiar el estado de productos ajenos al
+	 * fixture. Al ser cuentas efímeras y conocidas, borramos solo sus filas base.
+	 */
 	foreach ( array( $active_login, $disabled_login, 'emo_catalog_fixture_vendor_010224' ) as $login ) {
-		$user = get_user_by( 'login', $login );
-		if ( $user instanceof WP_User ) {
-			wp_delete_user( (int) $user->ID );
+		$user_id = (int) $wpdb->get_var(
+			$wpdb->prepare( "SELECT ID FROM {$wpdb->users} WHERE user_login = %s LIMIT 1", $login )
+		); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		if ( $user_id <= 0 ) {
+			continue;
 		}
+		$wpdb->delete( $wpdb->usermeta, array( 'user_id' => $user_id ), array( '%d' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		$wpdb->delete( $wpdb->users, array( 'ID' => $user_id ), array( '%d' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		clean_user_cache( $user_id );
 	}
 
 	$remaining = $wpdb->get_col(
@@ -60,8 +67,20 @@ $cleanup = static function () use ( $marker, $active_login, $disabled_login ): v
 		)
 	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 
+	$remaining_users = $wpdb->get_col(
+		$wpdb->prepare(
+			"SELECT ID FROM {$wpdb->users} WHERE user_login IN (%s,%s,%s)",
+			$active_login,
+			$disabled_login,
+			'emo_catalog_fixture_vendor_010224'
+		)
+	); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+
 	if ( $remaining ) {
 		throw new RuntimeException( 'Fixture cleanup left product IDs: ' . implode( ',', array_map( 'absint', $remaining ) ) );
+	}
+	if ( $remaining_users ) {
+		throw new RuntimeException( 'Fixture cleanup left user IDs: ' . implode( ',', array_map( 'absint', $remaining_users ) ) );
 	}
 };
 
