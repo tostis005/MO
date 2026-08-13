@@ -59,6 +59,39 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends google-chrome-stable
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Producer mobile drawer diagnostic
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage();
+            await p.setViewport({width:390,height:844});
+            await p.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?emo_vendor_cat=embutidos-y-curados&qa-mobile=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+            await p.waitForSelector('#elmercado-catalog-filter-shared-interaction-010233',{timeout:20000});
+            await new Promise(r=>setTimeout(r,1500));
+            const before=await p.evaluate(()=>({
+              body:document.body.className,
+              toggles:[...document.querySelectorAll('.emo-filter-toggle-shared-010229')].map(n=>({connected:n.isConnected,html:n.outerHTML,parent:n.parentElement?.className||''})),
+              shells:[...document.querySelectorAll('.emo-filter-shell-shared-010229')].map(n=>({connected:n.isConnected,hidden:n.hidden,parent:n.parentElement?.tagName||''})),
+              lean:!!document.getElementById('elmercado-vendor-filter-lean-runtime-010233'),
+              unified:!!document.getElementById('elmercado-catalog-filter-unified-script-010229'),
+              rail:!!document.querySelector('#wcfmmp-store .emo-filter-rail-shared-010229'),
+              railParent:document.querySelector('#wcfmmp-store .emo-filter-rail-shared-010229')?.parentElement?.className||''
+            }));
+            console.log('PRODUCER_MOBILE_DRAWER_BEFORE',JSON.stringify(before));
+            if(before.toggles.length) await p.click('.emo-filter-toggle-shared-010229');
+            await new Promise(r=>setTimeout(r,250));
+            const after=await p.evaluate(()=>({
+              url:location.href,
+              toggles:[...document.querySelectorAll('.emo-filter-toggle-shared-010229')].map(n=>({expanded:n.getAttribute('aria-expanded'),connected:n.isConnected})),
+              shells:[...document.querySelectorAll('.emo-filter-shell-shared-010229')].map(n=>({hidden:n.hidden,connected:n.isConnected,html:n.outerHTML.slice(0,300)})),
+              railParent:document.querySelector('#wcfmmp-store .emo-filter-rail-shared-010229')?.parentElement?.className||''
+            }));
+            console.log('PRODUCER_MOBILE_DRAWER_AFTER',JSON.stringify(after));
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
       - name: Exact browser parity QA
         run: |
           set -euo pipefail
