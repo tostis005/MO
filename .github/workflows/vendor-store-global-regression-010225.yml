@@ -1,0 +1,57 @@
+name: Global catalog regression after vendor filters 0.10.225
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-store-global-regression-010225.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Chrome
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Verify global catalog totals are unchanged
+        shell: bash
+        env:
+          STAGING_URL: https://dev.elmercadodeorigen.com
+        run: |
+          cat > /tmp/global-regression.cjs <<'JS'
+          const puppeteer = require('puppeteer-core');
+          (async()=>{
+            const base=process.env.STAGING_URL;
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();
+            await page.setViewport({width:1440,height:1000});
+            const checks=[
+              ['/tienda/',21],
+              ['/categoria-producto/jamones-paletas/',10],
+              ['/categoria-producto/embutidos-y-curados/',7],
+              ['/categoria-producto/aceites/',4],
+            ];
+            const report=[];
+            for (const [path,expected] of checks) {
+              await page.goto(`${base}${path}?vendor-regression-010225=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:90000});
+              await page.waitForSelector('.emo-catalog-result-count-010220',{timeout:30000});
+              const data=await page.evaluate(()=>{
+                const text=(document.querySelector('.emo-catalog-result-count-010220')?.textContent||'').replace(/\s+/g,' ').trim();
+                return {text,total:Number.parseInt(text.replace(/[^0-9]/g,''),10)||0};
+              });
+              report.push({path,expected,...data});
+              if (data.total!==expected) throw new Error(`${path}: ${data.total} != ${expected}`);
+              if (!/^\d+\s+resultados?$/.test(data.text)) throw new Error(`${path}: bad result copy ${data.text}`);
+            }
+            console.log('GLOBAL_CATALOG_REGRESSION_010225_OK='+JSON.stringify(report));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          NODE_PATH="$PWD/node_modules" node /tmp/global-regression.cjs
