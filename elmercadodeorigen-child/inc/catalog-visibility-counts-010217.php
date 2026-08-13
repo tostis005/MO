@@ -4,10 +4,10 @@
  *
  * Regla única:
  * - solo productos publicados y visibles en catálogo;
- * - productos sin existencias quedan fuera cuando WooCommerce los oculta;
+ * - los productos sin existencias nunca forman parte del catálogo público;
  * - el público excluye vendedores WCFM desactivados/offline;
- * - los administradores conservan la visibilidad de esos vendedores, pero no
- *   cuentan productos que el catálogo oculta por stock/visibilidad.
+ * - los administradores conservan la visibilidad de esos vendedores, pero los
+ *   productos agotados siguen fuera porque no forman parte del catálogo vendible.
  *
  * @package ElMercadoDeOrigen
  */
@@ -44,14 +44,26 @@ function elmercado_catalog_counts_excluded_authors_010217(): array {
 }
 
 /**
- * Indica si WooCommerce está configurado para ocultar productos sin existencias.
+ * En EMDO los agotados están fuera del catálogo por regla de negocio, aunque la
+ * preferencia global de WooCommerce no esté activada.
  */
 function elmercado_catalog_hides_out_of_stock_010218(): bool {
-	return 'yes' === get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
+	return true;
 }
 
 /**
- * Términos de product_visibility que no deben entrar en los conteos de catálogo.
+ * Devuelve el término product_visibility usado por WooCommerce para agotados.
+ */
+function elmercado_catalog_outofstock_term_id_010219(): int {
+	if ( ! function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+		return 0;
+	}
+	$visibility = wc_get_product_visibility_term_ids();
+	return isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
+}
+
+/**
+ * Términos de product_visibility que no deben entrar en el catálogo ni counts.
  *
  * @return int[]
  */
@@ -73,7 +85,7 @@ function elmercado_catalog_excluded_visibility_term_ids_010218(): array {
 	if ( $catalog_id > 0 ) {
 		$cache[] = $catalog_id;
 	}
-	if ( elmercado_catalog_hides_out_of_stock_010218() && $stock_id > 0 ) {
+	if ( $stock_id > 0 ) {
 		$cache[] = $stock_id;
 	}
 
@@ -82,7 +94,7 @@ function elmercado_catalog_excluded_visibility_term_ids_010218(): array {
 }
 
 /**
- * SQL que elimina productos ocultos por product_visibility.
+ * SQL que elimina productos no catalogables o agotados por product_visibility.
  *
  * @param string $post_reference Tabla/alias que contiene la columna ID.
  */
@@ -102,6 +114,67 @@ function elmercado_catalog_visibility_sql_clause_010218( string $post_reference 
 }
 
 /**
+ * Añade a una tax_query la exclusión obligatoria de agotados sin duplicarla.
+ *
+ * @param array<int|string,mixed> $tax_query Tax query existente.
+ * @return array<int|string,mixed>
+ */
+function elmercado_catalog_force_in_stock_tax_query_010219( array $tax_query ): array {
+	$outofstock_id = elmercado_catalog_outofstock_term_id_010219();
+	if ( $outofstock_id <= 0 ) {
+		return $tax_query;
+	}
+
+	foreach ( $tax_query as $clause ) {
+		if ( ! is_array( $clause ) || 'product_visibility' !== ( $clause['taxonomy'] ?? '' ) ) {
+			continue;
+		}
+		$terms = array_map( 'absint', (array) ( $clause['terms'] ?? array() ) );
+		if ( 'NOT IN' === strtoupper( (string) ( $clause['operator'] ?? '' ) ) && in_array( $outofstock_id, $terms, true ) ) {
+			return $tax_query;
+		}
+	}
+
+	$tax_query[] = array(
+		'taxonomy' => 'product_visibility',
+		'field'    => 'term_id',
+		'terms'    => array( $outofstock_id ),
+		'operator' => 'NOT IN',
+	);
+	return $tax_query;
+}
+
+/**
+ * El listado principal debe obedecer la misma regla que sus contadores. Esto se
+ * fuerza aunque WooCommerce tenga desactivada su preferencia global de ocultar
+ * agotados, porque en EMDO un producto sin existencias no se ofrece en catálogo.
+ */
+add_action(
+	'pre_get_posts',
+	static function ( WP_Query $query ): void {
+		if ( is_admin() ) {
+			return;
+		}
+		if ( function_exists( 'elmercado_wcfm_query_targets_products_010210' ) && ! elmercado_wcfm_query_targets_products_010210( $query ) ) {
+			return;
+		}
+		if ( ! function_exists( 'elmercado_wcfm_query_targets_products_010210' ) ) {
+			$post_type = $query->get( 'post_type' );
+			$targets   = 'product' === $post_type || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) );
+			if ( ! $targets ) {
+				return;
+			}
+		}
+
+		$query->set(
+			'tax_query',
+			elmercado_catalog_force_in_stock_tax_query_010219( (array) $query->get( 'tax_query' ) )
+		);
+	},
+	1001
+);
+
+/**
  * Conteos de categorías equivalentes al catálogo realmente visible.
  *
  * Cada producto se propaga a los ancestros de sus categorías y se deduplica por
@@ -113,8 +186,7 @@ function elmercado_catalog_visible_category_counts_010217(): array {
 	static $cache = array();
 
 	$excluded  = elmercado_catalog_counts_excluded_authors_010217();
-	$scope_key = ( elmercado_catalog_counts_can_view_disabled_010217() ? 'admin' : 'public:' . implode( ',', $excluded ) )
-		. ':stock:' . ( elmercado_catalog_hides_out_of_stock_010218() ? 'hidden' : 'shown' );
+	$scope_key = ( elmercado_catalog_counts_can_view_disabled_010217() ? 'admin' : 'public:' . implode( ',', $excluded ) ) . ':stock:hidden';
 
 	if ( isset( $cache[ $scope_key ] ) ) {
 		return $cache[ $scope_key ];
