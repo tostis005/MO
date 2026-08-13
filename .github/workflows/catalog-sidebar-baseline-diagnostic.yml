@@ -1,0 +1,41 @@
+name: Catalog sidebar baseline diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-sidebar-baseline-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Inspect sidebar
+        env:
+          BASE_URL: https://www.elmercadodeorigen.com
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage(); await p.setViewport({width:1440,height:1000});
+            await p.goto(`${process.env.BASE_URL}/tienda/?sidebar-baseline=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+            await new Promise(r=>setTimeout(r,1000));
+            const selector='#secondary.widget-area,.shop-widget-area'; await p.waitForSelector(selector,{timeout:20000});
+            const data=await p.$eval(selector,el=>{const chain=[];let n=el;while(n){const c=getComputedStyle(n),r=n.getBoundingClientRect();chain.push({tag:n.tagName,id:n.id||'',cls:typeof n.className==='string'?n.className:'',position:c.position,overflow:c.overflow,overflowX:c.overflowX,overflowY:c.overflowY,top:r.top,bottom:r.bottom,height:r.height,transform:c.transform,contain:c.contain,display:c.display});n=n.parentElement;}return chain;});
+            await p.evaluate(()=>scrollTo(0,1200)); await new Promise(r=>setTimeout(r,350));
+            const after=await p.$eval(selector,el=>({scrollY,top:el.getBoundingClientRect().top,position:getComputedStyle(el).position}));
+            console.log('SHOP_SIDEBAR_CHAIN_BASELINE',JSON.stringify(data)); console.log('SHOP_SIDEBAR_AFTER_BASELINE',JSON.stringify(after));
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
