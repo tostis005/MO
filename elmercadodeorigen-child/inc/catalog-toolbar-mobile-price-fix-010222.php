@@ -14,6 +14,24 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Alguna de las capas históricas del catálogo retiró el callback nativo de
+ * WooCommerce, por lo que no basta con volver a mostrar el formulario por CSS.
+ * Lo normalizamos al final de template_redirect: exactamente un callback en 30.
+ */
+add_action(
+	'template_redirect',
+	static function (): void {
+		if ( is_admin() || ! function_exists( 'elmercado_core_filters_is_catalog' ) || ! elmercado_core_filters_is_catalog() || ! function_exists( 'woocommerce_catalog_ordering' ) ) {
+			return;
+		}
+
+		remove_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
+		add_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
+	},
+	PHP_INT_MAX
+);
+
 add_action(
 	'wp_head',
 	static function (): void {
