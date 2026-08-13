@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   browser-parity:
@@ -23,6 +23,63 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Keep producer category filters inside vendor stores
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php')
+          source = path.read_text()
+          original = source
+
+          replacements = [
+              ("$_GET['product_cat']", "$_GET['emo_vendor_cat']"),
+              ("'product_cat' !== $key", "'emo_vendor_cat' !== $key"),
+              ("'product_cat' === $key", "'emo_vendor_cat' === $key"),
+              ("array( 'product_cat' => $term->slug ), array( 'product_cat' )", "array( 'emo_vendor_cat' => $term->slug ), array( 'emo_vendor_cat' )"),
+          ]
+
+          expected = {
+              "$_GET['product_cat']": 4,
+              "'product_cat' !== $key": 1,
+              "'product_cat' === $key": 1,
+              "array( 'product_cat' => $term->slug ), array( 'product_cat' )": 1,
+          }
+
+          for old, new in replacements:
+              count = source.count(old)
+              if count not in (0, expected[old]):
+                  raise SystemExit(f'Unexpected count for {old!r}: {count}')
+              source = source.replace(old, new)
+
+          if "$_GET['product_cat']" in source:
+              raise SystemExit('Legacy product_cat request access still present')
+          if "array( 'product_cat' => $term->slug )" in source:
+              raise SystemExit('Legacy producer category URL still present')
+
+          if source != original:
+              path.write_text(source)
+              print('PRODUCER_CATEGORY_ROUTE_PATCHED')
+          else:
+              print('PRODUCER_CATEGORY_ROUTE_ALREADY_PATCHED')
+          PY
+
+          php -l elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php >/dev/null
+
+          if ! git diff --quiet -- elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
+            git commit -m 'Keep producer category filters inside vendor stores'
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          fi
 
       - name: Validate release sources
         shell: bash
@@ -30,40 +87,30 @@ jobs:
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php >/dev/null
           php -l elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php >/dev/null
+          php -l elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php >/dev/null
           php -l elmercadodeorigen-child/functions.php >/dev/null
           grep -q "ELMERCADO_THEME_VERSION', '0.10.227" elmercadodeorigen-child/functions.php
-          grep -q 'catalog-store-visual-parity-010227.php' elmercadodeorigen-child/functions.php
           grep -q 'emo-catalog-toolbar-parity-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
-          grep -q 'emo-vendor-mobile-filter-shell-010227' elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php
+          grep -q "emo_vendor_cat" elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php
           node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
 
-      - name: Wait until staging serves 0.10.227
+      - name: Wait until staging serves 0.10.227 and safe producer category links
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 60); do
-            html="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/?qa-release-010227=${GITHUB_RUN_ID}-${i}" || true)"
-            if grep -q 'elmercado-catalog-store-visual-parity-010227' <<<"${html}"; then
-              echo 'STAGING_010227_READY'
+          for i in $(seq 1 90); do
+            shop="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/?qa-release-010227=${GITHUB_RUN_ID}-${i}" || true)"
+            vendor="$(curl -fsSL --max-time 20 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-route-010227=${GITHUB_RUN_ID}-${i}" || true)"
+            if grep -q 'elmercado-catalog-store-visual-parity-010227' <<<"${shop}" \
+              && grep -q 'emo_vendor_cat=' <<<"${vendor}" \
+              && ! grep -q '/tienda/hidalgo-de-la-jara/?product_cat=' <<<"${vendor}"; then
+              echo 'STAGING_010227_ROUTE_READY'
               exit 0
             fi
             sleep 5
           done
-          echo '0.10.227 marker did not appear on staging in time' >&2
+          echo '0.10.227 or safe vendor category links did not appear on staging in time' >&2
           exit 1
-
-      - name: Inspect producer category links
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsSL --max-time 30 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-category-links=${GITHUB_RUN_ID}" > /tmp/vendor.html
-          python3 - <<'PY'
-          import html, re
-          source = open('/tmp/vendor.html', encoding='utf-8').read()
-          links = [html.unescape(x) for x in re.findall(r'href=["\']([^"\']*product_cat[^"\']*)', source)]
-          print('PRODUCER_CATEGORY_LINKS', links[:10])
-          print('PRODUCER_HTML_HAS_STORE', 'id="wcfmmp-store"' in source or "id='wcfmmp-store'" in source)
-          PY
 
       - name: Install Chrome and browser driver
         shell: bash
@@ -82,7 +129,7 @@ jobs:
           path = Path('.github/scripts/catalog-store-visual-parity-010227-browser.cjs')
           source = path.read_text()
           old = "    await go(activePage, '/tienda/hidalgo-de-la-jara/?product_cat=jamones-paletas', desktop);"
-          new = """    await go(activePage, '/tienda/hidalgo-de-la-jara/', desktop);\n    await waitVendor(activePage);\n    const activeHref = await activePage.$eval('#emo-vendor-category-filter li a', (a) => a.href);\n    console.log('PRODUCER_ACTIVE_HREF', activeHref);\n    await activePage.click('#emo-vendor-category-filter li a');\n    await sleep(2500);\n    console.log('PRODUCER_AFTER_CLICK_URL', activePage.url());\n    await activePage.waitForFunction(() => Boolean(document.querySelector('#emo-vendor-category-context')), { timeout: 12000 });"""
+          new = """    await go(activePage, '/tienda/hidalgo-de-la-jara/', desktop);\n    await waitVendor(activePage);\n    const activeHref = await activePage.$eval('#emo-vendor-category-filter li a', (a) => a.href);\n    assert(activeHref.includes('emo_vendor_cat='), `Producer category: unsafe URL ${activeHref}`);\n    await activePage.click('#emo-vendor-category-filter li a');\n    await activePage.waitForSelector('#wcfmmp-store #emo-vendor-category-context', { timeout: 45000 });\n    await sleep(500);"""
           if old not in source:
               raise SystemExit('Expected active-category QA line not found')
           path.write_text(source.replace(old, new, 1))
