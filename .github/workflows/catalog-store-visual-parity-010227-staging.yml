@@ -88,6 +88,13 @@ jobs:
           end = source.index('    await shopPage.setViewport', start)
           source = source[:start] + "    report.activeCategory = { htmlProbe: true };\n\n" + source[end:]
           source = source.replace('    await activePage.close();\n', '', 1)
+          shop_old = "    await go(shopPage, '/tienda/', { width:390, height:844 });\n    await waitShop(shopPage);"
+          shop_new = "    await go(shopPage, '/tienda/', { width:390, height:844 });\n    await shopPage.waitForSelector('.emo-mobile-filter-toggle', { visible:true, timeout:45000 });"
+          vendor_old = "    await go(vendorPage, '/tienda/hidalgo-de-la-jara/', { width:390, height:844 });\n    await waitVendor(vendorPage);"
+          vendor_new = "    await go(vendorPage, '/tienda/hidalgo-de-la-jara/', { width:390, height:844 });\n    await vendorPage.waitForSelector('.emo-vendor-mobile-filter-toggle-010227', { visible:true, timeout:45000 });"
+          if shop_old not in source or vendor_old not in source:
+              raise SystemExit('Expected mobile wait blocks not found')
+          source = source.replace(shop_old, shop_new, 1).replace(vendor_old, vendor_new, 1)
           path.write_text(source)
           PY
           node --check .github/scripts/catalog-store-visual-parity-010227-browser.cjs
