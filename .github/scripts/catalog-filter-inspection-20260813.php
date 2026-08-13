@@ -1,50 +1,82 @@
 <?php
-/** Read-only inspection of ham reference metadata in production. */
+/** Read-only inspection of production catalog status and vendor state. */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! function_exists( 'wc_get_product' ) ) { exit( 2 ); }
 
 global $wpdb;
+$vendors = array(
+    3    => '1957',
+    6    => 'Hidalgo de la Jara',
+    4507 => 'Tolecarnes',
+    4508 => 'Puente Robles',
+    4509 => 'El Catedrático',
+);
 
-function emdo_matrix_terms( $id, $taxonomy ) {
-    if ( ! taxonomy_exists( $taxonomy ) ) { return array(); }
-    $names = wp_get_object_terms( (int) $id, $taxonomy, array( 'fields'=>'names' ) );
-    if ( is_wp_error( $names ) ) { return array(); }
-    $names = array_values( array_unique( array_map( 'strval', (array) $names ) ) ); sort($names); return $names;
-}
+$visibility_ids = function_exists('wc_get_product_visibility_term_ids') ? wc_get_product_visibility_term_ids() : array();
+$exclude_catalog_id = (int)($visibility_ids['exclude-from-catalog'] ?? 0);
+$outofstock_id = (int)($visibility_ids['outofstock'] ?? 0);
 
-foreach ( array( 4508=>'Puente Robles', 4509=>'El Catedrático' ) as $author_id=>$vendor ) {
-    $rows = $wpdb->get_results( $wpdb->prepare(
-        "SELECT DISTINCT p.ID
-         FROM {$wpdb->posts} p
-         INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id=p.ID
-         INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='product_cat'
-         INNER JOIN {$wpdb->terms} t ON t.term_id=tt.term_id AND t.slug='jamones-paletas'
-         WHERE p.post_type='product' AND p.post_author=%d AND p.post_status IN ('publish','archived')
-         ORDER BY p.ID ASC",
+foreach ($vendors as $author_id => $vendor) {
+    $user = get_userdata($author_id);
+    $status_rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT post_status, COUNT(*) AS n FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d GROUP BY post_status ORDER BY post_status",
         $author_id
-    ), ARRAY_A );
-    $matrix = array();
-    foreach ( (array) $rows as $row ) {
-        $id=(int)$row['ID'];
-        $cats = wp_get_post_terms($id,'product_cat',array('fields'=>'slugs'));
-        $cats = is_wp_error($cats)?array():array_values(array_map('strval',(array)$cats));
-        if ( in_array('packs-y-lotes',$cats,true) ) { continue; }
-        $key_data = array(
-            'tipo-pieza'=>emdo_matrix_terms($id,'pa_tipo-pieza'),
-            'calidad'=>emdo_matrix_terms($id,'pa_calidad'),
-            'raza'=>emdo_matrix_terms($id,'pa_raza-iberica'),
-            'alimentacion'=>emdo_matrix_terms($id,'pa_alimentacion'),
-            'curacion'=>emdo_matrix_terms($id,'pa_curacion'),
-            'origen'=>emdo_matrix_terms($id,'pa_origen'),
-        );
-        $key=wp_json_encode($key_data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-        if(!isset($matrix[$key])){$matrix[$key]=array('count'=>0,'ids'=>array(),'data'=>$key_data);}
-        ++$matrix[$key]['count']; $matrix[$key]['ids'][]=$id;
+    ), ARRAY_A);
+    $statuses = array();
+    foreach ((array)$status_rows as $row) { $statuses[(string)$row['post_status']] = (int)$row['n']; }
+
+    $catalog_hidden = 0;
+    $outofstock = 0;
+    $archived_instock = 0;
+    $archived_visible = 0;
+    $rows = $wpdb->get_col($wpdb->prepare(
+        "SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status IN ('publish','archived')",
+        $author_id
+    ));
+    foreach (array_map('intval',(array)$rows) as $id) {
+        $p = wc_get_product($id);
+        if (!$p instanceof WC_Product) { continue; }
+        if ('hidden' === $p->get_catalog_visibility()) { ++$catalog_hidden; }
+        if (!$p->is_in_stock()) { ++$outofstock; }
+        if ('archived' === get_post_status($id) && $p->is_in_stock()) { ++$archived_instock; }
+        if ('archived' === get_post_status($id) && 'hidden' !== $p->get_catalog_visibility() && $p->is_in_stock()) { ++$archived_visible; }
     }
-    usort($matrix,function($a,$b){return $b['count']<=>$a['count'];});
-    foreach($matrix as $entry){
-        echo 'HAM_REFERENCE_MATRIX ' . wp_json_encode(array('vendor'=>$vendor,'count'=>$entry['count'],'sample_ids'=>array_slice($entry['ids'],0,8),'attrs'=>$entry['data']),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+
+    $supplier = $wpdb->get_row($wpdb->prepare(
+        "SELECT id, code, active FROM {$wpdb->prefix}mdo_suppliers WHERE vendor_user_id=%d ORDER BY id DESC LIMIT 1",
+        $author_id
+    ), ARRAY_A);
+    $source_statuses = array();
+    if ($supplier) {
+        $src = $wpdb->get_results($wpdb->prepare(
+            "SELECT status, COUNT(*) AS n FROM {$wpdb->prefix}mdo_source_products WHERE supplier_id=%d GROUP BY status ORDER BY status",
+            (int)$supplier['id']
+        ), ARRAY_A);
+        foreach ((array)$src as $row) { $source_statuses[(string)$row['status']] = (int)$row['n']; }
     }
+
+    $settings = get_user_meta($author_id, 'wcfmmp_profile_settings', true);
+    echo 'CATALOG_VENDOR_STATE ' . wp_json_encode(array(
+        'id'=>$author_id,
+        'vendor'=>$vendor,
+        'roles'=>$user instanceof WP_User ? array_values($user->roles) : array(),
+        'disable_meta'=>get_user_meta($author_id,'_disable_vendor',true),
+        'offline_meta'=>get_user_meta($author_id,'_wcfm_store_offline',true),
+        'disabled_helper'=>function_exists('elmercado_wcfm_vendor_is_disabled_010210') ? elmercado_wcfm_vendor_is_disabled_010210($author_id) : null,
+        'store_name'=>is_array($settings) ? (string)($settings['store_name'] ?? '') : '',
+        'post_statuses'=>$statuses,
+        'catalog_hidden'=>$catalog_hidden,
+        'outofstock'=>$outofstock,
+        'archived_instock'=>$archived_instock,
+        'archived_visible_nonhidden'=>$archived_visible,
+        'supplier'=>$supplier,
+        'source_statuses'=>$source_statuses,
+    ), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
 }
 
+$global = $wpdb->get_results(
+    "SELECT post_status, COUNT(*) AS n FROM {$wpdb->posts} WHERE post_type='product' GROUP BY post_status ORDER BY post_status",
+    ARRAY_A
+);
+echo 'CATALOG_GLOBAL_STATUS ' . wp_json_encode($global, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
 echo "FILTER_INSPECTION_DONE\n";
