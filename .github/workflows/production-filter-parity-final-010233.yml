@@ -1,0 +1,94 @@
+name: Production filter parity final 0.10.233
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-filter-parity-final-010233.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-filter-parity-final
+  cancel-in-progress: false
+
+jobs:
+  deploy-filters-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - name: Checkout deployment control
+        uses: actions/checkout@v4
+        with:
+          path: control
+
+      - name: Checkout QA-approved filter source
+        uses: actions/checkout@v4
+        with:
+          ref: 5dde637b4c3895263e0bf0621b43accfe6eae262
+          path: source
+
+      - name: Prepare production-scoped filter payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp control/.github/scripts/deploy-filter-parity-010233-production.sh /tmp/deploy-filter-parity.sh
+          bash -n /tmp/deploy-filter-parity.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('source/elmercadodeorigen-child/inc/catalog-filter-unified-010229.php')
+          text = path.read_text()
+          anchor = '<style id="elmercado-catalog-filter-unified-010229">\n'
+          if anchor not in text:
+              raise SystemExit('unified filter style anchor missing')
+          marker = 'elmercado-production-filter-scroll-root-010233'
+          if marker not in text:
+              scoped = '''<style id="elmercado-catalog-filter-unified-010229">\n\t\t\t/* elmercado-production-filter-scroll-root-010233 */\n\t\t\t@media (min-width:1101px) {\n\t\t\t\thtml body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page) { overflow-x:clip !important; overflow-y:visible !important; }\n\t\t\t}\n'''
+              text = text.replace(anchor, scoped, 1)
+          path.write_text(text)
+          PY
+          php -l source/elmercadodeorigen-child/inc/catalog-filter-unified-010229.php >/dev/null
+          grep -Fq 'elmercado-production-filter-scroll-root-010233' source/elmercadodeorigen-child/inc/catalog-filter-unified-010229.php
+          echo PRODUCTION_FILTER_PAYLOAD_PREPARED_010233_OK
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
+          cd source
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy and verify filters only
+        shell: bash
+        run: |
+          set -o pipefail
+          bash /tmp/deploy-filter-parity.sh "$GITHUB_WORKSPACE/source" 2>&1 | tee /tmp/filter-production.log
+          grep -Fq 'FILTER_PAYLOAD_010233_OK' /tmp/filter-production.log
+          grep -Fq 'FILTER_FILES_DEPLOYED_010233_OK' /tmp/filter-production.log
+          grep -Fq 'FILTER_CACHE_RESET_010233_OK' /tmp/filter-production.log
+          grep -Fq 'PRODUCTION_FILTER_RUNTIME_010233_OK' /tmp/filter-production.log
+          grep -Fq 'CATALOG_FILTER_UNIFIED_010233_OK' /tmp/filter-production.log
+          grep -Fq 'PRODUCTION_FILTER_PARITY_010233_OK' /tmp/filter-production.log
+          ! grep -Fq 'PRODUCTION_FILTER_PARITY_ROLLED_BACK' /tmp/filter-production.log
