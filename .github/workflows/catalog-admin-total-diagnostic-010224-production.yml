@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/catalog-admin-total-diagnostic-010224-production.yml'
+      - '.github/scripts/catalog-admin-total-diagnostic-010224-browser.cjs'
   workflow_dispatch:
 
 permissions:
