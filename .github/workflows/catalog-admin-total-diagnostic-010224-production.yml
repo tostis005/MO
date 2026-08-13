@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/catalog-admin-total-diagnostic-010224-production.yml'
       - '.github/scripts/catalog-admin-total-diagnostic-010224-browser.cjs'
+      - '.github/scripts/catalog-attribute-count-data-010217.php'
+      - '.github/scripts/catalog-visibility-count-parity-010217-browser.cjs'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +23,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_URL: https://www.elmercadodeorigen.com
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +33,9 @@ jobs:
         run: |
           set -euo pipefail
           php -l .github/scripts/home-category-parity-data-010215.php >/dev/null
+          php -l .github/scripts/catalog-attribute-count-data-010217.php >/dev/null
           node --check .github/scripts/catalog-admin-total-diagnostic-010224-browser.cjs
+          node --check .github/scripts/catalog-visibility-count-parity-010217-browser.cjs
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
       - name: Install browser and SSH tools
@@ -77,6 +82,28 @@ jobs:
           echo "ADMIN_COOKIE_NAME=$(printf '%s' "$NAME_B64" | base64 -d)" >> "$GITHUB_ENV"
           echo "ADMIN_COOKIE_VALUE=$COOKIE_VALUE" >> "$GITHUB_ENV"
 
+      - name: Build independent production counter expectations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          REMOTE_DATA="/tmp/catalog-attribute-count-data-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-attribute-count-data-010217.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DATA"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE_DATA' --path='$PRODUCTION_WP_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_DATA'; exit \$rc" )"
+          DATA_B64="$(printf '%s\n' "$OUT" | sed -n 's/^__ATTRIBUTE_ROWS__=//p' | tail -n1)"
+          : "${DATA_B64:?missing attribute parity payload}"
+          DATA_JSON="$(printf '%s' "$DATA_B64" | base64 -d)"
+          printf 'ATTRIBUTE_PARITY_JSON<<__EMDO_JSON__\n%s\n__EMDO_JSON__\n' "$DATA_JSON" >> "$GITHUB_ENV"
+          echo "COUNTER_EXPECTATIONS=$DATA_JSON"
+
       - name: Diagnose public and administrator catalog in Chrome
         shell: bash
         run: node .github/scripts/catalog-admin-total-diagnostic-010224-browser.cjs
+
+      - name: Validate totals, categories, vendors and attribute counts in Chrome
+        shell: bash
+        run: node .github/scripts/catalog-visibility-count-parity-010217-browser.cjs
