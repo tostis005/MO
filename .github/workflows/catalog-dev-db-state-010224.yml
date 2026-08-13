@@ -1,0 +1,45 @@
+name: Catalog development DB state 0.10.224
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-dev-db-state-010224.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH tool
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass jq
+      - name: Inspect development product DB
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?}"
+          REMOTE="/tmp/catalog-dev-db-state-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-dev-db-state-010224.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$WP_PATH' --allow-root; rm -f '$REMOTE'" )"
+          B64="$(printf '%s\n' "$OUT" | sed -n 's/^__DEV_DB_STATE__=//p' | tail -n1)"
+          : "${B64:?}"
+          JSON="$(printf '%s' "$B64" | base64 -d)"
+          printf '%s\n' "$JSON" | jq '{product_count,status_counts,stock_counts,fixture_product_ids,fixture_users,products}'
