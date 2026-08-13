@@ -15,7 +15,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
     async function open(path) {
       await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}qa-unified=${Date.now()}`, {waitUntil:'domcontentloaded', timeout:60000});
       await page.waitForSelector('#elmercado-catalog-filter-unified-010229', {timeout:20000});
-      await page.waitForSelector('#elmercado-catalog-filter-shared-interaction-010230', {timeout:20000});
+      await page.waitForSelector('#elmercado-catalog-filter-shared-interaction-010231', {timeout:20000});
       await wait(1200);
     }
 
@@ -46,7 +46,7 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
         const link=el.querySelector('.emo-filter-link-shared-010229');
         const r=link.getBoundingClientRect();
         const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
-        const finalStyle=document.getElementById('elmercado-catalog-filter-shared-interaction-010230');
+        const finalStyle=document.getElementById('elmercado-catalog-filter-shared-interaction-010231');
         const matching=[];
         try {
           for (const rule of finalStyle?.sheet?.cssRules || []) {
@@ -63,10 +63,10 @@ const wait = ms => new Promise(r => setTimeout(r,ms));
           hitClass:hit?.className || '',
           linkClass:link.className,
           rowClass:el.className,
-          closestPage:!!link.closest('#page'),
-          closestDoublePage:!!link.closest('#page#page'),
+          shopRail:!!link.closest('#secondary.emo-filter-rail-shared-010229'),
+          vendorRail:!!link.closest('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229'),
           finalStyle:!!finalStyle,
-          finalCssHasDoublePage:finalStyle?.textContent?.includes('#page#page .emo-filter-rail-shared-010229') || false,
+          finalCssHasRealRails:finalStyle?.textContent?.includes(':is(#secondary#secondary, #wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229') || false,
           matching
         };
       });
