@@ -1,0 +1,59 @@
+name: Catalog filter unified 0.10.229 staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php'
+      - 'elmercadodeorigen-child/inc/catalog-filter-unified-010229.php'
+      - '.github/scripts/catalog-filter-unified-010229-browser.cjs'
+      - '.github/workflows/catalog-filter-unified-010229-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unified:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source and retired layers
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          php -l elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php >/dev/null
+          php -l elmercadodeorigen-child/inc/catalog-filter-unified-010229.php >/dev/null
+          node --check .github/scripts/catalog-filter-unified-010229-browser.cjs
+          grep -q "catalog-filter-unified-010229.php" elmercadodeorigen-child/functions.php
+          ! grep -q "vendor-store-catalog-layout-lock-010225.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          ! grep -q "vendor-store-shop-parity-010226.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          ! grep -q "catalog-filter-stability-010228.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+          grep -q "vendor-sticky-root-fix-010228.php" elmercadodeorigen-child/inc/catalog-result-total-cleanup-010221.php
+      - name: Wait for development deployment
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            shop="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
+            vendor="$(curl -fsSL --max-time 25 "${BASE_URL}/tienda/hidalgo-de-la-jara/?qa-unified=${GITHUB_RUN_ID}-${i}" || true)"
+            if grep -q 'elmercado-catalog-filter-unified-010229' <<<"${shop}" && grep -q 'elmercado-catalog-filter-unified-010229' <<<"${vendor}"; then
+              echo CATALOG_FILTER_UNIFIED_LIVE_010229_OK
+              exit 0
+            fi
+            sleep 4
+          done
+          exit 1
+      - name: Install Chrome and Puppeteer
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Exact browser parity QA
+        run: |
+          set -euo pipefail
+          node .github/scripts/catalog-filter-unified-010229-browser.cjs
