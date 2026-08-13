@@ -60,6 +60,7 @@ add_action(
 		$modules = array(
 			ELMERCADO_THEME_PATH . '/inc/vendor-store-catalog-layout-lock-010225.php',
 			ELMERCADO_THEME_PATH . '/inc/vendor-store-shop-parity-010226.php',
+			ELMERCADO_THEME_PATH . '/inc/vendor-store-parity-runtime-010226.php',
 		);
 		foreach ( $modules as $module ) {
 			if ( is_readable( $module ) ) {
