@@ -48,7 +48,7 @@ add_action(
 					pointer-events: auto !important;
 					overflow: visible !important;
 					margin: 0 !important;
-					padding: 0 !important;
+					padding: 18px !important;
 					border: 0 !important;
 					background: transparent !important;
 					box-shadow: none !important;
@@ -149,7 +149,7 @@ add_action(
 					sidebar.style.setProperty('transform', 'none', 'important');
 					sidebar.style.setProperty('overflow', 'visible', 'important');
 					sidebar.style.setProperty('margin', '0', 'important');
-					sidebar.style.setProperty('padding', '0', 'important');
+					sidebar.style.setProperty('padding', '18px', 'important');
 				} else {
 					bodyHost.style.setProperty('display', 'block', 'important');
 					productHost.style.setProperty('display', 'block', 'important');
