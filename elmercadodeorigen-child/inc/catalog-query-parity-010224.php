@@ -9,9 +9,8 @@
  * - el público excluye vendedores WCFM desactivados/offline;
  * - el administrador puede ver esos vendedores desactivados.
  *
- * Este módulo sincroniza found_posts/max_num_pages con el total exacto ya usado
- * por la cabecera de resultados. Así la paginación y la carga continua no pueden
- * recorrer páginas que no pertenecen al conjunto visible real.
+ * Este módulo sincroniza el SQL real, found_posts, max_num_pages, Home y carga
+ * continua para que todas las superficies representen exactamente el mismo set.
  *
  * @package ElMercadoDeOrigen
  */
@@ -42,8 +41,6 @@ function elmercado_catalog_is_main_query_010224( WP_Query $query ): bool {
 
 /**
  * Fuerza en el propio loop las exclusiones de visibilidad usadas por los counts.
- * WooCommerce suele añadir exclude-from-catalog, pero aquí no dependemos de que
- * otra capa del marketplace conserve esa cláusula.
  *
  * @param array<int|string,mixed> $tax_query Consulta existente.
  * @return array<int|string,mixed>
@@ -88,15 +85,13 @@ add_action(
 			return;
 		}
 
+		/* El frontend nunca es una vista de borradores/privados, ni siquiera para admin. */
+		$query->set( 'post_status', 'publish' );
 		$query->set(
 			'tax_query',
 			elmercado_catalog_force_visibility_tax_query_010224( (array) $query->get( 'tax_query' ) )
 		);
 
-		/*
-		 * La exclusión de vendedores desactivados la gobierna 0.10.210. Aquí solo
-		 * reforzamos la regla para el caso público sin tocar la excepción admin.
-		 */
 		if ( function_exists( 'elmercado_catalog_counts_can_view_disabled_010217' )
 			&& ! elmercado_catalog_counts_can_view_disabled_010217()
 			&& function_exists( 'elmercado_catalog_counts_excluded_authors_010217' ) ) {
@@ -108,6 +103,49 @@ add_action(
 		}
 	},
 	1200
+);
+
+/**
+ * Última defensa SQL. Plugins de marketplace pueden reconstruir tax_query o el
+ * estado de posts después de pre_get_posts. Esta cláusula se aplica justo antes
+ * de ejecutar el SELECT y replica literalmente la regla usada por los counts.
+ *
+ * @param array<string,string> $clauses Partes SQL de WP_Query.
+ * @return array<string,string>
+ */
+add_filter(
+	'posts_clauses',
+	static function ( array $clauses, WP_Query $query ): array {
+		if ( is_admin() || ! elmercado_catalog_is_main_query_010224( $query ) ) {
+			return $clauses;
+		}
+
+		global $wpdb;
+		$where = (string) ( $clauses['where'] ?? '' );
+
+		/* Solo publicados, también para administradores con read_private_products. */
+		$where .= $wpdb->prepare( " AND {$wpdb->posts}.post_status = %s", 'publish' );
+
+		/* Exclude-from-catalog y outofstock son obligatorios para todos. */
+		if ( function_exists( 'elmercado_catalog_visibility_sql_clause_010218' ) ) {
+			$where .= elmercado_catalog_visibility_sql_clause_010218( $wpdb->posts );
+		}
+
+		/* Única excepción admin: vendedores desactivados. */
+		if ( function_exists( 'elmercado_catalog_counts_can_view_disabled_010217' )
+			&& ! elmercado_catalog_counts_can_view_disabled_010217()
+			&& function_exists( 'elmercado_catalog_counts_excluded_authors_010217' ) ) {
+			$excluded_authors = array_values( array_filter( array_map( 'absint', elmercado_catalog_counts_excluded_authors_010217() ) ) );
+			if ( $excluded_authors ) {
+				$where .= ' AND ' . $wpdb->posts . '.post_author NOT IN (' . implode( ',', $excluded_authors ) . ')';
+			}
+		}
+
+		$clauses['where'] = $where;
+		return $clauses;
+	},
+	PHP_INT_MAX,
+	2
 );
 
 /**
@@ -127,9 +165,7 @@ add_filter(
 );
 
 /**
- * Defensa adicional: algunas capas del tema/marketplace han alterado found_posts
- * después del filtro anterior. Antes de que la plantilla pinte el paginador,
- * dejamos ambas propiedades del WP_Query en el valor exacto.
+ * Antes de pintar el paginador dejamos ambas propiedades en el valor exacto.
  */
 add_filter(
 	'the_posts',
@@ -154,8 +190,7 @@ add_filter(
 );
 
 /**
- * Reescribe los counts de tarjetas de Home con la misma fuente central que usa
- * el widget de categorías. Se ejecuta después de la capa histórica 0.10.212.
+ * Reescribe los counts de tarjetas de Home con la misma fuente central.
  */
 add_filter(
 	'the_content',
@@ -215,8 +250,9 @@ add_filter(
 );
 
 /**
- * La carga continua histórica cambia el copy del total a "Mostrando…" conforme
- * añade páginas. El total exacto debe seguir siendo una única cifra estable.
+ * Mantiene el copy exacto y blinda el DOM contra dos cargadores históricos que
+ * puedan solicitar la misma página simultáneamente. La deduplicación usa el ID
+ * de producto, no el texto ni la posición visual.
  */
 add_action(
 	'wp_footer',
@@ -232,20 +268,61 @@ add_action(
 		(() => {
 			'use strict';
 			const node = document.querySelector('.emo-catalog-result-count-010220');
-			if (!node) return;
 			const total = <?php echo wp_json_encode( $total ); ?>;
 			const label = `${total.toLocaleString('es-ES')} ${total === 1 ? 'resultado' : 'resultados'}`;
-			let normalizing = false;
-			const normalize = () => {
-				if (normalizing) return;
-				const current = (node.textContent || '').replace(/\s+/g, ' ').trim();
-				if (current === label) return;
-				normalizing = true;
-				node.textContent = label;
-				normalizing = false;
+
+			if (node) {
+				let normalizing = false;
+				const normalize = () => {
+					if (normalizing) return;
+					const current = (node.textContent || '').replace(/\s+/g, ' ').trim();
+					if (current === label) return;
+					normalizing = true;
+					node.textContent = label;
+					normalizing = false;
+				};
+				normalize();
+				new MutationObserver(normalize).observe(node, { childList: true, characterData: true, subtree: true });
+			}
+
+			const grid = document.querySelector('#wcfmmp-store ul.products, main ul.products, #primary ul.products, .content-area ul.products, ul.products');
+			if (!grid) return;
+
+			/* Si por legado se han inicializado dos estados de carga, conservamos uno. */
+			const loaderStates = [...document.querySelectorAll('.emo-catalog-load-state')];
+			loaderStates.slice(1).forEach((state) => state.remove());
+
+			const productKey = (item) => {
+				const postClass = [...item.classList].find((name) => /^post-\d+$/.test(name));
+				if (postClass) return postClass;
+				const id = item.getAttribute('data-product_id') || item.querySelector('[data-product_id]')?.getAttribute('data-product_id');
+				if (id) return `product-${id}`;
+				const href = item.querySelector('a.woocommerce-LoopProduct-link, a[href*="/producto/"]')?.href || '';
+				return href;
 			};
-			normalize();
-			new MutationObserver(normalize).observe(node, { childList: true, characterData: true, subtree: true });
+
+			const dedupe = () => {
+				const seen = new Set();
+				[...grid.querySelectorAll(':scope > li.product')].forEach((item) => {
+					const key = productKey(item);
+					if (!key) return;
+					if (seen.has(key)) {
+						item.remove();
+						return;
+					}
+					seen.add(key);
+				});
+			};
+			dedupe();
+			let queued = false;
+			new MutationObserver(() => {
+				if (queued) return;
+				queued = true;
+				queueMicrotask(() => {
+					queued = false;
+					dedupe();
+				});
+			}).observe(grid, { childList: true });
 		})();
 		</script>
 		<?php
