@@ -4,6 +4,7 @@
  *
  * - El filtro global por vendedor restringe el SQL real también para visitantes,
  *   incluso en consultas auxiliares que construyen la carga continua por IDs.
+ * - La lista completa del scroll conserva exactamente la ordenación de WooCommerce.
  * - Las etiquetas de atributos de productos variables no llevan recuadro.
  * - Productores no muestra ninguna barra de búsqueda/filtrado de WCFM.
  * - Tienda no muestra la línea editorial secundaria solicitada.
@@ -116,6 +117,128 @@ add_filter(
 			" AND {$wpdb->posts}.post_author = %d",
 			$vendor_id
 		);
+		return $clauses;
+	},
+	PHP_INT_MAX,
+	2
+);
+
+/**
+ * Valor de ordenación solicitado por el visitante.
+ */
+function elmercado_catalog_scroll_ordering_value_010245(): string {
+	$value = '';
+	if ( isset( $_GET['orderby'] ) && ! is_array( $_GET['orderby'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$value = sanitize_text_field( wp_unslash( (string) $_GET['orderby'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	}
+	if ( '' === $value ) {
+		$query_value = get_query_var( 'orderby' );
+		if ( is_string( $query_value ) ) {
+			$value = sanitize_text_field( $query_value );
+		}
+	}
+	if ( '' === $value ) {
+		$value = sanitize_text_field( (string) get_option( 'woocommerce_default_catalog_orderby', 'menu_order' ) );
+	}
+	return strtolower( trim( $value ) );
+}
+
+/**
+ * Identifica la consulta auxiliar de IDs que alimenta la carga continua 0.10.234.
+ */
+function elmercado_catalog_scroll_ids_query_010245( WP_Query $query ): bool {
+	if ( is_admin() || 'ids' !== (string) $query->get( 'fields' ) ) {
+		return false;
+	}
+	if ( -1 !== (int) $query->get( 'posts_per_page' ) || (bool) $query->get( 'suppress_filters' ) ) {
+		return false;
+	}
+	$post_type = $query->get( 'post_type' );
+	if ( 'product' !== $post_type && ! ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) ) {
+		return false;
+	}
+	if ( function_exists( 'elmercado_catalog_filter_scroll_target_010234' ) ) {
+		return elmercado_catalog_filter_scroll_target_010234();
+	}
+	$is_vendor = function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225();
+	$is_shop   = function_exists( 'is_shop' ) && is_shop();
+	$is_tax    = function_exists( 'is_product_taxonomy' ) && is_product_taxonomy();
+	return $is_vendor || $is_shop || $is_tax;
+}
+
+/**
+ * WooCommerce aplica precio, popularidad y valoración con filtros posts_clauses
+ * temporales y los retira al terminar el loop principal. La consulta auxiliar
+ * del scroll se ejecuta después, por lo que aquí reproducimos las cláusulas
+ * oficiales y dejamos un desempate estable por product_id. También fijamos los
+ * criterios simples para que todos los lotes compartan una única secuencia.
+ *
+ * @param array<string,string> $clauses Partes SQL de WP_Query.
+ * @return array<string,string>
+ */
+add_filter(
+	'posts_clauses',
+	static function ( array $clauses, WP_Query $query ): array {
+		if ( ! elmercado_catalog_scroll_ids_query_010245( $query ) ) {
+			return $clauses;
+		}
+
+		$requested = elmercado_catalog_scroll_ordering_value_010245();
+		$order     = 'ASC';
+		if ( '-desc' === substr( $requested, -5 ) ) {
+			$order     = 'DESC';
+			$requested = substr( $requested, 0, -5 );
+		} elseif ( '-asc' === substr( $requested, -4 ) ) {
+			$requested = substr( $requested, 0, -4 );
+		}
+
+		global $wpdb;
+		$posts = $wpdb->posts;
+		$alias = 'emo_scroll_order_lookup_010245';
+
+		switch ( $requested ) {
+			case 'price':
+			case 'popularity':
+			case 'rating':
+				$table = $wpdb->prefix . 'wc_product_meta_lookup';
+				if ( false === strpos( (string) ( $clauses['join'] ?? '' ), $alias ) ) {
+					$clauses['join'] = (string) ( $clauses['join'] ?? '' ) . " LEFT JOIN {$table} {$alias} ON {$posts}.ID = {$alias}.product_id ";
+				}
+				if ( 'price' === $requested ) {
+					$clauses['orderby'] = 'DESC' === $order
+						? " {$alias}.max_price DESC, {$alias}.product_id DESC "
+						: " {$alias}.min_price ASC, {$alias}.product_id ASC ";
+				} elseif ( 'popularity' === $requested ) {
+					$clauses['orderby'] = " {$alias}.total_sales DESC, {$alias}.product_id DESC ";
+				} else {
+					$clauses['orderby'] = " {$alias}.average_rating DESC, {$alias}.rating_count DESC, {$alias}.product_id DESC ";
+				}
+				break;
+
+			case 'date':
+				$order = 'ASC' === $order ? 'ASC' : 'DESC';
+				$clauses['orderby'] = " {$posts}.post_date {$order}, {$posts}.ID {$order} ";
+				break;
+
+			case 'modified':
+				$order = 'ASC' === $order ? 'ASC' : 'DESC';
+				$clauses['orderby'] = " {$posts}.post_modified {$order}, {$posts}.ID {$order} ";
+				break;
+
+			case 'title':
+				$clauses['orderby'] = " {$posts}.post_title {$order}, {$posts}.ID {$order} ";
+				break;
+
+			case 'id':
+				$clauses['orderby'] = " {$posts}.ID {$order} ";
+				break;
+
+			case 'menu_order':
+			case '':
+				$clauses['orderby'] = " {$posts}.menu_order {$order}, {$posts}.post_title {$order}, {$posts}.ID {$order} ";
+				break;
+		}
+
 		return $clauses;
 	},
 	PHP_INT_MAX,
