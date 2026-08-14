@@ -64,19 +64,19 @@ jobs:
             else
               sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_FILE' '$BACKUP'" || true
             fi
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
             exit "$code"
           }
           trap rollback ERR
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
           sshpass -e scp $SCP elmercadodeorigen-child/inc/wcfm-colorbox-overflow-fix-20260814.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE_FILE' >/dev/null; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" -l '$REMOTE_FILE' >/dev/null; \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-          ADMIN_ID="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp user list --role=administrator --field=ID --path='$PROD_PATH' --allow-root | head -n1")"
+          ADMIN_ID="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" \"\$wp_bin\" user list --role=administrator --field=ID --path='$PROD_PATH' --allow-root | head -n1")"
           test -n "$ADMIN_ID"
-          COOKIE_NAME="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp eval 'echo LOGGED_IN_COOKIE;' --path='$PROD_PATH' --allow-root")"
-          COOKIE_B64="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp eval 'echo base64_encode(wp_generate_auth_cookie((int) $ADMIN_ID, time()+900, \"logged_in\"));' --path='$PROD_PATH' --allow-root")"
+          COOKIE_NAME="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" \"\$wp_bin\" eval 'echo LOGGED_IN_COOKIE;' --path='$PROD_PATH' --allow-root")"
+          COOKIE_B64="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" \"\$wp_bin\" eval 'echo base64_encode(wp_generate_auth_cookie((int) $ADMIN_ID, time()+900, \"logged_in\"));' --path='$PROD_PATH' --allow-root")"
           export COOKIE_NAME COOKIE_B64
 
           node <<'NODE'
