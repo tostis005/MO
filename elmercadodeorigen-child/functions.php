@@ -138,6 +138,7 @@ $elmercado_modules = array(
 	'inc/category-specific-filters-010185.php',
 	'inc/cart-shipping-copy-final-010192.php',
 	'inc/wcfm-disabled-vendor-visibility-010210.php',
+	'inc/product-navigation-performance-010237.php',
 	'inc/catalog-filter-system-final-010207.php',
 	'inc/wcfm-disabled-vendor-ui-010211.php',
 	'inc/mobile-price-slider-alignment-010209.php',
