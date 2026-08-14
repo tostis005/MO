@@ -41,7 +41,6 @@ add_action(
         }
         ?>
         <style id="elmercado-checkout-no-shipping-style">
-            /* Aviso sin envío: contraste correcto tanto en carrito como en checkout. */
             .emo-no-shipping-destination {
                 display: block !important;
                 margin: 0.75rem 0 !important;
@@ -75,59 +74,7 @@ add_action(
                 display: none !important;
             }
 
-            /*
-             * Checks del checkout. Se neutraliza la sangría distinta de los
-             * wrappers de WooCommerce/Checkout Manager y se aplica una única
-             * alineación a las tres opciones.
-             */
-            body.woocommerce-checkout #customer_details .woocommerce-account-fields,
-            body.woocommerce-checkout #customer_details .woocommerce-shipping-fields {
-                min-height: 0 !important;
-                height: auto !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                gap: 0 !important;
-                row-gap: 0 !important;
-            }
-
-            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details p.create-account,
-            body.woocommerce-checkout #customer_details #ship-to-different-address,
-            body.woocommerce-checkout #customer_details .emo-compact-check-row {
-                box-sizing: border-box !important;
-                width: 100% !important;
-                min-height: 0 !important;
-                height: auto !important;
-                margin: 0.22rem 0 !important;
-                padding: 0 !important;
-            }
-
-            body.woocommerce-checkout #customer_details .woocommerce-account-fields > p,
-            body.woocommerce-checkout #customer_details .woocommerce-shipping-fields > h3 {
-                margin-top: 0.22rem !important;
-                margin-bottom: 0.22rem !important;
-                padding: 0 !important;
-            }
-
-            body.woocommerce-checkout #customer_details label:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details .emo-compact-check-label {
-                box-sizing: border-box !important;
-                display: inline-flex !important;
-                align-items: center !important;
-                gap: 0.5rem !important;
-                margin: 0 0 0 1.25rem !important;
-                padding: 0 !important;
-                line-height: 1.3 !important;
-            }
-
-            body.woocommerce-checkout #customer_details input[type="checkbox"] {
-                flex: 0 0 auto !important;
-                margin: 0 !important;
-                vertical-align: middle !important;
-            }
-
-            /* Métodos de pago: mantener el espaciado compacto que ya funciona. */
+            /* Métodos de pago: mantener el espaciado compacto ya validado. */
             body.woocommerce-checkout #payment ul.payment_methods {
                 gap: 0 !important;
                 row-gap: 0 !important;
@@ -179,46 +126,6 @@ add_action(
                     }
                 }
 
-                function compactCheckoutChecks() {
-                    document.querySelectorAll('#customer_details input[type="checkbox"]').forEach(function (checkbox) {
-                        var label = checkbox.closest('label');
-                        var row = checkbox.closest('p.form-row, p.create-account, h3#ship-to-different-address, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
-                        var section = checkbox.closest('.woocommerce-account-fields, .woocommerce-shipping-fields');
-
-                        if (section) {
-                            setImportant(section, 'margin', '0');
-                            setImportant(section, 'padding', '0');
-                            setImportant(section, 'gap', '0');
-                            setImportant(section, 'row-gap', '0');
-                        }
-
-                        if (row) {
-                            row.classList.add('emo-compact-check-row');
-                            setImportant(row, 'width', '100%');
-                            setImportant(row, 'min-height', '0');
-                            setImportant(row, 'height', 'auto');
-                            setImportant(row, 'margin-top', '0.22rem');
-                            setImportant(row, 'margin-bottom', '0.22rem');
-                            setImportant(row, 'padding', '0');
-                        }
-
-                        if (label) {
-                            label.classList.add('emo-compact-check-label');
-                            setImportant(label, 'display', 'inline-flex');
-                            setImportant(label, 'align-items', 'center');
-                            setImportant(label, 'margin-top', '0');
-                            setImportant(label, 'margin-right', '0');
-                            setImportant(label, 'margin-bottom', '0');
-                            setImportant(label, 'margin-left', '1.25rem');
-                            setImportant(label, 'padding', '0');
-                            setImportant(label, 'line-height', '1.3');
-                            setImportant(label, 'gap', '0.5rem');
-                        }
-
-                        setImportant(checkbox, 'margin', '0');
-                    });
-                }
-
                 function compactPaymentOptions() {
                     var paymentList = document.querySelector('#payment ul.payment_methods');
                     if (paymentList) {
@@ -266,7 +173,6 @@ add_action(
                         }
                     }
 
-                    compactCheckoutChecks();
                     compactPaymentOptions();
                 }
 
