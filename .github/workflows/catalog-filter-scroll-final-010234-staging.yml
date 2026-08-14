@@ -1,0 +1,143 @@
+name: Catalog filter and scroll 0.10.234 staging QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php'
+      - 'elmercadodeorigen-child/functions.php'
+      - '.github/workflows/catalog-filter-scroll-final-010234-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php >/dev/null
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          grep -Fq 'elmercado-catalog-scroll-final-010234' elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php
+          grep -Fq 'catalog-filter-scroll-final-010234.php' elmercadodeorigen-child/functions.php
+      - name: Wait for staging release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            shop="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-store' "$BASE_URL/tienda/" || true)"
+            vendor="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-store' "$BASE_URL/tienda/hidalgo-de-la-jara/" || true)"
+            if grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$shop" && grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$vendor"; then
+              echo STAGING_010234_LIVE
+              exit 0
+            fi
+            sleep 5
+          done
+          echo '0.10.234 did not become live on staging' >&2
+          exit 1
+      - name: Install browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Browser parity and scroll QA
+        shell: bash
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const fail=(m,d)=>{throw new Error(`${m}${d?' '+JSON.stringify(d):''}`)};
+          const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const inspect=async(path,vendor,expectedTotal)=>{
+              const p=await browser.newPage();
+              await p.setCacheEnabled(false);
+              await p.setViewport({width:1440,height:1000});
+              await p.goto(`${process.env.BASE_URL}${path}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await p.waitForSelector(vendor?'#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229':'#secondary.emo-filter-rail-shared-010229',{timeout:20000});
+              await sleep(1000);
+              const initial=await p.evaluate((vendor)=>{
+                const rail=vendor?document.querySelector('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229'):document.querySelector('#secondary.emo-filter-rail-shared-010229');
+                const title=rail?.querySelector('.emo-filter-title-shared-010229');
+                const panel=vendor?rail?.querySelector('#emo-vendor-filters'):null;
+                const link=rail?.querySelector('.emo-filter-link-shared-010229');
+                const c=(el)=>el?getComputedStyle(el):null;
+                return {
+                  railWidth:rail?.getBoundingClientRect().width||0,
+                  railPadding:c(rail)?.padding||'',
+                  titleWidth:title?.getBoundingClientRect().width||0,
+                  titleFont:c(title)?.fontFamily||'', titleSize:c(title)?.fontSize||'', titleWeight:c(title)?.fontWeight||'',
+                  titleLine:c(title)?.lineHeight||'', titleSpacing:c(title)?.letterSpacing||'', titleTransform:c(title)?.textTransform||'',
+                  panelPadding:c(panel)?.padding||null,
+                  count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
+                  oldLoader:!!document.getElementById('elmercado-continuous-catalog-loader-010181'),
+                  newLoader:!!document.getElementById('elmercado-catalog-scroll-final-010234'),
+                  linkText:link?.textContent?.replace(/\s+/g,' ').trim()||''
+                };
+              },vendor);
+              const expectedLabel=`${expectedTotal} ${expectedTotal===1?'resultado':'resultados'}`;
+              if(initial.railWidth!==250) fail('rail width',initial);
+              if(initial.railPadding!=='18px') fail('rail padding',initial);
+              if(Math.abs(initial.titleWidth-212)>0.75) fail('title width',initial);
+              if(vendor && initial.panelPadding!=='0px') fail('vendor inner padding',initial);
+              if(initial.count.length<1 || initial.count.some(t=>t!==expectedLabel)) fail('initial exact count',initial);
+              if(initial.oldLoader) fail('old loader still active',initial);
+              if(!initial.newLoader) fail('new loader missing',initial);
+
+              const linkSelector=vendor?'#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229':'#secondary.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229';
+              await p.hover(linkSelector);
+              const hover=await p.$eval(linkSelector,el=>({decoration:getComputedStyle(el).textDecorationLine,row:getComputedStyle(el.closest('.emo-filter-row-shared-010229')).backgroundColor}));
+              if(hover.decoration!=='none') fail('hover underline remains',hover);
+              if(hover.row==='rgba(0, 0, 0, 0)' || hover.row==='transparent') fail('hover background missing',hover);
+
+              const started=Date.now();
+              while(Date.now()-started<25000){
+                await p.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+                await sleep(650);
+                const st=await p.evaluate(()=>window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,loading:window.__emoCatalogLoaderState.loading,shown:window.__emoCatalogLoaderState.shown}:null);
+                if(st && !st.loading && !st.nextUrl) break;
+              }
+              const tail=await p.evaluate(()=>{
+                const grid=document.querySelector('#wcfmmp-store ul.products,main ul.products,#primary ul.products,.content-area ul.products,ul.products');
+                const items=grid?[...grid.querySelectorAll(':scope > li.product')]:[];
+                const key=(item)=>{
+                  const pc=[...item.classList].find(c=>/^(?:post|product)-\d+$/.test(c)); if(pc)return pc;
+                  const id=item.getAttribute('data-product_id')||item.getAttribute('data-product-id')||item.querySelector('[data-product_id],[data-product-id]')?.getAttribute('data-product_id')||item.querySelector('[data-product_id],[data-product-id]')?.getAttribute('data-product-id'); if(id)return `id:${id}`;
+                  return item.querySelector('a.woocommerce-LoopProduct-link,a[href*="/producto/"],a[href*="/product/"]')?.href||'';
+                };
+                const keys=items.map(key).filter(Boolean); const counts={}; keys.forEach(k=>counts[k]=(counts[k]||0)+1);
+                return {domCount:items.length,unique:new Set(keys).size,duplicates:Object.entries(counts).filter(([,n])=>n>1),count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),state:window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,loading:window.__emoCatalogLoaderState.loading,shown:window.__emoCatalogLoaderState.shown,unique:window.__emoCatalogLoaderState.unique,highestPage:window.__emoCatalogLoaderState.highestPage}:null};
+              });
+              if(tail.domCount!==expectedTotal || tail.unique!==expectedTotal || tail.duplicates.length) fail('duplicate/missing tail',tail);
+              if(tail.count.some(t=>t!==expectedLabel)) fail('count changed after scroll',tail);
+              if(!tail.state || tail.state.loading || tail.state.nextUrl) fail('loader did not finish',tail);
+              await p.close();
+              return {initial,hover,tail};
+            };
+
+            const shop=await inspect('/tienda/',false,21);
+            const vendor=await inspect('/tienda/hidalgo-de-la-jara/',true,17);
+            const titleKeys=['titleFont','titleSize','titleWeight','titleLine','titleSpacing','titleTransform'];
+            for(const key of titleKeys) if(shop.initial[key]!==vendor.initial[key]) fail(`title parity ${key}`,{shop:shop.initial[key],vendor:vendor.initial[key]});
+
+            const mobile=await browser.newPage();
+            await mobile.setCacheEnabled(false); await mobile.setViewport({width:390,height:844});
+            await mobile.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/`,{waitUntil:'domcontentloaded',timeout:60000}); await sleep(900);
+            await mobile.click('.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229'); await sleep(200);
+            const m=await mobile.evaluate(()=>{const shell=document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229'); const close=shell?.querySelector('.emo-mobile-filter-close'); const rail=shell?.querySelector('.emo-mobile-filter-content .emo-filter-rail-shared-010229'); const r=close?.getBoundingClientRect(); return {hidden:shell?.hidden,closeW:r?.width||0,closeH:r?.height||0,railInside:!!rail};});
+            if(m.hidden || m.closeW!==40 || m.closeH!==40 || !m.railInside) fail('mobile drawer regression',m);
+            await mobile.close();
+            console.log('CATALOG_FILTER_SCROLL_010234_OK',JSON.stringify({shop:shop.tail,vendor:vendor.tail,mobile:m}));
+            await browser.close();
+          })().catch(e=>{console.error('CATALOG_FILTER_SCROLL_010234_ERROR',e);process.exit(1)});
+          NODE
