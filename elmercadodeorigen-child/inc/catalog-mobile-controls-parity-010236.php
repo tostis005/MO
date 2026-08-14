@@ -76,11 +76,12 @@ add_action(
 			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
 				box-sizing:border-box !important; position:static !important; inset:auto !important; float:none !important; clear:none !important;
+				width:250px !important; min-width:250px !important; max-width:250px !important;
 				margin:0 !important; padding:0 !important; transform:none !important;
 			}
 			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select,
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
-				box-sizing:border-box !important; display:block !important; width:100% !important; height:40px !important; min-height:40px !important;
+				box-sizing:border-box !important; display:block !important; width:250px !important; min-width:250px !important; max-width:250px !important; height:40px !important; min-height:40px !important;
 				margin:0 !important; padding:0 30px 0 12px !important; border:1px solid rgba(23,63,50,.14) !important;
 				border-radius:999px !important; background:#f7f9f6 !important; box-shadow:none !important; color:#173f32 !important;
 				font-family:inherit !important; font-size:12px !important; font-weight:700 !important; letter-spacing:0 !important; line-height:1 !important;
@@ -137,6 +138,7 @@ add_action(
 				html body.elmercado-child-theme :is(#emo-premium-filter-toggle,.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229) .emo-filter-label { margin-right:auto !important; }
 				html body.elmercado-child-theme :is(#emo-premium-filter-toggle,.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229) .emo-filter-chevron { display:none !important; }
 
+				html body.elmercadodeorigen-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products {
 					position:relative !important; z-index:1 !important; clear:both !important; float:none !important; margin-top:0 !important; padding-top:0 !important; transform:none !important;
 				}
