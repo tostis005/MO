@@ -1,0 +1,302 @@
+name: Production Tolecarnes price integrity 0.10.244
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-tolecarnes-price-integrity-010244.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: elmercado-production-tolecarnes-price-integrity
+  cancel-in-progress: false
+
+jobs:
+  fix-deploy-resync-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch importer and Tolecarnes price detection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          importer = Path('mdo-supplier-sync/includes/class-mdo-woo-importer.php')
+          text = importer.read_text()
+          old = """\tprivate static function apply_simple_product( WC_Product $product, array $payload ): void {
+          \t\tif ( ! isset( $payload['price'] ) || null === $payload['price'] || ! is_numeric( $payload['price'] ) ) {
+          \t\t\tthrow new RuntimeException( 'No se ha podido determinar un precio válido para el producto.' );
+          \t\t}
+          \t\t$product->set_regular_price( wc_format_decimal( $payload['price'] ) );
+          \t\t$product->set_price( wc_format_decimal( $payload['price'] ) );
+          \t\t$product->set_manage_stock( false );
+          \t}
+          """
+          new = """\tprivate static function apply_simple_product( WC_Product $product, array $payload ): void {
+          \t\tif ( ! isset( $payload['price'] ) || null === $payload['price'] || ! is_numeric( $payload['price'] ) ) {
+          \t\t\tthrow new RuntimeException( 'No se ha podido determinar un precio válido para el producto.' );
+          \t\t}
+
+          \t\t$current = (float) $payload['price'];
+          \t\t$regular = isset( $payload['regular_price'] ) && is_numeric( $payload['regular_price'] )
+          \t\t\t? (float) $payload['regular_price']
+          \t\t\t: $current;
+          \t\t$sale = isset( $payload['sale_price'] ) && is_numeric( $payload['sale_price'] )
+          \t\t\t? (float) $payload['sale_price']
+          \t\t\t: null;
+
+          \t\t/*
+          \t\t * El payload de EMDO es la fuente de verdad completa del precio. No basta
+          \t\t * con cambiar _price: un producto ya importado puede conservar un
+          \t\t * _sale_price antiguo y WooCommerce seguirá mostrándolo como oferta.
+          \t\t * Del mismo modo, una oferta real debe trasladar regular + sale, no
+          \t\t * degradarse a un único precio. Cada sincronización reescribe los tres
+          \t\t * valores para que también sanee metadatos heredados.
+          \t\t */
+          \t\tif ( null !== $sale && $sale < $regular && abs( $current - $sale ) < 0.005 ) {
+          \t\t\t$product->set_regular_price( wc_format_decimal( $regular ) );
+          \t\t\t$product->set_sale_price( wc_format_decimal( $sale ) );
+          \t\t\t$product->set_price( wc_format_decimal( $sale ) );
+          \t\t} else {
+          \t\t\t$product->set_regular_price( wc_format_decimal( $current ) );
+          \t\t\t$product->set_sale_price( '' );
+          \t\t\t$product->set_price( wc_format_decimal( $current ) );
+          \t\t}
+          \t\t$product->set_manage_stock( false );
+          \t}
+          """
+          if old not in text:
+              raise SystemExit('Importer target block not found')
+          importer.write_text(text.replace(old, new, 1))
+
+          pricing = Path('mdo-supplier-sync/includes/class-mdo-pricing.php')
+          text = pricing.read_text()
+          needle = "\t\t$xpath = new DOMXPath( $dom );\n\n\t\t// WooCommerce: <del>precio original</del> <ins>precio actual</ins>.\n"
+          insert = """\t\t$xpath = new DOMXPath( $dom );
+
+          \t\t/*
+          \t\t * Tolecarnes incluye tarjetas de productos relacionados con sus propios
+          \t\t * <del>/<ins>. Nunca deben usarse para decidir si el producto principal
+          \t\t * está rebajado. Para este proveedor sólo aceptamos una oferta cuando
+          \t\t * aparece dentro del bloque de precio del summary del producto actual.
+          \t\t * Si no existe evidencia localizada, el precio del conector queda como
+          \t\t * precio normal: es preferible omitir una rebaja a inventar una ajena.
+          \t\t */
+          \t\t$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+          \t\tif ( 'tolecarnes.com' === $host || str_ends_with( $host, '.tolecarnes.com' ) ) {
+          \t\t\t$price_nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//p[contains(concat(' ', normalize-space(@class), ' '), ' price ')]" );
+          \t\t\tif ( ! $price_nodes || ! $price_nodes->length ) {
+          \t\t\t\t$price_nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//*[contains(concat(' ', normalize-space(@class), ' '), ' price ')]" );
+          \t\t\t}
+          \t\t\tif ( $price_nodes && $price_nodes->length ) {
+          \t\t\t\t$node = $price_nodes->item( 0 );
+          \t\t\t\t$del  = $xpath->query( './/del', $node );
+          \t\t\t\t$ins  = $xpath->query( './/ins', $node );
+          \t\t\t\tif ( $del && $del->length && $ins && $ins->length ) {
+          \t\t\t\t\t$regular = self::first_price_in_text( (string) $del->item( 0 )->textContent );
+          \t\t\t\t\t$current = self::first_price_in_text( (string) $ins->item( 0 )->textContent );
+          \t\t\t\t\tif ( null !== $regular && null !== $current && $current < $regular ) {
+          \t\t\t\t\t\treturn array( 'current' => $current, 'regular' => $regular );
+          \t\t\t\t\t}
+          \t\t\t\t}
+          \t\t\t\t$current = self::first_price_in_text( (string) $node->textContent );
+          \t\t\t\treturn array( 'current' => $current, 'regular' => $current );
+          \t\t\t}
+          \t\t\treturn array( 'current' => null, 'regular' => null );
+          \t\t}
+
+          \t\t// WooCommerce: <del>precio original</del> <ins>precio actual</ins>.
+          """
+          if needle not in text:
+              raise SystemExit('Pricing insertion point not found')
+          pricing.write_text(text.replace(needle, insert, 1))
+
+          main = Path('mdo-supplier-sync/mdo-supplier-sync.php')
+          text = main.read_text()
+          if 'Version: 1.0.11' not in text or "MDO_SUPPLIER_SYNC_VERSION', '1.0.11'" not in text:
+              raise SystemExit('Expected EMDO 1.0.11 version markers not found')
+          text = text.replace('Version: 1.0.11', 'Version: 1.0.12', 1)
+          text = text.replace("MDO_SUPPLIER_SYNC_VERSION', '1.0.11'", "MDO_SUPPLIER_SYNC_VERSION', '1.0.12'", 1)
+          main.write_text(text)
+          PY
+
+          php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php >/dev/null
+          php -l mdo-supplier-sync/includes/class-mdo-pricing.php >/dev/null
+          php -l mdo-supplier-sync/mdo-supplier-sync.php >/dev/null
+          grep -Fq "set_sale_price( '' )" mdo-supplier-sync/includes/class-mdo-woo-importer.php
+          grep -Fq "str_ends_with( \$host, '.tolecarnes.com' )" mdo-supplier-sync/includes/class-mdo-pricing.php
+          grep -Fq 'Version: 1.0.12' mdo-supplier-sync/mdo-supplier-sync.php
+
+      - name: Commit durable source fix
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'El Mercado de Origen Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add mdo-supplier-sync/includes/class-mdo-woo-importer.php mdo-supplier-sync/includes/class-mdo-pricing.php mdo-supplier-sync/mdo-supplier-sync.php
+          git commit -m 'Fix Tolecarnes price state synchronization'
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          exit 1
+
+      - name: Deploy, full sync, full reimport and verify
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o ServerAliveInterval=20 -o ServerAliveCountMax=30 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o ServerAliveInterval=20 -o ServerAliveCountMax=30 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] && [ -n "$php_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          echo "PRODUCTION_PATH_OK"
+
+          PLUGIN="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
+          TARGET_MAIN="$PLUGIN/mdo-supplier-sync.php"
+          TARGET_PRICING="$PLUGIN/includes/class-mdo-pricing.php"
+          TARGET_IMPORTER="$PLUGIN/includes/class-mdo-woo-importer.php"
+          BAK_MAIN="/tmp/emdo-main-010244-${GITHUB_RUN_ID}.bak"
+          BAK_PRICING="/tmp/emdo-pricing-010244-${GITHUB_RUN_ID}.bak"
+          BAK_IMPORTER="/tmp/emdo-importer-010244-${GITHUB_RUN_ID}.bak"
+          ROLLED=0
+
+          opcache_reset(){
+            probe="emdo-opcache-010244-${GITHUB_RUN_ID}-$RANDOM.php"
+            sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$probe"
+            set +e
+            ok=0
+            for i in $(seq 1 6); do
+              body="$(curl -fsSL --connect-timeout 10 --max-time 30 -H 'Cache-Control: no-cache, no-store' "$BASE_URL/$probe?r=$GITHUB_RUN_ID-$i-$RANDOM" 2>/dev/null)"
+              if printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$'; then ok=1; break; fi
+              sleep 2
+            done
+            set -e
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$probe'" || true
+            test "$ok" -eq 1
+          }
+
+          rollback_code(){
+            code=$?
+            [ "$ROLLED" -eq 0 ] || exit "$code"
+            ROLLED=1
+            set +e
+            echo CODE_ROLLBACK_START
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "[ -f '$BAK_MAIN' ] && cp -p '$BAK_MAIN' '$TARGET_MAIN'; [ -f '$BAK_PRICING' ] && cp -p '$BAK_PRICING' '$TARGET_PRICING'; [ -f '$BAK_IMPORTER' ] && cp -p '$BAK_IMPORTER' '$TARGET_IMPORTER'; rm -f '$BAK_MAIN' '$BAK_PRICING' '$BAK_IMPORTER'" || true
+            opcache_reset || true
+            echo CODE_ROLLED_BACK
+            exit "${code:-1}"
+          }
+          trap rollback_code ERR
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET_MAIN'; test -f '$TARGET_PRICING'; test -f '$TARGET_IMPORTER'; cp -p '$TARGET_MAIN' '$BAK_MAIN'; cp -p '$TARGET_PRICING' '$BAK_PRICING'; cp -p '$TARGET_IMPORTER' '$BAK_IMPORTER'"
+          sshpass -e scp $SCP mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$TARGET_MAIN"
+          sshpass -e scp $SCP mdo-supplier-sync/includes/class-mdo-pricing.php "$STAGING_USER@$STAGING_HOST:$TARGET_PRICING"
+          sshpass -e scp $SCP mdo-supplier-sync/includes/class-mdo-woo-importer.php "$STAGING_USER@$STAGING_HOST:$TARGET_IMPORTER"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$TARGET_MAIN' >/dev/null
+            \"\$php_bin\" -l '$TARGET_PRICING' >/dev/null
+            \"\$php_bin\" -l '$TARGET_IMPORTER' >/dev/null
+            grep -Fq 'Version: 1.0.12' '$TARGET_MAIN'
+            grep -Fq \"set_sale_price( '' )\" '$TARGET_IMPORTER'
+            grep -Fq \"str_ends_with( \\\$host, '.tolecarnes.com' )\" '$TARGET_PRICING'
+          "
+          opcache_reset
+
+          focused="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '
+              \$p=MDO_Text::normalize_product(MDO_Connector_Tolecarnes::scrape_product(\"https://tolecarnes.com/producto/filetes-primera-de-ternera-af/\"));
+              \$out=[\"title\"=>\$p[\"title\"]??null,\"price\"=>\$p[\"price\"]??null,\"regular\"=>\$p[\"regular_price\"]??null,\"sale\"=>\$p[\"sale_price\"]??null];
+              echo \"FILETES_FRESH=\".wp_json_encode(\$out,JSON_UNESCAPED_UNICODE).\"\\n\";
+              if(abs((float)(\$out[\"price\"]??0)-18.99)>0.005 || abs((float)(\$out[\"regular\"]??0)-18.99)>0.005 || null!==\$out[\"sale\"]) exit(23);
+            ' --path='$PROD_PATH' --allow-root
+          ")"
+          printf '%s\n' "$focused"
+          printf '%s\n' "$focused" | grep -Fq 'FILETES_FRESH='
+
+          trap - ERR
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BAK_MAIN' '$BAK_PRICING' '$BAK_IMPORTER'"
+          echo CODE_DEPLOYED_1_0_12
+
+          sync_start="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'global \$wpdb; \$su=MDO_Database::table(\"suppliers\"); \$sid=(int)\$wpdb->get_var(\"SELECT id FROM {\$su} WHERE connector=\\\"tolecarnes\\\" OR LOWER(name) LIKE \\\"%tolecarnes%\\\" ORDER BY id LIMIT 1\"); if(!\$sid) exit(30); MDO_Scheduler::run_supplier(\$sid, \"manual\"); \$t=MDO_Database::table(\"sync_runs\"); echo \$sid.\":\".(int)\$wpdb->get_var(\$wpdb->prepare(\"SELECT MAX(id) FROM {\$t} WHERE supplier_id=%d\",\$sid));' --path='$PROD_PATH' --allow-root
+          ")"
+          SID="$(printf '%s' "$sync_start" | grep -oE '[0-9]+:[0-9]+' | tail -n1 | cut -d: -f1)"
+          RUN_ID="$(printf '%s' "$sync_start" | grep -oE '[0-9]+:[0-9]+' | tail -n1 | cut -d: -f2)"
+          test -n "$SID" && test -n "$RUN_ID"
+          echo "TOLECARNES_FULL_SYNC_RUN_ID=$RUN_ID SUPPLIER_ID=$SID"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" action-scheduler run --group=mdo-supplier-sync --batch-size=20 --batches=0 --force --path='$PROD_PATH' --allow-root
+          "
+
+          report="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'global \$wpdb; \$t=MDO_Database::table(\"sync_runs\"); \$r=\$wpdb->get_row(\$wpdb->prepare(\"SELECT id,status,products_found,products_new,products_updated,products_excluded,errors_count,message,started_at,finished_at FROM {\$t} WHERE id=%d\",$RUN_ID),ARRAY_A); echo wp_json_encode(\$r,JSON_UNESCAPED_UNICODE); if(!\$r || \"success\"!==\$r[\"status\"] || (int)\$r[\"errors_count\"]!==0 || empty(\$r[\"finished_at\"])) exit(31);' --path='$PROD_PATH' --allow-root
+          ")"
+          echo "FULL_SYNC_REPORT=$report"
+
+          reimport="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=1536M \"\$wp_bin\" eval '
+              global \$wpdb; \$t=MDO_Database::table(\"source_products\"); \$ids=array_map(\"intval\",\$wpdb->get_col(\$wpdb->prepare(\"SELECT id FROM {\$t} WHERE supplier_id=%d AND status=\\\"active\\\" AND wc_product_id IS NOT NULL AND wc_product_id>0 ORDER BY id\",$SID))); \$ok=0; \$bad=[];
+              foreach(\$ids as \$id){ try{ MDO_Woo_Importer::import_source_product(\$id); \$ok++; }catch(Throwable \$e){ \$bad[]=[\"id\"=>\$id,\"error\"=>\$e->getMessage()]; } }
+              echo \"FULL_REIMPORT_COUNT=\".count(\$ids).\" OK=\".\$ok.\" ERRORS=\".count(\$bad).\"\\n\"; foreach(\$bad as \$b) echo \"REIMPORT_ERROR=\".wp_json_encode(\$b,JSON_UNESCAPED_UNICODE).\"\\n\"; if(\$bad) exit(41);
+            ' --path='$PROD_PATH' --allow-root
+          ")"
+          printf '%s\n' "$reimport"
+          printf '%s\n' "$reimport" | grep -Fq 'ERRORS=0'
+
+          audit="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '
+              global \$wpdb; \$st=MDO_Database::table(\"source_products\"); \$rows=\$wpdb->get_results(\$wpdb->prepare(\"SELECT id,title,wc_product_id,source_payload FROM {\$st} WHERE supplier_id=%d AND status=\\\"active\\\" AND wc_product_id IS NOT NULL AND wc_product_id>0 ORDER BY id\",$SID),ARRAY_A)?:[]; \$bad=[]; \$simple=0;
+              foreach(\$rows as \$row){ \$p=json_decode((string)\$row[\"source_payload\"],true); \$p=is_array(\$p)?\$p:[]; if(!empty(\$p[\"variations\"])) continue; \$simple++; \$pid=(int)\$row[\"wc_product_id\"]; \$cur=isset(\$p[\"price\"])&&is_numeric(\$p[\"price\"])?(float)\$p[\"price\"]:null; \$reg=isset(\$p[\"regular_price\"])&&is_numeric(\$p[\"regular_price\"])?(float)\$p[\"regular_price\"]:\$cur; \$sale=isset(\$p[\"sale_price\"])&&is_numeric(\$p[\"sale_price\"])?(float)\$p[\"sale_price\"]:null; \$valid_sale=null!==\$sale&&null!==\$reg&&\$sale<\$reg&&null!==\$cur&&abs(\$cur-\$sale)<0.005; \$ep=\$valid_sale?\$sale:\$cur; \$er=\$valid_sale?\$reg:\$cur; \$es=\$valid_sale?\$sale:null; \$wp=get_post_meta(\$pid,\"_price\",true); \$wr=get_post_meta(\$pid,\"_regular_price\",true); \$ws=get_post_meta(\$pid,\"_sale_price\",true); \$m=(null!==\$ep&&abs((float)\$wp-\$ep)>0.005)||(null!==\$er&&abs((float)\$wr-\$er)>0.005)||((null===\$es&&\$ws!==\"\")||(null!==\$es&&abs((float)\$ws-\$es)>0.005)); if(\$m)\$bad[]=[\"id\"=>(int)\$row[\"id\"],\"title\"=>\$row[\"title\"],\"payload\"=>[\$cur,\$reg,\$sale],\"woo\"=>[\$wp,\$wr,\$ws]]; }
+              echo \"PRICE_AUDIT_ACTIVE=\".count(\$rows).\" SIMPLE=\".\$simple.\" MISMATCH_COUNT=\".count(\$bad).\"\\n\"; foreach(\$bad as \$b) echo \"POST_MISMATCH=\".wp_json_encode(\$b,JSON_UNESCAPED_UNICODE).\"\\n\";
+              \$f=\$wpdb->get_row(\$wpdb->prepare(\"SELECT title,wc_product_id,source_payload FROM {\$st} WHERE supplier_id=%d AND LOWER(title) LIKE \\\"%filetes%primera%\\\" ORDER BY id DESC LIMIT 1\",$SID),ARRAY_A); if(\$f){\$fp=json_decode((string)\$f[\"source_payload\"],true);\$fid=(int)\$f[\"wc_product_id\"];echo \"FILETES_FINAL=\".wp_json_encode([\"payload\"=>[\"price\"=>\$fp[\"price\"]??null,\"regular\"=>\$fp[\"regular_price\"]??null,\"sale\"=>\$fp[\"sale_price\"]??null],\"woo\"=>[\"price\"=>get_post_meta(\$fid,\"_price\",true),\"regular\"=>get_post_meta(\$fid,\"_regular_price\",true),\"sale\"=>get_post_meta(\$fid,\"_sale_price\",true)]],JSON_UNESCAPED_UNICODE).\"\\n\";} if(\$bad)exit(51);
+            ' --path='$PROD_PATH' --allow-root
+          ")"
+          printf '%s\n' "$audit"
+          printf '%s\n' "$audit" | grep -Fq 'MISMATCH_COUNT=0'
+          printf '%s\n' "$audit" | grep -Fq 'FILETES_FINAL='
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          opcache_reset
+          echo PRODUCTION_TOLECARNES_PRICE_INTEGRITY_010244_OK
