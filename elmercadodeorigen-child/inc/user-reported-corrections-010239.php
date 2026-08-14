@@ -184,11 +184,12 @@ add_filter(
 		}
 
 		$requested = elmercado_catalog_scroll_ordering_value_010245();
-		$order     = 'ASC';
+		$order     = in_array( $requested, array( 'date', 'modified' ), true ) ? 'DESC' : 'ASC';
 		if ( '-desc' === substr( $requested, -5 ) ) {
 			$order     = 'DESC';
 			$requested = substr( $requested, 0, -5 );
 		} elseif ( '-asc' === substr( $requested, -4 ) ) {
+			$order     = 'ASC';
 			$requested = substr( $requested, 0, -4 );
 		}
 
@@ -216,12 +217,10 @@ add_filter(
 				break;
 
 			case 'date':
-				$order = 'ASC' === $order ? 'ASC' : 'DESC';
 				$clauses['orderby'] = " {$posts}.post_date {$order}, {$posts}.ID {$order} ";
 				break;
 
 			case 'modified':
-				$order = 'ASC' === $order ? 'ASC' : 'DESC';
 				$clauses['orderby'] = " {$posts}.post_modified {$order}, {$posts}.ID {$order} ";
 				break;
 
