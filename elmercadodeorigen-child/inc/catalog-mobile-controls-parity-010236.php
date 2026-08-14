@@ -96,26 +96,38 @@ add_action(
 					content:none !important; display:none !important;
 				}
 
+				/* WCFM no puede estrechar el área que contiene toolbar, filtro y grid. */
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .body_area,
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store :is(.right_side,.right_side_full,.products-wrapper,.wcfmmp-store-product,.product_area) {
+					display:block !important; box-sizing:border-box !important; width:100% !important; min-width:0 !important; max-width:100% !important;
+					float:none !important; clear:both !important; margin-left:0 !important; margin-right:0 !important; transform:none !important;
+				}
+
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 {
 					position:relative !important; z-index:2 !important; display:grid !important; grid-template-columns:minmax(0,1fr) 148px !important;
-					grid-template-rows:42px !important; box-sizing:border-box !important; width:100% !important; height:auto !important; min-height:60px !important; max-height:none !important;
+					grid-template-rows:42px !important; box-sizing:border-box !important; width:100% !important; min-width:0 !important; max-width:100% !important; height:auto !important; min-height:60px !important; max-height:none !important;
 					align-items:center !important; justify-content:stretch !important; gap:8px !important; clear:both !important; float:none !important;
 					margin:0 0 10px !important; padding:9px 10px !important; transform:none !important;
 				}
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 :is(.woocommerce-result-count,.emo-catalog-result-count-010220,.emo-vendor-result-count-010225),
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 :is(.woocommerce-result-count,.emo-vendor-result-count-010225) {
-					grid-column:1 !important; grid-row:1 !important; display:flex !important; width:auto !important; min-width:0 !important; min-height:42px !important;
-					align-items:center !important; margin:0 !important; padding:0 !important; font-size:11px !important; line-height:1.25 !important; white-space:normal !important;
+					grid-column:1 !important; grid-row:1 !important; display:flex !important; width:auto !important; min-width:0 !important; max-width:100% !important; min-height:42px !important;
+					align-items:center !important; overflow:hidden !important; margin:0 !important; padding:0 !important; font-size:11px !important; line-height:1.25 !important;
+					white-space:nowrap !important; word-break:normal !important; overflow-wrap:normal !important; writing-mode:horizontal-tb !important; text-orientation:mixed !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 :is(.woocommerce-result-count,.emo-catalog-result-count-010220,.emo-vendor-result-count-010225) *,
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 :is(.woocommerce-result-count,.emo-vendor-result-count-010225) * {
+					white-space:inherit !important; word-break:normal !important; overflow-wrap:normal !important; writing-mode:horizontal-tb !important; text-orientation:mixed !important;
 				}
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
-					grid-column:2 !important; grid-row:1 !important; display:flex !important; flex:none !important; width:148px !important; min-width:148px !important; max-width:148px !important;
+					grid-column:2 !important; grid-row:1 !important; display:flex !important; flex:none !important; box-sizing:border-box !important; width:148px !important; min-width:148px !important; max-width:148px !important;
 					height:42px !important; min-height:42px !important; max-height:42px !important; align-items:center !important; margin:0 !important; padding:0 !important;
 				}
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
-					width:148px !important; min-width:148px !important; max-width:148px !important; height:42px !important; min-height:42px !important; max-height:42px !important;
+					box-sizing:border-box !important; width:148px !important; min-width:148px !important; max-width:148px !important; height:42px !important; min-height:42px !important; max-height:42px !important;
 					padding:0 26px 0 10px !important; border:1px solid rgba(23,63,50,.14) !important; border-radius:999px !important;
 					background:#f7f9f6 !important; box-shadow:none !important; color:#173f32 !important; font-size:11.5px !important; font-weight:700 !important; line-height:1 !important;
 				}
@@ -123,7 +135,7 @@ add_action(
 				/* Mismo trigger visual y mismo flujo vertical. */
 				html body.elmercado-child-theme :is(#emo-premium-filter-toggle,.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229),
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229 {
-					position:relative !important; z-index:2 !important; display:flex !important; box-sizing:border-box !important; width:100% !important;
+					position:relative !important; z-index:2 !important; display:flex !important; box-sizing:border-box !important; width:100% !important; min-width:0 !important; max-width:100% !important;
 					height:48px !important; min-height:48px !important; align-items:center !important; justify-content:flex-start !important; gap:10px !important;
 					clear:both !important; float:none !important; margin:0 0 18px !important; padding:0 16px !important;
 					border:1px solid rgba(23,63,50,.16) !important; border-radius:14px !important; background:rgba(255,253,248,.92) !important;
@@ -139,7 +151,8 @@ add_action(
 				html body.elmercado-child-theme :is(#emo-premium-filter-toggle,.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229) .emo-filter-chevron { display:none !important; }
 
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products {
-					position:relative !important; z-index:1 !important; clear:both !important; float:none !important; margin-top:0 !important; padding-top:0 !important; transform:none !important;
+					position:relative !important; z-index:1 !important; clear:both !important; float:none !important; width:100% !important; min-width:0 !important; max-width:100% !important;
+					margin-top:0 !important; padding-top:0 !important; transform:none !important;
 				}
 			}
 
@@ -174,26 +187,49 @@ add_action(
 				const compact=viewport<=991;
 				const width=viewport<=360?'138px':(compact?'148px':'250px');
 				document.querySelectorAll('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering').forEach(form=>{
-					setImportant(form,'width',width); setImportant(form,'min-width',width); setImportant(form,'max-width',width);
+					setImportant(form,'box-sizing','border-box'); setImportant(form,'width',width); setImportant(form,'min-width',width); setImportant(form,'max-width',width);
 				});
 				document.querySelectorAll('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select').forEach(select=>{
 					select.classList.add('emo-order-select-parity-010236');
-					setImportant(select,'width',width); setImportant(select,'min-width',width); setImportant(select,'max-width',width);
+					setImportant(select,'box-sizing','border-box'); setImportant(select,'width',width); setImportant(select,'min-width',width); setImportant(select,'max-width',width);
 					[...select.options].forEach(option=>{
 						if(labels[option.value]) option.textContent=labels[option.value];
 						else option.textContent=(option.textContent||'').replace(/^Ordenar\s+por\s+/i,'').trim();
 					});
 				});
-				document.querySelector('#emo-premium-filter-toggle')?.classList.add('emo-mobile-filter-control-parity-010236');
-				document.querySelector('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229')?.classList.add('emo-mobile-filter-control-parity-010236');
+				const shopToggle=document.querySelector('#emo-premium-filter-toggle');
+				const vendorToggle=document.querySelector('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229');
+				shopToggle?.classList.add('emo-mobile-filter-control-parity-010236');
+				vendorToggle?.classList.add('emo-mobile-filter-control-parity-010236');
+				if(vendorToggle){
+					const vendorLabel=vendorToggle.querySelector('.emo-filter-label');
+					if(vendorLabel) vendorLabel.textContent='Filtros';
+					const vendorShell=document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229');
+					const vendorTitle=vendorShell?.querySelector('.emo-mobile-filter-title');
+					if(vendorTitle) vendorTitle.textContent='Filtros';
+				}
 				if(compact){
-					const products=document.querySelector('#wcfmmp-store ul.products');
-					products?.style.removeProperty('transform');
-					products?.style.removeProperty('margin-bottom');
-					document.querySelector('#wcfmmp-store .emo-catalog-toolbar-shared-010229')?.style.removeProperty('transform');
+					const store=document.querySelector('#wcfmmp-store');
+					if(store){
+						store.querySelectorAll('.body_area,.right_side,.right_side_full,.products-wrapper,.wcfmmp-store-product,.product_area').forEach(node=>{
+							setImportant(node,'box-sizing','border-box'); setImportant(node,'width','100%'); setImportant(node,'min-width','0'); setImportant(node,'max-width','100%');
+							setImportant(node,'float','none'); setImportant(node,'clear','both'); setImportant(node,'margin-left','0'); setImportant(node,'margin-right','0'); setImportant(node,'transform','none');
+						});
+						const toolbar=store.querySelector('.emo-catalog-toolbar-shared-010229');
+						if(toolbar){
+							setImportant(toolbar,'box-sizing','border-box'); setImportant(toolbar,'width','100%'); setImportant(toolbar,'min-width','0'); setImportant(toolbar,'max-width','100%'); setImportant(toolbar,'transform','none');
+							const count=toolbar.querySelector('.woocommerce-result-count,.emo-catalog-result-count-010220,.emo-vendor-result-count-010225');
+							if(count){
+								setImportant(count,'min-width','0'); setImportant(count,'max-width','100%'); setImportant(count,'white-space','nowrap'); setImportant(count,'word-break','normal'); setImportant(count,'overflow-wrap','normal'); setImportant(count,'writing-mode','horizontal-tb'); setImportant(count,'text-orientation','mixed'); setImportant(count,'overflow','hidden');
+							}
+						}
+						if(vendorToggle){setImportant(vendorToggle,'box-sizing','border-box'); setImportant(vendorToggle,'width','100%'); setImportant(vendorToggle,'min-width','0'); setImportant(vendorToggle,'max-width','100%');}
+						const products=store.querySelector('ul.products');
+						products?.style.removeProperty('transform'); products?.style.removeProperty('margin-bottom');
+					}
 				}
 			};
-			normalise(); requestAnimationFrame(normalise); setTimeout(normalise,250); setTimeout(normalise,900);
+			normalise(); requestAnimationFrame(normalise); setTimeout(normalise,250); setTimeout(normalise,900); setTimeout(normalise,1800);
 			window.addEventListener('pageshow',normalise,{passive:true});
 			window.addEventListener('resize',normalise,{passive:true});
 		})();
