@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.235' );
-/* 0.10.235 fija verdad de productor, contador y paginación final. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.236' );
+/* 0.10.236 unifica toolbar, ordenación y filtros móviles entre Tienda y productor. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -172,6 +172,21 @@ add_action(
 	'after_setup_theme',
 	static function (): void {
 		$module = ELMERCADO_THEME_PATH . '/inc/catalog-filter-unified-010229.php';
+		if ( is_readable( $module ) ) {
+			require_once $module;
+		}
+	},
+	PHP_INT_MAX
+);
+
+/*
+ * La paridad móvil 0.10.236 se registra después del contrato 0.10.229 para que
+ * sea la última palabra sobre toolbar, ordenación y posición del trigger.
+ */
+add_action(
+	'after_setup_theme',
+	static function (): void {
+		$module = ELMERCADO_THEME_PATH . '/inc/catalog-mobile-controls-parity-010236.php';
 		if ( is_readable( $module ) ) {
 			require_once $module;
 		}
