@@ -132,11 +132,12 @@ function elmercado_home_vendor_banner_010244( int $vendor_id ): string {
 	$settings = get_user_meta( $vendor_id, 'wcfmmp_profile_settings', true );
 	if ( is_array( $settings ) ) {
 		foreach ( array( 'list_banner', 'banner', 'gravatar' ) as $key ) {
-			if ( ! empty( $settings[ $key ] ) ) {
-				$url = elmercado_home_vendor_image_url_010244( $settings[ $key ] );
-				if ( $url ) {
-					return $url;
-				}
+			if ( empty( $settings[ $key ] ) ) {
+				continue;
+			}
+			$url = elmercado_home_vendor_image_url_010244( $settings[ $key ] );
+			if ( $url ) {
+				return $url;
 			}
 		}
 	}
@@ -167,7 +168,8 @@ function elmercado_home_vendor_url_010244( int $vendor_id ): string {
 }
 
 /**
- * Active WCFM vendors that have at least one published product.
+ * Candidate active WCFM vendors that have at least one published product.
+ * Final renderability (valid store name + URL) is checked when cards are built.
  *
  * @return int[]
  */
@@ -230,11 +232,12 @@ function elmercado_home_active_vendor_ids_010244( int $limit = 5 ): array {
 		}
 	);
 
-	return array_slice( $vendors, 0, $limit );
+	/* Allow a few extra candidates so invalid stores do not prevent reaching 5 valid cards. */
+	return array_slice( $vendors, 0, max( 5, $limit + 3 ) );
 }
 
 /**
- * Render between one and five producer cards.
+ * Render between one and five valid producer cards.
  */
 function elmercado_render_home_vendor_visual_010244(): string {
 	$vendor_ids = elmercado_home_active_vendor_ids_010244( 5 );
@@ -242,29 +245,39 @@ function elmercado_render_home_vendor_visual_010244(): string {
 		return '';
 	}
 
-	$count = count( $vendor_ids );
-	$html  = '<div class="emo-hero__visual emo-hero__visual--vendors" data-emo-vendor-count="' . (int) $count . '" aria-label="Productores activos de El Mercado de Origen">';
+	$cards = array();
+	foreach ( $vendor_ids as $vendor_id ) {
+		if ( count( $cards ) >= 5 ) {
+			break;
+		}
 
-	foreach ( $vendor_ids as $index => $vendor_id ) {
-		$name   = elmercado_home_vendor_name_010244( $vendor_id );
-		$url    = elmercado_home_vendor_url_010244( $vendor_id );
-		$banner = elmercado_home_vendor_banner_010244( $vendor_id );
+		$name = trim( elmercado_home_vendor_name_010244( $vendor_id ) );
+		$url  = trim( elmercado_home_vendor_url_010244( $vendor_id ) );
 		if ( '' === $name || '' === $url ) {
 			continue;
 		}
 
-		$initial = function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 1 ) : substr( $name, 0, 1 );
-		$image   = $banner
-			? '<img src="' . esc_url( $banner ) . '" alt="' . esc_attr( $name ) . '" loading="' . ( 0 === $index ? 'eager' : 'lazy' ) . '" decoding="async">'
+		$banner      = elmercado_home_vendor_banner_010244( $vendor_id );
+		$card_number = count( $cards ) + 1;
+		$initial     = function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 1 ) : substr( $name, 0, 1 );
+		$image       = $banner
+			? '<img src="' . esc_url( $banner ) . '" alt="' . esc_attr( $name ) . '" loading="' . ( 1 === $card_number ? 'eager' : 'lazy' ) . '" decoding="async">'
 			: '<span class="emo-hero-vendor-fallback" aria-hidden="true">' . esc_html( $initial ) . '</span>';
 
-		$html .= '<a class="emo-hero-card emo-hero-card--' . ( (int) $index + 1 ) . '" href="' . esc_url( $url ) . '"><figure>'
+		$cards[] = '<a class="emo-hero-card emo-hero-card--' . $card_number . '" href="' . esc_url( $url ) . '"><figure>'
 			. $image
 			. '<figcaption><span>Productor</span><strong>' . esc_html( $name ) . '</strong></figcaption>'
 			. '</figure></a>';
 	}
 
-	return $html . '</div>';
+	$count = count( $cards );
+	if ( 0 === $count ) {
+		return '';
+	}
+
+	return '<div class="emo-hero__visual emo-hero__visual--vendors" data-emo-vendor-count="' . $count . '" aria-label="Productores activos de El Mercado de Origen">'
+		. implode( '', $cards )
+		. '</div>';
 }
 
 /**
