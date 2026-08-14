@@ -96,4 +96,4 @@ jobs:
           }
           PHP
           sshpass -e scp $SCP /tmp/diag-tolecarnes-010243.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/diag-tolecarnes-010243.php"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp eval-file '$PROD_PATH/diag-tolecarnes-010243.php' --path='$PROD_PATH' --allow-root; rm -f '$PROD_PATH/diag-tolecarnes-010243.php'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" eval-file '$PROD_PATH/diag-tolecarnes-010243.php' --path='$PROD_PATH' --allow-root; rm -f '$PROD_PATH/diag-tolecarnes-010243.php'"
