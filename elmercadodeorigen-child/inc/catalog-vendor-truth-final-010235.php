@@ -13,6 +13,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+add_filter(
+	'body_class',
+	static function ( array $classes ): array {
+		if ( function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225() ) {
+			$classes[] = 'emo-vendor-truth-010235';
+		}
+		return array_values( array_unique( $classes ) );
+	},
+	PHP_INT_MAX
+);
+
 /**
  * IDs publicados que WCFM atribuye realmente a un vendedor.
  *
