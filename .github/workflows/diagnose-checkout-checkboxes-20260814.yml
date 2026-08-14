@@ -1,4 +1,4 @@
-name: Diagnose production checkout checkboxes 2026-08-14
+name: Verify production checkout checkboxes 2026-08-14
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - '.github/workflows/diagnose-checkout-checkboxes-20260814.yml'
 
 jobs:
-  diagnose:
+  verify:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -15,19 +15,22 @@ jobs:
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
-      - name: Inspect checkout checkbox layout
+      - name: Verify live checkout checkbox layout
         run: |
-          cat > inspect-checkout.js <<'JS'
+          cat > verify-checkout.js <<'JS'
           const { chromium } = require('playwright');
           (async () => {
             const browser = await chromium.launch({headless:true});
             const context = await browser.newContext({ viewport: { width: 1440, height: 1200 }, locale: 'es-ES' });
             const page = await context.newPage();
-            await page.goto('https://www.elmercadodeorigen.com/tienda/?add-to-cart=5348', { waitUntil: 'networkidle', timeout: 90000 });
-            await page.goto('https://www.elmercadodeorigen.com/checkout/', { waitUntil: 'networkidle', timeout: 90000 });
-            await page.waitForSelector('#customer_details', { timeout: 30000 });
+
+            await page.goto('https://www.elmercadodeorigen.com/tienda/?add-to-cart=5348', { waitUntil: 'domcontentloaded', timeout: 90000 });
             await page.waitForTimeout(2500);
-            const data = await page.evaluate(() => {
+            await page.goto('https://www.elmercadodeorigen.com/checkout/', { waitUntil: 'domcontentloaded', timeout: 90000 });
+            await page.waitForSelector('#customer_details', { timeout: 30000 });
+            await page.waitForTimeout(4000);
+
+            const snapshot = await page.evaluate(() => {
               const css = el => {
                 if (!el) return null;
                 const s = getComputedStyle(el);
@@ -42,36 +45,66 @@ jobs:
                   marginLeft: s.marginLeft,
                   paddingLeft: s.paddingLeft,
                   display: s.display,
-                  position: s.position,
                   transform: s.transform
                 };
               };
-              return Array.from(document.querySelectorAll('#customer_details input[type="checkbox"]')).map((cb, i) => {
-                const label = cb.closest('label');
-                const row = cb.closest('p.form-row, p.create-account, h3#ship-to-different-address, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
-                const section = cb.closest('.woocommerce-account-fields, .woocommerce-shipping-fields');
-                const parent = label ? label.parentElement : cb.parentElement;
-                return {
-                  i,
-                  checkbox: css(cb),
-                  name: cb.name,
-                  value: cb.value,
-                  labelText: label ? label.textContent.trim().replace(/\s+/g, ' ') : '',
-                  label: css(label),
-                  row: css(row),
-                  section: css(section),
-                  parent: css(parent),
-                  html: (row || label || cb).outerHTML.slice(0, 1200)
-                };
-              });
+              return Array.from(document.querySelectorAll('#customer_details input[type="checkbox"]'))
+                .filter(cb => cb.getClientRects().length)
+                .map((cb, i) => {
+                  const label = cb.closest('label');
+                  const row = cb.closest('p.form-row, p.create-account, h3#ship-to-different-address, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
+                  const section = cb.closest('.woocommerce-account-fields, .woocommerce-shipping-fields');
+                  return {
+                    i,
+                    checkbox: css(cb),
+                    name: cb.name,
+                    labelText: label ? label.textContent.trim().replace(/\s+/g, ' ') : '',
+                    label: css(label),
+                    row: css(row),
+                    section: css(section),
+                    html: (row || label || cb).outerHTML.slice(0, 1200)
+                  };
+                });
             });
-            console.log('CHECKBOX_LAYOUT_JSON=' + JSON.stringify(data));
-            await page.screenshot({ path: 'checkout-checkboxes-before.png', fullPage: true });
+
+            console.log('CHECKBOX_LAYOUT_JSON=' + JSON.stringify(snapshot));
+            if (snapshot.length < 3) {
+              throw new Error('Expected at least 3 visible checkout checkboxes, got ' + snapshot.length);
+            }
+
+            const target = snapshot.slice(0, 3);
+            const lefts = target.map(x => x.checkbox.left);
+            const spread = Math.max(...lefts) - Math.min(...lefts);
+            console.log('CHECKBOX_LEFTS=' + JSON.stringify(lefts) + ' SPREAD=' + spread);
+            if (spread > 1.5) {
+              throw new Error('Checkout checkboxes are not aligned; spread=' + spread + 'px');
+            }
+
+            const samples = [];
+            for (let i = 0; i < 20; i++) {
+              samples.push(await page.evaluate(() => Array.from(document.querySelectorAll('#customer_details input[type="checkbox"]'))
+                .filter(cb => cb.getClientRects().length)
+                .slice(0, 3)
+                .map(cb => Math.round(cb.getBoundingClientRect().left * 10) / 10)));
+              await page.waitForTimeout(100);
+            }
+            const ranges = [0,1,2].map(idx => {
+              const vals = samples.map(s => s[idx]).filter(v => Number.isFinite(v));
+              return Math.max(...vals) - Math.min(...vals);
+            });
+            console.log('CHECKBOX_STABILITY_RANGES=' + JSON.stringify(ranges));
+            if (ranges.some(r => r > 1.5)) {
+              throw new Error('Checkout checkbox position is unstable: ' + JSON.stringify(ranges));
+            }
+
+            await page.screenshot({ path: 'checkout-checkboxes-verified.png', fullPage: true });
             await browser.close();
           })().catch(err => { console.error(err); process.exit(1); });
           JS
-          node inspect-checkout.js
+          node verify-checkout.js
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: checkout-checkboxes-before
-          path: checkout-checkboxes-before.png
+          name: checkout-checkboxes-verified
+          path: checkout-checkboxes-verified.png
+          if-no-files-found: ignore
