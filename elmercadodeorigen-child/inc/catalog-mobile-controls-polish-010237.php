@@ -23,19 +23,33 @@ add_action(
 		<style id="elmercado-catalog-mobile-controls-polish-010237">
 			@media (max-width:991px) {
 				/*
-				 * El JS marca cualquier wrapper intermedio que envuelva simultáneamente
-				 * contador y ordenación. display:contents conserva sus hijos como items
-				 * flex del toolbar, pero elimina por completo su caja/borde heredados.
+				 * WCFM envuelve contador + ordenación en .elmercado-vendor-toolbar,
+				 * que conserva su propia tarjeta. La neutralizamos con una especificidad
+				 * superior a las capas históricas para que sólo exista la tarjeta exterior.
 				 */
-				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .emo-toolbar-inner-frame-010237 {
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .emo-toolbar-inner-frame-010237,
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .elmercado-vendor-toolbar,
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .elmercado-vendor-toolbar.emo-toolbar-inner-frame-010237 {
 					display:contents !important;
+					width:auto !important;
+					min-width:0 !important;
+					max-width:none !important;
+					height:auto !important;
+					min-height:0 !important;
+					max-height:none !important;
 					border:0 !important;
 					border-radius:0 !important;
 					background:transparent !important;
+					background-color:transparent !important;
 					box-shadow:none !important;
 					outline:0 !important;
 					margin:0 !important;
 					padding:0 !important;
+				}
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .elmercado-vendor-toolbar::before,
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .elmercado-vendor-toolbar::after {
+					content:none !important;
+					display:none !important;
 				}
 
 				/* La única caja visible es la tarjeta exterior compartida. */
@@ -57,8 +71,8 @@ add_action(
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
 					position:relative !important;
-				overflow:visible !important;
-			}
+					overflow:visible !important;
+				}
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
 					-webkit-appearance:none !important;
@@ -102,6 +116,7 @@ add_action(
 		(() => {
 			'use strict';
 			const mobile = window.matchMedia('(max-width:991px)');
+			const force = (node, name, value) => node?.style?.setProperty(name, value, 'important');
 
 			const commonAncestorInside = (toolbar, a, b) => {
 				if (!toolbar || !a || !b) return null;
@@ -113,6 +128,28 @@ add_action(
 				return null;
 			};
 
+			const flattenInnerFrame = (inner) => {
+				if (!inner) return;
+				inner.classList.add('emo-toolbar-inner-frame-010237');
+				[
+					['display','contents'],
+					['width','auto'],
+					['min-width','0'],
+					['max-width','none'],
+					['height','auto'],
+					['min-height','0'],
+					['max-height','none'],
+					['border','0'],
+					['border-radius','0'],
+					['background','transparent'],
+					['background-color','transparent'],
+					['box-shadow','none'],
+					['outline','0'],
+					['margin','0'],
+					['padding','0']
+				].forEach(([name,value]) => force(inner,name,value));
+			};
+
 			const polish = () => {
 				if (!mobile.matches) return;
 				document.querySelectorAll('.emo-catalog-toolbar-shared-010229').forEach((toolbar) => {
@@ -121,21 +158,21 @@ add_action(
 					if (!count || !ordering) return;
 
 					/*
-					 * En WCFM ambos controles llegan a veces dentro de una segunda tarjeta.
-					 * Marcamos exactamente ese ancestro común, nunca el toolbar exterior.
+					 * En WCFM ambos controles llegan dentro de .elmercado-vendor-toolbar.
+					 * Además de CSS, aplicamos inline !important para vencer cualquier regla
+					 * histórica que se inyecte después de esta capa.
 					 */
-					const inner = commonAncestorInside(toolbar, count, ordering);
-					if (inner) inner.classList.add('emo-toolbar-inner-frame-010237');
+					flattenInnerFrame(commonAncestorInside(toolbar, count, ordering));
 
-					count.style.setProperty('writing-mode','horizontal-tb','important');
-					count.style.setProperty('white-space','nowrap','important');
-					ordering.style.setProperty('position','relative','important');
+					force(count,'writing-mode','horizontal-tb');
+					force(count,'white-space','nowrap');
+					force(ordering,'position','relative');
 					const select = ordering.querySelector('select');
 					if (select) {
-						select.style.setProperty('appearance','none','important');
-						select.style.setProperty('-webkit-appearance','none','important');
-						select.style.setProperty('background-image','none','important');
-						select.style.setProperty('padding-right','42px','important');
+						force(select,'appearance','none');
+						force(select,'-webkit-appearance','none');
+						force(select,'background-image','none');
+						force(select,'padding-right','42px');
 					}
 				});
 			};
