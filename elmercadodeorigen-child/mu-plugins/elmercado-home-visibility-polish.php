@@ -25,8 +25,86 @@ function elmercado_home_visibility_polish_is_front_010245(): bool {
 }
 
 /**
- * Replace the final categories section with the visibility-aware renderer and
- * inject producer cover CSS after every other Home transformation has run.
+ * Sort the category cards that are actually going to the browser by the product
+ * count printed for the current visitor. This is deliberately a final-output
+ * operation: an anonymous customer is sorted by anonymous/public counts, a
+ * logged non-admin by that same public visibility policy, and an administrator
+ * by the broader counts that are printed for administrators.
+ */
+function elmercado_home_sort_category_cards_010245( string $html ): string {
+	$start = strpos( $html, '<section class="emo-section emo-categories"' );
+	$end   = false !== $start ? strpos( $html, '</section>', $start ) : false;
+	if ( false === $start || false === $end ) {
+		return $html;
+	}
+
+	$end    += strlen( '</section>' );
+	$section = substr( $html, $start, $end - $start );
+	if ( ! is_string( $section ) || '' === $section ) {
+		return $html;
+	}
+
+	$matched = preg_match_all(
+		'~<a\s+class="[^"]*\bemo-category-card\b[^"]*"[^>]*>.*?</a>~si',
+		$section,
+		$cards,
+		PREG_OFFSET_CAPTURE
+	);
+	if ( ! is_int( $matched ) || $matched < 2 || empty( $cards[0] ) ) {
+		return $html;
+	}
+
+	$items = array();
+	foreach ( $cards[0] as $index => $match ) {
+		$card   = isset( $match[0] ) ? (string) $match[0] : '';
+		$offset = isset( $match[1] ) ? (int) $match[1] : 0;
+		$text   = html_entity_decode( wp_strip_all_tags( $card ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$count  = -1;
+
+		if ( preg_match( '/([0-9][0-9.,]*)\s+productos?/iu', $text, $number ) ) {
+			$digits = preg_replace( '/[^0-9]/', '', (string) $number[1] );
+			$count  = is_string( $digits ) && '' !== $digits ? (int) $digits : 0;
+		}
+
+		$items[] = array(
+			'html'   => $card,
+			'count'  => $count,
+			'index'  => (int) $index,
+			'offset' => $offset,
+		);
+	}
+
+	usort(
+		$items,
+		static function ( array $left, array $right ): int {
+			$by_count = (int) $right['count'] <=> (int) $left['count'];
+			return 0 !== $by_count ? $by_count : (int) $left['index'] <=> (int) $right['index'];
+		}
+	);
+
+	$first      = $cards[0][0];
+	$last       = $cards[0][ count( $cards[0] ) - 1 ];
+	$first_pos  = (int) $first[1];
+	$last_end   = (int) $last[1] + strlen( (string) $last[0] );
+	$sorted_html = implode( '', array_column( $items, 'html' ) );
+	$section     = substr_replace( $section, $sorted_html, $first_pos, $last_end - $first_pos );
+
+	if ( ! str_contains( $section, 'data-emo-category-order-final="010245"' ) ) {
+		$section = preg_replace(
+			'~<section class="emo-section emo-categories"~',
+			'<section class="emo-section emo-categories" data-emo-category-order-final="010245"',
+			$section,
+			1
+		) ?: $section;
+	}
+
+	return substr_replace( $html, $section, $start, $end - $start );
+}
+
+/**
+ * Replace the final categories section with the visibility-aware renderer,
+ * enforce the card order visible in the final HTML and inject producer cover
+ * CSS after every other Home transformation has run.
  */
 function elmercado_home_visibility_polish_output_010245( string $html ): string {
 	if ( '' === $html ) {
@@ -38,8 +116,7 @@ function elmercado_home_visibility_polish_output_010245( string $html ): string 
 	 * elmercado_catalog_visible_category_counts_010217(). That function already
 	 * distinguishes administrators from every other visitor and excludes, for
 	 * the public scope, products that are not catalog-visible, out of stock or
-	 * belong to disabled/offline WCFM stores. Re-running the renderer here makes
-	 * that user-specific order the last word in the generated Home HTML.
+	 * belong to disabled/offline WCFM stores.
 	 */
 	if ( function_exists( 'elmercado_home_category_output_html_010226' ) ) {
 		$categories = (string) elmercado_home_category_output_html_010226();
@@ -52,6 +129,8 @@ function elmercado_home_visibility_polish_output_010245( string $html ): string 
 			}
 		}
 	}
+
+	$html = elmercado_home_sort_category_cards_010245( $html );
 
 	if ( ! str_contains( $html, 'id="elmercado-home-visibility-polish-010245"' ) ) {
 		$style = <<<'HTML'
