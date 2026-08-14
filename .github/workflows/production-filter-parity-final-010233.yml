@@ -1,4 +1,4 @@
-name: Production filter parity final 0.10.233
+name: Production catalog filter fixes 0.10.235
 
 on:
   push:
@@ -32,34 +32,21 @@ jobs:
         with:
           path: control
 
-      - name: Checkout QA-approved filter source
+      - name: Checkout QA-approved source
         uses: actions/checkout@v4
         with:
-          ref: 5dde637b4c3895263e0bf0621b43accfe6eae262
+          ref: 389cc6eeffe5cdf0b770bea72c66ff0a164a6e7f
           path: source
 
-      - name: Prepare production-scoped filter payload
+      - name: Validate exact production payload
         shell: bash
         run: |
           set -euo pipefail
-          cp control/.github/scripts/deploy-filter-parity-010233-production.sh /tmp/deploy-filter-parity.sh
-          bash -n /tmp/deploy-filter-parity.sh
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('source/elmercadodeorigen-child/inc/catalog-filter-unified-010229.php')
-          text = path.read_text()
-          anchor = '<style id="elmercado-catalog-filter-unified-010229">\n'
-          if anchor not in text:
-              raise SystemExit('unified filter style anchor missing')
-          marker = 'elmercado-production-filter-scroll-root-010233'
-          if marker not in text:
-              scoped = '''<style id="elmercado-catalog-filter-unified-010229">\n\t\t\t/* elmercado-production-filter-scroll-root-010233 */\n\t\t\t@media (min-width:1101px) {\n\t\t\t\thtml body.elmercado-child-theme:is(.woocommerce-shop,.tax-product_cat,.tax-product_tag,.wcfmmp-store-page) { overflow-x:clip !important; overflow-y:visible !important; }\n\t\t\t}\n'''
-              text = text.replace(anchor, scoped, 1)
-          path.write_text(text)
-          PY
-          php -l source/elmercadodeorigen-child/inc/catalog-filter-unified-010229.php >/dev/null
-          grep -Fq 'elmercado-production-filter-scroll-root-010233' source/elmercadodeorigen-child/inc/catalog-filter-unified-010229.php
-          echo PRODUCTION_FILTER_PAYLOAD_PREPARED_010233_OK
+          php -l source/elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php >/dev/null
+          php -l source/elmercadodeorigen-child/inc/catalog-vendor-truth-final-010235.php >/dev/null
+          grep -Fq 'elmercado-catalog-scroll-final-010234' source/elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php
+          grep -Fq 'emo-vendor-truth-010235' source/elmercadodeorigen-child/inc/catalog-vendor-truth-final-010235.php
+          echo PRODUCTION_FILTER_010235_PAYLOAD_OK
 
       - name: Install deployment and browser tools
         shell: bash
@@ -80,15 +67,182 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy and verify filters only
+      - name: Deploy and verify only catalog filter fixes
         shell: bash
         run: |
-          set -o pipefail
-          bash /tmp/deploy-filter-parity.sh "$GITHUB_WORKSPACE/source" 2>&1 | tee /tmp/filter-production.log
-          grep -Fq 'FILTER_PAYLOAD_010233_OK' /tmp/filter-production.log
-          grep -Fq 'FILTER_FILES_DEPLOYED_010233_OK' /tmp/filter-production.log
-          grep -Fq 'FILTER_CACHE_RESET_010233_OK' /tmp/filter-production.log
-          grep -Fq 'PRODUCTION_FILTER_RUNTIME_010233_OK' /tmp/filter-production.log
-          grep -Fq 'CATALOG_FILTER_UNIFIED_010233_OK' /tmp/filter-production.log
-          grep -Fq 'PRODUCTION_FILTER_PARITY_010233_OK' /tmp/filter-production.log
-          ! grep -Fq 'PRODUCTION_FILTER_PARITY_ROLLED_BACK' /tmp/filter-production.log
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          THEME_PATH="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          BACKUP_DIR="/tmp/elmercado-catalog-filter-010235-${GITHUB_RUN_ID}"
+          PAYLOAD_DIR="/tmp/elmercado-catalog-filter-payload-010235-${GITHUB_RUN_ID}"
+          export PROD_PATH THEME_PATH BACKUP_DIR PAYLOAD_DIR
+
+          rollback() {
+            set +e
+            echo PRODUCTION_FILTER_010235_ROLLBACK_START
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              set +e
+              if [ -f '$BACKUP_DIR/functions.php' ]; then cp -p '$BACKUP_DIR/functions.php' '$THEME_PATH/functions.php'; fi
+              for f in catalog-filter-scroll-final-010234.php catalog-vendor-truth-final-010235.php; do
+                if [ -f '$BACKUP_DIR/.missing-'\"\$f\" ]; then
+                  rm -f '$THEME_PATH/inc/'\"\$f\"
+                elif [ -f '$BACKUP_DIR/'\"\$f\" ]; then
+                  cp -p '$BACKUP_DIR/'\"\$f\" '$THEME_PATH/inc/'\"\$f\"
+                fi
+              done
+              rm -rf '$PAYLOAD_DIR' '$BACKUP_DIR'
+            " || true
+            echo PRODUCTION_FILTER_010235_ROLLED_BACK
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            test -d '$THEME_PATH/inc'
+            mkdir -p '$BACKUP_DIR' '$PAYLOAD_DIR/inc'
+            cp -p '$THEME_PATH/functions.php' '$BACKUP_DIR/functions.php'
+            for f in catalog-filter-scroll-final-010234.php catalog-vendor-truth-final-010235.php; do
+              if [ -f '$THEME_PATH/inc/'\"\$f\" ]; then cp -p '$THEME_PATH/inc/'\"\$f\" '$BACKUP_DIR/'\"\$f\"; else : > '$BACKUP_DIR/.missing-'\"\$f\"; fi
+            done
+          "
+
+          for f in catalog-filter-scroll-final-010234.php catalog-vendor-truth-final-010235.php; do
+            sshpass -e scp $SCP_OPTIONS "source/elmercadodeorigen-child/inc/$f" "$STAGING_USER@$STAGING_HOST:$PAYLOAD_DIR/inc/$f"
+          done
+
+          cat > /tmp/patch-production-filter-010235.py <<'PY'
+          from pathlib import Path
+          import sys
+          path=Path(sys.argv[1])
+          text=path.read_text()
+          marker='/* CATALOG_FILTER_FIX_010235_PRODUCTION */'
+          if marker not in text:
+              text += r'''
+
+          /* CATALOG_FILTER_FIX_010235_PRODUCTION */
+          foreach ( array( 'catalog-filter-scroll-final-010234.php', 'catalog-vendor-truth-final-010235.php' ) as $elmercado_catalog_filter_fix_010235 ) {
+              $elmercado_catalog_filter_fix_path_010235 = get_stylesheet_directory() . '/inc/' . $elmercado_catalog_filter_fix_010235;
+              if ( is_readable( $elmercado_catalog_filter_fix_path_010235 ) ) {
+                  require_once $elmercado_catalog_filter_fix_path_010235;
+              }
+          }
+          '''
+          path.write_text(text)
+          PY
+          sshpass -e scp $SCP_OPTIONS /tmp/patch-production-filter-010235.py "$STAGING_USER@$STAGING_HOST:$PAYLOAD_DIR/patch.py"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -euo pipefail
+            cp -p '$THEME_PATH/functions.php' '$PAYLOAD_DIR/functions.php'
+            python3 '$PAYLOAD_DIR/patch.py' '$PAYLOAD_DIR/functions.php'
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$PAYLOAD_DIR/functions.php' >/dev/null
+            \"\$php_bin\" -l '$PAYLOAD_DIR/inc/catalog-filter-scroll-final-010234.php' >/dev/null
+            \"\$php_bin\" -l '$PAYLOAD_DIR/inc/catalog-vendor-truth-final-010235.php' >/dev/null
+            install -m 0644 '$PAYLOAD_DIR/functions.php' '$THEME_PATH/functions.php'
+            install -m 0644 '$PAYLOAD_DIR/inc/catalog-filter-scroll-final-010234.php' '$THEME_PATH/inc/catalog-filter-scroll-final-010234.php'
+            install -m 0644 '$PAYLOAD_DIR/inc/catalog-vendor-truth-final-010235.php' '$THEME_PATH/inc/catalog-vendor-truth-final-010235.php'
+            grep -Fq 'CATALOG_FILTER_FIX_010235_PRODUCTION' '$THEME_PATH/functions.php'
+          "
+          echo PRODUCTION_FILTER_010235_FILES_DEPLOYED
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+          PROBE="elmercado-opcache-filter-010235-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS source/.github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          BODY="$(curl -fsSL -H 'Cache-Control: no-store' -H 'Pragma: no-cache' --max-time 30 "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID")"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
+          printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
+          echo PRODUCTION_FILTER_010235_CACHE_RESET
+
+          runtime_ok=0
+          for i in $(seq 1 40); do
+            shop="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/tienda/?prod-filter-010235=$GITHUB_RUN_ID-$i" || true)"
+            hidalgo="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/tienda/hidalgo-de-la-jara/?prod-filter-010235=$GITHUB_RUN_ID-$i" || true)"
+            vendor1957="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/tienda/1957/?prod-filter-010235=$GITHUB_RUN_ID-$i" || true)"
+            if grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$shop" \
+              && grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$hidalgo" \
+              && grep -Fq 'emo-vendor-truth-010235' <<<"$hidalgo" \
+              && grep -Fq 'emo-vendor-truth-010235' <<<"$vendor1957"; then
+              runtime_ok=1
+              break
+            fi
+            sleep 3
+          done
+          test "$runtime_ok" -eq 1
+          echo PRODUCTION_FILTER_010235_RUNTIME_OK
+
+          cd source
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const fail=(m,d)=>{throw new Error(`${m}${d?' '+JSON.stringify(d):''}`)};
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const inspect=async(path,vendor,expectedTotal)=>{
+              const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:1440,height:1000});
+              const sep=path.includes('?')?'&':'?';
+              await p.goto(`${process.env.BASE_URL}${path}${sep}prodqa010235=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              const railSelector=vendor?'#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229':'#secondary.emo-filter-rail-shared-010229';
+              await p.waitForSelector(railSelector,{timeout:20000}); await sleep(900);
+              const initial=await p.evaluate((vendor)=>{
+                const rail=vendor?document.querySelector('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229'):document.querySelector('#secondary.emo-filter-rail-shared-010229');
+                const title=rail?.querySelector('.emo-filter-title-shared-010229'); const panel=vendor?rail?.querySelector('#emo-vendor-filters'):null; const c=el=>el?getComputedStyle(el):null;
+                return {railWidth:rail?.getBoundingClientRect().width||0,railPadding:c(rail)?.padding||'',titleWidth:title?.getBoundingClientRect().width||0,titleFont:c(title)?.fontFamily||'',titleSize:c(title)?.fontSize||'',titleWeight:c(title)?.fontWeight||'',titleLine:c(title)?.lineHeight||'',titleSpacing:c(title)?.letterSpacing||'',titleTransform:c(title)?.textTransform||'',panelPadding:c(panel)?.padding||null,filterText:(panel?.textContent||'').replace(/\s+/g,' ').trim(),count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),oldLoader:!!document.getElementById('elmercado-continuous-catalog-loader-010181'),newLoader:!!document.getElementById('elmercado-catalog-scroll-final-010234'),truth:document.body.classList.contains('emo-vendor-truth-010235')};
+              },vendor);
+              const label=`${expectedTotal} ${expectedTotal===1?'resultado':'resultados'}`;
+              if(initial.railWidth!==250||initial.railPadding!=='18px'||Math.abs(initial.titleWidth-212)>.75) fail('filter geometry',initial);
+              if(vendor&&initial.panelPadding!=='0px') fail('vendor extra padding',initial);
+              if(vendor&&!initial.truth) fail('vendor truth marker',initial);
+              if(initial.count.length<1||initial.count.some(t=>t!==label)) fail('initial result copy',initial);
+              if(initial.oldLoader||!initial.newLoader) fail('loader contract',initial);
+              const linkSelector=vendor?'#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229':'#secondary.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229';
+              let hover='n/a'; if(await p.$(linkSelector)){await p.hover(linkSelector);hover=await p.$eval(linkSelector,el=>getComputedStyle(el).textDecorationLine);if(hover!=='none')fail('hover underline',hover);}
+              const started=Date.now();
+              while(Date.now()-started<25000){await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));await sleep(700);const s=await p.evaluate(()=>window.__emoCatalogLoaderState?{loading:window.__emoCatalogLoaderState.loading,nextUrl:window.__emoCatalogLoaderState.nextUrl}:null);if(s&&!s.loading&&!s.nextUrl)break;}
+              const tail=await p.evaluate(()=>{const grid=document.querySelector('#wcfmmp-store ul.products,main ul.products,#primary ul.products,.content-area ul.products,ul.products');const items=grid?[...grid.querySelectorAll(':scope > li.product')]:[];const key=item=>{const pc=[...item.classList].find(c=>/^(?:post|product)-\d+$/.test(c));if(pc)return pc;const id=item.getAttribute('data-product_id')||item.getAttribute('data-product-id')||item.querySelector('[data-product_id],[data-product-id]')?.getAttribute('data-product_id')||item.querySelector('[data-product_id],[data-product-id]')?.getAttribute('data-product-id');if(id)return `id:${id}`;return item.querySelector('a.woocommerce-LoopProduct-link,a[href*="/producto/"],a[href*="/product/"]')?.href||'';};const keys=items.map(key).filter(Boolean);const counts={};keys.forEach(k=>counts[k]=(counts[k]||0)+1);return{domCount:items.length,unique:new Set(keys).size,duplicates:Object.entries(counts).filter(([,n])=>n>1),count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),state:window.__emoCatalogLoaderState?{loading:window.__emoCatalogLoaderState.loading,nextUrl:window.__emoCatalogLoaderState.nextUrl,shown:window.__emoCatalogLoaderState.shown,unique:window.__emoCatalogLoaderState.unique}:null};});
+              if(tail.domCount!==expectedTotal||tail.unique!==expectedTotal||tail.duplicates.length)fail('duplicate or missing products',tail);
+              if(tail.count.some(t=>t!==label))fail('result copy mutated',tail);
+              if(!tail.state||tail.state.loading||tail.state.nextUrl)fail('loader unfinished',tail);
+              await p.close(); return{initial,tail,hover};
+            };
+            const shop=await inspect('/tienda/',false,21); const hidalgo=await inspect('/tienda/hidalgo-de-la-jara/',true,17); const vendor1957=await inspect('/tienda/1957/',true,4);
+            for(const key of ['titleFont','titleSize','titleWeight','titleLine','titleSpacing','titleTransform']) if(shop.initial[key]!==hidalgo.initial[key]) fail(`title parity ${key}`,{shop:shop.initial[key],vendor:hidalgo.initial[key]});
+            if(/Aceites\s*4/i.test(hidalgo.initial.filterText)||!/Embutidos y curados\s*7/i.test(hidalgo.initial.filterText)||!/Jamones y paletas\s*10/i.test(hidalgo.initial.filterText))fail('Hidalgo filter truth',hidalgo.initial.filterText);
+            const mobile=await browser.newPage();await mobile.setCacheEnabled(false);await mobile.setViewport({width:390,height:844});await mobile.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?prodqamobile=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});await sleep(900);await mobile.click('.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229');await sleep(200);const m=await mobile.evaluate(()=>{const shell=document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229');const close=shell?.querySelector('.emo-mobile-filter-close');const rail=shell?.querySelector('.emo-mobile-filter-content .emo-filter-rail-shared-010229');const r=close?.getBoundingClientRect();return{hidden:shell?.hidden,closeW:r?.width||0,closeH:r?.height||0,railInside:!!rail};});if(m.hidden||m.closeW!==40||m.closeH!==40||!m.railInside)fail('mobile regression',m);await mobile.close();
+            console.log('PRODUCTION_CATALOG_FILTER_010235_BROWSER_OK',JSON.stringify({shop:shop.tail,hidalgo:hidalgo.tail,vendor1957:vendor1957.tail,hover:{shop:shop.hover,hidalgo:hidalgo.hover},mobile:m}));
+            await browser.close();
+          })().catch(e=>{console.error('PRODUCTION_CATALOG_FILTER_010235_BROWSER_ERROR',e);process.exit(1)});
+          NODE
+          cd ..
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR' '$PAYLOAD_DIR'"
+          trap - ERR
+          echo PRODUCTION_FILTER_010235_OK
