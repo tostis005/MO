@@ -20,8 +20,8 @@ function elmercado_checkout_no_shipping_message( string $message ): string {
         return $message;
     }
 
-    return '<div class="emo-no-shipping-destination" data-emo-no-shipping="1" role="alert">'
-        . '<strong>No podemos enviar los productos de este productor al destino indicado.</strong> '
+    return '<div class="emo-no-shipping-destination" data-emo-no-shipping="1" role="alert" style="color:#27352f !important;background:#fff7e8 !important;">'
+        . '<strong style="color:#0d211b !important;">No podemos enviar los productos de este productor al destino indicado.</strong> '
         . 'Actualmente no tiene configurada una opción de envío para esa zona. '
         . 'Si crees que debería estar disponible o se trata de un error, ponte en contacto con nosotros y lo revisaremos.'
         . '</div>';
@@ -57,15 +57,14 @@ add_action(
                 text-align: left !important;
             }
 
-            body.woocommerce-cart .cart_totals .emo-no-shipping-destination,
-            body.woocommerce-cart .cart_totals .emo-no-shipping-destination *,
-            body.woocommerce-checkout #order_review .emo-no-shipping-destination,
-            body.woocommerce-checkout #order_review .emo-no-shipping-destination * {
+            body.woocommerce-cart .emo-no-shipping-destination,
+            body.woocommerce-cart .emo-no-shipping-destination *,
+            body.woocommerce-checkout .emo-no-shipping-destination,
+            body.woocommerce-checkout .emo-no-shipping-destination * {
                 color: #27352f !important;
             }
 
-            body.woocommerce-cart .cart_totals .emo-no-shipping-destination strong,
-            body.woocommerce-checkout #order_review .emo-no-shipping-destination strong,
+            body.woocommerce-cart .emo-no-shipping-destination strong,
             body.woocommerce-checkout .emo-no-shipping-destination strong {
                 color: #0d211b !important;
                 font-weight: 700 !important;
@@ -77,45 +76,47 @@ add_action(
             }
 
             /*
-             * Checks del checkout. Woostify/WooCommerce añaden espacio en varios
-             * niveles (fila + contenedor), por eso se neutralizan todos los wrappers
-             * específicos de estas tres opciones sin tocar los campos normales.
+             * Checks del checkout. Se neutraliza la sangría distinta de los
+             * wrappers de WooCommerce/Checkout Manager y se aplica una única
+             * alineación a las tres opciones.
              */
-            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details p.create-account,
-            body.woocommerce-checkout #customer_details #ship-to-different-address,
-            body.woocommerce-checkout #customer_details .emo-compact-check-row {
-                min-height: 0 !important;
-                height: auto !important;
-                margin: 0.18rem 0 !important;
-                padding: 0 !important;
-            }
-
             body.woocommerce-checkout #customer_details .woocommerce-account-fields,
             body.woocommerce-checkout #customer_details .woocommerce-shipping-fields {
                 min-height: 0 !important;
                 height: auto !important;
-                margin: 0.18rem 0 !important;
+                margin: 0 !important;
                 padding: 0 !important;
                 gap: 0 !important;
                 row-gap: 0 !important;
             }
 
+            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details p.create-account,
+            body.woocommerce-checkout #customer_details #ship-to-different-address,
+            body.woocommerce-checkout #customer_details .emo-compact-check-row {
+                box-sizing: border-box !important;
+                width: 100% !important;
+                min-height: 0 !important;
+                height: auto !important;
+                margin: 0.22rem 0 !important;
+                padding: 0 !important;
+            }
+
             body.woocommerce-checkout #customer_details .woocommerce-account-fields > p,
             body.woocommerce-checkout #customer_details .woocommerce-shipping-fields > h3 {
-                margin-top: 0.18rem !important;
-                margin-bottom: 0.18rem !important;
-                padding-top: 0 !important;
-                padding-bottom: 0 !important;
+                margin-top: 0.22rem !important;
+                margin-bottom: 0.22rem !important;
+                padding: 0 !important;
             }
 
             body.woocommerce-checkout #customer_details label:has(input[type="checkbox"]),
             body.woocommerce-checkout #customer_details .emo-compact-check-label {
+                box-sizing: border-box !important;
                 display: inline-flex !important;
                 align-items: center !important;
                 gap: 0.5rem !important;
-                margin: 0 !important;
+                margin: 0 0 0 1.25rem !important;
                 padding: 0 !important;
                 line-height: 1.3 !important;
             }
@@ -184,33 +185,34 @@ add_action(
                         var row = checkbox.closest('p.form-row, p.create-account, h3#ship-to-different-address, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
                         var section = checkbox.closest('.woocommerce-account-fields, .woocommerce-shipping-fields');
 
-                        if (label) {
-                            label.classList.add('emo-compact-check-label');
-                            setImportant(label, 'margin', '0');
-                            setImportant(label, 'padding', '0');
-                            setImportant(label, 'line-height', '1.3');
-                            setImportant(label, 'gap', '0.5rem');
+                        if (section) {
+                            setImportant(section, 'margin', '0');
+                            setImportant(section, 'padding', '0');
+                            setImportant(section, 'gap', '0');
+                            setImportant(section, 'row-gap', '0');
                         }
 
                         if (row) {
                             row.classList.add('emo-compact-check-row');
+                            setImportant(row, 'width', '100%');
                             setImportant(row, 'min-height', '0');
                             setImportant(row, 'height', 'auto');
-                            setImportant(row, 'margin-top', '0.18rem');
-                            setImportant(row, 'margin-bottom', '0.18rem');
-                            setImportant(row, 'padding-top', '0');
-                            setImportant(row, 'padding-bottom', '0');
+                            setImportant(row, 'margin-top', '0.22rem');
+                            setImportant(row, 'margin-bottom', '0.22rem');
+                            setImportant(row, 'padding', '0');
                         }
 
-                        if (section) {
-                            setImportant(section, 'min-height', '0');
-                            setImportant(section, 'height', 'auto');
-                            setImportant(section, 'margin-top', '0.18rem');
-                            setImportant(section, 'margin-bottom', '0.18rem');
-                            setImportant(section, 'padding-top', '0');
-                            setImportant(section, 'padding-bottom', '0');
-                            setImportant(section, 'gap', '0');
-                            setImportant(section, 'row-gap', '0');
+                        if (label) {
+                            label.classList.add('emo-compact-check-label');
+                            setImportant(label, 'display', 'inline-flex');
+                            setImportant(label, 'align-items', 'center');
+                            setImportant(label, 'margin-top', '0');
+                            setImportant(label, 'margin-right', '0');
+                            setImportant(label, 'margin-bottom', '0');
+                            setImportant(label, 'margin-left', '1.25rem');
+                            setImportant(label, 'padding', '0');
+                            setImportant(label, 'line-height', '1.3');
+                            setImportant(label, 'gap', '0.5rem');
                         }
 
                         setImportant(checkbox, 'margin', '0');
