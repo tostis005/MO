@@ -34,7 +34,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Inspect product author and store URL
+      - name: Inspect product author and vendor state
         shell: bash
         run: |
           set -euo pipefail
@@ -58,5 +58,5 @@ jobs:
           author="$("$php_bin" -d memory_limit=512M "$wp_bin" post get 1356 --field=post_author --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
           echo "HIDALGO_AUTHOR_ID=$author"
           "$php_bin" -d memory_limit=512M "$wp_bin" user get "$author" --fields=ID,user_login,user_nicename,display_name --format=json --path="$wp_path" --skip-plugins --skip-themes --allow-root
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$id=(int)get_post_field("post_author",1356); echo "WCFM_URL=".(function_exists("wcfmmp_get_store_url")?wcfmmp_get_store_url($id):"NOFUNC").PHP_EOL; echo "STORE_NAME=".get_user_meta($id,"wcfmmp_store_name",true).PHP_EOL; $s=get_user_meta($id,"wcfmmp_profile_settings",true); echo "STORE_SETTINGS_SLUG=".(is_array($s)?($s["store_slug"]??""):"").PHP_EOL;' --path="$wp_path" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$_SERVER["REQUEST_URI"]="/tienda/hidalgo-de-la-jara/"; echo "SLUG=".(function_exists("elmercado_vendor_store_slug_010225")?elmercado_vendor_store_slug_010225():"NOFUNC").PHP_EOL; echo "VID=".(function_exists("elmercado_vendor_store_vendor_id_010225")?elmercado_vendor_store_vendor_id_010225():-1).PHP_EOL; if(function_exists("elmercado_vendor_store_state_010225")){ $st=elmercado_vendor_store_state_010225(); echo "STATE_TOTAL=".(int)$st["total"].PHP_EOL; echo "STATE_BASE=".count($st["base_ids"]).PHP_EOL; echo "STATE_IDS=".implode(",",$st["base_ids"]).PHP_EOL; echo "STATE_CATS=".implode(",",array_map(static fn($d)=>$d["term"]->slug.":".$d["count"],$st["categories"])).PHP_EOL; }' --path="$wp_path" --allow-root
           REMOTE
