@@ -90,9 +90,9 @@ jobs:
               });
               console.log('CARD_SPACING_010247_'+width+'='+JSON.stringify(q));
               if(width===1440){
-                if(!(q.titlePriceGap<=10 && q.priceSoldGap>=17 && q.priceSoldGap<=40 && q.soldMarginTop==='9px' && q.soldPaddingTop==='5px')) throw new Error('Desktop spacing QA failed');
+                if(!(q.titlePriceGap<=10 && q.priceSoldGap>=19 && q.priceSoldGap<=40 && q.soldMarginTop==='10px' && q.soldPaddingTop==='6px')) throw new Error('Desktop spacing QA failed');
               } else {
-                if(!(q.titlePriceGap<=9 && q.priceSoldGap>=17 && q.priceSoldGap<=38 && q.soldMarginTop==='8px' && q.soldPaddingTop==='4px')) throw new Error('Mobile spacing QA failed');
+                if(!(q.titlePriceGap<=9 && q.priceSoldGap>=17 && q.priceSoldGap<=38 && q.soldMarginTop==='9px' && q.soldPaddingTop==='5px')) throw new Error('Mobile spacing QA failed');
               }
               await page.close();
             }
