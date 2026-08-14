@@ -47,9 +47,9 @@ function elmercado_catalog_card_source_010241( int $attachment_id, string $size,
 
 /*
  * Woostify escribe explícitamente `woocommerce_thumbnail` en su loop y no usa
- * el filtro estándar de WooCommerce para elegir el tamaño. Por eso detectamos
- * la clase real `product-loop-image` y sustituimos los atributos de salida por
- * nuestros derivados, con un srcset que nunca contiene el original.
+ * el filtro estándar de WooCommerce para elegir el tamaño. Detectamos las dos
+ * clases de imagen del loop (principal y hover) y sustituimos sus atributos por
+ * derivados acotados cuyo srcset nunca contiene el original.
  *
  * @param array<string,mixed> $attr       Atributos de imagen.
  * @param WP_Post             $attachment Adjunto.
@@ -64,7 +64,7 @@ add_filter(
 		}
 
 		$class = (string) ( $attr['class'] ?? '' );
-		if ( ! str_contains( $class, 'product-loop-image' ) ) {
+		if ( ! str_contains( $class, 'product-loop-image' ) && ! str_contains( $class, 'product-loop-hover-image' ) ) {
 			return $attr;
 		}
 
@@ -202,18 +202,22 @@ add_action(
 			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper > a,
 			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper .woocommerce-LoopProduct-link,
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper > a {
-				display:grid !important;
+				display:block !important;
+				position:static !important;
 				width:100% !important;
 				height:100% !important;
-				place-items:center !important;
 			}
 
 			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper img,
 			html body.elmercado-child-theme ul.products li.product img.product-loop-image,
+			html body.elmercado-child-theme ul.products li.product img.product-loop-hover-image,
 			html body.elmercado-child-theme ul.products li.product .woocommerce-loop-product__link img,
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper img,
-			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product img.product-loop-image {
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product img.product-loop-image,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product img.product-loop-hover-image {
 				display:block !important;
+				position:absolute !important;
+				inset:0 !important;
 				box-sizing:border-box !important;
 				width:100% !important;
 				height:100% !important;
