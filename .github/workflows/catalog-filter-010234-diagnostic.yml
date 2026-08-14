@@ -21,52 +21,28 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-      - name: Compare live Shop and vendor filters and scroll tail
+      - name: Inspect staging vendor route
         env:
-          BASE_URL: https://www.elmercadodeorigen.com
+          BASE_URL: https://dev.elmercadodeorigen.com
         run: |
           node <<'NODE'
           const puppeteer=require('puppeteer-core');
           (async()=>{
-            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const inspect=async(path, vendor)=>{
-              const p=await browser.newPage(); await p.setViewport({width:1440,height:1000});
-              await p.goto(`${process.env.BASE_URL}${path}?diag-010234=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
-              await new Promise(r=>setTimeout(r,1400));
-              const styles=await p.evaluate((vendor)=>{
-                const rail=vendor?document.querySelector('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229'):document.querySelector('#secondary.emo-filter-rail-shared-010229');
-                const title=rail?.querySelector('.emo-filter-title-shared-010229');
-                const panel=vendor?rail?.querySelector('#emo-vendor-filters'):null;
-                const cs=(el)=>{if(!el)return null; const c=getComputedStyle(el),r=el.getBoundingClientRect(); return {w:r.width,h:r.height,padding:c.padding,margin:c.margin,fontFamily:c.fontFamily,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing,textTransform:c.textTransform};};
-                return {rail:cs(rail),title:cs(title),panel:cs(panel),count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>n.textContent.replace(/\s+/g,' ').trim())};
-              },vendor);
-              console.log(vendor?'VENDOR_STYLE_010234':'SHOP_STYLE_010234',JSON.stringify(styles));
-              const started=Date.now();
-              while(Date.now()-started<20000){
-                await p.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
-                await new Promise(r=>setTimeout(r,700));
-                const state=await p.evaluate(()=>window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,loading:window.__emoCatalogLoaderState.loading,shown:window.__emoCatalogLoaderState.shown}:null);
-                if(state && !state.loading && !state.nextUrl) break;
-              }
-              const tail=await p.evaluate(()=>{
-                const grid=document.querySelector('#wcfmmp-store ul.products, main ul.products, #primary ul.products, .content-area ul.products, ul.products');
-                const items=grid?[...grid.querySelectorAll(':scope > li.product')]:[];
-                const rows=items.map((item,i)=>{
-                  const post=[...item.classList].find(c=>/^post-\d+$/.test(c))||'';
-                  const pid=item.getAttribute('data-product_id')||item.getAttribute('data-product-id')||item.querySelector('[data-product_id]')?.getAttribute('data-product_id')||'';
-                  const link=item.querySelector('a.woocommerce-LoopProduct-link,a[href*="/producto/"],a[href*="/product/"]')?.href||'';
-                  const title=(item.querySelector('.woocommerce-loop-product__title,h2,h3,.product-title')?.textContent||'').replace(/\s+/g,' ').trim();
-                  return {i,post,pid,link,title};
-                });
-                const key=r=>r.post||r.pid||r.link||r.title;
-                const counts={}; rows.forEach(r=>{const k=key(r); if(k) counts[k]=(counts[k]||0)+1;});
-                return {domCount:rows.length,unique:Object.values(counts).length,duplicates:Object.entries(counts).filter(([,n])=>n>1),last:rows.slice(-12),loader:window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,highestPage:window.__emoCatalogLoaderState.highestPage,shown:window.__emoCatalogLoaderState.shown,loading:window.__emoCatalogLoaderState.loading}:null,count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>n.textContent.replace(/\s+/g,' ').trim())};
-              });
-              console.log(vendor?'VENDOR_TAIL_010234':'SHOP_TAIL_010234',JSON.stringify(tail));
-              await p.close(); return {styles,tail};
-            };
-            const shop=await inspect('/tienda/',false); const vendor=await inspect('/tienda/hidalgo-de-la-jara/',true);
-            if(!shop.styles.rail||!vendor.styles.rail||!shop.styles.title||!vendor.styles.title) throw new Error('missing filter elements');
-            await browser.close();
+            const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage(); await p.setViewport({width:1440,height:1000});
+            await p.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?route-diag=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+            await new Promise(r=>setTimeout(r,1200));
+            const d=await p.evaluate(()=>({
+              href:location.href,
+              body:document.body.className,
+              hasStore:!!document.querySelector('#wcfmmp-store'),
+              storeClass:document.querySelector('#wcfmmp-store')?.className||'',
+              count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
+              products:[...document.querySelectorAll('#wcfmmp-store ul.products > li.product')].map(n=>({cls:n.className,title:(n.querySelector('.woocommerce-loop-product__title,h2,h3,.product-title')?.textContent||'').trim()})),
+              filterText:(document.querySelector('#emo-vendor-filters')?.textContent||'').replace(/\s+/g,' ').trim().slice(0,500),
+              loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,nextUrl:window.__emoCatalogLoaderState.nextUrl,highestPage:window.__emoCatalogLoaderState.highestPage}:null
+            }));
+            console.log('VENDOR_ROUTE_DIAG_010234',JSON.stringify(d));
+            await b.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
