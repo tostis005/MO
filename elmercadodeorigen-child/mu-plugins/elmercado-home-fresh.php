@@ -268,53 +268,7 @@ function elmercado_render_home_vendor_visual_010244(): string {
 }
 
 /**
- * Replace the existing product collage with producers and reassert the final
- * category renderer that sorts by exact visible product count descending.
- */
-function elmercado_home_fresh_output_010244( string $html ): string {
-	if ( '' === $html ) {
-		return $html;
-	}
-
-	$visual = elmercado_render_home_vendor_visual_010244();
-	if ( $visual ) {
-		$updated = preg_replace( '~<div class="emo-hero__visual"[^>]*>.*?</div>~s', $visual, $html, 1 );
-		if ( is_string( $updated ) ) {
-			$html = $updated;
-		}
-	}
-
-	if ( function_exists( 'elmercado_home_category_output_html_010226' ) ) {
-		$categories = (string) elmercado_home_category_output_html_010226();
-		if ( '' !== $categories ) {
-			$start = strpos( $html, '<section class="emo-section emo-categories"' );
-			$end   = false !== $start ? strpos( $html, '</section>', $start ) : false;
-			if ( false !== $start && false !== $end ) {
-				$end  += strlen( '</section>' );
-				$html = substr_replace( $html, $categories, $start, $end - $start );
-			}
-		}
-	}
-
-	return $html;
-}
-
-add_action(
-	'template_redirect',
-	static function (): void {
-		if ( elmercado_home_fresh_is_front_010244() ) {
-			ob_start( 'elmercado_home_fresh_output_010244' );
-		}
-	},
-	-9000
-);
-
-/**
  * Requested Home-only sizing and 1–5 producer collage CSS.
- *
- * The Home performance layer intentionally compacts inline CSS attached to the
- * main Woostify stylesheet. Adding these rules there keeps them in the same
- * optimized path instead of emitting a standalone wp_head style block.
  */
 function elmercado_home_vendor_css_010244(): string {
 	return <<<'CSS'
@@ -441,30 +395,57 @@ body.home .emo-hero-vendor-fallback {
 CSS;
 }
 
+/**
+ * Replace the existing product collage with producers, reassert category order,
+ * and inject the final CSS after the Home asset optimizer has already run.
+ */
+function elmercado_home_fresh_output_010244( string $html ): string {
+	if ( '' === $html ) {
+		return $html;
+	}
+
+	$visual = elmercado_render_home_vendor_visual_010244();
+	if ( $visual ) {
+		$updated = preg_replace( '~<div class="emo-hero__visual"[^>]*>.*?</div>~s', $visual, $html, 1 );
+		if ( is_string( $updated ) ) {
+			$html = $updated;
+		}
+	}
+
+	if ( function_exists( 'elmercado_home_category_output_html_010226' ) ) {
+		$categories = (string) elmercado_home_category_output_html_010226();
+		if ( '' !== $categories ) {
+			$start = strpos( $html, '<section class="emo-section emo-categories"' );
+			$end   = false !== $start ? strpos( $html, '</section>', $start ) : false;
+			if ( false !== $start && false !== $end ) {
+				$end  += strlen( '</section>' );
+				$html = substr_replace( $html, $categories, $start, $end - $start );
+			}
+		}
+	}
+
+	if ( ! str_contains( $html, 'id="elmercado-home-vendors-010244"' ) ) {
+		$style    = '<style id="elmercado-home-vendors-010244">' . elmercado_home_vendor_css_010244() . '</style>';
+		$head_end = strpos( $html, '</head>' );
+		if ( false !== $head_end ) {
+			$html = substr_replace( $html, $style, $head_end, 0 );
+		} else {
+			$hero_start = strpos( $html, '<section class="emo-hero"' );
+			if ( false !== $hero_start ) {
+				$html = substr_replace( $html, $style, $hero_start, 0 );
+			}
+		}
+	}
+
+	return $html;
+}
+
 add_action(
-	'wp_enqueue_scripts',
+	'template_redirect',
 	static function (): void {
-		if ( ! elmercado_home_fresh_is_front_010244() ) {
-			return;
-		}
-
-		$css    = elmercado_home_vendor_css_010244();
-		$styles = wp_styles();
-		foreach ( array( 'woostify-parent-style', 'woostify-parent' ) as $handle ) {
-			if ( wp_style_is( $handle, 'enqueued' ) && isset( $styles->registered[ $handle ] ) ) {
-				wp_add_inline_style( $handle, $css );
-				return;
-			}
-		}
-
-		/* Defensive fallback: attach to the first style that will actually print. */
-		foreach ( (array) $styles->queue as $handle ) {
-			$handle = (string) $handle;
-			if ( '' !== $handle && isset( $styles->registered[ $handle ] ) && wp_style_is( $handle, 'enqueued' ) ) {
-				wp_add_inline_style( $handle, $css );
-				return;
-			}
+		if ( elmercado_home_fresh_is_front_010244() ) {
+			ob_start( 'elmercado_home_fresh_output_010244' );
 		}
 	},
-	PHP_INT_MAX - 100
+	-9000
 );
