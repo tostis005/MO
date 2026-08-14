@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-      - name: Inspect staging vendor route
+      - name: Inspect staging vendor pagination
         env:
           BASE_URL: https://dev.elmercadodeorigen.com
         run: |
@@ -29,20 +29,19 @@ jobs:
           const puppeteer=require('puppeteer-core');
           (async()=>{
             const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const p=await b.newPage(); await p.setViewport({width:1440,height:1000});
-            await p.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?route-diag=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
-            await new Promise(r=>setTimeout(r,1200));
-            const d=await p.evaluate(()=>({
-              href:location.href,
-              body:document.body.className,
-              hasStore:!!document.querySelector('#wcfmmp-store'),
-              storeClass:document.querySelector('#wcfmmp-store')?.className||'',
-              count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
-              products:[...document.querySelectorAll('#wcfmmp-store ul.products > li.product')].map(n=>({cls:n.className,title:(n.querySelector('.woocommerce-loop-product__title,h2,h3,.product-title')?.textContent||'').trim()})),
-              filterText:(document.querySelector('#emo-vendor-filters')?.textContent||'').replace(/\s+/g,' ').trim().slice(0,500),
-              loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,nextUrl:window.__emoCatalogLoaderState.nextUrl,highestPage:window.__emoCatalogLoaderState.highestPage}:null
-            }));
-            console.log('VENDOR_ROUTE_DIAG_010234',JSON.stringify(d));
+            for(const route of ['/tienda/hidalgo-de-la-jara/','/tienda/hidalgo-de-la-jara/page/2/','/tienda/1957/']){
+              const p=await b.newPage(); await p.setViewport({width:1440,height:1000});
+              await p.goto(`${process.env.BASE_URL}${route}?page-diag=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await new Promise(r=>setTimeout(r,700));
+              const d=await p.evaluate(()=>({
+                href:location.href,
+                count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
+                products:[...document.querySelectorAll('#wcfmmp-store ul.products > li.product')].map(n=>({post:[...n.classList].find(c=>/^post-\d+$/.test(c))||'',title:(n.querySelector('.woocommerce-loop-product__title,h2,h3,.product-title')?.textContent||'').replace(/\s+/g,' ').trim()})),
+                filters:(document.querySelector('#emo-vendor-filters')?.textContent||'').replace(/\s+/g,' ').trim().slice(0,350),
+                pagination:[...document.querySelectorAll('#wcfmmp-store a.page-numbers[href],#wcfmmp-store .woocommerce-pagination a[href],#wcfmmp-store .wcfmmp-pagination a[href]')].map(a=>({text:(a.textContent||'').trim(),href:a.href}))
+              }));
+              console.log('VENDOR_PAGE_DIAG_010234',route,JSON.stringify(d)); await p.close();
+            }
             await b.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
