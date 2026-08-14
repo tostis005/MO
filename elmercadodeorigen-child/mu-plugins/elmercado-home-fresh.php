@@ -138,6 +138,7 @@ function elmercado_home_vendor_banner_010244( int $vendor_id ): string {
 					return $url;
 				}
 			}
+		}
 	}
 
 	if ( $store && method_exists( $store, 'get_avatar' ) ) {
