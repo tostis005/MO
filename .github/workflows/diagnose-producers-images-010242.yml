@@ -31,39 +31,28 @@ jobs:
             await page.setCacheEnabled(false);
             await page.setViewport({width,height:1200,deviceScaleFactor:1});
             await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
-            await page.goto(`${process.env.BASE_URL}/productores/?diag242=${Date.now()}-${width}`,{waitUntil:'networkidle2',timeout:60000});
+            await page.goto(`${process.env.BASE_URL}/productores/?diag242b=${Date.now()}-${width}`,{waitUntil:'networkidle2',timeout:60000});
             await sleep(700);
             const out=await page.evaluate(()=>{
               const rect=n=>{const r=n.getBoundingClientRect();return {w:r.width,h:r.height,x:r.x,y:r.y}};
-              const css=n=>{const s=getComputedStyle(n);return {display:s.display,position:s.position,width:s.width,height:s.height,aspectRatio:s.aspectRatio,objectFit:s.objectFit,objectPosition:s.objectPosition,overflow:s.overflow,background:s.backgroundColor}};
-              const cards=[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')];
-              return {
-                body:document.body.className,
-                wrap:document.querySelector('#wcfmmp-stores-wrap')?.outerHTML.slice(0,1000)||'',
-                cards:cards.map((card,index)=>{
-                  const imgs=[...card.querySelectorAll('img')];
-                  return {
-                    index,
-                    cardClass:card.className,
-                    cardRect:rect(card),
-                    cardCss:css(card),
-                    html:card.outerHTML.slice(0,3500),
-                    images:imgs.map(img=>({
-                      className:img.className,
-                      src:img.getAttribute('src')||'',
-                      dataSrc:img.getAttribute('data-src')||'',
-                      current:img.currentSrc||'',
-                      srcset:img.getAttribute('srcset')||img.getAttribute('data-srcset')||'',
-                      widthAttr:img.getAttribute('width'),heightAttr:img.getAttribute('height'),
-                      natural:[img.naturalWidth,img.naturalHeight],rect:rect(img),css:css(img),
-                      parent:{tag:img.parentElement?.tagName,className:img.parentElement?.className||'',rect:img.parentElement?rect(img.parentElement):null,css:img.parentElement?css(img.parentElement):null},
-                      grand:{tag:img.parentElement?.parentElement?.tagName,className:img.parentElement?.parentElement?.className||'',rect:img.parentElement?.parentElement?rect(img.parentElement.parentElement):null,css:img.parentElement?.parentElement?css(img.parentElement.parentElement):null}
-                    }))
-                  };
-                })
-              };
+              const css=n=>{const s=getComputedStyle(n);return {display:s.display,position:s.position,width:s.width,height:s.height,minHeight:s.minHeight,padding:s.padding,margin:s.margin,aspectRatio:s.aspectRatio,overflow:s.overflow,backgroundImage:s.backgroundImage,backgroundSize:s.backgroundSize,backgroundPosition:s.backgroundPosition,backgroundRepeat:s.backgroundRepeat}};
+              const card=document.querySelector('#wcfmmp-stores-wrap li.wcfmmp-single-store');
+              if(!card)return {error:'no card'};
+              const info=card.querySelector('.store-info');
+              const content=card.querySelector('.store-content');
+              const wrapper=card.querySelector('.store-wrapper');
+              const kids=info?[...info.children].map(n=>({tag:n.tagName,className:n.className,text:(n.textContent||'').trim().slice(0,180),rect:rect(n),css:css(n),html:n.outerHTML.slice(0,1400)})):[];
+              const rules=[];
+              for(const sheet of [...document.styleSheets]){
+                let rs;try{rs=sheet.cssRules}catch(e){continue}
+                for(const rule of [...rs]){
+                  const text=rule.cssText||'';
+                  if(/store-info|wcfmmp-single-store|store-content/.test(text) && /(height|aspect-ratio|background-size|padding|position)/.test(text)) rules.push(text.slice(0,1600));
+                }
+              }
+              return {body:document.body.className,card:{rect:rect(card),css:css(card)},wrapper:wrapper?{rect:rect(wrapper),css:css(wrapper),html:wrapper.outerHTML.slice(0,4200)}:null,content:content?{rect:rect(content),css:css(content)}:null,info:info?{rect:rect(info),css:css(info),style:info.getAttribute('style')||'',kids}:null,rules:rules.slice(-30)};
             });
-            console.log('PRODUCER_QA',width,JSON.stringify(out));
+            console.log('PRODUCER_STRUCTURE',width,JSON.stringify(out));
             await page.close();
           };
           (async()=>{const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});await inspect(browser,390);await inspect(browser,1440);await browser.close();})().catch(e=>{console.error(e);process.exit(1)});
