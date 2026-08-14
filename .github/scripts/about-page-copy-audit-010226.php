@@ -1,14 +1,50 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-function iv(&$a,$k,$n=1){$a[$k]=($a[$k]??0)+$n;}function tv($a,$n=25){arsort($a);return array_slice($a,0,$n,true);}
-function gu($ua){$u=strtolower($ua);if(preg_match('/facebookexternalhit|meta-externalagent|meta-externalfetcher|facebot|facebookcatalog|facebookbot|instagram/',$u))return 'Meta/Facebook';if(preg_match('/googlebot|google-inspectiontool|adsbot-google|mediapartners-google/',$u))return 'Google';if(preg_match('/bingbot|bingpreview/',$u))return 'Bing';if(str_contains($u,'monitoring360bot'))return 'Monitoring360';if(str_contains($u,'ahrefs'))return 'Ahrefs';if(str_contains($u,'semrush'))return 'Semrush';if(str_contains($u,'leakix')||str_contains($u,'l9scan'))return 'LeakIX';if(str_contains($u,'bytespider'))return 'ByteSpider';if(preg_match('/gptbot|chatgpt-user|oai-searchbot/',$u))return 'OpenAI';if(preg_match('/claudebot|claude-web/',$u))return 'Anthropic';if(preg_match('/bot|spider|crawler|crawl|headless|scrapy|python-requests|curl\/|wget\/|go-http-client/',$u))return 'Other bot/automation';return 'Human-like/unknown';}
-function ep($target){$p=parse_url($target,PHP_URL_PATH);if(!is_string($p))$p=$target;$l=strtolower($target);if(str_contains($l,'/wp-json/'))return 'wp-json';if(str_contains($l,'/wp-admin/admin-ajax.php'))return 'admin-ajax';if(str_contains($l,'wc-ajax='))return 'wc-ajax';if(str_contains($l,'/wp-login.php'))return 'wp-login';if(str_contains($l,'/xmlrpc.php'))return 'xmlrpc';if(preg_match('/[?&]s=/',$l))return 'search';if(str_starts_with($p,'/producto/'))return 'product';if(str_starts_with($p,'/categoria-producto/'))return 'category';if($p==='/'||$p==='')return 'home';if(preg_match('/\.(?:css|js|jpg|jpeg|png|webp|gif|svg|ico|woff2?|ttf|map)(?:$|\?)/i',$target))return 'static';return 'other';}
-function ptrgroup($h,$ip){if(!$h||$h===$ip)return 'no-ptr';$h=strtolower(rtrim($h,'.'));if(preg_match('/\.([a-z0-9-]+)\.compute\.amazonaws\.com$/',$h,$m))return $m[1].'.compute.amazonaws.com';if(str_ends_with($h,'.googleusercontent.com'))return 'googleusercontent.com';if(str_ends_with($h,'.facebook.com'))return 'facebook.com';$p=explode('.',$h);return count($p)>=3?implode('.',array_slice($p,-3)):$h;}
-$cutoff=new DateTimeImmutable('2026-08-10 00:00:00',new DateTimeZone('UTC'));$vhost=dirname(rtrim(ABSPATH,'/'));$logdir=$vhost.'/logs';$files=array();foreach(array('access_ssl_log.processed','access_log.processed') as $n){$p=$logdir.'/'.$n;if(is_readable($p)&&filesize($p)>0)$files[]=$p;}
-echo "RECENT_TRAFFIC_START\n";if(!$files){echo "RECENT_TRAFFIC_NO_FILES\n";return;}
-$groups=$dyn=$uas=$paths=$statuses=$ends=$mins=$ips=$methods=array();$first='';$last='';$rows=0;$matched=0;
-foreach($files as $file){$fh=fopen($file,'rb');while(!feof($fh)){ $line=fgets($fh);if($line===false)break;$rows++;if(!preg_match('/^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^\"]*) HTTP\/[0-9.]+" (\d{3}) (\S+) "([^\"]*)" "([^\"]*)"/',$line,$m))continue;$dt=DateTimeImmutable::createFromFormat('d/M/Y:H:i:s O',$m[2]);if(!$dt||$dt<$cutoff)continue;$matched++;$ip=$m[1];$ts=$m[2];$method=$m[3];$target=$m[4];$status=$m[5];$ua=$m[8];if($first==='')$first=$ts;$last=$ts;$minute=substr($ts,0,17);$g=gu($ua);$e=ep($target);$p=parse_url($target,PHP_URL_PATH);if(!is_string($p)||$p==='')$p=$target;if(strlen($p)>180)$p=substr($p,0,180);iv($groups,$g);if($e!=='static')iv($dyn,$g);iv($uas,substr($ua,0,220));iv($paths,$p);iv($statuses,$status);iv($ends,$e);iv($mins,$minute);iv($ips,$ip);iv($methods,$method);}fclose($fh);}
-$topIps=tv($ips,30);$ptrReq=$ptrIps=$whoisCountryReq=$whoisCountryIps=$whoisOrgReq=array();$whois='';if(function_exists('shell_exec'))$whois=trim((string)@shell_exec('command -v whois 2>/dev/null'));
-$i=0;foreach($topIps as $ip=>$n){$h=@gethostbyaddr($ip);$pg=ptrgroup($h,$ip);iv($ptrReq,$pg,$n);iv($ptrIps,$pg);if($whois!==''&&$i<20){$out=(string)@shell_exec('timeout 3s '.escapeshellcmd($whois).' '.escapeshellarg($ip).' 2>/dev/null');$cc='';if(preg_match('/^country:\s*([A-Z]{2})\s*$/mi',$out,$mm))$cc=strtoupper($mm[1]);if($cc!==''){iv($whoisCountryReq,$cc,$n);iv($whoisCountryIps,$cc);}if(preg_match('/^(?:org-name|orgname|netname):\s*(.+)$/mi',$out,$om)){ $org=trim($om[1]);if(strlen($org)>100)$org=substr($org,0,100);iv($whoisOrgReq,$org,$n);}}$i++;}
-$mv=array_values($mins);rsort($mv);$out=array('cutoff_utc'=>$cutoff->format(DATE_ATOM),'first_log_time'=>$first,'last_log_time'=>$last,'matched_requests'=>$matched,'unique_ips'=>count($ips),'top_ip_request_counts'=>array_values($topIps),'peak_requests_per_minute'=>$mv[0]??0,'agent_groups'=>tv($groups,30),'dynamic_agent_groups'=>tv($dyn,30),'endpoints'=>tv($ends,30),'statuses'=>tv($statuses,20),'methods'=>tv($methods,20),'top_user_agents'=>tv($uas,30),'top_paths'=>tv($paths,40),'ptr_request_counts_top30_ips'=>tv($ptrReq,30),'ptr_ip_counts_top30_ips'=>tv($ptrIps,30),'whois_available'=>$whois!=='','whois_country_request_counts_top20_ips'=>tv($whoisCountryReq,30),'whois_country_ip_counts_top20_ips'=>tv($whoisCountryIps,30),'whois_org_request_counts_top20_ips'=>tv($whoisOrgReq,30));
-echo 'RECENT_TRAFFIC_JSON '.wp_json_encode($out,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\nRECENT_TRAFFIC_END\n";
+
+global $wpdb;
+$needles = array(
+    'Todo comenzó en 2014 cuando empezamos a especializarnos',
+    'El Mercado de Origen nace de la necesidad',
+    'Nuestra historia',
+);
+
+echo "=== PUBLISHED PAGES CANDIDATES ===\n";
+$pages = $wpdb->get_results(
+    "SELECT ID, post_title, post_name, post_status, LENGTH(post_content) AS content_len
+     FROM {$wpdb->posts}
+     WHERE post_type='page' AND post_status IN ('publish','private','draft')
+     ORDER BY ID"
+);
+foreach ( $pages as $p ) {
+    $hay = strtolower( $p->post_title . ' ' . $p->post_name );
+    if ( str_contains( $hay, 'acerca' ) || str_contains( $hay, 'nosotros' ) || str_contains( $hay, 'historia' ) || str_contains( $hay, 'quienes' ) || str_contains( $hay, 'origen' ) ) {
+        printf("ID=%d status=%s slug=%s title=%s len=%d\n", $p->ID, $p->post_status, $p->post_name, $p->post_title, $p->content_len);
+    }
+}
+
+foreach ( $needles as $needle ) {
+    $like = '%' . $wpdb->esc_like( $needle ) . '%';
+    echo "=== SEARCH: {$needle} ===\n";
+    $posts = $wpdb->get_results( $wpdb->prepare(
+        "SELECT ID, post_title, post_name, post_type, post_status, LENGTH(post_content) AS content_len
+         FROM {$wpdb->posts}
+         WHERE post_content LIKE %s
+         ORDER BY ID",
+        $like
+    ) );
+    foreach ( $posts as $p ) {
+        printf("POST ID=%d type=%s status=%s slug=%s title=%s len=%d\n", $p->ID, $p->post_type, $p->post_status, $p->post_name, $p->post_title, $p->content_len);
+    }
+
+    $meta = $wpdb->get_results( $wpdb->prepare(
+        "SELECT pm.post_id, pm.meta_key, LENGTH(pm.meta_value) AS meta_len, p.post_title, p.post_name, p.post_type, p.post_status
+         FROM {$wpdb->postmeta} pm
+         LEFT JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+         WHERE pm.meta_value LIKE %s
+         ORDER BY pm.post_id, pm.meta_key",
+        $like
+    ) );
+    foreach ( $meta as $m ) {
+        printf("META post_id=%d type=%s status=%s slug=%s title=%s key=%s len=%d\n", $m->post_id, $m->post_type, $m->post_status, $m->post_name, $m->post_title, $m->meta_key, $m->meta_len);
+    }
+}
