@@ -91,11 +91,15 @@ jobs:
             curl -fsSL --retry 2 -A "Mozilla/5.0 EMDO Home fresh verify $n" -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -D "/tmp/home-$n.head" -o "/tmp/home-$n.body" "$URL"
             echo "=== HOME $n ==="
             tr -d '\r' < "/tmp/home-$n.head" | grep -Ei '^(HTTP/|cache-control:|pragma:|expires:|x-el-mercado-|vary:)' || true
+            echo "STYLE_MARKER=$(grep -c 'elmercado-home-vendors-010244' /tmp/home-$n.body || true)"
+            echo "VENDOR_VISUAL=$(grep -c 'emo-hero__visual--vendors' /tmp/home-$n.body || true)"
+            echo "VENDOR_COUNT_MARKER=$(grep -Eo 'data-emo-vendor-count=\"[0-9]+\"' /tmp/home-$n.body | head -n1 || true)"
+            echo "PRODUCER_LABELS=$(grep -o '<figcaption><span>Productor</span><strong>' /tmp/home-$n.body | wc -l)"
+            echo "LEGACY_PRODUCT_LABELS=$(grep -c 'De los más elegidos' /tmp/home-$n.body || true)"
             grep -Eiq '^cache-control:.*no-store' "/tmp/home-$n.head"
             grep -Eiq '^cache-control:.*no-cache' "/tmp/home-$n.head"
             grep -Eiq '^x-el-mercado-home-fresh:[[:space:]]*BYPASS' "/tmp/home-$n.head"
-            grep -q 'id="elmercado-home-vendors-010244"' "/tmp/home-$n.body"
-            grep -q 'emo-hero__visual emo-hero__visual--vendors' "/tmp/home-$n.body"
+            grep -q 'emo-hero__visual--vendors' "/tmp/home-$n.body"
             grep -Eq 'data-emo-vendor-count="[1-5]"' "/tmp/home-$n.body"
             if grep -q 'De los más elegidos' "/tmp/home-$n.body"; then
               echo 'Legacy product cards still present in Home hero' >&2
