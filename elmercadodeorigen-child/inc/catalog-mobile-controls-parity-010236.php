@@ -96,7 +96,7 @@ add_action(
 				}
 
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229,
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .elmercado-vendor-toolbar.emo-catalog-toolbar-shared-010229 {
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 {
 					position:relative !important; z-index:2 !important; display:grid !important; grid-template-columns:minmax(0,1fr) 148px !important;
 					grid-template-rows:42px !important; box-sizing:border-box !important; width:100% !important; height:auto !important; min-height:60px !important; max-height:none !important;
 					align-items:center !important; justify-content:stretch !important; gap:8px !important; clear:both !important; float:none !important;
@@ -108,12 +108,12 @@ add_action(
 					align-items:center !important; margin:0 !important; padding:0 !important; font-size:11px !important; line-height:1.25 !important; white-space:normal !important;
 				}
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .elmercado-vendor-toolbar.emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
 					grid-column:2 !important; grid-row:1 !important; display:flex !important; flex:none !important; width:148px !important; min-width:148px !important; max-width:148px !important;
 					height:42px !important; min-height:42px !important; max-height:42px !important; align-items:center !important; margin:0 !important; padding:0 !important;
 				}
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select,
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .elmercado-vendor-toolbar.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
 					width:148px !important; min-width:148px !important; max-width:148px !important; height:42px !important; min-height:42px !important; max-height:42px !important;
 					padding:0 26px 0 10px !important; border:1px solid rgba(23,63,50,.14) !important; border-radius:999px !important;
 					background:#f7f9f6 !important; box-shadow:none !important; color:#173f32 !important; font-size:11.5px !important; font-weight:700 !important; line-height:1 !important;
@@ -144,7 +144,7 @@ add_action(
 
 			@media (max-width:360px) {
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229,
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .elmercado-vendor-toolbar.emo-catalog-toolbar-shared-010229 { grid-template-columns:minmax(0,1fr) 138px !important; }
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 { grid-template-columns:minmax(0,1fr) 138px !important; }
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
 				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
