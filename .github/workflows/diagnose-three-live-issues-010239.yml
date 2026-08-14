@@ -1,0 +1,103 @@
+name: Diagnose three live issues 0.10.239
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/diagnose-three-live-issues-010239.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Inspect anonymous production
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          const visible = el => { if (!el) return false; const s=getComputedStyle(el), r=el.getBoundingClientRect(); return s.display!=='none' && s.visibility!=='hidden' && r.width>0 && r.height>0 && !el.closest('[hidden]'); };
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome', headless:true, args:['--no-sandbox','--disable-dev-shm-usage']});
+
+            for (const width of [390,1440]) {
+              const page=await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setViewport({width,height:1000});
+              await page.goto(`https://www.elmercadodeorigen.com/productores/?diag239=${Date.now()}-${width}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await page.waitForSelector('#wcfmmp-stores-wrap',{timeout:30000});
+              await sleep(1600);
+              const report=await page.evaluate(()=>{
+                const root=document.querySelector('#wcfmmp-stores-wrap');
+                const vis=el=>{if(!el)return false;const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0&&!el.closest('[hidden]')};
+                const nodes=[...root.querySelectorAll('.wcfmmp-store-lists-sorting,[name="wcfmmp_store_search"],[name="wcfmmp_store_category"],input,select')]
+                  .filter((el,i,a)=>a.indexOf(el)===i)
+                  .map(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return{tag:el.tagName,id:el.id,name:el.getAttribute('name'),className:el.className,visible:vis(el),rect:{x:r.x,y:r.y,width:r.width,height:r.height},display:s.display,visibility:s.visibility,parent:el.parentElement?.className||'',text:(el.innerText||'').trim().replace(/\s+/g,' ').slice(0,180)}});
+                return {marker:!!document.querySelector('#elmercado-producers-filter-bar-remove-010238'),nodes,visibleText:(root.innerText||'').replace(/\s+/g,' ').slice(0,700)};
+              });
+              console.log(`PRODUCERS_${width}`,JSON.stringify(report));
+              await page.close();
+            }
+
+            {
+              const page=await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setViewport({width:1440,height:1100});
+              await page.goto(`https://www.elmercadodeorigen.com/producto/paleta-de-bellota-100-iberico/?diag239=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await sleep(1700);
+              const report=await page.evaluate(()=>{
+                const row=[...document.querySelectorAll('tr')].find(el=>/tama[ñn]o/i.test(el.innerText||''));
+                const table=row?.closest('table');
+                const form=row?.closest('form');
+                const ancestors=[];
+                let n=row;
+                for(let i=0;n&&i<7;i++,n=n.parentElement){const r=n.getBoundingClientRect(),s=getComputedStyle(n);ancestors.push({tag:n.tagName,id:n.id,className:n.className,rect:{x:r.x,y:r.y,width:r.width,height:r.height},border:s.border,borderTop:s.borderTop,borderRight:s.borderRight,borderBottom:s.borderBottom,borderLeft:s.borderLeft,borderRadius:s.borderRadius,background:s.backgroundColor,boxShadow:s.boxShadow,padding:s.padding,margin:s.margin});}
+                const cells=row?[...row.children].map(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return{tag:n.tagName,className:n.className,text:(n.innerText||'').trim().slice(0,100),rect:{x:r.x,y:r.y,width:r.width,height:r.height},border:s.border,background:s.backgroundColor,padding:s.padding}}):[];
+                return{rowHTML:row?.outerHTML.slice(0,1400)||null,tableClass:table?.className||null,formClass:form?.className||null,ancestors,cells};
+              });
+              console.log('VARIATION_TAMANO',JSON.stringify(report));
+              await page.close();
+            }
+
+            {
+              const page=await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setViewport({width:1440,height:1100});
+              await page.goto(`https://www.elmercadodeorigen.com/tienda/?diag239=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await page.waitForSelector('ul.products',{timeout:30000});
+              await sleep(1800);
+              const links=await page.evaluate(()=>[...document.querySelectorAll('#emo-global-vendor-filter a')].map(a=>({text:(a.textContent||'').trim(),href:a.href,parent:a.parentElement?.className||'',vendorId:a.parentElement?.dataset?.vendorId||''})));
+              console.log('VENDOR_LINKS',JSON.stringify(links));
+              for (const link of links.slice(0,4)) {
+                const p=await browser.newPage();
+                await p.setCacheEnabled(false);
+                await p.setViewport({width:1440,height:1100});
+                const u=new URL(link.href);u.searchParams.set('diag239',`${Date.now()}-${link.vendorId||link.text}`);
+                await p.goto(u.toString(),{waitUntil:'domcontentloaded',timeout:60000});
+                await p.waitForSelector('ul.products',{timeout:30000});
+                await sleep(1800);
+                const before=await p.evaluate(()=>({
+                  url:location.href,
+                  count:(document.querySelector('.woocommerce-result-count')?.textContent||'').trim(),
+                  active:[...document.querySelectorAll('#emo-global-vendor-filter .is-active a')].map(a=>(a.textContent||'').trim()),
+                  products:[...document.querySelectorAll('ul.products li.product')].slice(0,30).map(li=>({title:(li.querySelector('.woocommerce-loop-product__title,h2')?.textContent||'').trim(),soldBy:(li.querySelector('.wcfmmp_sold_by_container,.wcfmmp_sold_by_wrapper,[class*="sold_by"]')?.textContent||'').trim().replace(/\s+/g,' '),vendorHref:li.querySelector('.wcfmmp_sold_by_container a,.wcfmmp_sold_by_wrapper a,[class*="sold_by"] a')?.href||'',productHref:li.querySelector('a.woocommerce-LoopProduct-link,a[href*="/producto/"]')?.href||''}))
+                }));
+                console.log('VENDOR_FILTER_BEFORE',JSON.stringify({selected:link,...before}));
+                for(let i=0;i<7;i++){await p.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));await sleep(1000);}
+                const after=await p.evaluate(()=>({count:(document.querySelector('.woocommerce-result-count')?.textContent||'').trim(),totalCards:document.querySelectorAll('ul.products li.product').length,products:[...document.querySelectorAll('ul.products li.product')].slice(0,50).map(li=>({title:(li.querySelector('.woocommerce-loop-product__title,h2')?.textContent||'').trim(),soldBy:(li.querySelector('.wcfmmp_sold_by_container,.wcfmmp_sold_by_wrapper,[class*="sold_by"]')?.textContent||'').trim().replace(/\s+/g,' '),vendorHref:li.querySelector('.wcfmmp_sold_by_container a,.wcfmmp_sold_by_wrapper a,[class*="sold_by"] a')?.href||''}))}));
+                console.log('VENDOR_FILTER_AFTER',JSON.stringify({selected:link,...after}));
+                await p.close();
+              }
+              await page.close();
+            }
+
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
