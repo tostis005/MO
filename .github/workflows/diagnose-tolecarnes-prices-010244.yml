@@ -22,7 +22,7 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect Filetes Primera in production
+      - name: Audit source payload against WooCommerce
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -33,26 +33,27 @@ jobs:
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
           SSH="-o ServerAliveInterval=20 -o ServerAliveCountMax=12 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          SCP="-o ServerAliveInterval=20 -o ServerAliveCountMax=12 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
           ')"
           test -n "$PROD_PATH"
-          cat > /tmp/diag-filetes-010244.php <<'PHP'
-          <?php
-          if (!defined('ABSPATH')) exit;
-          global $wpdb;
-          $st=MDO_Database::table('source_products'); $su=MDO_Database::table('suppliers');
-          $sid=(int)$wpdb->get_var("SELECT id FROM {$su} WHERE connector='tolecarnes' OR LOWER(name) LIKE '%tolecarnes%' ORDER BY id LIMIT 1");
-          $row=$wpdb->get_row($wpdb->prepare("SELECT id,title,source_url,source_price,status,wc_product_id,source_payload FROM {$st} WHERE supplier_id=%d AND LOWER(title) LIKE %s ORDER BY id DESC LIMIT 1",$sid,'%filetes%primera%'),ARRAY_A);
-          echo 'PLUGIN_VERSION='.(defined('MDO_SUPPLIER_SYNC_VERSION')?MDO_SUPPLIER_SYNC_VERSION:'unknown')."\n";
-          if(!$row){echo "ROW_NOT_FOUND\n"; exit(2);} $payload=json_decode((string)$row['source_payload'],true); $payload=is_array($payload)?$payload:[];
-          $raw=MDO_Connector_Tolecarnes::scrape_product((string)$row['source_url']); $norm=MDO_Text::normalize_product($raw); $pid=(int)$row['wc_product_id'];
-          $woo=['price'=>get_post_meta($pid,'_price',true),'regular'=>get_post_meta($pid,'_regular_price',true),'sale'=>get_post_meta($pid,'_sale_price',true)];
-          $r=wp_remote_get((string)$row['source_url'],['timeout'=>20,'redirection'=>5,'user-agent'=>'EMDO focused audit']); $html=(string)wp_remote_retrieve_body($r); $dom=new DOMDocument(); $old=libxml_use_internal_errors(true); $dom->loadHTML('<?xml encoding="utf-8" ?>'.$html,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET);libxml_clear_errors();libxml_use_internal_errors($old);$xp=new DOMXPath($dom);$nodes=$xp->query("//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//p[contains(concat(' ', normalize-space(@class), ' '), ' price ')]"); if(!$nodes||!$nodes->length)$nodes=$xp->query("//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//*[contains(concat(' ', normalize-space(@class), ' '), ' price ')]"); $node=($nodes&&$nodes->length)?$nodes->item(0):null;
-          $main=['text'=>$node?trim(preg_replace('/\s+/u',' ',(string)$node->textContent)):null,'has_del'=>$node?(bool)$xp->query('.//del',$node)->length:false,'has_ins'=>$node?(bool)$xp->query('.//ins',$node)->length:false];
-          echo 'FILETES='.wp_json_encode(['row'=>array_diff_key($row,['source_payload'=>1]),'main'=>$main,'raw'=>['price'=>$raw['price']??null,'regular'=>$raw['regular_price']??null,'sale'=>$raw['sale_price']??null],'norm'=>['price'=>$norm['price']??null,'regular'=>$norm['regular_price']??null,'sale'=>$norm['sale_price']??null,'discount'=>$norm['discount_percent']??null],'payload'=>['price'=>$payload['price']??null,'regular'=>$payload['regular_price']??null,'sale'=>$payload['sale_price']??null,'discount'=>$payload['discount_percent']??null],'woo'=>$woo],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
-          PHP
-          sshpass -e scp $SCP /tmp/diag-filetes-010244.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/diag-filetes-010244.php"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$PROD_PATH/diag-filetes-010244.php' --path='$PROD_PATH' --allow-root; rm -f '$PROD_PATH/diag-filetes-010244.php'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '
+            global \$wpdb;
+            \$st=MDO_Database::table(\"source_products\"); \$su=MDO_Database::table(\"suppliers\");
+            \$sid=(int)\$wpdb->get_var(\"SELECT id FROM {\$su} WHERE connector=\\\"tolecarnes\\\" OR LOWER(name) LIKE \\\"%tolecarnes%\\\" ORDER BY id LIMIT 1\");
+            \$rows=\$wpdb->get_results(\$wpdb->prepare(\"SELECT id,title,wc_product_id,source_payload FROM {\$st} WHERE supplier_id=%d AND status=\\\"active\\\" AND wc_product_id IS NOT NULL AND wc_product_id>0 ORDER BY id\",\$sid),ARRAY_A)?:[];
+            \$bad=[];
+            foreach(\$rows as \$row){
+              \$p=json_decode((string)\$row[\"source_payload\"],true); \$p=is_array(\$p)?\$p:[]; \$pid=(int)\$row[\"wc_product_id\"];
+              if(!empty(\$p[\"variations\"])) continue;
+              \$current=isset(\$p[\"price\"])&&is_numeric(\$p[\"price\"])?(float)\$p[\"price\"]:null;
+              \$regular=isset(\$p[\"regular_price\"])&&is_numeric(\$p[\"regular_price\"])?(float)\$p[\"regular_price\"]:\$current;
+              \$sale=isset(\$p[\"sale_price\"])&&is_numeric(\$p[\"sale_price\"])?(float)\$p[\"sale_price\"]:null;
+              \$wp=get_post_meta(\$pid,\"_price\",true); \$wr=get_post_meta(\$pid,\"_regular_price\",true); \$ws=get_post_meta(\$pid,\"_sale_price\",true);
+              \$expected_sale=(null!==\$sale&&null!==\$regular&&\$sale<\$regular)?\$sale:null; \$expected_price=null!==\$expected_sale?\$expected_sale:\$current; \$expected_regular=\$regular??\$current;
+              \$mismatch=(null!==\$expected_price && abs((float)\$wp-\$expected_price)>0.005)||(null!==\$expected_regular && abs((float)\$wr-\$expected_regular)>0.005)||((null===\$expected_sale && \$ws!==\"\")||(null!==\$expected_sale && abs((float)\$ws-\$expected_sale)>0.005));
+              if(\$mismatch){\$bad[]=[\"id\"=>(int)\$row[\"id\"],\"title\"=>\$row[\"title\"],\"wc\"=>\$pid,\"payload\"=>[\"price\"=>\$current,\"regular\"=>\$regular,\"sale\"=>\$sale],\"woo\"=>[\"price\"=>\$wp,\"regular\"=>\$wr,\"sale\"=>\$ws]];}
+            }
+            echo \"ACTIVE=\".count(\$rows).\"\\n\"; echo \"MISMATCH_COUNT=\".count(\$bad).\"\\n\"; foreach(\$bad as \$b)echo \"MISMATCH=\".wp_json_encode(\$b,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE).\"\\n\";
+          ' --path='$PROD_PATH' --allow-root"
