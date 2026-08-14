@@ -1,0 +1,138 @@
+name: Catalog mobile controls parity 0.10.236 staging QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php'
+      - 'elmercadodeorigen-child/functions.php'
+      - '.github/workflows/catalog-mobile-controls-parity-010236-staging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php >/dev/null
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
+          grep -Fq 'catalog-mobile-controls-parity-010236.php' elmercadodeorigen-child/functions.php
+          grep -Fq "'popularity' => 'Más populares'" elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
+          grep -Fq "'price'      => 'Menor precio'" elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
+
+      - name: Wait for staging release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            shop="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-store' "$BASE_URL/tienda/?mobile-controls-010236=$i" || true)"
+            vendor="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-store' "$BASE_URL/tienda/hidalgo-de-la-jara/?mobile-controls-010236=$i" || true)"
+            if grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$shop" \
+              && grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$vendor"; then
+              echo STAGING_MOBILE_CONTROLS_010236_LIVE
+              exit 0
+            fi
+            sleep 5
+          done
+          echo '0.10.236 did not become live on staging' >&2
+          exit 1
+
+      - name: Install browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Mobile and desktop parity QA
+        shell: bash
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const fail=(m,d)=>{throw new Error(`${m}${d?' '+JSON.stringify(d):''}`)};
+          const expected={menu_order:'Recomendados',popularity:'Más populares',rating:'Mejor valorados',date:'Más recientes',price:'Menor precio','price-desc':'Mayor precio'};
+
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+
+            const inspectMobile=async(path,vendor)=>{
+              const page=await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setViewport({width:390,height:844});
+              await page.goto(`${process.env.BASE_URL}${path}?qa010236=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await page.waitForSelector('.emo-catalog-toolbar-shared-010229',{timeout:20000});
+              await sleep(1100);
+              const data=await page.evaluate((vendor)=>{
+                const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+                const select=toolbar?.querySelector('.woocommerce-ordering select');
+                const candidates=vendor
+                  ? [...document.querySelectorAll('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229')]
+                  : [...document.querySelectorAll('#emo-premium-filter-toggle,.emo-mobile-filter-toggle')];
+                const visible=candidates.filter(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;});
+                const trigger=visible[0]||null;
+                const first=document.querySelector(vendor?'#wcfmmp-store ul.products li.product':'ul.products li.product');
+                const c=el=>el?getComputedStyle(el):null;
+                const rect=el=>{if(!el)return null;const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
+                return {
+                  visibleTriggers:visible.length,
+                  toolbar:rect(toolbar),trigger:rect(trigger),first:rect(first),select:rect(select),
+                  triggerStyle:trigger?[c(trigger).height,c(trigger).padding,c(trigger).borderRadius,c(trigger).borderTopWidth,c(trigger).borderTopColor,c(trigger).backgroundColor,c(trigger).boxShadow,c(trigger).fontSize,c(trigger).fontWeight,c(trigger).lineHeight]:[],
+                  selectStyle:select?[c(select).height,c(select).padding,c(select).borderRadius,c(select).borderTopWidth,c(select).borderTopColor,c(select).backgroundColor,c(select).fontSize,c(select).fontWeight,c(select).lineHeight]:[],
+                  options:select?[...select.options].map(o=>({value:o.value,text:(o.textContent||'').trim()})):[],
+                  selected:select?.selectedOptions?.[0]?.textContent?.trim()||'',
+                  productTransform:first?.closest('ul.products')?c(first.closest('ul.products')).transform:'',
+                  marker:!!document.getElementById('elmercado-catalog-mobile-controls-parity-010236')
+                };
+              },vendor);
+              await page.close();
+              return data;
+            };
+
+            const shop=await inspectMobile('/tienda/',false);
+            const vendor=await inspectMobile('/tienda/hidalgo-de-la-jara/',true);
+            for(const [name,data] of [['shop',shop],['vendor',vendor]]){
+              if(!data.marker) fail(`${name} marker`,data);
+              if(data.visibleTriggers!==1) fail(`${name} visible filter trigger count`,data);
+              if(!data.toolbar||!data.trigger||!data.first||!data.select) fail(`${name} missing mobile control`,data);
+              if(data.trigger.top < data.toolbar.bottom-1) fail(`${name} trigger overlaps toolbar`,data);
+              if(data.first.top < data.trigger.bottom+8) fail(`${name} first product overlaps filter trigger`,data);
+              if(data.select.width < 137) fail(`${name} ordering too narrow`,data);
+              if(data.productTransform && data.productTransform!=='none') fail(`${name} product grid transformed`,data);
+              for(const option of data.options){
+                if(/^Ordenar\s+por\b/i.test(option.text)) fail(`${name} long order prefix remains`,option);
+                if(expected[option.value] && option.text!==expected[option.value]) fail(`${name} option label ${option.value}`,option);
+              }
+            }
+            if(JSON.stringify(shop.triggerStyle)!==JSON.stringify(vendor.triggerStyle)) fail('filter trigger visual parity',{shop:shop.triggerStyle,vendor:vendor.triggerStyle});
+            if(JSON.stringify(shop.selectStyle)!==JSON.stringify(vendor.selectStyle)) fail('ordering visual parity',{shop:shop.selectStyle,vendor:vendor.selectStyle});
+
+            const inspectDesktop=async(path,vendor)=>{
+              const page=await browser.newPage();
+              await page.setCacheEnabled(false);await page.setViewport({width:1440,height:1000});
+              await page.goto(`${process.env.BASE_URL}${path}?qa010236desktop=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',{timeout:20000});await sleep(600);
+              const out=await page.$eval('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return {style:[c.height,c.padding,c.borderRadius,c.borderTopWidth,c.borderTopColor,c.backgroundColor,c.fontSize,c.fontWeight,c.lineHeight],width:r.width,options:[...el.options].map(o=>[o.value,(o.textContent||'').trim()])};});
+              await page.close();return out;
+            };
+            const shopDesktop=await inspectDesktop('/tienda/',false);
+            const vendorDesktop=await inspectDesktop('/tienda/hidalgo-de-la-jara/',true);
+            if(JSON.stringify(shopDesktop.style)!==JSON.stringify(vendorDesktop.style)) fail('desktop ordering visual parity',{shop:shopDesktop,vendor:vendorDesktop});
+
+            console.log('CATALOG_MOBILE_CONTROLS_010236_OK',JSON.stringify({shop,vendor,desktop:{shop:shopDesktop,vendor:vendorDesktop}}));
+            await browser.close();
+          })().catch(e=>{console.error('CATALOG_MOBILE_CONTROLS_010236_ERROR',e);process.exit(1)});
+          NODE
