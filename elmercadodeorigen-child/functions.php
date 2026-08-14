@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.234' );
-/* 0.10.234 fija contador, paridad tipográfica y final de scroll sin duplicados. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.235' );
+/* 0.10.235 fija verdad de productor, contador y paginación final. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -154,6 +154,7 @@ $elmercado_modules = array(
 	'inc/home-category-output-final-010226.php',
 	'inc/catalog-filter-mobile-hitarea-010233.php',
 	'inc/catalog-filter-scroll-final-010234.php',
+	'inc/catalog-vendor-truth-final-010235.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
