@@ -71,8 +71,9 @@ add_action(
 
 /*
  * En /productores/ no necesitamos herramientas de descubrimiento: el listado es
- * deliberadamente corto y editorial. Ocultamos la barra completa que WCFM
- * construye alrededor de "Buscar tienda" y "Seleccionar categoría".
+ * deliberadamente corto y editorial. La clase real de WCFM es
+ * .wcfmmp-store-lists-sorting; se oculta de forma directa en lugar de depender
+ * de una clase histórica o de detectar los campos por heurística.
  */
 add_action(
 	'wp_head',
@@ -81,18 +82,25 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-producers-filter-bar-remove-010238">
+		<style id="elmercado-producers-filter-bar-remove-010239">
+			#wcfmmp-stores-wrap .wcfmmp-store-lists-sorting,
 			#wcfmmp-stores-wrap .wcfmmp-store-search-form,
 			#wcfmmp-stores-wrap .wcfmmp-store-search-form-box,
-			#wcfmmp-stores-wrap [class*="store-search-form"] {
+			#wcfmmp-stores-wrap [class*="store-search-form"],
+			#wcfmmp-stores-wrap [name="wcfmmp_store_search"],
+			#wcfmmp-stores-wrap [name="wcfmmp_store_category"] {
 				display:none !important;
 				visibility:hidden !important;
+				width:0 !important;
 				height:0 !important;
+				min-width:0 !important;
 				min-height:0 !important;
 				margin:0 !important;
 				padding:0 !important;
 				border:0 !important;
 				overflow:hidden !important;
+				opacity:0 !important;
+				pointer-events:none !important;
 			}
 		</style>
 		<?php
@@ -107,47 +115,42 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-producers-filter-bar-remove-script-010238">
+		<script id="elmercado-producers-filter-bar-remove-script-010239">
 		(() => {
 			'use strict';
+			const hideNode = (node) => {
+				if (!node) return;
+				node.hidden = true;
+				node.setAttribute('aria-hidden', 'true');
+				node.style.setProperty('display', 'none', 'important');
+				node.style.setProperty('visibility', 'hidden', 'important');
+				node.style.setProperty('width', '0', 'important');
+				node.style.setProperty('height', '0', 'important');
+				node.style.setProperty('min-width', '0', 'important');
+				node.style.setProperty('min-height', '0', 'important');
+				node.style.setProperty('margin', '0', 'important');
+				node.style.setProperty('padding', '0', 'important');
+				node.style.setProperty('border', '0', 'important');
+				node.style.setProperty('opacity', '0', 'important');
+				node.style.setProperty('pointer-events', 'none', 'important');
+			};
+
 			const removeFilterBar = () => {
 				const root = document.querySelector('#wcfmmp-stores-wrap');
 				if (!root) return;
 
-				const candidates = new Set(root.querySelectorAll('.wcfmmp-store-search-form,[class*="store-search-form"]'));
-				root.querySelectorAll('input,select').forEach((control) => {
-					const signature = [control.id, control.name, control.placeholder, control.getAttribute('aria-label')]
-						.filter(Boolean).join(' ').toLowerCase();
-					if (!/(store[_-]?name|store[_-]?category|buscar tienda|search store)/.test(signature)) return;
-
-					let bar = control.closest('.wcfmmp-store-search-form,[class*="store-search-form"]');
-					if (!bar) {
-						let node = control.parentElement;
-						for (let depth = 0; node && node !== root && depth < 5; depth += 1, node = node.parentElement) {
-							if (node.querySelector('select') && node.querySelector('input[type="text"],input[type="search"]')) {
-								bar = node;
-								break;
-							}
-						}
-					}
-					if (bar) candidates.add(bar);
-				});
-
-				candidates.forEach((bar) => {
-					bar.hidden = true;
-					bar.setAttribute('aria-hidden', 'true');
-					bar.style.setProperty('display', 'none', 'important');
-					bar.style.setProperty('visibility', 'hidden', 'important');
-					bar.style.setProperty('height', '0', 'important');
-					bar.style.setProperty('margin', '0', 'important');
-					bar.style.setProperty('padding', '0', 'important');
+				root.querySelectorAll('.wcfmmp-store-lists-sorting,.wcfmmp-store-search-form,[class*="store-search-form"],[name="wcfmmp_store_search"],[name="wcfmmp_store_category"]').forEach((node) => {
+					const bar = node.closest('.wcfmmp-store-lists-sorting') || node;
+					hideNode(bar);
 				});
 			};
 
 			removeFilterBar();
 			document.addEventListener('DOMContentLoaded', removeFilterBar, { once: true });
+			requestAnimationFrame(removeFilterBar);
 			setTimeout(removeFilterBar, 250);
 			setTimeout(removeFilterBar, 900);
+			setTimeout(removeFilterBar, 1800);
 			new MutationObserver(removeFilterBar).observe(document.documentElement, { childList: true, subtree: true });
 		})();
 		</script>
