@@ -1,0 +1,242 @@
+name: Production user corrections 0.10.239
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/production-user-corrections-010239.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-user-corrections-010239
+  cancel-in-progress: false
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/shop-producer-filter-final.php >/dev/null
+          php -l elmercadodeorigen-child/inc/user-reported-corrections-010239.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy and verify production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          SHOP="$THEME/inc/shop-producer-filter-final.php"
+          CORR="$THEME/inc/user-reported-corrections-010239.php"
+          SHOP_BAK="/tmp/shop-producer-filter-final-${GITHUB_RUN_ID}.bak"
+          CORR_BAK="/tmp/user-reported-corrections-010239-${GITHUB_RUN_ID}.bak"
+          CORR_EXISTED="/tmp/user-reported-corrections-010239-${GITHUB_RUN_ID}.existed"
+          PROBE="elmercado-opcache-user-corrections-${GITHUB_RUN_ID}.php"
+          ROLLED_BACK=0
+
+          rollback() {
+            code=$?
+            [ "$ROLLED_BACK" -eq 0 ] || exit "$code"
+            ROLLED_BACK=1
+            set +e
+            echo ROLLBACK_START
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              if [ -f '$SHOP_BAK' ]; then cp -p '$SHOP_BAK' '$SHOP'; fi
+              if [ -f '$CORR_EXISTED' ] && [ -f '$CORR_BAK' ]; then cp -p '$CORR_BAK' '$CORR'; else rm -f '$CORR'; fi
+              rm -f '$SHOP_BAK' '$CORR_BAK' '$CORR_EXISTED' '$PROD_PATH/$PROBE'
+              wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            " || true
+            echo ROLLED_BACK
+            exit "${code:-1}"
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            test -f '$SHOP'
+            cp -p '$SHOP' '$SHOP_BAK'
+            if [ -f '$CORR' ]; then cp -p '$CORR' '$CORR_BAK'; touch '$CORR_EXISTED'; fi
+          "
+
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/shop-producer-filter-final.php "$STAGING_USER@$STAGING_HOST:$SHOP"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/user-reported-corrections-010239.php "$STAGING_USER@$STAGING_HOST:$CORR"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$SHOP' >/dev/null
+            \"\$php_bin\" -l '$CORR' >/dev/null
+            wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          set +e
+          for i in $(seq 1 6); do
+            body="$(curl -fsSL --connect-timeout 10 --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID-$i" 2>/dev/null)"
+            printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$' && break
+            sleep 2
+          done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" >/dev/null 2>&1
+          set -e
+
+          marker_ok=0
+          set +e
+          for i in $(seq 1 10); do
+            producers="$(curl -fsSL --connect-timeout 10 --max-time 35 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/productores/?release239=$GITHUB_RUN_ID-$i" 2>/dev/null)"
+            product="$(curl -fsSL --connect-timeout 10 --max-time 35 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/producto/paleta-de-bellota-100-iberico/?release239=$GITHUB_RUN_ID-$i" 2>/dev/null)"
+            if grep -Fq 'elmercado-producers-filter-bar-remove-010239' <<<"$producers" && grep -Fq 'elmercado-user-reported-corrections-010239' <<<"$product"; then marker_ok=1; break; fi
+            sleep 3
+          done
+          set -e
+          test "$marker_ok" -eq 1
+
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+          const hidden = el => {
+            if (!el) return true;
+            const s = getComputedStyle(el), r = el.getBoundingClientRect();
+            return s.display === 'none' || s.visibility === 'hidden' || r.width === 0 || r.height === 0 || !!el.closest('[hidden]');
+          };
+
+          (async () => {
+            const browser = await puppeteer.launch({ executablePath:'/usr/bin/google-chrome', headless:true, args:['--no-sandbox','--disable-dev-shm-usage'] });
+
+            for (const width of [390, 1440]) {
+              const page = await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setViewport({ width, height: 1000 });
+              await page.goto(`${process.env.BASE_URL}/productores/?qa239=${Date.now()}-${width}`, { waitUntil:'domcontentloaded', timeout:60000 });
+              await page.waitForSelector('#wcfmmp-stores-wrap', { timeout:30000 });
+              await sleep(1400);
+              const result = await page.evaluate(() => {
+                const root = document.querySelector('#wcfmmp-stores-wrap');
+                const isHidden = el => { if (!el) return true; const s=getComputedStyle(el),r=el.getBoundingClientRect(); return s.display==='none'||s.visibility==='hidden'||r.width===0||r.height===0||!!el.closest('[hidden]'); };
+                const bar = root.querySelector('.wcfmmp-store-lists-sorting');
+                const search = root.querySelector('[name="wcfmmp_store_search"]');
+                const category = root.querySelector('[name="wcfmmp_store_category"]');
+                return { marker:!!document.querySelector('#elmercado-producers-filter-bar-remove-010239'), barHidden:isHidden(bar), searchHidden:isHidden(search), categoryHidden:isHidden(category), cards:root.querySelectorAll('li.wcfmmp-single-store').length };
+              });
+              console.log(`PRODUCERS_QA_${width}`, JSON.stringify(result));
+              if (!result.marker || !result.barHidden || !result.searchHidden || !result.categoryHidden || result.cards < 1) throw new Error(`Producer filter bar QA failed at ${width}`);
+              await page.close();
+            }
+
+            for (const width of [390, 1440]) {
+              const page = await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setViewport({ width, height: 1050 });
+              await page.goto(`${process.env.BASE_URL}/producto/paleta-de-bellota-100-iberico/?qa239=${Date.now()}-${width}`, { waitUntil:'domcontentloaded', timeout:60000 });
+              await page.waitForSelector('form.variations_form table.variations', { timeout:30000 });
+              await sleep(1100);
+              const result = await page.evaluate(() => {
+                const th = [...document.querySelectorAll('form.variations_form table.variations th.label')].find(node => /tama[ñn]o/i.test(node.textContent || ''));
+                if (!th) return null;
+                const s = getComputedStyle(th), r = th.getBoundingClientRect();
+                return { marker:!!document.querySelector('#elmercado-user-reported-corrections-010239'), border:s.border, top:s.borderTopWidth, right:s.borderRightWidth, bottom:s.borderBottomWidth, left:s.borderLeftWidth, boxShadow:s.boxShadow, width:r.width, height:r.height };
+              });
+              console.log(`VARIATION_QA_${width}`, JSON.stringify(result));
+              if (!result || !result.marker || [result.top,result.right,result.bottom,result.left].some(v => parseFloat(v) !== 0) || result.boxShadow !== 'none') throw new Error(`Variation label border QA failed at ${width}`);
+              await page.close();
+            }
+
+            const vendors = [
+              { id:'3', slug:'/tienda/1957', expected:4 },
+              { id:'6', slug:'/tienda/hidalgo-de-la-jara', expected:17 }
+            ];
+
+            for (const vendor of vendors) {
+              const page = await browser.newPage();
+              await page.setCacheEnabled(false);
+              await page.setViewport({ width:1440, height:1000 });
+              await page.goto(`${process.env.BASE_URL}/tienda/?vendor_id=${vendor.id}&qa239=${Date.now()}`, { waitUntil:'domcontentloaded', timeout:60000 });
+              await page.waitForSelector('ul.products li.product', { timeout:30000 });
+              await sleep(1300);
+
+              const inspect = async () => page.evaluate(() => {
+                const cards = [...document.querySelectorAll('ul.products > li.product')];
+                return {
+                  countText:(document.querySelector('.woocommerce-result-count')?.textContent || '').replace(/\s+/g,' ').trim(),
+                  cards:cards.map(li => ({
+                    title:(li.querySelector('.woocommerce-loop-product__title,h2')?.textContent || '').trim(),
+                    vendorHref:li.querySelector('.wcfmmp_sold_by_container a[href*="/tienda/"],.wcfmmp_sold_by_wrapper a[href*="/tienda/"],[class*="sold_by"] a[href*="/tienda/"]')?.href || ''
+                  })),
+                  loader:window.__emoCatalogLoaderState ? { nextUrl:window.__emoCatalogLoaderState.nextUrl, loading:window.__emoCatalogLoaderState.loading, shown:window.__emoCatalogLoaderState.shown } : null
+                };
+              });
+
+              let state = await inspect();
+              console.log(`VENDOR_${vendor.id}_INITIAL`, JSON.stringify(state));
+              for (let i=0; i<18 && (state.cards.length < vendor.expected || state.loader?.nextUrl || state.loader?.loading); i++) {
+                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                await sleep(750);
+                state = await inspect();
+              }
+              await sleep(800);
+              state = await inspect();
+              console.log(`VENDOR_${vendor.id}_FINAL`, JSON.stringify(state));
+
+              const foreign = state.cards.filter(card => {
+                if (!card.vendorHref) return true;
+                try { return new URL(card.vendorHref).pathname.replace(/\/$/,'') !== vendor.slug; } catch (_) { return true; }
+              });
+              const nums = (state.countText.match(/\d+/g) || []).map(Number);
+              const declared = nums.length ? nums[nums.length - 1] : 0;
+              if (declared !== vendor.expected || state.cards.length !== vendor.expected || foreign.length) {
+                throw new Error(`Vendor ${vendor.id} filtering failed: declared=${declared} cards=${state.cards.length} foreign=${foreign.length}`);
+              }
+              await page.close();
+            }
+
+            await browser.close();
+            console.log('PRODUCTION_USER_CORRECTIONS_010239_QA_OK');
+          })().catch(error => { console.error(error); process.exit(1); });
+          NODE
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$SHOP_BAK' '$CORR_BAK' '$CORR_EXISTED' '$PROD_PATH/$PROBE'"
+          trap - ERR
+          echo PRODUCTION_USER_CORRECTIONS_010239_OK
