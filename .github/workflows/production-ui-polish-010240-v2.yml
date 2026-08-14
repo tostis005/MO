@@ -1,0 +1,91 @@
+name: Production UI polish 0.10.240 v2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/production-ui-polish-010240-v2.yml'
+      - 'elmercadodeorigen-child/inc/user-reported-corrections-010239.php'
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy and verify
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/inc/user-reported-corrections-010239.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          test -n "$PROD_PATH"
+          CORR="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/user-reported-corrections-010239.php"
+          BAK="/tmp/ui-polish-010240-v2-${GITHUB_RUN_ID}.bak"
+          ROLLED_BACK=0
+          rollback(){ code=$?; [ "$ROLLED_BACK" -eq 0 ] || exit "$code"; ROLLED_BACK=1; set +e; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "[ -f '$BAK' ] && cp -p '$BAK' '$CORR'; rm -f '$BAK'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true; echo ROLLED_BACK; exit "${code:-1}"; }
+          trap rollback ERR
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$CORR' '$BAK'"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/user-reported-corrections-010239.php "$STAGING_USER@$STAGING_HOST:$CORR"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$CORR' >/dev/null; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const visible=el=>{if(!el)return false;const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0&&r.width>0&&r.height>0;};
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+
+            for(const width of [390,1440]){
+              const page=await browser.newPage(); await page.setCacheEnabled(false); await page.setViewport({width,height:1000});
+              await page.goto(`${process.env.BASE_URL}/productores/?qa240v2=${Date.now()}-${width}`,{waitUntil:'domcontentloaded',timeout:60000}); await sleep(2600);
+              const r=await page.evaluate(()=>{const v=el=>{const s=getComputedStyle(el),b=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0&&b.width>0&&b.height>0;};const bars=[...document.querySelectorAll('.wcfmmp-store-search-form,.wcfmmp-store-search-form-box,.wcfmmp-store-lists-sorting,[class*="store-search-form"]')];return{marker:!!document.querySelector('#elmercado-production-ui-polish-010240'),visibleBars:bars.filter(v).length,visibleCounts:[...document.querySelectorAll('.woocommerce-result-count')].filter(v).length};});
+              console.log('PRODUCERS',width,JSON.stringify(r)); if(!r.marker||r.visibleBars||r.visibleCounts) throw new Error('Producers UI failed'); await page.close();
+            }
+
+            {
+              const page=await browser.newPage(); await page.setCacheEnabled(false); await page.setViewport({width:390,height:1000});
+              await page.goto(`${process.env.BASE_URL}/tienda/?qa240v2=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000}); await sleep(900);
+              const r=await page.evaluate(()=>{const v=el=>{const s=getComputedStyle(el),b=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0&&b.width>0&&b.height>0;};return{marker:!!document.querySelector('#elmercado-production-ui-polish-010240'),leadVisible:[...document.querySelectorAll('.emo-shop-lead--final')].filter(v).length,copyVisible:(document.body.innerText||'').includes('Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.'),globalSold:[...document.querySelectorAll('ul.products li.product .wcfmmp_sold_by_container')].filter(v).length};});
+              console.log('SHOP',JSON.stringify(r)); if(!r.marker||r.leadVisible||r.copyVisible||r.globalSold<1) throw new Error('Shop UI failed'); await page.close();
+            }
+
+            {
+              const page=await browser.newPage(); await page.setJavaScriptEnabled(false); await page.setCacheEnabled(false); await page.setViewport({width:390,height:1000});
+              await page.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?qa240v2-nojs=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              const r=await page.evaluate(()=>{const el=document.querySelector('#wcfmmp-store .woocommerce-result-count');if(!el)return null;const s=getComputedStyle(el),a=getComputedStyle(el,'::after');return{marker:!!document.querySelector('#elmercado-production-ui-polish-010240'),native:(el.textContent||'').replace(/\s+/g,' ').trim(),font:s.fontSize,after:a.content};});
+              console.log('COUNT_PREPAINT',JSON.stringify(r)); if(!r||!r.marker||parseFloat(r.font)!==0||!String(r.after).includes('17 resultados')) throw new Error('Count prepaint failed'); await page.close();
+            }
+
+            {
+              const page=await browser.newPage(); await page.setCacheEnabled(false); await page.setViewport({width:390,height:1000});
+              await page.goto(`${process.env.BASE_URL}/tienda/hidalgo-de-la-jara/?qa240v2=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000}); await page.waitForSelector('#wcfmmp-store ul.products li.product',{timeout:30000}); await sleep(900);
+              const r=await page.evaluate(()=>{const v=el=>{const s=getComputedStyle(el),b=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity||'1')>0&&b.width>0&&b.height>0;};const first=document.querySelector('#wcfmmp-store ul.products li.product');const test=document.createElement('div');test.className='wcfmmp_sold_by_container';test.textContent='Vendido por: prueba';first.append(test);const dynamicHidden=!v(test);test.remove();const real=[...document.querySelectorAll('#wcfmmp-store ul.products li.product .wcfmmp_sold_by_container,#wcfmmp-store ul.products li.product [class*="sold_by"]')];return{marker:!!document.querySelector('#elmercado-production-ui-polish-010240'),count:(document.querySelector('#wcfmmp-store .woocommerce-result-count')?.textContent||'').replace(/\s+/g,' ').trim(),visibleReal:real.filter(v).length,bodySold:/Vendido por:/i.test(document.body.innerText||''),dynamicHidden};});
+              console.log('VENDOR',JSON.stringify(r)); if(!r.marker||r.count!=='17 resultados'||r.visibleReal||r.bodySold||!r.dynamicHidden) throw new Error('Vendor UI failed'); await page.close();
+            }
+
+            await browser.close(); console.log('PRODUCTION_UI_POLISH_010240_V2_QA_OK');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BAK'"
+          trap - ERR
+          echo PRODUCTION_UI_POLISH_010240_V2_OK
