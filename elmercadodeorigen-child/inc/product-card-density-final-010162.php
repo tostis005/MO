@@ -167,7 +167,7 @@ add_action(
 				min-height: 0 !important;
 				height: auto !important;
 				max-height: none !important;
-				margin: 0 0 3px !important;
+				margin: 0 0 5px !important;
 				padding: 0 !important;
 				line-height: 1.27 !important;
 			}
@@ -204,7 +204,7 @@ add_action(
 					padding-bottom: 5px !important;
 				}
 				body.elmercado-child-theme ul.products li.product .product-loop-content > .woocommerce-loop-product__title {
-					margin-bottom: 2px !important;
+					margin-bottom: 4px !important;
 					line-height: 1.23 !important;
 				}
 				body.elmercado-child-theme ul.products li.product .product-loop-wrapper > .wcfmmp_sold_by_container {
