@@ -1,0 +1,94 @@
+name: Verify Tolecarnes shipping guard 2026-08-14
+
+on:
+  push:
+    paths:
+      - '.github/workflows/verify-tolecarnes-shipping-guard-20260814.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify live Tolecarnes rates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          product_id=$("$php_bin" "$wp_bin" db query "SELECT ID FROM \$(\"$php_bin\" \"$wp_bin\" db prefix --path=\"$PROD_PATH\" --allow-root --skip-plugins --skip-themes)posts WHERE post_type='product' AND post_status='publish' AND post_author=4507 ORDER BY ID DESC LIMIT 1;" --skip-column-names --path="$PROD_PATH" --allow-root --skip-plugins --skip-themes)
+          test -n "$product_id"
+
+          output=$(EMO_PRODUCT_ID="$product_id" "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $pid = (int) getenv("EMO_PRODUCT_ID");
+            $product = wc_get_product($pid);
+            if (!$product) { echo "NO_PRODUCT\n"; return; }
+            $tests = [
+              "Madrid" => ["state"=>"M", "postcode"=>"28001", "city"=>"Madrid"],
+              "Toledo" => ["state"=>"TO", "postcode"=>"45001", "city"=>"Toledo"],
+              "Baleares" => ["state"=>"PM", "postcode"=>"07001", "city"=>"Palma"],
+              "Barcelona" => ["state"=>"B", "postcode"=>"08001", "city"=>"Barcelona"],
+            ];
+            foreach ($tests as $name => $dest) {
+              $package = [
+                "vendor_id" => 4507,
+                "contents" => ["emo" => ["data"=>$product, "product_id"=>$pid, "variation_id"=>0, "quantity"=>1, "line_total"=>100, "line_tax"=>0, "line_subtotal"=>100, "line_subtotal_tax"=>0]],
+                "contents_cost" => 100,
+                "applied_coupons" => [],
+                "user" => ["ID"=>0],
+                "destination" => ["country"=>"ES", "state"=>$dest["state"], "postcode"=>$dest["postcode"], "city"=>$dest["city"], "address"=>"Calle prueba 1", "address_2"=>""],
+              ];
+              $zone = WC_Shipping_Zones::get_zone_matching_package($package);
+              echo "DEST=$name ZONE=".$zone->get_id()." NAME=".$zone->get_zone_name()."\n";
+              $result = WC()->shipping()->calculate_shipping_for_package($package);
+              if (empty($result["rates"])) { echo "RATES=NONE\n"; continue; }
+              foreach ($result["rates"] as $rate_id => $rate) {
+                echo "RATE=$rate_id COST=".$rate->get_cost()." METHOD=".$rate->get_method_id()."\n";
+              }
+            }
+          ' --path="$PROD_PATH" --allow-root 2>/dev/null)
+          printf '%s\n' "$output"
+
+          madrid=$(printf '%s\n' "$output" | awk '/DEST=Madrid/{flag=1;next}/DEST=/{flag=0}flag')
+          toledo=$(printf '%s\n' "$output" | awk '/DEST=Toledo/{flag=1;next}/DEST=/{flag=0}flag')
+          baleares=$(printf '%s\n' "$output" | awk '/DEST=Baleares/{flag=1;next}/DEST=/{flag=0}flag')
+          barcelona=$(printf '%s\n' "$output" | awk '/DEST=Barcelona/{flag=1;next}/DEST=/{flag=0}flag')
+
+          printf '%s\n' "$madrid" | grep -F 'METHOD=wcfmmp_product_shipping_by_zone' >/dev/null
+          printf '%s\n' "$toledo" | grep -F 'METHOD=wcfmmp_product_shipping_by_zone' >/dev/null
+          printf '%s\n' "$baleares" | grep -F 'RATES=NONE' >/dev/null
+          printf '%s\n' "$barcelona" | grep -F 'METHOD=wcfmmp_product_shipping_by_zone' >/dev/null
+          printf '%s\n' "$barcelona" | grep -F 'COST=10.9' >/dev/null
+          echo TOLECARNES_LIVE_RATES_OK
+          REMOTE
