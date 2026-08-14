@@ -1,0 +1,97 @@
+name: Production corrected image scope 0.10.242 v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-product-restore-producer-square-010242-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy and verify
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for f in elmercadodeorigen-child/functions.php elmercadodeorigen-child/inc/product-card-density-final-010162.php elmercadodeorigen-child/inc/producer-list-image-square-010242.php; do php -l "$f" >/dev/null; done
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          test -n "$PROD_PATH"
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          TF="$THEME/functions.php"; TP="$THEME/inc/product-card-density-final-010162.php"; TV="$THEME/inc/producer-list-image-square-010242.php"
+          BF="/tmp/emo-fn-242-${GITHUB_RUN_ID}"; BP="/tmp/emo-prod-242-${GITHUB_RUN_ID}"; BV="/tmp/emo-vendor-242-${GITHUB_RUN_ID}"
+          HADV=0; ROLLED=0
+
+          opcache(){
+            probe="emo-opcache-242-${GITHUB_RUN_ID}-$RANDOM.php"
+            sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$probe"
+            set +e; ok=0
+            for i in $(seq 1 5); do body="$(curl -fsSL --connect-timeout 10 --max-time 30 "$BASE_URL/$probe?r=$RANDOM" 2>/dev/null)"; printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$' && { ok=1; break; }; sleep 2; done
+            set -e; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$probe'" || true; test "$ok" -eq 1
+          }
+          rollback(){
+            code=$?; [ "$ROLLED" -eq 0 ] || exit "$code"; ROLLED=1; set +e; echo ROLLBACK_START
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "[ -f '$BP' ] && cp -p '$BP' '$TP'; [ -f '$BF' ] && cp -p '$BF' '$TF'; if [ '$HADV' -eq 1 ]; then [ -f '$BV' ] && cp -p '$BV' '$TV'; else rm -f '$TV'; fi; rm -f '$BF' '$BP' '$BV'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
+            opcache || true; echo ROLLED_BACK; exit "${code:-1}"
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TF' '$BF'; cp -p '$TP' '$BP'"
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TV'"; then HADV=1; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TV' '$BV'"; fi
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/product-card-density-final-010162.php "$STAGING_USER@$STAGING_HOST:$TP"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/producer-list-image-square-010242.php "$STAGING_USER@$STAGING_HOST:$TV"
+          sshpass -e scp $SCP elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$TF"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php -l '$TF' >/dev/null; php -l '$TP' >/dev/null; php -l '$TV' >/dev/null; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          opcache
+
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function products(browser,path,width,dpr){
+            const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width,height:1200,deviceScaleFactor:dpr});
+            await p.goto(`${process.env.BASE_URL}${path}?qa242v2=${Date.now()}-${width}-${dpr}`,{waitUntil:'networkidle2',timeout:60000}); await sleep(600);
+            const rows=await p.evaluate(()=>[...document.querySelectorAll('ul.products>li.product')].slice(0,8).map(li=>{const w=li.querySelector('.product-loop-image-wrapper'),i=li.querySelector('img.product-loop-image');if(!w||!i)return null;const wr=w.getBoundingClientRect(),s=getComputedStyle(i),ss=i.getAttribute('srcset')||i.getAttribute('data-srcset')||'',ws=ss.split(',').map(v=>+(v.trim().match(/\s(\d+)w$/)||[])[1]).filter(Boolean);return {t:(li.querySelector('h2,.woocommerce-loop-product__title')?.textContent||'').trim(),wh:[wr.width,wr.height],pos:s.position,n:[i.naturalWidth,i.naturalHeight],m:ws.length?Math.max(...ws):0,c:i.className,current:i.currentSrc||''}}).filter(Boolean));
+            console.log('PRODUCT_QA',path,width,dpr,JSON.stringify(rows)); if(!rows.length)throw Error('No products');
+            for(const r of rows){if(r.wh[1]<=r.wh[0]*1.08)throw Error(`Product image area still square ${r.t} ${r.wh}`);if(r.pos==='absolute')throw Error(`Square image override remains ${r.t}`);if(!r.c.includes('elmercado-catalog-card-image-010241'))throw Error(`Optimization missing ${r.t}`);if(r.n[0]>800||r.n[1]>800||r.m>800)throw Error(`Oversized product resource ${r.t} ${r.n} ${r.m}`)}
+            await p.close();
+          }
+          async function producers(browser,width){
+            const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width,height:1400,deviceScaleFactor:1});
+            await p.goto(`${process.env.BASE_URL}/productores/?qa242v2=${Date.now()}-${width}`,{waitUntil:'networkidle2',timeout:60000}); await sleep(600);
+            const out=await p.evaluate(()=>({style:!!document.querySelector('#elmercado-producer-list-image-square-010242'),rows:[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].map(card=>{const m=card.querySelector('.store-content'),i=card.querySelector('.store-info'),v=card.querySelector('.wcfmmp-visit-store');if(!m||!i)return null;const mr=m.getBoundingClientRect(),ir=i.getBoundingClientRect(),vr=v?.getBoundingClientRect(),s=getComputedStyle(i);return {name:(card.querySelector('.store-footer h2')?.textContent||'').trim(),media:[mr.width,mr.height],info:[ir.width,ir.height],size:s.backgroundSize,repeat:s.backgroundRepeat,pos:s.backgroundPosition,image:s.backgroundImage,visit:vr?[vr.width,vr.height]:null}}).filter(Boolean)}));
+            console.log('PRODUCER_QA',width,JSON.stringify(out)); if(!out.style||out.rows.length<3)throw Error(`Producer style/cards missing ${out.style}/${out.rows.length}`);
+            for(const r of out.rows){if(Math.abs(r.media[0]-r.media[1])>1.5||Math.abs(r.info[0]-r.info[1])>1.5)throw Error(`Producer image not square ${r.name} ${r.media}/${r.info}`);if(r.size!=='contain'||r.repeat!=='no-repeat'||!r.image||r.image==='none')throw Error(`Producer image fit wrong ${r.name}`);if(!r.visit||r.visit[0]<40||r.visit[1]<40)throw Error(`Visit button broken ${r.name}`)}
+            await p.close();
+          }
+          (async()=>{const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});await products(b,'/tienda/',390,1);await products(b,'/tienda/',1440,1);await products(b,'/tienda/hidalgo-de-la-jara/',390,1);await producers(b,390);await producers(b,1440);await b.close();console.log('PRODUCTION_IMAGE_SCOPE_010242_V2_QA_OK')})().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BF' '$BP' '$BV'"
+          trap - ERR
+          echo PRODUCTION_IMAGE_SCOPE_010242_V2_OK
