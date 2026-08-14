@@ -34,7 +34,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Inspect product author and vendor taxonomy
+      - name: Inspect WCFM ownership helper
         shell: bash
         run: |
           set -euo pipefail
@@ -55,5 +55,5 @@ jobs:
           fi
           wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$_SERVER["REQUEST_URI"]="/tienda/hidalgo-de-la-jara/"; echo "TAX_EXISTS=".(taxonomy_exists("dc_vendor_shop")?"1":"0").PHP_EOL; foreach([1356,5343,5336,2484,1599] as $pid){ $ts=wp_get_post_terms($pid,"dc_vendor_shop"); echo "P{$pid}_AUTHOR=".get_post_field("post_author",$pid)." TERMS=".implode(",",array_map(static fn($t)=>$t->slug,$ts)).PHP_EOL; } $q=new WP_Query(["post_type"=>"product","post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","tax_query"=>[["taxonomy"=>"dc_vendor_shop","field"=>"slug","terms"=>["hidalgo-de-la-jara"]]],"suppress_filters"=>true,"no_found_rows"=>true]); echo "TAX_IDS=".implode(",",$q->posts).PHP_EOL; echo "TAX_COUNT=".count($q->posts).PHP_EOL;' --path="$wp_path" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo "HAS_HELPER=".(function_exists("wcfm_get_vendor_id_by_post")?"1":"0").PHP_EOL; foreach([1356,5343,5336,2484,1599,1056,1220] as $pid){ echo "P{$pid}_AUTHOR=".get_post_field("post_author",$pid)." WCFM=".(function_exists("wcfm_get_vendor_id_by_post")?(int)wcfm_get_vendor_id_by_post($pid):-1).PHP_EOL; }' --path="$wp_path" --allow-root
           REMOTE
