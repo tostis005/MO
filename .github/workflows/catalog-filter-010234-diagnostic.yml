@@ -1,0 +1,49 @@
+name: Catalog filter 0.10.234 diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-filter-010234-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Compare live Shop and vendor filters
+        env:
+          BASE_URL: https://www.elmercadodeorigen.com
+        run: |
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const inspect=async(path, vendor)=>{
+              const p=await browser.newPage(); await p.setViewport({width:1440,height:1000});
+              await p.goto(`${process.env.BASE_URL}${path}?diag-010234=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await new Promise(r=>setTimeout(r,1400));
+              const data=await p.evaluate((vendor)=>{
+                const rail=vendor?document.querySelector('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229'):document.querySelector('#secondary.emo-filter-rail-shared-010229');
+                const title=rail?.querySelector('.emo-filter-title-shared-010229');
+                const panel=vendor?rail?.querySelector('#emo-vendor-filters'):null;
+                const cs=(el)=>{if(!el)return null; const c=getComputedStyle(el),r=el.getBoundingClientRect(); return {w:r.width,h:r.height,padding:c.padding,margin:c.margin,fontFamily:c.fontFamily,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing,textTransform:c.textTransform};};
+                return {rail:cs(rail),title:cs(title),panel:cs(panel),count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>n.textContent.replace(/\s+/g,' ').trim())};
+              },vendor);
+              console.log(vendor?'VENDOR_010234':'SHOP_010234',JSON.stringify(data)); await p.close(); return data;
+            };
+            const shop=await inspect('/tienda/',false); const vendor=await inspect('/tienda/hidalgo-de-la-jara/',true);
+            if(!shop.rail||!vendor.rail||!shop.title||!vendor.title) throw new Error('missing filter elements');
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
