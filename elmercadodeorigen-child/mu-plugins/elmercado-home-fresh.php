@@ -268,8 +268,8 @@ function elmercado_render_home_vendor_visual_010244(): string {
 }
 
 /**
- * Replace the existing product collage with producers and make category order
- * use the existing 0.10.226 visible-product-count renderer at the last layer.
+ * Replace the existing product collage with producers and reassert the final
+ * category renderer that sorts by exact visible product count descending.
  */
 function elmercado_home_fresh_output_010244( string $html ): string {
 	if ( '' === $html ) {
@@ -284,12 +284,14 @@ function elmercado_home_fresh_output_010244( string $html ): string {
 		}
 	}
 
-	if ( function_exists( 'elmercado_home_categories_visible_html_010226' ) ) {
-		$categories = (string) elmercado_home_categories_visible_html_010226();
+	if ( function_exists( 'elmercado_home_category_output_html_010226' ) ) {
+		$categories = (string) elmercado_home_category_output_html_010226();
 		if ( '' !== $categories ) {
-			$updated = preg_replace( '~<section class="emo-section emo-categories"[^>]*>.*?</section>~s', $categories, $html, 1 );
-			if ( is_string( $updated ) ) {
-				$html = $updated;
+			$start = strpos( $html, '<section class="emo-section emo-categories"' );
+			$end   = false !== $start ? strpos( $html, '</section>', $start ) : false;
+			if ( false !== $start && false !== $end ) {
+				$end  += strlen( '</section>' );
+				$html = substr_replace( $html, $categories, $start, $end - $start );
 			}
 		}
 	}
@@ -308,86 +310,161 @@ add_action(
 );
 
 /**
- * Requested Home-only sizing and a 1–5 producer collage.
+ * Requested Home-only sizing and 1–5 producer collage CSS.
+ *
+ * The Home performance layer intentionally compacts inline CSS attached to the
+ * main Woostify stylesheet. Adding these rules there keeps them in the same
+ * optimized path instead of emitting a standalone wp_head style block.
  */
+function elmercado_home_vendor_css_010244(): string {
+	return <<<'CSS'
+/* elmercado-home-vendors-010244 */
+body.home .emo-hero {
+	min-height: min(650px, calc(100svh - 108px)) !important;
+	padding-top: clamp(2.15rem, 3vw, 3rem) !important;
+	padding-bottom: clamp(2.6rem, 4.4vw, 4.25rem) !important;
+}
+body.home .emo-hero__grid { gap: clamp(2.5rem, 5vw, 5rem) !important; }
+body.home .emo-hero__copy > p { font-size: clamp(1.07rem, 1.48vw, 1.27rem) !important; }
+body.home .emo-hero__proof { margin-top: clamp(1.8rem, 3vw, 2.65rem) !important; }
+body.home .emo-hero__proof span { font-size: .78rem !important; line-height: 1.42 !important; }
+body.home .emo-hero__proof strong { font-size: .86rem !important; }
+body.home .emo-trust article > span,
+body.home .emo-story__values article > span { font-size: .74rem !important; }
+body.home .emo-trust strong { font-size: 1rem !important; }
+body.home .emo-trust p { font-size: .88rem !important; line-height: 1.6 !important; }
+body.home .emo-story__panel > p { font-size: 1.1rem !important; line-height: 1.66 !important; }
+body.home .emo-story__values p { font-size: .96rem !important; line-height: 1.62 !important; }
+body.home .emo-vendor-cta p { font-size: 1.02rem !important; line-height: 1.65 !important; }
+
+body.home .emo-hero__visual--vendors {
+	grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+	grid-template-rows: repeat(10, 38px) !important;
+	min-width: 0;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card--1 {
+	grid-column: 1 / 7 !important;
+	grid-row: 1 / 11 !important;
+	transform: rotate(-1.2deg) !important;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card--2 {
+	grid-column: 7 / 13 !important;
+	grid-row: 1 / 6 !important;
+	transform: rotate(1.1deg) !important;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card--3 {
+	grid-column: 7 / 13 !important;
+	grid-row: 6 / 11 !important;
+	transform: rotate(.45deg) !important;
+}
+
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--1 {
+	grid-column: 1 / 7 !important;
+	grid-row: 1 / 7 !important;
+}
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--2 {
+	grid-column: 7 / 13 !important;
+	grid-row: 1 / 6 !important;
+}
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--3 {
+	grid-column: 1 / 6 !important;
+	grid-row: 7 / 11 !important;
+}
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--4 {
+	grid-column: 6 / 13 !important;
+	grid-row: 6 / 11 !important;
+	transform: rotate(-.55deg) !important;
+}
+
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--1 {
+	grid-column: 1 / 6 !important;
+	grid-row: 1 / 7 !important;
+}
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--2 {
+	grid-column: 6 / 13 !important;
+	grid-row: 1 / 5 !important;
+}
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--3 {
+	grid-column: 1 / 5 !important;
+	grid-row: 7 / 11 !important;
+}
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--4 {
+	grid-column: 5 / 9 !important;
+	grid-row: 5 / 11 !important;
+	transform: rotate(-.55deg) !important;
+}
+body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--5 {
+	grid-column: 9 / 13 !important;
+	grid-row: 5 / 11 !important;
+	transform: rotate(.65deg) !important;
+}
+
+body.home .emo-hero-vendor-fallback {
+	display: grid;
+	width: 100%;
+	height: 100%;
+	place-items: center;
+	background: rgba(255,255,255,.08);
+	color: #fff;
+	font-family: Georgia, serif;
+	font-size: clamp(3rem, 7vw, 6rem);
+}
+
+@media (max-width: 767px) {
+	body.home .emo-hero {
+		min-height: 0 !important;
+		padding-top: 2.15rem !important;
+		padding-bottom: 2.8rem !important;
+	}
+	body.home .emo-hero__visual--vendors {
+		display: grid !important;
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+		grid-template-rows: none !important;
+		gap: .75rem !important;
+	}
+	body.home .emo-hero__visual--vendors .emo-hero-card {
+		grid-column: auto !important;
+		grid-row: auto !important;
+		min-height: 145px !important;
+		transform: none !important;
+	}
+	body.home .emo-hero__visual--vendors[data-emo-vendor-count="1"] .emo-hero-card--1,
+	body.home .emo-hero__visual--vendors[data-emo-vendor-count="3"] .emo-hero-card--1,
+	body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--1 {
+		grid-column: 1 / -1 !important;
+		min-height: 185px !important;
+	}
+	body.home .emo-trust p { font-size: .9rem !important; }
+	body.home .emo-story__values p,
+	body.home .emo-vendor-cta p { font-size: .98rem !important; }
+}
+CSS;
+}
+
 add_action(
-	'wp_head',
+	'wp_enqueue_scripts',
 	static function (): void {
 		if ( ! elmercado_home_fresh_is_front_010244() ) {
 			return;
 		}
-		?>
-		<style id="elmercado-home-vendors-010244">
-			body.home .emo-hero {
-				min-height: min(650px, calc(100svh - 108px)) !important;
-				padding-top: clamp(2.15rem, 3vw, 3rem) !important;
-				padding-bottom: clamp(2.6rem, 4.4vw, 4.25rem) !important;
-			}
-			body.home .emo-hero__grid { gap: clamp(2.5rem, 5vw, 5rem) !important; }
-			body.home .emo-hero__copy > p { font-size: clamp(1.07rem, 1.48vw, 1.27rem) !important; }
-			body.home .emo-hero__proof { margin-top: clamp(1.8rem, 3vw, 2.65rem) !important; }
-			body.home .emo-hero__proof span { font-size: .78rem !important; line-height: 1.42 !important; }
-			body.home .emo-hero__proof strong { font-size: .86rem !important; }
-			body.home .emo-trust article > span,
-			body.home .emo-story__values article > span { font-size: .74rem !important; }
-			body.home .emo-trust strong { font-size: 1rem !important; }
-			body.home .emo-trust p { font-size: .88rem !important; line-height: 1.6 !important; }
-			body.home .emo-story__panel > p { font-size: 1.1rem !important; line-height: 1.66 !important; }
-			body.home .emo-story__values p { font-size: .96rem !important; line-height: 1.62 !important; }
-			body.home .emo-vendor-cta p { font-size: 1.02rem !important; line-height: 1.65 !important; }
 
-			body.home .emo-hero__visual--vendors {
-				grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
-				grid-template-rows: repeat(10, 38px) !important;
-				min-width: 0;
+		$css    = elmercado_home_vendor_css_010244();
+		$styles = wp_styles();
+		foreach ( array( 'woostify-parent-style', 'woostify-parent' ) as $handle ) {
+			if ( wp_style_is( $handle, 'enqueued' ) && isset( $styles->registered[ $handle ] ) ) {
+				wp_add_inline_style( $handle, $css );
+				return;
 			}
-			body.home .emo-hero__visual--vendors .emo-hero-card--1 {
-				grid-column: 1 / 7 !important; grid-row: 1 / 11 !important; transform: rotate(-1.2deg) !important;
-			}
-			body.home .emo-hero__visual--vendors .emo-hero-card--2 {
-				grid-column: 7 / 13 !important; grid-row: 1 / 6 !important; transform: rotate(1.1deg) !important;
-			}
-			body.home .emo-hero__visual--vendors .emo-hero-card--3 {
-				grid-column: 7 / 13 !important; grid-row: 6 / 11 !important; transform: rotate(.45deg) !important;
-			}
+		}
 
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--1 { grid-column: 1 / 7 !important; grid-row: 1 / 7 !important; }
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--2 { grid-column: 7 / 13 !important; grid-row: 1 / 6 !important; }
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--3 { grid-column: 1 / 6 !important; grid-row: 7 / 11 !important; }
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--4 { grid-column: 6 / 13 !important; grid-row: 6 / 11 !important; transform: rotate(-.55deg) !important; }
-
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--1 { grid-column: 1 / 6 !important; grid-row: 1 / 7 !important; }
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--2 { grid-column: 6 / 13 !important; grid-row: 1 / 5 !important; }
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--3 { grid-column: 1 / 5 !important; grid-row: 7 / 11 !important; }
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--4 { grid-column: 5 / 9 !important; grid-row: 5 / 11 !important; transform: rotate(-.55deg) !important; }
-			body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--5 { grid-column: 9 / 13 !important; grid-row: 5 / 11 !important; transform: rotate(.65deg) !important; }
-
-			body.home .emo-hero-vendor-fallback {
-				display: grid; width: 100%; height: 100%; place-items: center;
-				background: rgba(255,255,255,.08); color: #fff;
-				font-family: Georgia, serif; font-size: clamp(3rem, 7vw, 6rem);
+		/* Defensive fallback: attach to the first style that will actually print. */
+		foreach ( (array) $styles->queue as $handle ) {
+			$handle = (string) $handle;
+			if ( '' !== $handle && isset( $styles->registered[ $handle ] ) && wp_style_is( $handle, 'enqueued' ) ) {
+				wp_add_inline_style( $handle, $css );
+				return;
 			}
-
-			@media (max-width: 767px) {
-				body.home .emo-hero { min-height: 0 !important; padding-top: 2.15rem !important; padding-bottom: 2.8rem !important; }
-				body.home .emo-hero__visual--vendors {
-					display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-					grid-template-rows: none !important; gap: .75rem !important;
-				}
-				body.home .emo-hero__visual--vendors .emo-hero-card {
-					grid-column: auto !important; grid-row: auto !important; min-height: 145px !important; transform: none !important;
-				}
-				body.home .emo-hero__visual--vendors[data-emo-vendor-count="1"] .emo-hero-card--1,
-				body.home .emo-hero__visual--vendors[data-emo-vendor-count="3"] .emo-hero-card--1,
-				body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--1 {
-					grid-column: 1 / -1 !important; min-height: 185px !important;
-				}
-				body.home .emo-trust p { font-size: .9rem !important; }
-				body.home .emo-story__values p,
-				body.home .emo-vendor-cta p { font-size: .98rem !important; }
-			}
-		</style>
-		<?php
+		}
 	},
-	PHP_INT_MAX
+	PHP_INT_MAX - 100
 );
