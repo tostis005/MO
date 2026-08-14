@@ -1,4 +1,4 @@
-name: Catalog filter 0.10.234 diagnostic
+name: Catalog filter 0.10.235 diagnostic
 
 on:
   push:
@@ -21,26 +21,37 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
-      - name: Inspect staging vendor pagination
+      - name: Inspect staging loader and page responses
         env:
           BASE_URL: https://dev.elmercadodeorigen.com
         run: |
           node <<'NODE'
           const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
           (async()=>{
             const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            for(const route of ['/tienda/hidalgo-de-la-jara/','/tienda/hidalgo-de-la-jara/page/2/','/tienda/1957/']){
+            for(const route of ['/tienda/','/tienda/page/2/','/tienda/hidalgo-de-la-jara/','/tienda/hidalgo-de-la-jara/page/2/','/tienda/1957/']){
               const p=await b.newPage(); await p.setViewport({width:1440,height:1000});
               await p.goto(`${process.env.BASE_URL}${route}?page-diag=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
-              await new Promise(r=>setTimeout(r,700));
-              const d=await p.evaluate(()=>({
-                href:location.href,
-                count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
-                products:[...document.querySelectorAll('#wcfmmp-store ul.products > li.product')].map(n=>({post:[...n.classList].find(c=>/^post-\d+$/.test(c))||'',title:(n.querySelector('.woocommerce-loop-product__title,h2,h3,.product-title')?.textContent||'').replace(/\s+/g,' ').trim()})),
-                filters:(document.querySelector('#emo-vendor-filters')?.textContent||'').replace(/\s+/g,' ').trim().slice(0,350),
-                pagination:[...document.querySelectorAll('#wcfmmp-store a.page-numbers[href],#wcfmmp-store .woocommerce-pagination a[href],#wcfmmp-store .wcfmmp-pagination a[href]')].map(a=>({text:(a.textContent||'').trim(),href:a.href}))
-              }));
-              console.log('VENDOR_PAGE_DIAG_010234',route,JSON.stringify(d)); await p.close();
+              await sleep(700);
+              const d=await p.evaluate(async()=>{
+                const grid=document.querySelector('#wcfmmp-store ul.products,main ul.products,#primary ul.products,.content-area ul.products,ul.products');
+                const next=window.__emoCatalogLoaderState?.nextUrl||'';
+                let fetchTest=null;
+                if(next){try{const r=await fetch(next,{credentials:'same-origin',headers:{Accept:'text/html'}}); const text=await r.text(); const doc=new DOMParser().parseFromString(text,'text/html'); const g=doc.querySelector('#wcfmmp-store ul.products,main ul.products,#primary ul.products,.content-area ul.products,ul.products'); fetchTest={status:r.status,url:r.url,html:text.length,products:g?[...g.querySelectorAll(':scope > li.product')].length:-1};}catch(e){fetchTest={error:String(e)}}}
+                return {
+                  href:location.href,
+                  count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
+                  products:grid?[...grid.querySelectorAll(':scope > li.product')].map(n=>[...n.classList].find(c=>/^post-\d+$/.test(c))||''):[],
+                  filters:(document.querySelector('#emo-vendor-filters')?.textContent||'').replace(/\s+/g,' ').trim().slice(0,350),
+                  pagination:[...document.querySelectorAll('a.page-numbers[href],.woocommerce-pagination a[href],.wcfmmp-pagination a[href]')].map(a=>({text:(a.textContent||'').trim(),href:a.href})).slice(0,10),
+                  state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,unique:window.__emoCatalogLoaderState.unique,nextUrl:window.__emoCatalogLoaderState.nextUrl,highestPage:window.__emoCatalogLoaderState.highestPage,loading:window.__emoCatalogLoaderState.loading}:null,
+                  loadMessage:(document.querySelector('.emo-catalog-load-message')?.textContent||'').trim(),
+                  loadClass:document.querySelector('.emo-catalog-load-state')?.className||'',
+                  fetchTest
+                };
+              });
+              console.log('PAGE_DIAG_010235',route,JSON.stringify(d)); await p.close();
             }
             await b.close();
           })().catch(e=>{console.error(e);process.exit(1)});
