@@ -1,11 +1,6 @@
 <?php
 /**
- * Ajustes específicos del checkout:
- * - Mensaje claro cuando un productor no tiene envío para el destino.
- * - Oculta de forma robusta el botón de realizar pedido en ese estado.
- * - Compacta la separación vertical de checks/radios del checkout.
- *
- * Se despliega como MU-plugin para no depender del orden de carga del tema.
+ * Ajustes específicos de carrito y checkout.
  *
  * @package ElMercadoDeOrigen
  */
@@ -26,7 +21,7 @@ function elmercado_checkout_no_shipping_message( string $message ): string {
     }
 
     return '<div class="emo-no-shipping-destination" data-emo-no-shipping="1" role="alert">'
-        . '<strong style="color:#0d211b !important;">No podemos enviar los productos de este productor al destino indicado.</strong> '
+        . '<strong>No podemos enviar los productos de este productor al destino indicado.</strong> '
         . 'Actualmente no tiene configurada una opción de envío para esa zona. '
         . 'Si crees que debería estar disponible o se trata de un error, ponte en contacto con nosotros y lo revisaremos.'
         . '</div>';
@@ -35,34 +30,45 @@ function elmercado_checkout_no_shipping_message( string $message ): string {
 add_filter( 'woocommerce_no_shipping_available_html', 'elmercado_checkout_no_shipping_message', 999 );
 add_filter( 'woocommerce_cart_no_shipping_available_html', 'elmercado_checkout_no_shipping_message', 999 );
 
-/**
- * Refuerza el estado sin envío y compacta los controles del checkout.
- * WooCommerce actualiza el resumen por AJAX, por lo que el estado y el espaciado
- * se sincronizan también después de cada actualización del checkout.
- */
 add_action(
     'wp_footer',
     static function (): void {
-        if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_order_received_page() ) {
+        $is_checkout_page = function_exists( 'is_checkout' ) && is_checkout() && ! is_order_received_page();
+        $is_cart_page     = function_exists( 'is_cart' ) && is_cart();
+
+        if ( ! $is_checkout_page && ! $is_cart_page ) {
             return;
         }
         ?>
         <style id="elmercado-checkout-no-shipping-style">
+            /* Aviso sin envío: contraste correcto tanto en carrito como en checkout. */
             .emo-no-shipping-destination {
-                margin: 0.75rem 0;
-                padding: 0.9rem 1rem;
-                background: #fff7e8;
-                border: 1px solid rgba(178, 122, 33, 0.28);
-                border-left: 4px solid #b27a21;
-                border-radius: 12px;
+                display: block !important;
+                margin: 0.75rem 0 !important;
+                padding: 0.9rem 1rem !important;
+                background: #fff7e8 !important;
+                border: 1px solid rgba(178, 122, 33, 0.28) !important;
+                border-left: 4px solid #b27a21 !important;
+                border-radius: 12px !important;
                 color: #27352f !important;
-                font-size: 0.92rem;
-                line-height: 1.55;
+                font-size: 0.92rem !important;
+                font-weight: 400 !important;
+                line-height: 1.55 !important;
+                text-align: left !important;
             }
 
+            body.woocommerce-cart .cart_totals .emo-no-shipping-destination,
+            body.woocommerce-cart .cart_totals .emo-no-shipping-destination *,
+            body.woocommerce-checkout #order_review .emo-no-shipping-destination,
+            body.woocommerce-checkout #order_review .emo-no-shipping-destination * {
+                color: #27352f !important;
+            }
+
+            body.woocommerce-cart .cart_totals .emo-no-shipping-destination strong,
             body.woocommerce-checkout #order_review .emo-no-shipping-destination strong,
             body.woocommerce-checkout .emo-no-shipping-destination strong {
                 color: #0d211b !important;
+                font-weight: 700 !important;
             }
 
             body.woocommerce-checkout:has(.emo-no-shipping-destination[data-emo-no-shipping="1"]) #place_order,
@@ -70,36 +76,57 @@ add_action(
                 display: none !important;
             }
 
-            /* Filas de checkbox marcadas por JS para no depender del HTML exacto del plugin. */
+            /*
+             * Checks del checkout. Woostify/WooCommerce añaden espacio en varios
+             * niveles (fila + contenedor), por eso se neutralizan todos los wrappers
+             * específicos de estas tres opciones sin tocar los campos normales.
+             */
+            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details p.create-account,
+            body.woocommerce-checkout #customer_details #ship-to-different-address,
             body.woocommerce-checkout #customer_details .emo-compact-check-row {
                 min-height: 0 !important;
-                margin-top: 0.2rem !important;
-                margin-bottom: 0.2rem !important;
+                height: auto !important;
+                margin: 0.18rem 0 !important;
+                padding: 0 !important;
+            }
+
+            body.woocommerce-checkout #customer_details .woocommerce-account-fields,
+            body.woocommerce-checkout #customer_details .woocommerce-shipping-fields {
+                min-height: 0 !important;
+                height: auto !important;
+                margin: 0.18rem 0 !important;
+                padding: 0 !important;
+                gap: 0 !important;
+                row-gap: 0 !important;
+            }
+
+            body.woocommerce-checkout #customer_details .woocommerce-account-fields > p,
+            body.woocommerce-checkout #customer_details .woocommerce-shipping-fields > h3 {
+                margin-top: 0.18rem !important;
+                margin-bottom: 0.18rem !important;
                 padding-top: 0 !important;
                 padding-bottom: 0 !important;
             }
 
+            body.woocommerce-checkout #customer_details label:has(input[type="checkbox"]),
             body.woocommerce-checkout #customer_details .emo-compact-check-label {
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 0.5rem !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 line-height: 1.3 !important;
             }
 
-            body.woocommerce-checkout #customer_details .woocommerce-account-fields,
-            body.woocommerce-checkout #customer_details .woocommerce-shipping-fields {
-                row-gap: 0 !important;
-                margin-top: 0.2rem !important;
-                margin-bottom: 0.2rem !important;
-                padding-top: 0 !important;
-                padding-bottom: 0 !important;
-            }
-
             body.woocommerce-checkout #customer_details input[type="checkbox"] {
-                margin-right: 0.5rem !important;
+                flex: 0 0 auto !important;
+                margin: 0 !important;
                 vertical-align: middle !important;
             }
 
-            /* Métodos de pago: neutralizar también gap/grid/flex del tema. */
+            /* Métodos de pago: mantener el espaciado compacto que ya funciona. */
             body.woocommerce-checkout #payment ul.payment_methods {
                 gap: 0 !important;
                 row-gap: 0 !important;
@@ -140,6 +167,7 @@ add_action(
                 padding-top: 0 !important;
             }
         </style>
+        <?php if ( $is_checkout_page ) : ?>
         <script id="elmercado-checkout-no-shipping-script">
             (function () {
                 'use strict';
@@ -150,32 +178,46 @@ add_action(
                     }
                 }
 
-                function compactCheckoutOptions() {
+                function compactCheckoutChecks() {
                     document.querySelectorAll('#customer_details input[type="checkbox"]').forEach(function (checkbox) {
                         var label = checkbox.closest('label');
-                        var row = checkbox.closest('p.form-row, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
+                        var row = checkbox.closest('p.form-row, p.create-account, h3#ship-to-different-address, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
+                        var section = checkbox.closest('.woocommerce-account-fields, .woocommerce-shipping-fields');
 
                         if (label) {
                             label.classList.add('emo-compact-check-label');
-                            setImportant(label, 'margin-top', '0');
-                            setImportant(label, 'margin-bottom', '0');
-                            setImportant(label, 'padding-top', '0');
-                            setImportant(label, 'padding-bottom', '0');
+                            setImportant(label, 'margin', '0');
+                            setImportant(label, 'padding', '0');
                             setImportant(label, 'line-height', '1.3');
+                            setImportant(label, 'gap', '0.5rem');
                         }
 
                         if (row) {
                             row.classList.add('emo-compact-check-row');
                             setImportant(row, 'min-height', '0');
-                            setImportant(row, 'margin-top', '0.2rem');
-                            setImportant(row, 'margin-bottom', '0.2rem');
+                            setImportant(row, 'height', 'auto');
+                            setImportant(row, 'margin-top', '0.18rem');
+                            setImportant(row, 'margin-bottom', '0.18rem');
                             setImportant(row, 'padding-top', '0');
                             setImportant(row, 'padding-bottom', '0');
                         }
 
-                        setImportant(checkbox, 'margin-right', '0.5rem');
-                    });
+                        if (section) {
+                            setImportant(section, 'min-height', '0');
+                            setImportant(section, 'height', 'auto');
+                            setImportant(section, 'margin-top', '0.18rem');
+                            setImportant(section, 'margin-bottom', '0.18rem');
+                            setImportant(section, 'padding-top', '0');
+                            setImportant(section, 'padding-bottom', '0');
+                            setImportant(section, 'gap', '0');
+                            setImportant(section, 'row-gap', '0');
+                        }
 
+                        setImportant(checkbox, 'margin', '0');
+                    });
+                }
+
+                function compactPaymentOptions() {
                     var paymentList = document.querySelector('#payment ul.payment_methods');
                     if (paymentList) {
                         setImportant(paymentList, 'gap', '0');
@@ -203,7 +245,7 @@ add_action(
                     });
                 }
 
-                function syncNoShippingState() {
+                function syncCheckoutState() {
                     var blocked = document.querySelector('.emo-no-shipping-destination[data-emo-no-shipping="1"]') !== null;
                     document.body.classList.toggle('emo-checkout-no-shipping', blocked);
 
@@ -222,19 +264,21 @@ add_action(
                         }
                     }
 
-                    compactCheckoutOptions();
+                    compactCheckoutChecks();
+                    compactPaymentOptions();
                 }
 
-                document.addEventListener('DOMContentLoaded', syncNoShippingState);
+                document.addEventListener('DOMContentLoaded', syncCheckoutState);
 
                 if (window.jQuery) {
-                    window.jQuery(document.body).on('updated_checkout updated_shipping_method payment_method_selected', syncNoShippingState);
+                    window.jQuery(document.body).on('updated_checkout updated_shipping_method payment_method_selected', syncCheckoutState);
                 }
 
-                var observer = new MutationObserver(syncNoShippingState);
+                var observer = new MutationObserver(syncCheckoutState);
                 observer.observe(document.body, { childList: true, subtree: true });
             }());
         </script>
+        <?php endif; ?>
         <?php
     },
     PHP_INT_MAX
