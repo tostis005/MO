@@ -1,7 +1,7 @@
 <?php
 /**
- * Cierre final 0.10.234: contador estable, paridad real de filtros y carga
- * continua sin repeticiones al final del catálogo.
+ * Cierre final del catálogo: contador estable, paridad visual de filtros y
+ * carga continua por lotes exactos, sin depender de las páginas HTML del tema.
  *
  * @package ElMercadoDeOrigen
  */
@@ -10,9 +10,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Superficie objetivo: Tienda/categorías o una tienda WCFM.
- */
 function elmercado_catalog_filter_scroll_target_010234(): bool {
 	if ( is_admin() ) {
 		return false;
@@ -23,15 +20,14 @@ function elmercado_catalog_filter_scroll_target_010234(): bool {
 	return function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225();
 }
 
-/**
- * Total exacto que debe permanecer visible durante toda la carga continua.
- */
-function elmercado_catalog_filter_scroll_total_010234(): int {
-	$body_classes = function_exists( 'get_body_class' ) ? get_body_class() : array();
-	$is_vendor    = in_array( 'wcfmmp-store-page', $body_classes, true )
+function elmercado_catalog_filter_scroll_is_vendor_010234(): bool {
+	$classes = function_exists( 'get_body_class' ) ? get_body_class() : array();
+	return in_array( 'wcfmmp-store-page', $classes, true )
 		|| ( function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225() );
+}
 
-	if ( $is_vendor && function_exists( 'elmercado_vendor_store_state_010225' ) ) {
+function elmercado_catalog_filter_scroll_total_010234(): int {
+	if ( elmercado_catalog_filter_scroll_is_vendor_010234() && function_exists( 'elmercado_vendor_store_state_010225' ) ) {
 		$state = elmercado_vendor_store_state_010225();
 		return max( 0, (int) ( $state['total'] ?? 0 ) );
 	}
@@ -42,20 +38,88 @@ function elmercado_catalog_filter_scroll_total_010234(): int {
 }
 
 /**
- * Retira solo el loader footer histórico. Se conservan su CSS y el guard de
- * history del head; el loader de abajo lo sustituye con paginación estricta.
+ * IDs exactos del contexto actual en el orden del catálogo.
+ *
+ * @return int[]
  */
+function elmercado_catalog_filter_scroll_ordered_ids_010234(): array {
+	static $cache = array();
+	$key = ( elmercado_catalog_filter_scroll_is_vendor_010234() ? 'vendor:' : 'shop:' ) . (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( isset( $cache[ $key ] ) ) {
+		return $cache[ $key ];
+	}
+
+	if ( elmercado_catalog_filter_scroll_is_vendor_010234() && function_exists( 'elmercado_vendor_store_state_010225' ) ) {
+		$state   = elmercado_vendor_store_state_010225();
+		$allowed = array_values( array_unique( array_filter( array_map( 'absint', (array) ( $state['filtered_ids'] ?? array() ) ) ) ) );
+		if ( ! $allowed ) {
+			$cache[ $key ] = array();
+			return array();
+		}
+
+		$ordering = function_exists( 'woocommerce_get_catalog_ordering_args' )
+			? woocommerce_get_catalog_ordering_args()
+			: array( 'orderby' => 'date', 'order' => 'DESC' );
+		$args = array(
+			'post_type'              => 'product',
+			'post_status'            => 'publish',
+			'fields'                 => 'ids',
+			'posts_per_page'         => -1,
+			'no_found_rows'          => true,
+			'ignore_sticky_posts'    => true,
+			'suppress_filters'       => false,
+			'post__in'               => $allowed,
+			'orderby'                => $ordering['orderby'] ?? 'date',
+			'order'                  => $ordering['order'] ?? 'DESC',
+			'meta_key'               => $ordering['meta_key'] ?? '', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+			'cache_results'          => false,
+			'update_post_meta_cache' => false,
+			'update_post_term_cache' => false,
+		);
+		$query = new WP_Query( $args );
+		$ids   = array_values( array_unique( array_filter( array_map( 'absint', (array) $query->posts ) ) ) );
+		/* En caso de una extensión de ordenación incompatible, nunca perdemos IDs. */
+		$ids = array_merge( $ids, array_values( array_diff( $allowed, $ids ) ) );
+		$cache[ $key ] = array_values( array_unique( $ids ) );
+		return $cache[ $key ];
+	}
+
+	global $wp_query;
+	$vars = $wp_query instanceof WP_Query ? (array) $wp_query->query_vars : array();
+	$vars['post_type']              = 'product';
+	$vars['post_status']            = 'publish';
+	$vars['fields']                 = 'ids';
+	$vars['posts_per_page']         = -1;
+	$vars['nopaging']               = true;
+	$vars['paged']                  = 1;
+	$vars['page']                   = 1;
+	$vars['offset']                 = 0;
+	$vars['no_found_rows']          = true;
+	$vars['ignore_sticky_posts']    = true;
+	$vars['suppress_filters']       = false;
+	$vars['cache_results']          = false;
+	$vars['update_post_meta_cache'] = false;
+	$vars['update_post_term_cache'] = false;
+	unset( $vars['product-page'], $vars['product_page'] );
+
+	$query = new WP_Query( $vars );
+	$ids   = array_values( array_unique( array_filter( array_map( 'absint', (array) $query->posts ) ) ) );
+	$total = elmercado_catalog_filter_scroll_total_010234();
+	if ( $total > 0 && count( $ids ) > $total ) {
+		$ids = array_slice( $ids, 0, $total );
+	}
+	$cache[ $key ] = $ids;
+	return $ids;
+}
+
+/** Retira únicamente el loader footer histórico; conserva su CSS/history guard. */
 function elmercado_catalog_filter_scroll_remove_legacy_loader_010234(): void {
 	global $wp_filter;
-
 	if ( empty( $wp_filter['wp_footer'] ) || ! $wp_filter['wp_footer'] instanceof WP_Hook ) {
 		return;
 	}
-
 	$legacy_file = wp_normalize_path( ELMERCADO_THEME_PATH . '/inc/catalog-continuous-loading-010176.php' );
-	$callbacks   = $wp_filter['wp_footer']->callbacks;
-
-	foreach ( $callbacks as $priority => $items ) {
+	foreach ( $wp_filter['wp_footer']->callbacks as $priority => $items ) {
 		foreach ( $items as $item ) {
 			$callback = $item['function'] ?? null;
 			if ( ! $callback instanceof Closure ) {
@@ -73,13 +137,43 @@ function elmercado_catalog_filter_scroll_remove_legacy_loader_010234(): void {
 		}
 	}
 }
-
 elmercado_catalog_filter_scroll_remove_legacy_loader_010234();
 
 /**
- * Última capa visual: el panel interno del productor no añade un segundo
- * padding y ambos raíles usan literalmente la misma familia tipográfica.
+ * Render AJAX de un lote explícito de productos publicados.
  */
+function elmercado_catalog_filter_scroll_batch_010234(): void {
+	check_ajax_referer( 'elmercado_catalog_batch_010234', 'nonce' );
+	$raw = isset( $_POST['ids'] ) ? (array) wp_unslash( $_POST['ids'] ) : array();
+	$ids = array_slice( array_values( array_unique( array_filter( array_map( 'absint', $raw ) ) ) ), 0, 24 );
+	if ( ! $ids ) {
+		wp_send_json_success( array( 'html' => '', 'ids' => array() ) );
+	}
+
+	$rendered = array();
+	ob_start();
+	foreach ( $ids as $product_id ) {
+		$post = get_post( $product_id );
+		if ( ! $post instanceof WP_Post || 'product' !== $post->post_type || 'publish' !== $post->post_status ) {
+			continue;
+		}
+		$product = wc_get_product( $product_id );
+		if ( ! $product || ! $product->is_visible() || ! $product->is_in_stock() ) {
+			continue;
+		}
+		$GLOBALS['post'] = $post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+		setup_postdata( $post );
+		wc_get_template_part( 'content', 'product' );
+		$rendered[] = $product_id;
+	}
+	wp_reset_postdata();
+	$html = (string) ob_get_clean();
+	wp_send_json_success( array( 'html' => $html, 'ids' => $rendered ) );
+}
+add_action( 'wp_ajax_elmercado_catalog_batch_010234', 'elmercado_catalog_filter_scroll_batch_010234' );
+add_action( 'wp_ajax_nopriv_elmercado_catalog_batch_010234', 'elmercado_catalog_filter_scroll_batch_010234' );
+
+/** Paridad visual real: mismo padding, misma tipografía y sin subrayado. */
 add_action(
 	'wp_head',
 	static function (): void {
@@ -106,9 +200,7 @@ add_action(
 			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229:focus-visible,
 			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:hover > .emo-filter-link-shared-010229,
 			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-row-shared-010229:is(.current-cat,.is-active,.chosen,.woocommerce-widget-layered-nav-list__item--chosen) > .emo-filter-link-shared-010229,
-			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229 > span {
-				text-decoration:none !important; text-decoration-line:none !important;
-			}
+			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-filter-link-shared-010229 > span,
 			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove,
 			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove:hover > span:last-child,
 			html body.elmercado-child-theme :is(#secondary#secondary,#wcfmmp-store#wcfmmp-store .left_sidebar).emo-filter-rail-shared-010229 .emo-category-context__remove:focus-visible > span:last-child {
@@ -121,9 +213,8 @@ add_action(
 );
 
 /**
- * Loader definitivo: solo acepta la página contigua, conserva todos los
- * filtros de la URL, deduplica por identidad de producto y se detiene al llegar
- * al total exacto del servidor.
+ * Loader por IDs exactos: no usa /page/2, por lo que no puede repetir la
+ * última página aunque WCFM/WooCommerce publiquen enlaces de paginación erróneos.
  */
 add_action(
 	'wp_footer',
@@ -131,236 +222,115 @@ add_action(
 		if ( ! elmercado_catalog_filter_scroll_target_010234() ) {
 			return;
 		}
-
-		$total = elmercado_catalog_filter_scroll_total_010234();
-		$label = sprintf(
-			esc_html( _n( '%s resultado', '%s resultados', $total, 'elmercadodeorigen' ) ),
-			number_format_i18n( $total )
-		);
+		$total       = elmercado_catalog_filter_scroll_total_010234();
+		$ordered_ids = elmercado_catalog_filter_scroll_ordered_ids_010234();
+		$label       = sprintf( esc_html( _n( '%s resultado', '%s resultados', $total, 'elmercadodeorigen' ) ), number_format_i18n( $total ) );
 		?>
 		<script id="elmercado-catalog-scroll-final-010234">
 		(() => {
 			'use strict';
-
 			const exactTotal = <?php echo wp_json_encode( $total ); ?>;
 			const exactLabel = <?php echo wp_json_encode( $label ); ?>;
+			const orderedIds = <?php echo wp_json_encode( array_values( $ordered_ids ) ); ?>.map(String);
+			const endpoint = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+			const nonce = <?php echo wp_json_encode( wp_create_nonce( 'elmercado_catalog_batch_010234' ) ); ?>;
 			const gridSelector = '#wcfmmp-store ul.products,main ul.products,#primary ul.products,.content-area ul.products,ul.products';
 			const grid = document.querySelector(gridSelector);
 			if (!grid) return;
-
 			const isVendor = !!grid.closest('#wcfmmp-store');
 			const surface = isVendor ? grid.closest('#wcfmmp-store') : (grid.closest('main,#primary,.content-area') || document);
-			const currentUrl = new URL(window.location.href);
-			const paginationKeys = ['paged','product-page','product_page','page'];
-			const pagerScopes = [
-				'.woocommerce-pagination','.woostify-pagination','.wcfm-pagination','.wcfmmp-pagination','.wcfm_pagination',
-				'.wcfmmp-store-product-pagination','.navigation.pagination','.products-pagination','.product-pagination',
-				'.infinite-scroll-pagination','.woostify-load-more','.woocommerce-load-more'
-			];
-			const pagerScopeSelector = pagerScopes.join(',');
-			const pagerLinkSelector = pagerScopes.map((selector) => `${selector} a[href]`).concat(['a.page-numbers[href]']).join(',');
 
-			const pageFromUrl = (value) => {
-				try {
-					const url = new URL(value, currentUrl.href);
-					const pathMatch = url.pathname.match(/\/page\/(\d+)(?:\/|$)/i);
-					if (pathMatch) return Math.max(1, Number.parseInt(pathMatch[1], 10) || 1);
-					for (const key of paginationKeys) {
-						const parsed = Number.parseInt(url.searchParams.get(key) || '', 10);
-						if (Number.isFinite(parsed) && parsed > 0) return parsed;
-					}
-				} catch (_) {}
-				return 0;
+			const pagerScopes=['.woocommerce-pagination','.woostify-pagination','.wcfm-pagination','.wcfmmp-pagination','.wcfm_pagination','.wcfmmp-store-product-pagination','.navigation.pagination','.products-pagination','.product-pagination','.infinite-scroll-pagination','.woostify-load-more','.woocommerce-load-more'];
+			document.querySelectorAll(pagerScopes.join(',')).forEach(node=>node.classList.add('emo-catalog-native-pagination'));
+
+			const idFromItem=(item)=>{
+				const postClass=[...item.classList].find(name=>/^post-\d+$/.test(name));
+				if(postClass) return postClass.replace('post-','');
+				const own=item.getAttribute('data-product_id')||item.getAttribute('data-product-id');
+				if(own) return String(own);
+				const nested=item.querySelector('[data-product_id],[data-product-id]');
+				return String(nested?.getAttribute('data-product_id')||nested?.getAttribute('data-product-id')||'');
 			};
+			const productItems=()=>[...grid.querySelectorAll(':scope > li.product')];
+			const known=new Set(productItems().map(idFromItem).filter(Boolean));
+			let remaining=orderedIds.filter(id=>!known.has(id));
+			let loading=false;
+			let failures=0;
 
-			const signature = (value) => {
-				try {
-					const url = new URL(value, currentUrl.href);
-					url.pathname = url.pathname.replace(/\/page\/\d+\/?$/i, '/').replace(/\/+$/, '/');
-					paginationKeys.forEach((key) => url.searchParams.delete(key));
-					url.hash = '';
-					const params = [...url.searchParams.entries()].sort(([ak,av],[bk,bv]) => ak === bk ? av.localeCompare(bv) : ak.localeCompare(bk));
-					url.search = '';
-					params.forEach(([key,value]) => url.searchParams.append(key,value));
-					return url.href;
-				} catch (_) { return ''; }
-			};
-
-			const resolveHref = (element, baseUrl) => {
-				const raw = element?.getAttribute?.('href');
-				if (!raw || raw === '#' || /^javascript:/i.test(raw)) return '';
-				try { return new URL(raw, baseUrl).href; } catch (_) { return ''; }
-			};
-
-			const nextUrlFromDocument = (root, baseUrl, currentPage) => {
-				const desiredPage = currentPage + 1;
-				const family = signature(baseUrl);
-				const head = root.querySelector('link[rel~="next"][href]');
-				const headHref = resolveHref(head, baseUrl);
-				if (headHref && signature(headHref) === family && pageFromUrl(headHref) === desiredPage) return headHref;
-
-				const links = [...new Set(root.querySelectorAll(pagerLinkSelector))];
-				for (const link of links) {
-					const href = resolveHref(link, baseUrl);
-					if (!href || signature(href) !== family || pageFromUrl(href) !== desiredPage) continue;
-					const rel = (link.getAttribute('rel') || '').toLowerCase().split(/\s+/);
-					const words = `${link.getAttribute('aria-label') || ''} ${link.getAttribute('title') || ''} ${link.textContent || ''}`.replace(/\s+/g,' ').trim().toLowerCase();
-					if (rel.includes('next') || link.classList.contains('next') || /\b(next|siguiente|más|more)\b/.test(words)) return href;
-				}
-				for (const link of links) {
-					const href = resolveHref(link, baseUrl);
-					if (href && signature(href) === family && pageFromUrl(href) === desiredPage) return href;
-				}
-				return '';
-			};
-
-			const canonicalProductHref = (item) => {
-				const link = item.querySelector('a.woocommerce-LoopProduct-link,a[href*="/producto/"],a[href*="/product/"]');
-				if (!link?.href) return '';
-				try {
-					const url = new URL(link.href, currentUrl.href);
-					url.search = ''; url.hash = '';
-					return `${url.origin}${url.pathname.replace(/\/+$/,'/')}`;
-				} catch (_) { return link.href; }
-			};
-
-			const productKey = (item) => {
-				const postClass = [...item.classList].find((name) => /^(?:post|product)-\d+$/.test(name));
-				if (postClass) return `class:${postClass}`;
-				const ownId = item.getAttribute('data-product_id') || item.getAttribute('data-product-id');
-				if (ownId) return `id:${ownId}`;
-				const idNode = item.querySelector('[data-product_id],[data-product-id]');
-				const nestedId = idNode?.getAttribute('data-product_id') || idNode?.getAttribute('data-product-id');
-				if (nestedId) return `id:${nestedId}`;
-				const href = canonicalProductHref(item);
-				if (href) return `url:${href}`;
-				const title = (item.querySelector('.woocommerce-loop-product__title,.product-title,h2,h3')?.textContent || '').replace(/\s+/g,' ').trim().toLowerCase();
-				const price = (item.querySelector('.price')?.textContent || '').replace(/\s+/g,' ').trim().toLowerCase();
-				const image = item.querySelector('img')?.getAttribute('src') || item.querySelector('img')?.getAttribute('data-src') || '';
-				return title ? `fallback:${title}|${price}|${image}` : '';
-			};
-
-			const productItems = () => [...grid.querySelectorAll(':scope > li.product')];
-			const knownProducts = new Set(productItems().map(productKey).filter(Boolean));
-			const initialPage = pageFromUrl(currentUrl.href) || 1;
-			const loadedPages = new Set([initialPage]);
-			let highestPage = initialPage;
-			let nextUrl = exactTotal && productItems().length >= exactTotal ? '' : nextUrlFromDocument(document,currentUrl.href,initialPage);
-			let loading = false;
-			let retryTimer = 0;
-			let continuationTimer = 0;
-			const preloadDistance = Math.max(1800,Math.min(3200,Math.round(window.innerHeight*2.6)));
-
-			document.querySelectorAll(pagerScopeSelector).forEach((node) => node.classList.add('emo-catalog-native-pagination'));
-
-			const state = document.createElement('div');
-			state.className = 'emo-catalog-load-state';
-			state.setAttribute('role','status');
-			state.setAttribute('aria-live','polite');
-			state.innerHTML = '<span class="emo-catalog-spinner" aria-hidden="true"></span><span class="emo-catalog-load-message"></span><button type="button" class="emo-catalog-load-button" hidden>Cargar más productos</button>';
+			const state=document.createElement('div');
+			state.className='emo-catalog-load-state';
+			state.setAttribute('role','status'); state.setAttribute('aria-live','polite');
+			state.innerHTML='<span class="emo-catalog-spinner" aria-hidden="true"></span><span class="emo-catalog-load-message"></span><button type="button" class="emo-catalog-load-button" hidden>Cargar más productos</button>';
 			grid.insertAdjacentElement('afterend',state);
-			const message = state.querySelector('.emo-catalog-load-message');
-			const button = state.querySelector('.emo-catalog-load-button');
+			const message=state.querySelector('.emo-catalog-load-message');
+			const button=state.querySelector('.emo-catalog-load-button');
 
-			const exactCountNodes = () => [...surface.querySelectorAll('.woocommerce-result-count')];
-			let countSyncing = false;
-			const lockCounts = () => {
-				if (countSyncing) return;
-				countSyncing = true;
-				try {
-					exactCountNodes().forEach((node) => {
-						if ((node.textContent || '').replace(/\s+/g,' ').trim() !== exactLabel) node.textContent = exactLabel;
-					});
-				} finally { countSyncing = false; }
+			const exactCountNodes=()=>[...surface.querySelectorAll('.woocommerce-result-count')];
+			let syncing=false;
+			const lockCounts=()=>{
+				if(syncing) return; syncing=true;
+				try{exactCountNodes().forEach(node=>{if((node.textContent||'').replace(/\s+/g,' ').trim()!==exactLabel) node.textContent=exactLabel;});}
+				finally{syncing=false;}
 			};
 			lockCounts();
-			exactCountNodes().forEach((node) => new MutationObserver(lockCounts).observe(node,{childList:true,characterData:true,subtree:true}));
-			document.body.addEventListener('emo:catalog-products-appended',lockCounts);
+			exactCountNodes().forEach(node=>new MutationObserver(lockCounts).observe(node,{childList:true,characterData:true,subtree:true}));
 
-			const setState = (mode,text='') => {
-				const active = mode === 'loading' || mode === 'retrying';
-				const failure = mode === 'failure';
-				state.classList.toggle('is-loading',active);
-				state.classList.toggle('is-failure',failure);
-				message.textContent = active || failure ? text : '';
-				button.hidden = !failure || !nextUrl;
+			const setState=(mode,text='')=>{
+				state.classList.toggle('is-loading',mode==='loading');
+				state.classList.toggle('is-failure',mode==='failure');
+				message.textContent=(mode==='loading'||mode==='failure')?text:'';
+				button.hidden=mode!=='failure'||remaining.length===0;
 			};
-			const showIdle = () => setState('idle');
-			const showLoading = () => setState('loading','Cargando más productos…');
-			const showRetrying = () => setState('retrying','Cargando más productos…');
-			const showFailure = () => setState('failure','No se ha podido continuar la carga automática.');
-			const showFinished = () => setState('finished');
-			const nearViewport = () => { const rect=state.getBoundingClientRect(); return rect.top <= window.innerHeight+preloadDistance && rect.bottom >= -preloadDistance; };
+			const finish=()=>{remaining=[];setState('finished');};
 
-			const fetchPage = async (url) => {
-				const controller = new AbortController();
-				const timeout = window.setTimeout(() => controller.abort(),8000);
-				try {
-					const response = await fetch(url,{credentials:'same-origin',signal:controller.signal,headers:{Accept:'text/html'}});
-					if (!response.ok) throw new Error(`HTTP ${response.status}`);
-					return {doc:new DOMParser().parseFromString(await response.text(),'text/html'),responseUrl:response.url || url};
-				} finally { window.clearTimeout(timeout); }
-			};
-
-			const debugState = {};
-			Object.defineProperties(debugState,{
-				initialUrl:{enumerable:true,get:()=>currentUrl.href},nextUrl:{enumerable:true,get:()=>nextUrl},highestPage:{enumerable:true,get:()=>highestPage},
-				shown:{enumerable:true,get:()=>productItems().length},unique:{enumerable:true,get:()=>knownProducts.size},loading:{enumerable:true,get:()=>loading}
+			const debug={};
+			Object.defineProperties(debug,{
+				shown:{enumerable:true,get:()=>productItems().length},unique:{enumerable:true,get:()=>known.size},loading:{enumerable:true,get:()=>loading},
+				remaining:{enumerable:true,get:()=>remaining.length},nextUrl:{enumerable:true,get:()=>remaining.length?'batch':''},highestPage:{enumerable:true,get:()=>Math.max(1,Math.ceil(productItems().length/15))},ordered:{enumerable:true,get:()=>orderedIds.length}
 			});
-			window.__emoCatalogLoaderState = debugState;
+			window.__emoCatalogLoaderState=debug;
 
-			const scheduleContinuation = () => {
-				window.clearTimeout(continuationTimer);
-				continuationTimer = window.setTimeout(() => { if (!loading && nextUrl && nearViewport()) loadNext(true); },60);
-			};
-
-			const loadNext = async (allowRetry=true) => {
-				if (loading || !nextUrl) return;
-				if (exactTotal && productItems().length >= exactTotal) { nextUrl=''; showFinished(); return; }
-				const requestedUrl = nextUrl;
-				const requestedPage = pageFromUrl(requestedUrl);
-				if (!requestedPage || requestedPage !== highestPage + 1 || loadedPages.has(requestedPage)) { nextUrl=''; showFinished(); return; }
-				loading = true; showLoading();
-				try {
-					const {doc,responseUrl} = await fetchPage(requestedUrl);
-					const sourceGrid = doc.querySelector(gridSelector);
-					if (!sourceGrid) throw new Error('Product grid not found');
-					let appended = 0;
-					let remaining = exactTotal ? Math.max(0,exactTotal-productItems().length) : Number.POSITIVE_INFINITY;
-					for (const item of [...sourceGrid.querySelectorAll(':scope > li.product')]) {
-						if (remaining <= 0) break;
-						const key = productKey(item);
-						if (key && knownProducts.has(key)) continue;
-						if (key) knownProducts.add(key);
-						grid.append(document.importNode(item,true));
-						appended += 1; remaining -= 1;
+			const loadNext=async()=>{
+				if(loading||!remaining.length) return;
+				if(exactTotal&&productItems().length>=exactTotal){finish();return;}
+				loading=true; setState('loading','Cargando más productos…');
+				const batch=remaining.slice(0,12);
+				const body=new URLSearchParams({action:'elmercado_catalog_batch_010234',nonce});
+				batch.forEach(id=>body.append('ids[]',id));
+				try{
+					const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),10000);
+					let response;
+					try{response=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:body.toString(),signal:controller.signal});}
+					finally{clearTimeout(timer);}
+					if(!response.ok) throw new Error(`HTTP ${response.status}`);
+					const payload=await response.json();
+					if(!payload?.success) throw new Error('Invalid batch response');
+					const holder=document.createElement('ul'); holder.innerHTML=payload.data?.html||'';
+					let appended=0;
+					for(const item of [...holder.querySelectorAll(':scope > li.product')]){
+						const id=idFromItem(item); if(id&&known.has(id)) continue;
+						if(id) known.add(id); grid.append(item); appended++;
 					}
-					loadedPages.add(requestedPage); highestPage = requestedPage;
-					lockCounts();
-					if (!appended) { nextUrl=''; loading=false; showFinished(); return; }
-					const responsePage = pageFromUrl(responseUrl) || requestedPage;
-					const reachedTotal = exactTotal && productItems().length >= exactTotal;
-					const candidate = reachedTotal ? '' : nextUrlFromDocument(doc,responseUrl,responsePage);
-					const candidatePage = pageFromUrl(candidate);
-					nextUrl = candidate && candidatePage === highestPage + 1 && !loadedPages.has(candidatePage) ? candidate : '';
-					document.body.dispatchEvent(new CustomEvent('emo:catalog-products-appended',{detail:{count:appended,page:highestPage,nextUrl}}));
-					window.__emoCatalogHistoryGuard?.restore?.();
-					loading=false;
-					if (nextUrl) { showIdle(); scheduleContinuation(); } else { showFinished(); }
-				} catch (_) {
-					loading=false; window.__emoCatalogHistoryGuard?.restore?.();
-					if (allowRetry) {
-						showRetrying(); window.clearTimeout(retryTimer);
-						retryTimer=window.setTimeout(() => { if (!loading && nextUrl === requestedUrl) loadNext(false); },800);
-					} else { showFailure(); }
+					const rendered=new Set((payload.data?.ids||[]).map(String));
+					remaining=remaining.filter(id=>!batch.includes(id)||!rendered.has(id));
+					/* IDs no renderizables no deben bloquear el final. */
+					if(!appended) remaining=remaining.filter(id=>!batch.includes(id));
+					lockCounts(); failures=0; loading=false;
+					document.body.dispatchEvent(new CustomEvent('emo:catalog-products-appended',{detail:{count:appended,remaining:remaining.length}}));
+					if(!remaining.length||(exactTotal&&productItems().length>=exactTotal)){finish();return;}
+					setState('idle');
+					if(state.getBoundingClientRect().top<=window.innerHeight+2200) setTimeout(loadNext,80);
+				}catch(_){
+					loading=false; failures++;
+					if(failures<2){setState('loading','Cargando más productos…');setTimeout(loadNext,900);}
+					else setState('failure','No se ha podido continuar la carga automática.');
 				}
 			};
-
-			button.addEventListener('click',() => { window.clearTimeout(retryTimer); window.clearTimeout(continuationTimer); showIdle(); loadNext(false); });
-			if (!nextUrl) { showFinished(); return; }
-			if (!('IntersectionObserver' in window)) { showFailure(); return; }
-			showIdle();
-			const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) loadNext(true); },{rootMargin:`${preloadDistance}px 0px ${preloadDistance}px 0px`,threshold:.01});
+			button.addEventListener('click',()=>{failures=0;setState('idle');loadNext();});
+			if(!remaining.length){finish();return;}
+			if(!('IntersectionObserver' in window)){setState('failure','Pulsa para cargar más productos.');button.hidden=false;return;}
+			setState('idle');
+			const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))loadNext();},{rootMargin:'2400px 0px 2400px 0px',threshold:.01});
 			observer.observe(state);
 		})();
 		</script>
