@@ -287,13 +287,26 @@ function elmercado_home_vendor_css_010244(): string {
 	return <<<'CSS'
 /* elmercado-home-vendors-010244 */
 body.home .emo-hero {
-	min-height: min(650px, calc(100svh - 108px)) !important;
-	padding-top: clamp(2.15rem, 3vw, 3rem) !important;
-	padding-bottom: clamp(2.6rem, 4.4vw, 4.25rem) !important;
+	min-height: min(600px, calc(100svh - 108px)) !important;
+	padding-top: clamp(1.75rem, 2.35vw, 2.35rem) !important;
+	padding-bottom: clamp(2rem, 3vw, 3rem) !important;
 }
-body.home .emo-hero__grid { gap: clamp(2.5rem, 5vw, 5rem) !important; }
-body.home .emo-hero__copy > p { font-size: clamp(1.07rem, 1.48vw, 1.27rem) !important; }
-body.home .emo-hero__proof { margin-top: clamp(1.8rem, 3vw, 2.65rem) !important; }
+body.home .emo-hero__grid { gap: clamp(2rem, 4vw, 4rem) !important; }
+body.home .emo-hero h1 {
+	font-size: clamp(3.75rem, 5.45vw, 4.9rem) !important;
+	line-height: .94 !important;
+}
+body.home .emo-hero__copy > p {
+	font-size: clamp(1rem, 1.25vw, 1.12rem) !important;
+	line-height: 1.5 !important;
+	margin-top: .75rem !important;
+	margin-bottom: 1rem !important;
+}
+body.home .emo-hero__proof {
+	margin-top: clamp(1.2rem, 2vw, 1.75rem) !important;
+	padding-top: .8rem !important;
+	gap: .65rem !important;
+}
 body.home .emo-hero__proof span { font-size: .78rem !important; line-height: 1.42 !important; }
 body.home .emo-hero__proof strong { font-size: .86rem !important; }
 body.home .emo-trust article > span,
@@ -305,6 +318,7 @@ body.home .emo-story__values p { font-size: .96rem !important; line-height: 1.62
 body.home .emo-vendor-cta p { font-size: 1.02rem !important; line-height: 1.65 !important; }
 
 body.home .emo-hero__visual--vendors {
+	transform: translateY(-34px);
 	grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
 	grid-template-rows: repeat(10, 38px) !important;
 	min-width: 0;
@@ -380,10 +394,29 @@ body.home .emo-hero-vendor-fallback {
 @media (max-width: 767px) {
 	body.home .emo-hero {
 		min-height: 0 !important;
-		padding-top: 2.15rem !important;
-		padding-bottom: 2.8rem !important;
+		padding-top: 1.6rem !important;
+		padding-bottom: 2rem !important;
+	}
+	body.home .emo-hero__grid {
+		gap: 1.2rem !important;
+	}
+	body.home .emo-hero h1 {
+		font-size: 2.55rem !important;
+		line-height: .96 !important;
+	}
+	body.home .emo-hero__copy > p {
+		font-size: .91rem !important;
+		line-height: 1.48 !important;
+		margin-top: .6rem !important;
+		margin-bottom: .75rem !important;
+	}
+	body.home .emo-hero__proof {
+		margin-top: 1rem !important;
+		padding-top: .7rem !important;
+		gap: .55rem !important;
 	}
 	body.home .emo-hero__visual--vendors {
+		transform: translateY(-6px);
 		display: grid !important;
 		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 		grid-template-rows: none !important;
