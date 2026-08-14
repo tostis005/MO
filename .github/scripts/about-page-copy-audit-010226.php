@@ -1,26 +1,21 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-function emdo_cmd($c){$o=shell_exec($c.' 2>&1');return is_string($o)?trim($o):'';}
-global $wpdb;
-echo "=== NAV HOTFIX STATE ===\n";
-$module=get_stylesheet_directory().'/inc/product-navigation-performance-010237.php';
-$functions=get_stylesheet_directory().'/functions.php';
-echo 'MODULE '.(is_file($module)?'present':'missing')."\n";
-echo 'INCLUDE '.(strpos((string)file_get_contents($functions),"'inc/product-navigation-performance-010237.php'")!==false?'present':'missing')."\n";
-echo 'FILTER_PREV '.(has_filter('get_previous_post_where','elmercado_product_navigation_adjacent_where_010237')!==false?'active':'missing')."\n";
-echo 'FILTER_NEXT '.(has_filter('get_next_post_where','elmercado_product_navigation_adjacent_where_010237')!==false?'active':'missing')."\n";
-$disabled=function_exists('elmercado_wcfm_disabled_vendor_ids_010210')?elmercado_wcfm_disabled_vendor_ids_010210():[];$disabled_sql=$disabled?implode(',',array_map('intval',$disabled)):'0';
-$ids=$wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_status='publish' AND post_author NOT IN ($disabled_sql) ORDER BY post_date DESC LIMIT 5");
-echo "=== FIVE ACTIVE PRODUCT NAV BENCHMARKS ===\n";
-$first_url='';
-foreach($ids as $id){$GLOBALS['post']=get_post((int)$id);setup_postdata($GLOBALS['post']);$t=microtime(true);$prev=woostify_get_prev_product();$p=microtime(true)-$t;$t=microtime(true);$next=woostify_get_next_product();$n=microtime(true)-$t;$t=microtime(true);ob_start();woostify_product_navigation();$html=ob_get_clean();$render=microtime(true)-$t;$url=get_permalink((int)$id);if($first_url==='')$first_url=$url;echo 'ID='.$id.' prev_ms='.round($p*1000,2).' next_ms='.round($n*1000,2).' render_ms='.round($render*1000,2).' html_bytes='.strlen($html).' prev_id='.($prev?$prev->get_id():0).' next_id='.($next?$next->get_id():0)."\n";}
-wp_reset_postdata();
-if($first_url!==''){
- echo "=== HTTP PRODUCT CHECKS ===\n";
- for($i=1;$i<=3;$i++){echo 'REQ'.$i.' '.emdo_cmd("curl -sS -L -o /tmp/emdo-nav-check.html --max-time 25 -w 'HTTP=%{http_code} TTFB=%{time_starttransfer} TOTAL=%{time_total}' ".escapeshellarg($first_url.'?emdo-nav-verify='.$i))."\n";}
- $html=@file_get_contents('/tmp/emdo-nav-check.html');echo 'NAV_MARKUP '.(is_string($html)&&strpos($html,'woostify-product-navigation')!==false?'present':'missing')."\n";@unlink('/tmp/emdo-nav-check.html');
-}
-$slow='/var/www/vhosts/system/elmercadodeorigen.com/logs/php-fpm_slow.log';
-echo "=== SLOWLOG RECENT NAV REFERENCES ===\n";
-if(is_readable($slow)) echo emdo_cmd("tail -n 240 ".escapeshellarg($slow)." | grep -E '^[[]14-Aug-2026 09:(4[9]|5[0-9])|woostify_product_navigation|class-woostify-adjacent-products' | tail -n 80")."\n";
-echo "VERIFY_OK\n";
+function cmd($c){$o=shell_exec($c.' 2>&1');return is_string($o)?trim($o):'';}
+$domain='elmercadodeorigen.com';
+$sys='/var/www/vhosts/system/'.$domain;
+$log=$sys.'/logs/access_ssl_log.processed';
+$pool='/opt/plesk/php/8.2/etc/php-fpm.d/'.$domain.'.conf';
+$custom=$sys.'/conf/php.ini';
+echo "=== SAFE POST-CHANGE VERIFICATION ===\n";
+echo 'PROCESSED_LOG_BYTES '.(is_file($log)?(int)filesize($log):-1)."\n";
+echo 'PROCESSED_LOG_FIRST '.substr(cmd('head -n 1 '.escapeshellarg($log)),0,180)."\n";
+echo 'PROCESSED_LOG_LAST '.substr(cmd('tail -n 1 '.escapeshellarg($log)),0,180)."\n";
+echo "DISK\n".cmd('df -h /')."\n";
+echo "LOG_DIR_DU\n".cmd('du -sh '.escapeshellarg($sys.'/logs').' 2>/dev/null')."\n";
+echo "LOGROTATION\n".cmd("plesk bin site -i ".escapeshellarg($domain)." | grep -A6 -i 'Logrotation info'")."\n";
+echo "STAGING_CRON\n".cmd("crontab -l 2>/dev/null | grep 'emdo-staging-wp-cron.lock'")."\n";
+echo "CUSTOM_PHP_INI\n".(is_readable($custom)?cmd('cat '.escapeshellarg($custom)):'MISSING')."\n";
+echo "ACTIVE_GENERATED_POOL\n".cmd("grep -E '^(pm =|pm.max_children|pm.max_requests|slowlog|request_slowlog_timeout|php_value\\[memory_limit\\])' ".escapeshellarg($pool))."\n";
+echo "FPM_SERVICE\n".cmd("systemctl show plesk-php82-fpm.service -p ActiveState -p SubState -p ActiveEnterTimestamp 2>/dev/null")."\n";
+echo "HEALTH\n".cmd("curl -sS -L -o /dev/null --max-time 20 -w 'HTTP=%{http_code} TTFB=%{time_starttransfer} TOTAL=%{time_total}' https://www.elmercadodeorigen.com/")."\n";
+echo "SLOWLOG\n".cmd("ls -l ".escapeshellarg($sys.'/logs/php-fpm_slow.log')." 2>/dev/null || echo 'not-created-yet (normal until a request exceeds 10s)'")."\n";
