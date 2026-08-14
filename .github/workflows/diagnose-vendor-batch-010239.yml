@@ -1,0 +1,86 @@
+name: Diagnose vendor batch 0.10.239
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/diagnose-vendor-batch-010239.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy temporarily and inspect
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          test -n "$PROD_PATH"
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          SHOP="$THEME/inc/shop-producer-filter-final.php"
+          CORR="$THEME/inc/user-reported-corrections-010239.php"
+          SB="/tmp/diag-shop-$GITHUB_RUN_ID.bak"; CB="/tmp/diag-corr-$GITHUB_RUN_ID.bak"; CE="/tmp/diag-corr-$GITHUB_RUN_ID.exists"
+          cleanup() {
+            set +e
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$SB' ]; then cp -p '$SB' '$SHOP'; fi; if [ -f '$CE' ] && [ -f '$CB' ]; then cp -p '$CB' '$CORR'; else rm -f '$CORR'; fi; rm -f '$SB' '$CB' '$CE'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
+          }
+          trap cleanup EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$SHOP' '$SB'; if [ -f '$CORR' ]; then cp -p '$CORR' '$CB'; touch '$CE'; fi"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/shop-producer-filter-final.php "$STAGING_USER@$STAGING_HOST:$SHOP"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/user-reported-corrections-010239.php "$STAGING_USER@$STAGING_HOST:$CORR"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          sleep 2
+
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setViewport({width:1440,height:1000});
+            const requests=[];
+            page.on('request', req=>{ const u=req.url(); if (/elmercadodeorigen\.com/i.test(u) && (/tienda|ajax|wp-json|batch|page/i.test(u))) requests.push({type:req.resourceType(),method:req.method(),url:u}); });
+            page.on('response', res=>{ const u=res.url(); if (/elmercadodeorigen\.com/i.test(u) && (/tienda|ajax|wp-json|batch|page/i.test(u)) && res.request().resourceType()!=='image') console.log('RESPONSE',res.status(),res.request().resourceType(),u); });
+            await page.goto(`${process.env.BASE_URL}/tienda/?vendor_id=6&diagbatch=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+            await page.waitForSelector('ul.products li.product',{timeout:30000});
+            await sleep(1600);
+            const before=await page.evaluate(()=>({
+              state:window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,shown:window.__emoCatalogLoaderState.shown,loading:window.__emoCatalogLoaderState.loading}:null,
+              pagination:[...document.querySelectorAll('a[href]')].filter(a=>/page|next|siguiente|más|cargar/i.test(`${a.className} ${a.rel} ${a.textContent} ${a.href}`)).slice(0,30).map(a=>({text:(a.textContent||'').trim(),className:a.className,rel:a.rel,href:a.href,parent:a.parentElement?.className||''})),
+              scripts:[...document.scripts].filter(s=>/batch|__emoCatalogLoaderState|catalog-products-appended|shown/i.test(s.textContent||'')).map(s=>({id:s.id,src:s.src,head:(s.textContent||'').replace(/\s+/g,' ').slice(0,500)})),
+              cards:[...document.querySelectorAll('ul.products>li.product')].map(li=>({title:(li.querySelector('h2,.woocommerce-loop-product__title')?.textContent||'').trim(),vendor:li.querySelector('[class*="sold_by"] a[href*="/tienda/"]')?.href||''}))
+            }));
+            console.log('BEFORE',JSON.stringify(before,null,2));
+            for(let i=0;i<5;i++){await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));await sleep(1000);}
+            const after=await page.evaluate(()=>({state:window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,shown:window.__emoCatalogLoaderState.shown,loading:window.__emoCatalogLoaderState.loading}:null,cards:[...document.querySelectorAll('ul.products>li.product')].map(li=>({title:(li.querySelector('h2,.woocommerce-loop-product__title')?.textContent||'').trim(),vendor:li.querySelector('[class*="sold_by"] a[href*="/tienda/"]')?.href||''}))}));
+            console.log('REQUESTS',JSON.stringify(requests,null,2));
+            console.log('AFTER',JSON.stringify(after,null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
