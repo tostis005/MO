@@ -3,7 +3,8 @@
  * Correcciones finales 0.10.239 solicitadas tras la revisión en producción.
  *
  * - El filtro global por vendedor debe restringir el SQL real también para
- *   visitantes anónimos, aunque otra capa reconstruya la consulta después.
+ *   visitantes anónimos, incluso en las consultas auxiliares que construyen la
+ *   carga continua por IDs.
  * - Las etiquetas de atributos de productos variables no llevan recuadro.
  *
  * @package ElMercadoDeOrigen
@@ -30,39 +31,58 @@ function elmercado_catalog_selected_vendor_010239(): int {
 }
 
 /**
- * Solo actúa sobre el loop principal del catálogo global, nunca sobre la tienda
- * individual de un productor ni sobre consultas auxiliares.
+ * Estamos en el catálogo global, no en la tienda individual de un productor.
  */
-function elmercado_catalog_vendor_filter_target_010239( WP_Query $query ): bool {
-	if ( is_admin() || ! $query->is_main_query() ) {
+function elmercado_catalog_vendor_filter_request_010239(): bool {
+	if ( is_admin() ) {
 		return false;
 	}
-
 	if ( function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225() ) {
 		return false;
 	}
 
-	if ( function_exists( 'elmercado_catalog_is_main_query_010224' ) ) {
-		return elmercado_catalog_is_main_query_010224( $query );
+	$is_shop = function_exists( 'is_shop' ) && is_shop();
+	$is_tax  = function_exists( 'is_product_taxonomy' ) && is_product_taxonomy();
+	return $is_shop || $is_tax;
+}
+
+/**
+ * Detecta cualquier WP_Query de productos ejecutada durante el catálogo.
+ * Esto incluye el loop principal y la consulta auxiliar de IDs de la carga
+ * continua 0.10.234, que era la que reintroducía productos de otros vendedores.
+ */
+function elmercado_catalog_vendor_filter_product_query_010239( WP_Query $query ): bool {
+	if ( ! elmercado_catalog_vendor_filter_request_010239() ) {
+		return false;
 	}
 
-	if ( $query->is_post_type_archive( 'product' ) || $query->is_tax( 'product_cat' ) || $query->is_tax( 'product_tag' ) ) {
-		return true;
+	if ( $query->is_main_query() ) {
+		if ( function_exists( 'elmercado_catalog_is_main_query_010224' ) ) {
+			return elmercado_catalog_is_main_query_010224( $query );
+		}
+		if ( $query->is_post_type_archive( 'product' ) || $query->is_tax( 'product_cat' ) || $query->is_tax( 'product_tag' ) ) {
+			return true;
+		}
 	}
 
 	$post_type = $query->get( 'post_type' );
-	return 'product' === $post_type || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) );
+	if ( 'product' === $post_type || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) ) ) {
+		return true;
+	}
+
+	return false;
 }
 
 /**
  * Reaplica la restricción después de las capas históricas que puedan modificar
- * author durante pre_get_posts.
+ * author durante pre_get_posts. También cubre la consulta secundaria que genera
+ * orderedIds para el scroll continuo.
  */
 add_action(
 	'pre_get_posts',
 	static function ( WP_Query $query ): void {
 		$vendor_id = elmercado_catalog_selected_vendor_010239();
-		if ( $vendor_id <= 0 || ! elmercado_catalog_vendor_filter_target_010239( $query ) ) {
+		if ( $vendor_id <= 0 || ! elmercado_catalog_vendor_filter_product_query_010239( $query ) ) {
 			return;
 		}
 
@@ -74,8 +94,9 @@ add_action(
 );
 
 /**
- * Última defensa antes de ejecutar el SELECT. De esta forma una reconstrucción
- * tardía de WooCommerce/WCFM no puede devolver productos de otro vendedor.
+ * Última defensa antes de ejecutar cada SELECT de productos del catálogo. De
+ * esta forma WooCommerce/WCFM o la reconstrucción del loader no pueden volver a
+ * introducir productos pertenecientes a otro vendedor.
  *
  * @param array<string,string> $clauses Partes SQL de WP_Query.
  * @return array<string,string>
@@ -84,7 +105,7 @@ add_filter(
 	'posts_clauses',
 	static function ( array $clauses, WP_Query $query ): array {
 		$vendor_id = elmercado_catalog_selected_vendor_010239();
-		if ( $vendor_id <= 0 || ! elmercado_catalog_vendor_filter_target_010239( $query ) ) {
+		if ( $vendor_id <= 0 || ! elmercado_catalog_vendor_filter_product_query_010239( $query ) ) {
 			return $clauses;
 		}
 
