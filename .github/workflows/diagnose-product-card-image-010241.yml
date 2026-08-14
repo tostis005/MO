@@ -1,0 +1,36 @@
+name: Diagnose catalog card images 0.10.241
+
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-product-card-image-010241.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect live product card images
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setViewport({width:390,height:1200,deviceScaleFactor:1});
+            await page.goto(`${process.env.BASE_URL}/tienda/?diag241=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
+            const data=await page.evaluate(()=>[...document.querySelectorAll('ul.products > li.product')].slice(0,8).map((li,i)=>{
+              const img=li.querySelector('a img'); if(!img)return {i,noimg:true};
+              const s=getComputedStyle(img), r=img.getBoundingClientRect();
+              return {i,title:(li.querySelector('.woocommerce-loop-product__title,h2')?.textContent||'').trim(),src:img.getAttribute('src'),currentSrc:img.currentSrc,srcset:img.getAttribute('srcset'),sizes:img.getAttribute('sizes'),widthAttr:img.getAttribute('width'),heightAttr:img.getAttribute('height'),natural:[img.naturalWidth,img.naturalHeight],rect:[r.width,r.height],objectFit:s.objectFit,objectPosition:s.objectPosition,display:s.display,wrapper:img.parentElement?.className||''};
+            }));
+            console.log(JSON.stringify(data,null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
