@@ -55,8 +55,8 @@ jobs:
           fi
           wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
-          author="$("$php_bin" "$wp_bin" post get 1356 --field=post_author --path="$wp_path" --allow-root)"
+          author="$("$php_bin" -d memory_limit=512M "$wp_bin" post get 1356 --field=post_author --path="$wp_path" --skip-plugins --skip-themes --allow-root)"
           echo "HIDALGO_AUTHOR_ID=$author"
-          "$php_bin" "$wp_bin" user get "$author" --fields=ID,user_login,user_nicename,display_name --format=json --path="$wp_path" --allow-root
-          "$php_bin" "$wp_bin" eval '$id=(int)get_post_field("post_author",1356); echo "WCFM_URL=".(function_exists("wcfmmp_get_store_url")?wcfmmp_get_store_url($id):"NOFUNC").PHP_EOL; echo "STORE_NAME=".get_user_meta($id,"wcfmmp_store_name",true).PHP_EOL; echo "STORE_SETTINGS=".json_encode(get_user_meta($id,"wcfmmp_profile_settings",true),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;' --path="$wp_path" --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" user get "$author" --fields=ID,user_login,user_nicename,display_name --format=json --path="$wp_path" --skip-plugins --skip-themes --allow-root
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '$id=(int)get_post_field("post_author",1356); echo "WCFM_URL=".(function_exists("wcfmmp_get_store_url")?wcfmmp_get_store_url($id):"NOFUNC").PHP_EOL; echo "STORE_NAME=".get_user_meta($id,"wcfmmp_store_name",true).PHP_EOL; $s=get_user_meta($id,"wcfmmp_profile_settings",true); echo "STORE_SETTINGS_SLUG=".(is_array($s)?($s["store_slug"]??""):"").PHP_EOL;' --path="$wp_path" --allow-root
           REMOTE
