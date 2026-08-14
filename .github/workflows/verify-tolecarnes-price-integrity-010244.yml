@@ -1,0 +1,75 @@
+name: Verify Tolecarnes price integrity 0.10.244
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-tolecarnes-price-integrity-010244.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify production price state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o ServerAliveInterval=20 -o ServerAliveCountMax=12 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          test -n "$PROD_PATH"
+
+          output="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval '
+              global \$wpdb;
+              echo \"PLUGIN_VERSION=\".(defined(\"MDO_SUPPLIER_SYNC_VERSION\")?MDO_SUPPLIER_SYNC_VERSION:\"unknown\").\"\\n\";
+              if(!defined(\"MDO_SUPPLIER_SYNC_VERSION\") || \"1.0.12\"!==MDO_SUPPLIER_SYNC_VERSION) exit(10);
+              \$st=MDO_Database::table(\"source_products\"); \$su=MDO_Database::table(\"suppliers\");
+              \$sid=(int)\$wpdb->get_var(\"SELECT id FROM {\$su} WHERE connector=\\\"tolecarnes\\\" OR LOWER(name) LIKE \\\"%tolecarnes%\\\" ORDER BY id LIMIT 1\"); if(!\$sid) exit(11);
+              \$rows=\$wpdb->get_results(\$wpdb->prepare(\"SELECT id,title,source_url,wc_product_id,source_payload FROM {\$st} WHERE supplier_id=%d AND status=\\\"active\\\" AND wc_product_id IS NOT NULL AND wc_product_id>0 ORDER BY id\",\$sid),ARRAY_A)?:[];
+              \$bad=[]; \$simple=0;
+              foreach(\$rows as \$row){
+                \$p=json_decode((string)\$row[\"source_payload\"],true); \$p=is_array(\$p)?\$p:[]; if(!empty(\$p[\"variations\"])) continue; \$simple++; \$pid=(int)\$row[\"wc_product_id\"];
+                \$cur=isset(\$p[\"price\"])&&is_numeric(\$p[\"price\"])?(float)\$p[\"price\"]:null; \$reg=isset(\$p[\"regular_price\"])&&is_numeric(\$p[\"regular_price\"])?(float)\$p[\"regular_price\"]:\$cur; \$sale=isset(\$p[\"sale_price\"])&&is_numeric(\$p[\"sale_price\"])?(float)\$p[\"sale_price\"]:null; \$valid=null!==\$sale&&null!==\$reg&&\$sale<\$reg&&null!==\$cur&&abs(\$cur-\$sale)<0.005; \$ep=\$valid?\$sale:\$cur; \$er=\$valid?\$reg:\$cur; \$es=\$valid?\$sale:null;
+                \$wp=get_post_meta(\$pid,\"_price\",true); \$wr=get_post_meta(\$pid,\"_regular_price\",true); \$ws=get_post_meta(\$pid,\"_sale_price\",true);
+                \$m=(null!==\$ep&&abs((float)\$wp-\$ep)>0.005)||(null!==\$er&&abs((float)\$wr-\$er)>0.005)||((null===\$es&&\$ws!==\"\")||(null!==\$es&&abs((float)\$ws-\$es)>0.005)); if(\$m) \$bad[]=[\"title\"=>\$row[\"title\"],\"payload\"=>[\$cur,\$reg,\$sale],\"woo\"=>[\$wp,\$wr,\$ws]];
+              }
+              echo \"PRICE_AUDIT_ACTIVE=\".count(\$rows).\" SIMPLE=\".\$simple.\" MISMATCH_COUNT=\".count(\$bad).\"\\n\"; foreach(\$bad as \$b) echo \"MISMATCH=\".wp_json_encode(\$b,JSON_UNESCAPED_UNICODE).\"\\n\"; if(\$bad) exit(12);
+
+              \$url=\"https://tolecarnes.com/producto/filetes-primera-de-ternera-af/\";
+              \$fresh=MDO_Text::normalize_product(MDO_Connector_Tolecarnes::scrape_product(\$url));
+              \$filetes=\$wpdb->get_row(\$wpdb->prepare(\"SELECT title,wc_product_id,source_payload FROM {\$st} WHERE supplier_id=%d AND source_url=%s ORDER BY id DESC LIMIT 1\",\$sid,\"https://tolecarnes.com/producto/filetes-primera-de-ternera-af\"),ARRAY_A);
+              if(!\$filetes) exit(13); \$fp=json_decode((string)\$filetes[\"source_payload\"],true); \$fid=(int)\$filetes[\"wc_product_id\"];
+              \$final=[\"fresh\"=>[\"price\"=>\$fresh[\"price\"]??null,\"regular\"=>\$fresh[\"regular_price\"]??null,\"sale\"=>\$fresh[\"sale_price\"]??null],\"payload\"=>[\"price\"=>\$fp[\"price\"]??null,\"regular\"=>\$fp[\"regular_price\"]??null,\"sale\"=>\$fp[\"sale_price\"]??null],\"woo\"=>[\"price\"=>get_post_meta(\$fid,\"_price\",true),\"regular\"=>get_post_meta(\$fid,\"_regular_price\",true),\"sale\"=>get_post_meta(\$fid,\"_sale_price\",true)]];
+              echo \"FILETES_FINAL=\".wp_json_encode(\$final,JSON_UNESCAPED_UNICODE).\"\\n\";
+              if(abs((float)(\$final[\"fresh\"][\"price\"]??0)-18.99)>0.005 || null!==\$final[\"fresh\"][\"sale\"] || abs((float)(\$final[\"payload\"][\"price\"]??0)-18.99)>0.005 || null!==\$final[\"payload\"][\"sale\"] || abs((float)\$final[\"woo\"][\"price\"]-18.99)>0.005 || abs((float)\$final[\"woo\"][\"regular\"]-18.99)>0.005 || \$final[\"woo\"][\"sale\"]!==\"\") exit(14);
+
+              \$checks=[\"Huesos de ternera\"=>2.49,\"Burger mixtas\"=>5.19,\"Entrecot de lomo bajo\"=>27.49];
+              foreach(\$checks as \$label=>\$expected){ \$needle=\"%\".\$wpdb->esc_like(\$label).\"%\"; \$r=\$wpdb->get_row(\$wpdb->prepare(\"SELECT title,wc_product_id,source_payload FROM {\$st} WHERE supplier_id=%d AND title LIKE %s ORDER BY id DESC LIMIT 1\",\$sid,\$needle),ARRAY_A); if(!\$r){echo \"SAMPLE_NOT_FOUND=\".\$label.\"\\n\"; continue;} \$p=json_decode((string)\$r[\"source_payload\"],true); \$pid=(int)\$r[\"wc_product_id\"]; echo \"SAMPLE=\".wp_json_encode([\"title\"=>\$r[\"title\"],\"payload_price\"=>\$p[\"price\"]??null,\"payload_sale\"=>\$p[\"sale_price\"]??null,\"woo_price\"=>get_post_meta(\$pid,\"_price\",true),\"woo_regular\"=>get_post_meta(\$pid,\"_regular_price\",true),\"woo_sale\"=>get_post_meta(\$pid,\"_sale_price\",true)],JSON_UNESCAPED_UNICODE).\"\\n\"; if(abs((float)(\$p[\"price\"]??0)-\$expected)>0.005 || abs((float)get_post_meta(\$pid,\"_price\",true)-\$expected)>0.005) exit(15); }
+              echo \"FINAL_TOLECARNES_PRICE_VERIFY_OK\\n\";
+            ' --path='$PROD_PATH' --allow-root
+          ")"
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" | grep -Fq 'MISMATCH_COUNT=0'
+          printf '%s\n' "$output" | grep -Fq 'FINAL_TOLECARNES_PRICE_VERIFY_OK'
