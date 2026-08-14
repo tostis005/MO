@@ -158,3 +158,18 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/*
+ * Esta capa se registra después de que el resto de módulos del catálogo hayan
+ * creado sus hooks. Así la restricción SQL por vendedor es la última palabra.
+ */
+add_action(
+	'after_setup_theme',
+	static function (): void {
+		$module = ELMERCADO_THEME_PATH . '/inc/user-reported-corrections-010239.php';
+		if ( is_readable( $module ) ) {
+			require_once $module;
+		}
+	},
+	PHP_INT_MAX
+);
