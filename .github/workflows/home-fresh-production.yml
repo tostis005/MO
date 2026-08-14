@@ -82,18 +82,25 @@ jobs:
             \"\$php_bin\" -l '$PROD_PATH/wp-content/advanced-cache.php' >/dev/null;
             \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php' >/dev/null"
 
-      - name: Verify Home always bypasses HTML cache
+      - name: Verify live Home HTML and cache bypass
         shell: bash
         run: |
           set -euo pipefail
           URL='https://www.elmercadodeorigen.com/'
           for n in 1 2; do
-            curl -fsSL --retry 2 -A "Mozilla/5.0 EMDO Home fresh verify $n" -D "/tmp/home-$n.head" -o "/tmp/home-$n.body" "$URL"
+            curl -fsSL --retry 2 -A "Mozilla/5.0 EMDO Home fresh verify $n" -H 'Cache-Control: no-cache, no-store, max-age=0' -H 'Pragma: no-cache' -D "/tmp/home-$n.head" -o "/tmp/home-$n.body" "$URL"
             echo "=== HOME $n ==="
             tr -d '\r' < "/tmp/home-$n.head" | grep -Ei '^(HTTP/|cache-control:|pragma:|expires:|x-el-mercado-|vary:)' || true
             grep -Eiq '^cache-control:.*no-store' "/tmp/home-$n.head"
             grep -Eiq '^cache-control:.*no-cache' "/tmp/home-$n.head"
             grep -Eiq '^x-el-mercado-home-fresh:[[:space:]]*BYPASS' "/tmp/home-$n.head"
+            grep -q 'id="elmercado-home-vendors-010244"' "/tmp/home-$n.body"
+            grep -q 'emo-hero__visual emo-hero__visual--vendors' "/tmp/home-$n.body"
+            grep -Eq 'data-emo-vendor-count="[1-5]"' "/tmp/home-$n.body"
+            if grep -q 'De los más elegidos' "/tmp/home-$n.body"; then
+              echo 'Legacy product cards still present in Home hero' >&2
+              exit 9
+            fi
             if grep -Eiq '^x-el-mercado-early-cache:[[:space:]]*HIT' "/tmp/home-$n.head"; then
               echo 'Early Home cache still serving HTML' >&2
               exit 7
@@ -103,6 +110,32 @@ jobs:
               exit 8
             fi
           done
+
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          html = Path('/tmp/home-1.body').read_text(encoding='utf-8', errors='replace')
+          count_match = re.search(r'data-emo-vendor-count="(\d+)"', html)
+          count = int(count_match.group(1)) if count_match else 0
+          hero = re.search(r'<section class="emo-hero".*?</section>', html, re.S)
+          cards = len(re.findall(r'<figcaption><span>Productor</span><strong>', hero.group(0))) if hero else 0
+          if cards != count:
+              raise SystemExit(f'Producer card mismatch: marker={count}, cards={cards}')
+
+          category = re.search(r'<section class="emo-section emo-categories".*?</section>', html, re.S)
+          counts = []
+          if category:
+              for raw in re.findall(r'<small>\s*([0-9.,]+)\s+productos?</small>', category.group(0), re.I):
+                  counts.append(int(re.sub(r'[^0-9]', '', raw)))
+          if len(counts) > 1 and counts != sorted(counts, reverse=True):
+              raise SystemExit(f'Category counts not descending: {counts}')
+
+          print(f'LIVE_VENDOR_COUNT={count}')
+          print(f'LIVE_VENDOR_CARDS={cards}')
+          print('LIVE_CATEGORY_COUNTS=' + ','.join(map(str, counts)))
+          PY
+
           echo 'HOME_FRESH_PRODUCTION_OK'
 
       - name: Roll back on failure
@@ -119,4 +152,4 @@ jobs:
             if [ -f '$PROD_PATH/wp-content/advanced-cache.php.pre-home-fresh' ]; then mv -f '$PROD_PATH/wp-content/advanced-cache.php.pre-home-fresh' '$PROD_PATH/wp-content/advanced-cache.php'; fi;
             if [ -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh' ]; then mv -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php'; else rm -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php'; fi"
 
-# Triggered intentionally after workflow creation so GitHub runs this deployment.
+# The verifier intentionally checks both the live HTML structure and cache state.
