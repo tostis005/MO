@@ -76,8 +76,8 @@ jobs:
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             test -n \"\$php_bin\"
             \"\$php_bin\" -l '$REMOTE_FILE' >/dev/null
-            grep -F 'alignCheckoutCheckboxes' '$REMOTE_FILE' >/dev/null
-            grep -F 'targetLeft' '$REMOTE_FILE' >/dev/null
+            grep -F 'normalizeCheckoutCheckboxes' '$REMOTE_FILE' >/dev/null
+            grep -F 'margin-left' '$REMOTE_FILE' >/dev/null
           "
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
