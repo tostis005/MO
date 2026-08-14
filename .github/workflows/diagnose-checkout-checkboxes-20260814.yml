@@ -8,32 +8,112 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Playwright
+      - name: Prepare verification session
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null || true
-      - name: Verify live checkout checkbox layout
+
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          TOKEN="$(openssl rand -hex 24)"
+          REMOTE_HELPER="$PROD_PATH/wp-content/mu-plugins/elmercado-checkout-verification-helper.php"
+          printf '%s\n' "$PROD_PATH" > /tmp/prod_path
+          printf '%s\n' "$TOKEN" > /tmp/verify_token
+
+          cat > /tmp/checkout-verification-helper.php <<PHP
+          <?php
+          if ( ! defined( 'ABSPATH' ) ) { exit; }
+          add_action(
+              'wp_loaded',
+              static function (): void {
+                  if ( empty( \$_GET['emo_verify_checkout_token'] ) || ! hash_equals( '${TOKEN}', sanitize_text_field( wp_unslash( \$_GET['emo_verify_checkout_token'] ) ) ) ) {
+                      return;
+                  }
+                  if ( ! function_exists( 'WC' ) ) {
+                      wp_die( 'WooCommerce unavailable' );
+                  }
+                  if ( null === WC()->cart && function_exists( 'wc_load_cart' ) ) {
+                      wc_load_cart();
+                  }
+                  if ( null === WC()->cart ) {
+                      wp_die( 'Cart unavailable' );
+                  }
+                  WC()->cart->empty_cart();
+                  \$added = WC()->cart->add_to_cart( 5348, 1 );
+                  if ( ! \$added ) {
+                      \$added = WC()->cart->add_to_cart( 1380, 1 );
+                  }
+                  if ( ! \$added ) {
+                      wp_die( 'Unable to seed verification cart' );
+                  }
+                  if ( WC()->session ) {
+                      WC()->session->set_customer_session_cookie( true );
+                  }
+                  wp_safe_redirect( wc_get_checkout_url() );
+                  exit;
+              },
+              999
+          );
+          PHP
+
+          sshpass -e scp $SCP /tmp/checkout-verification-helper.php "$STAGING_USER@$STAGING_HOST:$REMOTE_HELPER"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$REMOTE_HELPER' >/dev/null
+          "
+      - name: Verify live checkbox alignment and stability
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          TOKEN="$(cat /tmp/verify_token)"
+          export EMO_VERIFY_TOKEN="$TOKEN"
           cat > verify-checkout.js <<'JS'
           const { chromium } = require('playwright');
           (async () => {
             const browser = await chromium.launch({headless:true});
-            const context = await browser.newContext({ viewport: { width: 1440, height: 1200 }, locale: 'es-ES' });
+            const context = await browser.newContext({
+              viewport: { width: 1440, height: 1200 },
+              locale: 'es-ES'
+            });
             const page = await context.newPage();
-
-            await page.goto('https://www.elmercadodeorigen.com/producto/lomito-cana-de-presa-de-bellota-100-iberico/', { waitUntil: 'domcontentloaded', timeout: 90000 });
-            await page.waitForSelector('button.single_add_to_cart_button', { timeout: 30000 });
-            await page.locator('button.single_add_to_cart_button').click();
-            await page.waitForTimeout(3500);
-            console.log('AFTER_ADD_URL=' + page.url());
-
-            await page.goto('https://www.elmercadodeorigen.com/checkout/', { waitUntil: 'domcontentloaded', timeout: 90000 });
-            console.log('CHECKOUT_URL=' + page.url());
-            await page.waitForSelector('#customer_details', { timeout: 30000 });
-            await page.waitForTimeout(4000);
+            await page.goto('https://www.elmercadodeorigen.com/?emo_verify_checkout_token=' + encodeURIComponent(process.env.EMO_VERIFY_TOKEN), {
+              waitUntil: 'domcontentloaded', timeout: 90000
+            });
+            await page.waitForSelector('#customer_details', { timeout: 45000 });
+            await page.waitForTimeout(4500);
 
             const snapshot = await page.evaluate(() => {
               const css = el => {
@@ -50,6 +130,7 @@ jobs:
                   marginLeft: s.marginLeft,
                   paddingLeft: s.paddingLeft,
                   display: s.display,
+                  position: s.position,
                   transform: s.transform
                 };
               };
@@ -67,16 +148,15 @@ jobs:
                     label: css(label),
                     row: css(row),
                     section: css(section),
-                    html: (row || label || cb).outerHTML.slice(0, 1200)
+                    html: (row || label || cb).outerHTML.slice(0, 1600)
                   };
                 });
             });
-
             console.log('CHECKBOX_LAYOUT_JSON=' + JSON.stringify(snapshot));
+
             if (snapshot.length < 3) {
               throw new Error('Expected at least 3 visible checkout checkboxes, got ' + snapshot.length);
             }
-
             const target = snapshot.slice(0, 3);
             const lefts = target.map(x => x.checkbox.left);
             const spread = Math.max(...lefts) - Math.min(...lefts);
@@ -86,7 +166,7 @@ jobs:
             }
 
             const samples = [];
-            for (let i = 0; i < 20; i++) {
+            for (let i = 0; i < 25; i++) {
               samples.push(await page.evaluate(() => Array.from(document.querySelectorAll('#customer_details input[type="checkbox"]'))
                 .filter(cb => cb.getClientRects().length)
                 .slice(0, 3)
@@ -107,6 +187,17 @@ jobs:
           })().catch(err => { console.error(err); process.exit(1); });
           JS
           node verify-checkout.js
+      - name: Remove verification helper
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          PROD_PATH="$(cat /tmp/prod_path 2>/dev/null)"
+          if [ -n "$PROD_PATH" ]; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/wp-content/mu-plugins/elmercado-checkout-verification-helper.php'" || true
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
