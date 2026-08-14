@@ -1,6 +1,6 @@
 <?php
 /**
- * Alinea los checks del bloque de datos del checkout sin desplazamientos visuales.
+ * Alinea los checks del bloque de datos del checkout sin JavaScript ni saltos visuales.
  *
  * @package ElMercadoDeOrigen
  */
@@ -17,10 +17,10 @@ add_action(
         }
         ?>
         <style id="elmercado-checkout-checkbox-alignment-style">
-            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details p.create-account,
-            body.woocommerce-checkout #customer_details #ship-to-different-address,
+            /*
+             * Las tres opciones usan wrappers distintos en WooCommerce. Se fuerza
+             * la misma referencia izquierda y se elimina cualquier sangría heredada.
+             */
             body.woocommerce-checkout #customer_details .woocommerce-account-fields,
             body.woocommerce-checkout #customer_details .woocommerce-shipping-fields {
                 margin-left: 0 !important;
@@ -28,72 +28,54 @@ add_action(
                 text-indent: 0 !important;
             }
 
-            body.woocommerce-checkout #customer_details label:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details .emo-compact-check-label {
-                margin-left: 0 !important;
+            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details p.create-account,
+            body.woocommerce-checkout #customer_details #ship-to-different-address {
+                box-sizing: border-box !important;
+                width: 100% !important;
+                min-height: 0 !important;
+                height: auto !important;
+                margin: 0.22rem 0 !important;
+                padding: 0 !important;
+                text-indent: 0 !important;
                 transform: none !important;
+            }
+
+            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]) > label,
+            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]) > label,
+            body.woocommerce-checkout #customer_details p.create-account > label,
+            body.woocommerce-checkout #customer_details #ship-to-different-address > label,
+            body.woocommerce-checkout #customer_details label:has(> input[type="checkbox"]) {
+                box-sizing: border-box !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: flex-start !important;
+                gap: 0.5rem !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                text-indent: 0 !important;
+                transform: none !important;
+                line-height: 1.3 !important;
             }
 
             body.woocommerce-checkout #customer_details input[type="checkbox"] {
-                margin-left: 0 !important;
+                position: static !important;
+                flex: 0 0 auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
                 transform: none !important;
+                vertical-align: middle !important;
+            }
+
+            /* Neutraliza sangrías del contenedor inmediato de cada check. */
+            body.woocommerce-checkout #customer_details p.form-row:has(> label > input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details p.create-account:has(> label > input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details h3#ship-to-different-address:has(> label > input[type="checkbox"]) {
+                margin-left: 0 !important;
+                padding-left: 0 !important;
             }
         </style>
-        <script id="elmercado-checkout-checkbox-alignment">
-            (function () {
-                'use strict';
-
-                function setImportant(el, property, value) {
-                    if (el) {
-                        el.style.setProperty(property, value, 'important');
-                    }
-                }
-
-                function normalizeCheckoutCheckboxes() {
-                    document.querySelectorAll('#customer_details input[type="checkbox"]').forEach(function (checkbox) {
-                        var label = checkbox.closest('label');
-                        var row = checkbox.closest('p.form-row, p.create-account, h3#ship-to-different-address, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
-                        var section = checkbox.closest('.woocommerce-account-fields, .woocommerce-shipping-fields');
-
-                        setImportant(checkbox, 'margin-left', '0');
-                        setImportant(checkbox, 'transform', 'none');
-
-                        if (label) {
-                            setImportant(label, 'margin-left', '0');
-                            setImportant(label, 'transform', 'none');
-                        }
-
-                        if (row) {
-                            setImportant(row, 'margin-left', '0');
-                            setImportant(row, 'padding-left', '0');
-                            setImportant(row, 'text-indent', '0');
-                            setImportant(row, 'transform', 'none');
-                        }
-
-                        if (section) {
-                            setImportant(section, 'margin-left', '0');
-                            setImportant(section, 'padding-left', '0');
-                            setImportant(section, 'text-indent', '0');
-                            setImportant(section, 'transform', 'none');
-                        }
-                    });
-                }
-
-                document.addEventListener('DOMContentLoaded', normalizeCheckoutCheckboxes);
-
-                if (window.jQuery) {
-                    window.jQuery(document.body).on(
-                        'updated_checkout updated_shipping_method',
-                        normalizeCheckoutCheckboxes
-                    );
-                }
-
-                new MutationObserver(normalizeCheckoutCheckboxes).observe(document.body, {
-                    childList: true,
-                    subtree: true
-                });
-            }());
-        </script>
         <?php
     },
     PHP_INT_MAX
