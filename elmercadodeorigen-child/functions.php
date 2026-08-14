@@ -156,6 +156,7 @@ $elmercado_modules = array(
 	'inc/catalog-filter-mobile-hitarea-010233.php',
 	'inc/catalog-filter-scroll-final-010234.php',
 	'inc/catalog-vendor-truth-final-010235.php',
+	'inc/producer-list-image-square-010242.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
