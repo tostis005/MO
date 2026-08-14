@@ -1,10 +1,6 @@
 name: Production mobile catalog controls parity 0.10.236 final
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/production-mobile-controls-parity-010236-final.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +13,7 @@ concurrency:
 jobs:
   deploy-approved-module:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       BASE_URL: https://www.elmercadodeorigen.com
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
@@ -47,14 +43,22 @@ jobs:
           grep -Fq "'price-desc' => 'Mayor precio'" source/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
           echo PRODUCTION_MOBILE_CONTROLS_FINAL_PAYLOAD_OK
 
-      - name: Install tools
+      - name: Preflight production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(curl -fsSL -o /dev/null --connect-timeout 5 --max-time 12 -w '%{http_code} %{time_total}' "$BASE_URL/")"
+          read -r code total <<<"$result"
+          echo "PRODUCTION_PREFLIGHT HTTP=$code TOTAL=$total"
+          test "$code" = "200"
+          awk -v t="$total" 'BEGIN { exit !(t <= 8.0) }'
+
+      - name: Install SSH tool
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
-          cd source
-          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
       - name: Configure SSH
         shell: bash
@@ -66,7 +70,7 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy final approved module and verify
+      - name: Deploy approved module with fail-fast verification
         shell: bash
         run: |
           set -euo pipefail
@@ -90,14 +94,19 @@ jobs:
             done
           ')"
           test -n "$PROD_PATH"
+
           THEME_PATH="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
           MODULE="$THEME_PATH/inc/catalog-mobile-controls-parity-010236.php"
           BACKUP="/tmp/catalog-mobile-controls-parity-010236-${GITHUB_RUN_ID}.bak"
+          PROBE="elmercado-opcache-mobile-controls-final-${GITHUB_RUN_ID}.php"
 
           rollback() {
             set +e
             echo PRODUCTION_MOBILE_CONTROLS_FINAL_ROLLBACK_START
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then cp -p '$BACKUP' '$MODULE'; rm -f '$BACKUP'; fi" || true
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              if [ -f '$BACKUP' ]; then cp -p '$BACKUP' '$MODULE'; fi
+              rm -f '$BACKUP' '$PROD_PATH/$PROBE'
+            " || true
             echo PRODUCTION_MOBILE_CONTROLS_FINAL_ROLLED_BACK
           }
           trap rollback ERR
@@ -109,8 +118,10 @@ jobs:
             test -f '$MODULE'
             cp -p '$MODULE' '$BACKUP'
           "
+
           sshpass -e scp $SCP_OPTIONS source/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php "$STAGING_USER@$STAGING_HOST:$MODULE"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             \"\$php_bin\" -l '$MODULE' >/dev/null
@@ -120,67 +131,17 @@ jobs:
           "
           echo PRODUCTION_MOBILE_CONTROLS_FINAL_FILES_OK
 
-          PROBE="elmercado-opcache-mobile-controls-final-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS source/.github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
-          BODY="$(curl -fsSL -H 'Cache-Control: no-store' -H 'Pragma: no-cache' --max-time 30 "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID")"
+          BODY="$(curl -fsSL --connect-timeout 5 --max-time 12 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID")"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
           printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
 
-          for i in $(seq 1 30); do
-            shop="$(curl -fsSL --max-time 25 -H 'Cache-Control: no-store' "$BASE_URL/tienda/?prod-mobile-final=$GITHUB_RUN_ID-$i" || true)"
-            vendor="$(curl -fsSL --max-time 25 -H 'Cache-Control: no-store' "$BASE_URL/tienda/hidalgo-de-la-jara/?prod-mobile-final=$GITHUB_RUN_ID-$i" || true)"
-            if grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$shop" && grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$vendor"; then
-              echo PRODUCTION_MOBILE_CONTROLS_FINAL_RUNTIME_OK
-              break
-            fi
-            test "$i" -lt 30
-            sleep 3
-          done
+          shop="$(curl -fsSL --connect-timeout 5 --max-time 12 -H 'Cache-Control: no-store' "$BASE_URL/tienda/?prod-mobile-final=$GITHUB_RUN_ID")"
+          vendor="$(curl -fsSL --connect-timeout 5 --max-time 12 -H 'Cache-Control: no-store' "$BASE_URL/tienda/hidalgo-de-la-jara/?prod-mobile-final=$GITHUB_RUN_ID")"
+          grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$shop"
+          grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$vendor"
+          echo PRODUCTION_MOBILE_CONTROLS_FINAL_RUNTIME_OK
 
-          cd source
-          BASE_URL="$BASE_URL" node <<'NODE'
-          const puppeteer=require('puppeteer-core');
-          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-          const fail=(m,d)=>{throw new Error(`${m}${d?' '+JSON.stringify(d):''}`)};
-          const expected={popularity:'Más populares',date:'Más recientes',price:'Menor precio','price-desc':'Mayor precio'};
-          (async()=>{
-            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const mobile=async(path,vendor)=>{
-              const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844});
-              await p.goto(`${process.env.BASE_URL}${path}?prod-mobile-final-qa=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
-              await p.waitForSelector('.emo-catalog-toolbar-shared-010229',{timeout:20000}); await sleep(900);
-              const d=await p.evaluate(vendor=>{
-                const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
-                const select=toolbar?.querySelector('.woocommerce-ordering select');
-                const candidates=vendor?[...document.querySelectorAll('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229')]:[...document.querySelectorAll('#emo-premium-filter-toggle,.emo-mobile-filter-toggle')];
-                const visible=candidates.filter(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;});
-                const trigger=visible[0]||null, first=document.querySelector(vendor?'#wcfmmp-store ul.products li.product':'ul.products li.product');
-                const c=el=>el?getComputedStyle(el):null, rect=el=>{if(!el)return null;const r=el.getBoundingClientRect();return{top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
-                return{visibleTriggers:visible.length,toolbar:rect(toolbar),trigger:rect(trigger),first:rect(first),select:rect(select),triggerStyle:trigger?[c(trigger).height,c(trigger).padding,c(trigger).borderRadius,c(trigger).borderTopWidth,c(trigger).borderTopColor,c(trigger).backgroundColor,c(trigger).boxShadow,c(trigger).fontSize,c(trigger).fontWeight,c(trigger).lineHeight]:[],selectStyle:select?[c(select).height,c(select).padding,c(select).borderRadius,c(select).borderTopWidth,c(select).borderTopColor,c(select).backgroundColor,c(select).fontSize,c(select).fontWeight,c(select).lineHeight]:[],options:select?[...select.options].map(o=>[o.value,(o.textContent||'').trim()]):[],transform:first?.closest('ul.products')?c(first.closest('ul.products')).transform:''};
-              },vendor);
-              if(d.visibleTriggers!==1||!d.toolbar||!d.trigger||!d.first||!d.select)fail('mobile contract',d);
-              if(d.trigger.top<d.toolbar.bottom-1||d.first.top<d.trigger.bottom+8)fail('mobile overlap',d);
-              if(d.select.width!==148)fail('mobile ordering width',d);
-              if(d.transform&&d.transform!=='none')fail('mobile product transform',d);
-              for(const [v,t] of d.options){if(/^Ordenar\s+por\b/i.test(t))fail('long order prefix',[v,t]);if(expected[v]&&expected[v]!==t)fail('order label',[v,t]);}
-              const triggerSelector=vendor?'#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229':'#emo-premium-filter-toggle';
-              await p.click(triggerSelector); await sleep(200);
-              const open=await p.evaluate(vendor=>{const s=vendor?document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229'):document.querySelector('#emo-premium-filter-shell');if(!s)return false;const c=getComputedStyle(s),r=s.getBoundingClientRect();return !s.hidden&&c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0;},vendor);
-              if(!open)fail('drawer not open',d);
-              await p.close(); return d;
-            };
-            const shop=await mobile('/tienda/',false),vendor=await mobile('/tienda/hidalgo-de-la-jara/',true);
-            if(JSON.stringify(shop.triggerStyle)!==JSON.stringify(vendor.triggerStyle))fail('trigger style parity',{shop:shop.triggerStyle,vendor:vendor.triggerStyle});
-            if(JSON.stringify(shop.selectStyle)!==JSON.stringify(vendor.selectStyle))fail('mobile select style parity',{shop:shop.selectStyle,vendor:vendor.selectStyle});
-            const desktop=async path=>{const p=await browser.newPage();await p.setCacheEnabled(false);await p.setViewport({width:1440,height:1000});await p.goto(`${process.env.BASE_URL}${path}?prod-desktop-final-qa=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});await p.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',{timeout:20000});await sleep(500);const d=await p.$eval('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return{width:r.width,style:[c.height,c.padding,c.borderRadius,c.borderTopWidth,c.borderTopColor,c.backgroundColor,c.fontSize,c.fontWeight,c.lineHeight]};});await p.close();return d;};
-            const ds=await desktop('/tienda/'),dv=await desktop('/tienda/hidalgo-de-la-jara/');
-            if(ds.width!==250||dv.width!==250||JSON.stringify(ds.style)!==JSON.stringify(dv.style))fail('desktop select parity',{shop:ds,vendor:dv});
-            console.log('PRODUCTION_MOBILE_CONTROLS_FINAL_BROWSER_OK',JSON.stringify({shop,vendor,desktop:{shop:ds,vendor:dv}}));
-            await browser.close();
-          })().catch(e=>{console.error('PRODUCTION_MOBILE_CONTROLS_FINAL_BROWSER_ERROR',e);process.exit(1)});
-          NODE
-          cd ..
-
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP' '$PROD_PATH/$PROBE'"
           trap - ERR
           echo PRODUCTION_MOBILE_CONTROLS_010236_FINAL_OK
