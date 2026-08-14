@@ -1,0 +1,62 @@
+name: Vendor identity 0.10.234 diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-id-diagnostic-010234.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Inspect product author and store URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; domain="$2"; wp_path=""
+          case "$raw" in
+            */wp-content/themes/elmercadodeorigen-child) wp_path="$(dirname "$(dirname "$(dirname "$raw")")")" ;;
+            */wp-content/themes) wp_path="$(dirname "$(dirname "$raw")")" ;;
+            */wp-content) wp_path="$(dirname "$raw")" ;;
+            *) wp_path="$raw" ;;
+          esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            cfg="$(find /var/www/vhosts "$HOME" -maxdepth 8 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1)"
+            wp_path="$(dirname "$cfg")"
+          fi
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          author="$("$php_bin" "$wp_bin" post get 1356 --field=post_author --path="$wp_path" --allow-root)"
+          echo "HIDALGO_AUTHOR_ID=$author"
+          "$php_bin" "$wp_bin" user get "$author" --fields=ID,user_login,user_nicename,display_name --format=json --path="$wp_path" --allow-root
+          "$php_bin" "$wp_bin" eval '$id=(int)get_post_field("post_author",1356); echo "WCFM_URL=".(function_exists("wcfmmp_get_store_url")?wcfmmp_get_store_url($id):"NOFUNC").PHP_EOL; echo "STORE_NAME=".get_user_meta($id,"wcfmmp_store_name",true).PHP_EOL; echo "STORE_SETTINGS=".json_encode(get_user_meta($id,"wcfmmp_profile_settings",true),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;' --path="$wp_path" --allow-root
+          REMOTE
