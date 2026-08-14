@@ -138,7 +138,6 @@ add_action(
 				html body.elmercado-child-theme :is(#emo-premium-filter-toggle,.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229) .emo-filter-label { margin-right:auto !important; }
 				html body.elmercado-child-theme :is(#emo-premium-filter-toggle,.emo-mobile-filter-toggle.emo-filter-toggle-shared-010229) .emo-filter-chevron { display:none !important; }
 
-				html body.elmercadodeorigen-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products,
 				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products {
 					position:relative !important; z-index:1 !important; clear:both !important; float:none !important; margin-top:0 !important; padding-top:0 !important; transform:none !important;
 				}
@@ -169,9 +168,17 @@ add_action(
 		(() => {
 			'use strict';
 			const labels={menu_order:'Recomendados',popularity:'Más populares',rating:'Mejor valorados',date:'Más recientes',price:'Menor precio','price-desc':'Mayor precio'};
+			const setImportant=(node,name,value)=>node?.style?.setProperty(name,value,'important');
 			const normalise=()=>{
+				const viewport=window.innerWidth;
+				const compact=viewport<=991;
+				const width=viewport<=360?'138px':(compact?'148px':'250px');
+				document.querySelectorAll('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering').forEach(form=>{
+					setImportant(form,'width',width); setImportant(form,'min-width',width); setImportant(form,'max-width',width);
+				});
 				document.querySelectorAll('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select').forEach(select=>{
 					select.classList.add('emo-order-select-parity-010236');
+					setImportant(select,'width',width); setImportant(select,'min-width',width); setImportant(select,'max-width',width);
 					[...select.options].forEach(option=>{
 						if(labels[option.value]) option.textContent=labels[option.value];
 						else option.textContent=(option.textContent||'').replace(/^Ordenar\s+por\s+/i,'').trim();
@@ -179,14 +186,14 @@ add_action(
 				});
 				document.querySelector('#emo-premium-filter-toggle')?.classList.add('emo-mobile-filter-control-parity-010236');
 				document.querySelector('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229')?.classList.add('emo-mobile-filter-control-parity-010236');
-				if(window.matchMedia('(max-width:991px)').matches){
+				if(compact){
 					const products=document.querySelector('#wcfmmp-store ul.products');
 					products?.style.removeProperty('transform');
 					products?.style.removeProperty('margin-bottom');
 					document.querySelector('#wcfmmp-store .emo-catalog-toolbar-shared-010229')?.style.removeProperty('transform');
 				}
 			};
-			normalise(); requestAnimationFrame(normalise); setTimeout(normalise,250);
+			normalise(); requestAnimationFrame(normalise); setTimeout(normalise,250); setTimeout(normalise,900);
 			window.addEventListener('pageshow',normalise,{passive:true});
 			window.addEventListener('resize',normalise,{passive:true});
 		})();
