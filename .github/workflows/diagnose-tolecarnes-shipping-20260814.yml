@@ -48,11 +48,11 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
+          WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root --skip-plugins --skip-themes)
           prefix=$("${WP[@]}" db prefix)
 
           echo '=== SITE ==='
-          "${WP[@]}" option get siteurl --skip-plugins --skip-themes
+          "${WP[@]}" option get siteurl
 
           echo '=== TOLECARNES USER CANDIDATES ==='
           "${WP[@]}" db query "SELECT ID,user_login,user_nicename,display_name FROM ${prefix}users WHERE LOWER(user_login) LIKE '%tole%' OR LOWER(user_nicename) LIKE '%tole%' OR LOWER(display_name) LIKE '%tole%' ORDER BY ID;"
