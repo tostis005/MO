@@ -35,9 +35,11 @@ jobs:
           ')"
           test -n "$PROD_PATH"
           echo '=== SHOP PAGE CONTENT ==='
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp post list --post_type=page --name=tienda --field=ID --path='$PROD_PATH' --allow-root | head -n1 | xargs -r -I{} wp post get {} --field=post_content --path='$PROD_PATH' --allow-root" || true
+          SHOP_ID="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp post list --post_type=page --name=tienda --field=ID --path='$PROD_PATH' --allow-root | head -n1")"
+          if [ -n "$SHOP_ID" ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp post get '$SHOP_ID' --field=post_content --path='$PROD_PATH' --allow-root"; fi
           echo '=== PRODUCERS PAGE CONTENT ==='
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp post list --post_type=page --name=productores --field=ID --path='$PROD_PATH' --allow-root | head -n1 | xargs -r -I{} wp post get {} --field=post_content --path='$PROD_PATH' --allow-root" || true
+          PROD_ID="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp post list --post_type=page --name=productores --field=ID --path='$PROD_PATH' --allow-root | head -n1")"
+          if [ -n "$PROD_ID" ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp post get '$PROD_ID' --field=post_content --path='$PROD_PATH' --allow-root"; fi
 
           BASE_URL="$BASE_URL" node <<'NODE'
           const puppeteer=require('puppeteer-core');
@@ -52,16 +54,16 @@ jobs:
               await sleep(100);
               const early=await page.evaluate(()=>({
                 bodyClass:document.body.className,
-                producerBars:[...document.querySelectorAll('#wcfmmp-stores-wrap *')].filter(el=>{const t=(el.textContent||'').replace(/\s+/g,' ').trim(); return /Seleccionar categoría|Ordenar por antigüedad|Mostrando \d/.test(t) && el.children.length<20;}).slice(0,12).map(el=>({tag:el.tagName,cls:el.className,id:el.id,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,180),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility,rect:[el.getBoundingClientRect().width,el.getBoundingClientRect().height]})),
-                countNodes:[...document.querySelectorAll('.woocommerce-result-count')].map(el=>({cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim(),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility})),
-                shopText:[...document.querySelectorAll('main p,#primary p,.site-content p')].filter(el=>/origen|procedencia|productores visibles|Selección del mercado/i.test(el.textContent||'')).slice(0,10).map(el=>({tag:el.tagName,cls:el.className,id:el.id,text:(el.textContent||'').replace(/\s+/g,' ').trim(),parent:el.parentElement?.className||''})),
-                soldBy:[...document.querySelectorAll('ul.products li.product [class*="sold_by"], ul.products li.product .wcfmmp_sold_by_container, ul.products li.product .wcfmmp_sold_by_wrapper')].slice(0,10).map(el=>({tag:el.tagName,cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,120)}))
+                producers:[...document.querySelectorAll('#wcfmmp-stores-wrap *')].filter(el=>/Seleccionar categoría|Ordenar por antigüedad|Mostrando \d/.test((el.textContent||'').replace(/\s+/g,' ').trim())&&el.children.length<15).slice(0,12).map(el=>({tag:el.tagName,cls:el.className,id:el.id,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,180),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility,w:el.getBoundingClientRect().width,h:el.getBoundingClientRect().height})),
+                counts:[...document.querySelectorAll('.woocommerce-result-count')].map(el=>({cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim(),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility})),
+                copy:[...document.querySelectorAll('main p,#primary p,.site-content p')].filter(el=>/origen|procedencia|productores visibles|Selección del mercado/i.test(el.textContent||'')).slice(0,10).map(el=>({tag:el.tagName,cls:el.className,id:el.id,text:(el.textContent||'').replace(/\s+/g,' ').trim(),parent:el.parentElement?.className||''})),
+                sold:[...document.querySelectorAll('ul.products li.product [class*="sold_by"],ul.products li.product .wcfmmp_sold_by_container,ul.products li.product .wcfmmp_sold_by_wrapper')].slice(0,12).map(el=>({tag:el.tagName,cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,120),display:getComputedStyle(el).display}))
               }));
               await sleep(1800);
               const late=await page.evaluate(()=>({
-                producerBars:[...document.querySelectorAll('#wcfmmp-stores-wrap .wcfmmp-store-lists-sorting,#wcfmmp-stores-wrap .wcfmmp-store-search-form,#wcfmmp-stores-wrap [class*="store-search"]')].map(el=>({tag:el.tagName,cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,200),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility,rect:[el.getBoundingClientRect().width,el.getBoundingClientRect().height],hidden:el.hidden})),
-                countNodes:[...document.querySelectorAll('.woocommerce-result-count')].map(el=>({cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim(),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility})),
-                soldBy:[...document.querySelectorAll('ul.products li.product [class*="sold_by"], ul.products li.product .wcfmmp_sold_by_container, ul.products li.product .wcfmmp_sold_by_wrapper')].slice(0,10).map(el=>({tag:el.tagName,cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,120),display:getComputedStyle(el).display}))
+                bars:[...document.querySelectorAll('.wcfmmp-store-lists-sorting,.wcfmmp-store-search-form,[class*="store-search"]')].map(el=>({tag:el.tagName,cls:el.className,id:el.id,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,180),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility,w:el.getBoundingClientRect().width,h:el.getBoundingClientRect().height,hidden:el.hidden})),
+                counts:[...document.querySelectorAll('.woocommerce-result-count')].map(el=>({cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim(),display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility})),
+                sold:[...document.querySelectorAll('ul.products li.product [class*="sold_by"],ul.products li.product .wcfmmp_sold_by_container,ul.products li.product .wcfmmp_sold_by_wrapper')].slice(0,12).map(el=>({tag:el.tagName,cls:el.className,text:(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,120),display:getComputedStyle(el).display}))
               }));
               console.log('PAGE',path,'EARLY',JSON.stringify(early));
               console.log('PAGE',path,'LATE',JSON.stringify(late));
@@ -69,4 +71,4 @@ jobs:
             }
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
-NODE
+          NODE
