@@ -37,8 +37,8 @@ add_filter( 'woocommerce_cart_no_shipping_available_html', 'elmercado_checkout_n
 
 /**
  * Refuerza el estado sin envío y compacta los controles del checkout.
- * WooCommerce actualiza el resumen por AJAX, por lo que el estado se sincroniza
- * también después de cada actualización del checkout.
+ * WooCommerce actualiza el resumen por AJAX, por lo que el estado y el espaciado
+ * se sincronizan también después de cada actualización del checkout.
  */
 add_action(
     'wp_footer',
@@ -70,30 +70,28 @@ add_action(
                 display: none !important;
             }
 
-            /* Columna de datos: compactar únicamente filas que contienen checks. */
-            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
-            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]) {
-                margin-top: 0.35rem !important;
-                margin-bottom: 0.35rem !important;
+            /* Filas de checkbox marcadas por JS para no depender del HTML exacto del plugin. */
+            body.woocommerce-checkout #customer_details .emo-compact-check-row {
+                min-height: 0 !important;
+                margin-top: 0.2rem !important;
+                margin-bottom: 0.2rem !important;
                 padding-top: 0 !important;
                 padding-bottom: 0 !important;
             }
 
-            body.woocommerce-checkout #customer_details .woocommerce-account-fields {
-                margin-top: 0.35rem !important;
-                margin-bottom: 0.35rem !important;
-            }
-
-            body.woocommerce-checkout #customer_details #ship-to-different-address {
-                margin-top: 0.55rem !important;
-                margin-bottom: 0.65rem !important;
+            body.woocommerce-checkout #customer_details .emo-compact-check-label {
+                margin: 0 !important;
                 padding: 0 !important;
+                line-height: 1.3 !important;
             }
 
-            body.woocommerce-checkout #customer_details label:has(input[type="checkbox"]) {
-                margin-top: 0 !important;
-                margin-bottom: 0 !important;
-                line-height: 1.35 !important;
+            body.woocommerce-checkout #customer_details .woocommerce-account-fields,
+            body.woocommerce-checkout #customer_details .woocommerce-shipping-fields {
+                row-gap: 0 !important;
+                margin-top: 0.2rem !important;
+                margin-bottom: 0.2rem !important;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
             }
 
             body.woocommerce-checkout #customer_details input[type="checkbox"] {
@@ -101,20 +99,25 @@ add_action(
                 vertical-align: middle !important;
             }
 
-            /* Métodos de pago: eliminar los grandes saltos entre radios/opciones. */
+            /* Métodos de pago: neutralizar también gap/grid/flex del tema. */
             body.woocommerce-checkout #payment ul.payment_methods {
-                margin: 0 0 0.65rem !important;
+                gap: 0 !important;
+                row-gap: 0 !important;
+                margin: 0 0 0.45rem !important;
                 padding: 0 !important;
             }
 
             body.woocommerce-checkout #payment ul.payment_methods li.wc_payment_method {
+                gap: 0 !important;
+                row-gap: 0 !important;
                 margin: 0 !important;
-                padding: 0.45rem 0 !important;
+                padding: 0.28rem 0 !important;
             }
 
             body.woocommerce-checkout #payment .wc_payment_method > label {
                 margin: 0 !important;
-                line-height: 1.35 !important;
+                padding: 0 !important;
+                line-height: 1.3 !important;
             }
 
             body.woocommerce-checkout #payment .wc_payment_method input[type="radio"] {
@@ -123,48 +126,109 @@ add_action(
             }
 
             body.woocommerce-checkout #payment .payment_box {
-                margin: 0.35rem 0 0.45rem !important;
-                padding: 0.35rem 0 0.15rem !important;
+                margin: 0.18rem 0 0.28rem 1.65rem !important;
+                padding: 0 !important;
             }
 
             body.woocommerce-checkout #payment .payment_box p {
                 margin: 0 !important;
+                padding: 0 !important;
             }
 
             body.woocommerce-checkout #payment .woocommerce-terms-and-conditions-wrapper {
-                margin-top: 0.45rem !important;
+                margin-top: 0.3rem !important;
+                padding-top: 0 !important;
             }
         </style>
         <script id="elmercado-checkout-no-shipping-script">
             (function () {
                 'use strict';
 
+                function setImportant(el, property, value) {
+                    if (el) {
+                        el.style.setProperty(property, value, 'important');
+                    }
+                }
+
+                function compactCheckoutOptions() {
+                    document.querySelectorAll('#customer_details input[type="checkbox"]').forEach(function (checkbox) {
+                        var label = checkbox.closest('label');
+                        var row = checkbox.closest('p.form-row, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
+
+                        if (label) {
+                            label.classList.add('emo-compact-check-label');
+                            setImportant(label, 'margin-top', '0');
+                            setImportant(label, 'margin-bottom', '0');
+                            setImportant(label, 'padding-top', '0');
+                            setImportant(label, 'padding-bottom', '0');
+                            setImportant(label, 'line-height', '1.3');
+                        }
+
+                        if (row) {
+                            row.classList.add('emo-compact-check-row');
+                            setImportant(row, 'min-height', '0');
+                            setImportant(row, 'margin-top', '0.2rem');
+                            setImportant(row, 'margin-bottom', '0.2rem');
+                            setImportant(row, 'padding-top', '0');
+                            setImportant(row, 'padding-bottom', '0');
+                        }
+
+                        setImportant(checkbox, 'margin-right', '0.5rem');
+                    });
+
+                    var paymentList = document.querySelector('#payment ul.payment_methods');
+                    if (paymentList) {
+                        setImportant(paymentList, 'gap', '0');
+                        setImportant(paymentList, 'row-gap', '0');
+                        setImportant(paymentList, 'margin-top', '0');
+                        setImportant(paymentList, 'margin-bottom', '0.45rem');
+                        setImportant(paymentList, 'padding-top', '0');
+                        setImportant(paymentList, 'padding-bottom', '0');
+                    }
+
+                    document.querySelectorAll('#payment ul.payment_methods > li').forEach(function (method) {
+                        setImportant(method, 'gap', '0');
+                        setImportant(method, 'row-gap', '0');
+                        setImportant(method, 'margin-top', '0');
+                        setImportant(method, 'margin-bottom', '0');
+                        setImportant(method, 'padding-top', '0.28rem');
+                        setImportant(method, 'padding-bottom', '0.28rem');
+                    });
+
+                    document.querySelectorAll('#payment .payment_box').forEach(function (box) {
+                        setImportant(box, 'margin-top', '0.18rem');
+                        setImportant(box, 'margin-bottom', '0.28rem');
+                        setImportant(box, 'padding-top', '0');
+                        setImportant(box, 'padding-bottom', '0');
+                    });
+                }
+
                 function syncNoShippingState() {
                     var blocked = document.querySelector('.emo-no-shipping-destination[data-emo-no-shipping="1"]') !== null;
                     document.body.classList.toggle('emo-checkout-no-shipping', blocked);
 
                     var button = document.getElementById('place_order');
-                    if (!button) {
-                        return;
+                    if (button) {
+                        if (blocked) {
+                            button.disabled = true;
+                            button.setAttribute('aria-hidden', 'true');
+                            button.setAttribute('tabindex', '-1');
+                            button.style.setProperty('display', 'none', 'important');
+                        } else {
+                            button.disabled = false;
+                            button.removeAttribute('aria-hidden');
+                            button.removeAttribute('tabindex');
+                            button.style.removeProperty('display');
+                        }
                     }
 
-                    if (blocked) {
-                        button.disabled = true;
-                        button.setAttribute('aria-hidden', 'true');
-                        button.setAttribute('tabindex', '-1');
-                        button.style.setProperty('display', 'none', 'important');
-                    } else {
-                        button.disabled = false;
-                        button.removeAttribute('aria-hidden');
-                        button.removeAttribute('tabindex');
-                        button.style.removeProperty('display');
-                    }
+                    compactCheckoutOptions();
                 }
 
                 document.addEventListener('DOMContentLoaded', syncNoShippingState);
 
                 if (window.jQuery) {
-                    window.jQuery(document.body).on('updated_checkout updated_shipping_method', syncNoShippingState);
+                    window.jQuery(document.body).on('updated_checkout updated_shipping_method payment_method_selected', syncNoShippingState);
                 }
 
                 var observer = new MutationObserver(syncNoShippingState);
