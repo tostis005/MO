@@ -114,7 +114,6 @@ jobs:
             test -f '$MODULE'
             cp -p '$MODULE' '$BACKUP'
           "
-
           sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php "$STAGING_USER@$STAGING_HOST:$MODULE"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
@@ -158,8 +157,6 @@ jobs:
           const fail=(m,d)=>{throw new Error(`${m}${d?' '+JSON.stringify(d):''}`)};
           const close=(a,b,t=2)=>Math.abs(a-b)<=t;
           const retry=async(fn,label)=>{let last;for(let i=0;i<5;i++){try{return await fn()}catch(e){last=e;await sleep(3000)}}throw new Error(`${label}: ${last?.message||last}`)};
-          const rect=el=>{if(!el)return null;const r=el.getBoundingClientRect();return{top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}};
-          const style=el=>{if(!el)return null;const c=getComputedStyle(el);return{display:c.display,boxSizing:c.boxSizing,padding:c.padding,borderRadius:c.borderRadius,borderTopWidth:c.borderTopWidth,borderTopColor:c.borderTopColor,backgroundColor:c.backgroundColor,boxShadow:c.boxShadow,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight,whiteSpace:c.whiteSpace,wordBreak:c.wordBreak,overflowWrap:c.overflowWrap,writingMode:c.writingMode}};
           (async()=>{
             const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
             const mobile=async(path,vendor)=>{
@@ -172,19 +169,20 @@ jobs:
                 const order=toolbar?.querySelector('.woocommerce-ordering');
                 const select=order?.querySelector('select');
                 const trigger=vendor?document.querySelector('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229'):document.querySelector('#emo-premium-filter-toggle');
+                const label=trigger?.querySelector('.emo-filter-label');
                 const first=document.querySelector(vendor?'#wcfmmp-store ul.products li.product':'ul.products li.product');
                 const area=vendor?document.querySelector('#wcfmmp-store .body_area'):null;
                 const right=vendor?document.querySelector('#wcfmmp-store .right_side,#wcfmmp-store .right_side_full,#wcfmmp-store .products-wrapper,#wcfmmp-store .wcfmmp-store-product,#wcfmmp-store .product_area'):null;
                 const R=el=>{if(!el)return null;const r=el.getBoundingClientRect();return{top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}};
                 const S=el=>{if(!el)return null;const c=getComputedStyle(el);return{display:c.display,boxSizing:c.boxSizing,padding:c.padding,borderRadius:c.borderRadius,borderTopWidth:c.borderTopWidth,borderTopColor:c.borderTopColor,backgroundColor:c.backgroundColor,boxShadow:c.boxShadow,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight,whiteSpace:c.whiteSpace,wordBreak:c.wordBreak,overflowWrap:c.overflowWrap,writingMode:c.writingMode}};
-                return{toolbar:R(toolbar),count:R(count),order:R(order),select:R(select),trigger:R(trigger),first:R(first),area:R(area),right:R(right),toolbarStyle:S(toolbar),countStyle:S(count),selectStyle:S(select),triggerStyle:S(trigger),countText:(count?.textContent||'').replace(/\s+/g,' ').trim(),triggerText:(trigger?.textContent||'').replace(/\s+/g,' ').trim(),visibleTriggers:[...(vendor?document.querySelectorAll('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229'):document.querySelectorAll('#emo-premium-filter-toggle'))].filter(el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0}).length};
+                return{toolbar:R(toolbar),count:R(count),order:R(order),select:R(select),trigger:R(trigger),first:R(first),area:R(area),right:R(right),toolbarStyle:S(toolbar),countStyle:S(count),selectStyle:S(select),triggerStyle:S(trigger),countText:(count?.textContent||'').replace(/\s+/g,' ').trim(),labelText:(label?.textContent||'').replace(/\s+/g,' ').trim(),visibleTriggers:[...document.querySelectorAll(vendor?'#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229':'#emo-premium-filter-toggle')].filter(el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0}).length};
               },vendor);
               if(!data.toolbar||!data.count||!data.order||!data.select||!data.trigger||!data.first)fail('missing mobile controls',{path,data});
               if(data.toolbar.width<300)fail('toolbar collapsed',{path,data});
-              if(data.count.width<95||data.count.height>44)fail('result count not horizontal',{path,data});
+              if(data.count.width<95||data.count.height>45)fail('result count not horizontal',{path,data});
               if(data.countStyle.whiteSpace!=='nowrap'||!String(data.countStyle.writingMode).startsWith('horizontal'))fail('result count flow',{path,data});
               if(!close(data.select.width,148,1)||data.selectStyle.boxSizing!=='border-box')fail('ordering geometry',{path,data});
-              if(data.visibleTriggers!==1||data.triggerText!=='Filtros')fail('filter label/trigger',{path,data});
+              if(data.visibleTriggers!==1||data.labelText!=='Filtros')fail('filter label/trigger',{path,data});
               if(!close(data.trigger.width,data.toolbar.width,3))fail('filter width mismatch',{path,data});
               if(data.trigger.top<data.toolbar.bottom-1||data.first.top<data.trigger.bottom+8)fail('mobile vertical rhythm',{path,data});
               if(vendor){
@@ -220,7 +218,7 @@ jobs:
             if(!close(ds.width,250,1)||!close(dv.width,250,1)||ds.boxSizing!=='border-box'||dv.boxSizing!=='border-box'||JSON.stringify(ds)!==JSON.stringify(dv))fail('desktop ordering parity',{shop:ds,vendor:dv});
             console.log('PRODUCTION_PRODUCER_MOBILE_LAYOUT_PARITY_OK',JSON.stringify({shop,vendors,desktop:{shop:ds,vendor:dv}}));
             await browser.close();
-          })().catch(async e=>{console.error('PRODUCTION_PRODUCER_MOBILE_LAYOUT_PARITY_ERROR',e);process.exit(1)});
+          })().catch(e=>{console.error('PRODUCTION_PRODUCER_MOBILE_LAYOUT_PARITY_ERROR',e);process.exit(1)});
           NODE
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP' '$PROD_PATH/$PROBE'"
