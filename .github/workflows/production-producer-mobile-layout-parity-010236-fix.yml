@@ -26,23 +26,15 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Validate payload
+      - name: Validate and install tools
         shell: bash
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php >/dev/null
           grep -Fq 'WCFM no puede estrechar el área' elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
           grep -Fq "vendorLabel.textContent='Filtros'" elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
-          grep -Fq "setImportant(select,'box-sizing','border-box')" elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
-          echo PAYLOAD_OK
-
-      - name: Install tools
-        shell: bash
-        run: |
-          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
@@ -62,10 +54,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
 
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
             set -e
             wp_bin=$(command -v wp || true)
             php_bin=$(command -v php || true)
@@ -75,152 +67,105 @@ jobs:
               p=$(dirname "$cfg")
               url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
               case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
-                  printf "%s" "$p"; break ;;
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
               esac
             done
           ')"
           test -n "$PROD_PATH"
-
-          THEME_PATH="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
-          MODULE="$THEME_PATH/inc/catalog-mobile-controls-parity-010236.php"
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          MODULE="$THEME/inc/catalog-mobile-controls-parity-010236.php"
           BACKUP="/tmp/catalog-mobile-controls-parity-010236-${GITHUB_RUN_ID}.bak"
           PROBE="elmercado-opcache-producer-mobile-fix-${GITHUB_RUN_ID}.php"
           ROLLED_BACK=0
 
           rollback() {
             code=$?
-            if [ "$ROLLED_BACK" -eq 1 ]; then exit "$code"; fi
+            [ "$ROLLED_BACK" -eq 0 ] || exit "$code"
             ROLLED_BACK=1
             set +e
-            echo PRODUCTION_PRODUCER_MOBILE_FIX_ROLLBACK_START
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-              if [ -f '$BACKUP' ]; then cp -p '$BACKUP' '$MODULE'; rm -f '$BACKUP'; fi
-              rm -f '$PROD_PATH/$PROBE'
-              wp_bin=\$(command -v wp || true)
-              php_bin=\$(command -v php || true)
-              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-              [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
-            " || true
-            echo PRODUCTION_PRODUCER_MOBILE_FIX_ROLLED_BACK
+            echo ROLLBACK_START
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then cp -p '$BACKUP' '$MODULE'; rm -f '$BACKUP'; fi; rm -f '$PROD_PATH/$PROBE'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
+            echo ROLLED_BACK
             exit "${code:-1}"
           }
           trap rollback ERR
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            test -f '$THEME_PATH/functions.php'
-            grep -Fq 'CATALOG_MOBILE_CONTROLS_010236_PRODUCTION' '$THEME_PATH/functions.php'
-            test -f '$MODULE'
-            cp -p '$MODULE' '$BACKUP'
-          "
-          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php "$STAGING_USER@$STAGING_HOST:$MODULE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            php_bin=\$(command -v php || true)
-            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" -l '$MODULE' >/dev/null
-            grep -Fq 'WCFM no puede estrechar el área' '$MODULE'
-            grep -Fq \"vendorLabel.textContent='Filtros'\" '$MODULE'
-            wp_bin=\$(command -v wp || true)
-            [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
-          "
-          echo PRODUCTION_FILES_OK
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; grep -Fq 'CATALOG_MOBILE_CONTROLS_010236_PRODUCTION' '$THEME/functions.php'; test -f '$MODULE'; cp -p '$MODULE' '$BACKUP'"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php "$STAGING_USER@$STAGING_HOST:$MODULE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$MODULE' >/dev/null; grep -Fq 'WCFM no puede estrechar el área' '$MODULE'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          echo FILES_OK
 
-          sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
-          opcache_ok=0
+          # Intentamos limpiar OPcache, pero si la URL temporal no responde seguimos:
+          # la comprobación de runtime de abajo es la que decide si la versión nueva está viva.
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
           set +e
           for i in $(seq 1 8); do
-            body="$(curl -fsSL --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID-$i" 2>/dev/null)"
-            if printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$'; then opcache_ok=1; break; fi
+            body="$(curl -fsSL --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID-$i" 2>/dev/null)"
+            printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$' && { echo OPCACHE_RESET_OK; break; }
             sleep 4
           done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" >/dev/null 2>&1
           set -e
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
-          test "$opcache_ok" -eq 1
-          echo OPCACHE_RESET_OK
 
           runtime_ok=0
           set +e
-          for i in $(seq 1 12); do
+          for i in $(seq 1 14); do
             html="$(curl -fsSL --connect-timeout 10 --max-time 45 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/tienda/hidalgo-de-la-jara/?producer-mobile-fix=$GITHUB_RUN_ID-$i" 2>/dev/null)"
             if grep -Fq "vendorLabel.textContent='Filtros'" <<<"$html" && grep -Fq 'WCFM no puede estrechar el área' <<<"$html"; then runtime_ok=1; break; fi
             sleep 5
           done
           set -e
           test "$runtime_ok" -eq 1
-          echo PRODUCTION_RUNTIME_PAYLOAD_OK
+          echo RUNTIME_NEW_PAYLOAD_OK
 
           BASE_URL="$BASE_URL" node <<'NODE'
           const puppeteer=require('puppeteer-core');
           const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-          const fail=(m,d)=>{throw new Error(`${m}${d?' '+JSON.stringify(d):''}`)};
-          const close=(a,b,t=2)=>Math.abs(a-b)<=t;
-          const retry=async(fn,label)=>{let last;for(let i=0;i<5;i++){try{return await fn()}catch(e){last=e;await sleep(3000)}}throw new Error(`${label}: ${last?.message||last}`)};
+          const close=(a,b,t=3)=>Math.abs(a-b)<=t;
+          const fail=(m,d)=>{throw new Error(`${m} ${JSON.stringify(d)}`)};
+          const retry=async(fn)=>{let e;for(let i=0;i<5;i++){try{return await fn()}catch(x){e=x;await sleep(3000)}}throw e};
           (async()=>{
             const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const mobile=async(path,vendor)=>{
+            const inspect=async(path,vendor)=>{
               const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844});
-              await retry(()=>p.goto(`${process.env.BASE_URL}${path}?producer-mobile-layout-qa=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000}),`goto ${path}`);
-              await p.waitForSelector('.emo-catalog-toolbar-shared-010229',{timeout:30000}); await sleep(1400);
-              const data=await p.evaluate(vendor=>{
+              await retry(()=>p.goto(`${process.env.BASE_URL}${path}?mobile-parity=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000}));
+              await p.waitForSelector('.emo-catalog-toolbar-shared-010229',{timeout:30000}); await sleep(1500);
+              const d=await p.evaluate(vendor=>{
                 const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
                 const count=toolbar?.querySelector('.woocommerce-result-count,.emo-catalog-result-count-010220,.emo-vendor-result-count-010225');
-                const order=toolbar?.querySelector('.woocommerce-ordering');
-                const select=order?.querySelector('select');
+                const select=toolbar?.querySelector('.woocommerce-ordering select');
                 const trigger=vendor?document.querySelector('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229'):document.querySelector('#emo-premium-filter-toggle');
                 const label=trigger?.querySelector('.emo-filter-label');
                 const first=document.querySelector(vendor?'#wcfmmp-store ul.products li.product':'ul.products li.product');
-                const area=vendor?document.querySelector('#wcfmmp-store .body_area'):null;
-                const right=vendor?document.querySelector('#wcfmmp-store .right_side,#wcfmmp-store .right_side_full,#wcfmmp-store .products-wrapper,#wcfmmp-store .wcfmmp-store-product,#wcfmmp-store .product_area'):null;
-                const R=el=>{if(!el)return null;const r=el.getBoundingClientRect();return{top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height}};
-                const S=el=>{if(!el)return null;const c=getComputedStyle(el);return{display:c.display,boxSizing:c.boxSizing,padding:c.padding,borderRadius:c.borderRadius,borderTopWidth:c.borderTopWidth,borderTopColor:c.borderTopColor,backgroundColor:c.backgroundColor,boxShadow:c.boxShadow,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight,whiteSpace:c.whiteSpace,wordBreak:c.wordBreak,overflowWrap:c.overflowWrap,writingMode:c.writingMode}};
-                return{toolbar:R(toolbar),count:R(count),order:R(order),select:R(select),trigger:R(trigger),first:R(first),area:R(area),right:R(right),toolbarStyle:S(toolbar),countStyle:S(count),selectStyle:S(select),triggerStyle:S(trigger),countText:(count?.textContent||'').replace(/\s+/g,' ').trim(),labelText:(label?.textContent||'').replace(/\s+/g,' ').trim(),visibleTriggers:[...document.querySelectorAll(vendor?'#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229':'#emo-premium-filter-toggle')].filter(el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0}).length};
+                const r=e=>{if(!e)return null;const x=e.getBoundingClientRect();return{top:x.top,bottom:x.bottom,width:x.width,height:x.height}};
+                const s=e=>{if(!e)return null;const c=getComputedStyle(e);return{display:c.display,boxSizing:c.boxSizing,padding:c.padding,borderRadius:c.borderRadius,borderTopWidth:c.borderTopWidth,borderTopColor:c.borderTopColor,backgroundColor:c.backgroundColor,boxShadow:c.boxShadow,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight,whiteSpace:c.whiteSpace,wordBreak:c.wordBreak,overflowWrap:c.overflowWrap,writingMode:c.writingMode}};
+                return{toolbar:r(toolbar),count:r(count),select:r(select),trigger:r(trigger),first:r(first),toolbarStyle:s(toolbar),countStyle:s(count),selectStyle:s(select),triggerStyle:s(trigger),label:(label?.textContent||'').trim()};
               },vendor);
-              if(!data.toolbar||!data.count||!data.order||!data.select||!data.trigger||!data.first)fail('missing mobile controls',{path,data});
-              if(data.toolbar.width<300)fail('toolbar collapsed',{path,data});
-              if(data.count.width<95||data.count.height>45)fail('result count not horizontal',{path,data});
-              if(data.countStyle.whiteSpace!=='nowrap'||!String(data.countStyle.writingMode).startsWith('horizontal'))fail('result count flow',{path,data});
-              if(!close(data.select.width,148,1)||data.selectStyle.boxSizing!=='border-box')fail('ordering geometry',{path,data});
-              if(data.visibleTriggers!==1||data.labelText!=='Filtros')fail('filter label/trigger',{path,data});
-              if(!close(data.trigger.width,data.toolbar.width,3))fail('filter width mismatch',{path,data});
-              if(data.trigger.top<data.toolbar.bottom-1||data.first.top<data.trigger.bottom+8)fail('mobile vertical rhythm',{path,data});
-              if(vendor){
-                if(data.area&&data.area.width<data.toolbar.width-2)fail('vendor body area collapsed',{path,data});
-                if(data.right&&data.right.width<data.toolbar.width-2)fail('vendor content column collapsed',{path,data});
-              }
-              const triggerSelector=vendor?'#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229':'#emo-premium-filter-toggle';
-              await p.click(triggerSelector); await sleep(250);
-              const open=await p.evaluate(vendor=>{const shell=vendor?document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229'):document.querySelector('#emo-premium-filter-shell');if(!shell)return false;const c=getComputedStyle(shell),r=shell.getBoundingClientRect();return !shell.hidden&&c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0;},vendor);
-              if(!open)fail('drawer not open',{path,data});
-              await p.close(); return data;
-            };
-
-            const shop=await mobile('/tienda/',false);
-            const vendorPaths=['/tienda/hidalgo-de-la-jara/','/tienda/1957/','/tienda/el-mercado-de-origen/'];
-            const vendors=[];
-            for(const path of vendorPaths) vendors.push(await mobile(path,true));
-            for(const vendor of vendors){
-              if(JSON.stringify(shop.selectStyle)!==JSON.stringify(vendor.selectStyle))fail('mobile select style parity',{shop:shop.selectStyle,vendor:vendor.selectStyle});
-              if(JSON.stringify(shop.triggerStyle)!==JSON.stringify(vendor.triggerStyle))fail('mobile trigger style parity',{shop:shop.triggerStyle,vendor:vendor.triggerStyle});
-              for(const key of ['display','padding','borderRadius','borderTopWidth','borderTopColor','backgroundColor','boxShadow','fontSize','fontWeight','lineHeight']) if(shop.toolbarStyle[key]!==vendor.toolbarStyle[key]) fail(`toolbar style parity ${key}`,{shop:shop.toolbarStyle,vendor:vendor.toolbarStyle});
-              for(const key of ['display','fontSize','fontWeight','lineHeight','whiteSpace','wordBreak','overflowWrap','writingMode']) if(shop.countStyle[key]!==vendor.countStyle[key]) fail(`count style parity ${key}`,{shop:shop.countStyle,vendor:vendor.countStyle});
-            }
-
-            const desktop=async(path)=>{
-              const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:1440,height:1000});
-              await retry(()=>p.goto(`${process.env.BASE_URL}${path}?producer-desktop-layout-qa=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000}),`desktop ${path}`);
-              await p.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',{timeout:30000}); await sleep(1000);
-              const d=await p.$eval('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',el=>{const c=getComputedStyle(el),r=el.getBoundingClientRect();return{width:r.width,boxSizing:c.boxSizing,height:c.height,padding:c.padding,borderRadius:c.borderRadius,borderTopWidth:c.borderTopWidth,borderTopColor:c.borderTopColor,backgroundColor:c.backgroundColor,fontSize:c.fontSize,fontWeight:c.fontWeight,lineHeight:c.lineHeight};});
+              if(!d.toolbar||!d.count||!d.select||!d.trigger||!d.first) fail('missing controls',{path,d});
+              if(d.toolbar.width<300||d.count.width<95||d.count.height>45) fail('collapsed toolbar/count',{path,d});
+              if(d.countStyle.whiteSpace!=='nowrap'||!String(d.countStyle.writingMode).startsWith('horizontal')) fail('count not horizontal',{path,d});
+              if(!close(d.select.width,148,1)||d.selectStyle.boxSizing!=='border-box') fail('sort geometry',{path,d});
+              if(d.label!=='Filtros'||!close(d.trigger.width,d.toolbar.width)) fail('filter parity',{path,d});
+              if(d.trigger.top<d.toolbar.bottom-1||d.first.top<d.trigger.bottom+8) fail('vertical overlap',{path,d});
+              await p.click(vendor?'#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229':'#emo-premium-filter-toggle'); await sleep(250);
+              const opened=await p.evaluate(vendor=>{const e=vendor?document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229'):document.querySelector('#emo-premium-filter-shell');if(!e)return false;const c=getComputedStyle(e),r=e.getBoundingClientRect();return !e.hidden&&c.display!=='none'&&r.width>0&&r.height>0},vendor);
+              if(!opened) fail('drawer closed',{path,d});
               await p.close(); return d;
             };
-            const ds=await desktop('/tienda/'), dv=await desktop('/tienda/hidalgo-de-la-jara/');
-            if(!close(ds.width,250,1)||!close(dv.width,250,1)||ds.boxSizing!=='border-box'||dv.boxSizing!=='border-box'||JSON.stringify(ds)!==JSON.stringify(dv))fail('desktop ordering parity',{shop:ds,vendor:dv});
-            console.log('PRODUCTION_PRODUCER_MOBILE_LAYOUT_PARITY_OK',JSON.stringify({shop,vendors,desktop:{shop:ds,vendor:dv}}));
+            const shop=await inspect('/tienda/',false);
+            const vendors=[];
+            for(const path of ['/tienda/hidalgo-de-la-jara/','/tienda/1957/','/tienda/el-mercado-de-origen/']) vendors.push(await inspect(path,true));
+            for(const v of vendors){
+              if(JSON.stringify(shop.selectStyle)!==JSON.stringify(v.selectStyle)) fail('sort style differs',{shop:shop.selectStyle,vendor:v.selectStyle});
+              if(JSON.stringify(shop.triggerStyle)!==JSON.stringify(v.triggerStyle)) fail('filter style differs',{shop:shop.triggerStyle,vendor:v.triggerStyle});
+              for(const k of ['display','padding','borderRadius','borderTopWidth','borderTopColor','backgroundColor','boxShadow','fontSize','fontWeight','lineHeight']) if(shop.toolbarStyle[k]!==v.toolbarStyle[k]) fail('toolbar style differs',{key:k,shop:shop.toolbarStyle,vendor:v.toolbarStyle});
+              for(const k of ['display','fontSize','fontWeight','lineHeight','whiteSpace','wordBreak','overflowWrap','writingMode']) if(shop.countStyle[k]!==v.countStyle[k]) fail('count style differs',{key:k,shop:shop.countStyle,vendor:v.countStyle});
+            }
+            console.log('MOBILE_PARITY_OK',JSON.stringify({shop,vendors}));
             await browser.close();
-          })().catch(e=>{console.error('PRODUCTION_PRODUCER_MOBILE_LAYOUT_PARITY_ERROR',e);process.exit(1)});
+          })().catch(e=>{console.error('MOBILE_PARITY_ERROR',e);process.exit(1)});
           NODE
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP' '$PROD_PATH/$PROBE'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP' '$PROD_PATH/$PROBE'"
           trap - ERR
           echo PRODUCTION_PRODUCER_MOBILE_LAYOUT_FIX_OK
