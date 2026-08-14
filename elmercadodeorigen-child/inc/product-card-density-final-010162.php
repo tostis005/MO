@@ -184,11 +184,12 @@ add_action(
 				padding: 0 !important;
 				line-height: 1.18 !important;
 			}
+			/* 0.10.247: punto medio entre la ficha original y la compactación 0.10.246. */
 			body.elmercado-child-theme ul.products li.product .product-loop-wrapper > .wcfmmp_sold_by_container {
 				min-height: 0 !important;
 				height: auto !important;
-				margin: 4px 0 0 !important;
-				padding: 0 !important;
+				margin: 9px 0 0 !important;
+				padding: 5px 0 0 !important;
 				line-height: 1.12 !important;
 			}
 
@@ -207,7 +208,8 @@ add_action(
 					line-height: 1.23 !important;
 				}
 				body.elmercado-child-theme ul.products li.product .product-loop-wrapper > .wcfmmp_sold_by_container {
-					margin-top: 3px !important;
+					margin-top: 8px !important;
+					padding-top: 4px !important;
 				}
 				body.elmercado-child-theme ul.products li.product .button {
 					margin-top: 0.5rem !important;
