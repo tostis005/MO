@@ -15,8 +15,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 /*
  * Derivados específicos para tarjetas. Se conservan sin recorte para que una
  * foto vertical u horizontal se vea completa dentro del cuadrado visual.
- * 480 sirve como base y 800 como variante de alta densidad, evitando usar el
- * original de varios megapíxeles en listados.
  */
 add_action(
 	'after_setup_theme',
@@ -27,38 +25,52 @@ add_action(
 	5
 );
 
-/* WooCommerce usa este tamaño para las imágenes de cualquier loop de producto. */
-add_filter(
-	'single_product_archive_thumbnail_size',
-	static function ( $size ) {
-		if ( is_admin() ) {
-			return $size;
-		}
-		return 'elmercado_catalog_card_010241';
-	},
-	PHP_INT_MAX
-);
+/**
+ * Devuelve un derivado acotado. Si por cualquier motivo el tamaño específico
+ * no existe todavía, cae al thumbnail de WooCommerce antes que al original.
+ *
+ * @return array<int,mixed>|false
+ */
+function elmercado_catalog_card_source_010241( int $attachment_id, string $size, int $limit ) {
+	$source = wp_get_attachment_image_src( $attachment_id, $size );
+	if ( is_array( $source ) && (int) $source[1] <= $limit && (int) $source[2] <= $limit ) {
+		return $source;
+	}
+
+	$fallback = wp_get_attachment_image_src( $attachment_id, 'woocommerce_thumbnail' );
+	if ( is_array( $fallback ) && (int) $fallback[1] <= $limit && (int) $fallback[2] <= $limit ) {
+		return $fallback;
+	}
+
+	return false;
+}
 
 /*
- * Srcset deliberadamente limitado a los dos derivados de catálogo. Así un
- * móvil retina obtiene como máximo el derivado de 800 px y nunca salta al
- * fichero original por estar presente en el srcset general de WordPress.
+ * Woostify escribe explícitamente `woocommerce_thumbnail` en su loop y no usa
+ * el filtro estándar de WooCommerce para elegir el tamaño. Por eso detectamos
+ * la clase real `product-loop-image` y sustituimos los atributos de salida por
+ * nuestros derivados, con un srcset que nunca contiene el original.
  *
  * @param array<string,mixed> $attr       Atributos de imagen.
  * @param WP_Post             $attachment Adjunto.
- * @param string|int[]        $size       Tamaño solicitado.
+ * @param string|int[]        $size       Tamaño solicitado por el tema.
  * @return array<string,mixed>
  */
 add_filter(
 	'wp_get_attachment_image_attributes',
 	static function ( array $attr, $attachment, $size ): array {
-		if ( is_admin() || 'elmercado_catalog_card_010241' !== $size || ! $attachment instanceof WP_Post ) {
+		if ( is_admin() || ! $attachment instanceof WP_Post ) {
+			return $attr;
+		}
+
+		$class = (string) ( $attr['class'] ?? '' );
+		if ( ! str_contains( $class, 'product-loop-image' ) ) {
 			return $attr;
 		}
 
 		$attachment_id = (int) $attachment->ID;
-		$base          = wp_get_attachment_image_src( $attachment_id, 'elmercado_catalog_card_010241' );
-		$retina        = wp_get_attachment_image_src( $attachment_id, 'elmercado_catalog_card_2x_010241' );
+		$base          = elmercado_catalog_card_source_010241( $attachment_id, 'elmercado_catalog_card_010241', 480 );
+		$retina        = elmercado_catalog_card_source_010241( $attachment_id, 'elmercado_catalog_card_2x_010241', 800 );
 		$sources       = array();
 
 		foreach ( array( $base, $retina ) as $source ) {
@@ -72,6 +84,7 @@ add_filter(
 		if ( is_array( $base ) && ! empty( $base[0] ) ) {
 			$attr['src'] = esc_url( (string) $base[0] );
 		}
+
 		if ( $sources ) {
 			ksort( $sources, SORT_NUMERIC );
 			$attr['srcset'] = implode( ', ', array_values( $sources ) );
@@ -80,10 +93,11 @@ add_filter(
 			unset( $attr['srcset'], $attr['sizes'] );
 		}
 
-		/* Reserva desde el HTML el mismo cuadrado que usa CSS y evita saltos. */
+		/* Reserva el cuadrado antes de cargar la fotografía y evita saltos. */
 		$attr['width']    = '480';
 		$attr['height']   = '480';
 		$attr['decoding'] = 'async';
+		$attr['class']    = trim( $class . ' elmercado-catalog-card-image-010241' );
 
 		return $attr;
 	},
@@ -110,29 +124,12 @@ add_action(
 				display: none !important;
 			}
 
-			/* Evita que la rejilla estire cada tarjeta hasta la altura de la más alta de la fila. */
 			body.elmercado-child-theme ul.products li.product {
 				height: auto !important;
 				align-self: start !important;
 				padding-bottom: 0.8rem !important;
 			}
 
-			/*
-			 * El área visual de producto es siempre cuadrada. La fotografía se
-			 * contiene completa y centrada: una imagen vertical ya no alarga la
-			 * tarjeta ni se deforma, y una horizontal mantiene el mismo encuadre.
-			 */
-			body.elmercado-child-theme ul.products li.product a img {
-				display:block !important;
-				width:100% !important;
-				height:auto !important;
-				aspect-ratio:1 / 1 !important;
-				object-fit:contain !important;
-				object-position:center center !important;
-				margin-bottom: 0.65rem !important;
-			}
-
-			/* Mantiene el límite de dos líneas, sin reservar una segunda línea vacía. */
 			body.elmercado-child-theme ul.products li.product :is(
 				.woocommerce-loop-product__title,
 				.product-title,
@@ -152,7 +149,6 @@ add_action(
 				line-height: 1.35 !important;
 			}
 
-			body.elmercadodeorigen-child-theme ul.products li.product .price,
 			body.elmercado-child-theme ul.products li.product .price {
 				margin-top: 0 !important;
 				padding-top: 0.45rem !important;
@@ -167,18 +163,69 @@ add_action(
 				body.elmercado-child-theme ul.products li.product {
 					padding-bottom: 0.65rem !important;
 				}
-
-				body.elmercado-child-theme ul.products li.product a img {
-					margin-bottom: 0.5rem !important;
-				}
-
 				body.elmercado-child-theme ul.products li.product .price {
 					padding-top: 0.35rem !important;
 				}
-
 				body.elmercado-child-theme ul.products li.product .button {
 					margin-top: 0.5rem !important;
 				}
+			}
+		</style>
+		<?php
+	},
+	PHP_INT_MAX
+);
+
+/*
+ * Esta regla se imprime en footer para quedar físicamente después de las capas
+ * históricas 3:4/4:5 del tema. El lienzo visual es cuadrado; la fotografía se
+ * contiene entera dentro de él, sin recortes ni deformaciones.
+ */
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() ) {
+			return;
+		}
+		?>
+		<style id="elmercado-product-card-square-final-010241">
+			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper {
+				position:relative !important;
+				box-sizing:border-box !important;
+				width:100% !important;
+				height:auto !important;
+				aspect-ratio:1 / 1 !important;
+				overflow:hidden !important;
+			}
+
+			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper > a,
+			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper .woocommerce-LoopProduct-link,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper > a {
+				display:grid !important;
+				width:100% !important;
+				height:100% !important;
+				place-items:center !important;
+			}
+
+			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper img,
+			html body.elmercado-child-theme ul.products li.product img.product-loop-image,
+			html body.elmercado-child-theme ul.products li.product .woocommerce-loop-product__link img,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper img,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product img.product-loop-image {
+				display:block !important;
+				box-sizing:border-box !important;
+				width:100% !important;
+				height:100% !important;
+				max-width:100% !important;
+				max-height:100% !important;
+				aspect-ratio:auto !important;
+				margin:0 !important;
+				padding:0 !important;
+				border:0 !important;
+				object-fit:contain !important;
+				object-position:center center !important;
+				transform:none !important;
 			}
 		</style>
 		<?php
