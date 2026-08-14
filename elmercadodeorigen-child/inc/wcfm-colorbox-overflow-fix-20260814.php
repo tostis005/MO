@@ -6,6 +6,8 @@
  * En el modal de creación de envíos el contenido puede superar el alto que
  * Colorbox calcula inicialmente y queda oculto detrás del overlay.
  *
+ * Parche acotado a /store-manager/vendors-manage/.
+ *
  * @package ElMercadoDeOrigen
  */
 
