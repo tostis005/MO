@@ -27,7 +27,11 @@ function elmercado_catalog_filter_scroll_target_010234(): bool {
  * Total exacto que debe permanecer visible durante toda la carga continua.
  */
 function elmercado_catalog_filter_scroll_total_010234(): int {
-	if ( function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225() && function_exists( 'elmercado_vendor_store_state_010225' ) ) {
+	$body_classes = function_exists( 'get_body_class' ) ? get_body_class() : array();
+	$is_vendor    = in_array( 'wcfmmp-store-page', $body_classes, true )
+		|| ( function_exists( 'elmercado_vendor_store_is_request_010225' ) && elmercado_vendor_store_is_request_010225() );
+
+	if ( $is_vendor && function_exists( 'elmercado_vendor_store_state_010225' ) ) {
 		$state = elmercado_vendor_store_state_010225();
 		return max( 0, (int) ( $state['total'] ?? 0 ) );
 	}
