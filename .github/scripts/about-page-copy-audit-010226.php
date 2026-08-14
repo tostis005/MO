@@ -1,24 +1,17 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-$vhost=dirname(rtrim(ABSPATH,'/'));
-$domain=basename($vhost);
-$candidates=array($vhost.'/logs','/var/www/vhosts/system/'.$domain.'/logs');
-$dirs=array();
-foreach($candidates as $d){if(is_dir($d))$dirs[]=$d;}
-echo "LOG_DISCOVERY_START\n";
-foreach(array_unique($dirs) as $d){
-    echo 'LOG_DIR '.$d."\n";
-    $entries=@scandir($d); if(!is_array($entries))continue;
-    foreach($entries as $name){
-        if($name==='.'||$name==='..')continue;
-        $p=$d.'/'.$name;
-        if(!preg_match('/access|log|error/i',$name))continue;
-        $rp=@realpath($p); $st=@stat($p); $lst=@lstat($p);
-        echo 'LOG_FILE '.wp_json_encode(array(
-            'name'=>$name,'is_link'=>is_link($p),'realpath'=>$rp?:'',
-            'readable'=>is_readable($p),'size'=>$st?(int)$st['size']:null,
-            'link_size'=>$lst?(int)$lst['size']:null,'mtime'=>$st?date('c',(int)$st['mtime']):null
-        ),JSON_UNESCAPED_SLASHES)."\n";
-    }
-}
-echo "LOG_DISCOVERY_END\n";
+function incv(&$a,$k,$n=1){$a[$k]=($a[$k]??0)+$n;}
+function topv($a,$n=25){arsort($a);return array_slice($a,0,$n,true);}
+function groupua($ua){$u=strtolower($ua);if(preg_match('/facebookexternalhit|meta-externalagent|meta-externalfetcher|facebot|facebookcatalog|facebookbot|instagram/',$u))return 'Meta/Facebook';if(preg_match('/googlebot|google-inspectiontool|adsbot-google|mediapartners-google/',$u))return 'Google';if(preg_match('/bingbot|bingpreview/',$u))return 'Bing';if(str_contains($u,'ahrefs'))return 'Ahrefs';if(str_contains($u,'semrush'))return 'Semrush';if(str_contains($u,'mj12bot'))return 'MJ12';if(str_contains($u,'dotbot'))return 'DotBot';if(str_contains($u,'petalbot'))return 'PetalBot';if(str_contains($u,'yandex'))return 'Yandex';if(str_contains($u,'bytespider'))return 'ByteSpider';if(preg_match('/gptbot|chatgpt-user|oai-searchbot/',$u))return 'OpenAI';if(preg_match('/claudebot|claude-web/',$u))return 'Anthropic';if(preg_match('/bot|spider|crawler|crawl|headless|scrapy|python-requests|curl\/|wget\//',$u))return 'Other bot/automation';return 'Human-like/unknown';}
+function endpoint($target){$p=parse_url($target,PHP_URL_PATH);if(!is_string($p))$p=$target;$l=strtolower($target);if(str_contains($l,'/wp-json/'))return 'wp-json';if(str_contains($l,'/wp-admin/admin-ajax.php'))return 'admin-ajax';if(str_contains($l,'wc-ajax='))return 'wc-ajax';if(str_contains($l,'/wp-login.php'))return 'wp-login';if(str_contains($l,'/xmlrpc.php'))return 'xmlrpc';if(preg_match('/[?&]s=/',$l))return 'search';if(str_starts_with($p,'/producto/'))return 'product';if(str_starts_with($p,'/categoria-producto/'))return 'category';if($p==='/'||$p==='')return 'home';if(preg_match('/\.(?:css|js|jpg|jpeg|png|webp|gif|svg|ico|woff2?|ttf|map)(?:$|\?)/i',$target))return 'static';return 'other';}
+$vhost=dirname(rtrim(ABSPATH,'/'));$logdir=$vhost.'/logs';
+$files=array();foreach(array('access_ssl_log.processed','access_log.processed') as $n){$p=$logdir.'/'.$n;if(is_readable($p)&&filesize($p)>0)$files[]=$p;}
+echo "TRAFFIC_ANALYSIS_START\n";
+if(!$files){echo "TRAFFIC_ANALYSIS_NO_FILES\n";return;}
+$groups=$dynGroups=$uas=$paths=$statuses=$ends=$mins=$methods=$ips=array();$metaUas=$metaPaths=$metaStatuses=$metaMins=$metaIps=array();$lines=0;$parsed=0;$first='';$last='';$failedSamples=array();$fileInfo=array();
+foreach($files as $file){$fh=fopen($file,'rb');$local=0;while(!feof($fh)){ $line=fgets($fh);if($line===false)break;$lines++;$local++;if(!preg_match('/^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^\"]*) HTTP\/[0-9.]+" (\d{3}) (\S+) "([^\"]*)" "([^\"]*)"/',$line,$m)){if(count($failedSamples)<3)$failedSamples[]=preg_replace('/^\S+/','[IP]',trim($line));continue;}$parsed++;$ip=$m[1];$ts=$m[2];$method=$m[3];$target=$m[4];$status=$m[5];$ua=$m[8];if($first==='')$first=$ts;$last=$ts;$minute=substr($ts,0,17);$g=groupua($ua);$e=endpoint($target);$p=parse_url($target,PHP_URL_PATH);if(!is_string($p)||$p==='')$p=$target;if(strlen($p)>180)$p=substr($p,0,180);incv($groups,$g);if($e!=='static')incv($dynGroups,$g);incv($uas,substr($ua,0,220));incv($paths,$p);incv($statuses,$status);incv($ends,$e);incv($mins,$minute);incv($methods,$method);incv($ips,$ip);if($g==='Meta/Facebook'){incv($metaUas,substr($ua,0,220));incv($metaPaths,$p);incv($metaStatuses,$status);incv($metaMins,$minute);$metaIps[$ip]=true;}}
+fclose($fh);$fileInfo[]=array('name'=>basename($file),'bytes'=>filesize($file),'lines'=>$local);}
+$minuteVals=array_values($mins);rsort($minuteVals);$metaMinuteVals=array_values($metaMins);rsort($metaMinuteVals);$ipCounts=array_values(topv($ips,20));
+$out=array('files'=>$fileInfo,'lines'=>$lines,'parsed'=>$parsed,'parse_failures'=>$lines-$parsed,'failed_samples'=>$failedSamples,'first_log_time'=>$first,'last_log_time'=>$last,'unique_ips'=>count($ips),'top_ip_request_counts'=>$ipCounts,'peak_requests_per_minute'=>$minuteVals[0]??0,'agent_groups'=>topv($groups,30),'dynamic_agent_groups'=>topv($dynGroups,30),'endpoints'=>topv($ends,30),'statuses'=>topv($statuses,20),'methods'=>topv($methods,20),'top_user_agents'=>topv($uas,30),'top_paths'=>topv($paths,40),'meta'=>array('requests'=>$groups['Meta/Facebook']??0,'dynamic_requests'=>$dynGroups['Meta/Facebook']??0,'unique_ips'=>count($metaIps),'peak_requests_per_minute'=>$metaMinuteVals[0]??0,'statuses'=>topv($metaStatuses,20),'top_user_agents'=>topv($metaUas,20),'top_paths'=>topv($metaPaths,40)));
+echo 'TRAFFIC_ANALYSIS_JSON '.wp_json_encode($out,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
+echo "TRAFFIC_ANALYSIS_END\n";
