@@ -1,0 +1,207 @@
+name: Production product restore and producer square 0.10.242
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-product-restore-producer-square-010242.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy and verify corrected scope
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          php -l elmercadodeorigen-child/inc/product-card-density-final-010162.php >/dev/null
+          php -l elmercadodeorigen-child/inc/producer-list-image-square-010242.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          TARGET_FUNCTIONS="$THEME/functions.php"
+          TARGET_PRODUCT="$THEME/inc/product-card-density-final-010162.php"
+          TARGET_PRODUCER="$THEME/inc/producer-list-image-square-010242.php"
+          BAK_FUNCTIONS="/tmp/functions-010242-${GITHUB_RUN_ID}.bak"
+          BAK_PRODUCT="/tmp/product-card-010242-${GITHUB_RUN_ID}.bak"
+          BAK_PRODUCER="/tmp/producer-square-010242-${GITHUB_RUN_ID}.bak"
+          PRODUCER_EXISTED=0
+          ROLLED_BACK=0
+
+          reset_opcache(){
+            probe="elmercado-opcache-010242-${GITHUB_RUN_ID}-$RANDOM.php"
+            sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$probe"
+            set +e
+            ok=0
+            for i in $(seq 1 6); do
+              body="$(curl -fsSL --connect-timeout 10 --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$probe?run=$GITHUB_RUN_ID-$i-$RANDOM" 2>/dev/null)"
+              if printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$'; then ok=1; break; fi
+              sleep 2
+            done
+            set -e
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$probe'" || true
+            test "$ok" -eq 1
+          }
+
+          rollback(){
+            code=$?
+            [ "$ROLLED_BACK" -eq 0 ] || exit "$code"
+            ROLLED_BACK=1
+            set +e
+            echo ROLLBACK_START
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              [ -f '$BAK_PRODUCT' ] && cp -p '$BAK_PRODUCT' '$TARGET_PRODUCT'
+              [ -f '$BAK_FUNCTIONS' ] && cp -p '$BAK_FUNCTIONS' '$TARGET_FUNCTIONS'
+              if [ '$PRODUCER_EXISTED' -eq 1 ]; then [ -f '$BAK_PRODUCER' ] && cp -p '$BAK_PRODUCER' '$TARGET_PRODUCER'; else rm -f '$TARGET_PRODUCER'; fi
+              rm -f '$BAK_PRODUCT' '$BAK_FUNCTIONS' '$BAK_PRODUCER'
+              wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            " || true
+            reset_opcache || true
+            echo ROLLED_BACK
+            exit "${code:-1}"
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TARGET_FUNCTIONS' '$BAK_FUNCTIONS'; cp -p '$TARGET_PRODUCT' '$BAK_PRODUCT'"
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET_PRODUCER'"; then
+            PRODUCER_EXISTED=1
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TARGET_PRODUCER' '$BAK_PRODUCER'"
+          fi
+
+          # Deploy dependency files first and functions.php last.
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/product-card-density-final-010162.php "$STAGING_USER@$STAGING_HOST:$TARGET_PRODUCT"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/producer-list-image-square-010242.php "$STAGING_USER@$STAGING_HOST:$TARGET_PRODUCER"
+          sshpass -e scp $SCP elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$TARGET_FUNCTIONS"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$TARGET_FUNCTIONS' >/dev/null
+            \"\$php_bin\" -l '$TARGET_PRODUCT' >/dev/null
+            \"\$php_bin\" -l '$TARGET_PRODUCER' >/dev/null
+            grep -Fq 'producer-list-image-square-010242.php' '$TARGET_FUNCTIONS'
+            grep -Fq 'elmercado-catalog-card-image-010241' '$TARGET_PRODUCT'
+            grep -Fq 'elmercado-producer-list-image-square-010242' '$TARGET_PRODUCER'
+            wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+          reset_opcache
+
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const rect=n=>{const r=n.getBoundingClientRect();return [r.width,r.height,r.x,r.y]};
+
+          async function checkProducts(browser,path,width,dpr){
+            const page=await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
+            await page.setViewport({width,height:1200,deviceScaleFactor:dpr});
+            await page.goto(`${process.env.BASE_URL}${path}?qa242p=${Date.now()}-${width}-${dpr}`,{waitUntil:'networkidle2',timeout:60000});
+            await sleep(700);
+            const rows=await page.evaluate(()=>[...document.querySelectorAll('ul.products > li.product')].slice(0,8).map(li=>{
+              const wrap=li.querySelector('.product-loop-image-wrapper');
+              const img=li.querySelector('img.product-loop-image');
+              if(!wrap||!img)return null;
+              const wr=wrap.getBoundingClientRect(),ir=img.getBoundingClientRect(),s=getComputedStyle(img),ws=getComputedStyle(wrap);
+              const srcset=img.getAttribute('srcset')||img.getAttribute('data-srcset')||'';
+              const widths=srcset.split(',').map(v=>parseInt((v.trim().match(/\s(\d+)w$/)||[])[1]||'0',10)).filter(Boolean);
+              return {title:(li.querySelector('.woocommerce-loop-product__title,h2')?.textContent||'').trim(),wrap:[wr.width,wr.height],img:[ir.width,ir.height],ratio:ws.aspectRatio,fit:s.objectFit,position:s.position,current:img.currentSrc||'',natural:[img.naturalWidth,img.naturalHeight],maxCandidate:widths.length?Math.max(...widths):0,className:img.className,widthAttr:img.getAttribute('width'),heightAttr:img.getAttribute('height')};
+            }).filter(Boolean));
+            console.log('PRODUCT_RESTORED_QA',path,width,dpr,JSON.stringify(rows));
+            if(!rows.length)throw new Error(`No products on ${path}`);
+            for(const row of rows){
+              if(row.wrap[1] <= row.wrap[0]*1.08) throw new Error(`Product media did not return to taller historical layout: ${row.title} ${row.wrap}`);
+              if(!String(row.className).includes('elmercado-catalog-card-image-010241')) throw new Error(`Optimized delivery marker missing: ${row.title}`);
+              if(row.natural[0]>800||row.natural[1]>800) throw new Error(`Oversized selected product image: ${row.title} ${row.natural}`);
+              if(row.maxCandidate>800) throw new Error(`Oversized product srcset: ${row.title} ${row.maxCandidate}`);
+              if(row.position==='absolute') throw new Error(`Square override still active: ${row.title}`);
+            }
+            await page.close();
+          }
+
+          async function checkProducers(browser,width){
+            const page=await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
+            await page.setViewport({width,height:1400,deviceScaleFactor:1});
+            await page.goto(`${process.env.BASE_URL}/productores/?qa242v=${Date.now()}-${width}`,{waitUntil:'networkidle2',timeout:60000});
+            await sleep(700);
+            const rows=await page.evaluate(()=>[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')].map(card=>{
+              const media=card.querySelector('.store-content');
+              const info=card.querySelector('.store-info');
+              const name=(card.querySelector('.store-footer h2')?.textContent||'').trim();
+              const visit=card.querySelector('.wcfmmp-visit-store');
+              if(!media||!info)return null;
+              const mr=media.getBoundingClientRect(),ir=info.getBoundingClientRect(),s=getComputedStyle(info),vr=visit?.getBoundingClientRect();
+              return {name,media:[mr.width,mr.height],info:[ir.width,ir.height],bgSize:s.backgroundSize,bgPos:s.backgroundPosition,bgRepeat:s.backgroundRepeat,bgImage:s.backgroundImage,visit:vr?[vr.width,vr.height]:null};
+            }).filter(Boolean));
+            const stylePresent=!!document.querySelector('#elmercado-producer-list-image-square-010242');
+            console.log('PRODUCER_SQUARE_QA',width,stylePresent,JSON.stringify(rows));
+            if(!stylePresent)throw new Error('Producer square style missing');
+            if(rows.length<3)throw new Error(`Expected active producer cards, found ${rows.length}`);
+            for(const row of rows){
+              if(Math.abs(row.media[0]-row.media[1])>1.5) throw new Error(`Producer media not square: ${row.name} ${row.media}`);
+              if(Math.abs(row.info[0]-row.info[1])>1.5) throw new Error(`Producer background box not square: ${row.name} ${row.info}`);
+              if(row.bgSize!=='contain'||row.bgRepeat!=='no-repeat') throw new Error(`Producer background not contained: ${row.name} ${row.bgSize}/${row.bgRepeat}`);
+              if(!row.bgImage||row.bgImage==='none') throw new Error(`Producer image missing: ${row.name}`);
+              if(!row.visit||row.visit[0]<40||row.visit[1]<40) throw new Error(`Producer visit action missing: ${row.name}`);
+            }
+            await page.close();
+          }
+
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            await checkProducts(browser,'/tienda/',390,1);
+            await checkProducts(browser,'/tienda/',390,2);
+            await checkProducts(browser,'/tienda/',1440,1);
+            await checkProducts(browser,'/tienda/hidalgo-de-la-jara/',390,1);
+            await checkProducers(browser,390);
+            await checkProducers(browser,1440);
+            await browser.close();
+            console.log('PRODUCTION_PRODUCT_RESTORE_PRODUCER_SQUARE_010242_QA_OK');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BAK_PRODUCT' '$BAK_FUNCTIONS' '$BAK_PRODUCER'"
+          trap - ERR
+          echo PRODUCTION_PRODUCT_RESTORE_PRODUCER_SQUARE_010242_OK
