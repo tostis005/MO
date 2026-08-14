@@ -3,7 +3,8 @@
  * Densidad final de tarjetas de producto 0.10.162.
  *
  * Oculta las reseñas en los listados, compacta el cuerpo de las tarjetas y
- * normaliza la imagen de catálogo a un lienzo cuadrado sin descargar el original.
+ * mantiene la entrega de imágenes de catálogo acotada sin alterar el encuadre
+ * visual histórico de las fichas de producto.
  *
  * @package ElMercadoDeOrigen
  */
@@ -13,8 +14,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /*
- * Derivados específicos para tarjetas. Se conservan sin recorte para que una
- * foto vertical u horizontal se vea completa dentro del cuadrado visual.
+ * Derivados específicos para tarjetas. Se conservan sin recorte para limitar
+ * el peso descargado aunque el original tenga varios megapíxeles.
  */
 add_action(
 	'after_setup_theme',
@@ -26,8 +27,8 @@ add_action(
 );
 
 /**
- * Devuelve un derivado acotado. Si por cualquier motivo el tamaño específico
- * no existe todavía, cae al thumbnail de WooCommerce antes que al original.
+ * Devuelve un derivado acotado. Si el tamaño específico no existe todavía,
+ * cae al thumbnail de WooCommerce antes que al original.
  *
  * @return array<int,mixed>|false
  */
@@ -46,10 +47,10 @@ function elmercado_catalog_card_source_010241( int $attachment_id, string $size,
 }
 
 /*
- * Woostify escribe explícitamente `woocommerce_thumbnail` en su loop y no usa
- * el filtro estándar de WooCommerce para elegir el tamaño. Detectamos las dos
- * clases de imagen del loop (principal y hover) y sustituimos sus atributos por
- * derivados acotados cuyo srcset nunca contiene el original.
+ * Woostify escribe explícitamente `woocommerce_thumbnail` en su loop. Detectamos
+ * sus imágenes principal/hover y sustituimos sólo los recursos descargados por
+ * derivados acotados. La geometría y el object-fit quedan de nuevo en manos de
+ * las reglas históricas de las tarjetas para conservar el aspecto anterior.
  *
  * @param array<string,mixed> $attr       Atributos de imagen.
  * @param WP_Post             $attachment Adjunto.
@@ -82,7 +83,9 @@ add_filter(
 		}
 
 		if ( is_array( $base ) && ! empty( $base[0] ) ) {
-			$attr['src'] = esc_url( (string) $base[0] );
+			$attr['src']    = esc_url( (string) $base[0] );
+			$attr['width']  = (string) max( 1, (int) $base[1] );
+			$attr['height'] = (string) max( 1, (int) $base[2] );
 		}
 
 		if ( $sources ) {
@@ -93,9 +96,6 @@ add_filter(
 			unset( $attr['srcset'], $attr['sizes'] );
 		}
 
-		/* Reserva el cuadrado antes de cargar la fotografía y evita saltos. */
-		$attr['width']    = '480';
-		$attr['height']   = '480';
 		$attr['decoding'] = 'async';
 		$attr['class']    = trim( $class . ' elmercado-catalog-card-image-010241' );
 
@@ -169,67 +169,6 @@ add_action(
 				body.elmercado-child-theme ul.products li.product .button {
 					margin-top: 0.5rem !important;
 				}
-			}
-		</style>
-		<?php
-	},
-	PHP_INT_MAX
-);
-
-/*
- * Esta regla se imprime en footer para quedar físicamente después de las capas
- * históricas 3:4/4:5 del tema. El lienzo visual es cuadrado; la fotografía se
- * contiene entera dentro de él, sin recortes ni deformaciones.
- */
-add_action(
-	'wp_footer',
-	static function (): void {
-		if ( is_admin() ) {
-			return;
-		}
-		?>
-		<style id="elmercado-product-card-square-final-010241">
-			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper,
-			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper {
-				position:relative !important;
-				box-sizing:border-box !important;
-				width:100% !important;
-				height:auto !important;
-				aspect-ratio:1 / 1 !important;
-				overflow:hidden !important;
-			}
-
-			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper > a,
-			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper .woocommerce-LoopProduct-link,
-			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper > a {
-				display:block !important;
-				position:static !important;
-				width:100% !important;
-				height:100% !important;
-			}
-
-			html body.elmercado-child-theme ul.products li.product .product-loop-image-wrapper img,
-			html body.elmercado-child-theme ul.products li.product img.product-loop-image,
-			html body.elmercado-child-theme ul.products li.product img.product-loop-hover-image,
-			html body.elmercado-child-theme ul.products li.product .woocommerce-loop-product__link img,
-			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product .product-loop-image-wrapper img,
-			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product img.product-loop-image,
-			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products li.product img.product-loop-hover-image {
-				display:block !important;
-				position:absolute !important;
-				inset:0 !important;
-				box-sizing:border-box !important;
-				width:100% !important;
-				height:100% !important;
-				max-width:100% !important;
-				max-height:100% !important;
-				aspect-ratio:auto !important;
-				margin:0 !important;
-				padding:0 !important;
-				border:0 !important;
-				object-fit:contain !important;
-				object-position:center center !important;
-				transform:none !important;
 			}
 		</style>
 		<?php
