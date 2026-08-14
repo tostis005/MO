@@ -54,20 +54,17 @@ jobs:
           echo '=== SITE ==='
           "${WP[@]}" option get siteurl
 
-          echo '=== TOLECARNES USER CANDIDATES ==='
-          "${WP[@]}" db query "SELECT ID,user_login,user_nicename,display_name FROM ${prefix}users WHERE LOWER(user_login) LIKE '%tole%' OR LOWER(user_nicename) LIKE '%tole%' OR LOWER(display_name) LIKE '%tole%' ORDER BY ID;"
+          echo '=== TOLECARNES USER ==='
+          "${WP[@]}" db query "SELECT ID,user_login,user_nicename,display_name FROM ${prefix}users WHERE ID=4507;"
 
-          ids=$("${WP[@]}" db query "SELECT ID FROM ${prefix}users WHERE LOWER(user_login) LIKE '%tole%' OR LOWER(user_nicename) LIKE '%tole%' OR LOWER(display_name) LIKE '%tole%' ORDER BY ID;" --skip-column-names)
-          for vendor_id in $ids; do
-            echo "=== VENDOR $vendor_id SHIPPING USERMETA ==="
-            "${WP[@]}" db query "SELECT meta_key, LEFT(meta_value,2000) AS meta_value FROM ${prefix}usermeta WHERE user_id=${vendor_id} AND (LOWER(meta_key) LIKE '%shipping%' OR LOWER(meta_key) LIKE '%wcfm%') ORDER BY meta_key;" || true
+          echo '=== VENDOR 4507 SHIPPING USERMETA ==='
+          "${WP[@]}" db query "SELECT meta_key, LEFT(meta_value,2000) AS meta_value FROM ${prefix}usermeta WHERE user_id=4507 AND (LOWER(meta_key) LIKE '%shipping%' OR LOWER(meta_key) LIKE '%wcfm%') ORDER BY meta_key;" || true
 
-            echo "=== VENDOR $vendor_id WCFM ZONE METHODS ==="
-            "${WP[@]}" db query "SELECT instance_id,zone_id,vendor_id,method_id,is_enabled,settings FROM ${prefix}wcfm_marketplace_shipping_zone_methods WHERE vendor_id=${vendor_id} ORDER BY zone_id,instance_id;" || true
+          echo '=== VENDOR 4507 WCFM ZONE METHODS ==='
+          "${WP[@]}" db query "SELECT instance_id,zone_id,vendor_id,method_id,is_enabled,settings FROM ${prefix}wcfm_marketplace_shipping_zone_methods WHERE vendor_id=4507 ORDER BY zone_id,instance_id;" || true
 
-            echo "=== VENDOR $vendor_id WCFM ZONE LOCATIONS ==="
-            "${WP[@]}" db query "SELECT id,vendor_id,zone_id,location_code,location_type FROM ${prefix}wcfm_marketplace_shipping_zone_locations WHERE vendor_id=${vendor_id} ORDER BY zone_id,id;" || true
-          done
+          echo '=== VENDOR 4507 WCFM ZONE LOCATIONS ==='
+          "${WP[@]}" db query "SELECT id,vendor_id,zone_id,location_code,location_type FROM ${prefix}wcfm_marketplace_shipping_zone_locations WHERE vendor_id=4507 ORDER BY zone_id,id;" || true
 
           echo '=== WOO SHIPPING ZONES ==='
           "${WP[@]}" db query "SELECT zone_id,zone_name,zone_order FROM ${prefix}woocommerce_shipping_zones ORDER BY zone_order,zone_id;" || true
@@ -77,4 +74,41 @@ jobs:
 
           echo '=== WOO WCFM SHIPPING METHODS BY ZONE ==='
           "${WP[@]}" db query "SELECT zone_id,method_id,instance_id,is_enabled,method_order FROM ${prefix}woocommerce_shipping_zone_methods WHERE method_id='wcfmmp_product_shipping_by_zone' ORDER BY zone_id,method_order,instance_id;" || true
+
+          product_id=$("${WP[@]}" db query "SELECT ID FROM ${prefix}posts WHERE post_type='product' AND post_status='publish' AND post_author=4507 ORDER BY ID DESC LIMIT 1;" --skip-column-names)
+          echo "=== SAMPLE TOLECARNES PRODUCT: ${product_id:-NONE} ==="
+
+          if [ -n "${product_id:-}" ]; then
+            echo '=== LIVE SHIPPING CALCULATION ==='
+            EMO_PRODUCT_ID="$product_id" "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+              $pid = (int) getenv("EMO_PRODUCT_ID");
+              $product = wc_get_product($pid);
+              if (!$product) { echo "NO_PRODUCT\n"; return; }
+              $tests = [
+                "Madrid" => ["state"=>"M", "postcode"=>"28001", "city"=>"Madrid"],
+                "Toledo" => ["state"=>"TO", "postcode"=>"45001", "city"=>"Toledo"],
+                "Baleares" => ["state"=>"PM", "postcode"=>"07001", "city"=>"Palma"],
+                "Barcelona" => ["state"=>"B", "postcode"=>"08001", "city"=>"Barcelona"],
+              ];
+              foreach ($tests as $name => $dest) {
+                $package = [
+                  "contents" => ["emo" => ["data"=>$product, "product_id"=>$pid, "variation_id"=>0, "quantity"=>1, "line_total"=>100, "line_tax"=>0, "line_subtotal"=>100, "line_subtotal_tax"=>0]],
+                  "contents_cost" => 100,
+                  "applied_coupons" => [],
+                  "user" => ["ID"=>0],
+                  "destination" => ["country"=>"ES", "state"=>$dest["state"], "postcode"=>$dest["postcode"], "city"=>$dest["city"], "address"=>"Calle prueba 1", "address_2"=>""],
+                ];
+                $zone = WC_Shipping_Zones::get_zone_matching_package($package);
+                echo "DEST=$name STATE={$dest["state"]} ZONE=".$zone->get_id()." NAME=".$zone->get_zone_name()."\n";
+                $result = WC()->shipping()->calculate_shipping_for_package($package);
+                if (empty($result["rates"])) { echo "RATES=NONE\n"; continue; }
+                foreach ($result["rates"] as $rate_id => $rate) {
+                  echo "RATE=$rate_id LABEL=".$rate->get_label()." COST=".$rate->get_cost()." METHOD=".$rate->get_method_id()."\n";
+                }
+              }
+            ' --path="$PROD_PATH" --allow-root
+          fi
+
+          echo '=== SHIPPING PLUGIN MATCHING REFERENCES ==='
+          grep -R -n -E 'get_zone_matching_package|wcfm_marketplace_shipping_zone_methods|calculate_shipping' "$PROD_PATH/wp-content/plugins/wc-multivendor-marketplace" 2>/dev/null | head -n 80 || true
           REMOTE
