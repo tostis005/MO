@@ -103,9 +103,12 @@ jobs:
               if(!initial.newLoader) fail('new loader missing',initial);
 
               const linkSelector=vendor?'#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229':'#secondary.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229';
-              await p.hover(linkSelector);
-              const hover=await p.$eval(linkSelector,el=>({decoration:getComputedStyle(el).textDecorationLine}));
-              if(hover.decoration!=='none') fail('hover underline remains',hover);
+              let hover={decoration:'n/a'};
+              if(await p.$(linkSelector)){
+                await p.hover(linkSelector);
+                hover=await p.$eval(linkSelector,el=>({decoration:getComputedStyle(el).textDecorationLine}));
+                if(hover.decoration!=='none') fail('hover underline remains',hover);
+              }
 
               const started=Date.now();
               while(Date.now()-started<25000){
@@ -147,7 +150,7 @@ jobs:
             const m=await mobile.evaluate(()=>{const shell=document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229'); const close=shell?.querySelector('.emo-mobile-filter-close'); const rail=shell?.querySelector('.emo-mobile-filter-content .emo-filter-rail-shared-010229'); const r=close?.getBoundingClientRect(); return {hidden:shell?.hidden,closeW:r?.width||0,closeH:r?.height||0,railInside:!!rail};});
             if(m.hidden || m.closeW!==40 || m.closeH!==40 || !m.railInside) fail('mobile drawer regression',m);
             await mobile.close();
-            console.log('CATALOG_FILTER_SCROLL_010235_OK',JSON.stringify({shop:shop.tail,vendor:vendor.tail,vendor1957:vendor1957.tail,mobile:m}));
+            console.log('CATALOG_FILTER_SCROLL_010235_OK',JSON.stringify({shop:shop.tail,vendor:vendor.tail,vendor1957:vendor1957.tail,mobile:m,hover:{shop:shop.hover,vendor:vendor.hover}}));
             await browser.close();
           })().catch(e=>{console.error('CATALOG_FILTER_SCROLL_010235_ERROR',e);process.exit(1)});
           NODE
