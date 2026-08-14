@@ -1,0 +1,65 @@
+name: Diagnose card and hero density 0.10.246
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-card-hero-density-010246.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Inspect production layout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/emo-layout && cd /tmp/emo-layout
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium --with-deps >/dev/null 2>&1
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          (async()=>{
+            const browser = await chromium.launch({headless:true});
+            for (const width of [1440,390]) {
+              const page = await browser.newPage({viewport:{width,height:1400}});
+              await page.goto('https://www.elmercadodeorigen.com/tienda/?emoqa=010246-'+Date.now(), {waitUntil:'networkidle', timeout:120000});
+              const card = await page.locator('ul.products li.product').first().evaluate(el => {
+                const pick = sel => el.querySelector(sel);
+                const style = node => {
+                  if(!node) return null;
+                  const s=getComputedStyle(node), r=node.getBoundingClientRect();
+                  return {tag:node.tagName,cls:node.className,top:r.top,bottom:r.bottom,height:r.height,display:s.display,position:s.position,marginTop:s.marginTop,marginBottom:s.marginBottom,paddingTop:s.paddingTop,paddingBottom:s.paddingBottom,minHeight:s.minHeight,maxHeight:s.maxHeight,lineHeight:s.lineHeight,flex:s.flex,justify:s.justifyContent,gap:s.gap};
+                };
+                const title=pick('.woocommerce-loop-product__title, .product-title, h2, h3');
+                const price=pick('.price');
+                const sold=pick('.wcfmmp_sold_by_container, [class*="sold_by"]');
+                const chain=[]; let n=title;
+                for(let i=0;n&&n!==el&&i<5;i++,n=n.parentElement) chain.push(style(n));
+                const tr=title?.getBoundingClientRect(), pr=price?.getBoundingClientRect(), sr=sold?.getBoundingClientRect();
+                return {
+                  html: el.outerHTML.slice(0,5000), title:style(title), price:style(price), sold:style(sold), chain,
+                  titlePriceGap: tr&&pr ? +(pr.top-tr.bottom).toFixed(2):null,
+                  titleSoldGap: tr&&sr ? +(sr.top-tr.bottom).toFixed(2):null
+                };
+              });
+              console.log('CARD_'+width+'='+JSON.stringify(card));
+              await page.close();
+            }
+            for (const width of [1440,390]) {
+              const page = await browser.newPage({viewport:{width,height:1400}});
+              await page.goto('https://www.elmercadodeorigen.com/?emoqa=010246-'+Date.now(), {waitUntil:'networkidle', timeout:120000});
+              const hero = await page.evaluate(()=>{
+                const q=s=>document.querySelector(s);
+                const info=n=>{if(!n)return null;const s=getComputedStyle(n),r=n.getBoundingClientRect();return {tag:n.tagName,cls:n.className,text:(n.textContent||'').trim().slice(0,120),top:r.top,bottom:r.bottom,height:r.height,fontSize:s.fontSize,lineHeight:s.lineHeight,marginTop:s.marginTop,marginBottom:s.marginBottom,paddingTop:s.paddingTop,paddingBottom:s.paddingBottom,gap:s.gap};};
+                return {hero:info(q('.emo-hero')),grid:info(q('.emo-hero__grid')),eyebrow:info(q('.emo-hero__eyebrow, .emo-eyebrow')),h1:info(q('.emo-hero h1')),paragraph:info(q('.emo-hero__copy > p')),proof:info(q('.emo-hero__proof')),visual:info(q('.emo-hero__visual')),vendorCount:q('.emo-hero__visual')?.getAttribute('data-emo-vendor-count')||null};
+              });
+              console.log('HERO_'+width+'='+JSON.stringify(hero));
+              await page.close();
+            }
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
