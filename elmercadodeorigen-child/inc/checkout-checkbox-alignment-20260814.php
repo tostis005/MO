@@ -59,6 +59,17 @@ add_action(
                 line-height: 1.3 !important;
             }
 
+            /*
+             * WooCommerce imprime <br> dentro de las etiquetas de "Crear cuenta"
+             * y "Enviar a otra dirección". Al convertir la etiqueta en flex, esos
+             * saltos se convierten en un elemento previo y desplazan el check 7-8px.
+             * El campo de factura no los lleva. Ocultarlos iguala la posición real
+             * de los tres inputs, no solo la de sus contenedores.
+             */
+            body.woocommerce-checkout #customer_details label:has(> input[type="checkbox"]) > br {
+                display: none !important;
+            }
+
             body.woocommerce-checkout #customer_details input[type="checkbox"] {
                 position: static !important;
                 flex: 0 0 auto !important;
@@ -68,7 +79,6 @@ add_action(
                 vertical-align: middle !important;
             }
 
-            /* Neutraliza sangrías del contenedor inmediato de cada check. */
             body.woocommerce-checkout #customer_details p.form-row:has(> label > input[type="checkbox"]),
             body.woocommerce-checkout #customer_details p.create-account:has(> label > input[type="checkbox"]),
             body.woocommerce-checkout #customer_details h3#ship-to-different-address:has(> label > input[type="checkbox"]) {
