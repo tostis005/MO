@@ -1,6 +1,6 @@
 <?php
 /**
- * Alinea horizontalmente los checks visibles del bloque de datos del checkout.
+ * Alinea los checks del bloque de datos del checkout sin desplazamientos visuales.
  *
  * @package ElMercadoDeOrigen
  */
@@ -16,62 +16,79 @@ add_action(
             return;
         }
         ?>
+        <style id="elmercado-checkout-checkbox-alignment-style">
+            body.woocommerce-checkout #customer_details p.form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details .form-row:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details p.create-account,
+            body.woocommerce-checkout #customer_details #ship-to-different-address,
+            body.woocommerce-checkout #customer_details .woocommerce-account-fields,
+            body.woocommerce-checkout #customer_details .woocommerce-shipping-fields {
+                margin-left: 0 !important;
+                padding-left: 0 !important;
+                text-indent: 0 !important;
+            }
+
+            body.woocommerce-checkout #customer_details label:has(input[type="checkbox"]),
+            body.woocommerce-checkout #customer_details .emo-compact-check-label {
+                margin-left: 0 !important;
+                transform: none !important;
+            }
+
+            body.woocommerce-checkout #customer_details input[type="checkbox"] {
+                margin-left: 0 !important;
+                transform: none !important;
+            }
+        </style>
         <script id="elmercado-checkout-checkbox-alignment">
             (function () {
                 'use strict';
 
-                var rafId = 0;
-
-                function alignCheckoutCheckboxes() {
-                    window.cancelAnimationFrame(rafId);
-
-                    var items = Array.prototype.slice.call(
-                        document.querySelectorAll('#customer_details input[type="checkbox"]')
-                    ).map(function (checkbox) {
-                        return {
-                            checkbox: checkbox,
-                            label: checkbox.closest('label')
-                        };
-                    }).filter(function (item) {
-                        return item.label && item.checkbox.getClientRects().length && item.label.getClientRects().length;
-                    });
-
-                    if (items.length < 2) {
-                        return;
+                function setImportant(el, property, value) {
+                    if (el) {
+                        el.style.setProperty(property, value, 'important');
                     }
+                }
 
-                    items.forEach(function (item) {
-                        item.label.style.setProperty('transform', 'none', 'important');
-                    });
+                function normalizeCheckoutCheckboxes() {
+                    document.querySelectorAll('#customer_details input[type="checkbox"]').forEach(function (checkbox) {
+                        var label = checkbox.closest('label');
+                        var row = checkbox.closest('p.form-row, p.create-account, h3#ship-to-different-address, p, h3, .form-row, .woocommerce-form-row, .form-group, li');
+                        var section = checkbox.closest('.woocommerce-account-fields, .woocommerce-shipping-fields');
 
-                    rafId = window.requestAnimationFrame(function () {
-                        var targetLeft = Math.max.apply(null, items.map(function (item) {
-                            return item.checkbox.getBoundingClientRect().left;
-                        }));
+                        setImportant(checkbox, 'margin-left', '0');
+                        setImportant(checkbox, 'transform', 'none');
 
-                        items.forEach(function (item) {
-                            var currentLeft = item.checkbox.getBoundingClientRect().left;
-                            var delta = Math.max(0, Math.round((targetLeft - currentLeft) * 10) / 10);
-                            item.label.style.setProperty(
-                                'transform',
-                                delta > 0.5 ? 'translateX(' + delta + 'px)' : 'none',
-                                'important'
-                            );
-                        });
+                        if (label) {
+                            setImportant(label, 'margin-left', '0');
+                            setImportant(label, 'transform', 'none');
+                        }
+
+                        if (row) {
+                            setImportant(row, 'margin-left', '0');
+                            setImportant(row, 'padding-left', '0');
+                            setImportant(row, 'text-indent', '0');
+                            setImportant(row, 'transform', 'none');
+                        }
+
+                        if (section) {
+                            setImportant(section, 'margin-left', '0');
+                            setImportant(section, 'padding-left', '0');
+                            setImportant(section, 'text-indent', '0');
+                            setImportant(section, 'transform', 'none');
+                        }
                     });
                 }
 
-                document.addEventListener('DOMContentLoaded', alignCheckoutCheckboxes);
-                window.addEventListener('resize', alignCheckoutCheckboxes);
+                document.addEventListener('DOMContentLoaded', normalizeCheckoutCheckboxes);
 
                 if (window.jQuery) {
                     window.jQuery(document.body).on(
                         'updated_checkout updated_shipping_method',
-                        alignCheckoutCheckboxes
+                        normalizeCheckoutCheckboxes
                     );
                 }
 
-                new MutationObserver(alignCheckoutCheckboxes).observe(document.body, {
+                new MutationObserver(normalizeCheckoutCheckboxes).observe(document.body, {
                     childList: true,
                     subtree: true
                 });
