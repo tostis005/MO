@@ -17,7 +17,7 @@ jobs:
           npx playwright install --with-deps chromium >/dev/null
       - name: Inspect checkout checkbox layout
         run: |
-          cat > /tmp/inspect-checkout.js <<'JS'
+          cat > inspect-checkout.js <<'JS'
           const { chromium } = require('playwright');
           (async () => {
             const browser = await chromium.launch({headless:true});
@@ -70,7 +70,7 @@ jobs:
             await browser.close();
           })().catch(err => { console.error(err); process.exit(1); });
           JS
-          node /tmp/inspect-checkout.js
+          node inspect-checkout.js
       - uses: actions/upload-artifact@v4
         with:
           name: checkout-checkboxes-before
