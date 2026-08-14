@@ -123,10 +123,14 @@ final class MDO_Scheduler {
 				? MDO_Connector_Tolecarnes::scrape_product( $url )
 				: MDO_Connector_Iberico_Family::scrape_product( $url, $supplier );
 			$product = MDO_Text::normalize_product( $product );
-			$result  = $connector::upsert_product( $supplier_id, $product );
+			$result   = $connector::upsert_product( $supplier_id, $product );
+			$restored = MDO_Woo_Importer::restore_if_unavailable( $supplier_id, (string) $product['source_url'] );
+			if ( $restored && 'unchanged' === $result ) {
+				$result = 'updated';
+			}
 			self::increment_run( $run_id, $result );
 
-			if ( 'updated' === $result ) {
+			if ( 'updated' === $result && ! $restored ) {
 				try {
 					MDO_Woo_Importer::sync_if_active( $supplier_id, (string) $product['source_url'] );
 				} catch ( Throwable $sync_error ) {
@@ -151,9 +155,70 @@ final class MDO_Scheduler {
 			);
 		} catch ( Throwable $error ) {
 			self::increment_run( $run_id, 'error' );
+			if ( preg_match( '/\bHTTP\s+(404|410)\b/i', $error->getMessage() ) && MDO_Woo_Importer::mark_source_url_unavailable( $supplier_id, $url ) ) {
+				self::log_event( $run_id, $supplier_id, 'product_unavailable', 'warning', 'Retirado de la venta: la ficha de origen devuelve ' . $error->getMessage(), array( 'url' => $url ) );
+			}
 			self::log_event( $run_id, $supplier_id, 'product_error', 'error', $error->getMessage(), array( 'url' => $url ) );
 		}
 		self::finish_if_complete( $run_id, $supplier, $trigger_type );
+	}
+
+	/**
+	 * Al cerrar una sincronización completa, cualquier producto activo que no
+	 * haya generado un evento de descubrimiento en este run ya no forma parte
+	 * del catálogo de origen. Se retira de la venta, pero se conserva para poder
+	 * restaurarlo automáticamente si reaparece.
+	 */
+	private static function reconcile_missing_products( int $run_id, array $supplier, array $run ): int {
+		if ( (int) ( $run['products_found'] ?? 0 ) <= 0 ) {
+			self::log_event( $run_id, (int) $supplier['id'], 'catalog_empty_guard', 'warning', 'El catálogo devolvió 0 productos; se omite la retirada automática por seguridad.' );
+			return 0;
+		}
+
+		global $wpdb;
+		$events_table   = MDO_Database::table( 'sync_events' );
+		$products_table = MDO_Database::table( 'source_products' );
+		$payloads       = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT payload FROM {$events_table} WHERE run_id = %d AND event_type IN ('product_new','product_updated','product_unchanged','product_excluded','product_error')",
+				$run_id
+			)
+		) ?: array();
+		$seen = array();
+		foreach ( $payloads as $payload_json ) {
+			$payload = json_decode( (string) $payload_json, true );
+			$url     = is_array( $payload ) ? esc_url_raw( (string) ( $payload['url'] ?? '' ) ) : '';
+			if ( $url ) {
+				$seen[ rtrim( $url, '/' ) ] = true;
+			}
+		}
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id,title,source_url,wc_product_id FROM {$products_table} WHERE supplier_id = %d AND status = 'active'",
+				(int) $supplier['id']
+			),
+			ARRAY_A
+		) ?: array();
+		$count = 0;
+		foreach ( $rows as $row ) {
+			$url = rtrim( esc_url_raw( (string) $row['source_url'] ), '/' );
+			if ( '' !== $url && isset( $seen[ $url ] ) ) {
+				continue;
+			}
+			if ( MDO_Woo_Importer::mark_source_unavailable( (int) $row['id'] ) ) {
+				$count++;
+				self::log_event(
+					$run_id,
+					(int) $supplier['id'],
+					'product_unavailable',
+					'warning',
+					'Retirado de la venta porque ya no aparece en el catálogo de origen: ' . (string) $row['title'],
+					array( 'url' => (string) $row['source_url'], 'source_product_id' => (int) $row['id'], 'wc_product_id' => (int) $row['wc_product_id'] )
+				);
+			}
+		}
+		return $count;
 	}
 
 	private static function connector_class( array $supplier ): ?string {
@@ -212,13 +277,15 @@ final class MDO_Scheduler {
 			return;
 		}
 
-		$status  = (int) $run['errors_count'] > 0 ? 'warning' : 'success';
-		$message = sprintf(
-			'Análisis completado: %d encontrados, %d nuevos, %d modificados, %d excluidos y %d errores.',
+		$unavailable = self::reconcile_missing_products( $run_id, $supplier, $run );
+		$status      = (int) $run['errors_count'] > 0 ? 'warning' : 'success';
+		$message     = sprintf(
+			'Análisis completado: %d encontrados, %d nuevos, %d modificados, %d excluidos, %d retirados del origen y %d errores.',
 			(int) $run['products_found'],
 			(int) $run['products_new'],
 			(int) $run['products_updated'],
 			(int) $run['products_excluded'],
+			$unavailable,
 			(int) $run['errors_count']
 		);
 		self::finish_run( $run_id, $status, $message );

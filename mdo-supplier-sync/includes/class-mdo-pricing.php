@@ -62,14 +62,15 @@ final class MDO_Pricing {
 				}
 
 				if (
-					null === $regular
-					&& null !== $current
+					null !== $current
 					&& null !== $detected_current
 					&& null !== $detected_regular
 					&& abs( $current - $detected_current ) < 0.005
 					&& $detected_regular > $current
+					&& ( null === $regular || $regular <= $current + 0.005 )
 				) {
 					$regular = $detected_regular;
+					$sale    = $current;
 				}
 			} catch ( Throwable $error ) {
 				// La detección complementaria nunca debe romper el scraping principal.
@@ -276,20 +277,26 @@ final class MDO_Pricing {
 		$xpath = new DOMXPath( $dom );
 
 		/*
-		 * Tolecarnes incluye tarjetas de productos relacionados con sus propios
-		 * <del>/<ins>. Nunca deben usarse para decidir si el producto principal
-		 * está rebajado. Para este proveedor sólo aceptamos una oferta cuando
-		 * aparece dentro del bloque de precio del summary del producto actual.
-		 * Si no existe evidencia localizada, el precio del conector queda como
-		 * precio normal: es preferible omitir una rebaja a inventar una ajena.
+		 * Tolecarnes incluye precios de productos relacionados en la misma ficha.
+		 * Por eso no recorremos <del>/<ins> globales: sólo miramos el precio del
+		 * summary o, si el tema no usa esa clase, el primer bloque de precio
+		 * posterior al H1 que no pertenezca a relacionados/upsells/cross-sells.
+		 * Así conservamos ofertas reales (precio original + actual) sin volver a
+		 * atribuir al producto principal descuentos de otras tarjetas.
 		 */
 		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
 		if ( 'tolecarnes.com' === $host || str_ends_with( $host, '.tolecarnes.com' ) ) {
-			$price_nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//p[contains(concat(' ', normalize-space(@class), ' '), ' price ')]" );
-			if ( ! $price_nodes || ! $price_nodes->length ) {
-				$price_nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//*[contains(concat(' ', normalize-space(@class), ' '), ' price ')]" );
-			}
-			if ( $price_nodes && $price_nodes->length ) {
+			$queries = array(
+				"//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//p[contains(concat(' ', normalize-space(@class), ' '), ' price ')]",
+				"//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//*[contains(concat(' ', normalize-space(@class), ' '), ' price ')]",
+				"(//h1[1]/following::*[contains(concat(' ', normalize-space(@class), ' '), ' price ') and not(ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' related ') or contains(concat(' ', normalize-space(@class), ' '), ' upsells ') or contains(concat(' ', normalize-space(@class), ' '), ' up-sells ') or contains(concat(' ', normalize-space(@class), ' '), ' cross-sells ')])])[1]",
+			);
+			$fallback_current = null;
+			foreach ( $queries as $query ) {
+				$price_nodes = $xpath->query( $query );
+				if ( ! $price_nodes || ! $price_nodes->length ) {
+					continue;
+				}
 				$node = $price_nodes->item( 0 );
 				$del  = $xpath->query( './/del', $node );
 				$ins  = $xpath->query( './/ins', $node );
@@ -300,10 +307,22 @@ final class MDO_Pricing {
 						return array( 'current' => $current, 'regular' => $regular );
 					}
 				}
-				$current = self::first_price_in_text( (string) $node->textContent );
-				return array( 'current' => $current, 'regular' => $current );
+
+				$node_text = trim( preg_replace( '/\s+/u', ' ', (string) $node->textContent ) );
+				if ( preg_match( '/precio original era:\s*([0-9.,]+)\s*€.*?([0-9.,]+)\s*€\s*el precio actual es/iu', $node_text, $match ) ) {
+					$regular = self::parse_price( $match[1] );
+					$current = self::parse_price( $match[2] );
+					if ( null !== $regular && null !== $current && $current < $regular ) {
+						return array( 'current' => $current, 'regular' => $regular );
+					}
+				}
+
+				$current = self::first_price_in_text( $node_text );
+				if ( null !== $current && null === $fallback_current ) {
+					$fallback_current = $current;
+				}
 			}
-			return array( 'current' => null, 'regular' => null );
+			return array( 'current' => $fallback_current, 'regular' => $fallback_current );
 		}
 
 		// WooCommerce: <del>precio original</del> <ins>precio actual</ins>.

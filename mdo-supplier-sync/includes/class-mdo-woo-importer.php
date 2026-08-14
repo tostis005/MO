@@ -119,6 +119,85 @@ final class MDO_Woo_Importer {
 		self::import_source_product( (int) $row['id'] );
 	}
 
+	/**
+	 * Retira de la venta un producto que ya no aparece en el catálogo de origen.
+	 * Conservamos la relación EMDO para poder restaurarlo automáticamente si
+	 * vuelve a aparecer en una sincronización posterior.
+	 */
+	public static function mark_source_unavailable( int $source_product_id ): bool {
+		global $wpdb;
+		$table = MDO_Database::table( 'source_products' );
+		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT id,status,wc_product_id,title FROM {$table} WHERE id = %d", $source_product_id ), ARRAY_A );
+		if ( ! $row || in_array( (string) $row['status'], array( 'excluded', 'unavailable' ), true ) ) {
+			return false;
+		}
+
+		$wpdb->update(
+			$table,
+			array(
+				'status'              => 'unavailable',
+				'source_stock_status' => 'outofstock',
+				'last_error'          => 'No encontrado en el catálogo de origen durante la última sincronización completa.',
+			),
+			array( 'id' => $source_product_id )
+		);
+
+		$product_id = ! empty( $row['wc_product_id'] ) ? (int) $row['wc_product_id'] : 0;
+		if ( $product_id ) {
+			$product = wc_get_product( $product_id );
+			if ( $product ) {
+				$product->set_stock_status( 'outofstock' );
+				$product->set_catalog_visibility( 'hidden' );
+				$product->set_status( 'draft' );
+				$product->save();
+				update_post_meta( $product_id, '_emdo_source_unavailable', '1' );
+			}
+		}
+		return true;
+	}
+
+	public static function mark_source_url_unavailable( int $supplier_id, string $source_url ): bool {
+		global $wpdb;
+		$table = MDO_Database::table( 'source_products' );
+		$id    = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT id FROM {$table} WHERE supplier_id = %d AND source_url = %s ORDER BY id DESC LIMIT 1",
+				$supplier_id,
+				$source_url
+			)
+		);
+		return $id > 0 ? self::mark_source_unavailable( $id ) : false;
+	}
+
+	/**
+	 * Si un producto marcado como no disponible reaparece, el payload ya ha sido
+	 * actualizado por el conector. Lo reimportamos para recuperar publicación,
+	 * visibilidad, precio y stock exactamente desde la fuente.
+	 */
+	public static function restore_if_unavailable( int $supplier_id, string $source_url ): bool {
+		global $wpdb;
+		$table = MDO_Database::table( 'source_products' );
+		$row   = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT id,status,wc_product_id FROM {$table} WHERE supplier_id = %d AND source_url = %s ORDER BY id DESC LIMIT 1",
+				$supplier_id,
+				$source_url
+			),
+			ARRAY_A
+		);
+		if ( ! $row || 'unavailable' !== (string) $row['status'] ) {
+			return false;
+		}
+
+		if ( ! empty( $row['wc_product_id'] ) ) {
+			self::import_source_product( (int) $row['id'] );
+			delete_post_meta( (int) $row['wc_product_id'], '_emdo_source_unavailable' );
+		} else {
+			$wpdb->update( $table, array( 'status' => 'pending', 'last_error' => null ), array( 'id' => (int) $row['id'] ) );
+		}
+		return true;
+	}
+
 	public static function exclude_source_product( int $source_product_id ): void {
 		global $wpdb;
 		$table = MDO_Database::table( 'source_products' );
