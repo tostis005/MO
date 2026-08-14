@@ -52,3 +52,13 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/*
+ * El pulido 0.10.237 forma parte del contrato móvil del catálogo. Se carga
+ * desde un módulo histórico ya incluido por functions.php para mantener la
+ * misma fuente de verdad en desarrollo y producción.
+ */
+$elmercado_mobile_polish_010237 = ELMERCADO_THEME_PATH . '/inc/catalog-mobile-controls-polish-010237.php';
+if ( is_readable( $elmercado_mobile_polish_010237 ) ) {
+	require_once $elmercado_mobile_polish_010237;
+}
