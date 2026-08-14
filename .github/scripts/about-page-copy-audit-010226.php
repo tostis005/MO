@@ -1,31 +1,34 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 function cmd($c){$o=shell_exec($c.' 2>&1');return is_string($o)?trim($o):'';}
-function inc(&$a,$k,$n=1){$a[$k]=($a[$k]??0)+$n;}
-function topn($a,$n=20){arsort($a);return array_slice($a,0,$n,true);}
-function ua_group($ua){$u=strtolower($ua);if(str_contains($u,'monitoring360'))return'360 Monitoring';if(str_contains($u,'headlesschrome'))return'Headless browser';if(str_contains($u,'facebook')||str_contains($u,'meta-external'))return'Meta/Facebook';if(str_contains($u,'googlebot'))return'Googlebot';if(str_contains($u,'bingbot'))return'Bingbot';if(str_contains($u,'gptbot')||str_contains($u,'oai-searchbot'))return'OpenAI';if(str_contains($u,'ahrefs'))return'Ahrefs';if(str_contains($u,'semrush'))return'Semrush';if(str_contains($u,'bot')||str_contains($u,'crawler')||str_contains($u,'spider')||str_contains($u,'curl')||str_contains($u,'python')||str_contains($u,'scan'))return'Other bot/automation';return'Browser-like/unknown';}
-function endpoint($path){$p=parse_url($path,PHP_URL_PATH)?:$path;if($p==='/'||$p==='')return'home';if(str_contains($p,'admin-ajax.php'))return'admin-ajax';if(str_contains($p,'wp-cron.php'))return'wp-cron';if(str_contains($p,'wp-login.php'))return'wp-login';if(str_contains($p,'xmlrpc.php'))return'xmlrpc';if(str_starts_with($p,'/wp-json/'))return'wp-json';if(str_contains($path,'wc-ajax'))return'wc-ajax';if(preg_match('~/producto/|/product/~',$p))return'product';if(preg_match('~/categoria-producto/|/product-category/~',$p))return'category';if(preg_match('~\.(css|js|jpg|jpeg|png|webp|gif|svg|woff2?|ico)(\?|$)~i',$path))return'static';return'other';}
-$start=strtotime('2026-08-14 07:25:00 UTC');$end=strtotime('2026-08-14 08:03:30 UTC');
-$logdir='/var/www/vhosts/system/elmercadodeorigen.com/logs';$files=[$logdir.'/access_ssl_log',$logdir.'/proxy_access_ssl_log'];
-$s=['requests'=>0,'unique_ips'=>0,'per_min'=>[],'dynamic_per_min'=>[],'static_per_min'=>[],'status_per_min'=>[],'agents_per_min'=>[],'endpoints_per_min'=>[],'status'=>[],'agents'=>[],'endpoints'=>[],'paths'=>[],'ip_counts'=>[],'ip_dynamic'=>[],'ip_agents'=>[],'errors'=>[]];$ips=[];$seen=[];
-foreach($files as $file){if(!is_readable($file))continue;$fh=fopen($file,'rb');while(($line=fgets($fh))!==false){if(!preg_match('/^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) ([^ ]+) HTTP\/[^"]+" (\d{3}) \S+ "([^"]*)" "([^"]*)"/',$line,$m))continue;$ts=strtotime($m[2]);if($ts===false||$ts<$start||$ts>$end)continue;$sig=sha1($line);if(isset($seen[$sig]))continue;$seen[$sig]=1;$ip=$m[1];$path=$m[4];$st=(int)$m[5];$ref=$m[6];$ua=$m[7];$min=gmdate('H:i',$ts);$ep=endpoint($path);$ag=ua_group($ua);$s['requests']++;$ips[$ip]=1;inc($s['per_min'],$min);inc($s['status'],$st);inc($s['agents'],$ag);inc($s['endpoints'],$ep);inc($s['paths'],$path);inc($s['ip_counts'],$ip);if(!isset($s['status_per_min'][$min]))$s['status_per_min'][$min]=[];inc($s['status_per_min'][$min],$st);if(!isset($s['agents_per_min'][$min]))$s['agents_per_min'][$min]=[];inc($s['agents_per_min'][$min],$ag);if(!isset($s['endpoints_per_min'][$min]))$s['endpoints_per_min'][$min]=[];inc($s['endpoints_per_min'][$min],$ep);if($ep==='static')inc($s['static_per_min'],$min);else{inc($s['dynamic_per_min'],$min);inc($s['ip_dynamic'],$ip);}if(!isset($s['ip_agents'][$ip]))$s['ip_agents'][$ip]=[];inc($s['ip_agents'][$ip],$ag);if($st>=500){$s['errors'][]=['t'=>gmdate('H:i:s',$ts),'status'=>$st,'ep'=>$ep,'path'=>$path,'agent'=>$ag,'client'=>substr(hash('sha256',$ip),0,10),'ref'=>$ref];}}
-fclose($fh);}
-$s['unique_ips']=count($ips);foreach(['per_min','dynamic_per_min','static_per_min','status_per_min','agents_per_min','endpoints_per_min'] as $k)ksort($s[$k]);$s['status']=topn($s['status'],10);$s['agents']=topn($s['agents'],15);$s['endpoints']=topn($s['endpoints'],15);$s['paths']=topn($s['paths'],25);$clients=[];foreach(topn($s['ip_counts'],20) as $ip=>$n){$ptr=@gethostbyaddr($ip);if(!$ptr||$ptr===$ip)$ptr='no-ptr';$clients[]=['id'=>substr(hash('sha256',$ip),0,10),'requests'=>$n,'dynamic'=>$s['ip_dynamic'][$ip]??0,'ptr'=>$ptr,'agents'=>topn($s['ip_agents'][$ip]??[],4)];}unset($s['ip_counts'],$s['ip_dynamic'],$s['ip_agents']);$s['top_clients']=$clients;
-echo 'FULL_WINDOW_JSON '.json_encode($s,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
+function top_assoc($rows,$key){$out=[];foreach($rows as $r){$k=(string)($r[$key]??'');$out[$k]=($out[$k]??0)+1;}arsort($out);return array_slice($out,0,30,true);}
 
-echo "=== ERROR LOG WINDOW ===\n";
-foreach(['error_log','proxy_error_log'] as $bn){$f=$logdir.'/'.$bn;if(!is_readable($f))continue;echo "-- $bn --\n";$out=cmd("grep -Ei '2026/08/14 07:(2[5-9]|[3-5][0-9])|2026/08/14 08:0[0-3]|14-Aug-2026 07:(2[5-9]|[3-5][0-9])|14-Aug-2026 08:0[0-3]|Aug 14 07:(2[5-9]|[3-5][0-9])|Aug 14 08:0[0-3]' ".escapeshellarg($f)." | grep -Ei 'timeout|timed out|php|fpm|mysql|maria|max_children|memory|fatal|slow|upstream|AH0|error' | tail -n 240");echo $out."\n";}
+echo "=== PHP82 FPM LOG CANDIDATES ===\n";
+echo cmd("find /var/log /opt/plesk/php/8.2 -maxdepth 4 -type f \( -iname '*fpm*log*' -o -iname '*php*error*' -o -iname 'error.log' \) -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' 2>/dev/null | tail -n 120")."\n";
+echo "=== FPM SATURATION WINDOW ===\n";
+$files=preg_split('/\R+/',cmd("find /var/log /var/www/vhosts/system/elmercadodeorigen.com -maxdepth 5 -type f \( -iname '*fpm*log*' -o -iname '*php*error*' -o -iname 'error_log' \) -size +0c -print 2>/dev/null | head -n 80"),-1,PREG_SPLIT_NO_EMPTY);
+foreach($files as $f){if(!is_readable($f))continue;$q=escapeshellarg($f);$out=cmd("grep -aEi '14-Aug-2026 07:(2[5-9]|[3-5][0-9])|14-Aug-2026 08:0[0-3]|Aug 14 07:(2[5-9]|[3-5][0-9])|Aug 14 08:0[0-3]|2026/08/14 07:(2[5-9]|[3-5][0-9])|2026/08/14 08:0[0-3]|2026-08-14 07:(2[5-9]|[3-5][0-9])|2026-08-14 08:0[0-3]' $q 2>/dev/null | grep -Ei 'max_children|seems busy|pool|fpm|child|slow|timeout|fatal|memory|terminated|segfault' | tail -n 100");if($out!=='')echo "-- $f --\n$out\n";}
 
-echo "=== JOURNAL PREVIOUS BOOT WINDOW ===\n";
-echo cmd("journalctl -b -1 --since '2026-08-14 07:25:00' --until '2026-08-14 08:03:30' --no-pager 2>/dev/null | grep -Ei 'php|fpm|mysql|maria|nginx|apache|httpd|oom|out of memory|killed process|segfault|watchdog|load|cpu|hung|blocked|timeout' | tail -n 260")."\n";
+echo "=== CURRENT PROD FPM POOL ===\n";
+echo cmd("cat /opt/plesk/php/8.2/etc/php-fpm.d/elmercadodeorigen.com.conf 2>/dev/null | grep -Ev '^[;#]|^$' | sed -E 's/(listen = ).*/\\1<socket>/' | head -n 120")."\n";
 
-echo "=== SYSLOG/KERN PRE-REBOOT ===\n";
-foreach(['/var/log/syslog','/var/log/kern.log','/var/log/messages'] as $f){if(is_readable($f)){echo "-- $f --\n";echo cmd("grep -E 'Aug 14 07:(2[5-9]|[3-5][0-9])|Aug 14 08:0[0-3]' ".escapeshellarg($f)." | grep -Ei 'oom|out of memory|killed process|php|fpm|mysql|maria|nginx|apache|load|cpu|hung|blocked|timeout|segfault' | tail -n 180")."\n";}}
+global $wpdb;$prefix=$wpdb->prefix;
+echo "=== PRODUCTION ACTION SCHEDULER ===\n";
+$at=$prefix.'actionscheduler_actions';$lt=$prefix.'actionscheduler_logs';
+if($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$at))===$at){
+  $rows=$wpdb->get_results("SELECT action_id,hook,status,scheduled_date_gmt,scheduled_date_local,last_attempt_gmt,last_attempt_local,attempts,group_id,args FROM $at WHERE (scheduled_date_gmt BETWEEN '2026-08-14 07:20:00' AND '2026-08-14 08:10:00') OR (last_attempt_gmt BETWEEN '2026-08-14 07:20:00' AND '2026-08-14 08:10:00') ORDER BY COALESCE(last_attempt_gmt,scheduled_date_gmt),action_id LIMIT 1000",ARRAY_A);
+  echo 'PROD_AS_COUNT '.count($rows)."\n";echo 'PROD_AS_HOOKS '.json_encode(top_assoc($rows,'hook'),JSON_UNESCAPED_SLASHES)."\n";echo 'PROD_AS_STATUS '.json_encode(top_assoc($rows,'status'),JSON_UNESCAPED_SLASHES)."\n";
+  $safe=[];foreach($rows as $r){$safe[]=['id'=>$r['action_id'],'hook'=>$r['hook'],'status'=>$r['status'],'scheduled'=>$r['scheduled_date_gmt'],'last_attempt'=>$r['last_attempt_gmt'],'attempts'=>$r['attempts'],'group'=>$r['group_id']];}echo 'PROD_AS_ROWS '.json_encode(array_slice($safe,0,250),JSON_UNESCAPED_SLASHES)."\n";
+  if($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$lt))===$lt){$logs=$wpdb->get_results("SELECT l.action_id,l.message,l.log_date_gmt,a.hook FROM $lt l LEFT JOIN $at a ON a.action_id=l.action_id WHERE l.log_date_gmt BETWEEN '2026-08-14 07:20:00' AND '2026-08-14 08:10:00' ORDER BY l.log_date_gmt,l.log_id LIMIT 1200",ARRAY_A);echo 'PROD_AS_LOG_COUNT '.count($logs)."\n";$hooks=[];foreach($logs as $r){$hooks[]=['hook'=>$r['hook'],'time'=>$r['log_date_gmt'],'message'=>preg_replace('/\s+/',' ',(string)$r['message'])];}echo 'PROD_AS_LOGS '.json_encode(array_slice($hooks,0,400),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";}
+}
 
-echo "=== AGENT360 LOG SHAPE ===\n";$af='/var/log/agent360.log';if(is_readable($af)){$head=cmd("head -n 35 ".escapeshellarg($af));$tail=cmd("tail -n 140 ".escapeshellarg($af));foreach([$head,$tail] as $raw){$raw=preg_replace('/(?i)(token|key|secret|password)([=: ]+)[A-Za-z0-9._~+\/=:-]+/','$1$2<redacted>',$raw);$raw=preg_replace('/[A-Fa-f0-9]{32,}/','<redacted-id>',$raw);echo $raw."\n---\n";}}
+echo "=== STAGING ACTION SCHEDULER VIA WPCLI ===\n";
+$dev=cmd("find /var/www/vhosts -maxdepth 6 -type f -path '*/dev.elmercadodeorigen.com/httpdocs/wp-config.php' -printf '%h\n' 2>/dev/null | head -n1");echo 'DEV_PATH '.$dev."\n";
+if($dev!==''){
+  $php='/opt/plesk/php/8.3/bin/php';if(!is_executable($php))$php='/opt/plesk/php/8.2/bin/php';$wp=cmd('command -v wp');
+  $sql="SELECT hook,status,COUNT(*) c,MIN(COALESCE(last_attempt_gmt,scheduled_date_gmt)) first_t,MAX(COALESCE(last_attempt_gmt,scheduled_date_gmt)) last_t FROM wp_actionscheduler_actions WHERE (scheduled_date_gmt BETWEEN '2026-08-14 07:20:00' AND '2026-08-14 08:10:00') OR (last_attempt_gmt BETWEEN '2026-08-14 07:20:00' AND '2026-08-14 08:10:00') GROUP BY hook,status ORDER BY c DESC LIMIT 100";
+  echo cmd(escapeshellarg($php).' '.escapeshellarg($wp).' db query '.escapeshellarg($sql).' --skip-column-names --path='.escapeshellarg($dev).' --allow-root 2>/dev/null')."\n";
+}
 
-echo "=== PERF HISTORY TOOLS ===\n";echo 'SAR='.cmd('command -v sar || true')."\n";echo 'ATOP='.cmd('command -v atop || true')."\n";echo 'LASTCOMM='.cmd('command -v lastcomm || true')."\n";echo 'PIDSTAT='.cmd('command -v pidstat || true')."\n";
-
-echo "=== PHP-FPM SLOWLOG CONFIG ===\n";echo cmd("grep -RHiE '^[; ]*(request_slowlog_timeout|slowlog|pm.max_children|pm.max_requests)[ ]*=' /opt/plesk/php/*/etc/php-fpm.d /etc/php/*/fpm/pool.d 2>/dev/null | head -n 160")."\n";echo "=== SLOWLOG FILES ===\n";echo cmd("find /var/log /var/www/vhosts/system/elmercadodeorigen.com -type f \( -iname '*slow*log*' -o -iname '*fpm*slow*' \) -size +0c -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' 2>/dev/null | tail -n 80")."\n";
-
-echo "=== MYSQL SLOW QUERY SETTINGS/FILES ===\n";echo cmd("mysql -NBe \"SHOW VARIABLES WHERE Variable_name IN ('slow_query_log','slow_query_log_file','long_query_time');\" 2>/dev/null || true")."\n";echo cmd("find /var/log/mysql /var/lib/mysql -maxdepth 2 -type f -iname '*slow*' -size +0c -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' 2>/dev/null | tail -n 40")."\n";
+echo "=== CRON CONFIG FOR EMDO ===\n";
+echo cmd("grep -RHiE 'elmercadodeorigen|wp-cron|action.?scheduler' /etc/cron.d /var/spool/cron/crontabs 2>/dev/null | head -n 160")."\n";
