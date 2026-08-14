@@ -275,7 +275,7 @@ function elmercado_render_home_vendor_visual_010244(): string {
 		return '';
 	}
 
-	return '<div class="emo-hero__visual emo-hero__visual--vendors" data-emo-vendor-count="' . $count . '" aria-label="Productores activos de El Mercado de Origen">'
+	return '<div class="emo-hero__visual emo-hero__visual--vendors emo-vendor-count-' . $count . '" data-emo-vendor-count="' . $count . '" aria-label="Productores activos de El Mercado de Origen">'
 		. implode( '', $cards )
 		. '</div>';
 }
@@ -325,42 +325,42 @@ body.home .emo-hero__visual--vendors .emo-hero-card--3 {
 	transform: rotate(.45deg) !important;
 }
 
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--1 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--1 {
 	grid-column: 1 / 7 !important;
 	grid-row: 1 / 7 !important;
 }
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--2 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--2 {
 	grid-column: 7 / 13 !important;
 	grid-row: 1 / 6 !important;
 }
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--3 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--3 {
 	grid-column: 1 / 6 !important;
 	grid-row: 7 / 11 !important;
 }
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="4"] .emo-hero-card--4 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--4 {
 	grid-column: 6 / 13 !important;
 	grid-row: 6 / 11 !important;
 	transform: rotate(-.55deg) !important;
 }
 
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--1 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 {
 	grid-column: 1 / 6 !important;
 	grid-row: 1 / 7 !important;
 }
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--2 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2 {
 	grid-column: 6 / 13 !important;
 	grid-row: 1 / 5 !important;
 }
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--3 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3 {
 	grid-column: 1 / 5 !important;
 	grid-row: 7 / 11 !important;
 }
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--4 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4 {
 	grid-column: 5 / 9 !important;
 	grid-row: 5 / 11 !important;
 	transform: rotate(-.55deg) !important;
 }
-body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--5 {
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 {
 	grid-column: 9 / 13 !important;
 	grid-row: 5 / 11 !important;
 	transform: rotate(.65deg) !important;
@@ -395,9 +395,9 @@ body.home .emo-hero-vendor-fallback {
 		min-height: 145px !important;
 		transform: none !important;
 	}
-	body.home .emo-hero__visual--vendors[data-emo-vendor-count="1"] .emo-hero-card--1,
-	body.home .emo-hero__visual--vendors[data-emo-vendor-count="3"] .emo-hero-card--1,
-	body.home .emo-hero__visual--vendors[data-emo-vendor-count="5"] .emo-hero-card--1 {
+	body.home .emo-hero__visual--vendors.emo-vendor-count-1 .emo-hero-card--1,
+	body.home .emo-hero__visual--vendors.emo-vendor-count-3 .emo-hero-card--1,
+	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 {
 		grid-column: 1 / -1 !important;
 		min-height: 185px !important;
 	}
