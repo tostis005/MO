@@ -53,13 +53,14 @@ add_action(
                 border: 1px solid rgba(178, 122, 33, 0.28);
                 border-left: 4px solid #b27a21;
                 border-radius: 12px;
-                color: #27352f;
+                color: #27352f !important;
                 font-size: 0.92rem;
                 line-height: 1.55;
             }
 
-            .emo-no-shipping-destination strong {
-                color: #0d211b;
+            body.woocommerce-checkout #order_review .emo-no-shipping-destination strong,
+            body.woocommerce-checkout .emo-no-shipping-destination strong {
+                color: #0d211b !important;
             }
 
             body.emo-checkout-no-shipping #place_order {
