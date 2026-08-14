@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.233' );
-/* 0.10.233 unifica el filtro visual y retira el observer histórico del productor. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.234' );
+/* 0.10.234 fija contador, paridad tipográfica y final de scroll sin duplicados. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -153,6 +153,7 @@ $elmercado_modules = array(
 	'inc/vendor-filter-spacing-010226.php',
 	'inc/home-category-output-final-010226.php',
 	'inc/catalog-filter-mobile-hitarea-010233.php',
+	'inc/catalog-filter-scroll-final-010234.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
