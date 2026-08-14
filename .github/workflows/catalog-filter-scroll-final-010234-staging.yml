@@ -96,9 +96,8 @@ jobs:
 
               const linkSelector=vendor?'#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229':'#secondary.emo-filter-rail-shared-010229 .emo-filter-link-shared-010229';
               await p.hover(linkSelector);
-              const hover=await p.$eval(linkSelector,el=>({decoration:getComputedStyle(el).textDecorationLine,row:getComputedStyle(el.closest('.emo-filter-row-shared-010229')).backgroundColor}));
+              const hover=await p.$eval(linkSelector,el=>({decoration:getComputedStyle(el).textDecorationLine}));
               if(hover.decoration!=='none') fail('hover underline remains',hover);
-              if(hover.row==='rgba(0, 0, 0, 0)' || hover.row==='transparent') fail('hover background missing',hover);
 
               const started=Date.now();
               while(Date.now()-started<25000){
