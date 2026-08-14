@@ -6,6 +6,9 @@
  * En el modal de creación de envíos el contenido puede superar el alto que
  * Colorbox calcula inicialmente y queda oculto detrás del overlay.
  *
+ * También corrige el margen excesivo que WCFM aplica a sus checkboxes dentro
+ * de estos formularios, para que queden visualmente cerca de sus opciones.
+ *
  * Parche acotado a /store-manager/vendors-manage/.
  *
  * @package ElMercadoDeOrigen
@@ -46,6 +49,18 @@ add_action(
 			#colorbox,
 			#cboxWrapper {
 				overflow: visible !important;
+			}
+
+			/*
+			 * WCFM aplica por defecto margin-right:50% a .wcfm-checkbox. Dentro de
+			 * estos modales deja un hueco excesivo entre el check y su opción.
+			 */
+			#colorbox input.wcfm-checkbox,
+			#colorbox input[type="checkbox"].wcfm-checkbox {
+				margin-left: 0 !important;
+				margin-right: 8px !important;
+				position: static !important;
+				vertical-align: middle !important;
 			}
 		</style>
 		<?php
