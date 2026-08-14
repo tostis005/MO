@@ -1,0 +1,114 @@
+name: Production WCFM Colorbox fix 2026-08-14
+
+on:
+  push:
+    paths:
+      - '.github/workflows/production-wcfm-colorbox-fix-20260814.yml'
+      - 'elmercadodeorigen-child/inc/wcfm-colorbox-overflow-fix-20260814.php'
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      TARGET_PATH: /store-manager/vendors-manage/4507/
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy and verify WCFM Colorbox fix
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/inc/wcfm-colorbox-overflow-fix-20260814.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          REMOTE_DIR="$PROD_PATH/wp-content/mu-plugins"
+          REMOTE_FILE="$REMOTE_DIR/elmercado-wcfm-colorbox-overflow-fix.php"
+          BACKUP="/tmp/elmercado-wcfm-colorbox-overflow-fix-${GITHUB_RUN_ID}.bak"
+          HAD_OLD=0
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$REMOTE_FILE'"; then
+            HAD_OLD=1
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$REMOTE_FILE' '$BACKUP'"
+          fi
+
+          rollback(){
+            code=$?
+            set +e
+            if [ "$HAD_OLD" -eq 1 ]; then
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$BACKUP' '$REMOTE_FILE'; rm -f '$BACKUP'" || true
+            else
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_FILE' '$BACKUP'" || true
+            fi
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
+            exit "$code"
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/wcfm-colorbox-overflow-fix-20260814.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE_FILE' >/dev/null; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          ADMIN_ID="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp user list --role=administrator --field=ID --path='$PROD_PATH' --allow-root | head -n1")"
+          test -n "$ADMIN_ID"
+          COOKIE_NAME="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp eval 'echo LOGGED_IN_COOKIE;' --path='$PROD_PATH' --allow-root")"
+          COOKIE_B64="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp eval 'echo base64_encode(wp_generate_auth_cookie((int) $ADMIN_ID, time()+900, \"logged_in\"));' --path='$PROD_PATH' --allow-root")"
+          export COOKIE_NAME COOKIE_B64
+
+          node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          (async()=>{
+            const browser = await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page = await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setViewport({width:1440,height:1000});
+            const cookieValue = Buffer.from(process.env.COOKIE_B64, 'base64').toString('utf8');
+            await page.setCookie({name:process.env.COOKIE_NAME,value:cookieValue,url:process.env.BASE_URL,httpOnly:true,secure:true,sameSite:'Lax'});
+            await page.goto(`${process.env.BASE_URL}${process.env.TARGET_PATH}?qa_wcfm_colorbox=${Date.now()}`,{waitUntil:'networkidle2',timeout:90000});
+            const result = await page.evaluate(()=>{
+              const marker = !!document.querySelector('#elmercado-wcfm-colorbox-overflow-fix');
+              const colorbox = document.querySelector('#colorbox');
+              const wrapper = document.querySelector('#cboxWrapper');
+              return {
+                loggedIn: document.body.classList.contains('logged-in'),
+                marker,
+                colorboxOverflow: colorbox ? getComputedStyle(colorbox).overflow : null,
+                wrapperOverflow: wrapper ? getComputedStyle(wrapper).overflow : null,
+                location: location.pathname
+              };
+            });
+            console.log('WCFM_COLORBOX_QA', JSON.stringify(result));
+            if(!result.loggedIn || !result.marker) throw new Error('WCFM Colorbox fix is not active in authenticated vendor manager');
+            if(result.colorboxOverflow && result.colorboxOverflow !== 'visible') throw new Error(`Unexpected #colorbox overflow: ${result.colorboxOverflow}`);
+            if(result.wrapperOverflow && result.wrapperOverflow !== 'visible') throw new Error(`Unexpected #cboxWrapper overflow: ${result.wrapperOverflow}`);
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
+          trap - ERR
+          echo WCFM_COLORBOX_FIX_PRODUCTION_OK
