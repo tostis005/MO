@@ -1,0 +1,85 @@
+name: Production checkout option spacing fix 2026-08-14
+
+on:
+  push:
+    paths:
+      - '.github/workflows/production-checkout-option-spacing-fix-20260814.yml'
+      - 'elmercadodeorigen-child/inc/checkout-option-spacing-fix-20260814.php'
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy checkout option spacing fix
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/inc/checkout-option-spacing-fix-20260814.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          REMOTE_DIR="$PROD_PATH/wp-content/mu-plugins"
+          REMOTE_FILE="$REMOTE_DIR/elmercado-checkout-option-spacing-fix.php"
+          BACKUP="/tmp/elmercado-checkout-option-spacing-fix-${GITHUB_RUN_ID}.bak"
+          HAD_OLD=0
+
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$REMOTE_FILE'"; then
+            HAD_OLD=1
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$REMOTE_FILE' '$BACKUP'"
+          fi
+
+          rollback(){
+            code=$?
+            set +e
+            if [ "$HAD_OLD" -eq 1 ]; then
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$BACKUP' '$REMOTE_FILE'; rm -f '$BACKUP'" || true
+            else
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_FILE' '$BACKUP'" || true
+            fi
+            exit "$code"
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/checkout-option-spacing-fix-20260814.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$REMOTE_FILE' >/dev/null
+            grep -F 'elmercado-checkout-option-spacing-fix' '$REMOTE_FILE' >/dev/null
+            grep -F 'wc_payment_method' '$REMOTE_FILE' >/dev/null
+            grep -F 'ship-to-different-address' '$REMOTE_FILE' >/dev/null
+          "
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
+          trap - ERR
+          echo CHECKOUT_OPTION_SPACING_FIX_PRODUCTION_OK
