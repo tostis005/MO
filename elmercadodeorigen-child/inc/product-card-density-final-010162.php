@@ -188,7 +188,7 @@ add_action(
 			body.elmercado-child-theme ul.products li.product .product-loop-wrapper > .wcfmmp_sold_by_container {
 				min-height: 0 !important;
 				height: auto !important;
-				margin: 10px 0 0 !important;
+				margin: 10px 6px 0 !important;
 				padding: 6px 0 0 !important;
 				line-height: 1.12 !important;
 			}
@@ -208,7 +208,7 @@ add_action(
 					line-height: 1.23 !important;
 				}
 				body.elmercado-child-theme ul.products li.product .product-loop-wrapper > .wcfmmp_sold_by_container {
-					margin-top: 9px !important;
+					margin: 9px 5px 0 !important;
 					padding-top: 5px !important;
 				}
 				body.elmercado-child-theme ul.products li.product .button {
