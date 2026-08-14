@@ -1,0 +1,134 @@
+name: Production catalog images 0.10.241 v6
+
+on:
+  push:
+    paths:
+      - '.github/workflows/production-product-card-images-010241-v6.yml'
+      - '.github/triggers/production-product-card-images-010241-v6.trigger'
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy and verify square lightweight product cards
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          php -l elmercadodeorigen-child/inc/product-card-density-final-010162.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          TARGET="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/product-card-density-final-010162.php"
+          BAK="/tmp/product-card-density-010241-v6-${GITHUB_RUN_ID}.bak"
+          PROBE="elmercado-opcache-card-images-v6-${GITHUB_RUN_ID}.php"
+          ROLLED_BACK=0
+
+          reset_opcache(){
+            sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+            set +e
+            ok=0
+            for i in $(seq 1 6); do
+              body="$(curl -fsSL --connect-timeout 10 --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID-$i-$RANDOM" 2>/dev/null)"
+              if printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$'; then ok=1; break; fi
+              sleep 2
+            done
+            set -e
+            test "$ok" -eq 1
+          }
+
+          rollback(){
+            code=$?
+            [ "$ROLLED_BACK" -eq 0 ] || exit "$code"
+            ROLLED_BACK=1
+            set +e
+            echo ROLLBACK_START
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "[ -f '$BAK' ] && cp -p '$BAK' '$TARGET'" || true
+            reset_opcache || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BAK' '$PROD_PATH/$PROBE'" || true
+            echo ROLLED_BACK
+            exit "${code:-1}"
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TARGET' '$BAK'"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/product-card-density-final-010162.php "$STAGING_USER@$STAGING_HOST:$TARGET"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$TARGET' >/dev/null"
+          reset_opcache
+
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const checkPage=async(browser,path,width,dpr)=>{
+            const page=await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
+            await page.setViewport({width,height:1200,deviceScaleFactor:dpr});
+            await page.goto(`${process.env.BASE_URL}${path}?qa241v6=${Date.now()}-${width}-${dpr}`,{waitUntil:'networkidle2',timeout:60000});
+            await sleep(700);
+            const rows=await page.evaluate(()=>[...document.querySelectorAll('ul.products > li.product')].slice(0,8).map(li=>{
+              const wrap=li.querySelector('.product-loop-image-wrapper');
+              const img=li.querySelector('.product-loop-image-wrapper img.product-loop-image, a img.product-loop-image');
+              if(!img||!wrap)return null;
+              const is=getComputedStyle(img),ws=getComputedStyle(wrap),ir=img.getBoundingClientRect(),wr=wrap.getBoundingClientRect();
+              const srcset=img.getAttribute('srcset')||img.getAttribute('data-srcset')||'';
+              const widths=srcset.split(',').map(v=>parseInt((v.trim().match(/\s(\d+)w$/)||[])[1]||'0',10)).filter(Boolean);
+              return {title:(li.querySelector('.woocommerce-loop-product__title,h2')?.textContent||'').trim(),src:img.getAttribute('src')||'',current:img.currentSrc||'',srcset,wrapRect:[wr.width,wr.height],imgRect:[ir.width,ir.height],natural:[img.naturalWidth,img.naturalHeight],fit:is.objectFit,position:is.position,inset:[is.top,is.right,is.bottom,is.left],wrapRatio:ws.aspectRatio,maxCandidate:widths.length?Math.max(...widths):0,widthAttr:img.getAttribute('width'),heightAttr:img.getAttribute('height'),className:img.className};
+            }).filter(Boolean));
+            console.log('IMAGE_QA',path,width,dpr,JSON.stringify(rows));
+            if(!rows.length) throw new Error(`No product images on ${path}`);
+            for(const row of rows){
+              if(Math.abs(row.wrapRect[0]-row.wrapRect[1])>1.5) throw new Error(`Wrapper not square: ${row.title} ${row.wrapRect}`);
+              if(Math.abs(row.imgRect[0]-row.imgRect[1])>1.5) throw new Error(`Image box not square: ${row.title} ${row.imgRect}`);
+              if(row.fit!=='contain'||row.position!=='absolute') throw new Error(`Wrong image fit/position: ${row.title} ${row.fit}/${row.position}`);
+              if(!String(row.className).includes('elmercado-catalog-card-image-010241')) throw new Error(`Optimized attrs missing: ${row.title}`);
+              if(row.natural[0]>800||row.natural[1]>800) throw new Error(`Oversized resource: ${row.title} ${row.natural}`);
+              if(row.maxCandidate>800) throw new Error(`Oversized srcset: ${row.title} ${row.maxCandidate}`);
+              if(row.widthAttr!=='480'||row.heightAttr!=='480') throw new Error(`Wrong reserved square: ${row.title}`);
+              if(/(?:-scaled)?\.(?:jpe?g|png|webp)(?:\?|$)/i.test(row.current) && !/-\d+x\d+\.(?:jpe?g|png|webp)(?:\?|$)/i.test(row.current)) throw new Error(`Original resource selected: ${row.title} ${row.current}`);
+            }
+            await page.close();
+          };
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            await checkPage(browser,'/tienda/',390,1);
+            await checkPage(browser,'/tienda/',390,2);
+            await checkPage(browser,'/tienda/',1440,1);
+            await checkPage(browser,'/tienda/hidalgo-de-la-jara/',390,1);
+            await browser.close();
+            console.log('PRODUCTION_CATALOG_IMAGES_010241_V6_QA_OK');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BAK' '$PROD_PATH/$PROBE'"
+          trap - ERR
+          echo PRODUCTION_CATALOG_IMAGES_010241_V6_OK
