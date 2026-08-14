@@ -1,0 +1,249 @@
+name: Production mobile catalog controls parity 0.10.236
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-mobile-controls-parity-010236.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-mobile-controls-010236
+  cancel-in-progress: false
+
+jobs:
+  deploy-mobile-controls-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - name: Checkout deployment control
+        uses: actions/checkout@v4
+        with:
+          path: control
+
+      - name: Checkout QA-approved source
+        uses: actions/checkout@v4
+        with:
+          ref: 1521908db4bb858bece7c92441d8210ce266a4e7
+          path: source
+
+      - name: Validate exact production payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l source/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php >/dev/null
+          grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' source/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
+          grep -Fq "'popularity' => 'Más populares'" source/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
+          grep -Fq "'price'      => 'Menor precio'" source/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php
+          echo PRODUCTION_MOBILE_CONTROLS_010236_PAYLOAD_OK
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
+          cd source
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy and verify mobile controls only
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          THEME_PATH="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          BACKUP_DIR="/tmp/elmercado-mobile-controls-010236-${GITHUB_RUN_ID}"
+          PAYLOAD_DIR="/tmp/elmercado-mobile-controls-payload-010236-${GITHUB_RUN_ID}"
+          export PROD_PATH THEME_PATH BACKUP_DIR PAYLOAD_DIR
+
+          rollback() {
+            set +e
+            echo PRODUCTION_MOBILE_CONTROLS_010236_ROLLBACK_START
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              set +e
+              if [ -f '$BACKUP_DIR/functions.php' ]; then cp -p '$BACKUP_DIR/functions.php' '$THEME_PATH/functions.php'; fi
+              if [ -f '$BACKUP_DIR/.missing-module' ]; then
+                rm -f '$THEME_PATH/inc/catalog-mobile-controls-parity-010236.php'
+              elif [ -f '$BACKUP_DIR/catalog-mobile-controls-parity-010236.php' ]; then
+                cp -p '$BACKUP_DIR/catalog-mobile-controls-parity-010236.php' '$THEME_PATH/inc/catalog-mobile-controls-parity-010236.php'
+              fi
+              rm -rf '$PAYLOAD_DIR' '$BACKUP_DIR'
+            " || true
+            echo PRODUCTION_MOBILE_CONTROLS_010236_ROLLED_BACK
+          }
+          trap rollback ERR
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            test -d '$THEME_PATH/inc'
+            mkdir -p '$BACKUP_DIR' '$PAYLOAD_DIR/inc'
+            cp -p '$THEME_PATH/functions.php' '$BACKUP_DIR/functions.php'
+            if [ -f '$THEME_PATH/inc/catalog-mobile-controls-parity-010236.php' ]; then
+              cp -p '$THEME_PATH/inc/catalog-mobile-controls-parity-010236.php' '$BACKUP_DIR/catalog-mobile-controls-parity-010236.php'
+            else
+              : > '$BACKUP_DIR/.missing-module'
+            fi
+          "
+
+          sshpass -e scp $SCP_OPTIONS source/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php "$STAGING_USER@$STAGING_HOST:$PAYLOAD_DIR/inc/catalog-mobile-controls-parity-010236.php"
+
+          cat > /tmp/patch-production-mobile-controls-010236.py <<'PY'
+          from pathlib import Path
+          import sys
+          path=Path(sys.argv[1])
+          text=path.read_text()
+          marker='/* CATALOG_MOBILE_CONTROLS_010236_PRODUCTION */'
+          if marker not in text:
+              text += r'''
+
+          /* CATALOG_MOBILE_CONTROLS_010236_PRODUCTION */
+          add_action(
+              'after_setup_theme',
+              static function (): void {
+                  $module = get_stylesheet_directory() . '/inc/catalog-mobile-controls-parity-010236.php';
+                  if ( is_readable( $module ) ) {
+                      require_once $module;
+                  }
+              },
+              PHP_INT_MAX
+          );
+          '''
+          path.write_text(text)
+          PY
+          sshpass -e scp $SCP_OPTIONS /tmp/patch-production-mobile-controls-010236.py "$STAGING_USER@$STAGING_HOST:$PAYLOAD_DIR/patch.py"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -euo pipefail
+            cp -p '$THEME_PATH/functions.php' '$PAYLOAD_DIR/functions.php'
+            python3 '$PAYLOAD_DIR/patch.py' '$PAYLOAD_DIR/functions.php'
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$PAYLOAD_DIR/functions.php' >/dev/null
+            \"\$php_bin\" -l '$PAYLOAD_DIR/inc/catalog-mobile-controls-parity-010236.php' >/dev/null
+            install -m 0644 '$PAYLOAD_DIR/functions.php' '$THEME_PATH/functions.php'
+            install -m 0644 '$PAYLOAD_DIR/inc/catalog-mobile-controls-parity-010236.php' '$THEME_PATH/inc/catalog-mobile-controls-parity-010236.php'
+            grep -Fq 'CATALOG_MOBILE_CONTROLS_010236_PRODUCTION' '$THEME_PATH/functions.php'
+          "
+          echo PRODUCTION_MOBILE_CONTROLS_010236_FILES_DEPLOYED
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+          PROBE="elmercado-opcache-mobile-controls-010236-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS source/.github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          BODY="$(curl -fsSL -H 'Cache-Control: no-store' -H 'Pragma: no-cache' --max-time 30 "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID")"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'"
+          printf '%s\n' "$BODY" | grep -q '^OPCACHE_RESET_OK$'
+          echo PRODUCTION_MOBILE_CONTROLS_010236_CACHE_RESET
+
+          runtime_ok=0
+          for i in $(seq 1 40); do
+            shop="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/tienda/?prod-mobile-010236=$GITHUB_RUN_ID-$i" || true)"
+            vendor="$(curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/tienda/hidalgo-de-la-jara/?prod-mobile-010236=$GITHUB_RUN_ID-$i" || true)"
+            if grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$shop" \
+              && grep -Fq 'elmercado-catalog-mobile-controls-parity-010236' <<<"$vendor"; then
+              runtime_ok=1
+              break
+            fi
+            sleep 3
+          done
+          test "$runtime_ok" -eq 1
+          echo PRODUCTION_MOBILE_CONTROLS_010236_RUNTIME_OK
+
+          cd source
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const fail=(m,d)=>{throw new Error(`${m}${d?' '+JSON.stringify(d):''}`)};
+          const expected={menu_order:'Recomendados',popularity:'Más populares',rating:'Mejor valorados',date:'Más recientes',price:'Menor precio','price-desc':'Mayor precio'};
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const inspectMobile=async(path,vendor)=>{
+              const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844});
+              await p.goto(`${process.env.BASE_URL}${path}?prodqa010236=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});
+              await p.waitForSelector('.emo-catalog-toolbar-shared-010229',{timeout:20000}); await sleep(1000);
+              const before=await p.evaluate((vendor)=>{
+                const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+                const select=toolbar?.querySelector('.woocommerce-ordering select');
+                const candidates=vendor?[...document.querySelectorAll('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229')]:[...document.querySelectorAll('#emo-premium-filter-toggle,.emo-mobile-filter-toggle')];
+                const visible=candidates.filter(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;});
+                const trigger=visible[0]||null; const first=document.querySelector(vendor?'#wcfmmp-store ul.products li.product':'ul.products li.product');
+                const c=el=>el?getComputedStyle(el):null; const rect=el=>{if(!el)return null;const r=el.getBoundingClientRect();return{top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+                return{visibleTriggers:visible.length,toolbar:rect(toolbar),trigger:rect(trigger),first:rect(first),select:rect(select),triggerStyle:trigger?[c(trigger).height,c(trigger).padding,c(trigger).borderRadius,c(trigger).borderTopWidth,c(trigger).borderTopColor,c(trigger).backgroundColor,c(trigger).boxShadow,c(trigger).fontSize,c(trigger).fontWeight,c(trigger).lineHeight]:[],selectStyle:select?[c(select).height,c(select).padding,c(select).borderRadius,c(select).borderTopWidth,c(select).borderTopColor,c(select).backgroundColor,c(select).fontSize,c(select).fontWeight,c(select).lineHeight]:[],options:select?[...select.options].map(o=>({value:o.value,text:(o.textContent||'').trim()})):[],productTransform:first?.closest('ul.products')?c(first.closest('ul.products')).transform:'',marker:!!document.getElementById('elmercado-catalog-mobile-controls-parity-010236')};
+              },vendor);
+              if(!before.marker||before.visibleTriggers!==1||!before.toolbar||!before.trigger||!before.first||!before.select)fail('mobile control contract',before);
+              if(before.trigger.top<before.toolbar.bottom-1)fail('filter overlaps toolbar',before);
+              if(before.first.top<before.trigger.bottom+8)fail('product overlaps filter',before);
+              if(before.select.width<137)fail('ordering too narrow',before);
+              if(before.productTransform&&before.productTransform!=='none')fail('product transform remains',before);
+              for(const o of before.options){if(/^Ordenar\s+por\b/i.test(o.text))fail('long ordering prefix',o);if(expected[o.value]&&o.text!==expected[o.value])fail('ordering label',o);}
+              const triggerSelector=vendor?'#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229':'#emo-premium-filter-toggle';
+              await p.click(triggerSelector); await sleep(250);
+              const drawer=await p.evaluate((vendor)=>{
+                const shell=vendor?document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229'):document.querySelector('#emo-premium-filter-shell');
+                if(!shell)return{exists:false}; const s=getComputedStyle(shell),r=shell.getBoundingClientRect();return{exists:true,hidden:shell.hidden,display:s.display,visibility:s.visibility,width:r.width,height:r.height};
+              },vendor);
+              if(!drawer.exists||drawer.hidden||drawer.display==='none'||drawer.visibility==='hidden'||drawer.width<=0||drawer.height<=0)fail('filter drawer did not open',drawer);
+              await p.close(); return{before,drawer};
+            };
+            const shop=await inspectMobile('/tienda/',false); const vendor=await inspectMobile('/tienda/hidalgo-de-la-jara/',true);
+            if(JSON.stringify(shop.before.triggerStyle)!==JSON.stringify(vendor.before.triggerStyle))fail('filter trigger parity',{shop:shop.before.triggerStyle,vendor:vendor.before.triggerStyle});
+            if(JSON.stringify(shop.before.selectStyle)!==JSON.stringify(vendor.before.selectStyle))fail('ordering mobile parity',{shop:shop.before.selectStyle,vendor:vendor.before.selectStyle});
+
+            const desktop=async(path)=>{const p=await browser.newPage();await p.setCacheEnabled(false);await p.setViewport({width:1440,height:1000});await p.goto(`${process.env.BASE_URL}${path}?prodqa010236desktop=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:60000});await p.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',{timeout:20000});await sleep(500);const d=await p.$eval('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select',el=>{const c=getComputedStyle(el);return[c.height,c.padding,c.borderRadius,c.borderTopWidth,c.borderTopColor,c.backgroundColor,c.fontSize,c.fontWeight,c.lineHeight];});await p.close();return d;};
+            const ds=await desktop('/tienda/'),dv=await desktop('/tienda/hidalgo-de-la-jara/'); if(JSON.stringify(ds)!==JSON.stringify(dv))fail('ordering desktop parity',{shop:ds,vendor:dv});
+            console.log('PRODUCTION_MOBILE_CONTROLS_010236_BROWSER_OK',JSON.stringify({shop:shop.before,vendor:vendor.before,drawers:{shop:shop.drawer,vendor:vendor.drawer},desktop:{shop:ds,vendor:dv}}));
+            await browser.close();
+          })().catch(e=>{console.error('PRODUCTION_MOBILE_CONTROLS_010236_BROWSER_ERROR',e);process.exit(1)});
+          NODE
+          cd ..
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR' '$PAYLOAD_DIR'"
+          trap - ERR
+          echo PRODUCTION_MOBILE_CONTROLS_010236_OK
