@@ -176,8 +176,32 @@ final class MDO_Woo_Importer {
 		if ( ! isset( $payload['price'] ) || null === $payload['price'] || ! is_numeric( $payload['price'] ) ) {
 			throw new RuntimeException( 'No se ha podido determinar un precio válido para el producto.' );
 		}
-		$product->set_regular_price( wc_format_decimal( $payload['price'] ) );
-		$product->set_price( wc_format_decimal( $payload['price'] ) );
+
+		$current = (float) $payload['price'];
+		$regular = isset( $payload['regular_price'] ) && is_numeric( $payload['regular_price'] )
+			? (float) $payload['regular_price']
+			: $current;
+		$sale = isset( $payload['sale_price'] ) && is_numeric( $payload['sale_price'] )
+			? (float) $payload['sale_price']
+			: null;
+
+		/*
+		 * El payload de EMDO es la fuente de verdad completa del precio. No basta
+		 * con cambiar _price: un producto ya importado puede conservar un
+		 * _sale_price antiguo y WooCommerce seguirá mostrándolo como oferta.
+		 * Del mismo modo, una oferta real debe trasladar regular + sale, no
+		 * degradarse a un único precio. Cada sincronización reescribe los tres
+		 * valores para que también sanee metadatos heredados.
+		 */
+		if ( null !== $sale && $sale < $regular && abs( $current - $sale ) < 0.005 ) {
+			$product->set_regular_price( wc_format_decimal( $regular ) );
+			$product->set_sale_price( wc_format_decimal( $sale ) );
+			$product->set_price( wc_format_decimal( $sale ) );
+		} else {
+			$product->set_regular_price( wc_format_decimal( $current ) );
+			$product->set_sale_price( '' );
+			$product->set_price( wc_format_decimal( $current ) );
+		}
 		$product->set_manage_stock( false );
 	}
 

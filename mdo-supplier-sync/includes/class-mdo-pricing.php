@@ -275,6 +275,37 @@ final class MDO_Pricing {
 		libxml_use_internal_errors( $previous );
 		$xpath = new DOMXPath( $dom );
 
+		/*
+		 * Tolecarnes incluye tarjetas de productos relacionados con sus propios
+		 * <del>/<ins>. Nunca deben usarse para decidir si el producto principal
+		 * está rebajado. Para este proveedor sólo aceptamos una oferta cuando
+		 * aparece dentro del bloque de precio del summary del producto actual.
+		 * Si no existe evidencia localizada, el precio del conector queda como
+		 * precio normal: es preferible omitir una rebaja a inventar una ajena.
+		 */
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		if ( 'tolecarnes.com' === $host || str_ends_with( $host, '.tolecarnes.com' ) ) {
+			$price_nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//p[contains(concat(' ', normalize-space(@class), ' '), ' price ')]" );
+			if ( ! $price_nodes || ! $price_nodes->length ) {
+				$price_nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//*[contains(concat(' ', normalize-space(@class), ' '), ' price ')]" );
+			}
+			if ( $price_nodes && $price_nodes->length ) {
+				$node = $price_nodes->item( 0 );
+				$del  = $xpath->query( './/del', $node );
+				$ins  = $xpath->query( './/ins', $node );
+				if ( $del && $del->length && $ins && $ins->length ) {
+					$regular = self::first_price_in_text( (string) $del->item( 0 )->textContent );
+					$current = self::first_price_in_text( (string) $ins->item( 0 )->textContent );
+					if ( null !== $regular && null !== $current && $current < $regular ) {
+						return array( 'current' => $current, 'regular' => $regular );
+					}
+				}
+				$current = self::first_price_in_text( (string) $node->textContent );
+				return array( 'current' => $current, 'regular' => $current );
+			}
+			return array( 'current' => null, 'regular' => null );
+		}
+
 		// WooCommerce: <del>precio original</del> <ins>precio actual</ins>.
 		$price_nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' summary ')]//*[contains(concat(' ', normalize-space(@class), ' '), ' price ')]" );
 		foreach ( $price_nodes ?: array() as $node ) {
