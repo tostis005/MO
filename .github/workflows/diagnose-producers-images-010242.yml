@@ -1,0 +1,70 @@
+name: Diagnose producer listing images 0.10.242
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-producers-images-010242.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect production producer cards
+        shell: bash
+        env:
+          BASE_URL: https://www.elmercadodeorigen.com
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const inspect=async(browser,width)=>{
+            const page=await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setViewport({width,height:1200,deviceScaleFactor:1});
+            await page.setExtraHTTPHeaders({'Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'});
+            await page.goto(`${process.env.BASE_URL}/productores/?diag242=${Date.now()}-${width}`,{waitUntil:'networkidle2',timeout:60000});
+            await sleep(700);
+            const out=await page.evaluate(()=>{
+              const rect=n=>{const r=n.getBoundingClientRect();return {w:r.width,h:r.height,x:r.x,y:r.y}};
+              const css=n=>{const s=getComputedStyle(n);return {display:s.display,position:s.position,width:s.width,height:s.height,aspectRatio:s.aspectRatio,objectFit:s.objectFit,objectPosition:s.objectPosition,overflow:s.overflow,background:s.backgroundColor}};
+              const cards=[...document.querySelectorAll('#wcfmmp-stores-wrap li.wcfmmp-single-store')];
+              return {
+                body:document.body.className,
+                wrap:document.querySelector('#wcfmmp-stores-wrap')?.outerHTML.slice(0,1000)||'',
+                cards:cards.map((card,index)=>{
+                  const imgs=[...card.querySelectorAll('img')];
+                  return {
+                    index,
+                    cardClass:card.className,
+                    cardRect:rect(card),
+                    cardCss:css(card),
+                    html:card.outerHTML.slice(0,3500),
+                    images:imgs.map(img=>({
+                      className:img.className,
+                      src:img.getAttribute('src')||'',
+                      dataSrc:img.getAttribute('data-src')||'',
+                      current:img.currentSrc||'',
+                      srcset:img.getAttribute('srcset')||img.getAttribute('data-srcset')||'',
+                      widthAttr:img.getAttribute('width'),heightAttr:img.getAttribute('height'),
+                      natural:[img.naturalWidth,img.naturalHeight],rect:rect(img),css:css(img),
+                      parent:{tag:img.parentElement?.tagName,className:img.parentElement?.className||'',rect:img.parentElement?rect(img.parentElement):null,css:img.parentElement?css(img.parentElement):null},
+                      grand:{tag:img.parentElement?.parentElement?.tagName,className:img.parentElement?.parentElement?.className||'',rect:img.parentElement?.parentElement?rect(img.parentElement.parentElement):null,css:img.parentElement?.parentElement?css(img.parentElement.parentElement):null}
+                    }))
+                  };
+                })
+              };
+            });
+            console.log('PRODUCER_QA',width,JSON.stringify(out));
+            await page.close();
+          };
+          (async()=>{const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});await inspect(browser,390);await inspect(browser,1440);await browser.close();})().catch(e=>{console.error(e);process.exit(1)});
+          NODE
