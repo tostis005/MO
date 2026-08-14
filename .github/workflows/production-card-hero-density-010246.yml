@@ -1,0 +1,284 @@
+name: Production product cards and Home hero density 0.10.246
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-card-hero-density-010246.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch permanent source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          card = Path('elmercadodeorigen-child/inc/product-card-density-final-010162.php')
+          text = card.read_text()
+          needle = '''\t\t\tbody.elmercado-child-theme ul.products li.product .button {
+\t\t\t\tmargin-top: 0.6rem !important;
+\t\t\t}
+
+\t\t\t@media (max-width: 767px) {'''
+          replacement = '''\t\t\tbody.elmercado-child-theme ul.products li.product .button {
+\t\t\t\tmargin-top: 0.6rem !important;
+\t\t\t}
+
+\t\t\t/* 0.10.246: compactamos la zona de texto real de Woostify/WCFM. */
+\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-content {
+\t\t\t\tpadding-bottom: 6px !important;
+\t\t\t}
+\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-content > .woocommerce-loop-product__title {
+\t\t\t\tmin-height: 0 !important;
+\t\t\t\theight: auto !important;
+\t\t\t\tmax-height: none !important;
+\t\t\t\tmargin: 0 0 3px !important;
+\t\t\t\tpadding: 0 !important;
+\t\t\t\tline-height: 1.27 !important;
+\t\t\t}
+\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-meta,
+\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-meta .animated-meta {
+\t\t\t\tmin-height: 0 !important;
+\t\t\t\theight: auto !important;
+\t\t\t\tmargin: 0 !important;
+\t\t\t\tpadding: 0 !important;
+\t\t\t}
+\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-meta .animated-meta > .price,
+\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-meta .price {
+\t\t\t\tmargin: 0 !important;
+\t\t\t\tpadding: 0 !important;
+\t\t\t\tline-height: 1.18 !important;
+\t\t\t}
+\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-wrapper > .wcfmmp_sold_by_container {
+\t\t\t\tmin-height: 0 !important;
+\t\t\t\theight: auto !important;
+\t\t\t\tmargin: 4px 0 0 !important;
+\t\t\t\tpadding: 0 !important;
+\t\t\t\tline-height: 1.12 !important;
+\t\t\t}
+
+\t\t\t@media (max-width: 767px) {'''
+          if needle not in text:
+              raise SystemExit('Product-card insertion target not found')
+          text = text.replace(needle, replacement, 1)
+          old_mobile = '''\t\t\t\tbody.elmercado-child-theme ul.products li.product .price {
+\t\t\t\t\tpadding-top: 0.35rem !important;
+\t\t\t\t}'''
+          new_mobile = '''\t\t\t\tbody.elmercado-child-theme ul.products li.product .price {
+\t\t\t\t\tpadding-top: 0 !important;
+\t\t\t\t}
+\t\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-content {
+\t\t\t\t\tpadding-bottom: 5px !important;
+\t\t\t\t}
+\t\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-content > .woocommerce-loop-product__title {
+\t\t\t\t\tmargin-bottom: 2px !important;
+\t\t\t\t\tline-height: 1.23 !important;
+\t\t\t\t}
+\t\t\t\tbody.elmercado-child-theme ul.products li.product .product-loop-wrapper > .wcfmmp_sold_by_container {
+\t\t\t\t\tmargin-top: 3px !important;
+\t\t\t\t}'''
+          if old_mobile not in text:
+              raise SystemExit('Product-card mobile target not found')
+          text = text.replace(old_mobile, new_mobile, 1)
+          card.write_text(text)
+
+          home = Path('elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php')
+          text = home.read_text()
+          replacements = {
+          '''body.home .emo-hero {
+\tmin-height: min(650px, calc(100svh - 108px)) !important;
+\tpadding-top: clamp(2.15rem, 3vw, 3rem) !important;
+\tpadding-bottom: clamp(2.6rem, 4.4vw, 4.25rem) !important;
+}
+body.home .emo-hero__grid { gap: clamp(2.5rem, 5vw, 5rem) !important; }
+body.home .emo-hero__copy > p { font-size: clamp(1.07rem, 1.48vw, 1.27rem) !important; }
+body.home .emo-hero__proof { margin-top: clamp(1.8rem, 3vw, 2.65rem) !important; }''':
+          '''body.home .emo-hero {
+\tmin-height: min(600px, calc(100svh - 108px)) !important;
+\tpadding-top: clamp(1.75rem, 2.35vw, 2.35rem) !important;
+\tpadding-bottom: clamp(2rem, 3vw, 3rem) !important;
+}
+body.home .emo-hero__grid { gap: clamp(2rem, 4vw, 4rem) !important; }
+body.home .emo-hero h1 {
+\tfont-size: clamp(3.75rem, 5.45vw, 4.9rem) !important;
+\tline-height: .94 !important;
+}
+body.home .emo-hero__copy > p {
+\tfont-size: clamp(1rem, 1.25vw, 1.12rem) !important;
+\tline-height: 1.5 !important;
+\tmargin-top: .75rem !important;
+\tmargin-bottom: 1rem !important;
+}
+body.home .emo-hero__proof {
+\tmargin-top: clamp(1.2rem, 2vw, 1.75rem) !important;
+\tpadding-top: .8rem !important;
+\tgap: .65rem !important;
+}''',
+          '''body.home .emo-hero__visual--vendors {
+\tgrid-template-columns: repeat(12, minmax(0, 1fr)) !important;''':
+          '''body.home .emo-hero__visual--vendors {
+\ttransform: translateY(-34px);
+\tgrid-template-columns: repeat(12, minmax(0, 1fr)) !important;''',
+          '''\tbody.home .emo-hero {
+\t\tmin-height: 0 !important;
+\t\tpadding-top: 2.15rem !important;
+\t\tpadding-bottom: 2.8rem !important;
+\t}
+\tbody.home .emo-hero__visual--vendors {''':
+          '''\tbody.home .emo-hero {
+\t\tmin-height: 0 !important;
+\t\tpadding-top: 1.6rem !important;
+\t\tpadding-bottom: 2rem !important;
+\t}
+\tbody.home .emo-hero__grid {
+\t\tgap: 1.2rem !important;
+\t}
+\tbody.home .emo-hero h1 {
+\t\tfont-size: 2.55rem !important;
+\t\tline-height: .96 !important;
+\t}
+\tbody.home .emo-hero__copy > p {
+\t\tfont-size: .91rem !important;
+\t\tline-height: 1.48 !important;
+\t\tmargin-top: .6rem !important;
+\t\tmargin-bottom: .75rem !important;
+\t}
+\tbody.home .emo-hero__proof {
+\t\tmargin-top: 1rem !important;
+\t\tpadding-top: .7rem !important;
+\t\tgap: .55rem !important;
+\t}
+\tbody.home .emo-hero__visual--vendors {
+\t\ttransform: translateY(-6px);'''
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit('Home target not found: ' + old[:80])
+              text = text.replace(old, new, 1)
+          home.write_text(text)
+          PY
+
+          php -l elmercadodeorigen-child/inc/product-card-density-final-010162.php
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
+          grep -Fq '0.10.246: compactamos' elmercadodeorigen-child/inc/product-card-density-final-010162.php
+          grep -Fq 'translateY(-34px)' elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
+
+      - name: Commit permanent source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'El Mercado de Origen Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add elmercadodeorigen-child/inc/product-card-density-final-010162.php elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
+          git commit -m 'Compact product cards and Home hero'
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            git fetch origin main
+            git rebase origin/main
+          done
+          exit 1
+
+      - name: Deploy targeted files to production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH="-o ServerAliveInterval=20 -o ServerAliveCountMax=20 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o ServerAliveInterval=20 -o ServerAliveCountMax=20 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          test -n "$PROD_PATH"
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          stamp=$(date +%Y%m%d%H%M%S)
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; test -d '$THEME'; mkdir -p '$THEME/inc' '$THEME/mu-plugins'; cp '$THEME/inc/product-card-density-final-010162.php' '$THEME/inc/product-card-density-final-010162.php.bak-010246-$stamp' 2>/dev/null || true; cp '$THEME/mu-plugins/elmercado-home-fresh.php' '$THEME/mu-plugins/elmercado-home-fresh.php.bak-010246-$stamp' 2>/dev/null || true"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/product-card-density-final-010162.php "$STAGING_USER@$STAGING_HOST:$THEME/inc/product-card-density-final-010162.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php "$STAGING_USER@$STAGING_HOST:$THEME/mu-plugins/elmercado-home-fresh.php"
+
+          # If production also has a root MU copy, keep it in lockstep.
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php'"; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php.bak-010246-$stamp'"
+            sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/elmercado-home-fresh.php"
+          fi
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$THEME/inc/product-card-density-final-010162.php'
+            \"\$php_bin\" -l '$THEME/mu-plugins/elmercado-home-fresh.php'
+            wp_bin=\$(command -v wp || true)
+            [ -z \"\$wp_bin\" ] || \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html' 2>/dev/null || true
+          "
+
+      - name: Verify production density
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/emo-qa && cd /tmp/emo-qa
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium --with-deps >/dev/null 2>&1
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            for(const width of [1440,390]){
+              const page=await browser.newPage({viewport:{width,height:1400}});
+              await page.goto('https://www.elmercadodeorigen.com/tienda/?emoqa=010246-'+Date.now(),{waitUntil:'networkidle',timeout:120000});
+              const c=await page.locator('ul.products li.product').first().evaluate(el=>{
+                const title=el.querySelector('.product-loop-content > .woocommerce-loop-product__title');
+                const price=el.querySelector('.product-loop-meta .price');
+                const sold=el.querySelector('.product-loop-wrapper > .wcfmmp_sold_by_container');
+                const content=el.querySelector('.product-loop-content');
+                const image=el.querySelector('.product-loop-image');
+                const s=n=>n?getComputedStyle(n):null, r=n=>n?n.getBoundingClientRect():null;
+                const tr=r(title),pr=r(price),sr=r(sold),ir=r(image);
+                return {titlePriceGap:tr&&pr?pr.top-tr.bottom:null,titleSoldGap:tr&&sr?sr.top-tr.bottom:null,titleMargin:s(title)?.marginBottom,priceMargin:s(price)?.marginTop,pricePadding:s(price)?.paddingTop,soldMargin:s(sold)?.marginTop,soldPadding:s(sold)?.paddingTop,contentPaddingBottom:s(content)?.paddingBottom,imageWidth:ir?.width,imageHeight:ir?.height};
+              });
+              console.log('CARD_QA_'+width+'='+JSON.stringify(c));
+              if(!(c.titlePriceGap<=5.5 && c.titleSoldGap<=58 && parseFloat(c.pricePadding||'99')<=1 && parseFloat(c.soldPadding||'99')<=1 && c.imageWidth>150 && c.imageHeight>180)) throw new Error('Card density QA failed '+width);
+              await page.close();
+            }
+            for(const width of [1440,390]){
+              const page=await browser.newPage({viewport:{width,height:1400}});
+              await page.goto('https://www.elmercadodeorigen.com/?emoqa=010246-'+Date.now(),{waitUntil:'networkidle',timeout:120000});
+              const h=await page.evaluate(()=>{
+                const q=s=>document.querySelector(s), info=n=>{if(!n)return null;const s=getComputedStyle(n),r=n.getBoundingClientRect();return{top:r.top,bottom:r.bottom,height:r.height,font:parseFloat(s.fontSize),line:parseFloat(s.lineHeight),gap:s.gap,paddingTop:s.paddingTop,paddingBottom:s.paddingBottom}};
+                const hero=info(q('.emo-hero')), title=info(q('.emo-hero h1')), p=info(q('.emo-hero__copy > p')), proof=info(q('.emo-hero__proof')), visual=info(q('.emo-hero__visual--vendors'));
+                return {hero,title,p,proof,visual,visualOffset:visual.top-hero.top,proofVisualGap:visual.top-proof.bottom};
+              });
+              console.log('HERO_QA_'+width+'='+JSON.stringify(h));
+              if(width===1440){if(!(h.title.font<=80 && h.p.line<=27 && h.hero.height<730 && h.visualOffset<185)) throw new Error('Desktop hero QA failed');}
+              else {if(!(h.title.font<=43 && h.p.line<=23 && h.hero.height<1120 && h.proofVisualGap<=25)) throw new Error('Mobile hero QA failed');}
+              await page.close();
+            }
+            await browser.close();
+            console.log('PRODUCTION_CARD_HERO_DENSITY_010246_OK');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
