@@ -1,0 +1,260 @@
+name: Production mobile toolbar polish 0.10.237
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-mobile-toolbar-polish-010237.yml'
+      - 'elmercadodeorigen-child/inc/catalog-mobile-controls-polish-010237.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: elmercado-production-mobile-toolbar-polish-010237
+  cancel-in-progress: false
+
+jobs:
+  deploy-verify-sync-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/catalog-mobile-controls-polish-010237.php >/dev/null
+          grep -Fq 'emo-toolbar-inner-frame-010237' elmercadodeorigen-child/inc/catalog-mobile-controls-polish-010237.php
+          grep -Fq 'right:16px' elmercadodeorigen-child/inc/catalog-mobile-controls-polish-010237.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy safely and verify production
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          FUNCTIONS="$THEME/functions.php"
+          MODULE="$THEME/inc/catalog-mobile-controls-polish-010237.php"
+          BACKUP_FUNCTIONS="/tmp/functions-mobile-polish-010237-${GITHUB_RUN_ID}.bak"
+          BACKUP_MODULE="/tmp/catalog-mobile-controls-polish-010237-${GITHUB_RUN_ID}.bak"
+          PROBE="elmercado-opcache-mobile-polish-${GITHUB_RUN_ID}.php"
+          HAD_MODULE=0
+          ROLLED_BACK=0
+
+          rollback() {
+            code=$?
+            [ "$ROLLED_BACK" -eq 0 ] || exit "$code"
+            ROLLED_BACK=1
+            set +e
+            echo ROLLBACK_START
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              if [ -f '$BACKUP_FUNCTIONS' ]; then cp -p '$BACKUP_FUNCTIONS' '$FUNCTIONS'; rm -f '$BACKUP_FUNCTIONS'; fi
+              if [ '$HAD_MODULE' -eq 1 ] && [ -f '$BACKUP_MODULE' ]; then cp -p '$BACKUP_MODULE' '$MODULE'; else rm -f '$MODULE'; fi
+              rm -f '$BACKUP_MODULE' '$PROD_PATH/$PROBE'
+              wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            " || true
+            echo ROLLED_BACK
+            exit "${code:-1}"
+          }
+          trap rollback ERR
+
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$MODULE'"; then HAD_MODULE=1; fi
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; cp -p '$FUNCTIONS' '$BACKUP_FUNCTIONS'; if [ -f '$MODULE' ]; then cp -p '$MODULE' '$BACKUP_MODULE'; fi"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/catalog-mobile-controls-polish-010237.php "$STAGING_USER@$STAGING_HOST:$MODULE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "THEME='$THEME' FUNCTIONS='$FUNCTIONS' MODULE='$MODULE' python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p=Path(os.environ['FUNCTIONS'])
+          s=p.read_text()
+          marker='CATALOG_MOBILE_CONTROLS_POLISH_010237_PRODUCTION'
+          if marker not in s:
+              block=r'''
+
+          /* CATALOG_MOBILE_CONTROLS_POLISH_010237_PRODUCTION */
+          add_action(
+              'after_setup_theme',
+              static function (): void {
+                  $module = ELMERCADO_THEME_PATH . '/inc/catalog-mobile-controls-polish-010237.php';
+                  if ( is_readable( $module ) ) {
+                      require_once $module;
+                  }
+              },
+              PHP_INT_MAX
+          );
+          '''
+              p.write_text(s.rstrip()+block+'\n')
+          PY
+          php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          \"\$php_bin\" -l '$FUNCTIONS' >/dev/null
+          \"\$php_bin\" -l '$MODULE' >/dev/null
+          grep -Fq 'CATALOG_MOBILE_CONTROLS_POLISH_010237_PRODUCTION' '$FUNCTIONS'
+          wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          set +e
+          for i in $(seq 1 8); do
+            body="$(curl -fsSL --connect-timeout 10 --max-time 35 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID-$i" 2>/dev/null)"
+            printf '%s\n' "$body" | grep -q '^OPCACHE_RESET_OK$' && { echo OPCACHE_RESET_OK; break; }
+            sleep 3
+          done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" >/dev/null 2>&1
+          set -e
+
+          runtime_ok=0
+          set +e
+          for i in $(seq 1 12); do
+            html="$(curl -fsSL --connect-timeout 10 --max-time 40 -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/tienda/1957/?mobile-polish=$GITHUB_RUN_ID-$i" 2>/dev/null)"
+            if grep -Fq 'elmercado-catalog-mobile-controls-polish-010237' <<<"$html" && grep -Fq 'emo-toolbar-inner-frame-010237' <<<"$html"; then runtime_ok=1; break; fi
+            sleep 4
+          done
+          set -e
+          test "$runtime_ok" -eq 1
+          echo RUNTIME_POLISH_OK
+
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const near=(a,b,t=2)=>Math.abs(a-b)<=t;
+          const fail=(m,d)=>{throw new Error(`${m} ${JSON.stringify(d)}`)};
+          const retry=async(fn)=>{let e;for(let i=0;i<4;i++){try{return await fn()}catch(x){e=x;await sleep(2200)}}throw e};
+
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            async function inspect(path,vendor,width){
+              const p=await browser.newPage();
+              await p.setCacheEnabled(false);
+              await p.setViewport({width,height:844});
+              await retry(()=>p.goto(`${process.env.BASE_URL}${path}?polishqa=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:55000}));
+              await p.waitForSelector('.emo-catalog-toolbar-shared-010229',{timeout:30000});
+              await sleep(1900);
+              const d=await p.evaluate(vendor=>{
+                const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+                const count=toolbar?.querySelector('.woocommerce-result-count,.emo-catalog-result-count-010220,.emo-vendor-result-count-010225');
+                const ordering=toolbar?.querySelector('.woocommerce-ordering');
+                const select=ordering?.querySelector('select');
+                const filter=vendor?document.querySelector('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229'):document.querySelector('#emo-premium-filter-toggle');
+                const label=filter?.querySelector('.emo-filter-label');
+                const R=e=>{if(!e)return null;const r=e.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}};
+                const S=e=>{if(!e)return null;const s=getComputedStyle(e);return{display:s.display,borderTopWidth:s.borderTopWidth,borderTopColor:s.borderTopColor,borderRadius:s.borderRadius,backgroundColor:s.backgroundColor,boxShadow:s.boxShadow,padding:s.padding,whiteSpace:s.whiteSpace,writingMode:s.writingMode,appearance:s.appearance,paddingRight:s.paddingRight,position:s.position}};
+                let inner=null;
+                if(count&&ordering){let n=count.parentElement;while(n&&n!==toolbar){if(n.contains(ordering)){inner=n;break}n=n.parentElement}}
+                const pseudo=ordering?getComputedStyle(ordering,'::after'):null;
+                return {
+                  toolbar:R(toolbar),count:R(count),ordering:R(ordering),select:R(select),filter:R(filter),
+                  toolbarStyle:S(toolbar),countStyle:S(count),selectStyle:S(select),innerStyle:S(inner),
+                  innerClass:inner?.className||'',label:(label?.textContent||'').trim(),countText:(count?.textContent||'').replace(/\s+/g,' ').trim(),
+                  arrow:pseudo?{content:pseudo.content,right:pseudo.right,width:pseudo.width,height:pseudo.height,borderRightWidth:pseudo.borderRightWidth,borderBottomWidth:pseudo.borderBottomWidth}:null
+                };
+              },vendor);
+              if(!d.toolbar||!d.count||!d.select||!d.filter) fail('missing controls',{path,width,d});
+              const expected=width-32;
+              if(!near(d.toolbar.width,expected)||!near(d.toolbar.left,16)||!near(d.filter.width,expected)||!near(d.filter.left,16)) fail('outer geometry',{path,width,d});
+              if(d.toolbarStyle.borderTopWidth!=='1px'||d.toolbarStyle.borderRadius!=='16px') fail('outer card style',{path,width,d});
+              if(d.innerStyle && d.innerStyle.display!=='contents') fail('double inner frame still boxed',{path,width,d});
+              if(d.innerStyle && !String(d.innerClass).includes('emo-toolbar-inner-frame-010237')) fail('inner frame not normalized',{path,width,d});
+              if(d.countStyle.whiteSpace!=='nowrap'||!String(d.countStyle.writingMode).startsWith('horizontal')||!/resultado/i.test(d.countText)) fail('count flow',{path,width,d});
+              if(d.selectStyle.paddingRight!=='42px'||d.selectStyle.appearance!=='none') fail('select polish',{path,width,d});
+              if(!d.arrow||d.arrow.content==='none'||d.arrow.right!=='16px'||d.arrow.borderRightWidth==='0px'||d.arrow.borderBottomWidth==='0px') fail('arrow polish',{path,width,d});
+              if(d.label!=='Filtros') fail('filter label',{path,width,d});
+              if(d.filter.top<d.toolbar.bottom-1) fail('filter overlaps toolbar',{path,width,d});
+              await p.close();
+              return d;
+            }
+
+            for(const width of [390,360]){
+              const shop=await inspect('/tienda/',false,width);
+              const vendor=await inspect('/tienda/1957/',true,width);
+              for(const key of ['borderTopWidth','borderTopColor','borderRadius','backgroundColor','boxShadow','padding']){
+                if(shop.toolbarStyle[key]!==vendor.toolbarStyle[key]) fail('toolbar parity',{width,key,shop:shop.toolbarStyle,vendor:vendor.toolbarStyle});
+              }
+              for(const key of ['appearance','paddingRight']){
+                if(shop.selectStyle[key]!==vendor.selectStyle[key]) fail('select parity',{width,key,shop:shop.selectStyle,vendor:vendor.selectStyle});
+              }
+              if(shop.arrow.right!==vendor.arrow.right) fail('arrow parity',{width,shop:shop.arrow,vendor:vendor.arrow});
+              console.log(`MOBILE_POLISH_${width}_OK`,JSON.stringify({shop,vendor}));
+            }
+            await browser.close();
+          })().catch(e=>{console.error('MOBILE_POLISH_ERROR',e);process.exit(1)});
+          NODE
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP_FUNCTIONS' '$BACKUP_MODULE' '$PROD_PATH/$PROBE'"
+          trap - ERR
+          echo PRODUCTION_MOBILE_POLISH_010237_OK
+
+      - name: Sync loader into source theme
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/functions.php')
+          s=p.read_text()
+          marker='CATALOG_MOBILE_CONTROLS_POLISH_010237_PRODUCTION'
+          if marker not in s:
+              block=r'''
+
+          /* CATALOG_MOBILE_CONTROLS_POLISH_010237_PRODUCTION */
+          add_action(
+              'after_setup_theme',
+              static function (): void {
+                  $module = ELMERCADO_THEME_PATH . '/inc/catalog-mobile-controls-polish-010237.php';
+                  if ( is_readable( $module ) ) {
+                      require_once $module;
+                  }
+              },
+              PHP_INT_MAX
+          );
+          '''
+              p.write_text(s.rstrip()+block+'\n')
+          PY
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          if git diff --quiet -- elmercadodeorigen-child/functions.php; then
+            echo SOURCE_ALREADY_SYNCED
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/functions.php
+          git commit -m 'Load final mobile toolbar polish'
+          git push origin HEAD:main
+          echo SOURCE_THEME_SYNCED
