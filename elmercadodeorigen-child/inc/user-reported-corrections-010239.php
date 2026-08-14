@@ -174,6 +174,36 @@ add_action(
 				}
 				?>
 				<style id="elmercado-production-ui-polish-010240">
+					/* Todas las fichas de producto: menos aire vertical sin alterar tipografía ni ancho. */
+					html body.elmercado-child-theme ul.products li.product .price {
+						margin-top:0.4rem !important;
+						margin-bottom:0 !important;
+						padding-top:0.4rem !important;
+						line-height:1.25 !important;
+					}
+					html body.elmercado-child-theme ul.products li.product .wcfmmp_sold_by_container {
+						margin-top:0.4rem !important;
+						margin-bottom:0 !important;
+						padding-top:0.4rem !important;
+						line-height:1.35 !important;
+					}
+					html body.elmercado-child-theme ul.products li.product .button {
+						margin-top:0.62rem !important;
+					}
+					@media (max-width:767px) {
+						html body.elmercado-child-theme ul.products li.product .price {
+							margin-top:0.32rem !important;
+							padding-top:0.32rem !important;
+						}
+						html body.elmercado-child-theme ul.products li.product .wcfmmp_sold_by_container {
+							margin-top:0.32rem !important;
+							padding-top:0.32rem !important;
+						}
+						html body.elmercado-child-theme ul.products li.product .button {
+							margin-top:0.5rem !important;
+						}
+					}
+
 					/*
 					 * Productores: la búsqueda de WCFM se inserta fuera de
 					 * #wcfmmp-stores-wrap, por eso la regla anterior no podía alcanzarla.
