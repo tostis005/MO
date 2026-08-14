@@ -1,10 +1,11 @@
-name: Catalog filter and scroll 0.10.234 staging QA
+name: Catalog filter and scroll 0.10.235 staging QA
 
 on:
   push:
     branches: [main]
     paths:
       - 'elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php'
+      - 'elmercadodeorigen-child/inc/catalog-vendor-truth-final-010235.php'
       - 'elmercadodeorigen-child/functions.php'
       - '.github/workflows/catalog-filter-scroll-final-010234-staging.yml'
   workflow_dispatch:
@@ -25,9 +26,11 @@ jobs:
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php >/dev/null
+          php -l elmercadodeorigen-child/inc/catalog-vendor-truth-final-010235.php >/dev/null
           php -l elmercadodeorigen-child/functions.php >/dev/null
           grep -Fq 'elmercado-catalog-scroll-final-010234' elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php
-          grep -Fq 'catalog-filter-scroll-final-010234.php' elmercadodeorigen-child/functions.php
+          grep -Fq 'emo-vendor-truth-010235' elmercadodeorigen-child/inc/catalog-vendor-truth-final-010235.php
+          grep -Fq 'catalog-vendor-truth-final-010235.php' elmercadodeorigen-child/functions.php
       - name: Wait for staging release
         shell: bash
         run: |
@@ -35,13 +38,15 @@ jobs:
           for i in $(seq 1 60); do
             shop="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-store' "$BASE_URL/tienda/" || true)"
             vendor="$(curl -fsSL --max-time 20 -H 'Cache-Control: no-store' "$BASE_URL/tienda/hidalgo-de-la-jara/" || true)"
-            if grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$shop" && grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$vendor"; then
-              echo STAGING_010234_LIVE
+            if grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$shop" \
+              && grep -Fq 'elmercado-catalog-scroll-final-010234' <<<"$vendor" \
+              && grep -Fq 'emo-vendor-truth-010235' <<<"$vendor"; then
+              echo STAGING_010235_LIVE
               exit 0
             fi
             sleep 5
           done
-          echo '0.10.234 did not become live on staging' >&2
+          echo '0.10.235 did not become live on staging' >&2
           exit 1
       - name: Install browser
         shell: bash
@@ -65,7 +70,7 @@ jobs:
               await p.setViewport({width:1440,height:1000});
               await p.goto(`${process.env.BASE_URL}${path}`,{waitUntil:'domcontentloaded',timeout:60000});
               await p.waitForSelector(vendor?'#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229':'#secondary.emo-filter-rail-shared-010229',{timeout:20000});
-              await sleep(1000);
+              await sleep(900);
               const initial=await p.evaluate((vendor)=>{
                 const rail=vendor?document.querySelector('#wcfmmp-store .left_sidebar.emo-filter-rail-shared-010229'):document.querySelector('#secondary.emo-filter-rail-shared-010229');
                 const title=rail?.querySelector('.emo-filter-title-shared-010229');
@@ -79,9 +84,11 @@ jobs:
                   titleFont:c(title)?.fontFamily||'', titleSize:c(title)?.fontSize||'', titleWeight:c(title)?.fontWeight||'',
                   titleLine:c(title)?.lineHeight||'', titleSpacing:c(title)?.letterSpacing||'', titleTransform:c(title)?.textTransform||'',
                   panelPadding:c(panel)?.padding||null,
+                  filterText:(panel?.textContent||'').replace(/\s+/g,' ').trim(),
                   count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
                   oldLoader:!!document.getElementById('elmercado-continuous-catalog-loader-010181'),
                   newLoader:!!document.getElementById('elmercado-catalog-scroll-final-010234'),
+                  truth:document.body.classList.contains('emo-vendor-truth-010235'),
                   linkText:link?.textContent?.replace(/\s+/g,' ').trim()||''
                 };
               },vendor);
@@ -90,6 +97,7 @@ jobs:
               if(initial.railPadding!=='18px') fail('rail padding',initial);
               if(Math.abs(initial.titleWidth-212)>0.75) fail('title width',initial);
               if(vendor && initial.panelPadding!=='0px') fail('vendor inner padding',initial);
+              if(vendor && !initial.truth) fail('vendor truth runtime missing',initial);
               if(initial.count.length<1 || initial.count.some(t=>t!==expectedLabel)) fail('initial exact count',initial);
               if(initial.oldLoader) fail('old loader still active',initial);
               if(!initial.newLoader) fail('new loader missing',initial);
@@ -101,8 +109,8 @@ jobs:
 
               const started=Date.now();
               while(Date.now()-started<25000){
-                await p.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
-                await sleep(650);
+                await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
+                await sleep(700);
                 const st=await p.evaluate(()=>window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,loading:window.__emoCatalogLoaderState.loading,shown:window.__emoCatalogLoaderState.shown}:null);
                 if(st && !st.loading && !st.nextUrl) break;
               }
@@ -126,8 +134,11 @@ jobs:
 
             const shop=await inspect('/tienda/',false,21);
             const vendor=await inspect('/tienda/hidalgo-de-la-jara/',true,17);
+            const vendor1957=await inspect('/tienda/1957/',true,4);
             const titleKeys=['titleFont','titleSize','titleWeight','titleLine','titleSpacing','titleTransform'];
             for(const key of titleKeys) if(shop.initial[key]!==vendor.initial[key]) fail(`title parity ${key}`,{shop:shop.initial[key],vendor:vendor.initial[key]});
+            if(/Aceites\s*4/i.test(vendor.initial.filterText)) fail('Hidalgo still shows Aceites',vendor.initial);
+            if(!/Embutidos y curados\s*7/i.test(vendor.initial.filterText) || !/Jamones y paletas\s*10/i.test(vendor.initial.filterText)) fail('Hidalgo category truth',vendor.initial);
 
             const mobile=await browser.newPage();
             await mobile.setCacheEnabled(false); await mobile.setViewport({width:390,height:844});
@@ -136,7 +147,7 @@ jobs:
             const m=await mobile.evaluate(()=>{const shell=document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229'); const close=shell?.querySelector('.emo-mobile-filter-close'); const rail=shell?.querySelector('.emo-mobile-filter-content .emo-filter-rail-shared-010229'); const r=close?.getBoundingClientRect(); return {hidden:shell?.hidden,closeW:r?.width||0,closeH:r?.height||0,railInside:!!rail};});
             if(m.hidden || m.closeW!==40 || m.closeH!==40 || !m.railInside) fail('mobile drawer regression',m);
             await mobile.close();
-            console.log('CATALOG_FILTER_SCROLL_010234_OK',JSON.stringify({shop:shop.tail,vendor:vendor.tail,mobile:m}));
+            console.log('CATALOG_FILTER_SCROLL_010235_OK',JSON.stringify({shop:shop.tail,vendor:vendor.tail,vendor1957:vendor1957.tail,mobile:m}));
             await browser.close();
-          })().catch(e=>{console.error('CATALOG_FILTER_SCROLL_010234_ERROR',e);process.exit(1)});
+          })().catch(e=>{console.error('CATALOG_FILTER_SCROLL_010235_ERROR',e);process.exit(1)});
           NODE
