@@ -45,20 +45,34 @@ final class MDO_Pricing {
 				$regular = min( $regular_prices );
 			}
 		} elseif ( ! empty( $product['source_url'] ) && ( null === $regular || null === $sale ) ) {
-			// Los conectores actuales ya conocen el precio vigente. Hacemos una segunda
-			// lectura ligera de la ficha solo para detectar el precio tachado/original.
-			// Si falla, conservamos el precio que ya extrajo el conector.
+			/*
+			 * El conector ya conoce el precio vigente y es la fuente autoritativa.
+			 * La segunda lectura sólo puede completar un precio que falte o validar el
+			 * precio regular de una oferta cuando el precio actual detectado coincide
+			 * con el del conector. Así evitamos tomar ofertas de productos relacionados
+			 * que también puedan aparecer en el HTML de la ficha.
+			 */
 			try {
-				$detected = self::detect_from_url( (string) $product['source_url'] );
-				if ( null !== $detected['current'] ) {
-					$current = $detected['current'];
+				$detected         = self::detect_from_url( (string) $product['source_url'] );
+				$detected_current = self::number( $detected['current'] ?? null );
+				$detected_regular = self::number( $detected['regular'] ?? null );
+
+				if ( null === $current && null !== $detected_current ) {
+					$current = $detected_current;
 				}
-				if ( null !== $detected['regular'] ) {
-					$regular = $detected['regular'];
+
+				if (
+					null === $regular
+					&& null !== $current
+					&& null !== $detected_current
+					&& null !== $detected_regular
+					&& abs( $current - $detected_current ) < 0.005
+					&& $detected_regular > $current
+				) {
+					$regular = $detected_regular;
 				}
 			} catch ( Throwable $error ) {
-				// La detección del precio original es complementaria y nunca debe romper
-				// el scraping principal ni provocar que desaparezca un producto válido.
+				// La detección complementaria nunca debe romper el scraping principal.
 			}
 		}
 
