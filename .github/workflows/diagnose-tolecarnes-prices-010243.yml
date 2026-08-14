@@ -44,6 +44,12 @@ jobs:
           cat > /tmp/diag-tolecarnes-010243.php <<'PHP'
           <?php
           if ( ! defined('ABSPATH') ) exit;
+          if ( ! defined('MDO_SUPPLIER_SYNC_VERSION') ) define('MDO_SUPPLIER_SYNC_VERSION','diagnostic');
+          $plugin = WP_PLUGIN_DIR . '/mdo-supplier-sync';
+          require_once $plugin . '/includes/class-mdo-database.php';
+          require_once $plugin . '/includes/class-mdo-pricing.php';
+          require_once $plugin . '/includes/class-mdo-text.php';
+          require_once $plugin . '/connectors/class-mdo-connector-tolecarnes.php';
           global $wpdb;
           $supplier_table = MDO_Database::table('suppliers');
           $source_table   = MDO_Database::table('source_products');
@@ -58,9 +64,9 @@ jobs:
             echo "\nURL={$url}\n";
             try {
               $raw = MDO_Connector_Tolecarnes::scrape_product($url);
-              echo "SCRAPE_RAW=" . wp_json_encode(['title'=>$raw['title']??null,'price'=>$raw['price']??null,'variations'=>$raw['variations']??null,'stock'=>$raw['stock_status']??null,'source_hash'=>$raw['source_hash']??null], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . "\n";
+              echo "SCRAPE_RAW=" . wp_json_encode(['title'=>$raw['title']??null,'price'=>$raw['price']??null,'variations'=>$raw['variations']??null,'stock'=>$raw['stock_status']??null], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . "\n";
               $norm = MDO_Text::normalize_product($raw);
-              echo "SCRAPE_NORMALIZED=" . wp_json_encode(['title'=>$norm['title']??null,'price'=>$norm['price']??null,'regular_price'=>$norm['regular_price']??null,'sale_price'=>$norm['sale_price']??null,'discount'=>$norm['discount_percent']??null,'variations'=>$norm['variations']??null,'source_hash'=>$norm['source_hash']??null], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . "\n";
+              echo "SCRAPE_NORMALIZED=" . wp_json_encode(['title'=>$norm['title']??null,'price'=>$norm['price']??null,'regular_price'=>$norm['regular_price']??null,'sale_price'=>$norm['sale_price']??null,'discount'=>$norm['discount_percent']??null,'variations'=>$norm['variations']??null], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) . "\n";
             } catch (Throwable $e) { echo "SCRAPE_ERROR=".$e->getMessage()."\n"; }
 
             $resp = wp_remote_get($url,['timeout'=>20,'redirection'=>5,'user-agent'=>'EMDO diagnostic 0.10.243','headers'=>['Accept'=>'text/html,application/xhtml+xml']]);
@@ -89,11 +95,15 @@ jobs:
                 $payload=json_decode((string)$row['source_payload'],true); unset($row['source_payload']);
                 $row['payload_price']=$payload['price']??null; $row['payload_regular']=$payload['regular_price']??null; $row['payload_sale']=$payload['sale_price']??null; $row['payload_discount']=$payload['discount_percent']??null;
                 $pid=(int)$row['wc_product_id'];
-                if($pid && function_exists('wc_get_product')) { $p=wc_get_product($pid); $row['woo']=$p?['name'=>$p->get_name(),'type'=>$p->get_type(),'price'=>$p->get_price(),'regular'=>$p->get_regular_price(),'sale'=>$p->get_sale_price(),'status'=>$p->get_status(),'permalink'=>$p->get_permalink()]:null; }
+                if($pid){
+                  $meta=[];
+                  foreach(['_price','_regular_price','_sale_price','_emdo_source_hash','_emdo_source_url'] as $key){$meta[$key]=get_post_meta($pid,$key,true);}
+                  $row['woo_post']=['title'=>get_the_title($pid),'status'=>get_post_status($pid),'meta'=>$meta];
+                }
                 echo "DB_ROW=".wp_json_encode($row,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
               } else echo "DB_ROW=null\n";
             }
           }
           PHP
           sshpass -e scp $SCP /tmp/diag-tolecarnes-010243.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/diag-tolecarnes-010243.php"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" eval-file '$PROD_PATH/diag-tolecarnes-010243.php' --path='$PROD_PATH' --allow-root; rm -f '$PROD_PATH/diag-tolecarnes-010243.php'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$PROD_PATH/diag-tolecarnes-010243.php' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root; rm -f '$PROD_PATH/diag-tolecarnes-010243.php'"
