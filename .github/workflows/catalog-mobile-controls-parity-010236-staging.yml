@@ -131,6 +131,7 @@ jobs:
             const shopDesktop=await inspectDesktop('/tienda/',false);
             const vendorDesktop=await inspectDesktop('/tienda/hidalgo-de-la-jara/',true);
             if(JSON.stringify(shopDesktop.style)!==JSON.stringify(vendorDesktop.style)) fail('desktop ordering visual parity',{shop:shopDesktop,vendor:vendorDesktop});
+            if(shopDesktop.width!==vendorDesktop.width || shopDesktop.width!==250) fail('desktop ordering width parity',{shop:shopDesktop.width,vendor:vendorDesktop.width});
 
             console.log('CATALOG_MOBILE_CONTROLS_010236_OK',JSON.stringify({shop,vendor,desktop:{shop:shopDesktop,vendor:vendorDesktop}}));
             await browser.close();
