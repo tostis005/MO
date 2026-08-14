@@ -4,8 +4,6 @@ function emdo_cmd($c){$o=shell_exec($c.' 2>&1');return is_string($o)?trim($o):''
 $theme=get_stylesheet_directory();
 $module=$theme.'/inc/product-navigation-performance-010237.php';
 $functions=$theme.'/functions.php';
-$backup_module='/tmp/emdo-product-navigation-performance-010237.php.bak';
-$backup_functions='/tmp/emdo-functions-010237.php.bak';
 $module_code=<<<'PHP'
 <?php
 /**
@@ -59,23 +57,53 @@ add_filter( 'get_previous_post_where', 'elmercado_product_navigation_adjacent_wh
 add_filter( 'get_next_post_where', 'elmercado_product_navigation_adjacent_where_010237', 20 );
 PHP;
 
-function rollback_nav_hotfix(){global $module,$functions,$backup_module,$backup_functions;if(is_file($backup_functions))copy($backup_functions,$functions);if(is_file($backup_module))copy($backup_module,$module);else @unlink($module);}
+echo "=== PRE STATE ===\n";
+echo 'MODULE_EXISTS '.(is_file($module)?'yes':'no')."\n";
+$before=(string)file_get_contents($functions);
+echo 'INCLUDE_EXISTS '.(strpos($before,"'inc/product-navigation-performance-010237.php'")!==false?'yes':'no')."\n";
 
-echo "=== DEPLOY HOTFIX ===\n";
-if(is_file($module))copy($module,$backup_module); else @unlink($backup_module);
-copy($functions,$backup_functions);
-if(false===file_put_contents($module,$module_code."\n")){echo "WRITE_MODULE_FAILED\n";rollback_nav_hotfix();exit(1);} 
-$fc=file_get_contents($functions);$needle="\t'inc/wcfm-disabled-vendor-visibility-010210.php',";$insert=$needle."\n\t'inc/product-navigation-performance-010237.php',";
-if(strpos($fc,"'inc/product-navigation-performance-010237.php'")===false){$patched=str_replace($needle,$insert,$fc,$count);if($count!==1||false===file_put_contents($functions,$patched)){echo "PATCH_FUNCTIONS_FAILED count=$count\n";rollback_nav_hotfix();exit(1);}}
-echo emdo_cmd('php -l '.escapeshellarg($module))."\n";echo emdo_cmd('php -l '.escapeshellarg($functions))."\n";
-if(strpos(emdo_cmd('php -l '.escapeshellarg($module)),'No syntax errors detected')===false){rollback_nav_hotfix();exit(1);} 
+/* Put production in the exact intended state, idempotently. */
+if(false===file_put_contents($module,$module_code."\n")){echo "WRITE_MODULE_FAILED\n";exit(1);}
+$fc=(string)file_get_contents($functions);
+$needle="\t'inc/wcfm-disabled-vendor-visibility-010210.php',";
+$include="\t'inc/product-navigation-performance-010237.php',";
+if(strpos($fc,"'inc/product-navigation-performance-010237.php'")===false){
+  $patched=str_replace($needle,$needle."\n".$include,$fc,$count);
+  if($count!==1||false===file_put_contents($functions,$patched)){echo "PATCH_FUNCTIONS_FAILED count=$count\n";exit(1);}
+}
+$php=escapeshellarg(PHP_BINARY);
+$lint_module=emdo_cmd($php.' -l '.escapeshellarg($module));
+$lint_functions=emdo_cmd($php.' -l '.escapeshellarg($functions));
+echo "LINT_MODULE $lint_module\n";
+echo "LINT_FUNCTIONS $lint_functions\n";
+if(strpos($lint_module,'No syntax errors detected')===false||strpos($lint_functions,'No syntax errors detected')===false){echo "LINT_FAILED\n";exit(1);}
 
-/* Load the new filter in this CLI request so we can benchmark it immediately. */
-if(!function_exists('elmercado_product_navigation_adjacent_where_010237'))require_once $module;
+/* Ensure this already-running WP-CLI process uses the new filter too. */
+if(!function_exists('elmercado_product_navigation_adjacent_where_010237')) require_once $module;
+
 global $wpdb;
-$disabled=function_exists('elmercado_wcfm_disabled_vendor_ids_010210')?elmercado_wcfm_disabled_vendor_ids_010210():[];$disabled_sql=$disabled?implode(',',array_map('intval',$disabled)):'0';
-$sample=(int)$wpdb->get_var("SELECT p.ID FROM {$wpdb->posts} p JOIN {$wpdb->term_relationships} tr ON tr.object_id=p.ID JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='product_cat' WHERE p.post_type='product' AND p.post_status='publish' AND p.post_author NOT IN ($disabled_sql) ORDER BY p.post_date DESC LIMIT 1");
+$disabled=function_exists('elmercado_wcfm_disabled_vendor_ids_010210')?elmercado_wcfm_disabled_vendor_ids_010210():[];
+$disabled_sql=$disabled?implode(',',array_map('intval',$disabled)):'0';
+$sample=(int)$wpdb->get_var("SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='product' AND p.post_status='publish' AND p.post_author NOT IN ($disabled_sql) ORDER BY p.post_date DESC LIMIT 1");
+echo 'DISABLED_VENDOR_IDS '.json_encode(array_map('intval',$disabled))."\n";
 echo "SAMPLE_ID $sample\n";
-if($sample){$GLOBALS['post']=get_post($sample);setup_postdata($GLOBALS['post']);$counts=['prev'=>0,'next'=>0];$fp=function($w)use(&$counts){$counts['prev']++;return $w;};$fn=function($w)use(&$counts){$counts['next']++;return $w;};add_filter('get_previous_post_where',$fp,PHP_INT_MAX);add_filter('get_next_post_where',$fn,PHP_INT_MAX);$t=microtime(true);$prev=woostify_get_prev_product();$tp=microtime(true)-$t;$t=microtime(true);$next=woostify_get_next_product();$tn=microtime(true)-$t;remove_filter('get_previous_post_where',$fp,PHP_INT_MAX);remove_filter('get_next_post_where',$fn,PHP_INT_MAX);echo 'BENCH prev_s='.sprintf('%.4f',$tp).' next_s='.sprintf('%.4f',$tn).' prev_loops='.$counts['prev'].' next_loops='.$counts['next'].' prev_id='.($prev?$prev->get_id():0).' next_id='.($next?$next->get_id():0)."\n";$url=get_permalink($sample);echo 'URL '.$url."\n";wp_reset_postdata();sleep(3);$health=emdo_cmd("curl -sS -L -o /dev/null --max-time 25 -w 'HTTP=%{http_code} TTFB=%{time_starttransfer} TOTAL=%{time_total}' ".escapeshellarg($url));echo "HEALTH $health\n";if(strpos($health,'HTTP=200')===false){echo "HEALTH_FAILED_ROLLBACK\n";rollback_nav_hotfix();exit(1);}}
-@unlink($backup_module);@unlink($backup_functions);
-echo "HOTFIX_OK\n";
+if(!$sample){echo "NO_ACTIVE_PRODUCT\n";exit(1);}
+$GLOBALS['post']=get_post($sample);setup_postdata($GLOBALS['post']);
+$counts=['prev'=>0,'next'=>0,'visible'=>0];
+$fp=function($w)use(&$counts){$counts['prev']++;return $w;};
+$fn=function($w)use(&$counts){$counts['next']++;return $w;};
+$fv=function($v,$pid)use(&$counts){$counts['visible']++;return $v;};
+add_filter('get_previous_post_where',$fp,PHP_INT_MAX);
+add_filter('get_next_post_where',$fn,PHP_INT_MAX);
+add_filter('woocommerce_product_is_visible',$fv,PHP_INT_MAX,2);
+$t=microtime(true);$prev=woostify_get_prev_product();$tp=microtime(true)-$t;
+$t=microtime(true);$next=woostify_get_next_product();$tn=microtime(true)-$t;
+remove_filter('get_previous_post_where',$fp,PHP_INT_MAX);
+remove_filter('get_next_post_where',$fn,PHP_INT_MAX);
+remove_filter('woocommerce_product_is_visible',$fv,PHP_INT_MAX);
+echo 'BENCH prev_s='.sprintf('%.6f',$tp).' next_s='.sprintf('%.6f',$tn).' prev_loops='.$counts['prev'].' next_loops='.$counts['next'].' visible_checks='.$counts['visible'].' prev_id='.($prev?$prev->get_id():0).' next_id='.($next?$next->get_id():0)."\n";
+$url=get_permalink($sample);echo 'PRODUCT_URL '.$url."\n";wp_reset_postdata();
+$health=emdo_cmd("curl -sS -L -o /dev/null --max-time 25 -w 'HTTP=%{http_code} TTFB=%{time_starttransfer} TOTAL=%{time_total}' ".escapeshellarg($url)."?emdo-nav-hotfix=1");
+echo "HEALTH $health\n";
+if(strpos($health,'HTTP=200')===false){echo "HEALTH_FAILED\n";exit(1);}
+echo "=== POST STATE ===\nMODULE_EXISTS yes\nINCLUDE_EXISTS yes\nHOTFIX_OK\n";
