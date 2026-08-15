@@ -1,0 +1,37 @@
+name: Inspect production catalog active includes 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-catalog-active-includes-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH=$(dirname "$(find /var/www/vhosts -maxdepth 6 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null | head -n1)")
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          echo '=== functions includes matching catalog ==='
+          grep -nE 'catalog-(continuous-loading|filter-scroll-final|mobile-controls-polish|query-parity|result-total|core-filters)' "$THEME/functions.php" || true
+          echo '=== exact relevant require/include lines ==='
+          grep -nE 'require|include' "$THEME/functions.php" | grep -E 'catalog|filter|mobile' | tail -n 120 || true
+          echo '=== scroll header/footer hooks ==='
+          grep -n -B 8 -A 8 -E "add_action\(|wp_footer|catalog-filter-scroll-final" "$THEME/inc/catalog-filter-scroll-final-010234.php" | head -n 120 || true
+          echo '=== continuous loader header/footer hooks ==='
+          grep -n -B 8 -A 8 -E "add_action\(|wp_footer|catalog-continuous-loading" "$THEME/inc/catalog-continuous-loading-010176.php" | head -n 120 || true
+          REMOTE
