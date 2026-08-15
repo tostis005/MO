@@ -1,0 +1,24 @@
+name: Fast-check staging shop cache 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-cache-fastcheck-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check ES and EN shop cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /tienda/ /en/tienda/; do
+            echo "===== $path ====="
+            for i in 1 2 3; do
+              curl -kLsS --max-time 35 -D /tmp/h -o /dev/null -w "run=$i ttfb=%{time_starttransfer}s total=%{time_total}s code=%{http_code}\n" "https://dev.elmercadodeorigen.com${path}"
+              grep -i '^x-mdo-page-cache:' /tmp/h || true
+            done
+          done
