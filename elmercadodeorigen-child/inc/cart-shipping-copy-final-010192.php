@@ -13,8 +13,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+if ( ! function_exists( 'elmercado_request_uses_english' ) ) {
+	function elmercado_request_uses_english(): bool {
+		global $TRP_LANGUAGE;
+
+		if ( isset( $TRP_LANGUAGE ) && is_string( $TRP_LANGUAGE ) && '' !== $TRP_LANGUAGE ) {
+			return 0 === strpos( strtolower( $TRP_LANGUAGE ), 'en' );
+		}
+
+		if ( function_exists( 'trp_get_current_language' ) ) {
+			$language = trp_get_current_language();
+			if ( is_string( $language ) && '' !== $language ) {
+				return 0 === strpos( strtolower( $language ), 'en' );
+			}
+		}
+
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+		return 1 === preg_match( '#^/en(?:/|$)#i', $path );
+	}
+}
+
 /**
- * Normaliza la copia "Enviará a" a "Enviar a" en contexto de carrito.
+ * Normaliza el destino de envío respetando el idioma de la petición.
  */
 function elmercado_cart_shipping_destination_copy( string $translation, string $text, string $domain = '' ): string {
 	$is_cart = function_exists( 'is_cart' ) && is_cart();
@@ -24,15 +45,22 @@ function elmercado_cart_shipping_destination_copy( string $translation, string $
 		return $translation;
 	}
 
+	$is_english = elmercado_request_uses_english();
+
 	if ( 'Shipping to %s.' === $text ) {
-		return 'Enviar a %s.';
+		return $is_english ? 'Shipping to %s.' : 'Enviar a %s.';
 	}
 
 	if ( 'Shipping to %s' === $text ) {
-		return 'Enviar a %s';
+		return $is_english ? 'Shipping to %s' : 'Enviar a %s';
 	}
 
-	$corrected = preg_replace( '/\bEnviará\s+a\b/iu', 'Enviar a', $translation );
+	if ( $is_english ) {
+		$corrected = preg_replace( '/\b(?:Enviará|Enviar)(?:\s|&nbsp;)+a\b/iu', 'Shipping to', $translation );
+	} else {
+		$corrected = preg_replace( '/\bEnviará(?:\s|&nbsp;)+a\b/iu', 'Enviar a', $translation );
+	}
+
 	return is_string( $corrected ) ? $corrected : $translation;
 }
 
@@ -49,9 +77,14 @@ add_action(
 			return;
 		}
 
+		$is_english = elmercado_request_uses_english();
 		ob_start(
-			static function ( string $html ): string {
-				$corrected = preg_replace( '/\bEnviará(?:\s|&nbsp;)+a\b/iu', 'Enviar a', $html );
+			static function ( string $html ) use ( $is_english ): string {
+				if ( $is_english ) {
+					$corrected = preg_replace( '/\b(?:Enviará|Enviar)(?:\s|&nbsp;)+a\b/iu', 'Shipping to', $html );
+				} else {
+					$corrected = preg_replace( '/\bEnviará(?:\s|&nbsp;)+a\b/iu', 'Enviar a', $html );
+				}
 				return is_string( $corrected ) ? $corrected : $html;
 			}
 		);
@@ -70,7 +103,9 @@ add_action(
 		(() => {
 			'use strict';
 
-			const pattern = /Enviará\s+a/giu;
+			const isEnglish = (document.documentElement.lang || '').toLowerCase().startsWith('en') || /^\/en(?:\/|$)/i.test(window.location.pathname || '');
+			const pattern = isEnglish ? /(?:Enviará|Enviar)\s+a/giu : /Enviará\s+a/giu;
+			const replacement = isEnglish ? 'Shipping to' : 'Enviar a';
 
 			const normalizeElement = (element) => {
 				if (!(element instanceof Element)) return;
@@ -78,7 +113,7 @@ add_action(
 				let node = walker.nextNode();
 				while (node) {
 					const value = node.nodeValue || '';
-					const corrected = value.replace(pattern, 'Enviar a');
+					const corrected = value.replace(pattern, replacement);
 					if (corrected !== value) node.nodeValue = corrected;
 					node = walker.nextNode();
 				}
