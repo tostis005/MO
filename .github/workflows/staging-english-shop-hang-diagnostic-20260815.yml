@@ -16,58 +16,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Compare inline scripts and resource references
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -kLsS --max-time 45 -o /tmp/es.html 'https://dev.elmercadodeorigen.com/tienda/'
-          curl -kLsS --max-time 45 -o /tmp/en.html 'https://dev.elmercadodeorigen.com/en/tienda/'
-          cat > /tmp/compare.py <<'PY'
-          from html.parser import HTMLParser
-          from urllib.parse import urljoin
-          import hashlib
-          class P(HTMLParser):
-              def __init__(self, base):
-                  super().__init__(convert_charrefs=False); self.base=base; self.scripts=[]; self.cur=None; self.resources=[]
-              def handle_starttag(self,tag,attrs):
-                  a=dict(attrs)
-                  if tag=='script':
-                      self.cur={'id':a.get('id',''), 'src':a.get('src',''), 'txt':[]}
-                      if a.get('src'): self.resources.append(('script',urljoin(self.base,a['src'])))
-                  elif tag in ('img','link','iframe','source'):
-                      key='href' if tag=='link' else 'src'
-                      if a.get(key): self.resources.append((tag,urljoin(self.base,a[key])))
-              def handle_data(self,d):
-                  if self.cur is not None: self.cur['txt'].append(d)
-              def handle_endtag(self,tag):
-                  if tag=='script' and self.cur is not None:
-                      text=''.join(self.cur['txt']); self.cur['text']=text; self.cur['len']=len(text); self.cur['sha']=hashlib.sha1(text.encode('utf-8','replace')).hexdigest()[:10]
-                      self.scripts.append(self.cur); self.cur=None
-          def parse(path,base):
-              p=P(base); p.feed(open(path,encoding='utf-8',errors='replace').read()); return p
-          es=parse('/tmp/es.html','https://dev.elmercadodeorigen.com/tienda/')
-          en=parse('/tmp/en.html','https://dev.elmercadodeorigen.com/en/tienda/')
-          print('ES scripts',len(es.scripts),'resources',len(es.resources))
-          print('EN scripts',len(en.scripts),'resources',len(en.resources))
-          def byid(p): return {s['id']:s for s in p.scripts if s['id']}
-          a,b=byid(es),byid(en)
-          print('=== inline script ids/lengths differing by id ===')
-          for k in sorted(set(a)|set(b)):
-              x,y=a.get(k),b.get(k)
-              if x is None or y is None or x['len']!=y['len'] or x['sha']!=y['sha']:
-                  print(k, 'ES', None if x is None else (x['len'],x['sha'],x['src']), 'EN', None if y is None else (y['len'],y['sha'],y['src']))
-          print('=== CUSTOM CATALOG ES ===')
-          print(a.get('elmercado-catalog-scroll-final-010234',{}).get('text',''))
-          print('=== CUSTOM CATALOG EN ===')
-          print(b.get('elmercado-catalog-scroll-final-010234',{}).get('text',''))
-          print('=== English-only resource URLs ===')
-          esurls={u for _,u in es.resources}; enurls={u for _,u in en.resources}
-          for u in sorted(enurls-esurls): print(u)
-          PY
-          python /tmp/compare.py
       - name: Install puppeteer core
         run: npm install --no-save puppeteer-core@24
-      - name: Test DOMContentLoaded and main-thread responsiveness
+      - name: Isolate observer-driven browser lock
         shell: bash
         run: |
           set -euo pipefail
@@ -75,32 +26,51 @@ jobs:
           import puppeteer from 'puppeteer-core';
           const chrome = process.env.CHROME || '/usr/bin/google-chrome';
           const browser = await puppeteer.launch({headless:true, executablePath:chrome, args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--ignore-certificate-errors','--disable-background-networking']});
-          async function probe(label,url,js=true){
+          async function probe(label,patch){
             const page=await browser.newPage();
-            await page.setJavaScriptEnabled(js);
-            page.setDefaultTimeout(7000);
-            let requests=0, failed=0, consoles=0;
-            page.on('request',()=>requests++);
-            page.on('requestfailed',r=>{failed++; if(failed<20) console.log(label,'REQFAIL',r.url(),r.failure()?.errorText);});
-            page.on('console',m=>{consoles++; if(consoles<20) console.log(label,'CONSOLE',m.type(),m.text().slice(0,700));});
-            page.on('pageerror',e=>console.log(label,'PAGEERROR',e.message.slice(0,700)));
+            page.setDefaultTimeout(5000);
+            page.on('console',m=>console.log(label,'CONSOLE',m.type(),m.text().slice(0,1200)));
+            page.on('pageerror',e=>console.log(label,'PAGEERROR',e.message.slice(0,1200)));
+            if(patch) await page.evaluateOnNewDocument(patch);
             const t=Date.now();
-            let gotoResult='ok';
-            try { await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000}); } catch(e) { gotoResult='ERR '+e.message; }
+            let result='ok';
+            try { await page.goto('https://dev.elmercadodeorigen.com/en/tienda/',{waitUntil:'domcontentloaded',timeout:18000}); }
+            catch(e){ result='ERR '+e.message; }
             const elapsed=Date.now()-t;
-            console.log(label,'GOTO',gotoResult,'ms',elapsed,'requests',requests,'failed',failed);
-            try {
-              const state=await Promise.race([
-                page.evaluate(()=>({ready:document.readyState,title:document.title,html:document.documentElement.outerHTML.length,nodes:document.getElementsByTagName('*').length,products:document.querySelectorAll('.product').length,href:location.href})),
-                new Promise((_,rej)=>setTimeout(()=>rej(new Error('evaluate timeout')),7000))
+            console.log(label,'GOTO',result,'ms',elapsed);
+            try{
+              const s=await Promise.race([
+                page.evaluate(()=>({ready:document.readyState,nodes:document.getElementsByTagName('*').length,products:document.querySelectorAll('.product').length,state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null})),
+                new Promise((_,rej)=>setTimeout(()=>rej(new Error('eval timeout')),5000))
               ]);
-              console.log(label,'STATE',JSON.stringify(state));
-            } catch(e){ console.log(label,'EVALERR',e.message); }
-            await page.close().catch(()=>{});
+              console.log(label,'STATE',JSON.stringify(s));
+            }catch(e){console.log(label,'EVALERR',e.message);}
+            try{await page.close({runBeforeUnload:false});}catch{}
           }
-          await probe('ES-JS','https://dev.elmercadodeorigen.com/tienda/',true);
-          await probe('EN-JS','https://dev.elmercadodeorigen.com/en/tienda/',true);
-          await probe('EN-NOJS','https://dev.elmercadodeorigen.com/en/tienda/',false);
+          await probe('EN-NO-MUTATION',()=>{
+            window.MutationObserver=class {constructor(cb){this.cb=cb;} observe(){} disconnect(){} takeRecords(){return[];}};
+          });
+          await probe('EN-NO-INTERSECTION',()=>{
+            window.IntersectionObserver=class {constructor(cb){this.cb=cb;} observe(){} unobserve(){} disconnect(){} takeRecords(){return[];}};
+          });
+          await probe('EN-MUTATION-GUARD',()=>{
+            const Native=window.MutationObserver;
+            let seq=0;
+            window.__mdoMoStats=[];
+            window.MutationObserver=class {
+              constructor(cb){
+                const id=++seq; const src=String(cb).replace(/\s+/g,' ').slice(0,650); const rec={id,count:0,src}; window.__mdoMoStats.push(rec);
+                this.inner=new Native((...args)=>{
+                  rec.count++;
+                  if(rec.count===100){ console.warn('MDO_HOT_MUTATION_OBSERVER id='+id+' src='+src); this.inner.disconnect(); return; }
+                  return cb(...args);
+                });
+              }
+              observe(...args){return this.inner.observe(...args)}
+              disconnect(){return this.inner.disconnect()}
+              takeRecords(){return this.inner.takeRecords()}
+            };
+          });
           await browser.close();
           JS
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./probe.mjs
