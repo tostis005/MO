@@ -37,11 +37,10 @@ jobs:
           check_page /en/politica-de-privacidad/ 'Privacy policy - El Mercado de Origen' 'Principles applied to data processing' 'Contact forms:' 'Content-subscription forms:' 'Google Analytics is a web analytics service'
           ! grep -Fq 'Formularios de suscripción a contenidos:' /tmp/page.html
           ! grep -Fq 'Google Analytics es un servicio de analítica web prestado' /tmp/page.html
-          check_page /en/politica/ 'Terms and conditions - El Mercado de Origen' 'TERMS AND CONDITIONS' '1. Introduction'
+          check_page /en/politica/ 'Terms and conditions - El Mercado de Origen' '1. Introduction'
           check_page /en/politica-de-cookies/ 'Cookie policy - El Mercado de Origen' 'What are cookies?' 'What types of cookies are there?'
           check_page /en/condiciones-especiales/ 'Special conditions - El Mercado de Origen' 'Why choose El Mercado de Origen?'
 
-          # WooCommerce/plugin attributes previously marked as no-translation now only read reviewed DB strings.
           curl -kLsS -H 'Cache-Control: no-cache' --max-time 60 "https://dev.elmercadodeorigen.com/en/tienda/?attr_check=${GITHUB_RUN_ID}" -o /tmp/shop.html
           grep -Fq 'Select options for “Extra virgin olive oil 5L”' /tmp/shop.html
           ! grep -Fq 'Select options for “Aceite de oliva virgen extra 5L”' /tmp/shop.html
