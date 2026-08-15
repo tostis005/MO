@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Staging Native Translation Render Bridge
  * Description: Staging-only bridge for metadata/attributes that third-party plugins mark as non-translatable. It only reads human-reviewed strings already stored in TranslatePress DB; it never translates or contains translation copy itself.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -47,9 +47,6 @@ function mdo_native_bridge_lookup( $text ) {
     $map = mdo_native_bridge_translations();
     if ( isset( $map[ $text ] ) ) { return $map[ $text ]; }
 
-    // WordPress/page builders sometimes change CRLF/LF or collapse line breaks while
-    // TranslatePress stores the original form. Try those equivalent forms without
-    // creating or guessing any translation.
     $lf = str_replace( "\r\n", "\n", $text );
     if ( isset( $map[ $lf ] ) ) { return $map[ $lf ]; }
 
@@ -68,16 +65,11 @@ function mdo_native_bridge_attribute_value( $value ) {
     $direct = mdo_native_bridge_lookup( $value );
     if ( $direct !== $value ) { return $direct; }
 
-    // WooCommerce may translate the wrapper but deliberately mark the generated title
-    // attribute as no-translation. Translate only the dynamic product title inside it,
-    // and only when that product title already has a reviewed DB translation.
     if ( preg_match( '/^(.*?[“"])(.+?)([”"])$/u', $value, $m ) ) {
         $inner = mdo_native_bridge_lookup( $m[2] );
         if ( $inner !== $m[2] ) { return $m[1] . $inner . $m[3]; }
     }
 
-    // Tag-cloud accessibility labels are generated as "Term (N products)" and are also
-    // marked no-translation. Translate the term only when a reviewed DB entry exists.
     if ( preg_match( '/^(.+?)\s+\((\d+)\s+(product|products)\)$/iu', $value, $m ) ) {
         $term = mdo_native_bridge_lookup( $m[1] );
         if ( $term !== $m[1] ) { return $term . ' (' . $m[2] . ' ' . $m[3] . ')'; }
@@ -94,10 +86,13 @@ add_filter( 'document_title_parts', function( $parts ) {
     return $parts;
 }, 9999 );
 
-// Start an outer buffer before TranslatePress's normal frontend buffer. That means this
-// callback receives the already-translated HTML and only fixes metadata/attributes the
-// upstream plugin explicitly skipped. No body-copy translation is performed here.
-add_action( 'template_redirect', function() {
+/**
+ * TranslatePress starts its translation buffer on init priority 0. Start this buffer
+ * first so it sits outside TranslatePress's buffer. At shutdown the translated page
+ * is flushed into this callback, allowing us to fix only attributes/metadata that
+ * third-party code explicitly marked as non-translatable.
+ */
+add_action( 'init', function() {
     if ( ! mdo_native_bridge_is_english() ) { return; }
     ob_start( static function( $html ) {
         if ( ! is_string( $html ) || '' === $html ) { return $html; }
@@ -118,4 +113,4 @@ add_action( 'template_redirect', function() {
 
         return $html;
     } );
-}, -999 );
+}, -9999 );
