@@ -1,0 +1,82 @@
+name: Isolate production checkout plugin memory v4 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-checkout-plugin-isolation-v4-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  isolate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Install temporary request-scoped plugin filter
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          : "${PROD_PATH:?production path not found}"; echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          TOKEN="mdo-${GITHUB_RUN_ID}-checkout"; echo "DIAG_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' TOKEN='$TOKEN' bash -s" <<'REMOTE'
+          set -euo pipefail
+          php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          cat > "$PROD_PATH/wp-content/mu-plugins/000-mdo-checkout-request-diagnostic.php" <<'PHP'
+          <?php
+          if (!defined('ABSPATH')) exit;
+          $expected='__TOKEN__'; $given=isset($_GET['mdo_checkout_diag'])?(string)$_GET['mdo_checkout_diag']:'';
+          if(!hash_equals($expected,$given)) return;
+          $disable=array_values(array_filter(array_map('sanitize_key',explode(',',isset($_GET['mdo_disable'])?(string)$_GET['mdo_disable']:''))));
+          if(!$disable) return;
+          $matches=static function($plugin)use($disable){$plugin=strtolower((string)$plugin);$dir=(string)strtok($plugin,'/');$base=strtolower(basename($plugin,'.php'));foreach($disable as$slug){if($slug===$dir||$slug===$base||str_contains($dir,$slug)||str_contains($base,$slug))return true;}return false;};
+          add_filter('option_active_plugins',static function($plugins)use($matches){return is_array($plugins)?array_values(array_filter($plugins,static fn($p)=>!$matches($p))):$plugins;},-99999);
+          add_filter('site_option_active_sitewide_plugins',static function($plugins)use($matches){if(!is_array($plugins))return $plugins;foreach(array_keys($plugins)as$p){if($matches($p))unset($plugins[$p]);}return $plugins;},-99999);
+          PHP
+          sed -i "s/__TOKEN__/$TOKEN/g" "$PROD_PATH/wp-content/mu-plugins/000-mdo-checkout-request-diagnostic.php"
+          "$php_bin" -l "$PROD_PATH/wp-content/mu-plugins/000-mdo-checkout-request-diagnostic.php"
+          REMOTE
+      - name: Reproduce real checkout with temporary cart and isolate groups
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          product_id=11058
+          probe(){
+            label="$1"; disable="$2"; jar="/tmp/$label.cookies"; rm -f "$jar"
+            add_code=$(curl -ksSL --max-time 40 -c "$jar" -b "$jar" -o "/tmp/$label-add.html" -w '%{http_code}' "$base/?add-to-cart=$product_id&quantity=1&mdo_cart=${GITHUB_RUN_ID}" || true)
+            cart_code=$(curl -ksSL --max-time 40 -c "$jar" -b "$jar" -o "/tmp/$label-cart.html" -w '%{http_code}' "$base/carrito/?mdo_cartcheck=${GITHUB_RUN_ID}" || true)
+            has_product=$(grep -Eic 'Carne picada extra|Premium minced beef' "/tmp/$label-cart.html" || true)
+            checkout_code=$(curl -ksS --max-time 50 -c "$jar" -b "$jar" -o "/tmp/$label-checkout.html" -w '%{http_code}' "$base/finalizar-compra/?mdo_checkout_diag=${DIAG_TOKEN}&mdo_disable=${disable}&mdo_probe=${GITHUB_RUN_ID}" || true)
+            bytes=$(wc -c <"/tmp/$label-checkout.html" 2>/dev/null || echo 0)
+            checkout_marker=$(grep -Eic 'billing_|Detalles de facturación|Billing details|Realizar el pedido|Place order' "/tmp/$label-checkout.html" || true)
+            echo "$label add=$add_code cart=$cart_code has_product=$has_product checkout=$checkout_code bytes=$bytes marker=$checkout_marker disable=$disable"
+          }
+          probe baseline ''
+          probe no_trp 'translatepress-multilingual'
+          probe no_checkout_manager 'woocommerce-checkout-manager'
+          probe no_flexible_checkout 'flexible-checkout-fields,flexible-checkout-fields-pro'
+          probe no_rules 'rulesengine,woo-discount-rules,woo-discount-rules-pro,payment-gateway-based-fees-and-discounts-for-woocommerce'
+          probe no_tracking_crm 'pixelyoursite-pro,fluentcrm-woocommerce,mailchimp-for-woocommerce'
+          probe no_marketplace 'wc-multivendor-marketplace,wc-multivendor-membership,wcfm,woo-wcfm-vendor'
+          probe no_payments 'woocommerce-gateway-stripe,woocommerce-gateway-paypal-express-checkout,mollie-payments-for-woocommerce'
+          probe no_shipping 'shipping-method-display-style-for-woocommerce,show-shipping-class-in-product-page,woocommerce-advanced-shipment-tracking,woocommerce-shipping-tracking'
+          probe no_extras 'woocommerce-gift-cards,woocommerce-product-addons,woocommerce-product-bundles,woocommerce-subscriptions,ni-purchase-order-quantity'
+          probe broad_checkout 'translatepress-multilingual,woocommerce-checkout-manager,flexible-checkout-fields,flexible-checkout-fields-pro,rulesengine,woo-discount-rules,woo-discount-rules-pro,payment-gateway-based-fees-and-discounts-for-woocommerce,pixelyoursite-pro,fluentcrm-woocommerce,mailchimp-for-woocommerce,wc-multivendor-marketplace,wc-multivendor-membership,wcfm,woo-wcfm-vendor,woocommerce-gateway-stripe,woocommerce-gateway-paypal-express-checkout,mollie-payments-for-woocommerce,shipping-method-display-style-for-woocommerce,show-shipping-class-in-product-page,woocommerce-advanced-shipment-tracking,woocommerce-shipping-tracking,woocommerce-gift-cards,woocommerce-product-addons,woocommerce-product-bundles,woocommerce-subscriptions,ni-purchase-order-quantity'
+      - name: Remove temporary request-scoped plugin filter
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/wp-content/mu-plugins/000-mdo-checkout-request-diagnostic.php'"
