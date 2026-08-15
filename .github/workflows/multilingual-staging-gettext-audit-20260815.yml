@@ -1,0 +1,74 @@
+name: Inspect staging TranslatePress gettext rows 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-gettext-audit-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect gettext and dictionary rows
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find staging WordPress path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) exit 2;; esac
+          prefix="$(wp db prefix)"
+          g="${prefix}trp_gettext_en_us"
+          d="${prefix}trp_dictionary_es_es_en_us"
+          echo '=== GETTEXT SCHEMA ==='
+          wp db query "SHOW CREATE TABLE \`${g}\`;" --skip-column-names 2>/dev/null || true
+          echo '=== GETTEXT COUNTS ==='
+          wp db query "SELECT status,COUNT(*) FROM \`${g}\` GROUP BY status ORDER BY status;" 2>/dev/null || true
+          echo '=== GETTEXT REAL TARGETS ==='
+          wp db query "SELECT * FROM \`${g}\` WHERE original IN (
+            'Selección cuidada de productores','Compra segura y transparente','Envíos preparados con cuidado',
+            'Productores y artesanos con nombre propio','Envíos preparados desde el origen','De los más elegidos',
+            'Añadir al carrito','Actualizando productos…','Formulario de contacto','Para productores',
+            'El cuaderno de origen','Historias para elegir con más criterio.','Conocer mejor para elegir mejor',
+            'Naranjas','Jamón Ibérico','Aceite de Oliva Virgen Extra','Todos los productores','Productos','El mercado',
+            'Política de privacidad - El Mercado de Origen','Tienda - El Mercado de Origen','Carrito - El Mercado de Origen',
+            'Mi cuenta - El Mercado de Origen','Productores - El Mercado de Origen','Contacto - El Mercado de Origen',
+            'Términos y condiciones - El Mercado de Origen','Quiénes somos - El Mercado de Origen','Contacto productores - El Mercado de Origen',
+            'Política de cookies - El Mercado de Origen','Condiciones especiales - El Mercado de Origen'
+          ) ORDER BY original,id;" 2>/dev/null || true
+          echo '=== DICTIONARY REAL TARGETS ==='
+          wp db query "SELECT id,original,translated,status,block_type,original_id FROM \`${d}\` WHERE original IN (
+            'Selección cuidada de productores','Compra segura y transparente','Envíos preparados con cuidado',
+            'Productores y artesanos con nombre propio','Envíos preparados desde el origen','De los más elegidos',
+            'Añadir al carrito','Actualizando productos…','Formulario de contacto','Para productores',
+            'El cuaderno de origen','Historias para elegir con más criterio.','Conocer mejor para elegir mejor',
+            'Naranjas','Jamón Ibérico','Aceite de Oliva Virgen Extra','Todos los productores','Productos','El mercado',
+            'Política de privacidad - El Mercado de Origen','Tienda - El Mercado de Origen','Carrito - El Mercado de Origen',
+            'Mi cuenta - El Mercado de Origen','Productores - El Mercado de Origen','Contacto - El Mercado de Origen',
+            'Términos y condiciones - El Mercado de Origen','Quiénes somos - El Mercado de Origen','Contacto productores - El Mercado de Origen',
+            'Política de cookies - El Mercado de Origen','Condiciones especiales - El Mercado de Origen'
+          ) ORDER BY original,id;" 2>/dev/null || true
+          echo '=== GETTEXT SPANISH SAMPLE ==='
+          wp db query "SELECT id,original,translated,status,domain FROM \`${g}\` WHERE translated IS NULL OR translated='' OR status=0 ORDER BY id DESC LIMIT 100;" 2>/dev/null || true
+          REMOTE
