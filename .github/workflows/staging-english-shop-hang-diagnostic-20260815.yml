@@ -41,7 +41,7 @@ jobs:
                   if self.cur is not None: self.cur['txt'].append(d)
               def handle_endtag(self,tag):
                   if tag=='script' and self.cur is not None:
-                      text=''.join(self.cur['txt']); self.cur['len']=len(text); self.cur['sha']=hashlib.sha1(text.encode('utf-8','replace')).hexdigest()[:10]
+                      text=''.join(self.cur['txt']); self.cur['text']=text; self.cur['len']=len(text); self.cur['sha']=hashlib.sha1(text.encode('utf-8','replace')).hexdigest()[:10]
                       self.scripts.append(self.cur); self.cur=None
           def parse(path,base):
               p=P(base); p.feed(open(path,encoding='utf-8',errors='replace').read()); return p
@@ -49,13 +49,17 @@ jobs:
           en=parse('/tmp/en.html','https://dev.elmercadodeorigen.com/en/tienda/')
           print('ES scripts',len(es.scripts),'resources',len(es.resources))
           print('EN scripts',len(en.scripts),'resources',len(en.resources))
-          print('=== inline script ids/lengths differing by id ===')
           def byid(p): return {s['id']:s for s in p.scripts if s['id']}
           a,b=byid(es),byid(en)
+          print('=== inline script ids/lengths differing by id ===')
           for k in sorted(set(a)|set(b)):
               x,y=a.get(k),b.get(k)
               if x is None or y is None or x['len']!=y['len'] or x['sha']!=y['sha']:
                   print(k, 'ES', None if x is None else (x['len'],x['sha'],x['src']), 'EN', None if y is None else (y['len'],y['sha'],y['src']))
+          print('=== CUSTOM CATALOG ES ===')
+          print(a.get('elmercado-catalog-scroll-final-010234',{}).get('text',''))
+          print('=== CUSTOM CATALOG EN ===')
+          print(b.get('elmercado-catalog-scroll-final-010234',{}).get('text',''))
           print('=== English-only resource URLs ===')
           esurls={u for _,u in es.resources}; enurls={u for _,u in en.resources}
           for u in sorted(enurls-esurls): print(u)
@@ -67,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/probe.mjs <<'JS'
+          cat > ./probe.mjs <<'JS'
           import puppeteer from 'puppeteer-core';
           const chrome = process.env.CHROME || '/usr/bin/google-chrome';
           const browser = await puppeteer.launch({headless:true, executablePath:chrome, args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--ignore-certificate-errors','--disable-background-networking']});
@@ -77,8 +81,9 @@ jobs:
             page.setDefaultTimeout(7000);
             let requests=0, failed=0, consoles=0;
             page.on('request',()=>requests++);
-            page.on('requestfailed',r=>{failed++; if(failed<15) console.log(label,'REQFAIL',r.url(),r.failure()?.errorText);});
-            page.on('console',m=>{consoles++; if(consoles<15) console.log(label,'CONSOLE',m.type(),m.text().slice(0,500));});
+            page.on('requestfailed',r=>{failed++; if(failed<20) console.log(label,'REQFAIL',r.url(),r.failure()?.errorText);});
+            page.on('console',m=>{consoles++; if(consoles<20) console.log(label,'CONSOLE',m.type(),m.text().slice(0,700));});
+            page.on('pageerror',e=>console.log(label,'PAGEERROR',e.message.slice(0,700)));
             const t=Date.now();
             let gotoResult='ok';
             try { await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000}); } catch(e) { gotoResult='ERR '+e.message; }
@@ -98,4 +103,4 @@ jobs:
           await probe('EN-NOJS','https://dev.elmercadodeorigen.com/en/tienda/',false);
           await browser.close();
           JS
-          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node /tmp/probe.mjs
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./probe.mjs
