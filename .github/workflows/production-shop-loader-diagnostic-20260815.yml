@@ -36,7 +36,6 @@ jobs:
           : "${PROD_PATH:?production path not found}"
           REMOTE_DIR="/tmp/mdo-final-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/maps'"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-translatepress-gettext-init.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/gettext-init.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/import.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-render-bridge.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/bridge.php"
           sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/"
@@ -51,11 +50,19 @@ jobs:
           printf '%s' "$siteurl" | grep -Eq '^https?://(www\.)?elmercadodeorigen\.com/?$'
           mkdir -p "$PROD_PATH/wp-content/mu-plugins"
           cp "$REMOTE_DIR/bridge.php" "$PROD_PATH/wp-content/mu-plugins/mdo-production-native-render-bridge.php"
-          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/gettext-init.php" --path="$PROD_PATH" --allow-root
+          prefix=$(wp db prefix 2>/dev/null | tail -n1)
+          es_table="${prefix}trp_gettext_es_es"
+          en_table="${prefix}trp_gettext_en_us"
+          es_exists=$(wp db query "SHOW TABLES LIKE '$es_table';" --skip-column-names 2>/dev/null | tail -n1 || true)
+          [ "$es_exists" = "$es_table" ]
+          en_exists=$(wp db query "SHOW TABLES LIKE '$en_table';" --skip-column-names 2>/dev/null | tail -n1 || true)
+          if [ "$en_exists" != "$en_table" ]; then
+            echo "Creating $en_table from live schema $es_table"
+            wp db query "CREATE TABLE \`$en_table\` LIKE \`$es_table\`;" 2>/dev/null
+          fi
           "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/import.php" --path="$PROD_PATH" --allow-root
           wp cache flush >/dev/null 2>&1 || true
-          prefix=$(wp db prefix 2>/dev/null | tail -n1)
-          for t in "${prefix}trp_gettext_en_us" "${prefix}trp_gettext_es_es" "${prefix}trp_dictionary_es_es_en_us"; do
+          for t in "$en_table" "$es_table" "${prefix}trp_dictionary_es_es_en_us"; do
             exists=$(wp db query "SHOW TABLES LIKE '$t';" --skip-column-names 2>/dev/null | tail -n1 || true)
             echo "$t exists=${exists:-no}"
             [ "$exists" = "$t" ]
