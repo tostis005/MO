@@ -20,77 +20,22 @@ jobs:
         run: |
           set -euo pipefail
           stamp="${GITHUB_RUN_ID}"
-          paths=(/en/ /en/tienda/ /en/productores/ /en/quienes-somos/ /en/contacto/)
-          for path in "${paths[@]}"; do
+          for path in /en/ /en/tienda/ /en/productores/ /en/quienes-somos/ /en/contacto/; do
             echo "===== $path ====="
             curl -kLsS -H 'Cache-Control: no-cache' --max-time 35 "https://dev.elmercadodeorigen.com${path}?mdo_text_audit=${stamp}" -o /tmp/page.html
             echo "--- title ---"
             grep -oPm1 '(?<=<title>)[^<]+' /tmp/page.html || true
-            echo "--- visible text ---"
-            python3 - <<'PY'
-from html import unescape
-from html.parser import HTMLParser
-from pathlib import Path
-class Visible(HTMLParser):
-    def __init__(self):
-        super().__init__(); self.skip=0; self.items=[]
-    def handle_starttag(self, tag, attrs):
-        if tag in {'script','style','svg','noscript','template'}: self.skip += 1
-    def handle_endtag(self, tag):
-        if tag in {'script','style','svg','noscript','template'} and self.skip: self.skip -= 1
-    def handle_data(self, data):
-        if self.skip: return
-        s=' '.join(unescape(data).split())
-        if s and s not in self.items: self.items.append(s)
-p=Visible(); p.feed(Path('/tmp/page.html').read_text(errors='ignore'))
-for s in p.items[:260]: print(s)
-PY
+            echo "--- visible text sample ---"
+            sed -e ':a' -e 'N' -e '$!ba' -e 's/<script[^>]*>.*<\/script>//g' -e 's/<style[^>]*>.*<\/style>//g' -e 's/<[^>]*>/\n/g' /tmp/page.html | sed 's/&nbsp;/ /g; s/&amp;/\&/g; s/&quot;/"/g; s/&#039;/'"'"'/g; s/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | awk '!seen[$0]++' | head -n 240 || true
             echo "--- likely Spanish leftovers ---"
-            python3 - <<'PY'
-import re
-from html import unescape
-from html.parser import HTMLParser
-from pathlib import Path
-class Visible(HTMLParser):
-    def __init__(self): super().__init__(); self.skip=0; self.items=[]
-    def handle_starttag(self,t,a):
-        if t in {'script','style','svg','noscript','template'}: self.skip+=1
-    def handle_endtag(self,t):
-        if t in {'script','style','svg','noscript','template'} and self.skip:self.skip-=1
-    def handle_data(self,d):
-        if not self.skip:
-            s=' '.join(unescape(d).split())
-            if s:self.items.append(s)
-p=Visible();p.feed(Path('/tmp/page.html').read_text(errors='ignore'))
-rx=re.compile(r'\b(el|la|los|las|un|una|para|por|con|desde|nuestro|nuestra|productos|productores|tienda|envío|comprar|selección|calidad|origen|quiénes|contacto|filtros|ordenar|mostrando|resultados|carrito|cuenta|jamón|paleta|queso|naranja)\b',re.I)
-seen=set()
-for s in p.items:
-    if len(s)>2 and rx.search(s) and s not in seen:
-        seen.add(s); print(s)
-PY
+            sed -e ':a' -e 'N' -e '$!ba' -e 's/<script[^>]*>.*<\/script>//g' -e 's/<style[^>]*>.*<\/style>//g' -e 's/<[^>]*>/\n/g' /tmp/page.html | sed 's/&nbsp;/ /g; s/&amp;/\&/g; s/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | grep -Ei '\b(el|la|los|las|para|por|con|desde|nuestro|nuestra|productos|productores|tienda|envío|comprar|selección|calidad|origen|quiénes|contacto|filtros|ordenar|mostrando|resultados|carrito|cuenta|jamón|paleta|queso|naranja)\b' | awk '!seen[$0]++' | head -n 180 || true
             echo
           done
-          echo '===== sample product ====='
+          echo '===== sample English product ====='
           curl -kLsS -H 'Cache-Control: no-cache' --max-time 35 "https://dev.elmercadodeorigen.com/en/tienda/?mdo_product_audit=${stamp}" -o /tmp/shop.html
-          product_path="$(grep -oE 'href="https://dev\.elmercadodeorigen\.com/en/product/[^"]+' /tmp/shop.html | head -n1 | sed 's/^href="https:\/\/dev\.elmercadodeorigen\.com//' || true)"
-          echo "product_path=${product_path:-not-found}"
-          if [ -n "$product_path" ]; then
-            curl -kLsS -H 'Cache-Control: no-cache' --max-time 35 "https://dev.elmercadodeorigen.com${product_path}?mdo_product_audit=${stamp}" -o /tmp/product.html
-            python3 - <<'PY'
-from html import unescape
-from html.parser import HTMLParser
-from pathlib import Path
-class Visible(HTMLParser):
-    def __init__(self): super().__init__(); self.skip=0; self.items=[]
-    def handle_starttag(self,t,a):
-        if t in {'script','style','svg','noscript','template'}: self.skip+=1
-    def handle_endtag(self,t):
-        if t in {'script','style','svg','noscript','template'} and self.skip:self.skip-=1
-    def handle_data(self,d):
-        if not self.skip:
-            s=' '.join(unescape(d).split())
-            if s and s not in self.items:self.items.append(s)
-p=Visible();p.feed(Path('/tmp/product.html').read_text(errors='ignore'))
-for s in p.items[:300]:print(s)
-PY
+          product_url="$(grep -oE 'https://dev\.elmercadodeorigen\.com/en/product/[^"'"'"' ]+' /tmp/shop.html | head -n1 || true)"
+          echo "product_url=${product_url:-not-found}"
+          if [ -n "$product_url" ]; then
+            curl -kLsS -H 'Cache-Control: no-cache' --max-time 35 "${product_url}?mdo_product_audit=${stamp}" -o /tmp/product.html
+            sed -e ':a' -e 'N' -e '$!ba' -e 's/<script[^>]*>.*<\/script>//g' -e 's/<style[^>]*>.*<\/style>//g' -e 's/<[^>]*>/\n/g' /tmp/product.html | sed 's/&nbsp;/ /g; s/&amp;/\&/g; s/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | awk '!seen[$0]++' | head -n 300 || true
           fi
