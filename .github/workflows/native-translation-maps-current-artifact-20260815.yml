@@ -1,0 +1,17 @@
+name: Package current translation maps 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/native-translation-maps-current-artifact-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-translation-maps-current-20260815
+          path: .github/data/native-translations-20260815/*.json
+          retention-days: 2
