@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/multilingual-staging-deploy-20260815.yml'
+      - '.github/scripts/mdo-staging-bilingual.php'
+      - '.github/scripts/mdo-staging-bilingual-config.php'
   workflow_dispatch:
 
 permissions:
@@ -22,9 +24,9 @@ jobs:
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install SSH and text helpers
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass w3m
-      - name: Configure staging and install helper
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Upgrade TranslatePress and deploy staging helper
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -39,38 +41,41 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M -d display_errors=0 \"\$wp_bin\" eval-file '$REMOTE_CONFIG' --path='$WP_PATH' --allow-root 2>/dev/null; \"\$php_bin\" -d memory_limit=512M -d display_errors=0 \"\$wp_bin\" cache flush --path='$WP_PATH' --allow-root >/dev/null 2>&1 || true; code=\$?; rm -f '$REMOTE_CONFIG'; exit \$code"
-      - name: Verify Spanish and English routes
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' REMOTE_CONFIG='$REMOTE_CONFIG' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
+          wp plugin update translatepress-multilingual || true
+          wp plugin deactivate translatepress-multilingual || true
+          wp plugin activate translatepress-multilingual
+          wp eval-file "$REMOTE_CONFIG" 2>/dev/null
+          wp cache flush >/dev/null 2>&1 || true
+          echo "TranslatePress version: $(wp plugin get translatepress-multilingual --field=version)"
+          prefix="$(wp db prefix)"
+          echo "TranslatePress gettext tables:"
+          wp db query "SHOW TABLES LIKE '${prefix}trp_gettext%';" --skip-column-names || true
+          rm -f "$REMOTE_CONFIG"
+          REMOTE
+      - name: Verify bilingual staging
         shell: bash
         run: |
           set -euo pipefail
           stamp="${GITHUB_RUN_ID}"
-          for path in \
-            '/' \
-            '/en/' \
-            '/tienda/' \
-            '/en/tienda/' \
-            '/productores/' \
-            '/en/productores/' \
-            '/en/quienes-somos/' \
-            '/en/contacto/'; do
-              url="https://dev.elmercadodeorigen.com${path}?mdo_bilingual_verify=${stamp}"
-              code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' --max-time 35 "$url")"
-              echo "$code $path"
-              test "$code" = '200'
-              grep -q 'mdo-language-switcher' /tmp/page.html
-              if [[ "$path" == /en/* ]]; then
-                grep -q 'mdo-language-en' /tmp/page.html
+          for path in / /en/ /tienda/ /en/tienda/ /productores/ /en/productores/ /en/quienes-somos/ /en/contacto/; do
+            url="https://dev.elmercadodeorigen.com${path}?mdo_verify=${stamp}"
+            code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' --max-time 35 "$url")"
+            echo "$code $path"
+            test "$code" = 200
+            grep -q 'mdo-language-switcher' /tmp/page.html
+            if [[ "$path" == /en/* ]]; then
+              grep -q 'mdo-language-en' /tmp/page.html
+              if grep -q 'WordPress database error' /tmp/page.html; then
+                echo "Database error visible on $path" >&2
+                exit 1
               fi
-          done
-      - name: Show English visible-text audit
-        shell: bash
-        run: |
-          set -euo pipefail
-          stamp="${GITHUB_RUN_ID}"
-          for path in /en/ /en/tienda/ /en/productores/ /en/quienes-somos/ /en/contacto/; do
-            echo "===== TEXT $path ====="
-            w3m -dump -cols 140 "https://dev.elmercadodeorigen.com${path}?mdo_text_audit=${stamp}" | sed '/^[[:space:]]*$/d' | head -n 180 || true
-            echo "===== SPANISH HINTS $path ====="
-            w3m -dump -cols 180 "https://dev.elmercadodeorigen.com${path}?mdo_text_audit=${stamp}" | grep -Ei '\b(productos|productores|tienda|envío|comprar|selección|calidad|quiénes|contacto|filtros|ordenar|mostrando|resultados|carrito|cuenta|jamón|paleta|queso|naranja|nuestro|nuestra|desde|para|por|con|del|una|los|las)\b' | head -n 120 || true
+            fi
           done
