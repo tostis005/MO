@@ -104,14 +104,25 @@ jobs:
 
           chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           : "${chrome:?No headless browser available on runner}"
-          timeout 60 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=7000 --dump-dom "https://dev.elmercadodeorigen.com/en/?mdo_browser=${stamp}" > /tmp/home-dom.html 2>/dev/null
-          grep -q '<h2>Find what you' /tmp/home-dom.html
-          grep -q '<h2>Our customers' /tmp/home-dom.html
+          chrome_flags=(--headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=7000 --dump-dom)
+
+          timeout 60 "$chrome" "${chrome_flags[@]}" "https://dev.elmercadodeorigen.com/en/?mdo_browser=${stamp}" > /tmp/home-dom.html 2>/tmp/home-chrome.log
+          echo '=== Rendered home headings ==='
+          grep -oEi '<h[1-4][^>]*>[^<]{1,220}</h[1-4]>' /tmp/home-dom.html | sed -E 's/<[^>]+>//g' | head -n 35 || true
+          grep -q 'data-mdo-visible-english="ready"' /tmp/home-dom.html
+          grep -q 'Find what you' /tmp/home-dom.html
+          grep -q 'Our customers' /tmp/home-dom.html
           grep -q 'Would you like to be part of El Mercado de Origen?' /tmp/home-dom.html
 
-          timeout 60 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=7000 --dump-dom "https://dev.elmercadodeorigen.com/en/tienda/?mdo_browser=${stamp}" > /tmp/shop-dom.html 2>/dev/null
+          timeout 60 "$chrome" "${chrome_flags[@]}" "https://dev.elmercadodeorigen.com/en/tienda/?mdo_browser=${stamp}" > /tmp/shop-dom.html 2>/tmp/shop-chrome.log
+          echo '=== Rendered shop sample ==='
+          grep -oEi '.{0,80}(Load more products|100% Iberian acorn-fed|Filter products).{0,100}' /tmp/shop-dom.html | head -n 20 || true
+          grep -q 'data-mdo-visible-english="ready"' /tmp/shop-dom.html
           grep -q 'Load more products' /tmp/shop-dom.html
           grep -q '100% Iberian acorn-fed' /tmp/shop-dom.html
 
-          timeout 60 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=7000 --dump-dom "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_browser=${stamp}" > /tmp/about-dom.html 2>/dev/null
+          timeout 60 "$chrome" "${chrome_flags[@]}" "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_browser=${stamp}" > /tmp/about-dom.html 2>/tmp/about-chrome.log
+          echo '=== Rendered about sample ==='
+          grep -oEi '.{0,100}(A more direct way|was born from the need).{0,180}' /tmp/about-dom.html | head -n 20 || true
+          grep -q 'data-mdo-visible-english="ready"' /tmp/about-dom.html
           grep -q 'El Mercado de Origen was born from the need to bring producers and end consumers closer together.' /tmp/about-dom.html
