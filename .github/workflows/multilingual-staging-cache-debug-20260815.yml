@@ -1,0 +1,62 @@
+name: Debug staging shop page cache 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-cache-debug-20260815.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Probe public cache headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /tienda/ /en/tienda/; do
+            echo "===== $path request 1 ====="
+            curl -kLsS --max-time 35 -D - -o /dev/null "https://dev.elmercadodeorigen.com${path}" | grep -Ei '^(HTTP/|x-mdo-page-cache:|cache-control:|set-cookie:|vary:)' || true
+            echo "===== $path request 2 ====="
+            curl -kLsS --max-time 35 -D - -o /dev/null "https://dev.elmercadodeorigen.com${path}" | grep -Ei '^(HTTP/|x-mdo-page-cache:|cache-control:|set-cookie:|vary:)' || true
+          done
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect cache files and permissions
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find staging WordPress path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo '===== advanced-cache markers ====='
+          grep -nE 'X-MDO|mdo-page-cache|cacheable_paths' "$WP_PATH/wp-content/advanced-cache.php" || true
+          echo '===== ownership/perms ====='
+          ls -ld "$WP_PATH" "$WP_PATH/wp-content" "$WP_PATH/wp-content/cache" 2>/dev/null || true
+          ls -ld "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
+          echo '===== cache files ====='
+          find "$WP_PATH/wp-content/cache/mdo-page-cache" -maxdepth 1 -type f -printf '%M %u:%g %s %TY-%Tm-%Td %TH:%TM:%TS %p\n' 2>/dev/null || true
+          echo '===== PHP web-ish writable check under site owner ====='
+          owner="$(stat -c '%U' "$WP_PATH/wp-content" 2>/dev/null || true)"
+          echo "wp-content owner=$owner"
+          if [ -n "$owner" ] && id "$owner" >/dev/null 2>&1; then
+            php_bin="$(command -v php || true)"
+            [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+            runuser -u "$owner" -- "$php_bin" -r '$d=$argv[1]; echo "exists=".(is_dir($d)?"1":"0")." writable=".(is_writable(dirname($d))?"parent-yes":"parent-no").PHP_EOL;' "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
+          fi
+          REMOTE
