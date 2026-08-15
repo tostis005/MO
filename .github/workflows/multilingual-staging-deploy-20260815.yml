@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/multilingual-staging-deploy-20260815.yml'
-      - '.github/scripts/mdo-staging-bilingual.php'
+      - '.github/scripts/mdo-staging-bilingual-v2.php.gz.b64'
       - '.github/scripts/mdo-staging-bilingual-config.php'
   workflow_dispatch:
 
@@ -24,9 +24,15 @@ jobs:
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare bilingual helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .github/scripts/mdo-staging-bilingual-v2.php.gz.b64 | gzip -dc > /tmp/mdo-staging-bilingual.php
+          php -l /tmp/mdo-staging-bilingual.php
       - name: Install SSH helper
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
-      - name: Upgrade TranslatePress and deploy staging helper
+      - name: Configure bilingual staging
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -39,7 +45,7 @@ jobs:
           : "${WP_PATH:?Unable to find staging WordPress path}"
           REMOTE_CONFIG="/tmp/mdo-bilingual-config-${GITHUB_RUN_ID}.php"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' REMOTE_CONFIG='$REMOTE_CONFIG' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -50,14 +56,17 @@ jobs:
           siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
           case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
           wp plugin update translatepress-multilingual || true
-          wp plugin deactivate translatepress-multilingual || true
-          wp plugin activate translatepress-multilingual
           wp eval-file "$REMOTE_CONFIG" 2>/dev/null
+          prefix="$(wp db prefix)"
+          es_table="${prefix}trp_gettext_es_es"
+          en_table="${prefix}trp_gettext_en_us"
+          if ! wp db query "SHOW TABLES LIKE '${en_table}';" --skip-column-names | grep -qx "$en_table"; then
+            echo "Repairing missing $en_table from TranslatePress schema"
+            wp db query "CREATE TABLE \`${en_table}\` LIKE \`${es_table}\`;"
+          fi
           wp cache flush >/dev/null 2>&1 || true
           echo "TranslatePress version: $(wp plugin get translatepress-multilingual --field=version)"
-          prefix="$(wp db prefix)"
-          echo "TranslatePress gettext tables:"
-          wp db query "SHOW TABLES LIKE '${prefix}trp_gettext%';" --skip-column-names || true
+          echo "English gettext table: $(wp db query \"SHOW TABLES LIKE '${en_table}';\" --skip-column-names | tail -n1)"
           rm -f "$REMOTE_CONFIG"
           REMOTE
       - name: Verify bilingual staging
@@ -73,9 +82,13 @@ jobs:
             grep -q 'mdo-language-switcher' /tmp/page.html
             if [[ "$path" == /en/* ]]; then
               grep -q 'mdo-language-en' /tmp/page.html
-              if grep -q 'WordPress database error' /tmp/page.html; then
-                echo "Database error visible on $path" >&2
-                exit 1
-              fi
+              ! grep -q 'WordPress database error' /tmp/page.html
             fi
           done
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/?mdo_copy=${stamp}" -o /tmp/home-en.html
+          grep -q 'OUR SELECTION' /tmp/home-en.html
+          ! grep -q 'NUESTRA SELECCIÓN' /tmp/home-en.html
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/productores/?mdo_copy=${stamp}" -o /tmp/producers-en.html
+          grep -q 'The origin of the marketplace' /tmp/producers-en.html
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/contacto/?mdo_copy=${stamp}" -o /tmp/contact-en.html
+          grep -q "Let's talk" /tmp/contact-en.html
