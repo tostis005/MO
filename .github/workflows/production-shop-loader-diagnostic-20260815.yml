@@ -1,0 +1,58 @@
+name: Diagnose production Shop infinite loader 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-shop-loader-diagnostic-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Print live final-loader source
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          f="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php"
+          echo '=== final loader source 220-360 ==='; nl -ba "$f" | sed -n '220,365p'
+          echo '=== exact action removal / ajax hooks ==='; grep -nE 'remove_action|add_action|wp_ajax|nopriv|elmercado_catalog_batch|IntersectionObserver|rootMargin' "$f" | head -n 150
+          REMOTE
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Trace English loader geometry, network and callable state
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./loader-diag.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const b=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          const p=await b.newPage(); p.setViewport({width:1440,height:900});
+          p.on('console',m=>console.log('CONSOLE',m.type(),m.text())); p.on('pageerror',e=>console.log('PAGEERROR',e.message));
+          p.on('request',r=>{if(r.url().includes('admin-ajax.php'))console.log('AJAX_REQUEST',r.method(),r.postData());});
+          p.on('response',async r=>{if(r.url().includes('admin-ajax.php')){let t='';try{t=await r.text();}catch{}console.log('AJAX_RESPONSE',r.status(),t.slice(0,1000));}});
+          const resp=await p.goto('https://www.elmercadodeorigen.com/en/tienda/?mdo_loader_diag='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}); console.log('STATUS',resp.status());
+          async function snap(label){const s=await p.evaluate(()=>{const state=document.querySelector('.emo-catalog-load-state');const grid=document.querySelector('ul.products');return {scrollY,innerHeight,docH:document.documentElement.scrollHeight,stateRect:state?state.getBoundingClientRect().toJSON():null,stateHidden:state?getComputedStyle(state).display:null,gridRect:grid?grid.getBoundingClientRect().toJSON():null,products:document.querySelectorAll('ul.products > li.product').length,loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,button:state?.querySelector('button')?.outerHTML||'',message:state?.querySelector('.emo-catalog-load-message')?.textContent||''};});console.log(label,JSON.stringify(s));return s;}
+          await snap('INITIAL');
+          for(const ratio of [0.5,0.8,0.95,1]){await p.evaluate(r=>scrollTo(0,Math.max(0,(document.documentElement.scrollHeight-innerHeight)*r)),ratio);await new Promise(r=>setTimeout(r,1800));await snap('SCROLL_'+ratio);}
+          await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'})); await new Promise(r=>setTimeout(r,2500)); await snap('STATE_IN_VIEW');
+          // Trigger a failure fallback button only if visible, to test loadNext wiring without inventing a direct function reference.
+          const visible=await p.evaluate(()=>{const btn=document.querySelector('.emo-catalog-load-button');return btn&&!btn.hidden&&getComputedStyle(btn).display!=='none';});console.log('BUTTON_VISIBLE',visible); if(visible){await p.click('.emo-catalog-load-button');await new Promise(r=>setTimeout(r,4000));await snap('AFTER_BUTTON');}
+          await b.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./loader-diag.mjs
