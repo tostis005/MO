@@ -1,0 +1,46 @@
+name: Locate staging catalog script source 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/staging-catalog-script-source-20260815.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Locate custom catalog JS source
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo '=== files containing catalog script marker ==='
+          grep -RIl --exclude='*.log' --exclude='*.sql' --exclude-dir=cache 'elmercado-catalog-scroll-final-010234' "$WP_PATH/wp-content" 2>/dev/null | head -n 20 || true
+          echo '=== nearby source ==='
+          while IFS= read -r f; do
+            echo "--- $f ---"
+            grep -n -B 35 -A 180 'elmercado-catalog-scroll-final-010234' "$f" | head -n 260 || true
+          done < <(grep -RIl --exclude='*.log' --exclude='*.sql' --exclude-dir=cache 'elmercado-catalog-scroll-final-010234' "$WP_PATH/wp-content" 2>/dev/null | head -n 5)
+          echo '=== other catalog JS markers ==='
+          grep -RIn --exclude='*.log' --exclude='*.sql' --exclude-dir=cache -E 'IntersectionObserver|emo-catalog-result-count|Load more products|Cargar más productos' "$WP_PATH/wp-content/themes" "$WP_PATH/wp-content/mu-plugins" 2>/dev/null | head -n 120 || true
+          REMOTE
