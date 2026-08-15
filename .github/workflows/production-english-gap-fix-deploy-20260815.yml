@@ -1,0 +1,78 @@
+name: Deploy final production English gap fixes 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-gap-fix-deploy-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy reviewed translations and remove obsolete oil pack
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP_OPTIONS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"; : "${PROD_PATH:?production path not found}"
+          REMOTE_DIR="/tmp/mdo-en-gap-fix-${GITHUB_RUN_ID}"; sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/maps'"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/import.php"
+          sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-remove-obsolete-oil-pack.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/remove-pack.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=/opt/plesk/php/8.3/bin/php
+          wp(){ "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          siteurl=$(wp option get siteurl 2>/dev/null | tail -n1); echo "siteurl=$siteurl"; printf '%s' "$siteurl" | grep -Eq '^https?://(www\.)?elmercadodeorigen\.com/?$'
+          wp eval-file "$REMOTE_DIR/remove-pack.php"
+          wp eval-file "$REMOTE_DIR/maps/import.php"
+          wp cache flush >/dev/null 2>&1 || true
+          rm -rf "$PROD_PATH/wp-content/cache/mdo-page-cache" "$PROD_PATH/wp-content/mdo-page-cache" 2>/dev/null || true
+          REMOTE
+      - name: Seed affected English pages and re-sync lazy strings
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://www.elmercadodeorigen.com/en/product-category/aceites/'
+            'https://www.elmercadodeorigen.com/en/producto/aceite-de-oliva-virgen-extra-5l/'
+            'https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-100-iberico/'
+            'https://www.elmercadodeorigen.com/en/producto/paleta-de-bellota-100-iberico/'
+            'https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-100-iberico-en-sobres/'
+            'https://www.elmercadodeorigen.com/en/producto/paleta-de-bellota-100-iberico-en-sobres/'
+            'https://www.elmercadodeorigen.com/en/producto/salchichon-de-bellota-100-iberico/'
+            'https://www.elmercadodeorigen.com/en/producto/chorizo-de-bellota-100-iberico/'
+            'https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-50-iberico-brida-roja/'
+            'https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-100-iberico-con-dop-los-pedroches-brida-negra/'
+            'https://www.elmercadodeorigen.com/en/producto/jamon-de-cebo-de-campo-100-iberico-con-dop-los-pedroches-brida-verde/'
+            'https://www.elmercadodeorigen.com/en/producto/lomito-cana-de-presa-de-bellota-100-iberico/'
+            'https://www.elmercadodeorigen.com/en/producto/burger-mixtas-sin-gluten-2-uds/'
+          )
+          for u in "${urls[@]}"; do code=$(curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/en-gap.html -w '%{http_code}' "${u}?mdo_gap_fix=${GITHUB_RUN_ID}"); echo "$code $u"; test "$code" = 200; done
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); /opt/plesk/php/8.3/bin/php -d memory_limit=1024M -d display_errors=0 \"\$wp_bin\" eval-file '/tmp/mdo-en-gap-fix-${GITHUB_RUN_ID}/maps/import.php' --path='$PROD_PATH' --allow-root"
+      - name: Verify key Spanish remnants and obsolete pack are gone
+        shell: bash
+        run: |
+          set -euo pipefail
+          for u in \
+            'https://www.elmercadodeorigen.com/en/product-category/aceites/' \
+            'https://www.elmercadodeorigen.com/en/producto/aceite-de-oliva-virgen-extra-5l/' \
+            'https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-100-iberico/' \
+            'https://www.elmercadodeorigen.com/en/producto/burger-mixtas-sin-gluten-2-uds/'; do
+            curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' "${u}?mdo_gap_verify=${GITHUB_RUN_ID}" -o /tmp/check.html
+            if grep -Eqi 'Todos los productos comprados en Hidalgo|Para proceder con una devolución|El primer paso es el molido|Pack de 4 unidades\. Envase de 5l|Burger mixtas[ –-]+sin gluten'; then echo "Spanish remnant at $u"; grep -Eio '.{0,100}(Todos los productos comprados en Hidalgo|Para proceder con una devolución|El primer paso es el molido|Pack de 4 unidades\. Envase de 5l|Burger mixtas[ –-]+sin gluten).{0,180}' /tmp/check.html | head -n10; exit 1; fi
+          done
