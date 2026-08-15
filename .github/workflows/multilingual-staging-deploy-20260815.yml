@@ -9,6 +9,7 @@ on:
       - '.github/scripts/mdo-staging-bilingual-polish.php'
       - '.github/scripts/mdo-staging-bilingual-config.php'
       - '.github/scripts/mdo-staging-language-dropdown.php'
+      - '.github/scripts/mdo-staging-advanced-cache.php'
   workflow_dispatch:
 
 permissions:
@@ -34,6 +35,7 @@ jobs:
           php -l /tmp/mdo-staging-bilingual.php
           php -l .github/scripts/mdo-staging-bilingual-polish.php
           php -l .github/scripts/mdo-staging-language-dropdown.php
+          php -l .github/scripts/mdo-staging-advanced-cache.php
       - name: Install SSH helper
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
       - name: Configure bilingual staging
@@ -48,10 +50,11 @@ jobs:
           WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
           : "${WP_PATH:?Unable to find staging WordPress path}"
           REMOTE_CONFIG="/tmp/mdo-bilingual-config-${GITHUB_RUN_ID}.php"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'; if [ -f '$WP_PATH/wp-content/advanced-cache.php' ] && [ ! -f '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php' ]; then cp '$WP_PATH/wp-content/advanced-cache.php' '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php'; fi"
           sshpass -e scp $SCP_OPTIONS /tmp/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-polish.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/000-mdo-staging-bilingual-polish.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-language-dropdown.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-language-dropdown.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-advanced-cache.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/advanced-cache.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' REMOTE_CONFIG='$REMOTE_CONFIG' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -71,6 +74,7 @@ jobs:
             wp db query "CREATE TABLE \`${en_table}\` LIKE \`${es_table}\`;"
           fi
           wp cache flush >/dev/null 2>&1 || true
+          rm -rf "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
           echo "TranslatePress version: $(wp plugin get translatepress-multilingual --field=version)"
           if wp db query "SHOW TABLES LIKE '${en_table}';" --skip-column-names | grep -qx "$en_table"; then
             echo "English gettext table: OK"
@@ -133,3 +137,11 @@ jobs:
           grep -q 'Find what you' /tmp/home-dom.html
           grep -q 'Our customers' /tmp/home-dom.html
           grep -q 'mdo-language-current' /tmp/home-dom.html
+
+          echo '=== shop page cache assertions ==='
+          for path in /tienda/ /en/tienda/; do
+            curl -kLsS --max-time 35 -o /dev/null "https://dev.elmercadodeorigen.com${path}"
+            curl -kLsS --max-time 35 -D /tmp/cache-headers.txt -o /dev/null "https://dev.elmercadodeorigen.com${path}"
+            grep -qi '^x-mdo-page-cache: HIT' /tmp/cache-headers.txt
+            echo "cache HIT $path"
+          done
