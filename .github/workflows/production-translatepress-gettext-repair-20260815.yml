@@ -1,0 +1,87 @@
+name: Repair production TranslatePress English gettext 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-translatepress-gettext-repair-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Create missing English gettext table from TranslatePress native schema
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"; : "${PROD_PATH:?production path not found}"; echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          siteurl=$(wp option get siteurl --skip-plugins --skip-themes 2>/dev/null | tail -n1); case "$siteurl" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ;; *) echo "REFUSING $siteurl" >&2; exit 2;; esac
+          prefix=$(wp db prefix); es="${prefix}trp_gettext_es_es"; en="${prefix}trp_gettext_en_us"
+          echo "ES=$es EN=$en"
+          test "$(wp db query "SHOW TABLES LIKE '$es';" --skip-column-names 2>/dev/null | tail -n1)" = "$es"
+          if ! wp db query "SHOW TABLES LIKE '$en';" --skip-column-names 2>/dev/null | grep -qx "$en"; then
+            wp db query "CREATE TABLE \`$en\` LIKE \`$es\`;" >/dev/null
+            echo 'Created English gettext table from existing TranslatePress Spanish schema.'
+          else
+            echo 'English gettext table already exists.'
+          fi
+          echo '=== schemas ==='; wp db query "SHOW CREATE TABLE \`$es\`; SHOW CREATE TABLE \`$en\`;" 2>/dev/null | head -n 80
+          wp cache flush >/dev/null 2>&1 || true
+          REMOTE
+      - name: Render principal English/plugin surfaces to populate gettext
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://www.elmercadodeorigen.com
+          for path in /en/ /en/tienda/ /en/producto/carne-picada-extra/ /en/producto/jamon-de-bellota-100-iberico/ /en/carrito/ /en/mi-cuenta/ /en/blog/ /en/politica-de-privacidad/; do
+            code=$(curl -LsS --max-time 60 -H 'Cache-Control: no-cache' -o /tmp/p.html -w '%{http_code}' "$base$path?mdo_gettext_seed=${GITHUB_RUN_ID}"); echo "$code $path"; test "$code" = 200; ! grep -qi 'WordPress database error' /tmp/p.html
+          done
+      - name: Re-import reviewed translations after gettext discovery
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          R=/tmp/mdo-gettext-repair-${GITHUB_RUN_ID}; sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$R/maps'"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$R/maps/import.php"
+          sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$R/maps/"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' R='$R' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$R/maps/import.php" --path="$PROD_PATH" --allow-root
+          "$php_bin" -d display_errors=0 "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+      - name: Verify AJAX response is clean JSON and English Shop can append
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save puppeteer-core@24 >/dev/null
+          cat > ./gettext-shop.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const b=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']}); const p=await b.newPage(); p.setViewport({width:1440,height:900}); let errs=[]; p.on('pageerror',e=>errs.push(e.message));
+          let ajax=[]; p.on('response',async r=>{if(r.url().includes('admin-ajax.php')){let t='';try{t=await r.text();}catch{}ajax.push({status:r.status(),prefix:t.slice(0,120)});}});
+          await p.goto('https://www.elmercadodeorigen.com/en/tienda/?mdo_gettext_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+          const start=await p.evaluate(()=>({products:document.querySelectorAll('ul.products>li.product').length,state:window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null})); console.log('START',JSON.stringify(start));
+          await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'})); await new Promise(r=>setTimeout(r,6000));
+          const end=await Promise.race([p.evaluate(()=>({products:document.querySelectorAll('ul.products>li.product').length,state:window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,message:document.querySelector('.emo-catalog-load-message')?.textContent||''})),new Promise((_,r)=>setTimeout(()=>r(new Error('main thread blocked')),4000))]);
+          console.log('END',JSON.stringify(end),'AJAX',JSON.stringify(ajax),'ERRORS',errs.length); if(errs.length)throw new Error(errs.join(' | ')); if(!ajax.length)throw new Error('No batch AJAX observed'); if(ajax.some(x=>!x.prefix.trim().startsWith('{')))throw new Error('AJAX response is not clean JSON'); if(end.products<=start.products)throw new Error('No products appended after repair'); await b.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./gettext-shop.mjs
