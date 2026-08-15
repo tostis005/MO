@@ -37,53 +37,57 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
           set -euo pipefail
           wp_bin="$(command -v wp || true)"
-          if [ -z "$wp_bin" ]; then
-            echo "WP-CLI not found" >&2
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          fi
+          if [ -z "$wp_bin" ] || [ -z "$php_bin" ]; then
+            echo "WP-CLI or PHP runtime not found" >&2
             exit 1
           fi
-          WP=("$wp_bin" --path="$WP_PATH" --allow-root)
+          wp() { "$php_bin" -d memory_limit=512M "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
           echo '=== CORE ==='
-          "${WP[@]}" core version
-          echo 'siteurl:'; "${WP[@]}" option get siteurl
-          echo 'home:'; "${WP[@]}" option get home
-          echo 'locale:'; "${WP[@]}" option get WPLANG || true
-          echo 'theme:'; "${WP[@]}" theme list --status=active --fields=name,status,version --format=table
+          wp core version
+          echo 'siteurl:'; wp option get siteurl
+          echo 'home:'; wp option get home
+          echo 'locale:'; wp option get WPLANG || true
+          echo 'theme:'; wp theme list --status=active --fields=name,status,version --format=table
           echo
           echo '=== PLUGINS ==='
-          "${WP[@]}" plugin list --fields=name,status,version,update --format=table
+          wp plugin list --fields=name,status,version,update --format=table
           echo
           echo '=== PAGES ==='
-          "${WP[@]}" post list --post_type=page --post_status=publish,draft,private --fields=ID,post_title,post_name,post_status,post_parent --posts_per_page=200 --format=table
+          wp post list --post_type=page --post_status=publish,draft,private --fields=ID,post_title,post_name,post_status,post_parent --posts_per_page=200 --format=table
           echo
           echo '=== SPECIAL PAGE OPTIONS ==='
           for opt in page_on_front page_for_posts woocommerce_shop_page_id woocommerce_cart_page_id woocommerce_checkout_page_id woocommerce_myaccount_page_id; do
-            printf '%s=' "$opt"; "${WP[@]}" option get "$opt" 2>/dev/null || true
+            printf '%s=' "$opt"; wp option get "$opt" 2>/dev/null || true
           done
           echo
           echo '=== MENUS ==='
-          "${WP[@]}" menu list --fields=term_id,name,slug,count --format=table || true
+          wp menu list --fields=term_id,name,slug,count --format=table || true
           echo '--- menu locations ---'
-          "${WP[@]}" menu location list --format=table || true
+          wp menu location list --format=table || true
           echo
           echo '=== PRODUCTS ==='
-          echo -n 'published_count='; "${WP[@]}" post list --post_type=product --post_status=publish --format=count
-          "${WP[@]}" post list --post_type=product --post_status=publish --fields=ID,post_title,post_name --posts_per_page=25 --format=table
+          echo -n 'published_count='; wp post list --post_type=product --post_status=publish --format=count
+          wp post list --post_type=product --post_status=publish --fields=ID,post_title,post_name --posts_per_page=25 --format=table
           echo
           echo '=== PRODUCT CATEGORIES ==='
-          "${WP[@]}" term list product_cat --fields=term_id,name,slug,count,parent --format=table || true
+          wp term list product_cat --fields=term_id,name,slug,count,parent --format=table || true
           echo
           echo '=== PRODUCT ATTRIBUTES ==='
-          "${WP[@]}" wc product_attribute list --user=1 --fields=id,name,slug,type,order_by,has_archives --format=table 2>/dev/null || true
+          wp wc product_attribute list --user=1 --fields=id,name,slug,type,order_by,has_archives --format=table 2>/dev/null || true
           echo
           echo '=== REGISTERED TAXONOMIES (pa_) ==='
-          "${WP[@]}" taxonomy list --fields=name,object_type --format=csv 2>/dev/null | grep '^pa_' || true
+          wp taxonomy list --fields=name,object_type --format=csv 2>/dev/null | grep '^pa_' || true
           echo
           echo '=== ELEMENTOR / HEADER HINTS ==='
-          "${WP[@]}" post list --post_type=elementor_library --post_status=publish,draft --fields=ID,post_title,post_name,post_status --posts_per_page=100 --format=table 2>/dev/null || true
-          echo 'stylesheet:'; "${WP[@]}" option get stylesheet || true
-          echo 'template:'; "${WP[@]}" option get template || true
+          wp post list --post_type=elementor_library --post_status=publish,draft --fields=ID,post_title,post_name,post_status --posts_per_page=100 --format=table 2>/dev/null || true
+          echo 'stylesheet:'; wp option get stylesheet || true
+          echo 'template:'; wp option get template || true
           echo
           echo '=== LANGUAGE PLUGIN HINTS ==='
-          "${WP[@]}" option list --search='*polylang*' --fields=option_name --format=csv 2>/dev/null || true
-          "${WP[@]}" option list --search='*icl*' --fields=option_name --format=csv 2>/dev/null || true
+          wp option list --search='*polylang*' --fields=option_name --format=csv 2>/dev/null || true
+          wp option list --search='*icl*' --fields=option_name --format=csv 2>/dev/null || true
           REMOTE
