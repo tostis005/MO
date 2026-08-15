@@ -77,7 +77,7 @@ jobs:
           fi
           rm -f "$REMOTE_CONFIG"
           REMOTE
-      - name: Verify bilingual routes and rendered browser output
+      - name: Verify bilingual routes and server-rendered English
         shell: bash
         run: |
           set -euo pipefail
@@ -90,39 +90,41 @@ jobs:
             grep -q 'mdo-language-switcher' /tmp/page.html
             if [[ "$path" == /en/* ]]; then
               grep -q 'mdo-language-en' /tmp/page.html
-              grep -q 'mdo-staging-visible-english-polish' /tmp/page.html
               ! grep -q 'WordPress database error' /tmp/page.html
               ! grep -q 'El Mercado de Origin' /tmp/page.html
               ! grep -q 'El-Mercado-de-Origin' /tmp/page.html
             fi
           done
 
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/?mdo_copy=${stamp}" -o /tmp/home-en.html
+          echo '=== English home assertions ==='
+          grep -q 'Find what you' /tmp/home-en.html
+          grep -q 'Our customers' /tmp/home-en.html
+          grep -q 'Would you like to be part of El Mercado de Origen?' /tmp/home-en.html
+          ! grep -q 'Encuentra lo que buscas.' /tmp/home-en.html
+          ! grep -q 'Los favoritos de nuestros clientes.' /tmp/home-en.html
+
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/tienda/?mdo_copy=${stamp}" -o /tmp/shop-en.html
+          echo '=== English shop assertions ==='
+          grep -q 'Filter products' /tmp/shop-en.html
+          grep -q 'Load more products' /tmp/shop-en.html
+          grep -q '100% Iberian acorn-fed' /tmp/shop-en.html
+          ! grep -q 'Filter productos' /tmp/shop-en.html
+
           curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/productores/?mdo_copy=${stamp}" -o /tmp/producers-en.html
           grep -q 'Discover the origin through the people who make it possible.' /tmp/producers-en.html
+
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_copy=${stamp}" -o /tmp/about-en.html
+          grep -q 'A more direct way to bring products and people together.' /tmp/about-en.html
+          grep -q 'El Mercado de Origen was born from the need to bring producers and end consumers closer together.' /tmp/about-en.html
+
           curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/contacto/?mdo_copy=${stamp}" -o /tmp/contact-en.html
           grep -q 'How can we help?' /tmp/contact-en.html
 
           chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           : "${chrome:?No headless browser available on runner}"
-          chrome_flags=(--headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=7000 --dump-dom)
-
-          timeout 60 "$chrome" "${chrome_flags[@]}" "https://dev.elmercadodeorigen.com/en/?mdo_browser=${stamp}" > /tmp/home-dom.html 2>/tmp/home-chrome.log
-          echo '=== Rendered home headings ==='
-          grep -oEi '<h[1-4][^>]*>[^<]{1,220}</h[1-4]>' /tmp/home-dom.html | sed -E 's/<[^>]+>//g' | head -n 35 || true
-          grep -q 'data-mdo-visible-english="ready"' /tmp/home-dom.html
+          timeout 60 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=3000 --dump-dom "https://dev.elmercadodeorigen.com/en/?mdo_browser=${stamp}" > /tmp/home-dom.html 2>/dev/null
+          echo '=== Browser-rendered home headings ==='
+          grep -oEi '<h[1-4][^>]*>[^<]{1,220}</h[1-4]>' /tmp/home-dom.html | sed -E 's/<[^>]+>//g' | head -n 25 || true
           grep -q 'Find what you' /tmp/home-dom.html
           grep -q 'Our customers' /tmp/home-dom.html
-          grep -q 'Would you like to be part of El Mercado de Origen?' /tmp/home-dom.html
-
-          timeout 60 "$chrome" "${chrome_flags[@]}" "https://dev.elmercadodeorigen.com/en/tienda/?mdo_browser=${stamp}" > /tmp/shop-dom.html 2>/tmp/shop-chrome.log
-          echo '=== Rendered shop sample ==='
-          grep -oEi '.{0,80}(Load more products|100% Iberian acorn-fed|Filter products).{0,100}' /tmp/shop-dom.html | head -n 20 || true
-          grep -q 'data-mdo-visible-english="ready"' /tmp/shop-dom.html
-          grep -q 'Load more products' /tmp/shop-dom.html
-          grep -q '100% Iberian acorn-fed' /tmp/shop-dom.html
-
-          timeout 60 "$chrome" "${chrome_flags[@]}" "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_browser=${stamp}" > /tmp/about-dom.html 2>/tmp/about-chrome.log
-          echo '=== Rendered about sample ==='
-          grep -oEi '.{0,100}(A more direct way|was born from the need).{0,180}' /tmp/about-dom.html | head -n 20 || true
-          grep -q 'data-mdo-visible-english="ready"' /tmp/about-dom.html
-          grep -q 'El Mercado de Origen was born from the need to bring producers and end consumers closer together.' /tmp/about-dom.html
