@@ -1,0 +1,141 @@
+name: Audit and sync all production English content 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-full-audit-sync-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Export current page and product URL inventory
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          : "${PROD_PATH:?production path not found}"; echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          cat > /tmp/mdo-url-inventory.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH'))exit(1);
+          $out=['pages'=>[],'products'=>[]];
+          foreach(get_posts(['post_type'=>'page','post_status'=>'publish','posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']) as $p){$out['pages'][]=['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title];}
+          foreach(get_posts(['post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']) as $p){$out['products'][]=['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title];}
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-url-inventory.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-url-inventory.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/mdo-url-inventory.php --path='$PROD_PATH' --allow-root 2>/dev/null > /tmp/mdo-url-inventory.json"
+          sshpass -e scp $SCP_OPTIONS "$STAGING_USER@$STAGING_HOST:/tmp/mdo-url-inventory.json" ./url-inventory.json
+          python - <<'PY'
+          import json
+          d=json.load(open('url-inventory.json'))
+          print('pages',len(d['pages']),'products',len(d['products']))
+          assert len(d['pages'])==22
+          assert len(d['products'])==62
+          PY
+      - name: Seed every English URL except checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/urls.txt
+          import json
+          d=json.load(open('url-inventory.json'))
+          for p in d['pages']:
+              if p['slug']=='finalizar-compra': continue
+              print('https://www.elmercadodeorigen.com/en/'+p['slug']+'/')
+          for p in d['products']:
+              print('https://www.elmercadodeorigen.com/en/producto/'+p['slug']+'/')
+          PY
+          total=0; bad=0
+          while IFS= read -r url; do
+            total=$((total+1)); code=$(curl -LsS --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/seed.html -w '%{http_code}' "${url}?mdo_fullseed=${GITHUB_RUN_ID}" || true)
+            echo "$code $url"
+            if [ "$code" != 200 ]; then bad=$((bad+1)); fi
+          done < /tmp/urls.txt
+          echo "seed total=$total bad=$bad"
+          test "$bad" -eq 0
+      - name: Re-import reviewed maps to synchronize lazy gettext rows
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          REMOTE_DIR="/tmp/mdo-full-audit-${GITHUB_RUN_ID}"; sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/maps'"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/import.php"
+          sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/maps/import.php" --path="$PROD_PATH" --allow-root
+          "$php_bin" -d display_errors=0 "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+      - name: Browser-audit visible English content
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save puppeteer-core@24 >/dev/null
+          cat > /tmp/audit.mjs <<'JS'
+          import fs from 'fs';
+          import puppeteer from 'puppeteer-core';
+          const inv=JSON.parse(fs.readFileSync('url-inventory.json','utf8'));
+          const urls=[];
+          for(const p of inv.pages){if(p.slug!=='finalizar-compra')urls.push({kind:'page',id:p.id,title:p.title,url:`https://www.elmercadodeorigen.com/en/${p.slug}/`});}
+          for(const p of inv.products)urls.push({kind:'product',id:p.id,title:p.title,url:`https://www.elmercadodeorigen.com/en/producto/${p.slug}/`});
+          const maps={};
+          for(const f of fs.readdirSync('.github/data/native-translations-20260815').filter(x=>x.endsWith('.json'))){Object.assign(maps,JSON.parse(fs.readFileSync('.github/data/native-translations-20260815/'+f,'utf8')));}
+          const normalize=s=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+          const candidates=Object.keys(maps).filter(s=>{
+            const n=normalize(s); if(n.length<8||n.length>260)return false;
+            if(/^https?:|@|\{\{|\[|^\d+[.,]?\d*$/.test(n))return false;
+            return /[a-záéíóúñü¿¡]/i.test(n);
+          }).map(s=>({raw:s,n:normalize(s)}));
+          const hard=[
+            'filtrar productos','filtros aplicados','limpiar todo','cerrar filtros','cargar más productos','resultados y ordenación','añadir al carrito','finalizar compra','realizar el pedido','detalles de facturación','gastos de envío incluidos','gasto de envío incluido','para una combinación a tu gusto de garrafas pincha aquí','envíos en 24-48h','información nutricional','más información','ingredientes'
+          ];
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          async function audit(item){
+            const page=await browser.newPage();
+            await page.setRequestInterception(true);
+            page.on('request',r=>{const t=r.resourceType(); if(t==='image'||t==='media'||t==='font')r.abort(); else r.continue();});
+            let response=null,err='';
+            try{response=await page.goto(item.url+`?mdo_browseraudit=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:25000});}catch(e){err=e.message;}
+            let data={text:'',title:'',lang:'',selector:false};
+            try{data=await page.evaluate(()=>({text:document.body?.innerText||'',title:document.title||'',lang:document.documentElement.lang||'',selector:!!document.querySelector('.mdo-language-switcher,.trp-language-switcher,.trp-floater-ls')}));}catch(e){if(!err)err=e.message;}
+            const text=normalize(data.text); const hits=[];
+            for(const s of hard){if(text.includes(s))hits.push(s);}
+            for(const c of candidates){if(hits.length>=18)break; if(text.includes(c.n) && !hits.includes(c.raw))hits.push(c.raw);}
+            await page.close();
+            return {...item,status:response?.status()||0,lang:data.lang,titleRendered:data.title,selector:data.selector,hits,err};
+          }
+          const results=[]; let cursor=0;
+          async function worker(){while(true){const i=cursor++;if(i>=urls.length)return;const r=await audit(urls[i]);results[i]=r;console.log(`${i+1}/${urls.length} status=${r.status} ${r.kind}#${r.id} selector=${r.selector?'YES':'no'} hits=${r.hits.length} ${r.url}`);if(r.hits.length)console.log('  HITS:',JSON.stringify(r.hits.slice(0,18)));if(r.err)console.log('  ERR:',r.err);}}
+          await Promise.all([worker(),worker(),worker(),worker()]); await browser.close();
+          fs.writeFileSync('english-audit-results.json',JSON.stringify(results,null,2));
+          const badStatus=results.filter(r=>r.status!==200||r.err); const selectors=results.filter(r=>r.selector); const remnants=results.filter(r=>r.hits.length);
+          console.log('SUMMARY',JSON.stringify({total:results.length,badStatus:badStatus.length,selectors:selectors.length,remnants:remnants.length}));
+          if(badStatus.length||selectors.length)process.exitCode=2;
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node /tmp/audit.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-english-visible-audit-20260815
+          path: |
+            url-inventory.json
+            english-audit-results.json
+          retention-days: 2
