@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Staging Bilingual Polish
  * Description: Staging-only final English output pass for legacy/hard-coded storefront sections.
- * Version: 0.3.2
+ * Version: 0.3.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -89,10 +89,10 @@ function mdo_staging_polish_html( $html ) {
 
     $html = strtr( $html, $replacements );
 
-    // This old About paragraph can arrive partly translated by the first language pass.
-    // Match the stable beginning/end so the final rendered sentence is always clean English.
+    // This legacy About sentence contains inline markup in the rendered HTML.
+    // Match across that markup, but cap the span tightly to this one sentence.
     $html = preg_replace(
-        '/El Mercado de (?:Origen|Origin) nace de la necesidad de que exista un acercamiento entre [^<]{1,160} consumidores finales\./iu',
+        '~El Mercado de (?:Origen|Origin) nace de la necesidad de que exista un acercamiento entre.{0,700}?consumidores finales\.~isu',
         'El Mercado de Origen was born from the need to bring producers and end consumers closer together.',
         $html
     );
