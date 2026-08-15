@@ -82,23 +82,33 @@ foreach ( array_chunk( $updates, 80 ) as $chunk ) {
     $query->update_strings( $chunk, 'en_US', array( 'id', 'translated', 'status', 'block_type' ) );
 }
 
-// Update gettext rows TranslatePress has already discovered. We do not invent gettext
-// domains: after rendering, a second importer pass updates newly discovered rows as well.
-$gettext_updates = 0;
+/*
+ * Theme/plugin gettext strings live in a second TranslatePress native table.
+ * Only update rows TranslatePress has actually discovered so their domain,
+ * original_id and plural metadata remain intact. No runtime translation filter.
+ */
+$gettext_updates = array();
 if ( method_exists( $query, 'check_gettext_table' ) && method_exists( $query, 'get_gettext_table_name' ) ) {
     $query->check_gettext_table( 'en_US' );
     $gettext_table = $query->get_gettext_table_name( 'en_US' );
     foreach ( $translations as $original => $translated ) {
-        $rows = $wpdb->get_results( $wpdb->prepare( "SELECT id FROM `{$gettext_table}` WHERE original = %s", $original ) );
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, original, domain FROM `{$gettext_table}` WHERE original = %s ORDER BY id ASC",
+            $original
+        ), ARRAY_A );
         foreach ( $rows as $row ) {
-            $wpdb->update(
-                $gettext_table,
-                array( 'translated' => $translated, 'status' => $human_status ),
-                array( 'id' => (int) $row->id ),
-                array( '%s', '%d' ),
-                array( '%d' )
+            $gettext_updates[] = array(
+                'id'         => (int) $row['id'],
+                'original'   => (string) $row['original'],
+                'translated' => $translated,
+                'domain'     => (string) $row['domain'],
+                'status'     => $human_status,
             );
-            $gettext_updates++;
+        }
+    }
+    if ( ! empty( $gettext_updates ) && method_exists( $query, 'update_gettext_strings' ) ) {
+        foreach ( array_chunk( $gettext_updates, 100 ) as $chunk ) {
+            $query->update_gettext_strings( $chunk, 'en_US', array( 'id', 'original', 'translated', 'domain', 'status' ) );
         }
     }
 }
@@ -109,5 +119,5 @@ echo 'Reviewed translation pairs: ' . count( $translations ) . "\n";
 echo "Dictionary rows inserted for new originals: {$inserted}\n";
 echo "Dictionary originals already present: {$existing}\n";
 echo 'Dictionary row updates: ' . count( $updates ) . "\n";
-echo "Existing gettext rows updated: {$gettext_updates}\n";
+echo 'Existing gettext rows updated natively: ' . count( $gettext_updates ) . "\n";
 echo "TranslatePress status used: {$human_status}\n";
