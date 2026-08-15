@@ -1,0 +1,48 @@
+name: Inspect remaining translation HTML context 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-gap-context-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect exact HTML around known gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in \
+            'privacy|https://dev.elmercadodeorigen.com/en/politica-de-privacidad/?gap_context=1' \
+            'contact|https://dev.elmercadodeorigen.com/en/contacto/?gap_context=1' \
+            'shop|https://dev.elmercadodeorigen.com/en/tienda/?gap_context=1'; do
+            name="${spec%%|*}"; url="${spec#*|}"
+            curl -kLsS -H 'Cache-Control: no-cache' --max-time 55 "$url" -o "/tmp/${name}.html"
+          done
+          python - <<'PY'
+          import re
+          checks={
+            '/tmp/privacy.html':[
+              'Formularios de suscripción a contenidos:',
+              'Google Analytics es un servicio de analítica web prestado por Google, Inc.'
+            ],
+            '/tmp/contact.html':['Formulario de contacto'],
+            '/tmp/shop.html':[
+              'Select options for “Aceite de oliva virgen extra 5L”',
+              'Read more about “Pack 4 garrafas de 5L de aceite de oliva virgen extra a tu gusto y de regalo una frasca egipcia”',
+              'Selección gourmet (1 product)'
+            ]
+          }
+          for path,needles in checks.items():
+              raw=open(path,encoding='utf-8',errors='replace').read()
+              print('\n###',path)
+              for n in needles:
+                  i=raw.find(n)
+                  print('\nNEEDLE:',n,'INDEX',i)
+                  if i>=0:
+                      print(raw[max(0,i-1200):i+len(n)+1800].replace('\n',' ')[:4200])
+          PY
