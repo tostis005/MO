@@ -21,8 +21,7 @@ jobs:
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          npm install --no-save puppeteer-core@24 >/dev/null
-      - name: Inspect production sources
+      - name: Inspect production sources and live English HTML
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -36,29 +35,14 @@ jobs:
             echo '=== SITE ==='
             sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp --path='$PROD_PATH' --allow-root option get siteurl 2>/dev/null || true"
             echo '=== MINIMUM ORDER SOURCE MATCHES ==='
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -RniE --include='*.php' --include='*.js' 'pedido m[ií]nimo|importe m[ií]nimo|te faltan|faltan .*€|minimum order|minimum amount|mínimo.*tienda|tienda.*mínimo' '$PROD_PATH/wp-content/plugins' '$PROD_PATH/wp-content/mu-plugins' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' 2>/dev/null | head -n 500 || true"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -RniE --include='*.php' --include='*.js' 'pedido m[ií]nimo|importe m[ií]nimo|te faltan|faltan .*€|minimum order|minimum amount|mínimo.*tienda|tienda.*mínimo|mínimo.*pedido|pedido.*mínimo' '$PROD_PATH/wp-content/plugins' '$PROD_PATH/wp-content/mu-plugins' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' 2>/dev/null | head -n 700 || true"
             echo '=== ACTIVE PLUGINS MATCHING MDO/EMDO/MINIMUM/VENDOR ==='
             sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp --path='$PROD_PATH' --allow-root plugin list --status=active --fields=name,status 2>/dev/null | grep -Ei 'mdo|emdo|minimum|wcfm|vendor|market|woocommerce' || true"
+            echo '=== EN CART HTML SPANISH TOKENS ==='
+            curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/carrito/?mdo_inspect=${GITHUB_RUN_ID}" | grep -Eio '.{0,120}(Enviar a|Enviará a|pedido mínimo|importe mínimo|te faltan|finalizar compra|actualizar carrito|aplicar cupón|seguir comprando).{0,220}' | head -n 100 || true
+            echo '=== EN CHECKOUT HTML SPANISH TOKENS ==='
+            curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/finalizar-compra/?mdo_inspect=${GITHUB_RUN_ID}" | grep -Eio '.{0,120}(Enviar a|Enviará a|pedido mínimo|importe mínimo|te faltan|finalizar compra|realizar el pedido|detalles de facturación).{0,220}' | head -n 100 || true
           } > production-english-minimum-report.txt
-      - name: Inspect live English cart below minimum
-        shell: bash
-        run: |
-          cat > /tmp/cart-inspect.mjs <<'JS'
-          import fs from 'fs';
-          import puppeteer from 'puppeteer-core';
-          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
-          const p=await browser.newPage(); p.setDefaultTimeout(20000);
-          const out=[];
-          async function snap(label){await new Promise(r=>setTimeout(r,1300));const d=await p.evaluate(()=>({url:location.href,lang:document.documentElement.lang,text:(document.body?.innerText||'').replace(/\n{3,}/g,'\n\n'),notices:[...document.querySelectorAll('.woocommerce-error,.woocommerce-info,.woocommerce-message,[role="alert"],.notice,.wc-block-components-notice-banner')].map(n=>(n.innerText||n.textContent||'').trim()).filter(Boolean)}));out.push(`\n=== ${label} ===\nURL ${d.url}\nLANG ${d.lang}\nNOTICES ${JSON.stringify(d.notices)}\nTEXT\n${d.text.slice(0,22000)}\n`);}
-          await p.goto('https://www.elmercadodeorigen.com/en/carrito/?mdo_inspect='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});await snap('EN EMPTY CART');
-          const products=['https://www.elmercadodeorigen.com/en/producto/carne-picada-extra/','https://www.elmercadodeorigen.com/en/product/carne-picada-extra/'];
-          for(const u of products){try{await p.goto(u+'?mdo_inspect='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});const b=await p.$('form.cart button.single_add_to_cart_button,button.single_add_to_cart_button');if(b){await b.click();await new Promise(r=>setTimeout(r,1800));break;}}catch(e){}}
-          await p.goto('https://www.elmercadodeorigen.com/en/carrito/?mdo_inspect='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});await snap('EN CART AFTER ADD');
-          await p.goto('https://www.elmercadodeorigen.com/en/finalizar-compra/?mdo_inspect='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});await snap('EN CHECKOUT');
-          fs.appendFileSync('production-english-minimum-report.txt',out.join('\n'));
-          await browser.close();
-          JS
-          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node /tmp/cart-inspect.mjs
       - name: Persist report
         shell: bash
         run: |
