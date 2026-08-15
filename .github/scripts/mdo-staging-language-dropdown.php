@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Staging Language Dropdown
  * Description: Converts the staging language switcher into a single-current-language dropdown.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -61,6 +61,12 @@ add_action( 'wp_footer', function () {
     ?>
     <script id="mdo-language-dropdown-js">
     (function(){
+        function normalizePath(path){
+            path = path || '/';
+            if(path.charAt(0) !== '/') path = '/' + path;
+            return path.length > 1 ? path.replace(/\/+$/, '') : '/';
+        }
+
         function initLanguageDropdown(){
             document.querySelectorAll('.mdo-language-switcher').forEach(function(box){
                 if (box.classList.contains('mdo-language-dropdown-ready')) return;
@@ -68,12 +74,13 @@ add_action( 'wp_footer', function () {
                 var links = Array.prototype.slice.call(box.querySelectorAll('a[href]'));
                 if (!links.length) { box.style.visibility='visible'; return; }
 
-                var isEnglish = /^\/en(?:\/|$)/.test(window.location.pathname);
+                var currentPath = normalizePath(window.location.pathname);
                 var current = links.find(function(a){
-                    var href = a.getAttribute('href') || '';
-                    var path = '';
-                    try { path = new URL(href, window.location.origin).pathname; } catch(e) {}
-                    return isEnglish ? /^\/en(?:\/|$)/.test(path) : !/^\/en(?:\/|$)/.test(path);
+                    try {
+                        return normalizePath(new URL(a.getAttribute('href') || '', window.location.origin).pathname) === currentPath;
+                    } catch(e) { return false; }
+                }) || links.find(function(a){
+                    return a.getAttribute('aria-current') === 'page' || a.classList.contains('current') || a.classList.contains('active');
                 }) || links[0];
 
                 var originals = document.createElement('div');
@@ -86,7 +93,7 @@ add_action( 'wp_footer', function () {
                 button.className = 'mdo-language-current';
                 button.setAttribute('aria-haspopup','true');
                 button.setAttribute('aria-expanded','false');
-                button.setAttribute('aria-label', isEnglish ? 'Change language' : 'Cambiar idioma');
+                button.setAttribute('aria-label','Change language');
 
                 var flag = document.createElement('span');
                 flag.className = 'mdo-language-flag';
@@ -108,6 +115,7 @@ add_action( 'wp_footer', function () {
                     li.setAttribute('role','none');
                     var clone = a.cloneNode(true);
                     clone.setAttribute('role','menuitem');
+                    if (a === current) clone.setAttribute('aria-current','page');
                     li.appendChild(clone);
                     menu.appendChild(li);
                 });
