@@ -1,0 +1,29 @@
+name: Inspect staging language switcher placement 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-switcher-inspect-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect rendered switcher context
+        run: |
+          python - <<'PY'
+          import urllib.request, ssl
+          from html.parser import HTMLParser
+          url='https://dev.elmercadodeorigen.com/?switcher_context=1'
+          ctx=ssl._create_unverified_context()
+          html=urllib.request.urlopen(url, context=ctx, timeout=40).read().decode('utf-8','replace')
+          needle='mdo-language-switcher'
+          i=html.find(needle)
+          print('index', i)
+          if i>=0:
+              print(html[max(0,i-3500):i+5000])
+          PY
