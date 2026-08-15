@@ -1,0 +1,27 @@
+name: Inspect staging English copy snippets 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-copy-snippets-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Inspect English rendered copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          stamp="${GITHUB_RUN_ID}"
+          for path in /en/ /en/tienda/ /en/productores/ /en/quienes-somos/ /en/contacto/; do
+            echo "===== $path ====="
+            curl -kLsS -H 'Cache-Control: no-cache' --max-time 35 "https://dev.elmercadodeorigen.com${path}?mdo_snippet=${stamp}" -o /tmp/p.html
+            echo '-- key snippets --'
+            grep -oEi '.{0,100}(SELECCI.{0,120}|SELECTION.{0,120}|ORIGEN.{0,120}|ORIGIN.{0,120}|HABLEMOS.{0,120}|LET.{0,20}TALK.{0,120}|VENDIDO.{0,120}|SOLD BY.{0,120})' /tmp/p.html | head -n 80 || true
+            echo '-- visible headings --'
+            grep -oEi '<h[1-4][^>]*>[^<]{1,180}</h[1-4]>' /tmp/p.html | sed -E 's/<[^>]+>//g' | head -n 80 || true
+            echo
+          done
