@@ -13,39 +13,89 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Measure and compare shop HTML
+      - name: Compare inline scripts and resource references
         shell: bash
         run: |
           set -euo pipefail
-          curl -kLsS --max-time 45 -o /tmp/es.html -w 'ES code=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' 'https://dev.elmercadodeorigen.com/tienda/'
-          curl -kLsS --max-time 45 -o /tmp/en.html -w 'EN code=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' 'https://dev.elmercadodeorigen.com/en/tienda/'
-          grep -oiE '<script[^>]+src=[^>]+>' /tmp/es.html | sed -E 's/[?&]ver=[^&" ]*//g' | sort -u > /tmp/es-scripts.txt || true
-          grep -oiE '<script[^>]+src=[^>]+>' /tmp/en.html | sed -E 's/[?&]ver=[^&" ]*//g' | sort -u > /tmp/en-scripts.txt || true
-          echo '=== scripts only in English ==='
-          comm -13 /tmp/es-scripts.txt /tmp/en-scripts.txt || true
-          echo '=== scripts only in Spanish ==='
-          comm -23 /tmp/es-scripts.txt /tmp/en-scripts.txt || true
-          echo '=== TranslatePress-related English markup/scripts ==='
-          grep -oiE '.{0,100}(translatepress|trp-[a-z0-9_-]+).{0,180}' /tmp/en.html | head -n 80 || true
-      - name: Browser with JavaScript enabled and disabled
+          curl -kLsS --max-time 45 -o /tmp/es.html 'https://dev.elmercadodeorigen.com/tienda/'
+          curl -kLsS --max-time 45 -o /tmp/en.html 'https://dev.elmercadodeorigen.com/en/tienda/'
+          python - <<'PY'
+from html.parser import HTMLParser
+from urllib.parse import urljoin, urlparse
+import hashlib
+class P(HTMLParser):
+    def __init__(self, base):
+        super().__init__(convert_charrefs=False); self.base=base; self.scripts=[]; self.cur=None; self.resources=[]
+    def handle_starttag(self,tag,attrs):
+        a=dict(attrs)
+        if tag=='script':
+            self.cur={'id':a.get('id',''), 'src':a.get('src',''), 'txt':[]}
+            if a.get('src'): self.resources.append(('script',urljoin(self.base,a['src'])))
+        elif tag in ('img','link','iframe','source'):
+            key='href' if tag=='link' else 'src'
+            if a.get(key): self.resources.append((tag,urljoin(self.base,a[key])))
+    def handle_data(self,d):
+        if self.cur is not None: self.cur['txt'].append(d)
+    def handle_endtag(self,tag):
+        if tag=='script' and self.cur is not None:
+            text=''.join(self.cur['txt']); self.cur['len']=len(text); self.cur['sha']=hashlib.sha1(text.encode('utf-8','replace')).hexdigest()[:10]
+            self.scripts.append(self.cur); self.cur=None
+
+def parse(path,base):
+    p=P(base); p.feed(open(path,encoding='utf-8',errors='replace').read()); return p
+es=parse('/tmp/es.html','https://dev.elmercadodeorigen.com/tienda/')
+en=parse('/tmp/en.html','https://dev.elmercadodeorigen.com/en/tienda/')
+print('ES scripts',len(es.scripts),'resources',len(es.resources))
+print('EN scripts',len(en.scripts),'resources',len(en.resources))
+print('=== inline script ids/lengths differing by id ===')
+def byid(p): return {s['id']:s for s in p.scripts if s['id']}
+a,b=byid(es),byid(en)
+for k in sorted(set(a)|set(b)):
+    x,y=a.get(k),b.get(k)
+    if x is None or y is None or x['len']!=y['len'] or x['sha']!=y['sha']:
+        print(k, 'ES', None if x is None else (x['len'],x['sha'],x['src']), 'EN', None if y is None else (y['len'],y['sha'],y['src']))
+print('=== English-only resource URLs ===')
+esurls={u for _,u in es.resources}; enurls={u for _,u in en.resources}
+for u in sorted(enurls-esurls): print(u)
+PY
+      - name: Install puppeteer core
+        run: npm install --no-save puppeteer-core@24
+      - name: Test DOMContentLoaded and main-thread responsiveness
         shell: bash
         run: |
           set -euo pipefail
-          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          : "${chrome:?No Chromium browser}"
-          for mode in js nojs; do
-            extra=()
-            if [ "$mode" = nojs ]; then extra+=(--disable-javascript); fi
-            echo "=== English shop browser mode=$mode ==="
-            outfile="/tmp/dom-$mode.html"
-            start=$(date +%s)
-            set +e
-            timeout 25 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=4000 "${extra[@]}" --dump-dom 'https://dev.elmercadodeorigen.com/en/tienda/' > "$outfile" 2> /tmp/chrome.err
-            rc=$?
-            set -e
-            elapsed=$(( $(date +%s) - start ))
-            echo "mode=$mode rc=$rc elapsed=${elapsed}s dom_bytes=$(wc -c < "$outfile")"
-          done
+          cat > /tmp/probe.mjs <<'JS'
+import puppeteer from 'puppeteer-core';
+const chrome = process.env.CHROME || '/usr/bin/google-chrome';
+const browser = await puppeteer.launch({headless:true, executablePath:chrome, args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--ignore-certificate-errors','--disable-background-networking']});
+async function probe(label,url,js=true){
+  const page=await browser.newPage();
+  await page.setJavaScriptEnabled(js);
+  page.setDefaultTimeout(7000);
+  let requests=0, failed=0, consoles=0;
+  page.on('request',()=>requests++);
+  page.on('requestfailed',r=>{failed++; if(failed<15) console.log(label,'REQFAIL',r.url(),r.failure()?.errorText);});
+  page.on('console',m=>{consoles++; if(consoles<15) console.log(label,'CONSOLE',m.type(),m.text().slice(0,500));});
+  const t=Date.now();
+  let gotoResult='ok';
+  try { await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000}); } catch(e) { gotoResult='ERR '+e.message; }
+  const elapsed=Date.now()-t;
+  console.log(label,'GOTO',gotoResult,'ms',elapsed,'requests',requests,'failed',failed);
+  try {
+    const state=await Promise.race([
+      page.evaluate(()=>({ready:document.readyState,title:document.title,html:document.documentElement.outerHTML.length,nodes:document.getElementsByTagName('*').length,products:document.querySelectorAll('.product').length,href:location.href})),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('evaluate timeout')),7000))
+    ]);
+    console.log(label,'STATE',JSON.stringify(state));
+  } catch(e){ console.log(label,'EVALERR',e.message); }
+  await page.close().catch(()=>{});
+}
+await probe('ES-JS','https://dev.elmercadodeorigen.com/tienda/',true);
+await probe('EN-JS','https://dev.elmercadodeorigen.com/en/tienda/',true);
+await probe('EN-NOJS','https://dev.elmercadodeorigen.com/en/tienda/',false);
+await browser.close();
+JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node /tmp/probe.mjs
