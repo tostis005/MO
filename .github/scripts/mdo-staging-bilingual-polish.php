@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Staging Bilingual Polish
  * Description: Staging-only final English output pass for legacy/hard-coded storefront sections.
- * Version: 0.3.3
+ * Version: 0.3.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -89,8 +89,6 @@ function mdo_staging_polish_html( $html ) {
 
     $html = strtr( $html, $replacements );
 
-    // This legacy About sentence contains inline markup in the rendered HTML.
-    // Match across that markup, but cap the span tightly to this one sentence.
     $html = preg_replace(
         '~El Mercado de (?:Origen|Origin) nace de la necesidad de que exista un acercamiento entre.{0,700}?consumidores finales\.~isu',
         'El Mercado de Origen was born from the need to bring producers and end consumers closer together.',
@@ -113,6 +111,20 @@ function mdo_staging_polish_html( $html ) {
 
     return $html;
 }
+
+function mdo_staging_polish_fragment( $content ) {
+    if ( ! mdo_staging_polish_request_is_english() ) { return $content; }
+    return mdo_staging_polish_html( $content );
+}
+
+// Elementor and classic content can bypass the page-level output pass in this staging build.
+// Polish fragments at render time as well, only for the English staging route.
+add_filter( 'the_content', 'mdo_staging_polish_fragment', PHP_INT_MAX );
+add_filter( 'widget_text_content', 'mdo_staging_polish_fragment', PHP_INT_MAX );
+add_filter( 'widget_text', 'mdo_staging_polish_fragment', PHP_INT_MAX );
+add_filter( 'elementor/widget/render_content', function( $content, $widget ) {
+    return mdo_staging_polish_fragment( $content );
+}, PHP_INT_MAX, 2 );
 
 if ( mdo_staging_polish_request_is_english() ) {
     ob_start( 'mdo_staging_polish_html' );
