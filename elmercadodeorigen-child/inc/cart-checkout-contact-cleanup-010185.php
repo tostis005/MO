@@ -9,23 +9,53 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+if ( ! function_exists( 'elmercado_request_uses_english' ) ) {
+	/**
+	 * Detecta de forma robusta si la petición visible corresponde a la versión inglesa.
+	 */
+	function elmercado_request_uses_english(): bool {
+		global $TRP_LANGUAGE;
+
+		if ( isset( $TRP_LANGUAGE ) && is_string( $TRP_LANGUAGE ) && '' !== $TRP_LANGUAGE ) {
+			return 0 === strpos( strtolower( $TRP_LANGUAGE ), 'en' );
+		}
+
+		if ( function_exists( 'trp_get_current_language' ) ) {
+			$language = trp_get_current_language();
+			if ( is_string( $language ) && '' !== $language ) {
+				return 0 === strpos( strtolower( $language ), 'en' );
+			}
+		}
+
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+		return 1 === preg_match( '#^/en(?:/|$)#i', $path );
+	}
+}
+
 /**
- * Fuerza "Enviar a" en el destino de envío del carrito, con independencia
- * del dominio o del catálogo de traducciones activo en cada entorno.
+ * Normaliza el destino de envío sin forzar español dentro de /en/.
  */
 add_filter(
 	'gettext',
 	static function ( string $translation, string $text, string $domain ): string {
 		if ( function_exists( 'is_cart' ) && is_cart() ) {
+			$is_english = elmercado_request_uses_english();
+
 			if ( 'Shipping to %s.' === $text ) {
-				return 'Enviar a %s.';
+				return $is_english ? 'Shipping to %s.' : 'Enviar a %s.';
 			}
 
 			if ( 'Shipping to %s' === $text ) {
-				return 'Enviar a %s';
+				return $is_english ? 'Shipping to %s' : 'Enviar a %s';
 			}
 
-			$corrected = preg_replace( '/^Enviará\s+a(?=\s|$)/u', 'Enviar a', $translation, 1 );
+			if ( $is_english ) {
+				$corrected = preg_replace( '/^\s*(?:Enviará|Enviar)\s+a(?=\s|$)/u', 'Shipping to', $translation, 1 );
+			} else {
+				$corrected = preg_replace( '/^\s*Enviará\s+a(?=\s|$)/u', 'Enviar a', $translation, 1 );
+			}
+
 			if ( is_string( $corrected ) && $corrected !== $translation ) {
 				return $corrected;
 			}
@@ -94,19 +124,22 @@ add_action(
 		(() => {
 			'use strict';
 
+			const path = (window.location.pathname || '').toLowerCase();
+			const isEnglish = (document.documentElement.lang || '').toLowerCase().startsWith('en') || /^\/en(?:\/|$)/i.test(path);
+
 			const normalizeCartDestination = (root = document) => {
 				if (!document.body.classList.contains('woocommerce-cart')) return;
 				root.querySelectorAll?.('.woocommerce-shipping-destination').forEach((element) => {
 					Array.from(element.childNodes).forEach((node) => {
 						if (node.nodeType !== Node.TEXT_NODE) return;
 						const value = node.nodeValue || '';
-						const corrected = value.replace(/^\s*Enviará\s+a(?=\s|$)/u, (match) => match.replace(/Enviará\s+a/u, 'Enviar a'));
+						const corrected = isEnglish
+							? value.replace(/^\s*(?:Enviará|Enviar)\s+a(?=\s|$)/u, (match) => match.replace(/(?:Enviará|Enviar)\s+a/u, 'Shipping to'))
+							: value.replace(/^\s*Enviará\s+a(?=\s|$)/u, (match) => match.replace(/Enviará\s+a/u, 'Enviar a'));
 						if (corrected !== value) node.nodeValue = corrected;
 					});
 				});
 			};
-
-			const path = (window.location.pathname || '').toLowerCase();
 
 			const isRendered = (element) => {
 				if (!(element instanceof Element)) return false;
@@ -162,7 +195,6 @@ add_action(
 						mutation.addedNodes.forEach((node) => {
 							if (node instanceof Element) scan(node);
 						});
-					});
 				});
 				observer.observe(document.body, { childList: true, subtree: true });
 			};
