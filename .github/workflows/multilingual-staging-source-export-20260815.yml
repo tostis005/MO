@@ -65,19 +65,19 @@ jobs:
           cp /tmp/manifest.pretty.json .github/data/native-source-20260815/manifest.json
           python - <<'PY'
           import json, os, re, html
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           import requests
           from bs4 import BeautifulSoup, Comment
           requests.packages.urllib3.disable_warnings()
           manifest=json.load(open('/tmp/manifest.json',encoding='utf-8'))
-          session=requests.Session()
-          session.headers.update({'User-Agent':'MDO staging translation source export'})
           def norm(s):
               s=html.unescape(str(s))
               s=re.sub(r'\s+',' ',s).strip()
               return s
-          def extract(url):
-              sep='&' if '?' in url else '?'
-              r=session.get(url+sep+'mdo_native_source=1',timeout=45,verify=False,headers={'Cache-Control':'no-cache'})
+          def fetch_one(group, folder, item):
+              sep='&' if '?' in item['url'] else '?'
+              url=item['url']+sep+'mdo_native_source=1'
+              r=requests.get(url,timeout=25,verify=False,headers={'Cache-Control':'no-cache','User-Agent':'MDO staging translation source export'})
               r.raise_for_status()
               soup=BeautifulSoup(r.text,'html.parser')
               for tag in soup(['script','style','noscript','svg','path','template']): tag.decompose()
@@ -94,24 +94,37 @@ jobs:
                   if tag.name in ('input','button') and tag.has_attr('value'):
                       v=norm(tag.get('value',''))
                       if v: vals.append(v)
-              # Preserve first-seen order and exclude obvious machine-only blobs.
               seen=set(); out=[]
               for v in vals:
                   if v in seen: continue
                   seen.add(v)
-                  if len(v)>1200: continue
-                  if re.fullmatch(r'[\W_]+',v): continue
+                  if len(v)>1200 or re.fullmatch(r'[\W_]+',v): continue
                   out.append(v)
-              return out, r.status_code
+              fn=f"{item['id']}-{item['slug']}.txt"
+              path=os.path.join('.github/data/native-source-20260815',folder,fn)
+              with open(path,'w',encoding='utf-8') as f:
+                  f.write(f"# ID: {item['id']}\n# TITLE: {item['title']}\n# URL: {item['url']}\n# HTTP: {r.status_code}\n")
+                  for s in out: f.write(s+'\n')
+              return group,item['id'],item['title'],len(out),None
+          tasks=[]
           for group,folder in [('pages','pages'),('products1957','products-1957')]:
-              for item in manifest[group]:
-                  strings,status=extract(item['url'])
-                  fn=f"{item['id']}-{item['slug']}.txt"
-                  path=os.path.join('.github/data/native-source-20260815',folder,fn)
-                  with open(path,'w',encoding='utf-8') as f:
-                      f.write(f"# ID: {item['id']}\n# TITLE: {item['title']}\n# URL: {item['url']}\n# HTTP: {status}\n")
-                      for s in strings: f.write(s+'\n')
-                  print(group,item['id'],item['title'],len(strings))
+              for item in manifest[group]: tasks.append((group,folder,item))
+          failures=[]
+          with ThreadPoolExecutor(max_workers=8) as ex:
+              future_map={ex.submit(fetch_one,*t):t for t in tasks}
+              for fut in as_completed(future_map):
+                  t=future_map[fut]
+                  try:
+                      print(*fut.result()[:-1])
+                  except Exception as e:
+                      group,folder,item=t
+                      failures.append((group,item['id'],item['title'],str(e)))
+                      print('FAILED',group,item['id'],item['title'],e)
+          if failures:
+              with open('.github/data/native-source-20260815/failures.txt','w',encoding='utf-8') as f:
+                  for x in failures: f.write('\t'.join(map(str,x))+'\n')
+              # Allow export to land; failures can be retried individually.
+              print('Failures:',len(failures))
           PY
       - name: Commit source export
         shell: bash
@@ -124,5 +137,6 @@ jobs:
             echo 'No source export changes'
           else
             git commit -m 'Export staging source strings for reviewed English translations'
+            git pull --rebase origin main
             git push
           fi
