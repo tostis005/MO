@@ -1,0 +1,51 @@
+name: Inspect staging page cache 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-cache-inspect-20260815.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect cache drop-ins
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find staging WordPress path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
+          echo '===== drop-ins ====='
+          wp plugin list --status=dropin --fields=name,status,version --format=table 2>/dev/null || true
+          echo '===== advanced-cache.php ====='
+          if [ -f "$WP_PATH/wp-content/advanced-cache.php" ]; then sed -n '1,120p' "$WP_PATH/wp-content/advanced-cache.php"; else echo absent; fi
+          echo '===== cache directory ====='
+          find "$WP_PATH/wp-content/cache" -maxdepth 3 -type f -printf '%p %s bytes\n' 2>/dev/null | head -n 100 || true
+          echo '===== wp-config cache-related lines ====='
+          grep -nE 'WP_CACHE|CACHE|REDIS|MEMCACHED' "$WP_PATH/wp-config.php" 2>/dev/null | sed -E 's/(password|secret|key).*/[redacted]/Ig' || true
+          REMOTE
