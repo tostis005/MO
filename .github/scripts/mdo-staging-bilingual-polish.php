@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Staging Bilingual Polish
  * Description: Staging-only final English output pass for legacy/hard-coded storefront sections.
- * Version: 0.3.1
+ * Version: 0.3.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -88,6 +88,14 @@ function mdo_staging_polish_html( $html ) {
     );
 
     $html = strtr( $html, $replacements );
+
+    // This old About paragraph can arrive partly translated by the first language pass.
+    // Match the stable beginning/end so the final rendered sentence is always clean English.
+    $html = preg_replace(
+        '/El Mercado de (?:Origen|Origin) nace de la necesidad de que exista un acercamiento entre [^<]{1,160} consumidores finales\./iu',
+        'El Mercado de Origen was born from the need to bring producers and end consumers closer together.',
+        $html
+    );
 
     $html = preg_replace( '/Paleta de acorn-fed 100% Iberian/iu', '100% Iberian acorn-fed shoulder ham', $html );
     $html = preg_replace( '/Jamón de acorn-fed 100% Iberian/iu', '100% Iberian acorn-fed ham', $html );
