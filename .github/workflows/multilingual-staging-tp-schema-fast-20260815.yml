@@ -1,0 +1,52 @@
+name: Fast TranslatePress schema inspect 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-tp-schema-fast-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect plugin files
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?missing WP path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo '=== candidate plugin dirs ==='
+          find "$WP_PATH/wp-content/plugins" -maxdepth 2 -type d -iname '*translate*press*' -print || true
+          echo '=== class-query candidates ==='
+          find "$WP_PATH/wp-content/plugins" -type f \( -name 'class-query.php' -o -iname '*query*.php' \) -path '*translate*' -print | head -n 30 || true
+          q="$(find "$WP_PATH/wp-content/plugins" -type f -name 'class-query.php' -path '*translate*' -print -quit 2>/dev/null || true)"
+          if [ -n "$q" ]; then
+            echo "=== $q create table sections ==="
+            grep -n -B 18 -A 45 -E 'CREATE TABLE|dictionary_table|dictionary.*table|original_strings' "$q" | head -n 420 || true
+            echo '=== query function names ==='
+            grep -nE '^[[:space:]]*(public |private |protected )?function ' "$q" | head -n 240 || true
+          fi
+          echo '=== editor candidate ==='
+          e="$(find "$WP_PATH/wp-content/plugins" -type f -name 'class-editor-api-regular-strings.php' -path '*translate*' -print -quit 2>/dev/null || true)"
+          echo "$e"
+          if [ -n "$e" ]; then
+            grep -n -B 15 -A 60 -E 'save_translations|update_strings|status' "$e" | head -n 420 || true
+          fi
+          REMOTE
