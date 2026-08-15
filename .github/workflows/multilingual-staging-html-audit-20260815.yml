@@ -27,26 +27,6 @@ jobs:
             echo "--- header markers ---"
             grep -oE '<(header|div|nav)[^>]+(site-header|woostify|header)[^>]*>' /tmp/page.html | head -n 35 || true
             echo "--- visible text sample ---"
-            python3 - <<'PY'
-from html.parser import HTMLParser
-from pathlib import Path
-class P(HTMLParser):
-    def __init__(self):
-        super().__init__(); self.skip=0; self.parts=[]
-    def handle_starttag(self, tag, attrs):
-        if tag in ('script','style','svg','noscript'): self.skip += 1
-    def handle_endtag(self, tag):
-        if tag in ('script','style','svg','noscript') and self.skip: self.skip -= 1
-    def handle_data(self, data):
-        if not self.skip:
-            s=' '.join(data.split())
-            if s: self.parts.append(s)
-p=P(); p.feed(Path('/tmp/page.html').read_text(errors='ignore'))
-seen=[]
-for s in p.parts:
-    if s not in seen:
-        seen.append(s)
-for s in seen[:180]: print(s)
-PY
+            sed -e 's/<script[^>]*>.*<\/script>//g' -e 's/<style[^>]*>.*<\/style>//g' -e 's/<[^>]*>/\n/g' /tmp/page.html | sed 's/&nbsp;/ /g; s/&amp;/\&/g; s/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | awk '!seen[$0]++' | head -n 180 || true
             echo
           done
