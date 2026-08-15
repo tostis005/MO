@@ -1,0 +1,44 @@
+name: Inspect problem TranslatePress rows 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-problem-row-inspect-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect exact native rows
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"; case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) exit 2;; esac
+          prefix="$(wp db prefix)"; d="${prefix}trp_dictionary_es_es_en_us"; o="${prefix}trp_original_strings"
+          echo '=== schemas ==='
+          wp db query "DESCRIBE \`${d}\`; DESCRIBE \`${o}\`;" 2>/dev/null
+          echo '=== problem dictionary rows ==='
+          wp db query "SELECT * FROM \`${d}\` WHERE original LIKE 'Formularios de contacto:%' OR original LIKE 'Formularios de suscripción a contenidos:%' OR original LIKE 'Google Analytics es un servicio de analítica web%' OR original='Inicio - El Mercado de Origen' OR original='Formulario de contacto' OR original LIKE 'Select options for “Aceite de oliva virgen extra%' OR original LIKE 'Read more about “Pack 4 garrafas%' OR original='Selección gourmet (1 product)' ORDER BY id;" 2>/dev/null
+          echo '=== problem original rows ==='
+          wp db query "SELECT o.* FROM \`${o}\` o JOIN \`${d}\` d ON d.original_id=o.id WHERE d.original LIKE 'Formularios de contacto:%' OR d.original LIKE 'Formularios de suscripción a contenidos:%' OR d.original LIKE 'Google Analytics es un servicio de analítica web%' OR d.original='Inicio - El Mercado de Origen' OR d.original='Formulario de contacto' OR d.original LIKE 'Select options for “Aceite de oliva virgen extra%' OR d.original LIKE 'Read more about “Pack 4 garrafas%' OR d.original='Selección gourmet (1 product)' ORDER BY o.id;" 2>/dev/null
+          REMOTE
