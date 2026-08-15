@@ -1,0 +1,53 @@
+name: Diagnose English staging shop browser hang 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/staging-english-shop-hang-diagnostic-20260815.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure HTTP and DOM size
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /tienda/ /en/tienda/; do
+            echo "=== $path cached/plain ==="
+            curl -kLsS --max-time 45 -D /tmp/h.txt -o /tmp/page.html -w 'code=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' "https://dev.elmercadodeorigen.com${path}"
+            grep -iE '^(x-mdo-page-cache|content-length|content-type):' /tmp/h.txt || true
+            python - <<'PY'
+from bs4 import BeautifulSoup
+p='/tmp/page.html'
+raw=open(p,'rb').read()
+soup=BeautifulSoup(raw,'html.parser')
+print('html_bytes=',len(raw),'elements=',len(soup.find_all(True)),'scripts=',len(soup.find_all('script')),'links=',len(soup.find_all('link')),'imgs=',len(soup.find_all('img')))
+PY
+            echo "=== $path bypass ==="
+            curl -kLsS --max-time 45 -o /tmp/page-bypass.html -w 'code=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' "https://dev.elmercadodeorigen.com${path}?hang_diag=${GITHUB_RUN_ID}"
+          done
+      - name: Test browser responsiveness
+        shell: bash
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          : "${chrome:?No Chromium browser}"
+          for path in /tienda/ /en/tienda/; do
+            echo "=== browser $path ==="
+            start=$(date +%s)
+            set +e
+            timeout 30 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=5000 --dump-dom "https://dev.elmercadodeorigen.com${path}" > "/tmp/dom-$(echo "$path" | tr '/' '_').html" 2> /tmp/chrome.err
+            rc=$?
+            set -e
+            elapsed=$(( $(date +%s) - start ))
+            echo "browser_rc=$rc elapsed=${elapsed}s dom_bytes=$(wc -c < "/tmp/dom-$(echo "$path" | tr '/' '_').html")"
+            tail -n 30 /tmp/chrome.err || true
+          done
