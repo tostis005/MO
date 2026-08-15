@@ -1,0 +1,35 @@
+name: Verify production English checkout 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-checkout-verify-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify Spanish and English checkout using isolated temporary carts
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'; product=11058
+          for lang in es en; do
+            jar="/tmp/$lang.cookies"; rm -f "$jar"
+            curl -ksSL --max-time 45 -c "$jar" -b "$jar" -o /tmp/add.html "$base/?add-to-cart=$product&quantity=1&mdo_checkout_verify=${GITHUB_RUN_ID}"
+            if [ "$lang" = en ]; then path='/en/finalizar-compra/'; else path='/finalizar-compra/'; fi
+            code=$(curl -ksS --max-time 60 -c "$jar" -b "$jar" -o "/tmp/$lang-checkout.html" -w '%{http_code}' "$base$path?mdo_checkout_verify=${GITHUB_RUN_ID}" || true)
+            bytes=$(wc -c <"/tmp/$lang-checkout.html")
+            echo "$lang checkout code=$code bytes=$bytes"
+            test "$code" = 200
+            grep -Eqi 'billing_|Detalles de facturación|Billing details|Realizar el pedido|Place order' "/tmp/$lang-checkout.html"
+            ! grep -qi 'WordPress database error\|Fatal error\|Allowed memory size' "/tmp/$lang-checkout.html"
+          done
+          echo '=== EN visible checkout markers ==='
+          grep -Eio 'Billing details|Additional information|Your order|Place order|Subtotal|Total|Shipping|Email address|First name|Last name' /tmp/en-checkout.html | sort -u || true
+          grep -Eqi 'Billing details|Your order|Place order' /tmp/en-checkout.html
+          ! grep -Eqi '>\s*(Detalles de facturación|Información adicional|Tu pedido|Realizar el pedido|Nombre|Apellidos|Dirección de correo electrónico)\s*<' /tmp/en-checkout.html
