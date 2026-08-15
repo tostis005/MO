@@ -1,0 +1,60 @@
+name: Inspect production translation rendering 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-translation-render-diagnostic-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect DB rows for visible untranslated examples
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          prefix=$(wp db prefix); table="${prefix}trp_dictionary_es_es_en_us"
+          for s in 'Carne picada extra' 'Jamón de bellota 100% Ibérico (brida negra)' 'Historias para elegir con más criterio.' 'El mercado' 'El mercado de origen'; do
+            echo "=== $s ==="; esc=$(printf '%s' "$s" | sed "s/'/''/g"); wp db query "SELECT id,original,translated,status,block_type FROM \`$table\` WHERE original='$esc';" --skip-column-names 2>/dev/null || true
+          done
+          echo '=== TRP settings ==='; wp option get trp_settings --format=json 2>/dev/null | tail -n1
+          REMOTE
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Inspect actual visible DOM and selector outerHTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./render-diag.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const b=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          for(const url of ['https://www.elmercadodeorigen.com/en/producto/carne-picada-extra/','https://www.elmercadodeorigen.com/en/blog/','https://www.elmercadodeorigen.com/en/tienda/']){
+            const p=await b.newPage(); await p.goto(url+'?mdo_render_diag='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+            const d=await p.evaluate(()=>({
+              url:location.href,lang:document.documentElement.lang,title:document.title,
+              h1:[...document.querySelectorAll('h1')].map(n=>n.innerText.trim()),
+              productTitle:document.querySelector('.product_title')?.innerText||'',
+              selector:[...document.querySelectorAll('.mdo-language-switcher,.trp-language-switcher,.trp-floater-ls')].map(n=>({tag:n.tagName,cls:n.className,display:getComputedStyle(n).display,visibility:getComputedStyle(n).visibility,text:n.innerText,html:n.outerHTML.slice(0,2500)})),
+              snippets:[...document.querySelectorAll('body *')].filter(n=>n.children.length===0&&/(Carne picada extra|Historias para elegir|El mercado de origen|El mercado)/i.test(n.textContent||'')).slice(0,20).map(n=>({tag:n.tagName,cls:n.className,text:n.textContent.trim(),display:getComputedStyle(n).display,visibility:getComputedStyle(n).visibility}))
+            })); console.log('PAGE',JSON.stringify(d)); await p.close();
+          }
+          await b.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./render-diag.mjs
