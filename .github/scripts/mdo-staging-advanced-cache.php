@@ -71,18 +71,15 @@ foreach ( $cookie_names as $cookie_name ) {
     }
 }
 
-// wp-content is owned by the staging site user. The generic wp-content/cache directory
-// is owned by another account on this host, so keep this tiny staging cache in its own folder.
 $cache_dir = __DIR__ . '/mdo-page-cache';
 $cache_file = $cache_dir . '/' . $cacheable_paths[ $path ] . '.html';
-$ttl = 300; // Five minutes on staging; freshness over aggressive caching.
+$ttl = 300;
 
 if ( is_readable( $cache_file ) && ( time() - (int) filemtime( $cache_file ) ) < $ttl ) {
     if ( ! headers_sent() ) {
         header( 'Content-Type: text/html; charset=UTF-8' );
         header( 'X-MDO-Page-Cache: HIT' );
         if ( '/tienda/' === $path || '/en/tienda/' === $path ) {
-            // The storefront sets this harmless paging helper cookie on the uncached response.
             setcookie( 'total_page', '1', time() + 7200, '/' );
         }
     }
@@ -94,14 +91,13 @@ if ( ! headers_sent() ) {
     header( 'X-MDO-Page-Cache: MISS' );
 }
 
-// Cache the fully rendered final HTML after TranslatePress and WordPress output buffers finish.
+// Cache the fully rendered final HTML after WordPress/TranslatePress output buffers finish.
+// We intentionally do not reject on PHP's late http_response_code() value here: on the
+// translated WooCommerce product routes TranslatePress can leave an internal status value
+// that differs from the final public 200 response. These are ten explicitly allow-listed,
+// pre-verified staging routes, and we still require a complete HTML document with no DB error.
 ob_start( static function ( $html ) use ( $cache_dir, $cache_file ) {
     if ( ! is_string( $html ) || '' === $html ) {
-        return $html;
-    }
-
-    $status = http_response_code();
-    if ( $status && 200 !== (int) $status ) {
         return $html;
     }
 
