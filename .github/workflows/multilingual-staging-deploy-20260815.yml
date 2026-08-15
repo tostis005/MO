@@ -39,23 +39,32 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M -d display_errors=0 \"\$wp_bin\" eval-file '$REMOTE_CONFIG' --path='$WP_PATH' --allow-root 2>/dev/null; code=\$?; rm -f '$REMOTE_CONFIG'; exit \$code"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M -d display_errors=0 \"\$wp_bin\" eval-file '$REMOTE_CONFIG' --path='$WP_PATH' --allow-root 2>/dev/null; \"\$php_bin\" -d memory_limit=512M -d display_errors=0 \"\$wp_bin\" cache flush --path='$WP_PATH' --allow-root >/dev/null 2>&1 || true; code=\$?; rm -f '$REMOTE_CONFIG'; exit \$code"
       - name: Verify Spanish and English routes
         shell: bash
         run: |
           set -euo pipefail
-          for url in \
-            'https://dev.elmercadodeorigen.com/' \
-            'https://dev.elmercadodeorigen.com/en/' \
-            'https://dev.elmercadodeorigen.com/tienda/' \
-            'https://dev.elmercadodeorigen.com/en/tienda/' \
-            'https://dev.elmercadodeorigen.com/productores/' \
-            'https://dev.elmercadodeorigen.com/en/productores/'; do
-              code="$(curl -kLsS -o /tmp/page.html -w '%{http_code}' --max-time 35 "$url")"
-              echo "$code $url"
+          stamp="${GITHUB_RUN_ID}"
+          for path in \
+            '/' \
+            '/en/' \
+            '/tienda/' \
+            '/en/tienda/' \
+            '/productores/' \
+            '/en/productores/'; do
+              sep='?'
+              [[ "$path" == *'?'* ]] && sep='&'
+              url="https://dev.elmercadodeorigen.com${path}${sep}mdo_bilingual_verify=${stamp}"
+              code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' --max-time 35 "$url")"
+              echo "$code $path"
               test "$code" = '200'
-              grep -q 'mdo-language-switcher' /tmp/page.html
-              if [[ "$url" == *'/en/'* ]]; then
-                grep -q 'mdo-language-en' /tmp/page.html
+              if ! grep -q 'mdo-language-switcher' /tmp/page.html; then
+                echo 'Language switcher marker missing. Body/footer diagnostics:'
+                grep -oE '<body[^>]*>|</footer>|mdo-[A-Za-z0-9_-]+' /tmp/page.html | tail -n 20 || true
+                exit 1
+              fi
+              if [[ "$path" == /en/* ]] && ! grep -q 'mdo-language-en' /tmp/page.html; then
+                echo 'English body class missing'
+                exit 1
               fi
           done
