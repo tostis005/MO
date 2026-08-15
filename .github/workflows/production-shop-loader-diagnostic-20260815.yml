@@ -1,4 +1,4 @@
-name: Diagnose production Shop infinite loader 2026-08-15
+name: Repair production TranslatePress and verify Shop 2026-08-15
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  repair:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -18,41 +18,85 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-      - name: Print live final-loader source
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Repair TranslatePress and deploy DB-backed English bridge
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
-          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          : "${PROD_PATH:?production path not found}"
+          REMOTE_DIR="/tmp/mdo-final-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/maps'"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-translatepress-gettext-init.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/gettext-init.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/import.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-render-bridge.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/bridge.php"
+          sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
-          f="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php"
-          echo '=== final loader source 220-360 ==='; nl -ba "$f" | sed -n '220,365p'
-          echo '=== exact action removal / ajax hooks ==='; grep -nE 'remove_action|add_action|wp_ajax|nopriv|elmercado_catalog_batch|IntersectionObserver|rootMargin' "$f" | head -n 150
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          siteurl=$(wp option get siteurl 2>/dev/null | tail -n1)
+          echo "siteurl=$siteurl"
+          printf '%s' "$siteurl" | grep -Eq '^https?://(www\.)?elmercadodeorigen\.com/?$'
+          mkdir -p "$PROD_PATH/wp-content/mu-plugins"
+          cp "$REMOTE_DIR/bridge.php" "$PROD_PATH/wp-content/mu-plugins/mdo-production-native-render-bridge.php"
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/gettext-init.php" --path="$PROD_PATH" --allow-root
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/import.php" --path="$PROD_PATH" --allow-root
+          wp cache flush >/dev/null 2>&1 || true
+          prefix=$(wp db prefix 2>/dev/null | tail -n1)
+          for t in "${prefix}trp_gettext_en_us" "${prefix}trp_gettext_es_es" "${prefix}trp_dictionary_es_es_en_us"; do
+            exists=$(wp db query "SHOW TABLES LIKE '$t';" --skip-column-names 2>/dev/null | tail -n1 || true)
+            echo "$t exists=${exists:-no}"
+            [ "$exists" = "$t" ]
+          done
+          rm -rf "$REMOTE_DIR"
           REMOTE
-      - run: npm install --no-save puppeteer-core@24 >/dev/null
-      - name: Trace English loader geometry, network and callable state
+      - name: Verify English rendering and complete Shop loader
         shell: bash
         run: |
           set -euo pipefail
-          cat > ./loader-diag.mjs <<'JS'
+          for path in /en/ /en/tienda/ /en/productores/ /en/quienes-somos/ /en/contacto/ /en/blog/ /en/producto/carne-picada-extra/ /en/producto/jamon-de-bellota-100-iberico/; do
+            code=$(curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' "https://www.elmercadodeorigen.com$path?mdo_repair_seed=${GITHUB_RUN_ID}" || true)
+            echo "$code $path"
+            test "$code" = 200
+            ! grep -qi 'WordPress database error\|Fatal error\|Allowed memory size' /tmp/page.html
+            ! grep -qi 'trp-floating-switcher' /tmp/page.html
+          done
+          cat > ./verify.mjs <<'JS'
           import puppeteer from 'puppeteer-core';
           const b=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
           const p=await b.newPage(); p.setViewport({width:1440,height:900});
-          p.on('console',m=>console.log('CONSOLE',m.type(),m.text())); p.on('pageerror',e=>console.log('PAGEERROR',e.message));
-          p.on('request',r=>{if(r.url().includes('admin-ajax.php'))console.log('AJAX_REQUEST',r.method(),r.postData());});
-          p.on('response',async r=>{if(r.url().includes('admin-ajax.php')){let t='';try{t=await r.text();}catch{}console.log('AJAX_RESPONSE',r.status(),t.slice(0,1000));}});
-          const resp=await p.goto('https://www.elmercadodeorigen.com/en/tienda/?mdo_loader_diag='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}); console.log('STATUS',resp.status());
-          async function snap(label){const s=await p.evaluate(()=>{const state=document.querySelector('.emo-catalog-load-state');const grid=document.querySelector('ul.products');return {scrollY,innerHeight,docH:document.documentElement.scrollHeight,stateRect:state?state.getBoundingClientRect().toJSON():null,stateHidden:state?getComputedStyle(state).display:null,gridRect:grid?grid.getBoundingClientRect().toJSON():null,products:document.querySelectorAll('ul.products > li.product').length,loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,button:state?.querySelector('button')?.outerHTML||'',message:state?.querySelector('.emo-catalog-load-message')?.textContent||''};});console.log(label,JSON.stringify(s));return s;}
-          await snap('INITIAL');
-          for(const ratio of [0.5,0.8,0.95,1]){await p.evaluate(r=>scrollTo(0,Math.max(0,(document.documentElement.scrollHeight-innerHeight)*r)),ratio);await new Promise(r=>setTimeout(r,1800));await snap('SCROLL_'+ratio);}
-          await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'})); await new Promise(r=>setTimeout(r,2500)); await snap('STATE_IN_VIEW');
-          // Trigger a failure fallback button only if visible, to test loadNext wiring without inventing a direct function reference.
-          const visible=await p.evaluate(()=>{const btn=document.querySelector('.emo-catalog-load-button');return btn&&!btn.hidden&&getComputedStyle(btn).display!=='none';});console.log('BUTTON_VISIBLE',visible); if(visible){await p.click('.emo-catalog-load-button');await new Promise(r=>setTimeout(r,4000));await snap('AFTER_BUTTON');}
-          await b.close();
+          const errs=[]; p.on('pageerror',e=>errs.push(e.message));
+          const r=await p.goto('https://www.elmercadodeorigen.com/en/tienda/?mdo_repair_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+          if(r.status()!==200) throw new Error('HTTP '+r.status());
+          let s=await p.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,state:window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,selector:!!document.querySelector('.trp-language-switcher,.trp-floater-ls,.mdo-language-switcher'),text:(document.body.innerText||'').slice(0,100000),titles:[...document.querySelectorAll('ul.products > li.product .woocommerce-loop-product__title,ul.products > li.product h2,ul.products > li.product h3')].map(n=>n.textContent.trim())}));
+          console.log('INITIAL',JSON.stringify({products:s.products,state:s.state,selector:s.selector}));
+          if(s.selector) throw new Error('selector present');
+          const end=Date.now()+45000;
+          while(Date.now()<end && s.state && s.state.remaining>0){
+            await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
+            await new Promise(r=>setTimeout(r,1600));
+            s=await p.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,state:window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,selector:!!document.querySelector('.trp-language-switcher,.trp-floater-ls,.mdo-language-switcher'),text:(document.body.innerText||'').slice(0,100000),titles:[...document.querySelectorAll('ul.products > li.product .woocommerce-loop-product__title,ul.products > li.product h2,ul.products > li.product h3')].map(n=>n.textContent.trim())}));
+            console.log('PROGRESS',JSON.stringify({products:s.products,state:s.state}));
+          }
+          console.log('FINAL',JSON.stringify({products:s.products,state:s.state,errs}));
+          if(errs.length) throw new Error(errs.join(' | '));
+          if(!s.state || s.state.remaining!==0) throw new Error('loader incomplete');
+          if(s.products<50) throw new Error('too few products '+s.products);
+          if(/Filtrar productos|Cargar más productos|Resultados y ordenación|Filtros aplicados/.test(s.text)) throw new Error('Spanish catalogue UI');
+          const bad=s.titles.filter(x=>/^(Carne picada extra|Filetes primera|Chuletón de lomo alto|Magro o ragú de ternera|Jamón de bellota|Paleta de bellota|Aceite de oliva virgen extra)/i.test(x));
+          if(bad.length) throw new Error('Spanish titles '+bad.slice(0,10).join(' | '));
+          await p.close(); await b.close();
           JS
-          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./loader-diag.mjs
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./verify.mjs
