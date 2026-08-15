@@ -2,8 +2,9 @@
 /**
  * El Mercado de Origen - staging-only early page cache.
  *
- * Scope is deliberately narrow: cache only the anonymous default Shop landing
- * page in ES and EN. Dynamic WooCommerce/customer requests are always bypassed.
+ * Scope is deliberately narrow: cache anonymous default Shop landing pages and
+ * the four active 1957 pilot product pages in ES/EN. Dynamic WooCommerce/customer
+ * requests are always bypassed.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -31,22 +32,33 @@ if ( '/' !== $path ) {
     $path = rtrim( $path, '/' ) . '/';
 }
 
-// Keep Home and all dynamic/store flows uncached. Only the plain Shop landing is cached.
+// Keep Home, checkout/cart/account and all filtered/dynamic views uncached.
+// Product caching is intentionally limited to the four 1957 pilot products requested
+// for the multilingual test; it is not a blanket WooCommerce product cache.
 $cacheable_paths = array(
-    '/tienda/'    => 'shop-es',
-    '/en/tienda/' => 'shop-en',
+    '/tienda/'                                                   => 'shop-es',
+    '/en/tienda/'                                                => 'shop-en',
+    '/producto/aceite-de-oliva-virgen-extra-5l/'                 => '1957-aove-5l-es',
+    '/en/producto/aceite-de-oliva-virgen-extra-5l/'              => '1957-aove-5l-en',
+    '/producto/aceite-de-oliva-virgen-extra-1l/'                 => '1957-aove-15x1l-es',
+    '/en/producto/aceite-de-oliva-virgen-extra-1l/'              => '1957-aove-15x1l-en',
+    '/producto/aceite-de-oliva-virgen-extra-500ml-pet/'          => '1957-aove-12x500-es',
+    '/en/producto/aceite-de-oliva-virgen-extra-500ml-pet/'       => '1957-aove-12x500-en',
+    '/producto/pack-aceite-a-tu-gusto/'                          => '1957-pack-4x5l-es',
+    '/en/producto/pack-aceite-a-tu-gusto/'                       => '1957-pack-4x5l-en',
 );
 if ( ! isset( $cacheable_paths[ $path ] ) ) {
     return;
 }
 
-// Any query string can represent filters, sorting, pagination, add-to-cart, diagnostics, etc.
+// Any query string can represent filters, sorting, variations, add-to-cart,
+// diagnostics or other state. Never cache those requests.
 $query = isset( $_SERVER['QUERY_STRING'] ) ? (string) $_SERVER['QUERY_STRING'] : '';
 if ( '' !== $query ) {
     return;
 }
 
-// Never serve a shared cached page to logged-in users or customers with cart/session state.
+// Never serve shared cached HTML to logged-in users or customers with cart/session state.
 $cookie_names = isset( $_COOKIE ) && is_array( $_COOKIE ) ? array_keys( $_COOKIE ) : array();
 foreach ( $cookie_names as $cookie_name ) {
     $cookie_name = (string) $cookie_name;
@@ -69,9 +81,10 @@ if ( is_readable( $cache_file ) && ( time() - (int) filemtime( $cache_file ) ) <
     if ( ! headers_sent() ) {
         header( 'Content-Type: text/html; charset=UTF-8' );
         header( 'X-MDO-Page-Cache: HIT' );
-        // The storefront sets this harmless paging helper cookie on the uncached response.
-        // Keep equivalent behaviour on a cache hit for the plain shop landing.
-        setcookie( 'total_page', '1', time() + 7200, '/' );
+        if ( '/tienda/' === $path || '/en/tienda/' === $path ) {
+            // The storefront sets this harmless paging helper cookie on the uncached response.
+            setcookie( 'total_page', '1', time() + 7200, '/' );
+        }
     }
     readfile( $cache_file );
     exit;
@@ -81,7 +94,7 @@ if ( ! headers_sent() ) {
     header( 'X-MDO-Page-Cache: MISS' );
 }
 
-// Cache the fully rendered final HTML after TranslatePress/custom output buffers finish.
+// Cache the fully rendered final HTML after TranslatePress and WordPress output buffers finish.
 ob_start( static function ( $html ) use ( $cache_dir, $cache_file ) {
     if ( ! is_string( $html ) || '' === $html ) {
         return $html;
