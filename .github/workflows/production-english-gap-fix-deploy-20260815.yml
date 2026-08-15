@@ -74,5 +74,9 @@ jobs:
             'https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-100-iberico/' \
             'https://www.elmercadodeorigen.com/en/producto/burger-mixtas-sin-gluten-2-uds/'; do
             curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' "${u}?mdo_gap_verify=${GITHUB_RUN_ID}" -o /tmp/check.html
-            if grep -Eqi 'Todos los productos comprados en Hidalgo|Para proceder con una devolución|El primer paso es el molido|Pack de 4 unidades\. Envase de 5l|Burger mixtas[ –-]+sin gluten'; then echo "Spanish remnant at $u"; grep -Eio '.{0,100}(Todos los productos comprados en Hidalgo|Para proceder con una devolución|El primer paso es el molido|Pack de 4 unidades\. Envase de 5l|Burger mixtas[ –-]+sin gluten).{0,180}' /tmp/check.html | head -n10; exit 1; fi
+            if grep -Eqi 'Todos los productos comprados en Hidalgo|Para proceder con una devolución|El primer paso es el molido|Pack de 4 unidades\. Envase de 5l|Burger mixtas[ –-]+sin gluten' /tmp/check.html; then
+              echo "Spanish remnant at $u"
+              grep -Eio '.{0,100}(Todos los productos comprados en Hidalgo|Para proceder con una devolución|El primer paso es el molido|Pack de 4 unidades\. Envase de 5l|Burger mixtas[ –-]+sin gluten).{0,180}' /tmp/check.html | head -n10
+              exit 1
+            fi
           done
