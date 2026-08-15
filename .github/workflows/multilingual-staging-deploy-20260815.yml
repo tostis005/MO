@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/multilingual-staging-deploy-20260815.yml'
       - '.github/scripts/mdo-staging-native-language-switcher.php'
+      - '.github/scripts/mdo-staging-native-render-bridge.php'
       - '.github/scripts/mdo-staging-bilingual-config.php'
       - '.github/scripts/mdo-staging-language-dropdown.php'
       - '.github/scripts/mdo-staging-advanced-cache.php'
@@ -31,6 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l .github/scripts/mdo-staging-native-language-switcher.php
+          php -l .github/scripts/mdo-staging-native-render-bridge.php
           php -l .github/scripts/mdo-staging-language-dropdown.php
           php -l .github/scripts/mdo-staging-advanced-cache.php
           php -l .github/scripts/mdo-staging-bilingual-config.php
@@ -51,6 +53,9 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'; if [ -f '$WP_PATH/wp-content/advanced-cache.php' ] && [ ! -f '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php' ]; then cp '$WP_PATH/wp-content/advanced-cache.php' '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php'; fi"
           # Replace the former runtime translation helper with a selector-only helper.
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-native-language-switcher.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
+          # This bridge contains no translation copy; it only exposes human-reviewed DB translations
+          # in metadata/accessibility attributes that third-party plugins explicitly skip.
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-native-render-bridge.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-native-render-bridge.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-language-dropdown.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-language-dropdown.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-advanced-cache.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/advanced-cache.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
@@ -63,7 +68,7 @@ jobs:
           siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
           case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
 
-          # Remove the old output-buffer/filter translation layer. English must now come from TranslatePress DB.
+          # Remove the old translation-copy/output-buffer layer. English copy itself lives in TranslatePress DB.
           rm -f "$WP_PATH/wp-content/mu-plugins/000-mdo-staging-bilingual-polish.php"
           wp eval-file "$REMOTE_CONFIG" 2>/dev/null
 
@@ -80,7 +85,7 @@ jobs:
           rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
           rm -f "$REMOTE_CONFIG"
           REMOTE
-      - name: Verify native English routes without runtime translator
+      - name: Verify native English routes without automatic translation
         shell: bash
         run: |
           set -euo pipefail
