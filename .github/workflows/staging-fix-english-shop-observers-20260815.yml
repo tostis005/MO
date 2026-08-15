@@ -57,12 +57,6 @@ jobs:
             "$php_bin" -l "$f"
           done
 
-          prefix="$(wp db prefix)"
-          dict="${prefix}trp_dictionary_es_es_en_us"
-          if wp db query "SHOW TABLES LIKE '${dict}';" --skip-column-names 2>/dev/null | grep -qx "$dict"; then
-            wp db query "UPDATE \`${dict}\` SET translated='%s result', status=2 WHERE original='%s resultado'; UPDATE \`${dict}\` SET translated='%s results', status=2 WHERE original='%s resultados';" 2>/dev/null || true
-          fi
-
           wp cache flush >/dev/null 2>&1 || true
           rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
           rm -f "$REMOTE_PATCH"
@@ -78,7 +72,7 @@ jobs:
           ! grep -q 'new MutationObserver(lockCounts).observe(node' /tmp/en-shop.html
           grep -q "'Load more products'" /tmp/en-shop.html
           grep -q "'Cargar más productos'" /tmp/es-shop.html
-          grep -q '21 results' /tmp/en-shop.html
+          grep -q "'result' : 'results'" /tmp/en-shop.html
       - name: Install browser probe
         run: npm install --no-save puppeteer-core@24
       - name: Verify English Shop stays responsive and loads all products
@@ -102,8 +96,7 @@ jobs:
               ready:document.readyState,
               products:document.querySelectorAll('ul.products > li.product').length,
               count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
-              loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,
-              body:(document.body.innerText||'').slice(0,20000)
+              loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null
             }));
             console.log(label,'DCL_MS',dcl,'INITIAL',JSON.stringify(state));
             if(english && !state.count.some(x=>/21 results/.test(x))) throw new Error('English result count is not 21 results');
