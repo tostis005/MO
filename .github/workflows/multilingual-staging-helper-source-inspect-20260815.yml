@@ -1,0 +1,23 @@
+name: Inspect legacy bilingual helper switcher 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-helper-source-inspect-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and inspect switcher code
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .github/scripts/mdo-staging-bilingual-v2.php.gz.b64 | gzip -dc > /tmp/mdo.php
+          echo '=== switcher references ==='
+          grep -n -B 35 -A 75 'mdo-language-switcher' /tmp/mdo.php | head -n 500 || true
+          echo '=== footer/action refs ==='
+          grep -n -B 20 -A 80 -E 'wp_footer|wp_nav_menu|language_url|flag|English|Spanish' /tmp/mdo.php | tail -n 650 || true
