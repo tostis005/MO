@@ -1,0 +1,35 @@
+name: Measure 1957 product cache speed 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-1957-cache-speed-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure 1957 ES and EN cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          paths=(
+            '/producto/aceite-de-oliva-virgen-extra-5l/'
+            '/en/producto/aceite-de-oliva-virgen-extra-5l/'
+            '/producto/aceite-de-oliva-virgen-extra-1l/'
+            '/en/producto/aceite-de-oliva-virgen-extra-1l/'
+            '/producto/aceite-de-oliva-virgen-extra-500ml-pet/'
+            '/en/producto/aceite-de-oliva-virgen-extra-500ml-pet/'
+            '/producto/pack-aceite-a-tu-gusto/'
+            '/en/producto/pack-aceite-a-tu-gusto/'
+          )
+          for path in "${paths[@]}"; do
+            echo "=== $path ==="
+            for n in 1 2 3; do
+              curl -kLsS --max-time 60 -D /tmp/h.txt -o /dev/null -w "sample$n HTTP=%{http_code} TTFB=%{time_starttransfer}s TOTAL=%{time_total}s\n" "https://dev.elmercadodeorigen.com${path}"
+              grep -i '^x-mdo-page-cache:' /tmp/h.txt || true
+            done
+          done
