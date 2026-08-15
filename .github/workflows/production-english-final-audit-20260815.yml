@@ -1,0 +1,162 @@
+name: Final production English audit 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-final-audit-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install helpers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Repair native gettext, resync reviewed translations, export inventory
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          REMOTE_DIR="/tmp/mdo-final-en-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/maps'"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-translatepress-gettext-init.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/gettext-init.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/import.php"
+          sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/"
+          cat > /tmp/mdo-final-inventory.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH'))exit(1);
+          $out=['pages'=>[],'products'=>[],'categories'=>[],'vendors'=>[]];
+          foreach(get_posts(['post_type'=>'page','post_status'=>'publish','posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']) as $p){$out['pages'][]=['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title];}
+          foreach(get_posts(['post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']) as $p){$out['products'][]=['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title];}
+          foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>true]) as $t){if(!is_wp_error($t))$out['categories'][]=['id'=>$t->term_id,'slug'=>$t->slug,'name'=>$t->name,'count'=>$t->count];}
+          if(function_exists('wcfmmp_get_store_url')){
+            foreach(get_users(['role__in'=>['wcfm_vendor','vendor','seller']]) as $u){$url=wcfmmp_get_store_url($u->ID);if($url)$out['vendors'][]=['id'=>$u->ID,'name'=>$u->display_name,'url'=>$url];}
+          }
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-final-inventory.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inventory.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp)
+          php_bin=/opt/plesk/php/8.3/bin/php
+          wp(){ "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          siteurl=$(wp option get siteurl 2>/dev/null | tail -n1)
+          echo "siteurl=$siteurl"
+          printf '%s' "$siteurl" | grep -Eq '^https?://(www\.)?elmercadodeorigen\.com/?$'
+          set +e
+          wp eval-file "$REMOTE_DIR/gettext-init.php" 2>&1 | tee "$REMOTE_DIR/gettext-init.log"
+          init_rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$init_rc" -ne 0 ]; then
+            echo "Native gettext initializer returned $init_rc; applying schema-compatible fallback from existing ES table."
+            prefix=$(wp db prefix 2>/dev/null | tail -n1)
+            es="${prefix}trp_gettext_es_es"; en="${prefix}trp_gettext_en_us"
+            exists=$(wp db query "SHOW TABLES LIKE '$en';" --skip-column-names 2>/dev/null | tail -n1 || true)
+            if [ "$exists" != "$en" ]; then wp db query "CREATE TABLE \`$en\` LIKE \`$es\`;" >/dev/null; fi
+          fi
+          wp eval-file "$REMOTE_DIR/maps/import.php"
+          wp eval-file "$REMOTE_DIR/inventory.php" > "$REMOTE_DIR/inventory.json"
+          prefix=$(wp db prefix 2>/dev/null | tail -n1)
+          for t in "${prefix}trp_dictionary_es_es_en_us" "${prefix}trp_gettext_en_us"; do
+            exists=$(wp db query "SHOW TABLES LIKE '$t';" --skip-column-names 2>/dev/null | tail -n1 || true)
+            echo "$t exists=$([ "$exists" = "$t" ] && echo yes || echo no)"
+            test "$exists" = "$t"
+          done
+          wp option get trp_machine_translation_settings --format=json 2>/dev/null || echo 'machine translation settings: not set'
+          REMOTE
+          sshpass -e scp $SCP_OPTIONS "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inventory.json" ./production-inventory.json
+          python - <<'PY'
+          import json
+          d=json.load(open('production-inventory.json'))
+          print({k:len(v) for k,v in d.items()})
+          assert len(d['pages']) >= 20 and len(d['products']) >= 60
+          PY
+      - name: Seed all English render surfaces so plugin gettext is registered
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/en-urls.txt
+          import json
+          d=json.load(open('production-inventory.json'))
+          print('https://www.elmercadodeorigen.com/en/')
+          for p in d['pages']:
+              print('https://www.elmercadodeorigen.com/en/'+p['slug']+'/')
+          for p in d['products']:
+              print('https://www.elmercadodeorigen.com/en/producto/'+p['slug']+'/')
+          for c in d['categories']:
+              print('https://www.elmercadodeorigen.com/en/product-category/'+c['slug']+'/')
+          for v in d['vendors']:
+              u=v['url'].replace('https://www.elmercadodeorigen.com/','https://www.elmercadodeorigen.com/en/',1)
+              print(u)
+          PY
+          cat /tmp/en-urls.txt | awk '!seen[$0]++' > /tmp/en-urls-uniq.txt
+          export RUNID="$GITHUB_RUN_ID"
+          cat /tmp/en-urls-uniq.txt | xargs -n1 -P6 -I{} bash -c 'code=$(curl -ksSL --max-time 45 -H "Cache-Control: no-cache" -o /tmp/seed.$$.html -w "%{http_code}" "{}?mdo_en_seed=${RUNID}" || true); if [ "$code" != 200 ]; then echo "BAD $code {}"; exit 1; else echo "OK $code {}"; fi; rm -f /tmp/seed.$$.html'
+      - name: Resync reviewed maps into newly registered gettext rows
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); /opt/plesk/php/8.3/bin/php -d memory_limit=1024M -d display_errors=0 \"\$wp_bin\" eval-file '/tmp/mdo-final-en-${GITHUB_RUN_ID}/maps/import.php' --path='$PROD_PATH' --allow-root"
+      - name: Browser audit all pages, products, categories, vendors, Shop and checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./final-en-audit.mjs <<'JS'
+          import fs from 'fs';
+          import puppeteer from 'puppeteer-core';
+          const inv=JSON.parse(fs.readFileSync('production-inventory.json','utf8'));
+          const maps={};
+          for(const f of fs.readdirSync('.github/data/native-translations-20260815').filter(f=>f.endsWith('.json'))){Object.assign(maps,JSON.parse(fs.readFileSync('.github/data/native-translations-20260815/'+f,'utf8')));}
+          const items=[{kind:'home',id:0,sourceTitle:'Inicio',url:'https://www.elmercadodeorigen.com/en/'}];
+          for(const p of inv.pages) items.push({kind:'page',id:p.id,sourceTitle:p.title,url:`https://www.elmercadodeorigen.com/en/${p.slug}/`});
+          for(const p of inv.products) items.push({kind:'product',id:p.id,sourceTitle:p.title,url:`https://www.elmercadodeorigen.com/en/producto/${p.slug}/`});
+          for(const c of inv.categories) items.push({kind:'category',id:c.id,sourceTitle:c.name,url:`https://www.elmercadodeorigen.com/en/product-category/${c.slug}/`});
+          for(const v of inv.vendors){const u=v.url.replace('https://www.elmercadodeorigen.com/','https://www.elmercadodeorigen.com/en/');items.push({kind:'vendor',id:v.id,sourceTitle:v.name,url:u});}
+          const norm=s=>String(s||'').replace(/\s+/g,' ').trim();
+          const esWords=new Set('el la los las un una unos unas de del al en para por con sin que se su sus este esta estos estas nuestro nuestra nuestros nuestras producto productos tienda envío envíos pedido pedidos precio peso carne ternera jamón paleta aceite cerdo ibérico información ingredientes añadir comprar filtros resultados contacto nosotros vosotros descuento regalo piezas pieza aproximado bandeja elaborado procedente criado alimentado bellota hierba recursos calidad brida envases sobres loncheado deshuesado unidades disponible entrega seleccionar opciones vendido mostrar mostrando finalizar compra carrito cuenta política condiciones privacidad cookies buscar saber más cargar cerrar ordenar categoría categorías'.split(' '));
+          const enWords=new Set('the a an of to in for by with without that this these our product products shop shipping order orders price weight beef ham oil information ingredients add buy filters results contact about from made approximately tray your delivery select options sold showing checkout cart account privacy policy terms cookies search learn more load close sort category categories'.split(' '));
+          const allowedProper=['El Mercado de Origen','Hidalgo de la Jara','Los Pedroches','Tolecarnes','1957','Córdoba','España','AOVE','Ibérico','ibérico','pata negra'];
+          function stripProper(s){let x=s;for(const p of allowedProper)x=x.split(p).join('');return x;}
+          function visibleSpanishLines(text){const out=[];for(const raw of String(text||'').split(/\n+/)){const line=norm(raw);if(line.length<8||line.length>850)continue;const test=stripProper(line);const words=(test.toLowerCase().match(/[a-záéíóúñü]+/g)||[]);let es=0,en=0;for(const w of words){if(esWords.has(w))es++;if(enWords.has(w))en++;}if(/[¿¡]/.test(test))es+=3;if(/[áéíóúñ]/i.test(test))es+=1;const hard=/(filtrar productos|filtros aplicados|limpiar todo|cerrar filtros|cargar más productos|resultados y ordenación|añadir al carrito|finalizar compra|realizar el pedido|detalles de facturación|gastos? de envío|envíos? en |seleccionar opciones|vendido por|mostrando .* resultados|sin existencias|leer más|saber más|política de|términos y condiciones|quiénes somos|contacto productores)/i.test(test);if(hard||(es>=3&&es>en+1))out.push(line);}return [...new Set(out)].slice(0,25);}
+          function getExpected(source){return maps[source]||null;}
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          let cursor=0;const results=[];
+          async function audit(item){const p=await browser.newPage();p.setDefaultTimeout(15000);await p.setRequestInterception(true);p.on('request',r=>{if(['image','font','media'].includes(r.resourceType()))r.abort();else r.continue();});let resp=null,err='';try{resp=await p.goto(item.url+`${item.url.includes('?')?'&':'?'}mdo_final_en=${Date.now()}`,{waitUntil:'domcontentloaded',timeout:30000});}catch(e){err=e.message;}let data={};try{data=await p.evaluate(()=>{const isVis=e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>0&&r.width>=0&&r.height>=0;};const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let n,lines=[];while((n=walker.nextNode())){const par=n.parentElement;if(!par||['SCRIPT','STYLE','NOSCRIPT','SVG'].includes(par.tagName)||!isVis(par))continue;const t=(n.nodeValue||'').replace(/\s+/g,' ').trim();if(t)lines.push(t);}return {lang:document.documentElement.lang||'',title:document.title||'',h1:[...document.querySelectorAll('h1,.product_title')].filter(isVis).map(n=>n.innerText.trim()),text:lines.join('\n'),visibleSelector:[...document.querySelectorAll('.trp-language-switcher,.trp-floating-switcher,.mdo-language-switcher,.trp-floater-ls')].some(isVis),body:(document.body?.innerText||'')};});}catch(e){err ||= e.message;}const suspicious=visibleSpanishLines(data.text);const expected=getExpected(item.sourceTitle);let titleMismatch=false;if(expected&&item.kind==='product'){titleMismatch=!data.h1.some(x=>norm(x)===norm(expected));}await p.close();return {...item,status:resp?.status()||0,finalUrl:resp?.url()||'',lang:data.lang||'',visibleSelector:!!data.visibleSelector,h1:data.h1||[],expected,titleMismatch,suspicious,err};}
+          async function worker(){while(true){const i=cursor++;if(i>=items.length)return;const r=await audit(items[i]);results[i]=r;console.log(`${i+1}/${items.length} ${r.status} ${r.kind}#${r.id} selector=${r.visibleSelector?'YES':'no'} spanish=${r.suspicious.length} mismatch=${r.titleMismatch?'YES':'no'} ${r.url}`);if(r.suspicious.length)console.log(' SPANISH',JSON.stringify(r.suspicious));if(r.titleMismatch)console.log(' TITLE',JSON.stringify({source:r.sourceTitle,expected:r.expected,h1:r.h1}));if(r.err)console.log(' ERR',r.err);}}
+          await Promise.all(Array.from({length:6},worker));
+          // Deep Shop test: ensure loader finishes and dynamically appended titles are translated.
+          const shop=await browser.newPage();shop.setDefaultTimeout(15000);let shopErrors=[];shop.on('pageerror',e=>shopErrors.push(e.message));await shop.goto('https://www.elmercadodeorigen.com/en/tienda/?mdo_final_shop='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});let state=await shop.evaluate(()=>window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,shown:window.__emoCatalogLoaderState.shown}:null);const deadline=Date.now()+45000;while(state&&state.remaining>0&&Date.now()<deadline){await shop.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));await new Promise(r=>setTimeout(r,1400));state=await shop.evaluate(()=>window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,shown:window.__emoCatalogLoaderState.shown}:null);}const shopData=await shop.evaluate(()=>({state:window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,shown:window.__emoCatalogLoaderState.shown}:null,titles:[...document.querySelectorAll('ul.products > li.product .woocommerce-loop-product__title,ul.products > li.product h2,ul.products > li.product h3')].map(n=>n.textContent.trim()),text:document.body?.innerText||'',selector:[...document.querySelectorAll('.trp-language-switcher,.trp-floating-switcher,.mdo-language-switcher,.trp-floater-ls')].some(e=>{const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>0;})}));await shop.close();const shopSpanish=visibleSpanishLines(shopData.text);const badDynamicTitles=shopData.titles.filter(t=>maps[t]&&maps[t]!==t);
+          // Checkout with a real cart session, no order submission.
+          const checkout=await browser.newPage();checkout.setDefaultTimeout(20000);await checkout.goto('https://www.elmercadodeorigen.com/en/?add-to-cart=11058&mdo_checkout_seed='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});let checkoutResp=null,checkoutErr='';try{checkoutResp=await checkout.goto('https://www.elmercadodeorigen.com/en/finalizar-compra/?mdo_final_checkout='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});}catch(e){checkoutErr=e.message;}const checkoutData=await checkout.evaluate(()=>({text:document.body?.innerText||'',selector:[...document.querySelectorAll('.trp-language-switcher,.trp-floating-switcher,.mdo-language-switcher,.trp-floater-ls')].some(e=>{const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>0;})}));await checkout.close();await browser.close();const checkoutSpanish=visibleSpanishLines(checkoutData.text);
+          fs.writeFileSync('production-final-english-audit.json',JSON.stringify({results,shop:{...shopData,errors:shopErrors,spanish:shopSpanish,badDynamicTitles},checkout:{status:checkoutResp?.status()||0,error:checkoutErr,selector:checkoutData.selector,spanish:checkoutSpanish}},null,2));
+          const bad=results.filter(r=>r.status!==200||r.err||r.visibleSelector||r.titleMismatch||r.suspicious.length);console.log('SUMMARY',JSON.stringify({items:results.length,bad:bad.length,statusBad:results.filter(r=>r.status!==200||r.err).length,visibleSelectors:results.filter(r=>r.visibleSelector).length,titleMismatches:results.filter(r=>r.titleMismatch).length,spanishItems:results.filter(r=>r.suspicious.length).length,shopState:shopData.state,shopErrors:shopErrors.length,shopSpanish:shopSpanish.length,checkoutStatus:checkoutResp?.status()||0,checkoutSpanish:checkoutSpanish.length,checkoutSelector:checkoutData.selector}));if(!shopData.state||shopData.state.remaining!==0||shopErrors.length||shopSpanish.length||shopData.selector||checkoutResp?.status()!==200||checkoutErr||checkoutSpanish.length||checkoutData.selector||bad.length)process.exitCode=2;
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./final-en-audit.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-final-english-audit-20260815
+          path: |
+            production-inventory.json
+            production-final-english-audit.json
+          retention-days: 3
