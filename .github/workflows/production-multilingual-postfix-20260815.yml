@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/production-multilingual-postfix-20260815.yml']
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
