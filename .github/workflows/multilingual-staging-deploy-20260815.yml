@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/multilingual-staging-deploy-20260815.yml'
       - '.github/scripts/mdo-staging-bilingual-v2.php.gz.b64'
+      - '.github/scripts/mdo-staging-bilingual-polish.php'
       - '.github/scripts/mdo-staging-bilingual-config.php'
   workflow_dispatch:
 
@@ -24,12 +25,13 @@ jobs:
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare bilingual helper
+      - name: Prepare bilingual helpers
         shell: bash
         run: |
           set -euo pipefail
           base64 -d .github/scripts/mdo-staging-bilingual-v2.php.gz.b64 | gzip -dc > /tmp/mdo-staging-bilingual.php
           php -l /tmp/mdo-staging-bilingual.php
+          php -l .github/scripts/mdo-staging-bilingual-polish.php
       - name: Install SSH helper
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
       - name: Configure bilingual staging
@@ -46,6 +48,7 @@ jobs:
           REMOTE_CONFIG="/tmp/mdo-bilingual-config-${GITHUB_RUN_ID}.php"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'"
           sshpass -e scp $SCP_OPTIONS /tmp/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-polish.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/000-mdo-staging-bilingual-polish.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' REMOTE_CONFIG='$REMOTE_CONFIG' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -66,7 +69,12 @@ jobs:
           fi
           wp cache flush >/dev/null 2>&1 || true
           echo "TranslatePress version: $(wp plugin get translatepress-multilingual --field=version)"
-          echo "English gettext table: $(wp db query \"SHOW TABLES LIKE '${en_table}';\" --skip-column-names | tail -n1)"
+          if wp db query "SHOW TABLES LIKE '${en_table}';" --skip-column-names | grep -qx "$en_table"; then
+            echo "English gettext table: OK"
+          else
+            echo "English gettext table: MISSING" >&2
+            exit 3
+          fi
           rm -f "$REMOTE_CONFIG"
           REMOTE
       - name: Verify bilingual staging
@@ -83,12 +91,26 @@ jobs:
             if [[ "$path" == /en/* ]]; then
               grep -q 'mdo-language-en' /tmp/page.html
               ! grep -q 'WordPress database error' /tmp/page.html
+              ! grep -q 'El Mercado de Origin' /tmp/page.html
+              ! grep -q 'El-Mercado-de-Origin' /tmp/page.html
             fi
           done
+
           curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/?mdo_copy=${stamp}" -o /tmp/home-en.html
-          grep -q 'OUR SELECTION' /tmp/home-en.html
-          ! grep -q 'NUESTRA SELECCIÓN' /tmp/home-en.html
+          grep -q 'Find what you' /tmp/home-en.html
+          ! grep -q 'Encuentra lo que buscas.' /tmp/home-en.html
+          grep -q 'Our customers' /tmp/home-en.html
+          ! grep -q 'Los favoritos de nuestros clientes.' /tmp/home-en.html
+
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/tienda/?mdo_copy=${stamp}" -o /tmp/shop-en.html
+          grep -q 'Filter products' /tmp/shop-en.html
+          ! grep -q 'Filter productos' /tmp/shop-en.html
+
           curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/productores/?mdo_copy=${stamp}" -o /tmp/producers-en.html
-          grep -q 'The origin of the marketplace' /tmp/producers-en.html
+          grep -q 'Discover the origin through the people who make it possible.' /tmp/producers-en.html
+
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_copy=${stamp}" -o /tmp/about-en.html
+          grep -q 'A more direct way to bring products and people together.' /tmp/about-en.html
+
           curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/contacto/?mdo_copy=${stamp}" -o /tmp/contact-en.html
-          grep -q "Let's talk" /tmp/contact-en.html
+          grep -q 'How can we help?' /tmp/contact-en.html
