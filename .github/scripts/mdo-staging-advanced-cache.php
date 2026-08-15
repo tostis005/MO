@@ -59,7 +59,9 @@ foreach ( $cookie_names as $cookie_name ) {
     }
 }
 
-$cache_dir = __DIR__ . '/cache/mdo-page-cache';
+// wp-content is owned by the staging site user. The generic wp-content/cache directory
+// is owned by another account on this host, so keep this tiny staging cache in its own folder.
+$cache_dir = __DIR__ . '/mdo-page-cache';
 $cache_file = $cache_dir . '/' . $cacheable_paths[ $path ] . '.html';
 $ttl = 300; // Five minutes on staging; freshness over aggressive caching.
 
@@ -67,6 +69,9 @@ if ( is_readable( $cache_file ) && ( time() - (int) filemtime( $cache_file ) ) <
     if ( ! headers_sent() ) {
         header( 'Content-Type: text/html; charset=UTF-8' );
         header( 'X-MDO-Page-Cache: HIT' );
+        // The storefront sets this harmless paging helper cookie on the uncached response.
+        // Keep equivalent behaviour on a cache hit for the plain shop landing.
+        setcookie( 'total_page', '1', time() + 7200, '/' );
     }
     readfile( $cache_file );
     exit;
