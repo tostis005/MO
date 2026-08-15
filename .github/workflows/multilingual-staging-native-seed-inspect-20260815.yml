@@ -1,0 +1,82 @@
+name: Inspect staging native TranslatePress storage 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-native-seed-inspect-20260815.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect staging content and TranslatePress schema
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find staging WordPress path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
+
+          echo '===== PUBLISHED PAGES ====='
+          wp post list --post_type=page --post_status=publish --fields=ID,post_title,post_name --format=table 2>/dev/null
+          echo '===== USERS MATCHING 1957 ====='
+          wp user list --fields=ID,user_login,display_name --format=csv 2>/dev/null | grep -i '1957\|catedr\|puente\|hidalgo' || true
+          echo '===== PUBLISHED PRODUCTS ====='
+          wp post list --post_type=product --post_status=publish --fields=ID,post_title,post_author,post_name --format=csv 2>/dev/null
+
+          echo '===== VISIT CORE SPANISH ROUTES TO SEED TP ====='
+          for path in / /tienda/ /productores/ /quienes-somos/ /contacto/; do
+            code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /dev/null -w '%{http_code}' --max-time 40 "https://dev.elmercadodeorigen.com${path}?native_seed=${RANDOM}")"
+            echo "$code $path"
+          done
+
+          prefix="$(wp db prefix)"
+          echo '===== TRP TABLES AFTER VISITS ====='
+          wp db query "SHOW TABLES LIKE '${prefix}trp%';" --skip-column-names 2>/dev/null || true
+          dict="${prefix}trp_dictionary_es_es_en_us"
+          if wp db query "SHOW TABLES LIKE '${dict}';" --skip-column-names 2>/dev/null | grep -qx "$dict"; then
+            echo '===== DICTIONARY SCHEMA ====='
+            wp db query "SHOW CREATE TABLE \`${dict}\`;" --skip-column-names 2>/dev/null || true
+            echo '===== DICTIONARY SAMPLE ====='
+            wp db query "SELECT * FROM \`${dict}\` ORDER BY id DESC LIMIT 20;" 2>/dev/null || true
+          else
+            echo "dictionary missing: $dict"
+          fi
+          orig="${prefix}trp_original_strings"
+          if wp db query "SHOW TABLES LIKE '${orig}';" --skip-column-names 2>/dev/null | grep -qx "$orig"; then
+            echo '===== ORIGINAL STRINGS SCHEMA ====='
+            wp db query "SHOW CREATE TABLE \`${orig}\`;" --skip-column-names 2>/dev/null || true
+            echo '===== ORIGINAL STRINGS COUNT ====='
+            wp db query "SELECT COUNT(*) FROM \`${orig}\`;" --skip-column-names 2>/dev/null || true
+          fi
+
+          echo '===== TRANSLATEPRESS QUERY METHODS ====='
+          query_file="$WP_PATH/wp-content/plugins/translatepress-multilingual/includes/class-query.php"
+          grep -nE 'function (create|insert|update|get|maybe|check).*' "$query_file" | head -n 120 || true
+          grep -nE 'dictionary|CREATE TABLE|original_strings' "$query_file" | head -n 160 || true
+          REMOTE
