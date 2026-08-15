@@ -1,0 +1,133 @@
+name: Deploy production bilingual structure v2 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-multilingual-deploy-v2-20260815.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate reviewed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .github/data/native-translations-20260815/*.json; do python -m json.tool "$f" >/dev/null; done
+          for f in .github/scripts/mdo-production-native-translations.php .github/scripts/mdo-production-bilingual-config.php .github/scripts/mdo-production-native-render-bridge.php .github/scripts/mdo-production-oil-cleanup.php .github/scripts/mdo-production-change-backup.php; do php -l "$f"; done
+          python -m py_compile .github/scripts/mdo-staging-fix-english-shop-observers.py
+          python - <<'PY'
+          import glob,json
+          m={}
+          for f in glob.glob('.github/data/native-translations-20260815/*.json'): m.update(json.load(open(f)))
+          assert len(m)>=1050, len(m)
+          for key in ['Carne picada extra','Jamón de bellota 100% Ibérico (brida negra)','Nuestra historia comienza en 2014, cuando empezamos a especializarnos en la administración de fincas agrícolas.','Filtros aplicados']:
+              assert key in m,key
+          print('reviewed unique translations',len(m))
+          PY
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Locate production and upload deployment files
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          REMOTE_DIR="/tmp/mdo-production-multilingual-${GITHUB_RUN_ID}"
+          echo "REMOTE_DIR=$REMOTE_DIR" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/maps' '$PROD_PATH/wp-content/mu-plugins'"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/import.php"
+          sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/"
+          for spec in "mdo-production-bilingual-config.php:config.php" "mdo-production-oil-cleanup.php:oil-cleanup.php" "mdo-production-change-backup.php:backup.php" "mdo-staging-fix-english-shop-observers.py:fix-shop.py"; do src=${spec%%:*}; dst=${spec##*:}; sshpass -e scp $SCP_OPTIONS ".github/scripts/$src" "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/$dst"; done
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-render-bridge.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-production-native-render-bridge.php"
+      - name: Snapshot touched data and deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_DIR='$REMOTE_DIR' RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl --skip-plugins --skip-themes 2>/dev/null | tail -n1)"; case "$siteurl" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ;; *) echo "REFUSING NON-PRODUCTION $siteurl" >&2; exit 2;; esac
+          backup_dir="$(dirname "$PROD_PATH")/mdo-backups"; mkdir -p "$backup_dir"; backup="$backup_dir/pre-multilingual-${RUN_ID}.json"
+          MDO_BACKUP_FILE="$backup" wp eval-file "$REMOTE_DIR/backup.php"; test -s "$backup"
+          echo "Protected change-set snapshot: $backup"
+
+          if ! wp plugin is-installed translatepress-multilingual; then wp plugin install translatepress-multilingual --version=3.3.2 --activate || wp plugin install translatepress-multilingual --activate; else wp plugin activate translatepress-multilingual || true; fi
+          echo "TranslatePress version: $(wp plugin get translatepress-multilingual --field=version)"
+          wp eval-file "$REMOTE_DIR/config.php"
+          wp eval-file "$REMOTE_DIR/oil-cleanup.php"
+          python3 "$REMOTE_DIR/fix-shop.py" "$PROD_PATH/wp-content/themes"
+          for name in catalog-query-parity-010224.php catalog-mobile-controls-polish-010237.php catalog-filter-scroll-final-010234.php; do f="$(find "$PROD_PATH/wp-content/themes" -type f -name "$name" -print -quit)"; test -n "$f"; "$php_bin" -l "$f"; done
+          wp eval-file "$REMOTE_DIR/maps/import.php"
+          wp rewrite flush >/dev/null 2>&1 || true; wp cache flush >/dev/null 2>&1 || true
+          REMOTE
+      - name: Seed English routes and synchronize gettext
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          base=https://www.elmercadodeorigen.com
+          for path in /en/ /en/tienda/ /en/productores/ /en/contacto/ /en/quienes-somos/ /en/politica/ /en/politica-de-privacidad/ /en/politica-de-cookies/ /en/carrito/ /en/finalizar-compra/ /en/mi-cuenta/; do code=$(curl -LsS --max-time 60 -o /tmp/seed.html -w '%{http_code}' "$base$path?mdo_seed=${GITHUB_RUN_ID}"); echo "$code $path"; test "$code" = 200; done
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/maps/import.php" --path="$PROD_PATH" --allow-root
+          "$php_bin" -d display_errors=0 "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+      - name: Verify key English content and no selector
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://www.elmercadodeorigen.com
+          for path in /en/ /en/tienda/ /en/productores/ /en/contacto/ /en/quienes-somos/ /en/politica/ /en/politica-de-privacidad/ /en/politica-de-cookies/; do code=$(curl -LsS --max-time 60 -H 'Cache-Control: no-cache' -o /tmp/p.html -w '%{http_code}' "$base$path?mdo_verify=${GITHUB_RUN_ID}"); echo "$code $path"; test "$code" = 200; ! grep -qi 'WordPress database error' /tmp/p.html; ! grep -qi 'mdo-language-switcher' /tmp/p.html; ! grep -qi 'trp-floater-ls' /tmp/p.html; done
+          curl -LsS --max-time 60 "$base/en/?mdo_verify=${GITHUB_RUN_ID}" -o /tmp/home.html; grep -qi 'Find what you' /tmp/home.html
+          curl -LsS --max-time 60 "$base/en/quienes-somos/?mdo_verify=${GITHUB_RUN_ID}" -o /tmp/about.html; grep -qi 'Our story began in 2014' /tmp/about.html
+          curl -LsS --max-time 60 "$base/en/producto/aceite-de-oliva-virgen-extra-5l/?mdo_verify=${GITHUB_RUN_ID}" -o /tmp/oil.html; ! grep -qi 'Gasto de envío incluido\|Gastos de envío incluidos\|PARA UNA COMBINACIÓN A TU GUSTO DE GARRAFAS' /tmp/oil.html; grep -qi 'Extra virgin olive oil' /tmp/oil.html
+          curl -LsS --max-time 60 "$base/en/producto/carne-picada-extra/?mdo_verify=${GITHUB_RUN_ID}" -o /tmp/meat.html; grep -qi 'Premium minced beef' /tmp/meat.html; grep -qi '100% natural beef with no additives' /tmp/meat.html
+      - name: Browser-test English Shop
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save puppeteer-core@24 >/dev/null
+          cat > /tmp/shop.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const b=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']}); const p=await b.newPage(); let errors=[]; p.on('pageerror',e=>errors.push(e.message));
+          const t=Date.now(); await p.goto('https://www.elmercadodeorigen.com/en/tienda/',{waitUntil:'domcontentloaded',timeout:30000}); console.log('DCL',Date.now()-t);
+          let s=await Promise.race([p.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,count:(document.body.innerText||'').match(/\b\d+ results\b/i)?.[0]||'',body:(document.body.innerText||'').slice(0,18000)})),new Promise((_,r)=>setTimeout(()=>r(new Error('main thread blocked')),5000))]);
+          console.log('initial',s.products,s.count); await p.evaluate(()=>scrollTo(0,document.body.scrollHeight)); await new Promise(r=>setTimeout(r,5000));
+          s=await Promise.race([p.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,body:(document.body.innerText||'').slice(0,25000)})),new Promise((_,r)=>setTimeout(()=>r(new Error('main thread blocked after scroll')),5000))]); console.log('after',s.products,'errors',errors.length);
+          if(errors.length) throw new Error(errors.join(' | ')); if(/Filtrar productos|Cargar más productos|Resultados y ordenación/.test(s.body)) throw new Error('Spanish custom catalogue UI remains'); await b.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node /tmp/shop.mjs
+      - name: Verify Spanish production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in / /tienda/ /productores/ /contacto/ /quienes-somos/; do code=$(curl -LsS --max-time 60 -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$path?mdo_es=${GITHUB_RUN_ID}"); echo "$code $path"; test "$code" = 200; done
