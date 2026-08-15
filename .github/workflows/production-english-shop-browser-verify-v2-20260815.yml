@@ -1,0 +1,45 @@
+name: Verify production English Shop browser v2 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-shop-browser-verify-v2-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Verify English and Spanish Shop stay responsive through dynamic loading
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./shop-verify.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          async function run(label,url,english){
+            const p=await browser.newPage(); p.setDefaultTimeout(12000); let errors=[]; p.on('pageerror',e=>errors.push(e.message));
+            await p.setRequestInterception(true); p.on('request',r=>{const t=r.resourceType(); if(t==='font'||t==='media')r.abort(); else r.continue();});
+            const t=Date.now(); await p.goto(url,{waitUntil:'domcontentloaded',timeout:30000}); const dcl=Date.now()-t;
+            let s=await Promise.race([p.evaluate(()=>({count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>n.textContent.trim()),products:document.querySelectorAll('ul.products > li.product').length,state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,body:(document.body.innerText||'').slice(0,25000),titles:[...document.querySelectorAll('ul.products > li.product .woocommerce-loop-product__title,ul.products > li.product h2,ul.products > li.product h3')].map(n=>n.textContent.trim())})),new Promise((_,r)=>setTimeout(()=>r(new Error('main thread blocked initially')),5000))]);
+            console.log(label,'DCL_MS',dcl,'INITIAL',JSON.stringify({count:s.count,products:s.products,state:s.state}));
+            const deadline=Date.now()+30000;
+            while(Date.now()<deadline && s.state && s.state.remaining>0){
+              await p.evaluate(()=>scrollTo(0,document.body.scrollHeight)); await new Promise(r=>setTimeout(r,700));
+              s=await Promise.race([p.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,body:(document.body.innerText||'').slice(0,70000),titles:[...document.querySelectorAll('ul.products > li.product .woocommerce-loop-product__title,ul.products > li.product h2,ul.products > li.product h3')].map(n=>n.textContent.trim())})),new Promise((_,r)=>setTimeout(()=>r(new Error('main thread blocked during loading')),5000))]);
+            }
+            console.log(label,'FINAL',JSON.stringify({products:s.products,state:s.state,titles:(s.titles||[]).slice(0,8)}),'errors',errors.length);
+            if(errors.length)throw new Error(label+' JS errors: '+errors.join(' | ')); if(!s.state)throw new Error(label+' loader state missing'); if(s.state.remaining!==0)throw new Error(label+' loader did not finish');
+            if(english){
+              if(/Filtrar productos|Cargar más productos|Resultados y ordenación|Filtros aplicados/.test(s.body))throw new Error('Spanish catalogue UI visible in English');
+              const badTitles=(s.titles||[]).filter(x=>/^(Carne picada extra|Filetes primera|Chuletón de lomo alto|Magro o ragú de ternera|Jamón de bellota|Paleta de bellota|Aceite de oliva virgen extra)/i.test(x)); if(badTitles.length)throw new Error('Spanish product titles after dynamic load: '+badTitles.join(' | '));
+            } else if(!/resultados/.test(s.count.join(' '))) throw new Error('Spanish result count changed');
+            await new Promise(r=>setTimeout(r,2500)); await Promise.race([p.evaluate(()=>document.title),new Promise((_,r)=>setTimeout(()=>r(new Error(label+' unresponsive after idle')),3000))]); await p.close();
+          }
+          await run('EN','https://www.elmercadodeorigen.com/en/tienda/',true); await run('ES','https://www.elmercadodeorigen.com/tienda/',false); await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./shop-verify.mjs
