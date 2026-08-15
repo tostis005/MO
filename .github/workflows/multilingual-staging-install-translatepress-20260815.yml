@@ -1,0 +1,57 @@
+name: Install TranslatePress on staging 2026-08-15
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/multilingual-staging-install-translatepress-20260815.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Install and activate TranslatePress on staging
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find staging WordPress path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          fi
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          echo "Staging: $(wp option get siteurl 2>/dev/null | tail -n1)"
+          if ! wp plugin is-installed translatepress-multilingual >/dev/null 2>&1; then
+            wp plugin install translatepress-multilingual --activate
+          else
+            wp plugin activate translatepress-multilingual || true
+          fi
+          echo '=== TranslatePress plugin ==='
+          wp plugin get translatepress-multilingual --fields=name,status,version --format=table
+          echo '=== trp_settings ==='
+          wp option get trp_settings --format=json || true
+          echo '=== TranslatePress-related options ==='
+          wp option list --search='trp_%' --fields=option_name --format=csv || true
+          REMOTE
