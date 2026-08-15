@@ -1,0 +1,158 @@
+name: Fix staging English shop observer loop 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/staging-fix-english-shop-observers-20260815.yml'
+      - '.github/scripts/mdo-staging-fix-english-shop-observers.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate patch script
+        run: python -m py_compile .github/scripts/mdo-staging-fix-english-shop-observers.py
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Patch staging theme only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to locate staging WordPress}"
+          REMOTE_PATCH="/tmp/mdo-fix-en-shop-${GITHUB_RUN_ID}.py"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-fix-english-shop-observers.py "$STAGING_USER@$STAGING_HOST:$REMOTE_PATCH"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' REMOTE_PATCH='$REMOTE_PATCH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging site: $siteurl" >&2; exit 2;; esac
+
+          python3 "$REMOTE_PATCH" "$WP_PATH/wp-content/themes"
+
+          for name in catalog-query-parity-010224.php catalog-mobile-controls-polish-010237.php catalog-filter-scroll-final-010234.php; do
+            f="$(find "$WP_PATH/wp-content/themes" -type f -name "$name" -print -quit)"
+            : "${f:?Missing $name}"
+            "$php_bin" -l "$f"
+          done
+
+          prefix="$(wp db prefix)"
+          dict="${prefix}trp_dictionary_es_es_en_us"
+          if wp db query "SHOW TABLES LIKE '${dict}';" --skip-column-names 2>/dev/null | grep -qx "$dict"; then
+            wp db query "UPDATE \`${dict}\` SET translated='%s result', status=2 WHERE original='%s resultado'; UPDATE \`${dict}\` SET translated='%s results', status=2 WHERE original='%s resultados';" 2>/dev/null || true
+          fi
+
+          wp cache flush >/dev/null 2>&1 || true
+          rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
+          rm -f "$REMOTE_PATCH"
+          REMOTE
+      - name: Verify rendered source has no conflicting observers
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -kLsS --max-time 45 -o /tmp/en-shop.html "https://dev.elmercadodeorigen.com/en/tienda/?observer_fix=${GITHUB_RUN_ID}"
+          curl -kLsS --max-time 45 -o /tmp/es-shop.html "https://dev.elmercadodeorigen.com/tienda/?observer_fix=${GITHUB_RUN_ID}"
+          ! grep -q 'new MutationObserver(normalize).observe(node' /tmp/en-shop.html
+          ! grep -q 'new MutationObserver(() => requestAnimationFrame(polish)).observe(document.body' /tmp/en-shop.html
+          ! grep -q 'new MutationObserver(lockCounts).observe(node' /tmp/en-shop.html
+          grep -q "'Load more products'" /tmp/en-shop.html
+          grep -q "'Cargar más productos'" /tmp/es-shop.html
+          grep -q '21 results' /tmp/en-shop.html
+      - name: Install browser probe
+        run: npm install --no-save puppeteer-core@24
+      - name: Verify English Shop stays responsive and loads all products
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./verify-shop.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const chrome = process.env.CHROME;
+          const browser = await puppeteer.launch({headless:true, executablePath:chrome, args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--ignore-certificate-errors','--disable-background-networking']});
+
+          async function check(label,url,english){
+            const page=await browser.newPage();
+            page.setDefaultTimeout(10000);
+            let errors=[];
+            page.on('pageerror',e=>errors.push(e.message));
+            const start=Date.now();
+            await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000});
+            const dcl=Date.now()-start;
+            let state=await page.evaluate(()=>({
+              ready:document.readyState,
+              products:document.querySelectorAll('ul.products > li.product').length,
+              count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>(n.textContent||'').replace(/\s+/g,' ').trim()),
+              loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,
+              body:(document.body.innerText||'').slice(0,20000)
+            }));
+            console.log(label,'DCL_MS',dcl,'INITIAL',JSON.stringify(state));
+            if(english && !state.count.some(x=>/21 results/.test(x))) throw new Error('English result count is not 21 results');
+            if(!english && !state.count.some(x=>/21 resultados/.test(x))) throw new Error('Spanish result count changed');
+
+            await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+            const deadline=Date.now()+15000;
+            while(Date.now()<deadline){
+              await new Promise(r=>setTimeout(r,500));
+              state=await Promise.race([
+                page.evaluate(()=>({
+                  products:document.querySelectorAll('ul.products > li.product').length,
+                  loader:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,
+                  button:[...document.querySelectorAll('.emo-catalog-load-button')].map(n=>n.textContent.trim()),
+                  messages:[...document.querySelectorAll('.emo-catalog-load-message')].map(n=>n.textContent.trim())
+                })),
+                new Promise((_,rej)=>setTimeout(()=>rej(new Error('main thread became unresponsive')),3000))
+              ]);
+              if(state.loader && state.loader.remaining===0 && !state.loader.loading) break;
+              await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+            }
+            console.log(label,'FINAL',JSON.stringify(state),'PAGE_ERRORS',errors.length);
+            if(!state.loader) throw new Error('Catalog loader state missing');
+            if(state.loader.remaining!==0) throw new Error('Catalog did not finish loading remaining products');
+            if(state.products<21) throw new Error(`Expected at least 21 products, got ${state.products}`);
+            if(english && state.button.some(x=>x && x!=='Load more products')) throw new Error('English load-more copy is not English');
+            if(errors.length) throw new Error('Page errors: '+errors.join(' | '));
+
+            await new Promise(r=>setTimeout(r,3000));
+            const responsive=await Promise.race([
+              page.evaluate(()=>({title:document.title,products:document.querySelectorAll('ul.products > li.product').length})),
+              new Promise((_,rej)=>setTimeout(()=>rej(new Error('page became unresponsive after idle')),3000))
+            ]);
+            console.log(label,'RESPONSIVE_AFTER_IDLE',JSON.stringify(responsive));
+            await page.close();
+          }
+
+          await check('EN','https://dev.elmercadodeorigen.com/en/tienda/',true);
+          await check('ES','https://dev.elmercadodeorigen.com/tienda/',false);
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./verify-shop.mjs
+      - name: Verify Shop cache still hits
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /tienda/ /en/tienda/; do
+            curl -kLsS --max-time 45 -o /dev/null "https://dev.elmercadodeorigen.com${path}"
+            curl -kLsS --max-time 45 -D /tmp/h.txt -o /dev/null "https://dev.elmercadodeorigen.com${path}"
+            grep -qi '^x-mdo-page-cache: HIT' /tmp/h.txt
+            echo "cache HIT $path"
+          done
