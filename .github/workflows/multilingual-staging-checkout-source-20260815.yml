@@ -1,0 +1,82 @@
+name: Inspect populated staging checkout strings 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-checkout-source-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+          python -m pip install --quiet beautifulsoup4
+      - name: Find simple product
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" > /tmp/product-id.txt <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root eval '
+            $site=get_option("siteurl"); if(strpos((string)$site,"https://dev.elmercadodeorigen.com")!==0) exit(2);
+            $ids=get_posts(["post_type"=>"product","post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids"]);
+            foreach($ids as $id){$p=wc_get_product($id); if($p && $p->is_type("simple") && $p->is_purchasable() && $p->is_in_stock()){echo $id; break;}}
+          ' 2>/dev/null
+          REMOTE
+          PRODUCT_ID="$(grep -E '^[0-9]+$' /tmp/product-id.txt | tail -n1)"
+          : "${PRODUCT_ID:?No simple product found}"
+          echo "PRODUCT_ID=$PRODUCT_ID" >> "$GITHUB_ENV"
+          echo "Using simple product $PRODUCT_ID"
+      - name: Extract populated checkout visible strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/cookies.txt /tmp/checkout.html
+          curl -kLsS --max-time 45 -c /tmp/cookies.txt -b /tmp/cookies.txt -o /dev/null "https://dev.elmercadodeorigen.com/?add-to-cart=${PRODUCT_ID}&checkout_seed=1"
+          code="$(curl -kLsS --max-time 50 -c /tmp/cookies.txt -b /tmp/cookies.txt -H 'Cache-Control: no-cache' -o /tmp/checkout.html -w '%{http_code}' 'https://dev.elmercadodeorigen.com/finalizar-compra/?checkout_source=1')"
+          echo "checkout HTTP $code"
+          test "$code" = 200
+          python - <<'PY'
+          from bs4 import BeautifulSoup, Comment
+          import re, html
+          raw=open('/tmp/checkout.html',encoding='utf-8',errors='replace').read()
+          soup=BeautifulSoup(raw,'html.parser')
+          for tag in soup(['script','style','noscript','svg','path','template']): tag.decompose()
+          vals=[]
+          for node in soup.find_all(string=True):
+              if isinstance(node,Comment): continue
+              s=re.sub(r'\s+',' ',html.unescape(str(node))).strip()
+              if s: vals.append(s)
+          for tag in soup.find_all(True):
+              for attr in ('placeholder','aria-label','title'):
+                  if tag.has_attr(attr):
+                      s=re.sub(r'\s+',' ',html.unescape(str(tag.get(attr,'')))).strip()
+                      if s: vals.append(s)
+              if tag.name in ('input','button') and tag.has_attr('value'):
+                  s=re.sub(r'\s+',' ',html.unescape(str(tag.get('value','')))).strip()
+                  if s: vals.append(s)
+          seen=set()
+          for s in vals:
+              if s in seen: continue
+              seen.add(s)
+              if len(s)>800: continue
+              print(s)
+          PY
