@@ -1,0 +1,38 @@
+name: Final staging English text check 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-final-text-check-20260815.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check public staging English output
+        shell: bash
+        run: |
+          set -u
+          stamp="${GITHUB_RUN_ID}"
+          check() {
+            path="$1"; shift
+            url="https://dev.elmercadodeorigen.com${path}?mdo_final_check=${stamp}"
+            code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' --max-time 35 "$url")"
+            echo "=== $path HTTP $code ==="
+            for phrase in "$@"; do
+              if grep -Fq "$phrase" /tmp/page.html; then
+                echo "PASS: $phrase"
+              else
+                echo "MISS: $phrase"
+              fi
+            done
+            if grep -Fq 'WordPress database error' /tmp/page.html; then echo 'ERROR: database error visible'; else echo 'PASS: no database error'; fi
+          }
+          check '/en/productores/' 'Discover the origin through the people who make it possible.' 'Meet the people behind each product.'
+          check '/en/quienes-somos/' 'A more direct way to bring products and people together.' 'El Mercado de Origen was born from the need to bring producers and end consumers closer together.'
+          check '/en/contacto/' 'How can we help?' 'Let’s talk.'
