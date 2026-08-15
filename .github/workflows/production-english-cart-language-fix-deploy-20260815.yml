@@ -1,0 +1,45 @@
+name: Deploy English cart language fixes 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-cart-language-fix-deploy-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy corrected cart copy modules
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          : "${PROD_PATH:?production path not found}"
+          siteurl="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp --path='$PROD_PATH' --allow-root option get siteurl 2>/dev/null | tail -n1")"
+          printf '%s' "$siteurl" | grep -Eq '^https?://(www\.)?elmercadodeorigen\.com/?$'
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/cart-checkout-contact-cleanup-010185.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/cart-checkout-contact-cleanup-010185.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/cart-shipping-copy-final-010192.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/cart-shipping-copy-final-010192.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php -l '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/cart-checkout-contact-cleanup-010185.php' && php -l '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/cart-shipping-copy-final-010192.php' && wp --path='$PROD_PATH' --allow-root cache flush >/dev/null 2>&1 || true; rm -rf '$PROD_PATH/wp-content/cache/mdo-page-cache' '$PROD_PATH/wp-content/mdo-page-cache' 2>/dev/null || true"
+      - name: Verify English cart no longer contains Spanish shipping destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/carrito/?mdo_cart_lang_fix=${GITHUB_RUN_ID}" -o /tmp/cart.html
+          if grep -Eqi 'Enviar a|Enviará a' /tmp/cart.html; then
+            echo 'Spanish shipping destination still present in English cart'
+            grep -Eio '.{0,100}(Enviar a|Enviará a).{0,180}' /tmp/cart.html | head -n20
+            exit 1
+          fi
