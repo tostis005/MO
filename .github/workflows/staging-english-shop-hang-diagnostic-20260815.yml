@@ -22,8 +22,8 @@ jobs:
           set -euo pipefail
           curl -kLsS --max-time 45 -o /tmp/es.html -w 'ES code=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' 'https://dev.elmercadodeorigen.com/tienda/'
           curl -kLsS --max-time 45 -o /tmp/en.html -w 'EN code=%{http_code} ttfb=%{time_starttransfer} total=%{time_total} bytes=%{size_download}\n' 'https://dev.elmercadodeorigen.com/en/tienda/'
-          grep -oP '<script[^>]+src=["'"']\K[^"'"']+' /tmp/es.html | sed 's/[?&]ver=[^&]*//g' | sort -u > /tmp/es-scripts.txt || true
-          grep -oP '<script[^>]+src=["'"']\K[^"'"']+' /tmp/en.html | sed 's/[?&]ver=[^&]*//g' | sort -u > /tmp/en-scripts.txt || true
+          grep -oiE '<script[^>]+src=[^>]+>' /tmp/es.html | sed -E 's/[?&]ver=[^&" ]*//g' | sort -u > /tmp/es-scripts.txt || true
+          grep -oiE '<script[^>]+src=[^>]+>' /tmp/en.html | sed -E 's/[?&]ver=[^&" ]*//g' | sort -u > /tmp/en-scripts.txt || true
           echo '=== scripts only in English ==='
           comm -13 /tmp/es-scripts.txt /tmp/en-scripts.txt || true
           echo '=== scripts only in Spanish ==='
