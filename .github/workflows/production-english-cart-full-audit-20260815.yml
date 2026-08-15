@@ -1,0 +1,58 @@
+name: Production English cart full audit 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-cart-full-audit-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect TranslatePress tables and minimum-order code
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$STAGING_PASSWORD"; PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          test -n "$PROD_PATH"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          echo '=== site ==='; wp option get siteurl
+          echo '=== TRP tables ==='; wp db query "SHOW TABLES LIKE '%trp%';" --skip-column-names 2>/dev/null || true
+          echo '=== TRP settings ==='; wp option get trp_settings --format=json 2>/dev/null | tail -n1 || true
+          echo '=== likely minimum-order/plugin strings ==='
+          grep -RniE --include='*.php' --include='*.js' --include='*.css' 'pedido m[ií]nimo|importe m[ií]nimo|mínimo|minimum order|faltan .*€|te faltan|pedido.*€|carrito|checkout' "$PROD_PATH/wp-content/plugins" "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes/elmercadodeorigen-child" 2>/dev/null | head -n 350 || true
+          REMOTE
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Audit live English cart states
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./cart-audit.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          async function inspect(label,page){
+            await new Promise(r=>setTimeout(r,1200));
+            const d=await page.evaluate(()=>({url:location.href,lang:document.documentElement.lang,text:(document.body?.innerText||'').replace(/\n{3,}/g,'\n\n'),selector:[...document.querySelectorAll('.trp-language-switcher,.mdo-language-switcher,.trp-floater-ls')].filter(n=>getComputedStyle(n).display!=='none').length,errors:[...document.querySelectorAll('.woocommerce-error,.woocommerce-info,.woocommerce-message,[role="alert"],.notice,.wc-block-components-notice-banner')].map(n=>(n.innerText||n.textContent||'').trim()).filter(Boolean)}));
+            console.log('\n### '+label+' ###\nURL '+d.url+'\nLANG '+d.lang+'\nSELECTOR_VISIBLE '+d.selector+'\nNOTICES '+JSON.stringify(d.errors)+'\nTEXT\n'+d.text.slice(0,18000));
+          }
+          const p=await browser.newPage(); p.setDefaultTimeout(20000); p.on('pageerror',e=>console.log('PAGEERROR',e.message));
+          await p.goto('https://www.elmercadodeorigen.com/en/carrito/?mdo_cart_audit='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}); await inspect('EN EMPTY CART',p);
+          await p.goto('https://www.elmercadodeorigen.com/en/product/carne-picada-extra/?mdo_cart_audit='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+          const add=await p.$('form.cart button.single_add_to_cart_button,button.single_add_to_cart_button'); if(add){await add.click(); await new Promise(r=>setTimeout(r,2000));}
+          await p.goto('https://www.elmercadodeorigen.com/en/carrito/?mdo_cart_audit='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}); await inspect('EN CART BELOW MINIMUM',p);
+          await p.goto('https://www.elmercadodeorigen.com/en/finalizar-compra/?mdo_cart_audit='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}); await inspect('EN CHECKOUT BELOW MINIMUM',p);
+          await p.goto('https://www.elmercadodeorigen.com/carrito/?mdo_cart_audit='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}); await inspect('ES CART SAME SESSION',p);
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./cart-audit.mjs
