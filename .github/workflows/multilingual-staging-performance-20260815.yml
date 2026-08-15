@@ -1,0 +1,87 @@
+name: Measure staging multilingual performance 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-performance-20260815.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  performance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - name: Measure public response times
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://dev.elmercadodeorigen.com'
+          measure() {
+            label="$1"; path="$2"
+            echo "===== $label $path ====="
+            curl -kLsS --max-time 40 -o /dev/null "$base$path" || true
+            echo '-- repeated same URL (warm candidate) --'
+            for i in 1 2 3; do
+              curl -kLsS --max-time 40 -o /dev/null -w "run=$i code=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s bytes=%{size_download}\n" "$base$path"
+            done
+            echo '-- unique query (cache-bypass candidate) --'
+            for i in 1 2 3; do
+              curl -kLsS --max-time 40 -H 'Cache-Control: no-cache' -o /dev/null -w "run=$i code=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s bytes=%{size_download}\n" "$base$path?mdo_perf=${GITHUB_RUN_ID}_$i"
+            done
+          }
+          measure home-es '/'
+          measure home-en '/en/'
+          measure shop-es '/tienda/'
+          measure shop-en '/en/tienda/'
+
+          echo '===== response headers: shop ES ====='
+          curl -kLsSI --max-time 30 "$base/tienda/" | grep -Ei '^(HTTP/|server:|cache-control:|x-cache|cf-cache|age:|x-powered-by:|vary:)' || true
+          echo '===== response headers: shop EN ====='
+          curl -kLsSI --max-time 30 "$base/en/tienda/" | grep -Ei '^(HTTP/|server:|cache-control:|x-cache|cf-cache|age:|x-powered-by:|vary:)' || true
+
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Inspect WordPress cache and active plugins
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find staging WordPress path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
+
+          echo '===== active plugins ====='
+          wp plugin list --status=active --fields=name,version --format=table 2>/dev/null || true
+          echo '===== cache configuration ====='
+          wp eval 'echo "WP_CACHE=" . (defined("WP_CACHE") && WP_CACHE ? "1" : "0") . PHP_EOL; echo "SAVEQUERIES=" . (defined("SAVEQUERIES") && SAVEQUERIES ? "1" : "0") . PHP_EOL;' 2>/dev/null || true
+          test -f "$WP_PATH/wp-content/object-cache.php" && echo 'object-cache.php=present' || echo 'object-cache.php=absent'
+          test -f "$WP_PATH/wp-content/advanced-cache.php" && echo 'advanced-cache.php=present' || echo 'advanced-cache.php=absent'
+          if [ -d "$WP_PATH/wp-content/cache" ]; then du -sh "$WP_PATH/wp-content/cache" 2>/dev/null || true; else echo 'wp-content/cache=absent'; fi
+          echo '===== WooCommerce/catalog basics ====='
+          wp post list --post_type=product --post_status=publish --format=count 2>/dev/null || true
+          wp term list product_cat --format=count 2>/dev/null || true
+          echo '===== server-side curl timings ====='
+          for path in / /en/ /tienda/ /en/tienda/; do
+            curl -kLsS --max-time 40 -o /dev/null -w "$path code=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s\n" "https://dev.elmercadodeorigen.com$path"
+          done
+          REMOTE
