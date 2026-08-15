@@ -16,7 +16,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-      - name: Inventory variation labels and descriptions
+      - name: Inventory active variation labels and descriptions
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -28,22 +28,20 @@ jobs:
           cat > /tmp/mdo-variation-inventory.php <<'PHP'
           <?php
           if(!defined('ABSPATH'))exit(1);
-          $out=['terms'=>[],'descriptions'=>[]];
+          $out=[];
           $vars=get_posts(['post_type'=>'product_variation','post_status'=>['publish','private'],'posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']);
           foreach($vars as $v){
-            $desc=trim(wp_strip_all_tags($v->post_excerpt));
-            if($desc!=='')$out['descriptions'][$desc]=true;
+            $parent=get_post($v->post_parent); if(!$parent||$parent->post_type!=='product'||$parent->post_status!=='publish')continue;
+            $pid=$parent->ID; if(!isset($out[$pid]))$out[$pid]=['product'=>$parent->post_title,'terms'=>[],'descriptions'=>[]];
+            $desc=trim(wp_strip_all_tags($v->post_excerpt)); if($desc!=='')$out[$pid]['descriptions'][$desc]=true;
             foreach(get_post_meta($v->ID) as $key=>$vals){
-              if(strpos($key,'attribute_')!==0)continue;
-              $tax=substr($key,10); $slug=(string)($vals[0]??''); if($slug==='')continue;
-              $name=$slug;
-              if(taxonomy_exists($tax)){ $term=get_term_by('slug',$slug,$tax); if($term&&!is_wp_error($term))$name=$term->name; }
-              $out['terms'][$name]=true;
+              if(strpos($key,'attribute_')!==0)continue; $tax=substr($key,10); $slug=(string)($vals[0]??''); if($slug==='')continue;
+              $name=$slug; if(taxonomy_exists($tax)){ $term=get_term_by('slug',$slug,$tax); if($term&&!is_wp_error($term))$name=$term->name; }
+              $out[$pid]['terms'][$name]=true;
             }
           }
-          $out['terms']=array_values(array_keys($out['terms']));sort($out['terms'],SORT_NATURAL|SORT_FLAG_CASE);
-          $out['descriptions']=array_values(array_keys($out['descriptions']));sort($out['descriptions'],SORT_NATURAL|SORT_FLAG_CASE);
-          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);
+          foreach($out as &$row){$row['terms']=array_values(array_keys($row['terms']));sort($row['terms'],SORT_NATURAL|SORT_FLAG_CASE);$row['descriptions']=array_values(array_keys($row['descriptions']));sort($row['descriptions'],SORT_NATURAL|SORT_FLAG_CASE);}unset($row);
+          echo wp_json_encode(array_values($out),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT);
           PHP
           sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P "$PORT" /tmp/mdo-variation-inventory.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-variation-inventory.php"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M -d display_errors=0 \"\$wp_bin\" eval-file /tmp/mdo-variation-inventory.php --path='$PROD_PATH' --allow-root 2>/dev/null; rm -f /tmp/mdo-variation-inventory.php"
