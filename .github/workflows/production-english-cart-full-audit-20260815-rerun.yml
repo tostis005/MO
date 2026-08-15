@@ -1,0 +1,12 @@
+name: Production English cart audit rerun 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-cart-full-audit-20260815-rerun.yml']
+permissions:
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo rerun-marker
