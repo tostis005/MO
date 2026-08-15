@@ -1,0 +1,39 @@
+name: Inspect TranslatePress gettext initializer 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-translatepress-gettext-schema-inspect-20260815.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect installed plugin table APIs
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          P="$PROD_PATH/wp-content/plugins/translatepress-multilingual"
+          echo '=== gettext table method candidates ==='
+          grep -RIn --include='*.php' -E 'check.*gettext.*table|create.*gettext.*table|gettext.*CREATE TABLE|CREATE TABLE.*gettext|get_gettext_table|gettext_table' "$P" 2>/dev/null | head -n 260 || true
+          echo '=== classes mentioning original_meta / gettext ==='
+          grep -RIl --include='*.php' -E 'trp_gettext_original_meta|trp_gettext_original_strings' "$P" 2>/dev/null | head -n 80 || true
+          echo '=== create-table excerpts ==='
+          while IFS= read -r f; do echo "--- $f ---"; grep -n -B 35 -A 90 -E 'CREATE TABLE|check.*table|gettext.*table' "$f" | head -n 300 || true; done < <(grep -RIl --include='*.php' -E 'CREATE TABLE.*gettext|trp_gettext_original_meta|trp_gettext_original_strings' "$P" 2>/dev/null | head -n 8)
+          REMOTE
