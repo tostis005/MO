@@ -9,35 +9,60 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Verify key English pages and report titles
+      - name: Verify key English pages, titles and known gaps
         shell: bash
         run: |
           set -euo pipefail
           check_page(){
-            path="$1"; shift
-            curl -kLsS -H 'Cache-Control: no-cache' --max-time 55 "https://dev.elmercadodeorigen.com${path}?final_native=${GITHUB_RUN_ID}" -o /tmp/page.html
-            code="$(curl -kLsS -H 'Cache-Control: no-cache' --max-time 55 -o /dev/null -w '%{http_code}' "https://dev.elmercadodeorigen.com${path}?final_native_code=${GITHUB_RUN_ID}")"
-            echo "=== $path HTTP $code ==="
-            test "$code" = 200
+            path="$1"; expected_title="$2"; shift 2
+            curl -kLsS -H 'Cache-Control: no-cache' --max-time 60 "https://dev.elmercadodeorigen.com${path}?final_native=${GITHUB_RUN_ID}" -o /tmp/page.html
+            echo "=== $path ==="
             ! grep -q 'WordPress database error' /tmp/page.html
-            grep -oEi '<title>[^<]*</title>' /tmp/page.html | head -n1 || true
+            title="$(grep -oEi '<title>[^<]*</title>' /tmp/page.html | head -n1 | sed -E 's#</?title>##g')"
+            echo "TITLE: $title"
+            test "$title" = "$expected_title"
             for needle in "$@"; do grep -Fq "$needle" /tmp/page.html || { echo "MISSING: $needle"; exit 3; }; done
           }
-          check_page /en/ 'Carefully selected producers' 'Find what you’re looking for.' 'Our customers’ favourites.' 'Add to cart'
-          check_page /en/tienda/ 'The marketplace' 'All producers' 'Updating products…' 'Add to cart'
-          check_page /en/productores/ 'Discover the origin through the people who make it possible.'
-          check_page /en/contacto/ 'How can we help?'
-          ! grep -Fq 'Formulario de contacto' /tmp/page.html
-          check_page /en/quienes-somos/ 'A more direct way to bring products and people together.'
-          check_page /en/blog/ 'The Origin Journal' 'Stories to help you choose with greater insight.' 'Know more, choose better'
-          check_page /en/contacto-productores/ 'For producers'
-          check_page /en/politica-de-privacidad/ 'Privacy policy' 'Principles applied to data processing'
-          check_page /en/politica/ 'TERMS AND CONDITIONS' '1. Introduction'
-          check_page /en/politica-de-cookies/ 'What are cookies?' 'What types of cookies are there?'
-          check_page /en/condiciones-especiales/ 'Why choose El Mercado de Origen?'
+          check_page /en/ 'Home - El Mercado de Origen' 'Carefully selected producers' 'Find what you’re looking for.' 'Our customers’ favourites.' 'Add to cart'
+          check_page /en/tienda/ 'Shop - El Mercado de Origen' 'The marketplace' 'All producers' 'Updating products…' 'Add to cart'
+          check_page /en/productores/ 'Producers - El Mercado de Origen' 'Discover the origin through the people who make it possible.'
+          check_page /en/contacto/ 'Contact - El Mercado de Origen' 'How can we help?' 'aria-label="Contact form"'
+          ! grep -Fq 'aria-label="Formulario de contacto"' /tmp/page.html
+          check_page /en/quienes-somos/ 'About us - El Mercado de Origen' 'A more direct way to bring products and people together.'
+          check_page /en/blog/ 'Journal - El Mercado de Origen' 'The Origin Journal' 'Stories to help you choose with greater insight.' 'Know more, choose better'
+          check_page /en/contacto-productores/ 'For producers - El Mercado de Origen' 'For producers'
+          check_page /en/politica-de-privacidad/ 'Privacy policy - El Mercado de Origen' 'Principles applied to data processing' 'Contact forms:' 'Content-subscription forms:' 'Google Analytics is a web analytics service'
+          ! grep -Fq 'Formularios de suscripción a contenidos:' /tmp/page.html
+          ! grep -Fq 'Google Analytics es un servicio de analítica web prestado' /tmp/page.html
+          check_page /en/politica/ 'Terms and conditions - El Mercado de Origen' 'TERMS AND CONDITIONS' '1. Introduction'
+          check_page /en/politica-de-cookies/ 'Cookie policy - El Mercado de Origen' 'What are cookies?' 'What types of cookies are there?'
+          check_page /en/condiciones-especiales/ 'Special conditions - El Mercado de Origen' 'Why choose El Mercado de Origen?'
+
+          # WooCommerce/plugin attributes previously marked as no-translation now only read reviewed DB strings.
+          curl -kLsS -H 'Cache-Control: no-cache' --max-time 60 "https://dev.elmercadodeorigen.com/en/tienda/?attr_check=${GITHUB_RUN_ID}" -o /tmp/shop.html
+          grep -Fq 'Select options for “Extra virgin olive oil 5L”' /tmp/shop.html
+          ! grep -Fq 'Select options for “Aceite de oliva virgen extra 5L”' /tmp/shop.html
+          grep -Fq 'Read more about “Pack of 4 × 5L extra virgin olive oil' /tmp/shop.html
+      - name: Verify all 22 published English routes respond cleanly
+        shell: bash
+        run: |
+          set -euo pipefail
+          routes=(
+            /en/politica-de-privacidad/ /en/tienda/ /en/carrito/ /en/finalizar-compra/ /en/mi-cuenta/
+            /en/lista-de-deseos/ /en/store-manager/ /en/productores/ /en/contacto/ /en/politica/
+            /en/quienes-somos/ /en/blog/ /en/contacto-productores/ /en/politica-de-cookies/ /en/el-mercado-de-origen/
+            /en/ /en/condiciones-especiales/ /en/affiliates/ /en/inicio-black-friday-2/ /en/navidad-2022/
+            /en/sorteo-gordo-navidad/ /en/inicio-bf/
+          )
+          for path in "${routes[@]}"; do
+            code="$(curl -kLsS -H 'Cache-Control: no-cache' --max-time 60 -o /tmp/r.html -w '%{http_code}' "https://dev.elmercadodeorigen.com${path}?all_pages=${GITHUB_RUN_ID}")"
+            echo "$code $path"
+            test "$code" = 200
+            ! grep -q 'WordPress database error' /tmp/r.html
+          done
       - name: Verify 1957 product pages
         shell: bash
         run: |
@@ -48,7 +73,7 @@ jobs:
           tests['/en/producto/aceite-de-oliva-virgen-extra-500ml-pet/']='Extra virgin olive oil 12 × 500ml PET|Pack of 12 × 500ml PET bottles.|How is extra virgin olive oil made?'
           tests['/en/producto/pack-aceite-a-tu-gusto/']='Pack of 4 × 5L extra virgin olive oil|complimentary 250ml Egyptian-style glass bottle'
           for path in "${!tests[@]}"; do
-            curl -kLsS -H 'Cache-Control: no-cache' --max-time 60 "https://dev.elmercadodeorigen.com${path}?final_1957=${GITHUB_RUN_ID}" -o /tmp/p.html
+            curl -kLsS -H 'Cache-Control: no-cache' --max-time 65 "https://dev.elmercadodeorigen.com${path}?final_1957=${GITHUB_RUN_ID}" -o /tmp/p.html
             echo "=== $path ==="
             IFS='|' read -ra arr <<< "${tests[$path]}"
             for needle in "${arr[@]}"; do grep -Fq "$needle" /tmp/p.html || { echo "MISSING: $needle"; exit 4; }; done
@@ -60,7 +85,7 @@ jobs:
           set -euo pipefail
           rm -f /tmp/cookies.txt
           curl -kLsS --max-time 55 -c /tmp/cookies.txt -b /tmp/cookies.txt -o /dev/null 'https://dev.elmercadodeorigen.com/?add-to-cart=1056&final_checkout=1'
-          curl -kLsS --max-time 60 -c /tmp/cookies.txt -b /tmp/cookies.txt -H 'Cache-Control: no-cache' 'https://dev.elmercadodeorigen.com/en/finalizar-compra/?final_checkout=2' -o /tmp/checkout.html
+          curl -kLsS --max-time 65 -c /tmp/cookies.txt -b /tmp/cookies.txt -H 'Cache-Control: no-cache' 'https://dev.elmercadodeorigen.com/en/finalizar-compra/?final_checkout=2' -o /tmp/checkout.html
           for needle in 'Billing details' 'Country / Region' 'Order notes' 'Your order' 'Payment methods' 'Place order'; do
             grep -Fq "$needle" /tmp/checkout.html || { echo "CHECKOUT MISSING: $needle"; exit 5; }
           done
