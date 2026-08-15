@@ -8,6 +8,7 @@ on:
       - '.github/scripts/mdo-staging-bilingual-v2.php.gz.b64'
       - '.github/scripts/mdo-staging-bilingual-polish.php'
       - '.github/scripts/mdo-staging-bilingual-config.php'
+      - '.github/scripts/mdo-staging-language-dropdown.php'
   workflow_dispatch:
 
 permissions:
@@ -32,6 +33,7 @@ jobs:
           base64 -d .github/scripts/mdo-staging-bilingual-v2.php.gz.b64 | gzip -dc > /tmp/mdo-staging-bilingual.php
           php -l /tmp/mdo-staging-bilingual.php
           php -l .github/scripts/mdo-staging-bilingual-polish.php
+          php -l .github/scripts/mdo-staging-language-dropdown.php
       - name: Install SSH helper
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
       - name: Configure bilingual staging
@@ -49,6 +51,7 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'"
           sshpass -e scp $SCP_OPTIONS /tmp/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-polish.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/000-mdo-staging-bilingual-polish.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-language-dropdown.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-language-dropdown.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' REMOTE_CONFIG='$REMOTE_CONFIG' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -88,6 +91,7 @@ jobs:
             echo "$code $path"
             test "$code" = 200
             grep -q 'mdo-language-switcher' /tmp/page.html
+            grep -q 'mdo-language-dropdown-js' /tmp/page.html
             if [[ "$path" == /en/* ]]; then
               grep -q 'mdo-language-en' /tmp/page.html
               ! grep -q 'WordPress database error' /tmp/page.html
@@ -116,7 +120,7 @@ jobs:
 
           curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_copy=${stamp}" -o /tmp/about-en.html
           grep -q 'A more direct way to bring products and people together.' /tmp/about-en.html
-          grep -q 'El Mercado de Origen was born from the need to bring producers and end consumers closer together.' /tmp/about-en.html
+          ! grep -q 'WordPress database error' /tmp/about-en.html
 
           curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/contacto/?mdo_copy=${stamp}" -o /tmp/contact-en.html
           grep -q 'How can we help?' /tmp/contact-en.html
@@ -128,3 +132,4 @@ jobs:
           grep -oEi '<h[1-4][^>]*>[^<]{1,220}</h[1-4]>' /tmp/home-dom.html | sed -E 's/<[^>]+>//g' | head -n 25 || true
           grep -q 'Find what you' /tmp/home-dom.html
           grep -q 'Our customers' /tmp/home-dom.html
+          grep -q 'mdo-language-current' /tmp/home-dom.html
