@@ -1,0 +1,115 @@
+name: Finalize production multilingual 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-multilingual-finalize-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Repair TranslatePress storage and deploy final bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$STAGING_PASSWORD"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          REMOTE_DIR="/tmp/mdo-multilingual-final-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/maps'"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-translatepress-gettext-init.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/gettext-init.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-translations.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/import.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-production-native-render-bridge.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/bridge.php"
+          sshpass -e scp $SCP_OPTIONS .github/data/native-translations-20260815/*.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/maps/"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          siteurl=$(wp option get siteurl 2>/dev/null | tail -n1)
+          echo "siteurl=$siteurl"
+          printf '%s' "$siteurl" | grep -Eq '^https?://(www\.)?elmercadodeorigen\.com/?$'
+          mkdir -p "$PROD_PATH/wp-content/mu-plugins"
+          cp "$REMOTE_DIR/bridge.php" "$PROD_PATH/wp-content/mu-plugins/mdo-production-native-render-bridge.php"
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/gettext-init.php" --path="$PROD_PATH" --allow-root
+          "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" eval-file "$REMOTE_DIR/import.php" --path="$PROD_PATH" --allow-root
+          wp cache flush >/dev/null 2>&1 || true
+          prefix=$(wp db prefix 2>/dev/null | tail -n1)
+          for t in "${prefix}trp_gettext_en_us" "${prefix}trp_gettext_es_es" "${prefix}trp_dictionary_es_es_en_us"; do
+            exists=$(wp db query "SHOW TABLES LIKE '$t';" --skip-column-names 2>/dev/null | tail -n1 || true)
+            echo "$t exists=${exists:-no}"
+            [ "$exists" = "$t" ]
+          done
+          rm -rf "$REMOTE_DIR"
+          REMOTE
+      - name: Seed English gettext and persist reviewed mappings again
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          for path in /en/ /en/tienda/ /en/productores/ /en/quienes-somos/ /en/contacto/ /en/blog/ /en/carrito/ /en/mi-cuenta/ /en/producto/jamon-de-bellota-100-iberico/ /en/producto/carne-picada-extra/; do
+            code=$(curl -ksSL --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/seed.html -w '%{http_code}' "$base$path?mdo_final_seed=${GITHUB_RUN_ID}" || true)
+            echo "$code $path"
+            test "$code" = 200
+            ! grep -qi 'WordPress database error\|Fatal error\|Allowed memory size' /tmp/seed.html
+          done
+      - name: Verify no language selector and full English catalog loading
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./final-verify.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          async function checkNoSelector(url){
+            const p=await browser.newPage();
+            const r=await p.goto(url+'?mdo_final_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+            const d=await p.evaluate(()=>({status:document.readyState,lang:document.documentElement.lang,selector:!!document.querySelector('.trp-language-switcher,.trp-floater-ls,.mdo-language-switcher'),body:document.body.innerText||''}));
+            console.log('PAGE',url,r.status(),d.lang,'selector',d.selector);
+            if(r.status()!==200) throw new Error('HTTP '+r.status()+' '+url);
+            if(d.selector) throw new Error('Language selector still present '+url);
+            await p.close();
+          }
+          await checkNoSelector('https://www.elmercadodeorigen.com/en/');
+          await checkNoSelector('https://www.elmercadodeorigen.com/en/producto/carne-picada-extra/');
+          const p=await browser.newPage(); p.setViewport({width:1440,height:900}); p.setDefaultTimeout(15000);
+          const errors=[]; p.on('pageerror',e=>errors.push(e.message));
+          const r=await p.goto('https://www.elmercadodeorigen.com/en/tienda/?mdo_final_shop='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+          if(r.status()!==200) throw new Error('Shop HTTP '+r.status());
+          let s=await p.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,selector:!!document.querySelector('.trp-language-switcher,.trp-floater-ls,.mdo-language-switcher'),text:(document.body.innerText||'').slice(0,100000),titles:[...document.querySelectorAll('ul.products > li.product .woocommerce-loop-product__title,ul.products > li.product h2,ul.products > li.product h3')].map(n=>n.textContent.trim())}));
+          console.log('SHOP initial',JSON.stringify({products:s.products,state:s.state,selector:s.selector}));
+          if(s.selector) throw new Error('Selector visible in shop');
+          const deadline=Date.now()+45000;
+          while(Date.now()<deadline && s.state && s.state.remaining>0){
+            await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
+            await new Promise(r=>setTimeout(r,1800));
+            s=await p.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,selector:!!document.querySelector('.trp-language-switcher,.trp-floater-ls,.mdo-language-switcher'),text:(document.body.innerText||'').slice(0,100000),titles:[...document.querySelectorAll('ul.products > li.product .woocommerce-loop-product__title,ul.products > li.product h2,ul.products > li.product h3')].map(n=>n.textContent.trim())}));
+            console.log('SHOP progress',JSON.stringify({products:s.products,state:s.state}));
+          }
+          console.log('SHOP final',JSON.stringify({products:s.products,state:s.state,errors}));
+          if(errors.length) throw new Error(errors.join(' | '));
+          if(!s.state) throw new Error('Loader state missing');
+          if(s.state.remaining!==0) throw new Error('Loader did not finish');
+          if(s.products<50) throw new Error('Unexpectedly few products loaded: '+s.products);
+          if(/Filtrar productos|Cargar más productos|Resultados y ordenación|Filtros aplicados/.test(s.text)) throw new Error('Spanish catalogue UI visible');
+          const badTitles=s.titles.filter(x=>/^(Carne picada extra|Filetes primera|Chuletón de lomo alto|Magro o ragú de ternera|Jamón de bellota|Paleta de bellota|Aceite de oliva virgen extra)/i.test(x));
+          if(badTitles.length) throw new Error('Spanish product titles: '+badTitles.slice(0,10).join(' | '));
+          await p.close(); await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./final-verify.mjs
