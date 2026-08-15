@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Staging Bilingual Polish
  * Description: Staging-only final English output pass for legacy/hard-coded storefront sections.
- * Version: 0.3.0
+ * Version: 0.3.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -19,7 +19,6 @@ function mdo_staging_polish_html( $html ) {
     if ( ! is_string( $html ) || '' === $html ) { return $html; }
 
     $replacements = array(
-        // Header / storefront fragments.
         'Filter productos' => 'Filter products',
         'Filtrar productos' => 'Filter products',
         'Filters de productos' => 'Product filters',
@@ -27,7 +26,6 @@ function mdo_staging_polish_html( $html ) {
         'Cargar más productos' => 'Load more products',
         'Vendido por' => 'Sold by',
 
-        // Home — hero and selection principles.
         'NUESTRA SELECCIÓN' => 'OUR SELECTION',
         'Una forma distinta' => 'A different way',
         'de elegir.' => 'to choose.',
@@ -48,7 +46,6 @@ function mdo_staging_polish_html( $html ) {
         'Sabes de quién viene.' => 'You know who it comes from.',
         'Puedes conocer quién está detrás, dónde se elabora y qué caracteriza su trabajo, además de comprarlo directamente al productor.' => 'You can see who is behind it, where it is made, what defines their work, and buy directly from the producer.',
 
-        // Home — category / popular / editorial blocks.
         'DESCUBRE POR CATEGORÍAS' => 'BROWSE BY CATEGORY',
         'Encuentra lo que buscas.' => 'Find what you’re looking for.',
         'Explora todos los productos de El Mercado de Origen y recorre fácilmente cada una de nuestras categorías.' => 'Browse all the products at El Mercado de Origen and explore each category with ease.',
@@ -70,12 +67,11 @@ function mdo_staging_polish_html( $html ) {
         'Si eres productor y crees que tus productos pueden encajar en nuestra selección, queremos conocer tu proyecto.' => 'If you are a producer and believe your products could fit our selection, we would like to hear about your project.',
         'Cuéntanos qué haces y qué productos te gustaría incorporar.' => 'Tell us what you make and which products you would like to bring to El Mercado de Origen.',
 
-        // About page legacy paragraph.
         'El Mercado de Origen nace de la necesidad de que exista un acercamiento entre productores y consumidores finales.' => 'El Mercado de Origen was born from the need to bring producers and end consumers closer together.',
+        'El Mercado de Origin nace de la necesidad de que exista un acercamiento entre productores y consumidores finales.' => 'El Mercado de Origen was born from the need to bring producers and end consumers closer together.',
         'Ventajas de El Mercado de Origen' => 'Benefits of El Mercado de Origen',
         'Encuentra productos seleccionados con criterio, directamente desde su origen.' => 'Discover carefully selected products, directly from their place of origin.',
 
-        // Contact/form fragments.
         '¿Qué podemos hacer por ti?' => 'How can we help?',
         'Tu nombre (obligatorio)' => 'Your name (required)',
         'Tu correo electrónico (obligatorio)' => 'Your email (required)',
@@ -83,7 +79,6 @@ function mdo_staging_polish_html( $html ) {
         'Tu mensaje (obligatorio)' => 'Your message (required)',
         'No completar este campo' => 'Do not fill in this field',
 
-        // Escaped JSON/schema variants.
         '\u00bfQu\u00e9 podemos hacer por ti?' => 'How can we help?',
         'Tu correo electr\u00f3nico (obligatorio)' => 'Your email (required)',
         'Categor\u00edas' => 'Categories',
@@ -94,7 +89,6 @@ function mdo_staging_polish_html( $html ) {
 
     $html = strtr( $html, $replacements );
 
-    // Complete partially translated Iberian product names without touching slugs/IDs.
     $html = preg_replace( '/Paleta de acorn-fed 100% Iberian/iu', '100% Iberian acorn-fed shoulder ham', $html );
     $html = preg_replace( '/Jamón de acorn-fed 100% Iberian/iu', '100% Iberian acorn-fed ham', $html );
     $html = preg_replace( '/Paleta de acorn-fed 50% Iberian/iu', '50% Iberian acorn-fed shoulder ham', $html );
@@ -106,16 +100,12 @@ function mdo_staging_polish_html( $html ) {
     $html = preg_replace( '/Paleta de bellota 50% Ibérica/iu', '50% Iberian acorn-fed shoulder ham', $html );
     $html = preg_replace( '/Jamón de bellota 50% Ibérico/iu', '50% Iberian acorn-fed ham', $html );
 
-    // The main preview helper translates the generic word "Origen" in some contexts.
-    // Restore the protected brand and media filenames after all output substitutions.
     $html = str_replace( 'El Mercado de Origin', 'El Mercado de Origen', $html );
     $html = str_replace( 'El-Mercado-de-Origin', 'El-Mercado-de-Origen', $html );
 
     return $html;
 }
 
-// Start as the first MU-plugin output buffer. This captures legacy sections printed late by
-// the child theme, which are not normal post content and therefore bypass TranslatePress.
 if ( mdo_staging_polish_request_is_english() ) {
     ob_start( 'mdo_staging_polish_html' );
 }
