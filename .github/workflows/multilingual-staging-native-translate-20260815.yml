@@ -1,0 +1,65 @@
+name: Persist reviewed English translations on staging 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/multilingual-staging-native-translate-20260815.yml'
+      - '.github/scripts/mdo-staging-native-table-init.php'
+      - '.github/scripts/mdo-staging-native-translations.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  persist:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate scripts
+        run: |
+          php -l .github/scripts/mdo-staging-native-table-init.php
+          if [ -f .github/scripts/mdo-staging-native-translations.php ]; then php -l .github/scripts/mdo-staging-native-translations.php; fi
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Initialize and persist native translations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find staging WordPress path}"
+          INIT="/tmp/mdo-native-init-${GITHUB_RUN_ID}.php"
+          TRANS="/tmp/mdo-native-trans-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-native-table-init.php "$STAGING_USER@$STAGING_HOST:$INIT"
+          if [ -f .github/scripts/mdo-staging-native-translations.php ]; then sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-native-translations.php "$STAGING_USER@$STAGING_HOST:$TRANS"; fi
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' INIT='$INIT' TRANS='$TRANS' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
+          wp eval-file "$INIT" 2>/dev/null
+          if [ -f "$TRANS" ]; then wp eval-file "$TRANS" 2>/dev/null; fi
+          prefix="$(wp db prefix)"
+          table="${prefix}trp_dictionary_es_es_en_us"
+          echo '=== native dictionary schema ==='
+          wp db query "SHOW CREATE TABLE \`${table}\`;" --skip-column-names 2>/dev/null || true
+          echo '=== native dictionary status counts ==='
+          wp db query "SELECT status, COUNT(*) FROM \`${table}\` GROUP BY status ORDER BY status;" 2>/dev/null || true
+          rm -f "$INIT" "$TRANS"
+          REMOTE
