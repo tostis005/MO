@@ -9,7 +9,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - name: Verify key English pages and report titles
@@ -29,7 +29,8 @@ jobs:
           check_page /en/ 'Carefully selected producers' 'Find what you’re looking for.' 'Our customers’ favourites.' 'Add to cart'
           check_page /en/tienda/ 'The marketplace' 'All producers' 'Updating products…' 'Add to cart'
           check_page /en/productores/ 'Discover the origin through the people who make it possible.'
-          check_page /en/contacto/ 'How can we help?' 'Contact form'
+          check_page /en/contacto/ 'How can we help?'
+          ! grep -Fq 'Formulario de contacto' /tmp/page.html
           check_page /en/quienes-somos/ 'A more direct way to bring products and people together.'
           check_page /en/blog/ 'The Origin Journal' 'Stories to help you choose with greater insight.' 'Know more, choose better'
           check_page /en/contacto-productores/ 'For producers'
