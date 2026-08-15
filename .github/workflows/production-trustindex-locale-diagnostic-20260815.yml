@@ -1,0 +1,41 @@
+name: Inspect production Trustindex locale 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-trustindex-locale-diagnostic-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Locate Trustindex plugin, locale settings and widget storage
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"; : "${PROD_PATH:?not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo '=== plugin dirs ==='
+          find "$PROD_PATH/wp-content/plugins" -maxdepth 1 -type d \( -iname '*trust*' -o -iname '*review*' \) -printf '%f\n' | sort
+          echo '=== ti-read-more / data-open-text occurrences ==='
+          grep -RIl --exclude='*.min.js' -E 'ti-read-more|data-open-text|data-collapse-text' "$PROD_PATH/wp-content/plugins" 2>/dev/null | head -n80
+          files=$(grep -RIl --exclude='*.min.js' -E 'ti-read-more|data-open-text|data-collapse-text' "$PROD_PATH/wp-content/plugins" 2>/dev/null | head -n30 || true)
+          for f in $files; do echo "--- $f"; grep -nE -C 4 'ti-read-more|data-open-text|data-collapse-text|Leer más|Ocultar|locale|language' "$f" 2>/dev/null | head -n160 || true; done
+          echo '=== trustindex/plugin options ==='
+          wp_bin=$(command -v wp); php_bin=/opt/plesk/php/8.3/bin/php
+          "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" db query "SELECT option_name, LEFT(option_value,8000) FROM wp_options WHERE option_name LIKE '%trust%' OR option_name LIKE '%review%' OR option_value LIKE '%ti-read-more%' OR option_value LIKE '%Trustindex%' LIMIT 100;" --skip-column-names --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          echo '=== widget/shortcode refs in posts/meta ==='
+          "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" db query "SELECT post_id, meta_key, LEFT(meta_value,6000) FROM wp_postmeta WHERE meta_value LIKE '%trustindex%' OR meta_value LIKE '%trustindex.io%' OR meta_value LIKE '%ti-widget%' LIMIT 50;" --skip-column-names --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" db query "SELECT ID, post_title, LEFT(post_content,6000) FROM wp_posts WHERE post_content LIKE '%trustindex%' OR post_content LIKE '%trustindex.io%' OR post_content LIKE '%ti-widget%' LIMIT 50;" --skip-column-names --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          REMOTE
