@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
-      - name: Locate custom catalog JS source
+      - name: Locate exact observer loops
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -34,13 +34,17 @@ jobs:
           WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
           set -euo pipefail
-          echo '=== files containing catalog script marker ==='
-          grep -RIl --exclude='*.log' --exclude='*.sql' --exclude-dir=cache 'elmercado-catalog-scroll-final-010234' "$WP_PATH/wp-content" 2>/dev/null | head -n 20 || true
-          echo '=== nearby source ==='
-          while IFS= read -r f; do
+          THEMES="$WP_PATH/wp-content/themes"
+          echo '=== normalizing observer candidates ==='
+          grep -RIn --include='*.php' -E 'if[[:space:]]*\([[:space:]]*normalizing[[:space:]]*\)[[:space:]]*return|normalizing[[:space:]]*=[[:space:]]*true' "$THEMES" 2>/dev/null | head -n 80 || true
+          echo '=== polish MutationObserver candidates ==='
+          grep -RIn --include='*.php' -E 'MutationObserver.*requestAnimationFrame\(polish\)|requestAnimationFrame\(polish\).*MutationObserver' "$THEMES" 2>/dev/null | head -n 80 || true
+          echo '=== lockCounts candidates ==='
+          grep -RIn --include='*.php' -E 'MutationObserver\(lockCounts\)|lockCounts.*MutationObserver' "$THEMES" 2>/dev/null | head -n 80 || true
+          echo '=== exact source excerpts ==='
+          files=$(grep -RIl --include='*.php' -E 'normalizing[[:space:]]*=[[:space:]]*true|MutationObserver.*requestAnimationFrame\(polish\)|MutationObserver\(lockCounts\)' "$THEMES" 2>/dev/null | sort -u | head -n 12 || true)
+          for f in $files; do
             echo "--- $f ---"
-            grep -n -B 35 -A 180 'elmercado-catalog-scroll-final-010234' "$f" | head -n 260 || true
-          done < <(grep -RIl --exclude='*.log' --exclude='*.sql' --exclude-dir=cache 'elmercado-catalog-scroll-final-010234' "$WP_PATH/wp-content" 2>/dev/null | head -n 5)
-          echo '=== other catalog JS markers ==='
-          grep -RIn --exclude='*.log' --exclude='*.sql' --exclude-dir=cache -E 'IntersectionObserver|emo-catalog-result-count|Load more products|Cargar más productos' "$WP_PATH/wp-content/themes" "$WP_PATH/wp-content/mu-plugins" 2>/dev/null | head -n 120 || true
+            grep -n -B 45 -A 80 -E 'normalizing[[:space:]]*=[[:space:]]*true|MutationObserver.*requestAnimationFrame\(polish\)|MutationObserver\(lockCounts\)' "$f" | head -n 260 || true
+          done
           REMOTE
