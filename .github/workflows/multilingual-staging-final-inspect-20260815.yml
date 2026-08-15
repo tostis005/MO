@@ -1,0 +1,80 @@
+name: Inspect remaining staging English gaps 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-final-inspect-20260815.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect visible English routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re,html,urllib.request,ssl
+          from html.parser import HTMLParser
+          ctx=ssl._create_unverified_context()
+          class P(HTMLParser):
+              def __init__(self): super().__init__(); self.skip=0; self.out=[]
+              def handle_starttag(self,t,a):
+                  if t in ('script','style','svg','noscript'): self.skip+=1
+                  if not self.skip:
+                      for k,v in a:
+                          if k in ('placeholder','aria-label','title','alt') and v:self.out.append(v)
+              def handle_endtag(self,t):
+                  if t in ('script','style','svg','noscript') and self.skip:self.skip-=1
+              def handle_data(self,d):
+                  if not self.skip and d.strip(): self.out.append(d.strip())
+          routes=['/en/','/en/tienda/','/en/productores/','/en/contacto/','/en/quienes-somos/','/en/blog/','/en/contacto-productores/','/en/politica-de-privacidad/','/en/politica/','/en/politica-de-cookies/','/en/condiciones-especiales/']
+          clues=re.compile(r'\b(?:Inicio|Tienda|Contacto|Formulario|Buscar|Carrito|Cuenta|Productores|Quiénes|Política|Condiciones|Privacidad|Añadir|Actualizando|Selección|Descubre|Historias|artículos|pedido|facturación|contraseña|correo|dirección|nombre|apellidos|aceite|oliva|virgen|extra|envío)\b',re.I)
+          for route in routes:
+              u='https://dev.elmercadodeorigen.com'+route+'?remaining_inspect=1'
+              raw=urllib.request.urlopen(u,context=ctx,timeout=55).read().decode('utf-8','replace')
+              title=re.search(r'<title[^>]*>(.*?)</title>',raw,re.I|re.S)
+              p=P(); p.feed(raw)
+              vals=[]; seen=set()
+              for x in p.out:
+                  x=re.sub(r'\s+',' ',html.unescape(x)).strip()
+                  if x and x not in seen: seen.add(x); vals.append(x)
+              suspects=[x for x in vals if len(x)<700 and clues.search(x)]
+              print('\n===',route,'===')
+              print('TITLE:',re.sub(r'\s+',' ',html.unescape(title.group(1))).strip() if title else 'NONE')
+              for x in suspects[:100]: print('ES?',x)
+          PY
+      - name: Inspect TranslatePress SEO support and title storage
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"; case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) exit 2;; esac
+          echo '=== TranslatePress-related plugins ==='
+          wp plugin list --fields=name,status,version --format=table 2>/dev/null | grep -Ei 'translate|seo|yoast|rank|aioseo' || true
+          echo '=== TranslatePress add-ons/directories ==='
+          find "$WP_PATH/wp-content/plugins" -maxdepth 2 -type d | grep -Ei 'translatepress|seo-pack|trp-' || true
+          prefix="$(wp db prefix)"
+          echo '=== regular dictionary title rows ==='
+          wp db query "SELECT original,translated,status FROM \`${prefix}trp_dictionary_es_es_en_us\` WHERE original LIKE '% - El Mercado de Origen' ORDER BY original LIMIT 80;" 2>/dev/null || true
+          echo '=== trp tables ==='
+          wp db query "SHOW TABLES LIKE '${prefix}trp%';" --skip-column-names 2>/dev/null || true
+          REMOTE
