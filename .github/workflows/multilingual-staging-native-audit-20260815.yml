@@ -1,0 +1,115 @@
+name: Audit native English pages and 1957 products 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/multilingual-staging-native-audit-20260815.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install audit helpers
+        run: python -m pip install --quiet beautifulsoup4 requests
+      - name: Audit every published English page
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import concurrent.futures, re, html, requests
+          from bs4 import BeautifulSoup, Comment
+          requests.packages.urllib3.disable_warnings()
+          base='https://dev.elmercadodeorigen.com'
+          routes=[
+            '/en/politica-de-privacidad/','/en/tienda/','/en/carrito/','/en/finalizar-compra/','/en/mi-cuenta/',
+            '/en/lista-de-deseos/','/en/store-manager/','/en/productores/','/en/contacto/','/en/politica/',
+            '/en/quienes-somos/','/en/blog/','/en/contacto-productores/','/en/politica-de-cookies/',
+            '/en/el-mercado-de-origen/','/en/','/en/condiciones-especiales/','/en/affiliates/',
+            '/en/inicio-black-friday-2/','/en/navidad-2022/','/en/sorteo-gordo-navidad/','/en/inicio-bf/'
+          ]
+          def visible_strings(raw):
+              soup=BeautifulSoup(raw,'html.parser')
+              for tag in soup(['script','style','noscript','svg','path','template']): tag.decompose()
+              vals=[]
+              for node in soup.find_all(string=True):
+                  if isinstance(node,Comment): continue
+                  s=re.sub(r'\s+',' ',html.unescape(str(node))).strip()
+                  if s: vals.append(s)
+              for tag in soup.find_all(True):
+                  for attr in ('alt','title','placeholder','aria-label'):
+                      if tag.has_attr(attr):
+                          s=re.sub(r'\s+',' ',html.unescape(str(tag.get(attr,'')))).strip()
+                          if s: vals.append(s)
+              return list(dict.fromkeys(vals))
+          # Intentionally conservative clues: this is a review report, not an automatic failure rule.
+          spanish_words=re.compile(r'\b(?:el|la|los|las|un|una|unos|unas|para|por|con|sin|desde|hasta|sobre|nuestro|nuestra|nuestros|nuestras|productos?|productores?|comprar|compra|env[ií]o|pedido|cuenta|carrito|tienda|contacto|pol[ií]tica|aceite|oliva|virgen|extra|jam[oó]n|paleta|queso|naranjas?|descubre|selecci[oó]n|origen|quienes|somos|condiciones|t[eé]rminos|privacidad|cookies|buscar|siguiente|anterior|a[nñ]adir|cantidad|descripci[oó]n|informaci[oó]n|facturaci[oó]n|contrase[nñ]a|correo|direcci[oó]n|nombre|apellidos)\b',re.I)
+          def fetch(route):
+              url=base+route+('?native_audit=1' if '?' not in route else '&native_audit=1')
+              r=requests.get(url,timeout=55,verify=False,headers={'Cache-Control':'no-cache','User-Agent':'MDO native English audit'})
+              vals=visible_strings(r.text)
+              suspects=[]
+              for s in vals:
+                  if len(s)>600: continue
+                  if spanish_words.search(s): suspects.append(s)
+              return route,r.status_code,'WordPress database error' in r.text,suspects
+          results=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+              for x in ex.map(fetch,routes): results.append(x)
+          bad=[]
+          for route,status,dberr,suspects in results:
+              print(f'\n=== {route} HTTP={status} DB_ERROR={dberr} spanish_suspects={len(suspects)} ===')
+              for s in suspects[:80]: print('ES?',s)
+              if status!=200 or dberr: bad.append((route,status,dberr))
+          print('\n=== PAGE AUDIT SUMMARY ===')
+          print('routes',len(results),'hard_failures',len(bad),'spanish_suspects_total',sum(len(x[3]) for x in results))
+          if bad:
+              print('BAD',bad)
+              raise SystemExit(2)
+          PY
+      - name: Verify all four active 1957 English products
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import requests
+          requests.packages.urllib3.disable_warnings()
+          tests=[
+            ('/en/producto/aceite-de-oliva-virgen-extra-5l/',['Extra virgin olive oil 5L','How is extra virgin olive oil made?']),
+            ('/en/producto/aceite-de-oliva-virgen-extra-1l/',['Extra virgin olive oil 15 × 1L','Pack of 15 × 1L PET bottles.']),
+            ('/en/producto/aceite-de-oliva-virgen-extra-500ml-pet/',['Extra virgin olive oil 12 × 500ml PET','Pack of 12 × 500ml PET bottles.']),
+            ('/en/producto/pack-aceite-a-tu-gusto/',['Pack of 4 × 5L extra virgin olive oil','complimentary 250ml Egyptian-style glass bottle'])
+          ]
+          base='https://dev.elmercadodeorigen.com'
+          for path,needles in tests:
+              r=requests.get(base+path+'?native_1957_audit=1',timeout=55,verify=False,headers={'Cache-Control':'no-cache'})
+              print(path,'HTTP',r.status_code,'bytes',len(r.content))
+              assert r.status_code==200
+              assert 'WordPress database error' not in r.text
+              for needle in needles:
+                  print(' ',needle,needle in r.text)
+                  assert needle in r.text
+          PY
+      - name: Measure representative staging response times
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== uncached / cache-bypass representative requests ==='
+          for path in / /en/ /producto/aceite-de-oliva-virgen-extra-5l/ /en/producto/aceite-de-oliva-virgen-extra-5l/; do
+            for n in 1 2; do
+              curl -kLsS --max-time 55 -o /dev/null -w "$path sample$n HTTP=%{http_code} TTFB=%{time_starttransfer}s TOTAL=%{time_total}s\n" "https://dev.elmercadodeorigen.com${path}?native_speed=${GITHUB_RUN_ID}-${n}"
+            done
+          done
+          echo '=== shop cache warm-up and hits ==='
+          for path in /tienda/ /en/tienda/; do
+            curl -kLsS --max-time 55 -o /dev/null "https://dev.elmercadodeorigen.com${path}"
+            for n in 1 2 3; do
+              curl -kLsS --max-time 55 -D /tmp/h.txt -o /dev/null -w "$path sample$n HTTP=%{http_code} TTFB=%{time_starttransfer}s TOTAL=%{time_total}s\n" "https://dev.elmercadodeorigen.com${path}"
+              grep -i '^x-mdo-page-cache:' /tmp/h.txt || true
+            done
+          done
