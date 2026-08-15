@@ -16,18 +16,14 @@ if ( ! class_exists( 'TRP_Translate_Press' ) ) {
 }
 
 $dir = __DIR__;
-$map_files = array(
-    $dir . '/common.json',
-    $dir . '/pages.json',
-    $dir . '/legal.json',
-    $dir . '/products-1957.json',
-);
+$map_files = glob( $dir . '/*.json' );
+sort( $map_files, SORT_STRING );
+if ( empty( $map_files ) ) {
+    fwrite( STDERR, "No reviewed translation maps found in {$dir}\n" );
+    exit( 4 );
+}
 $translations = array();
 foreach ( $map_files as $file ) {
-    if ( ! is_file( $file ) ) {
-        fwrite( STDERR, "Missing translation map: {$file}\n" );
-        exit( 4 );
-    }
     $decoded = json_decode( file_get_contents( $file ), true );
     if ( ! is_array( $decoded ) || JSON_ERROR_NONE !== json_last_error() ) {
         fwrite( STDERR, "Invalid JSON map {$file}: " . json_last_error_msg() . "\n" );
@@ -86,9 +82,8 @@ foreach ( array_chunk( $updates, 80 ) as $chunk ) {
     $query->update_strings( $chunk, 'en_US', array( 'id', 'translated', 'status', 'block_type' ) );
 }
 
-// Also update any gettext rows that TranslatePress has already discovered. We deliberately
-// do not invent gettext domains: unknown gettext strings remain covered by the regular
-// dictionary and can be captured naturally by TranslatePress on subsequent requests.
+// Update gettext rows TranslatePress has already discovered. We do not invent gettext
+// domains: after rendering, a second importer pass updates newly discovered rows as well.
 $gettext_updates = 0;
 if ( method_exists( $query, 'check_gettext_table' ) && method_exists( $query, 'get_gettext_table_name' ) ) {
     $query->check_gettext_table( 'en_US' );
@@ -109,6 +104,7 @@ if ( method_exists( $query, 'check_gettext_table' ) && method_exists( $query, 'g
 }
 
 wp_cache_flush();
+echo 'Reviewed map files: ' . count( $map_files ) . "\n";
 echo 'Reviewed translation pairs: ' . count( $translations ) . "\n";
 echo "Dictionary rows inserted for new originals: {$inserted}\n";
 echo "Dictionary originals already present: {$existing}\n";
