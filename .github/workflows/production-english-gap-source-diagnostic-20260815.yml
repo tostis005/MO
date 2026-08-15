@@ -1,0 +1,48 @@
+name: Inspect production English translation gaps 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-gap-source-diagnostic-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect category, attributes, variations and policy source
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"; : "${PROD_PATH:?not found}"
+          cat > /tmp/gaps.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH'))exit(1);
+          echo "=== CATEGORY ACEITES ===\n";
+          $term=get_term(16,'product_cat'); if($term&&!is_wp_error($term)){echo "NAME: {$term->name}\nDESC:\n{$term->description}\n";}
+          echo "=== PRODUCT 1056 ATTRIBUTES ===\n";
+          $p=wc_get_product(1056); if($p){foreach($p->get_attributes() as $a){echo 'ATTR '.$a->get_name().' visible='.(int)$a->get_visible().' variation='.(int)$a->get_variation()."\n"; if($a->is_taxonomy()){foreach($a->get_terms()?:[] as $t){echo " TERM {$t->term_id} slug={$t->slug} name={$t->name}\n";}}else{foreach($a->get_options() as $o)echo " OPT {$o}\n";}}}
+          echo "=== PRODUCT 1056 VARIATIONS ===\n";
+          if($p instanceof WC_Product_Variable){foreach($p->get_children() as $vid){$v=wc_get_product($vid);if(!$v)continue;echo "VAR {$vid} status=".get_post_status($vid).' stock='.$v->get_stock_status().' attrs='.wp_json_encode($v->get_attributes(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}}
+          echo "=== ALL PRODUCT ATTRIBUTE TERMS ===\n";
+          foreach(wc_get_attribute_taxonomies() as $tax){$tn=wc_attribute_taxonomy_name($tax->attribute_name);echo "TAX {$tn}\n";foreach(get_terms(['taxonomy'=>$tn,'hide_empty'=>false]) as $t){if(!is_wp_error($t))echo " TERM {$t->term_id} slug={$t->slug} name={$t->name}\n";}}
+          echo "=== CUSTOM PRODUCT ATTRIBUTE OPTIONS ===\n";
+          $seen=[];foreach(get_posts(['post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids']) as $pid){$prod=wc_get_product($pid);if(!$prod)continue;foreach($prod->get_attributes() as $a){if($a->is_taxonomy())continue;foreach($a->get_options() as $o){$o=trim((string)$o);if($o!==''&&!isset($seen[$o])){$seen[$o]=1;echo " OPT {$o}\n";}}}}
+          echo "=== POLICY SOURCE LOCATIONS ===\n";
+          global $wpdb;$needle='%Todos los productos comprados en Hidalgo de la Jara pasan tres filtros de calidad%';
+          foreach([['postmeta',$wpdb->postmeta,'meta_id','post_id','meta_key','meta_value'],['usermeta',$wpdb->usermeta,'umeta_id','user_id','meta_key','meta_value'],['options',$wpdb->options,'option_id','option_id','option_name','option_value']] as $cfg){[$label,$table,$idcol,$ownercol,$keycol,$valcol]=$cfg;$rows=$wpdb->get_results($wpdb->prepare("SELECT {$idcol} AS rid, {$ownercol} AS owner, {$keycol} AS mkey, {$valcol} AS mval FROM {$table} WHERE {$valcol} LIKE %s LIMIT 20",$needle),ARRAY_A);foreach($rows as $r){echo strtoupper($label)." rid={$r['rid']} owner={$r['owner']} key={$r['mkey']} value=".substr(preg_replace('/\s+/u',' ',(string)$r['mval']),0,2500)."\n";}}
+          echo "=== EXACT BLACK FRIDAY READ MORE SOURCES ===\n";
+          foreach([5231,10477] as $pid){$post=get_post($pid);echo "PAGE {$pid} title=".($post?$post->post_title:'')."\n"; if($post){echo 'CONTENT_HAS='.(strpos($post->post_content,'Leer más')!==false?'yes':'no')."\n";}$ed=get_post_meta($pid,'_elementor_data',true);echo 'ELEMENTOR_HAS='.(is_string($ed)&&strpos($ed,'Leer más')!==false?'yes':'no')."\n";}
+          PHP
+          sshpass -e scp $SCP_OPTIONS /tmp/gaps.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-en-gaps.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); /opt/plesk/php/8.3/bin/php -d memory_limit=1024M -d display_errors=0 \"\$wp_bin\" eval-file /tmp/mdo-en-gaps.php --path='$PROD_PATH' --allow-root 2>/dev/null"
