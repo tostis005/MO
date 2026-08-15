@@ -54,8 +54,6 @@ jobs:
           for file in .github/data/native-translations-20260815/*.json; do
             sshpass -e scp $SCP_OPTIONS "$file" "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/$(basename "$file")"
           done
-          # Give the importer the exact filenames it expects.
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "cd '$REMOTE_DIR'; cp common.json common.json 2>/dev/null || true; true"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
           wp_bin="$(command -v wp)"
@@ -65,8 +63,6 @@ jobs:
           siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
           case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
 
-          # Rename repository map names to the stable names consumed by the importer.
-          cp "$REMOTE_DIR/common.json" "$REMOTE_DIR/common.json" 2>/dev/null || true
           wp eval-file "$REMOTE_DIR/mdo-staging-native-table-init.php" 2>/dev/null
           wp eval-file "$REMOTE_DIR/mdo-staging-native-translations.php" 2>/dev/null
 
@@ -75,9 +71,10 @@ jobs:
           echo '=== native dictionary status counts ==='
           wp db query "SELECT status, COUNT(*) FROM \`${table}\` GROUP BY status ORDER BY status;" 2>/dev/null
           echo '=== key reviewed rows ==='
-          wp db query "SELECT original, translated, status FROM \`${table}\` WHERE original IN ('Encuentra lo que buscas.','Una forma más directa de acercar productos y personas.','Política de privacidad','Aceite de oliva virgen extra 5L','¿Cómo se obtiene el aceite de oliva virgen extra?') ORDER BY original;" 2>/dev/null
-          count="$(wp db query "SELECT COUNT(*) FROM \`${table}\` WHERE status <> 0 AND translated IS NOT NULL AND translated <> '';" --skip-column-names 2>/dev/null | tail -n1)"
-          test "${count:-0}" -gt 100
+          wp db query "SELECT original, translated, status FROM \`${table}\` WHERE original IN ('Encuentra lo que buscas.','Una forma más directa de acercar productos y personas.','Política de privacidad','Aceite de oliva virgen extra 5L','¿Cómo se obtiene el aceite de oliva virgen extra?','Finalizar compra') ORDER BY original;" 2>/dev/null
+          count="$(wp db query "SELECT COUNT(*) FROM \`${table}\` WHERE status = 2 AND translated IS NOT NULL AND translated <> '';" --skip-column-names 2>/dev/null | grep -E '^[0-9]+$' | tail -n1)"
+          echo "Human-reviewed native rows: ${count:-0}"
+          [ "${count:-0}" -gt 100 ]
           wp cache flush >/dev/null 2>&1 || true
           rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
           rm -rf "$REMOTE_DIR"
