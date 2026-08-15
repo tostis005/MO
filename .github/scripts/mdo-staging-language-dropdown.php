@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Staging Language Dropdown
  * Description: Converts the staging language switcher into a single-current-language dropdown.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -111,11 +111,11 @@ add_action( 'wp_footer', function () {
                 menu.setAttribute('role','menu');
 
                 links.forEach(function(a){
+                    if (a === current) return;
                     var li = document.createElement('li');
                     li.setAttribute('role','none');
                     var clone = a.cloneNode(true);
                     clone.setAttribute('role','menuitem');
-                    if (a === current) clone.setAttribute('aria-current','page');
                     li.appendChild(clone);
                     menu.appendChild(li);
                 });
