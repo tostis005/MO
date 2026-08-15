@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import shutil
 import sys
 
@@ -98,12 +99,14 @@ text = replace_once(
     "\t\t\tstate.innerHTML='<span class=\"emo-catalog-spinner\" aria-hidden=\"true\"></span><span class=\"emo-catalog-load-message\"></span><button type=\"button\" class=\"emo-catalog-load-button\" hidden></button>';",
     'final loader button markup',
 )
-text = replace_once(
-    text,
-    "\t\t\tconst button=state.querySelector('.emo-catalog-load-button');",
-    "\t\t\tconst button=state.querySelector('.emo-catalog-load-button');\n\t\t\tbutton.textContent=uiCopy.loadMore;",
-    'final loader button copy',
-)
+button_decl = "\t\t\tconst button=state.querySelector('.emo-catalog-load-button');"
+button_copy = "\t\t\tbutton.textContent=uiCopy.loadMore;"
+pattern = re.escape(button_decl) + r'(?:\n' + re.escape(button_copy) + r')*'
+replacement = button_decl + '\n' + button_copy
+text, n = re.subn(pattern, replacement, text, count=1)
+if n != 1:
+    raise SystemExit(f'final loader button copy: expected declaration once, normalized {n}')
+print('final loader button copy: normalized to exactly one assignment')
 text = replace_once(
     text,
     "\t\t\texactCountNodes().forEach(node=>new MutationObserver(lockCounts).observe(node,{childList:true,characterData:true,subtree:true}));",
