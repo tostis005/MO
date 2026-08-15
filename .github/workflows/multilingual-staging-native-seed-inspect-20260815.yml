@@ -44,39 +44,43 @@ jobs:
 
           echo '===== PUBLISHED PAGES ====='
           wp post list --post_type=page --post_status=publish --fields=ID,post_title,post_name --format=table 2>/dev/null
-          echo '===== USERS MATCHING 1957 ====='
-          wp user list --fields=ID,user_login,display_name --format=csv 2>/dev/null | grep -i '1957\|catedr\|puente\|hidalgo' || true
-          echo '===== PUBLISHED PRODUCTS ====='
-          wp post list --post_type=product --post_status=publish --fields=ID,post_title,post_author,post_name --format=csv 2>/dev/null
-
-          echo '===== VISIT CORE SPANISH ROUTES TO SEED TP ====='
-          for path in / /tienda/ /productores/ /quienes-somos/ /contacto/; do
-            code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /dev/null -w '%{http_code}' --max-time 40 "https://dev.elmercadodeorigen.com${path}?native_seed=${RANDOM}")"
-            echo "$code $path"
+          echo '===== 1957 USER ====='
+          wp user get 3 --fields=ID,user_login,display_name,user_email --format=json 2>/dev/null || true
+          echo '===== 1957 PUBLISHED PRODUCTS ====='
+          wp post list --post_type=product --post_status=publish --author=3 --fields=ID,post_title,post_name --format=table 2>/dev/null
+          for id in $(wp post list --post_type=product --post_status=publish --author=3 --field=ID 2>/dev/null); do
+            echo "----- PRODUCT $id -----"
+            echo "TITLE: $(wp post get "$id" --field=post_title 2>/dev/null)"
+            echo "URL: $(wp post url "$id" 2>/dev/null)"
+            echo 'EXCERPT:'
+            wp post get "$id" --field=post_excerpt 2>/dev/null || true
+            echo 'CONTENT:'
+            wp post get "$id" --field=post_content 2>/dev/null || true
+            echo 'CATEGORIES:'
+            wp post term list "$id" product_cat --fields=term_id,name,slug --format=csv 2>/dev/null || true
+            echo 'ATTRIBUTES META:'
+            wp post meta get "$id" _product_attributes --format=json 2>/dev/null || true
           done
 
-          prefix="$(wp db prefix)"
-          echo '===== TRP TABLES AFTER VISITS ====='
-          wp db query "SHOW TABLES LIKE '${prefix}trp%';" --skip-column-names 2>/dev/null || true
-          dict="${prefix}trp_dictionary_es_es_en_us"
-          if wp db query "SHOW TABLES LIKE '${dict}';" --skip-column-names 2>/dev/null | grep -qx "$dict"; then
-            echo '===== DICTIONARY SCHEMA ====='
-            wp db query "SHOW CREATE TABLE \`${dict}\`;" --skip-column-names 2>/dev/null || true
-            echo '===== DICTIONARY SAMPLE ====='
-            wp db query "SELECT * FROM \`${dict}\` ORDER BY id DESC LIMIT 20;" 2>/dev/null || true
-          else
-            echo "dictionary missing: $dict"
+          echo '===== TRANSLATEPRESS INSTALLATION ====='
+          wp plugin get translatepress-multilingual --format=json 2>/dev/null || true
+          find "$WP_PATH/wp-content/plugins" -maxdepth 3 -type f \( -iname '*translatepress*.php' -o -name 'class-query.php' -o -name 'class-editor-api-regular-strings.php' \) -print 2>/dev/null | head -n 80 || true
+          query_file="$(find "$WP_PATH/wp-content/plugins" -type f -name 'class-query.php' 2>/dev/null | grep -i translate | head -n1 || true)"
+          echo "QUERY_FILE=$query_file"
+          if [ -n "$query_file" ]; then
+            echo '===== QUERY METHODS ====='
+            grep -nE 'function (create|insert|update|get|maybe|check).*' "$query_file" | head -n 180 || true
+            echo '===== QUERY DICTIONARY CODE ====='
+            grep -nE 'dictionary|CREATE TABLE|original_strings|status' "$query_file" | head -n 240 || true
           fi
-          orig="${prefix}trp_original_strings"
-          if wp db query "SHOW TABLES LIKE '${orig}';" --skip-column-names 2>/dev/null | grep -qx "$orig"; then
-            echo '===== ORIGINAL STRINGS SCHEMA ====='
-            wp db query "SHOW CREATE TABLE \`${orig}\`;" --skip-column-names 2>/dev/null || true
-            echo '===== ORIGINAL STRINGS COUNT ====='
-            wp db query "SELECT COUNT(*) FROM \`${orig}\`;" --skip-column-names 2>/dev/null || true
+          editor_file="$(find "$WP_PATH/wp-content/plugins" -type f -name 'class-editor-api-regular-strings.php' 2>/dev/null | head -n1 || true)"
+          echo "EDITOR_FILE=$editor_file"
+          if [ -n "$editor_file" ]; then
+            echo '===== EDITOR SAVE CODE ====='
+            grep -nE 'save_translations|update_strings|insert|status|dictionary' "$editor_file" | head -n 220 || true
           fi
 
-          echo '===== TRANSLATEPRESS QUERY METHODS ====='
-          query_file="$WP_PATH/wp-content/plugins/translatepress-multilingual/includes/class-query.php"
-          grep -nE 'function (create|insert|update|get|maybe|check).*' "$query_file" | head -n 120 || true
-          grep -nE 'dictionary|CREATE TABLE|original_strings' "$query_file" | head -n 160 || true
+          prefix="$(wp db prefix)"
+          echo '===== CURRENT TRP TABLES ====='
+          wp db query "SHOW TABLES LIKE '${prefix}trp%';" --skip-column-names 2>/dev/null || true
           REMOTE
