@@ -21,37 +21,38 @@ foreach ( $product->get_children() as $variation_id ) {
         if ( 'private' !== get_post_status( $variation_id ) ) {
             wp_update_post( array( 'ID' => $variation_id, 'post_status' => 'private' ) );
         }
-        $variation->set_stock_status( 'outofstock' );
-        $variation->save();
+        if ( 'outofstock' !== $variation->get_stock_status() ) {
+            $variation->set_stock_status( 'outofstock' );
+            $variation->save();
+        }
         $changed_variations[] = $variation_id;
     }
 }
-$attributes = $product->get_attributes();
-if ( isset( $attributes['pa_tamano'] ) && $attributes['pa_tamano'] instanceof WC_Product_Attribute ) {
-    $size_attr = $attributes['pa_tamano'];
-    $options = array_map( 'intval', $size_attr->get_options() );
-    $new_options = array_values( array_diff( $options, array( (int) $target_term->term_id ) ) );
-    if ( $new_options !== $options ) {
-        $size_attr->set_options( $new_options );
-        $attributes['pa_tamano'] = $size_attr;
-        $product->set_attributes( $attributes );
-        $product->save();
-    }
+/* Taxonomy-backed Woo attributes use the post/term relationship as the source
+ * of selectable options. Remove only this product's relationship; keep the term
+ * itself for historical records and any other products that might use it. */
+$result = wp_remove_object_terms( 1056, array( (int) $target_term->term_id ), 'pa_tamano' );
+if ( is_wp_error( $result ) ) {
+    fwrite( STDERR, "Could not remove obsolete size relationship: {$result->get_error_message()}\n" );
+    exit( 6 );
 }
 wc_delete_product_transients( 1056 );
+clean_object_term_cache( 1056, 'product' );
 clean_post_cache( 1056 );
 wp_cache_flush();
-echo 'Obsolete pack hidden. Variation IDs: ' . ( $changed_variations ? implode( ',', $changed_variations ) : 'already hidden' ) . PHP_EOL;
-$fresh = wc_get_product( 1056 );
-$attached = false;
-foreach ( $fresh->get_attributes() as $attr ) {
-    if ( 'pa_tamano' === $attr->get_name() && in_array( (int) $target_term->term_id, array_map( 'intval', $attr->get_options() ), true ) ) { $attached = true; }
+echo 'Obsolete pack variations hidden: ' . ( $changed_variations ? implode( ',', $changed_variations ) : 'already hidden' ) . PHP_EOL;
+$fresh_terms = wp_get_post_terms( 1056, 'pa_tamano', array( 'fields' => 'ids' ) );
+if ( is_wp_error( $fresh_terms ) ) { fwrite( STDERR, "Could not verify product size terms.\n" ); exit( 7 ); }
+if ( in_array( (int) $target_term->term_id, array_map( 'intval', $fresh_terms ), true ) ) {
+    fwrite( STDERR, "Obsolete pack term is still attached to product.\n" );
+    exit( 8 );
 }
-if ( $attached ) { fwrite( STDERR, "Obsolete pack term is still attached to product.\n" ); exit( 6 ); }
+$fresh = wc_get_product( 1056 );
 foreach ( $fresh->get_children() as $variation_id ) {
     $variation = wc_get_product( $variation_id );
-    if ( $variation && isset( $variation->get_attributes()['pa_tamano'] ) && $target_slug === $variation->get_attributes()['pa_tamano'] && 'publish' === get_post_status( $variation_id ) ) {
-        fwrite( STDERR, "Obsolete variation {$variation_id} still published.\n" ); exit( 7 );
+    $attrs = $variation ? $variation->get_attributes() : array();
+    if ( $variation && isset( $attrs['pa_tamano'] ) && $target_slug === $attrs['pa_tamano'] && 'publish' === get_post_status( $variation_id ) ) {
+        fwrite( STDERR, "Obsolete variation {$variation_id} still published.\n" ); exit( 9 );
     }
 }
 echo "Verified obsolete pack is no longer purchasable or selectable.\n";
