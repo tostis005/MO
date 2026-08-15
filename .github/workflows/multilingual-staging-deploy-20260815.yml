@@ -7,6 +7,7 @@ on:
       - '.github/workflows/multilingual-staging-deploy-20260815.yml'
       - '.github/scripts/mdo-staging-native-language-switcher.php'
       - '.github/scripts/mdo-staging-native-render-bridge.php'
+      - '.github/scripts/mdo-staging-translatepress-shop-guard.php'
       - '.github/scripts/mdo-staging-bilingual-config.php'
       - '.github/scripts/mdo-staging-language-dropdown.php'
       - '.github/scripts/mdo-staging-advanced-cache.php'
@@ -33,6 +34,7 @@ jobs:
           set -euo pipefail
           php -l .github/scripts/mdo-staging-native-language-switcher.php
           php -l .github/scripts/mdo-staging-native-render-bridge.php
+          php -l .github/scripts/mdo-staging-translatepress-shop-guard.php
           php -l .github/scripts/mdo-staging-language-dropdown.php
           php -l .github/scripts/mdo-staging-advanced-cache.php
           php -l .github/scripts/mdo-staging-bilingual-config.php
@@ -51,11 +53,9 @@ jobs:
           : "${WP_PATH:?Unable to find staging WordPress path}"
           REMOTE_CONFIG="/tmp/mdo-bilingual-config-${GITHUB_RUN_ID}.php"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'; if [ -f '$WP_PATH/wp-content/advanced-cache.php' ] && [ ! -f '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php' ]; then cp '$WP_PATH/wp-content/advanced-cache.php' '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php'; fi"
-          # Replace the former runtime translation helper with a selector-only helper.
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-native-language-switcher.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
-          # This bridge contains no translation copy; it only exposes human-reviewed DB translations
-          # in metadata/accessibility attributes that third-party plugins explicitly skip.
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-native-render-bridge.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-native-render-bridge.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-translatepress-shop-guard.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-translatepress-shop-guard.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-language-dropdown.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-language-dropdown.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-advanced-cache.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/advanced-cache.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
@@ -67,11 +67,8 @@ jobs:
           wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
           siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
           case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
-
-          # Remove the old translation-copy/output-buffer layer. English copy itself lives in TranslatePress DB.
           rm -f "$WP_PATH/wp-content/mu-plugins/000-mdo-staging-bilingual-polish.php"
           wp eval-file "$REMOTE_CONFIG" 2>/dev/null
-
           prefix="$(wp db prefix)"
           dict_table="${prefix}trp_dictionary_es_es_en_us"
           if ! wp db query "SHOW TABLES LIKE '${dict_table}';" --skip-column-names 2>/dev/null | grep -qx "$dict_table"; then
@@ -85,7 +82,7 @@ jobs:
           rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
           rm -f "$REMOTE_CONFIG"
           REMOTE
-      - name: Verify native English routes without automatic translation
+      - name: Verify native English routes and shop responsiveness
         shell: bash
         run: |
           set -euo pipefail
@@ -122,12 +119,24 @@ jobs:
           grep -q 'How is extra virgin olive oil made?' /tmp/1957-en.html
           ! grep -q '>Aceite de oliva virgen extra 5L<' /tmp/1957-en.html
 
+          curl -kLsS "https://dev.elmercadodeorigen.com/en/tienda/?mdo_shop_guard=${stamp}" -o /tmp/shop-en.html
+          ! grep -q 'id="trp-dynamic-translator-js"' /tmp/shop-en.html
+          grep -q 'Products' /tmp/shop-en.html
+
           chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           : "${chrome:?No headless browser available on runner}"
           timeout 60 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=3000 --dump-dom "https://dev.elmercadodeorigen.com/en/?mdo_browser=${stamp}" > /tmp/home-dom.html 2>/dev/null
           grep -q 'Find what you' /tmp/home-dom.html
           grep -q 'Our customers' /tmp/home-dom.html
           grep -q 'mdo-language-current' /tmp/home-dom.html
+
+          start=$(date +%s)
+          timeout 35 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=3000 --dump-dom "https://dev.elmercadodeorigen.com/en/tienda/" > /tmp/shop-dom.html 2>/dev/null
+          elapsed=$(( $(date +%s) - start ))
+          echo "English shop browser completed in ${elapsed}s"
+          test -s /tmp/shop-dom.html
+          grep -q 'Products' /tmp/shop-dom.html
+          ! grep -q 'id="trp-dynamic-translator-js"' /tmp/shop-dom.html
 
           echo '=== shop page cache assertions ==='
           for path in /tienda/ /en/tienda/; do
