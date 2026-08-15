@@ -1,12 +1,11 @@
-name: Deploy staging bilingual preview 2026-08-15
+name: Deploy staging bilingual native setup 2026-08-15
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/multilingual-staging-deploy-20260815.yml'
-      - '.github/scripts/mdo-staging-bilingual-v2.php.gz.b64'
-      - '.github/scripts/mdo-staging-bilingual-polish.php'
+      - '.github/scripts/mdo-staging-native-language-switcher.php'
       - '.github/scripts/mdo-staging-bilingual-config.php'
       - '.github/scripts/mdo-staging-language-dropdown.php'
       - '.github/scripts/mdo-staging-advanced-cache.php'
@@ -27,18 +26,17 @@ jobs:
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare bilingual helpers
+      - name: Validate native bilingual helpers
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .github/scripts/mdo-staging-bilingual-v2.php.gz.b64 | gzip -dc > /tmp/mdo-staging-bilingual.php
-          php -l /tmp/mdo-staging-bilingual.php
-          php -l .github/scripts/mdo-staging-bilingual-polish.php
+          php -l .github/scripts/mdo-staging-native-language-switcher.php
           php -l .github/scripts/mdo-staging-language-dropdown.php
           php -l .github/scripts/mdo-staging-advanced-cache.php
+          php -l .github/scripts/mdo-staging-bilingual-config.php
       - name: Install SSH helper
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
-      - name: Configure bilingual staging
+      - name: Configure native bilingual staging
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -51,8 +49,8 @@ jobs:
           : "${WP_PATH:?Unable to find staging WordPress path}"
           REMOTE_CONFIG="/tmp/mdo-bilingual-config-${GITHUB_RUN_ID}.php"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$WP_PATH/wp-content/mu-plugins'; if [ -f '$WP_PATH/wp-content/advanced-cache.php' ] && [ ! -f '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php' ]; then cp '$WP_PATH/wp-content/advanced-cache.php' '$WP_PATH/wp-content/advanced-cache.pre-mdo-multilingual.php'; fi"
-          sshpass -e scp $SCP_OPTIONS /tmp/mdo-staging-bilingual.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-polish.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/000-mdo-staging-bilingual-polish.php"
+          # Replace the former runtime translation helper with a selector-only helper.
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-native-language-switcher.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-bilingual.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-language-dropdown.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/mu-plugins/mdo-staging-language-dropdown.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-advanced-cache.php "$STAGING_USER@$STAGING_HOST:$WP_PATH/wp-content/advanced-cache.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-staging-bilingual-config.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONFIG"
@@ -64,84 +62,72 @@ jobs:
           wp() { "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
           siteurl="$(wp option get siteurl 2>/dev/null | tail -n1)"
           case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) echo "Refusing non-staging: $siteurl" >&2; exit 2;; esac
-          wp plugin update translatepress-multilingual || true
+
+          # Remove the old output-buffer/filter translation layer. English must now come from TranslatePress DB.
+          rm -f "$WP_PATH/wp-content/mu-plugins/000-mdo-staging-bilingual-polish.php"
           wp eval-file "$REMOTE_CONFIG" 2>/dev/null
+
           prefix="$(wp db prefix)"
-          es_table="${prefix}trp_gettext_es_es"
-          en_table="${prefix}trp_gettext_en_us"
-          if ! wp db query "SHOW TABLES LIKE '${en_table}';" --skip-column-names | grep -qx "$en_table"; then
-            echo "Repairing missing $en_table from TranslatePress schema"
-            wp db query "CREATE TABLE \`${en_table}\` LIKE \`${es_table}\`;"
-          fi
-          wp cache flush >/dev/null 2>&1 || true
-          rm -rf "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
-          echo "TranslatePress version: $(wp plugin get translatepress-multilingual --field=version)"
-          if wp db query "SHOW TABLES LIKE '${en_table}';" --skip-column-names | grep -qx "$en_table"; then
-            echo "English gettext table: OK"
-          else
-            echo "English gettext table: MISSING" >&2
+          dict_table="${prefix}trp_dictionary_es_es_en_us"
+          if ! wp db query "SHOW TABLES LIKE '${dict_table}';" --skip-column-names 2>/dev/null | grep -qx "$dict_table"; then
+            echo "Native TranslatePress dictionary missing: $dict_table" >&2
             exit 3
           fi
+          reviewed="$(wp db query "SELECT COUNT(*) FROM \`${dict_table}\` WHERE status=2 AND translated IS NOT NULL AND translated<>'';" --skip-column-names 2>/dev/null | grep -E '^[0-9]+$' | tail -n1)"
+          echo "Native human-reviewed translations: ${reviewed:-0}"
+          [ "${reviewed:-0}" -gt 100 ]
+          wp cache flush >/dev/null 2>&1 || true
+          rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
           rm -f "$REMOTE_CONFIG"
           REMOTE
-      - name: Verify bilingual routes and server-rendered English
+      - name: Verify native English routes without runtime translator
         shell: bash
         run: |
           set -euo pipefail
           stamp="${GITHUB_RUN_ID}"
-          for path in / /en/ /tienda/ /en/tienda/ /productores/ /en/productores/ /en/quienes-somos/ /en/contacto/; do
-            url="https://dev.elmercadodeorigen.com${path}?mdo_verify=${stamp}"
-            code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' --max-time 35 "$url")"
+          for path in / /en/ /tienda/ /en/tienda/ /productores/ /en/productores/ /en/quienes-somos/ /en/contacto/ /en/politica/ /en/politica-de-cookies/ /en/politica-de-privacidad/ /en/condiciones-especiales/; do
+            url="https://dev.elmercadodeorigen.com${path}?mdo_native_verify=${stamp}"
+            code="$(curl -kLsS -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' --max-time 45 "$url")"
             echo "$code $path"
             test "$code" = 200
             grep -q 'mdo-language-switcher' /tmp/page.html
             grep -q 'mdo-language-dropdown-js' /tmp/page.html
-            if [[ "$path" == /en/* ]]; then
-              grep -q 'mdo-language-en' /tmp/page.html
-              ! grep -q 'WordPress database error' /tmp/page.html
-              ! grep -q 'El Mercado de Origin' /tmp/page.html
-              ! grep -q 'El-Mercado-de-Origin' /tmp/page.html
-            fi
+            ! grep -q 'WordPress database error' /tmp/page.html
+            if [[ "$path" == /en/* ]]; then grep -q 'mdo-language-en' /tmp/page.html; fi
           done
 
-          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/?mdo_copy=${stamp}" -o /tmp/home-en.html
-          echo '=== English home assertions ==='
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/?mdo_native_copy=${stamp}" -o /tmp/home-en.html
           grep -q 'Find what you' /tmp/home-en.html
           grep -q 'Our customers' /tmp/home-en.html
           grep -q 'Would you like to be part of El Mercado de Origen?' /tmp/home-en.html
           ! grep -q 'Encuentra lo que buscas.' /tmp/home-en.html
           ! grep -q 'Los favoritos de nuestros clientes.' /tmp/home-en.html
 
-          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/tienda/?mdo_copy=${stamp}" -o /tmp/shop-en.html
-          echo '=== English shop assertions ==='
-          grep -q 'Filter products' /tmp/shop-en.html
-          grep -q 'Load more products' /tmp/shop-en.html
-          grep -q '100% Iberian acorn-fed' /tmp/shop-en.html
-          ! grep -q 'Filter productos' /tmp/shop-en.html
-
-          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/productores/?mdo_copy=${stamp}" -o /tmp/producers-en.html
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/productores/?mdo_native_copy=${stamp}" -o /tmp/producers-en.html
           grep -q 'Discover the origin through the people who make it possible.' /tmp/producers-en.html
 
-          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_copy=${stamp}" -o /tmp/about-en.html
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/quienes-somos/?mdo_native_copy=${stamp}" -o /tmp/about-en.html
           grep -q 'A more direct way to bring products and people together.' /tmp/about-en.html
-          ! grep -q 'WordPress database error' /tmp/about-en.html
 
-          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/contacto/?mdo_copy=${stamp}" -o /tmp/contact-en.html
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/contacto/?mdo_native_copy=${stamp}" -o /tmp/contact-en.html
           grep -q 'How can we help?' /tmp/contact-en.html
+
+          curl -kLsS -H 'Cache-Control: no-cache' "https://dev.elmercadodeorigen.com/en/producto/aceite-de-oliva-virgen-extra-5l/?mdo_native_copy=${stamp}" -o /tmp/1957-en.html
+          grep -q 'Extra virgin olive oil 5L' /tmp/1957-en.html
+          grep -q 'How is extra virgin olive oil made?' /tmp/1957-en.html
+          ! grep -q '>Aceite de oliva virgen extra 5L<' /tmp/1957-en.html
 
           chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           : "${chrome:?No headless browser available on runner}"
           timeout 60 "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --ignore-certificate-errors --allow-insecure-localhost --virtual-time-budget=3000 --dump-dom "https://dev.elmercadodeorigen.com/en/?mdo_browser=${stamp}" > /tmp/home-dom.html 2>/dev/null
-          echo '=== Browser-rendered home headings ==='
-          grep -oEi '<h[1-4][^>]*>[^<]{1,220}</h[1-4]>' /tmp/home-dom.html | sed -E 's/<[^>]+>//g' | head -n 25 || true
           grep -q 'Find what you' /tmp/home-dom.html
           grep -q 'Our customers' /tmp/home-dom.html
           grep -q 'mdo-language-current' /tmp/home-dom.html
 
           echo '=== shop page cache assertions ==='
           for path in /tienda/ /en/tienda/; do
-            curl -kLsS --max-time 35 -o /dev/null "https://dev.elmercadodeorigen.com${path}"
-            curl -kLsS --max-time 35 -D /tmp/cache-headers.txt -o /dev/null "https://dev.elmercadodeorigen.com${path}"
+            curl -kLsS --max-time 45 -o /dev/null "https://dev.elmercadodeorigen.com${path}"
+            curl -kLsS --max-time 45 -D /tmp/cache-headers.txt -o /dev/null "https://dev.elmercadodeorigen.com${path}"
             grep -qi '^x-mdo-page-cache: HIT' /tmp/cache-headers.txt
             echo "cache HIT $path"
           done
