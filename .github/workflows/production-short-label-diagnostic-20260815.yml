@@ -1,0 +1,56 @@
+name: Inspect production English WooCommerce short labels 2026-08-15
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-short-label-diagnostic-20260815.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Inspect DOM sources for untranslated short labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./inspect.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          const cases=[
+            ['ham','https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-100-iberico/',['Deshuesado','Loncheado']],
+            ['sliced','https://www.elmercadodeorigen.com/en/producto/jamon-de-bellota-100-iberico-en-sobres/',['Cortado a cuchillo']],
+            ['legacy','https://www.elmercadodeorigen.com/en/inicio-bf/',['Leer más']],
+            ['special','https://www.elmercadodeorigen.com/en/condiciones-especiales/',['PRODUCTOS LÁCTEOS ARTESANALES']]
+          ];
+          for(const [label,url,needles] of cases){
+            const p=await browser.newPage();
+            await p.goto(url+'?mdo_short_diag='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+            await new Promise(r=>setTimeout(r,2500));
+            const out=await p.evaluate((needles)=>{
+              const found=[];
+              for(const needle of needles){
+                const matches=[];
+                for(const n of document.querySelectorAll('body *')){
+                  const own=(n.childNodes.length===1&&n.firstChild?.nodeType===Node.TEXT_NODE)?(n.textContent||'').trim():'';
+                  const val=n instanceof HTMLOptionElement?n.value:'';
+                  const text=(n.textContent||'').trim();
+                  const attrs=[...n.attributes].filter(a=>String(a.value).includes(needle)).map(a=>[a.name,a.value]);
+                  if(own===needle || text===needle || text.includes(needle) || val===needle || attrs.length){
+                    matches.push({tag:n.tagName,cls:String(n.className||''),id:n.id||'',own,text:text.slice(0,500),value:val,attrs,html:n.outerHTML.slice(0,3000),parent:n.parentElement?.outerHTML.slice(0,5000)||''});
+                    if(matches.length>=12)break;
+                  }
+                }
+                const scripts=[...document.scripts].filter(s=>(s.textContent||'').includes(needle)).slice(0,5).map(s=>({id:s.id||'',type:s.type||'',text:(s.textContent||'').slice(Math.max(0,(s.textContent||'').indexOf(needle)-400),(s.textContent||'').indexOf(needle)+1200)}));
+                found.push({needle,matches,scripts});
+              }
+              return found;
+            },needles);
+            console.log('CASE',label,url,JSON.stringify(out));
+            await p.close();
+          }
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./inspect.mjs
