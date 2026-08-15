@@ -1,0 +1,89 @@
+name: Multilingual staging audit 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/multilingual-staging-audit-20260815.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect WordPress staging
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to find WP path}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp || true)"
+          if [ -z "$wp_bin" ]; then
+            echo "WP-CLI not found" >&2
+            exit 1
+          fi
+          WP=("$wp_bin" --path="$WP_PATH" --allow-root)
+          echo '=== CORE ==='
+          "${WP[@]}" core version
+          echo 'siteurl:'; "${WP[@]}" option get siteurl
+          echo 'home:'; "${WP[@]}" option get home
+          echo 'locale:'; "${WP[@]}" option get WPLANG || true
+          echo 'theme:'; "${WP[@]}" theme list --status=active --fields=name,status,version --format=table
+          echo
+          echo '=== PLUGINS ==='
+          "${WP[@]}" plugin list --fields=name,status,version,update --format=table
+          echo
+          echo '=== PAGES ==='
+          "${WP[@]}" post list --post_type=page --post_status=publish,draft,private --fields=ID,post_title,post_name,post_status,post_parent --posts_per_page=200 --format=table
+          echo
+          echo '=== SPECIAL PAGE OPTIONS ==='
+          for opt in page_on_front page_for_posts woocommerce_shop_page_id woocommerce_cart_page_id woocommerce_checkout_page_id woocommerce_myaccount_page_id; do
+            printf '%s=' "$opt"; "${WP[@]}" option get "$opt" 2>/dev/null || true
+          done
+          echo
+          echo '=== MENUS ==='
+          "${WP[@]}" menu list --fields=term_id,name,slug,count --format=table || true
+          echo '--- menu locations ---'
+          "${WP[@]}" menu location list --format=table || true
+          echo
+          echo '=== PRODUCTS ==='
+          echo -n 'published_count='; "${WP[@]}" post list --post_type=product --post_status=publish --format=count
+          "${WP[@]}" post list --post_type=product --post_status=publish --fields=ID,post_title,post_name --posts_per_page=25 --format=table
+          echo
+          echo '=== PRODUCT CATEGORIES ==='
+          "${WP[@]}" term list product_cat --fields=term_id,name,slug,count,parent --format=table || true
+          echo
+          echo '=== PRODUCT ATTRIBUTES ==='
+          "${WP[@]}" wc product_attribute list --user=1 --fields=id,name,slug,type,order_by,has_archives --format=table 2>/dev/null || true
+          echo
+          echo '=== REGISTERED TAXONOMIES (pa_) ==='
+          "${WP[@]}" taxonomy list --fields=name,object_type --format=csv 2>/dev/null | grep '^pa_' || true
+          echo
+          echo '=== ELEMENTOR / HEADER HINTS ==='
+          "${WP[@]}" post list --post_type=elementor_library --post_status=publish,draft --fields=ID,post_title,post_name,post_status --posts_per_page=100 --format=table 2>/dev/null || true
+          echo 'stylesheet:'; "${WP[@]}" option get stylesheet || true
+          echo 'template:'; "${WP[@]}" option get template || true
+          echo
+          echo '=== LANGUAGE PLUGIN HINTS ==='
+          "${WP[@]}" option list --search='*polylang*' --fields=option_name --format=csv 2>/dev/null || true
+          "${WP[@]}" option list --search='*icl*' --fields=option_name --format=csv 2>/dev/null || true
+          REMOTE
