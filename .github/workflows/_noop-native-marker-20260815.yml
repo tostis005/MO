@@ -1,0 +1,8 @@
+name: Native translation marker 2026-08-15
+on:
+  workflow_dispatch:
+jobs:
+  marker:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo native-translation-work
