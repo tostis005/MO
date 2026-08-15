@@ -1,0 +1,99 @@
+name: Test TranslatePress dynamic translation after Shop fix 2026-08-15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/staging-test-translatepress-dynamic-after-shop-fix-20260815.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Temporarily enable TranslatePress dynamic translator on English Shop
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          echo "WP_PATH=$WP_PATH" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          siteurl="$($php_bin -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root option get siteurl 2>/dev/null | tail -n1)"
+          case "$siteurl" in https://dev.elmercadodeorigen.com*) ;; *) exit 2;; esac
+          guard="$WP_PATH/wp-content/mu-plugins/mdo-staging-translatepress-shop-guard.php"
+          disabled="$WP_PATH/wp-content/mu-plugins/mdo-staging-translatepress-shop-guard.php.dynamic-test-disabled"
+          rm -f "$disabled"
+          if [ -f "$guard" ]; then mv "$guard" "$disabled"; fi
+          rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
+          REMOTE
+      - name: Verify dynamic translator is present
+        run: |
+          set -euo pipefail
+          curl -kLsS --max-time 45 -o /tmp/en.html "https://dev.elmercadodeorigen.com/en/tienda/?dynamic_test=${GITHUB_RUN_ID}"
+          grep -q 'id="trp-dynamic-translator-js"' /tmp/en.html
+      - name: Install browser probe
+        run: npm install --no-save puppeteer-core@24
+      - name: Verify browser remains responsive with native dynamic translator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./probe.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--ignore-certificate-errors','--disable-background-networking']});
+          const page=await browser.newPage();
+          page.setDefaultTimeout(10000);
+          const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+          const t=Date.now();
+          await page.goto('https://dev.elmercadodeorigen.com/en/tienda/',{waitUntil:'domcontentloaded',timeout:20000});
+          console.log('DCL_MS',Date.now()-t);
+          let s=await page.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,count:[...document.querySelectorAll('.woocommerce-result-count')].map(n=>n.textContent.trim()),loader:window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null}));
+          console.log('INITIAL',JSON.stringify(s));
+          await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+          const deadline=Date.now()+15000;
+          while(Date.now()<deadline){
+            await new Promise(r=>setTimeout(r,500));
+            s=await Promise.race([page.evaluate(()=>({products:document.querySelectorAll('ul.products > li.product').length,loader:window.__emoCatalogLoaderState?{remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null})),new Promise((_,rej)=>setTimeout(()=>rej(new Error('main thread unresponsive')),3000))]);
+            if(s.loader && s.loader.remaining===0 && !s.loader.loading) break;
+            await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
+          }
+          console.log('FINAL',JSON.stringify(s),'ERRORS',errors.length);
+          if(!s.loader || s.loader.remaining!==0 || s.products<21 || errors.length) throw new Error('dynamic translator regression');
+          await new Promise(r=>setTimeout(r,3000));
+          console.log('IDLE',JSON.stringify(await Promise.race([page.evaluate(()=>({ready:document.readyState,products:document.querySelectorAll('ul.products > li.product').length})),new Promise((_,rej)=>setTimeout(()=>rej(new Error('idle unresponsive')),3000))])));
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./probe.mjs
+      - name: Restore staging guard after test
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          guard="$WP_PATH/wp-content/mu-plugins/mdo-staging-translatepress-shop-guard.php"
+          disabled="$WP_PATH/wp-content/mu-plugins/mdo-staging-translatepress-shop-guard.php.dynamic-test-disabled"
+          if [ -f "$disabled" ]; then mv "$disabled" "$guard"; fi
+          rm -rf "$WP_PATH/wp-content/mdo-page-cache" "$WP_PATH/wp-content/cache/mdo-page-cache" 2>/dev/null || true
+          REMOTE
