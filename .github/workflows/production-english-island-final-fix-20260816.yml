@@ -1,0 +1,137 @@
+name: Production English island final fix 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-island-final-fix-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Require published English aliases in production router
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-english-slug-router.php"
+          : "${TARGET:?router path missing}"
+          cp -a "$TARGET" "$TARGET.bak-published-$(date +%Y%m%d%H%M%S)"
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            foreach (["page","product"] as $type) {
+              $ids=get_posts(["post_type"=>$type,"post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","suppress_filters"=>true]);
+              $pub=0; $slugs=[]; $dupes=[];
+              foreach($ids as $id){
+                $slug=trim((string)get_post_meta($id,"_en_US_post_name",true));
+                $published=(string)get_post_meta($id,"_en_US_published",true);
+                if($slug!=="" && $published==="1"){$pub++; if(isset($slugs[$slug])){$dupes[$slug]=1;} $slugs[$slug]=1;}
+              }
+              echo "$type total=".count($ids)." published_english_aliases=$pub duplicate_published_slugs=".implode(",",array_keys($dupes)).PHP_EOL;
+            }
+            $shop=(int)get_option("woocommerce_shop_page_id");
+            echo "shop_id=$shop shop_en_slug=".get_post_meta($shop,"_en_US_post_name",true)." shop_en_published=".get_post_meta($shop,"_en_US_published",true).PHP_EOL;
+          ' --path="$PROD_PATH" --allow-root
+
+          python3 - "$TARGET" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          s=p.read_text()
+          old="""              $ids = get_posts( array(\n                  'post_type' => $post_type,\n                  'post_status' => 'publish',\n                  'posts_per_page' => 3,\n                  'fields' => 'ids',\n                  'no_found_rows' => true,\n                  'suppress_filters' => true,\n                  'meta_key' => '_en_US_post_name',\n                  'meta_value' => $slug,\n              ) );\n              $ids = array_values( array_filter( $ids, static function ( $id ) {\n                  return (string) get_post_meta( (int) $id, '_en_US_published', true ) !== '0';\n              } ) );\n              return count( $ids ) === 1 ? (int) $ids[0] : 0;"""
+          new="""              $ids = get_posts( array(\n                  'post_type'        => $post_type,\n                  'post_status'      => 'publish',\n                  'posts_per_page'   => 2,\n                  'fields'           => 'ids',\n                  'no_found_rows'    => true,\n                  'suppress_filters' => true,\n                  'meta_query'       => array(\n                      'relation' => 'AND',\n                      array( 'key' => '_en_US_post_name', 'value' => $slug, 'compare' => '=' ),\n                      array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),\n                  ),\n              ) );\n              return count( $ids ) === 1 ? (int) $ids[0] : 0;"""
+          if old not in s:
+              raise SystemExit('Expected router lookup block not found; refusing blind patch')
+          p.write_text(s.replace(old,new,1))
+          PY
+
+          "$php_bin" -l "$TARGET"
+          grep -n "_en_US_published.*value.*1" "$TARGET" | head -n 2
+          REMOTE
+
+      - name: Verify English island end to end
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+
+          for path in /tienda/ /en/shop/ /en/cart/ /en/my-account/; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/page.html -w '%{http_code}' "https://www.elmercadodeorigen.com${path}?mdo_final=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/page.html | head -n1 || true)
+            products=$( (grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' /tmp/page.html || true) | wc -l | tr -d ' ' )
+            echo "$path code=$code products=$products"
+            echo "$body"
+            [ "$code" = 200 ] || failed=1
+            if [ "$path" = "/tienda/" ]; then echo "$body" | grep -q 'woocommerce-shop' || failed=1; fi
+            if [ "$path" = "/en/shop/" ]; then
+              echo "$body" | grep -q 'woocommerce-shop' || failed=1
+              echo "$body" | grep -q 'translatepress-en_US' || failed=1
+              [ "$products" -gt 0 ] || failed=1
+              cp /tmp/page.html /tmp/en-shop.html
+            fi
+          done
+
+          mapfile -t urls < <(grep -oE 'href="(https://www\.elmercadodeorigen\.com)?/en/product/[^"]+/"' /tmp/en-shop.html | sed -E 's/^href="|"$//g' | sed 's#^/#https://www.elmercadodeorigen.com/#' | sort -u | head -n 5)
+          echo "english_product_links=${#urls[@]}"
+          printf '%s\n' "${urls[@]}"
+          [ "${#urls[@]}" -gt 0 ] || failed=1
+          if grep -qE 'href="(https://www\.elmercadodeorigen\.com)?/(en/)?producto/' /tmp/en-shop.html; then echo 'ERROR spanish product URL leak'; failed=1; fi
+
+          for url in "${urls[@]}"; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/product.html -w '%{http_code}' "${url}?mdo_product=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/product.html | head -n1 || true)
+            echo "product=$url code=$code"
+            echo "$body"
+            [ "$code" = 200 ] || failed=1
+            echo "$body" | grep -q 'single-product' || failed=1
+            echo "$body" | grep -q 'translatepress-en_US' || failed=1
+          done
+
+          echo '--- navigation URLs ---'
+          grep -oE '<nav[^>]*>.*</nav>' /tmp/en-shop.html | head -c 60000 > /tmp/nav.html || true
+          grep -oE 'href="[^"]+"' /tmp/nav.html | head -n 40 || true
+          if grep -qE 'href="(https://www\.elmercadodeorigen\.com)?/(tienda|carrito|finalizar-compra|mi-cuenta)/' /tmp/nav.html; then echo 'ERROR Spanish core URL in English nav'; failed=1; fi
+
+          headers=$(mktemp)
+          curl -ksS --max-time 20 -D "$headers" -o /dev/null "https://www.elmercadodeorigen.com/en/tienda/?mdo_legacy=$stamp" || true
+          legacy_code=$(awk 'toupper($1) ~ /^HTTP\// {code=$2} END{print code}' "$headers")
+          legacy_location=$(awk 'tolower($1)=="location:"{print $2; exit}' "$headers" | tr -d '\r')
+          echo "legacy_en_tienda code=$legacy_code location=$legacy_location"
+          [ "$legacy_code" = 301 ] || [ "$legacy_code" = 302 ] || failed=1
+          echo "$legacy_location" | grep -q '/en/shop/' || failed=1
+
+          exit "$failed"
