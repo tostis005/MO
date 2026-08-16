@@ -15,17 +15,26 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Inspect production response headers
+      - name: Verify production flag controls are absent or hidden
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== NORMAL HEADERS ==='
-          curl -sSIL --max-time 30 https://www.elmercadodeorigen.com/ | sed -n '1,120p'
-          echo '=== CACHE-BUSTER HEADERS ==='
-          curl -sSIL --max-time 30 'https://www.elmercadodeorigen.com/?mdo_cache_diag=2026081601' | sed -n '1,120p'
-          echo '=== NORMAL BODY MARKERS ==='
-          curl -sSL --max-time 30 https://www.elmercadodeorigen.com/ -o /tmp/normal.html
-          grep -oiE 'mdo-hide-language-flags-20260816|trp-floater-ls|cache[^< ]*|cloudflare|nginx|varnish|litespeed' /tmp/normal.html | sort -u | head -n 80 || true
-          echo '=== FRESH BODY MARKERS ==='
-          curl -sSL --max-time 30 'https://www.elmercadodeorigen.com/?mdo_cache_diag=2026081601' -o /tmp/fresh.html
-          grep -oiE 'mdo-hide-language-flags-20260816|trp-floater-ls|cache[^< ]*|cloudflare|nginx|varnish|litespeed' /tmp/fresh.html | sort -u | head -n 80 || true
+          base='https://www.elmercadodeorigen.com'
+          for path in / /tienda/ /en/; do
+            echo "=== $path HEADERS ==="
+            curl -sSIL --max-time 30 "$base$path" | sed -n '1,40p'
+            curl -sSL --max-time 30 "$base$path" -o /tmp/page.html
+
+            style=0
+            flag_signal=0
+            grep -q 'mdo-hide-language-flags-20260816' /tmp/page.html && style=1 || true
+            grep -qiE 'trp-floater-ls|trp-flag-image|trp-language-switcher[^<]*|/flags/[A-Za-z0-9_-]+\.(png|svg|webp)' /tmp/page.html && flag_signal=1 || true
+
+            echo "PATH=$path HIDE_STYLE=$style FLAG_SIGNAL=$flag_signal"
+            if [ "$flag_signal" -eq 1 ] && [ "$style" -ne 1 ]; then
+              echo "Visible/unprotected language flag markup remains on $path" >&2
+              grep -oiE 'trp-floater-ls|trp-flag-image|trp-language-switcher|/flags/[A-Za-z0-9_-]+\.(png|svg|webp)' /tmp/page.html | sort -u | head -n 30 || true
+              exit 1
+            fi
+          done
+          echo 'PRODUCTION_LANGUAGE_FLAGS=absent_or_hidden'
