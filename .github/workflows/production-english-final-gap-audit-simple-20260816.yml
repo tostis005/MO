@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/production-english-final-gap-audit-simple-20260816.yml'
+  workflow_dispatch:
 jobs:
   audit:
     runs-on: ubuntu-latest
