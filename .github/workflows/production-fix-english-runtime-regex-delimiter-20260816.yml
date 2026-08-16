@@ -1,0 +1,106 @@
+name: Production fix English runtime regex delimiter 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-english-runtime-regex-delimiter-20260816.yml'
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Fix invalid preg delimiter
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          F="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          TS=$(date +%Y%m%d%H%M%S)
+          cp -a "$F" "$F.bak-regex-$TS"
+          cat > /tmp/fix-mdo-regex.php <<'PHP'
+          <?php
+          $f=$argv[1]; $s=file_get_contents($f);
+          $a="            '#Noviembre\\s+es\\s+el\\s+primer\\s+mes\\s+de\\s+recolecci";
+          $b="            '~Noviembre\\s+es\\s+el\\s+primer\\s+mes\\s+de\\s+recolecci";
+          if (strpos($s,$a)!==false) { $s=str_replace($a,$b,$s,$c1); } else { $c1=0; }
+          $a2="(?:…|&hellip;|&#8230;|\\.\\.\\.)?#iu',";
+          $b2="(?:…|&hellip;|&#8230;|\\.\\.\\.)?~iu',";
+          if (strpos($s,$a2)!==false) { $s=str_replace($a2,$b2,$s,$c2); } else { $c2=0; }
+          if ($c1!==1 || $c2!==1) { fwrite(STDERR,"replace counts $c1/$c2\n"); exit(2); }
+          file_put_contents($f,$s);
+          PHP
+          "$PHP" /tmp/fix-mdo-regex.php "$F"
+          "$PHP" -l "$F"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+      - name: Verify restored English pages SEO and real cart
+        run: |
+          python3 - <<'PY'
+          import re,time,urllib.request,http.cookiejar
+          from html import unescape
+          base='https://www.elmercadodeorigen.com'; stamp=str(time.time_ns())
+          def fetch(path, opener=None):
+            op=opener or urllib.request.build_opener()
+            req=urllib.request.Request(base+path+('?' if '?' not in path else '&')+'mdo_regex='+stamp,headers={'User-Agent':'Mozilla/5.0 MDO-Final-QA'})
+            with op.open(req,timeout=60) as r: return r.status,r.geturl(),r.read().decode('utf-8','replace')
+          fails=[]
+          for path in ['/en/','/en/shop/','/en/privacy-policy/','/en/cookie-policy/','/en/extra-virgin-olive-oil/','/en/iberian-ham/','/en/oranges/','/en/product-category/oils/','/en/product/extra-virgin-olive-oil-5l/','/en/product/100-iberian-acorn-fed-ham-black-tag/','/en/product/100-iberian-acorn-fed-sobrasada/','/en/store/hidalgo-de-la-jara/']:
+            s,u,h=fetch(path); print('PAGE',path,'HTTP',s,'LEN',len(h))
+            if s!=200 or len(h)<10000 or '<body' not in h.lower(): fails.append('BODY '+path)
+            # visible text without scripts/styles
+            clean=re.sub(r'<(?:script|style|noscript|template)\b[^>]*>.*?</(?:script|style|noscript|template)>',' ',h,flags=re.I|re.S)
+            clean=re.sub(r'<svg\b[^>]*>.*?</svg>',' ',clean,flags=re.I|re.S)
+            txt=unescape(re.sub(r'<[^>]+>',' ',clean)); txt=re.sub(r'\s+',' ',txt)
+            bad=[x for x in ['INTRODUCCIÓN','Noviembre es el primer mes de recolección','DEVOLUCIÓN FÁCIL','Política de cookies','Gastos de envío','Jamón procedente','Elaborado a partir','Información nutricional media'] if re.search(re.escape(x),txt,re.I)]
+            print('VISIBLE_BAD',path,bad)
+            if bad: fails.append('TEXT '+path+' '+','.join(bad))
+            # flexible body class and hreflang checks
+            body=re.search(r'<body\b[^>]*>',h,re.I)
+            if body and 'translatepress-en_US' not in body.group(0): fails.append('LANG '+path)
+            amap={}
+            for tag in re.findall(r'<link\b[^>]*>',h,re.I):
+              if not re.search(r'\brel\s*=\s*["\']alternate["\']',tag,re.I): continue
+              hm=re.search(r'\bhreflang\s*=\s*["\']([^"\']+)',tag,re.I); hr=re.search(r'\bhref\s*=\s*["\']([^"\']+)',tag,re.I)
+              if hm and hr: amap[hm.group(1)]=unescape(hr.group(1))
+            print('HREF',path,amap)
+            if not all(k in amap for k in ('es','en','x-default')): fails.append('HREF '+path)
+          # Spanish native shop intact.
+          s,u,es=fetch('/tienda/'); print('SPANISH',s,len(es));
+          if s!=200 or len(es)<10000 or 'woocommerce-shop' not in es or 'translatepress-es_ES' not in es: fails.append('SPANISH')
+          # Live English cart with Hidalgo product.
+          cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+          s,u,_=fetch('/en/?add-to-cart=5348',op); print('ADD',s,[c.name for c in cj])
+          s,u,cart=fetch('/en/cart/',op); print('CART',s,'LEN',len(cart))
+          clean=re.sub(r'<(?:script|style|noscript|template)\b[^>]*>.*?</(?:script|style|noscript|template)>',' ',cart,flags=re.I|re.S)
+          clean=re.sub(r'<svg\b[^>]*>.*?</svg>',' ',clean,flags=re.I|re.S)
+          txt=unescape(re.sub(r'<[^>]+>',' ',clean)); txt=re.sub(r'\s+',' ',txt).strip()
+          has_product=bool(re.search(r'Lomito|caña de presa|presa',txt,re.I))
+          es_min=[m.group(0) for m in re.finditer(r'(?:pedido mínimo|importe mínimo|mínimo de compra|no alcanzas)[^.]{0,220}',txt,re.I)]
+          en_min=[m.group(0) for m in re.finditer(r'minimum[^.]{0,220}',txt,re.I)]
+          print('CART_HAS_PRODUCT',has_product); print('CART_MIN_ES',es_min[:5]); print('CART_MIN_EN',en_min[:5])
+          if s!=200 or len(cart)<10000 or not has_product or es_min: fails.append('CART')
+          if fails:
+            print('FAILURES'); [print(x) for x in fails]; raise SystemExit(1)
+          print('FINAL_ENGLISH_PRODUCTION_AUDIT=PASS')
+          PY
