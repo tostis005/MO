@@ -1,0 +1,27 @@
+name: Diagnose Home ES EN categories 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-home-es-en-categories-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect exact public ES EN
+        run: |
+          python3 - <<'PY'
+          import urllib.request,re
+          for path in ['/','/en/']:
+            req=urllib.request.Request('https://www.elmercadodeorigen.com'+path,headers={'User-Agent':'Mozilla/5.0 Chrome/140 Safari/537.36'})
+            with urllib.request.urlopen(req,timeout=60) as r: h=r.read().decode('utf-8','replace')
+            cards=[]
+            for m in re.finditer(r'<a class="emo-category-card"([^>]*)>(.*?)</a>',h,re.S|re.I):
+              attrs,body=m.groups()
+              strong=re.search(r'<strong[^>]*>(.*?)</strong>',body,re.S|re.I)
+              small=re.search(r'<small[^>]*>(.*?)</small>',body,re.S|re.I)
+              text=lambda x: re.sub(r'<[^>]+>','',x).strip() if x else ''
+              cards.append((text(strong.group(1) if strong else ''),text(small.group(1) if small else ''),attrs[:300]))
+            print(path,'HTTP',r.status,'CARDS',cards)
+          PY
