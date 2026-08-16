@@ -30,7 +30,7 @@ jobs:
       - name: Install SSH tool
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
 
-      - name: Leave Falang as the only multilingual runtime
+      - name: Diagnose Falang-only runtime
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -47,73 +47,55 @@ jobs:
           PHP_BIN="$(command -v php || true)"
           [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           WP_BIN="$(command -v wp || true)"
-          : "${PHP_BIN:?PHP not found}"
-          : "${WP_BIN:?WP-CLI not found}"
           wpcli_safe() { "$PHP_BIN" -d memory_limit=512M "$WP_BIN" --path="$WP_PATH" --allow-root --skip-plugins --skip-themes "$@"; }
 
-          if ! wpcli_safe plugin is-installed falang >/dev/null 2>&1; then
-            echo 'ERROR: Falang is not installed.' >&2
-            exit 20
-          fi
-          if ! wpcli_safe plugin is-active falang >/dev/null 2>&1; then
-            wpcli_safe plugin activate falang
-          fi
-
-          competing_plugins=(
-            sitepress-multilingual-cms wpml-string-translation wpml-translation-management
-            wpml-media-translation wpml-sticky-links wpml-cms-nav woocommerce-multilingual
-            polylang polylang-pro polylang-for-woocommerce
-            translatepress-multilingual translatepress-business
-            weglot gtranslate multilingualpress bogo qtranslate-x qtranslate-xt
-          )
-          for plugin in "${competing_plugins[@]}"; do
-            if wpcli_safe plugin is-active "$plugin" >/dev/null 2>&1; then
-              echo "Deactivating competing plugin: $plugin"
-              wpcli_safe plugin deactivate "$plugin"
-            fi
-          done
-
-          MU_DIR="$WP_PATH/wp-content/mu-plugins"
-          echo '=== MU DIRECTORY BEFORE ==='
-          find "$MU_DIR" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort || true
-
-          for stem in \
-            mdo-staging-language-dropdown \
-            mdo-staging-bilingual \
-            mdo-staging-native-render-bridge \
-            mdo-staging-translatepress-shop-guard; do
-            candidate="$MU_DIR/$stem.php"
-            if [ -f "$candidate" ]; then
-              echo "Disabling custom multilingual MU plugin: $stem"
-              mv "$candidate" "$candidate.disabled-falang-20260816"
-            fi
-          done
-
-          echo '=== MULTILINGUAL PLUGINS AFTER ==='
+          echo '=== ACTIVE MULTILINGUAL STATE ==='
           wpcli_safe plugin list --fields=name,status,version --format=csv | grep -Ei 'falang|wpml|sitepress|polylang|translatepress|weglot|gtranslate|multilingual|qtranslate|bogo|staging-bilingual|native-render|language-dropdown|shop-guard' || true
-          echo '=== MUST-USE PLUGINS AFTER ==='
+          echo '=== MU ACTIVE ==='
           wpcli_safe plugin list --status=must-use --fields=name,status,version --format=table || true
+          echo '=== DISABLED CUSTOM MU FILES ==='
+          find "$WP_PATH/wp-content/mu-plugins" -maxdepth 1 -type f -name '*.disabled-falang-20260816' -printf '%f\n' 2>/dev/null | sort || true
 
+          echo '=== FALANG PREFIX CODE ==='
+          sed -n '170,200p' "$WP_PATH/wp-content/plugins/falang/src/Falang/Core/Falang_Core.php" 2>/dev/null || true
+
+          echo '=== FALANG OPTIONS / LANGUAGE OPTIONS ==='
+          wpcli_safe option list --fields=option_name,option_value --format=csv | grep -Ei 'falang|language' | head -n 100 || true
+
+          DB_PREFIX="$(wpcli_safe db prefix)"
+          echo "db_prefix=$DB_PREFIX"
+          echo '=== EXISTING TRANSLATED POST FIELD META KEYS ==='
+          wpcli_safe db query "SELECT meta_key, COUNT(*) AS rows_count FROM ${DB_PREFIX}postmeta WHERE meta_key LIKE '%post_name%' OR meta_key LIKE '%published%' GROUP BY meta_key ORDER BY rows_count DESC LIMIT 100;" --skip-column-names || true
+
+          echo '=== SHOP META ==='
           SHOP_ID="$(wpcli_safe option get woocommerce_shop_page_id 2>/dev/null || true)"
-          HOME_URL="$(wpcli_safe option get home)"
           echo "shop_page_id=$SHOP_ID"
           if [[ "$SHOP_ID" =~ ^[0-9]+$ ]] && [ "$SHOP_ID" -gt 0 ]; then
-            wpcli_safe post get "$SHOP_ID" --fields=ID,post_title,post_name,post_status --format=json
-            echo '=== ALL SHOP META ==='
             wpcli_safe post meta list "$SHOP_ID" --format=table || true
           fi
 
-          echo '=== FALANG PREFIX IMPLEMENTATION ==='
-          grep -RIn -A8 -B3 'function get_prefix' "$WP_PATH/wp-content/plugins/falang" 2>/dev/null | head -n 80 || true
-          echo '=== FALANG POST SAVE IMPLEMENTATION ==='
-          sed -n '720,795p' "$WP_PATH/wp-content/plugins/falang/admin/class-falang-admin.php" 2>/dev/null || true
-          echo '=== FALANG LANGUAGE STORAGE HINTS ==='
-          grep -RInE 'class Language|language.*locale|locale.*language|get_languages|language_list' "$WP_PATH/wp-content/plugins/falang/src/Falang" 2>/dev/null | head -n 100 || true
+          echo '=== OLD MU LOGIC HINTS ==='
+          for f in "$WP_PATH"/wp-content/mu-plugins/*.disabled-falang-20260816; do
+            [ -f "$f" ] || continue
+            echo "--- $(basename "$f") ---"
+            grep -nEi -C2 'falang|translatepress|shop|tienda|request|template_redirect|post_name|rewrite|language|locale|timeout' "$f" | head -n 140 || true
+          done
 
-          echo '=== ROUTES ==='
-          base="${HOME_URL%/}"
-          for path in / /tienda/ /shop/ /en/ /en/tienda/ /en/shop/; do
-            out="$(curl -k -sS -o /dev/null -w '%{http_code} %{redirect_url}' --connect-timeout 5 --max-time 20 --max-redirs 0 "$base$path" || true)"
-            printf '%-14s %s\n' "$path" "$out"
+          echo '=== RECENT PHP / WEB ERRORS ==='
+          for log in \
+            "/var/www/vhosts/system/dev.elmercadodeorigen.com/logs/error_log" \
+            "/var/www/vhosts/system/dev.elmercadodeorigen.com/logs/proxy_error_log" \
+            "$WP_PATH/error_log" \
+            "$WP_PATH/wp-content/debug.log"; do
+            if [ -f "$log" ]; then
+              echo "--- $log ---"
+              tail -n 120 "$log" || true
+            fi
+          done
+
+          echo '=== WEB SERVER VS PHP CHECK ==='
+          for path in /wp-includes/css/dashicons.min.css /robots.txt /; do
+            printf '%-40s ' "$path"
+            curl -k -sS -o /dev/null -w '%{http_code} %{time_total}\n' --connect-timeout 3 --max-time 8 --resolve dev.elmercadodeorigen.com:443:127.0.0.1 "https://dev.elmercadodeorigen.com$path" || true
           done
           REMOTE
