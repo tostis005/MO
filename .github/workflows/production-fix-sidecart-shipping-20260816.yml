@@ -1,0 +1,173 @@
+name: Production fix side cart and English shipping 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-sidecart-shipping-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source
+        run: php -l .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy isolated MU fix with backup
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SRC=.github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no "$SRC" "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-layout-shipping-fix-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          TARGET="$ROOT/wp-content/mu-plugins/mdo-sidecart-layout-shipping-fix.php"
+          TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$TARGET" ]; then BAK="$TARGET.bak-$TS"; cp -a "$TARGET" "$BAK"; else BAK="NEW"; fi
+          cp /tmp/mdo-sidecart-layout-shipping-fix-20260816.php "$TARGET"
+          "$PHP" -l "$TARGET"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "ROOT=$ROOT"
+          echo "TARGET=$TARGET"
+          echo "BAK=$BAK"
+          REMOTE
+          )
+          echo "$OUT"
+          for k in ROOT TARGET BAK; do
+            v=$(printf '%s\n' "$OUT" | sed -n "s/^$k=//p" | tail -n1)
+            test -n "$v"
+            echo "LIVE_$k=$v" >> "$GITHUB_ENV"
+          done
+
+      - name: Real cart copy and markup QA
+        run: |
+          python3 - <<'PY'
+          import html,json,re,urllib.parse,urllib.request,http.cookiejar,time
+          base='https://www.elmercadodeorigen.com'
+          cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj)); op.addheaders=[('User-Agent','MDO-Sidecart-Fix-QA/1.0')]
+          def get(p):
+              sep='&' if '?' in p else '?'; u=base+p+sep+'mdoqa='+str(time.time_ns())
+              r=op.open(u,timeout=45); b=r.read().decode('utf-8','replace'); print('GET',p,r.status,len(b),r.geturl()); return b
+          def post(p,d):
+              req=urllib.request.Request(base+p,data=urllib.parse.urlencode(d).encode()); r=op.open(req,timeout=45); b=r.read().decode('utf-8','replace'); print('POST',p,r.status,len(b)); return b
+          p='/producto/aceite-de-oliva-virgen-extra-5l/'
+          b=get(p); m=re.search(r'data-product_variations="([^"]+)"',b)
+          if not m: raise SystemExit('variation data missing')
+          vs=json.loads(html.unescape(m.group(1))); v=next(x for x in vs if x.get('is_in_stock') and x.get('is_purchasable'))
+          d={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'}; d.update(v.get('attributes') or {})
+          post(p,d)
+
+          es_contact=get('/contacto/')
+          en_contact=get('/en/contact/')
+          for name,b in [('ES_CONTACT',es_contact),('EN_CONTACT',en_contact)]:
+              assert 'mdo-sidecart-layout-fix-20260816' in b, name+' missing layout fix'
+              assert 'woocommerce-mini-cart-item__thumb' in b and 'woocommerce-mini-cart-item__info' in b, name+' missing cart item'
+              print(name+'_SIDECART_MARKUP=PASS')
+
+          es_cart=get('/carrito/')
+          en_cart=get('/en/cart/')
+          if 'Ahorro gastos de envío' not in es_cart: raise SystemExit('Spanish cart lost original shipping savings label')
+          if 'Ahorro gastos de envío' in en_cart: raise SystemExit('Spanish shipping savings label still present in English cart')
+          if 'Shipping savings' not in en_cart: raise SystemExit('English shipping savings label missing')
+          if 'translatepress-es_ES' not in es_cart or 'translatepress-en_US' not in en_cart: raise SystemExit('language marker mismatch')
+          print('SPANISH_CART_COPY=PASS')
+          print('ENGLISH_CART_COPY=PASS')
+          print('ORDER_CREATED=NO')
+          PY
+
+      - name: Browser geometry QA desktop and mobile
+        run: |
+          python3 -m pip install -q selenium
+          python3 - <<'PY'
+          import shutil, time
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import Select
+          from selenium.webdriver.support.wait import WebDriverWait
+          from selenium.webdriver.chrome.options import Options
+
+          chrome=shutil.which('google-chrome') or shutil.which('chromium') or shutil.which('chromium-browser')
+          print('CHROME=',chrome)
+          if not chrome: raise SystemExit('Chrome/Chromium not available')
+          opt=Options(); opt.binary_location=chrome; opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage'); opt.add_argument('--window-size=1440,1000')
+          driver=webdriver.Chrome(options=opt)
+          wait=WebDriverWait(driver,30)
+          base='https://www.elmercadodeorigen.com'
+          try:
+              driver.get(base+'/producto/aceite-de-oliva-virgen-extra-5l/?browserqa=1')
+              wait.until(lambda d: d.find_elements(By.CSS_SELECTOR,'form.variations_form'))
+              for el in driver.find_elements(By.CSS_SELECTOR,'form.variations_form select'):
+                  sel=Select(el)
+                  vals=[o.get_attribute('value') for o in sel.options if o.get_attribute('value')]
+                  if vals: sel.select_by_value(vals[0])
+              wait.until(lambda d: (d.find_element(By.CSS_SELECTOR,'input.variation_id').get_attribute('value') or '') not in ('','0'))
+              btn=driver.find_element(By.CSS_SELECTOR,'.single_add_to_cart_button')
+              driver.execute_script('arguments[0].click()',btn)
+              wait.until(lambda d: any(c['name']=='woocommerce_items_in_cart' for c in d.get_cookies()))
+
+              def geometry(path,w,h,label):
+                  driver.set_window_size(w,h); driver.get(base+path+'?browserqa='+str(time.time_ns()))
+                  wait.until(lambda d: d.find_elements(By.CSS_SELECTOR,'.shop-cart-sidebar .woocommerce-mini-cart-item'))
+                  data=driver.execute_script('''
+                    const item=document.querySelector('.shop-cart-sidebar .woocommerce-mini-cart-item');
+                    const th=item.querySelector('.woocommerce-mini-cart-item__thumb');
+                    const info=item.querySelector('.woocommerce-mini-cart-item__info');
+                    const img=th.querySelector('img');
+                    const a=info.querySelector('.woocommerce-mini-cart-item__data > a');
+                    const r=e=>{const x=e.getBoundingClientRect();return {l:x.left,r:x.right,t:x.top,b:x.bottom,w:x.width,h:x.height}};
+                    return {item:r(item),thumb:r(th),info:r(info),img:r(img),title:r(a),display:getComputedStyle(item).display,cols:getComputedStyle(item).gridTemplateColumns,gap:getComputedStyle(item).columnGap};
+                  ''')
+                  print(label,data)
+                  th,inf,img,title=data['thumb'],data['info'],data['img'],data['title']
+                  overlap_x=max(0,min(th['r'],inf['r'])-max(th['l'],inf['l']))
+                  overlap_y=max(0,min(th['b'],inf['b'])-max(th['t'],inf['t']))
+                  if overlap_x*overlap_y > 0.5: raise SystemExit(label+' thumbnail/info overlap')
+                  if inf['l'] < th['r'] + 7: raise SystemExit(label+' insufficient image/text gap')
+                  if title['l'] < inf['l']-1 or title['r'] > inf['r']+1: raise SystemExit(label+' title escapes info column')
+                  if img['w'] > th['w']+1: raise SystemExit(label+' image escapes thumbnail column')
+                  if data['display'] != 'grid': raise SystemExit(label+' item is not grid')
+                  print(label+'_GEOMETRY=PASS')
+
+              for path,lang in [('/contacto/','ES'),('/en/contact/','EN')]:
+                  geometry(path,1440,1000,lang+'_DESKTOP')
+                  geometry(path,390,844,lang+'_MOBILE')
+              print('SIDECART_BROWSER_QA=PASS')
+              print('ORDER_CREATED=NO')
+          finally:
+              driver.quit()
+          PY
+
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${LIVE_TARGET:-}" ] || exit 0
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TARGET='$LIVE_TARGET' BAK='$LIVE_BAK' ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$BAK" = "NEW" ]; then rm -f "$TARGET"; else cp -a "$BAK" "$TARGET"; fi
+          PHP=$(command -v php || true); WP=$(command -v wp || true)
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo ROLLBACK=PASS
+          REMOTE
