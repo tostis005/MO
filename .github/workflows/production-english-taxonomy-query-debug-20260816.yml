@@ -1,0 +1,99 @@
+name: Production English taxonomy query debug 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-taxonomy-query-debug-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect native and English taxonomy query state
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path missing}"
+          DEBUG="$PROD_PATH/wp-content/mu-plugins/mdo-tax-query-debug-temp.php"
+          trap 'rm -f "$DEBUG"' EXIT
+          cat > "$DEBUG" <<'PHP'
+          <?php
+          if (!defined('ABSPATH')) exit;
+          add_action('template_redirect', static function(){
+              if (empty($_GET['mdo_tax_debug'])) return;
+              global $wp, $wp_query;
+              nocache_headers(); header('Content-Type: application/json; charset=utf-8');
+              $qo=get_queried_object();
+              echo wp_json_encode([
+                  'request_uri'=>$_SERVER['REQUEST_URI'] ?? '',
+                  'wp_request'=>$wp->request ?? '',
+                  'wp_query_vars'=>$wp->query_vars ?? [],
+                  'query_query_vars'=>$wp_query->query_vars ?? [],
+                  'is_404'=>is_404(),
+                  'is_shop'=>function_exists('is_shop')?is_shop():null,
+                  'is_archive'=>is_archive(),
+                  'is_tax'=>is_tax(),
+                  'is_product_category'=>function_exists('is_product_category')?is_product_category():null,
+                  'is_product_tag'=>function_exists('is_product_tag')?is_product_tag():null,
+                  'is_category'=>is_category(),
+                  'queried_object'=>is_object($qo)?get_object_vars($qo):$qo,
+                  'posts'=>array_map(static fn($p)=>[$p->ID,$p->post_name],array_slice($wp_query->posts ?? [],0,10)),
+              ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT);
+              exit;
+          }, -999999);
+          PHP
+          "$php_bin" -l "$DEBUG"
+          for u in \
+            'https://www.elmercadodeorigen.com/categoria-producto/aceites/?mdo_tax_debug=1' \
+            'https://www.elmercadodeorigen.com/en/product-category/aceites/?mdo_tax_debug=1' \
+            'https://www.elmercadodeorigen.com/en/product-category/oils/?mdo_tax_debug=1' \
+            'https://www.elmercadodeorigen.com/etiqueta-producto/bellota/?mdo_tax_debug=1' \
+            'https://www.elmercadodeorigen.com/en/product-tag/acorn-fed/?mdo_tax_debug=1'; do
+              echo "--- $u ---"
+              curl -ksSL --max-time 30 "$u" | head -c 30000
+              echo
+          done
+          rm -f "$DEBUG"; trap - EXIT
+          REMOTE
+
+      - name: Locate residual Spanish cookie-policy anchor
+        shell: bash
+        run: |
+          set -u
+          for p in /en/ /en/shop/ /en/producers/ /en/product/100-iberian-acorn-fed-ham-black-tag/; do
+            echo "--- $p ---"
+            curl -ksSL --max-time 30 "https://www.elmercadodeorigen.com${p}?mdo_cookie_anchor=1" | tr '\n' ' ' | grep -oE '.{0,350}href=["'"']/en/politica-de-cookies/["'"'].{0,350}' | head -n 4 || true
+          done
