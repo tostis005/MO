@@ -1,0 +1,125 @@
+name: Production Falang shop and SEO audit 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-falang-shop-seo-audit-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install helpers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Inspect production WordPress state read-only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          wplite(){ "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root --skip-plugins --skip-themes "$@"; }
+          echo "PROD_PATH=$PROD_PATH"
+          echo '=== ACTIVE MULTILINGUAL PLUGINS ==='
+          wplite option get active_plugins --format=json | grep -oE 'translatepress[^" ]*|falang[^" ]*|polylang[^" ]*|sitepress[^" ]*' || true
+          echo '=== SHOP ==='
+          shop_id=$(wplite option get woocommerce_shop_page_id 2>/dev/null || true)
+          echo "SHOP_ID=$shop_id"
+          if [[ "$shop_id" =~ ^[0-9]+$ ]]; then
+            wplite post get "$shop_id" --fields=ID,post_title,post_name,post_status --format=json || true
+            echo '--- SHOP EN META ---'
+            wplite post meta list "$shop_id" --format=csv | grep -Ei 'en_US|post_name|published|slug' || true
+          fi
+          echo '=== PERMALINKS ==='
+          printf 'PERMALINK_STRUCTURE='; wplite option get permalink_structure || true
+          printf 'WC_PERMALINKS='; wplite option get woocommerce_permalinks --format=json || true
+          echo '=== FALANG ==='
+          if [ -d "$PROD_PATH/wp-content/plugins/falang" ]; then
+            grep -RIn -m 12 -E 'post_name|translate.*slug|get_prefix|rewrite' "$PROD_PATH/wp-content/plugins/falang"/src "$PROD_PATH/wp-content/plugins/falang"/includes 2>/dev/null || true
+          fi
+          echo '=== REPRESENTATIVE EN META ==='
+          wplite db query "SELECT p.ID,p.post_type,p.post_name,pm.meta_key,LEFT(pm.meta_value,180) FROM $(wplite db prefix)posts p JOIN $(wplite db prefix)postmeta pm ON pm.post_id=p.ID WHERE pm.meta_key LIKE '_en_US_%' AND p.post_type IN ('page','product') ORDER BY p.post_type,p.ID,pm.meta_key LIMIT 80" --skip-column-names || true
+          echo '=== SERVER ROUTES ==='
+          base='https://www.elmercadodeorigen.com'
+          for path in / /tienda/ /en/ /en/tienda/ /en/shop/; do
+            printf '%-16s ' "$path"
+            curl -ksSL --max-time 35 -o /tmp/mdo-route.html -w 'http=%{http_code} final=%{url_effective} time=%{time_total}\n' "$base$path?mdo_route_audit=20260816" || true
+            printf '  body='; grep -oE '<body[^>]*class="[^"]*"' /tmp/mdo-route.html | head -n1 | sed 's/[[:space:]]\+/ /g' || true
+            printf '  products='; grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' /tmp/mdo-route.html | wc -l | tr -d ' '
+            printf ' h1='; grep -oE '<h1[^>]*>[^<]{0,140}</h1>' /tmp/mdo-route.html | head -n1 | sed -E 's/<[^>]+>//g' || true
+          done
+          REMOTE
+      - name: Browser-check Spanish and English shop contexts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > audit.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const chrome=process.env.CHROME;
+          const browser=await puppeteer.launch({headless:true,executablePath:chrome,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          const paths=['/tienda/','/en/tienda/','/en/shop/'];
+          for(const path of paths){
+            const p=await browser.newPage();
+            p.setViewport({width:1440,height:900});
+            p.setDefaultTimeout(15000);
+            const errors=[];p.on('pageerror',e=>errors.push(e.message));
+            let resp=null,navError='';
+            try{resp=await p.goto('https://www.elmercadodeorigen.com'+path+'?mdo_browser_audit='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});}catch(e){navError=e.message;}
+            let d=await p.evaluate(()=>({
+              href:location.href,
+              lang:document.documentElement.lang,
+              body:document.body?.className||'',
+              products:document.querySelectorAll('ul.products > li.product').length,
+              state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,
+              h1:[...document.querySelectorAll('h1')].map(x=>x.textContent.trim()).filter(Boolean).slice(0,3),
+              canonical:document.querySelector('link[rel="canonical"]')?.href||'',
+              alternates:[...document.querySelectorAll('link[rel="alternate"][hreflang]')].map(x=>({lang:x.hreflang,href:x.href})),
+              selector:[...document.querySelectorAll('.falang-language-switcher,.elmercado-falang-switcher,.trp-language-switcher,.trp-floater-ls')].some(e=>{const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden';})
+            }));
+            const deadline=Date.now()+30000;
+            while(d.state&&d.state.remaining>0&&Date.now()<deadline){
+              await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
+              await new Promise(r=>setTimeout(r,1300));
+              d=await p.evaluate(()=>({
+                href:location.href,lang:document.documentElement.lang,body:document.body?.className||'',products:document.querySelectorAll('ul.products > li.product').length,
+                state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,
+                h1:[...document.querySelectorAll('h1')].map(x=>x.textContent.trim()).filter(Boolean).slice(0,3),canonical:document.querySelector('link[rel="canonical"]')?.href||'',
+                alternates:[...document.querySelectorAll('link[rel="alternate"][hreflang]')].map(x=>({lang:x.hreflang,href:x.href})),selector:[...document.querySelectorAll('.falang-language-switcher,.elmercado-falang-switcher,.trp-language-switcher,.trp-floater-ls')].some(e=>{const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden';})
+              }));
+            }
+            console.log('AUDIT',JSON.stringify({path,status:resp?.status()||0,navError,errors,...d}));
+            await p.close();
+          }
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node audit.mjs
