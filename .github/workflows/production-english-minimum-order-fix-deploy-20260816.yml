@@ -2,7 +2,9 @@ name: Deploy English minimum-order fixes 2026-08-16
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/production-english-minimum-order-fix-deploy-20260816.yml']
+    paths:
+      - '.github/workflows/production-english-minimum-order-fix-deploy-20260816.yml'
+      - 'mdo-supplier-sync/includes/class-mdo-minimum-order.php'
   workflow_dispatch:
 permissions:
   contents: read
