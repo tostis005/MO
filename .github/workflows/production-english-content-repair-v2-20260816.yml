@@ -1,0 +1,97 @@
+name: Production English content repair v2 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/scripts/mdo-english-content-repair-20260816.php'
+      - '.github/workflows/production-english-content-repair-v2-20260816.yml'
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Copy repair script
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-english-content-repair-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-english-content-repair-20260816.php"
+      - name: Backup English metadata and deploy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          TS=$(date +%Y%m%d%H%M%S)
+          mkdir -p "$ROOT/wp-content/mdo-backups"
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            $ids=[3,3699,1056,1180,1599,1350,1356,1363,3948,3979,4160,4199,5045,5336,5343,5348,8624,3025,3327,3794];
+            $out=["posts"=>[],"term16"=>[]];
+            foreach($ids as $id){if(!get_post($id))continue; $out["posts"][$id]=["title"=>get_post_meta($id,"_en_US_post_title",true),"slug"=>get_post_meta($id,"_en_US_post_name",true),"excerpt"=>get_post_meta($id,"_en_US_post_excerpt",true),"content"=>get_post_meta($id,"_en_US_post_content",true),"published"=>get_post_meta($id,"_en_US_published",true)];}
+            $out["term16"]=["name"=>get_term_meta(16,"_en_US_name",true),"slug"=>get_term_meta(16,"_en_US_slug",true),"description"=>get_term_meta(16,"_en_US_description",true),"published"=>get_term_meta(16,"_en_US_published",true)];
+            file_put_contents(ABSPATH."wp-content/mdo-backups/pre-english-meta-repair-".date("YmdHis").".json",wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+          ' --path="$ROOT" --allow-root
+          cp -a "$ROOT/wp-content/mu-plugins/mdo-english-slug-router.php" "$ROOT/wp-content/mu-plugins/mdo-english-slug-router.php.bak-content-$TS"
+          "$PHP" -l /tmp/mdo-english-content-repair-20260816.php
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/mdo-english-content-repair-20260816.php --path="$ROOT" --allow-root
+          ROUTER="$ROOT/wp-content/mu-plugins/mdo-english-slug-router.php"
+          if ! grep -q 'MDO_ENGLISH_ISLAND_OUTERMOST_LINK_BUFFER_V2' "$ROUTER"; then
+          cat >> "$ROUTER" <<'PHP'
+
+          /* MDO_ENGLISH_ISLAND_OUTERMOST_LINK_BUFFER_V2 */
+          add_action('plugins_loaded', static function (): void {
+              $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '';
+              if (!preg_match('#^/en(?:/|$)#i', (string) parse_url($uri, PHP_URL_PATH))) return;
+              ob_start(static function (string $html): string {
+                  $shop = home_url('/en/shop/');
+                  $html = preg_replace('#href=("|\')https?://(?:www\.)?elmercadodeorigen\.com/en/tienda/([^"\']*)\1#i', 'href="' . esc_url($shop) . '$2"', $html);
+                  $html = preg_replace('#href=("|\')/en/tienda/([^"\']*)\1#i', 'href="' . esc_url($shop) . '$2"', $html);
+                  return (string) $html;
+              });
+          }, -PHP_INT_MAX);
+          PHP
+          fi
+          "$PHP" -l "$ROUTER"
+          REMOTE
+      - name: Verify English content and Spanish isolation
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+          urls=(/en/ /en/shop/ /en/privacy-policy/ /en/extra-virgin-olive-oil/ /en/iberian-ham/ /en/oranges/ /en/product-category/oils/ /en/product/extra-virgin-olive-oil-5l/ /en/product/100-iberian-acorn-fed-ham-black-tag/ /en/product/100-iberian-acorn-fed-sobrasada/ /en/store/hidalgo-de-la-jara/ /en/store/1957/)
+          bad_rx='añadir al carrito|pedido mínimo|importe mínimo|gastos de envío|política de privacidad|política de cookies|envíos en|elaborado a partir|información nutricional media|introducción|para pedidos|aceite de oliva virgen extra es un zumo|jamón procedente|paleta procedente|recolección|nuestros jamones|nuestras variedades'
+          for p in "${urls[@]}"; do
+            code=$(curl -ksSL --max-time 40 -o /tmp/p.html -w '%{http_code}' "https://www.elmercadodeorigen.com${p}?mdo_repair_v2=$stamp" || true)
+            echo "PAGE $p code=$code"
+            [ "$code" = 200 ] || failed=1
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/p.html | head -n1 || true)
+            printf '%s' "$body" | grep -q 'translatepress-en_US' || failed=1
+            if grep -qiE ">[^<]*($bad_rx)" /tmp/p.html; then echo "SPANISH_RESIDUAL $p"; grep -oiE ">[^<]*($bad_rx)[^<]*<" /tmp/p.html | head -n 10; failed=1; fi
+            if grep -qE 'href="[^"]*/en/(tienda|producto|politica-de-cookies)/' /tmp/p.html; then echo "BAD_LINK $p"; grep -oE 'href="[^"]*/en/(tienda|producto|politica-de-cookies)/[^"]*"' /tmp/p.html | head; failed=1; fi
+          done
+          curl -ksSL --max-time 40 "https://www.elmercadodeorigen.com/tienda/?mdo_es_safe=$stamp" -o /tmp/es.html || failed=1
+          esbody=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/es.html | head -n1 || true)
+          printf '%s' "$esbody" | grep -q 'translatepress-es_ES' || failed=1
+          printf '%s' "$esbody" | grep -q 'woocommerce-shop' || failed=1
+          grep -q '/politica-de-cookies/' /tmp/es.html || failed=1
+          exit "$failed"
