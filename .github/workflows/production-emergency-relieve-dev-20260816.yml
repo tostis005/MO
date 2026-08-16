@@ -1,0 +1,134 @@
+name: Production emergency relieve dev 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-emergency-relieve-dev-20260816.yml'
+jobs:
+  relieve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Stop only runaway dev workers and restore neutral early cache
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          sshpass -e scp $SCP .github/scripts/advanced-cache-disabled-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-advanced-cache-disabled.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP82=/opt/plesk/php/8.2/bin/php
+          WP=$(command -v wp || true)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$PHP82" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?production root not found}"
+
+          echo '=== BEFORE LOAD ==='
+          uptime
+          echo '=== RUNAWAY DEV WORKERS BEFORE ==='
+          ps -eo pid=,ppid=,etimes=,pcpu=,pmem=,rss=,args= | awk '/php-fpm: pool dev\.elmercadodeorigen\.com/ {print}' || true
+
+          echo '=== RECENT DEV REQUEST SHAPES ==='
+          for log in /var/www/vhosts/system/dev.elmercadodeorigen.com/logs/proxy_access_log /var/www/vhosts/system/dev.elmercadodeorigen.com/logs/access_log; do
+            [ -f "$log" ] || continue
+            echo "--- $log"
+            tail -n 120 "$log" | sed -E 's/(\?.*) HTTP/ HTTP/' | awk '{print $6,$7,$9}' | sort | uniq -c | sort -nr | head -n 25 || true
+          done
+
+          # Kill only long-running, high-CPU child workers from the DEVELOPMENT pool.
+          PIDS=$(ps -eo pid=,etimes=,pcpu=,args= | awk '/php-fpm: pool dev\.elmercadodeorigen\.com/ && $2 > 300 && $3+0 >= 20 {print $1}')
+          if [ -n "$PIDS" ]; then
+            echo "TERM_DEV_PIDS=$PIDS"
+            kill -TERM $PIDS
+          else
+            echo 'TERM_DEV_PIDS=none'
+          fi
+          sleep 4
+
+          # Remove the experimental pre-bootstrap production cache layer. It was
+          # fail-open, but provides no benefit while the server is saturated.
+          ADV="$ROOT/wp-content/advanced-cache.php"
+          TS=$(date +%Y%m%d%H%M%S)
+          cp -a "$ADV" "$ADV.bak-emergency-$TS"
+          cp /tmp/mdo-advanced-cache-disabled.php "$ADV"
+          chown --reference="$ADV.bak-emergency-$TS" "$ADV"
+          chmod --reference="$ADV.bak-emergency-$TS" "$ADV"
+          "$PHP82" -l "$ADV"
+
+          echo '=== AFTER LOAD ==='
+          uptime
+          echo '=== DEV WORKERS AFTER ==='
+          ps -eo pid=,ppid=,etimes=,pcpu=,pmem=,rss=,args= | awk '/php-fpm: pool dev\.elmercadodeorigen\.com/ {print}' || true
+          REMOTE
+
+      - name: Verify public production and Spanish buying path
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import http.cookiejar, re, time, urllib.parse, urllib.request
+          base='https://www.elmercadodeorigen.com'
+          jar=http.cookiejar.CookieJar()
+          opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+          opener.addheaders=[('User-Agent','MDO-Emergency-QA/1.0')]
+          def fetch(path, timeout=35):
+              url=base+path
+              t=time.monotonic()
+              with opener.open(url,timeout=timeout) as r:
+                  body=r.read().decode('utf-8','replace')
+                  sec=time.monotonic()-t
+                  print(path,'HTTP',r.status,'SEC',round(sec,3),'LEN',len(body),'FINAL',r.geturl())
+                  return r.status,sec,body,r.geturl()
+          failures=[]
+          checks=[
+              ('/', 'translatepress-es_ES'),
+              ('/tienda/', 'woocommerce-shop'),
+              ('/carrito/', 'woocommerce-cart'),
+              ('/finalizar-compra/', 'woocommerce-checkout'),
+              ('/en/', 'translatepress-en_US'),
+          ]
+          pages={}
+          for path,marker in checks:
+              try:
+                  status,sec,body,final=fetch(path)
+                  pages[path]=body
+                  if status!=200 or marker not in body: failures.append((path,'status/marker'))
+                  if path=='/' and 'data-emo-vendor-count' not in body: failures.append((path,'current-home'))
+                  if path=='/en/' and 'data-emo-vendor-count' not in body: failures.append((path,'current-en-home'))
+              except Exception as e:
+                  print(path,'ERROR',type(e).__name__,str(e)); failures.append((path,'request'))
+
+          # Harmless cart-session check: add one simple purchasable product when an
+          # add-to-cart id is exposed, verify cart content, then stop before order creation.
+          shop=pages.get('/tienda/','')
+          ids=re.findall(r'(?:data-product_id|data-product-id)=["\'](\d+)["\']',shop)
+          if ids:
+              pid=ids[0]
+              try:
+                  fetch('/?add-to-cart='+urllib.parse.quote(pid))
+                  _,_,cart,_=fetch('/carrito/')
+                  empty=('cart-empty' in cart or 'woocommerce-info' in cart and 'carrito' in cart.lower() and 'vac' in cart.lower())
+                  if empty: failures.append(('cart-add','still-empty'))
+                  else: print('CART_SESSION_QA=PASS product_id='+pid)
+              except Exception as e:
+                  print('CART_SESSION_QA=ERROR',type(e).__name__,str(e)); failures.append(('cart-add','request'))
+          else:
+              print('CART_SESSION_QA=SKIP no exposed simple add-to-cart id')
+
+          if failures:
+              print('PRODUCTION_QA_FAIL',failures)
+              raise SystemExit(1)
+          print('PRODUCTION_QA=PASS')
+          PY
