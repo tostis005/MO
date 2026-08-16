@@ -3,8 +3,9 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/production-english-strict-audit-20260816.yml']
+  workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   audit:
     runs-on: ubuntu-24.04
@@ -67,8 +68,11 @@ jobs:
               const lines=d.text.split('\n').map(s=>s.trim()).filter(Boolean);
               const hits=[];
               for(const line of lines){ if(suspicious.some(re=>re.test(line))) hits.push(line); }
+              console.log(`AUDIT ${label}: lang=${d.lang} hits=${hits.length} url=${d.url}`);
+              if(hits.length) console.log(hits.slice(0,30).map(x=>'  HIT: '+x).join('\n'));
               out.push(`\n## ${label}\nURL: ${d.url}\nLANG: ${d.lang}\nTITLE: ${d.title}\n\n### Suspicious Spanish lines\n${hits.length?hits.slice(0,120).map(x=>'- '+x).join('\n'):'NONE'}\n\n### Visible text sample\n\`\`\`\n${d.text.slice(0,12000)}\n\`\`\``);
-            }catch(e){out.push(`\n## ${label}\nERROR: ${e.message}`)}
+              return {hits,d};
+            }catch(e){ console.log(`AUDIT ${label}: ERROR ${e.message}`); out.push(`\n## ${label}\nERROR: ${e.message}`); return {hits:['ERROR: '+e.message]}; }
           }
           const base='https://www.elmercadodeorigen.com';
           await inspect('EN HOME',base+'/en/');
@@ -81,8 +85,10 @@ jobs:
           try{
             await p.goto(base+'/en/product/carne-picada-extra/?strict_add='+Date.now(),{waitUntil:'networkidle2',timeout:45000});
             const add=await p.$('form.cart button.single_add_to_cart_button,button.single_add_to_cart_button');
-            if(add){await add.click(); await new Promise(r=>setTimeout(r,2200));}
-          }catch(e){out.push(`\n## ADD PRODUCT\nERROR: ${e.message}`)}
+            if(!add) throw new Error('No add-to-cart button found');
+            await add.click(); await new Promise(r=>setTimeout(r,2500));
+            console.log('ADD PRODUCT: clicked carne-picada-extra');
+          }catch(e){console.log(`ADD PRODUCT ERROR: ${e.message}`);out.push(`\n## ADD PRODUCT\nERROR: ${e.message}`)}
           await inspect('EN CART BELOW MINIMUM',base+'/en/carrito/');
           await inspect('EN CHECKOUT BELOW MINIMUM',base+'/en/finalizar-compra/');
           await inspect('ES CART SAME SESSION',base+'/carrito/');
@@ -90,12 +96,9 @@ jobs:
           await browser.close();
           JS
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./strict-audit.mjs
-      - name: Commit audit report
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add docs/production-english-strict-audit-20260816.md
-          git commit -m 'Record strict production English audit 2026-08-16'
-          git push
+      - name: Upload strict audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-english-strict-audit-20260816
+          path: docs/production-english-strict-audit-20260816.md
+          if-no-files-found: error
