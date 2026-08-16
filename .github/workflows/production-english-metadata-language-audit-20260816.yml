@@ -1,0 +1,89 @@
+name: Production English metadata language audit 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-metadata-language-audit-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Audit English metadata text directly
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path missing}"
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval '
+            function mdo_audit_spanish_score($html){
+              $text=mb_strtolower(wp_strip_all_tags((string)$html),"UTF-8");
+              $words=preg_split("/[^a-záéíóúüñ]+/u",$text,-1,PREG_SPLIT_NO_EMPTY);
+              $dict=array_flip(["que","para","con","del","una","uno","unos","unas","los","las","por","desde","hasta","nuestro","nuestra","nuestros","nuestras","este","esta","estos","estas","también","más","muy","producto","productos","tienda","comprar","carrito","pedido","pedidos","envío","envíos","mínimo","añadir","selecciona","seleccionar","filtros","filtro","ordenar","precio","precios","disponible","elaborado","elaborada","elaborados","elaboradas","aceite","jamón","jamones","paleta","paletas","queso","quesos","naranjas","agricultura","ganadería","productor","productores","calidad","sabor","textura","artesanal","familia","finca","dehesa","cerdo","cerdos","gracias","contacto","nombre","correo","mensaje","buscar","resultados","categoría","categorías","descripción","información","política","privacidad","condiciones","devoluciones","vendedor"]);
+              $hits=[]; foreach($words as $w){if(isset($dict[$w]))$hits[]=$w;}
+              return [count($hits),array_values(array_unique($hits)),$text];
+            }
+            echo "=== POST OBJECT ENGLISH METADATA ===".PHP_EOL;
+            foreach(["page","post","product"] as $type){
+              $ids=get_posts(["post_type"=>$type,"post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","suppress_filters"=>true]);
+              foreach($ids as $id){
+                if((string)get_post_meta($id,"_en_US_published",true)!=="1")continue;
+                $fields=["title"=>"_en_US_post_title","excerpt"=>"_en_US_post_excerpt","content"=>"_en_US_post_content"];
+                foreach($fields as $label=>$key){
+                  $v=(string)get_post_meta($id,$key,true); if(trim($v)==="")continue;
+                  [$score,$hits,$plain]=mdo_audit_spanish_score($v);
+                  if($score>=2){
+                    $slug=get_post_meta($id,"_en_US_post_name",true);
+                    echo "CANDIDATE\t$type\t$id=$id\tslug=$slug\tfield=$label\tscore=$score\thits=".implode(",",$hits)."\ttext=".mb_substr(preg_replace("/\\s+/u"," ",$plain),0,1000,"UTF-8").PHP_EOL;
+                  }
+                }
+              }
+            }
+            echo "=== TERM ENGLISH METADATA ===".PHP_EOL;
+            foreach(["product_cat","product_tag","category"] as $tax){
+              $terms=get_terms(["taxonomy"=>$tax,"hide_empty"=>false]);
+              foreach($terms as $term){
+                if((string)get_term_meta($term->term_id,"_en_US_published",true)!=="1")continue;
+                foreach(["name"=>"_en_US_name","description"=>"_en_US_description"] as $label=>$key){
+                  $v=(string)get_term_meta($term->term_id,$key,true); if(trim($v)==="")continue;
+                  [$score,$hits,$plain]=mdo_audit_spanish_score($v);
+                  if($score>=2){
+                    echo "CANDIDATE_TERM\t$tax\tid={$term->term_id}\tes_slug=".get_term_meta($term->term_id,"_en_US_slug",true)."\tfield=$label\tscore=$score\thits=".implode(",",$hits)."\ttext=".mb_substr(preg_replace("/\\s+/u"," ",$plain),0,1400,"UTF-8").PHP_EOL;
+                  }
+                }
+              }
+            }
+          ' --path="$PROD_PATH" --allow-root 2>/dev/null
+          REMOTE
