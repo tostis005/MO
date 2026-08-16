@@ -1,0 +1,43 @@
+name: Production locate untranslated commerce copy 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-locate-untranslated-commerce-copy-20260816.yml'
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Locate live sources of untranslated commerce copy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          echo "ROOT=$ROOT"
+          cd "$ROOT/wp-content"
+          for term in 'Tu selección' 'Revisa tu carrito' 'Pago protegido durante todo el proceso' 'Información clara antes de confirmar' 'Atención cercana si necesitas ayuda' 'pedido mínimo' 'importe mínimo' 'mínimo de la tienda' 'mínimo'; do
+            echo "===== TERM: $term ====="
+            grep -RInF --exclude='*.log' --exclude='*.map' --exclude-dir=cache --exclude-dir=uploads --exclude-dir=upgrade --exclude-dir=languages "$term" mu-plugins plugins themes 2>/dev/null | head -n 80 || true
+          done
+          echo '===== PLUGIN DIRS MATCHING EMDO/MINIMUM ====='
+          find plugins mu-plugins -maxdepth 2 -type d -o -type f 2>/dev/null | grep -Ei 'emdo|minimum|minimo|mínimo|vendor' | head -n 100 || true
+          REMOTE
