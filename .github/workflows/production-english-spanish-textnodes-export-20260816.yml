@@ -1,0 +1,60 @@
+name: Production English Spanish textnodes export 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-english-spanish-textnodes-export-20260816.yml'
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Export residual Spanish text nodes
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          "$PHP" -d memory_limit=1024M "$WP" eval '
+            function spanish_score_node($s){
+              $s=mb_strtolower(html_entity_decode((string)$s,ENT_QUOTES|ENT_HTML5,"UTF-8"),"UTF-8");
+              $strong=array_flip(["introducción","noviembre","pedido","pedidos","envío","envíos","elaborado","elaborada","nuestros","nuestras","jamón","paleta","naranjas","aceite","privacidad","política","información","nutricional","cerdo","cerdos","dehesa","añadir","carrito","mínimo","gastos","devolución","resolvemos","dudas","gratis","productores","variedades","embutidos","recolección","aceituna","almazara","salazón","brida","lechín","arbequina","manzanilla","marteña","filtrado","ventajas","inconvenientes","naranja","suelo","agricultura","tratamiento","datos","derechos","responsable","finalidad"]);
+              $common=array_flip(["que","para","con","del","una","uno","unos","unas","los","las","por","desde","hasta","nuestro","nuestra","este","esta","estos","estas","también","más","muy","el","la","de","en","un","se","es","su","sus","al","y"]);
+              $ws=preg_split("/[^a-záéíóúüñ]+/u",$s,-1,PREG_SPLIT_NO_EMPTY); $a=$b=0; foreach($ws as $w){if(isset($strong[$w]))$a++; if(isset($common[$w]))$b++;} return [$a,$b];
+            }
+            function emit_nodes($label,$html){
+              if(trim((string)$html)==="")return;
+              libxml_use_internal_errors(true); $d=new DOMDocument("1.0","UTF-8");
+              $wrapped="<div id=\"mdo-root\">".(string)$html."</div>";
+              $d->loadHTML("<?xml encoding=\"utf-8\" ?>".$wrapped,LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD); libxml_clear_errors();
+              $xp=new DOMXPath($d); $nodes=$xp->query("//text()[normalize-space(.) != \"\"]"); $i=0;
+              foreach($nodes as $n){$txt=(string)$n->nodeValue; [$a,$b]=spanish_score_node($txt); if(($a>=1&&$b>=1)||$a>=2){$i++; echo "NODE|$label|$i|".base64_encode($txt).PHP_EOL;}}
+              echo "COUNT|$label|$i".PHP_EOL;
+            }
+            foreach([3,3025,3327,3794,3699,1056,1599,1350,1356,1363,3948,3979,4160,4199,5045,5336,5343,5348,8624] as $id){
+              $p=get_post($id); if(!$p)continue;
+              emit_nodes("post:$id:excerpt",(string)get_post_meta($id,"_en_US_post_excerpt",true));
+              emit_nodes("post:$id:content",(string)get_post_meta($id,"_en_US_post_content",true));
+            }
+            emit_nodes("term:16:description",(string)get_term_meta(16,"_en_US_description",true));
+          ' --path="$ROOT" --allow-root 2>/dev/null
+          REMOTE
