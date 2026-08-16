@@ -1,0 +1,56 @@
+name: Production Tolecarnes purchasable product probe 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-tolecarnes-purchasable-product-probe-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect live WooCommerce product objects
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          cat > /tmp/mdo-tole-products.php <<'PHP'
+          <?php
+          global $wpdb;
+          $ids=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_status='publish' AND post_author=%d ORDER BY ID ASC",4507));
+          $out=[];
+          foreach($ids as $id){
+            $p=wc_get_product((int)$id); if(!$p) continue;
+            $out[]=[
+              'id'=>(int)$id,'name'=>$p->get_name(),'type'=>$p->get_type(),'price'=>$p->get_price(),
+              'stock_status'=>$p->get_stock_status(),'in_stock'=>$p->is_in_stock(),'purchasable'=>$p->is_purchasable(),
+              'sold_individually'=>$p->is_sold_individually(),'url'=>$p->get_permalink(),
+              'add_url'=>$p->add_to_cart_url()
+            ];
+          }
+          usort($out,fn($a,$b)=>(float)$a['price']<=>(float)$b['price']);
+          echo wp_json_encode(array_slice($out,0,40),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)."\n";
+          PHP
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/mdo-tole-products.php --path="$ROOT" --allow-root
+          REMOTE
