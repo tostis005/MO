@@ -1,0 +1,62 @@
+name: Production English content source audit 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-english-content-source-audit-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect production sources
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true)
+          PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?production missing}"
+          echo '=== ACTIVE PLUGINS SEO/WCFM ==='
+          "$PHP" "$WP" plugin list --status=active --field=name --path="$ROOT" --allow-root 2>/dev/null | grep -Ei 'seo|aio|yoast|rank|wcfm|wc-multivendor|marketplace|translate' || true
+          echo '=== WCFM BREADCRUMB SOURCE ==='
+          grep -RniE "woostify-breadcrumb|wc_get_page_permalink\( *['\"]shop|woocommerce_get_shop_page_permalink|breadcrumb.*shop|shop.*breadcrumb|item-bread" \
+            "$ROOT/wp-content/plugins/wc-multivendor-marketplace" \
+            "$ROOT/wp-content/plugins/wc-frontend-manager" \
+            "$ROOT/wp-content/plugins/wcfm-marketplace" \
+            "$ROOT/wp-content/plugins" --include='*.php' 2>/dev/null | grep -Ei 'wcfm|marketplace|breadcrumb|store' | head -n 300 || true
+          echo '=== SEO FILTER CANDIDATES ==='
+          for d in "$ROOT"/wp-content/plugins/*seo* "$ROOT"/wp-content/plugins/*all-in-one* "$ROOT"/wp-content/plugins/*aioseo* "$ROOT"/wp-content/plugins/*rank-math*; do
+            [ -d "$d" ] || continue
+            echo "DIR=$d"
+            grep -RniE "description|canonical|schema|json.*ld|apply_filters\(" "$d" --include='*.php' 2>/dev/null | grep -Ei 'filter|description|canonical|schema' | head -n 180 || true
+          done
+          echo '=== PUBLIC OBJECT FIELD LENGTHS ==='
+          "$PHP" -d memory_limit=768M "$WP" eval '
+            foreach([3,3025,3327,3794,1056,1180,1599,1350,1356,1363,1370,1380,1382,1693,1695,3948,3979,4160,4199,5045,5336,5343,5348,8624] as $id){
+              $p=get_post($id); if(!$p) continue;
+              echo "OBJ|$id|{$p->post_type}|{$p->post_name}|title=".strlen($p->post_title)."|excerpt=".strlen($p->post_excerpt)."|content=".strlen($p->post_content)."|en_title=".strlen((string)get_post_meta($id,"_en_US_post_title",true))."|en_excerpt=".strlen((string)get_post_meta($id,"_en_US_post_excerpt",true))."|en_content=".strlen((string)get_post_meta($id,"_en_US_post_content",true)).PHP_EOL;
+            }
+            $t=get_term(16,"product_cat"); if($t) echo "TERM|16|{$t->name}|desc=".strlen($t->description)."|en_desc=".strlen((string)get_term_meta(16,"_en_US_description",true)).PHP_EOL;
+          ' --path="$ROOT" --allow-root 2>/dev/null
+          REMOTE
