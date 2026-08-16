@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/production-deploy-english-seo-routes-20260816.yml'
+      - 'mu-plugins/mdo-production-english-seo-routes.php'
   workflow_dispatch:
 
 permissions:
