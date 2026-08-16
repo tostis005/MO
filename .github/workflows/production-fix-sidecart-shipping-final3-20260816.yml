@@ -1,0 +1,110 @@
+name: Production final3 side cart and English shipping fix 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-sidecart-shipping-final3-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate sources
+        run: |
+          php -l .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php
+          php -l .github/scripts/mdo-sidecart-mobile-width-final-20260816.php
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy validated MU fixes
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-layout-shipping-fix-20260816.php"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-sidecart-mobile-width-final-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-mobile-width-final-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          T1="$ROOT/wp-content/mu-plugins/mdo-sidecart-layout-shipping-fix.php"
+          T2="$ROOT/wp-content/mu-plugins/mdo-sidecart-z-mobile-width-final.php"
+          TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$T1" ]; then B1="$T1.bak-$TS"; cp -a "$T1" "$B1"; else B1="NEW"; fi
+          if [ -f "$T2" ]; then B2="$T2.bak-$TS"; cp -a "$T2" "$B2"; else B2="NEW"; fi
+          cp /tmp/mdo-sidecart-layout-shipping-fix-20260816.php "$T1"
+          cp /tmp/mdo-sidecart-mobile-width-final-20260816.php "$T2"
+          "$PHP" -l "$T1"
+          "$PHP" -l "$T2"
+          test -s "$T1" && test -s "$T2"
+          grep -q 'Shipping savings' "$T1"
+          grep -q 'min-width:66px' "$T2"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "ROOT=$ROOT"; echo "T1=$T1"; echo "T2=$T2"; echo "B1=$B1"; echo "B2=$B2"
+          REMOTE
+          )
+          echo "$OUT"
+          for k in ROOT T1 T2 B1 B2; do v=$(printf '%s\n' "$OUT"|sed -n "s/^$k=//p"|tail -n1); test -n "$v"; echo "LIVE_$k=$v" >> "$GITHUB_ENV"; done
+
+      - name: Final live QA with real variable cart in both languages
+        run: |
+          python3 - <<'PY'
+          import html,json,re,urllib.parse,urllib.request,http.cookiejar
+          base='https://www.elmercadodeorigen.com'; product='/producto/aceite-de-oliva-virgen-extra-5l/'
+          def mk():
+            cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj)); op.addheaders=[('User-Agent','MDO-Final3-Sidecart-QA')]; return op
+          def get(o,p):
+            r=o.open(base+p,timeout=45); b=r.read().decode('utf-8','replace'); print('GET',p,r.status,len(b),r.geturl()); return b
+          def add(o):
+            b=get(o,product); m=re.search(r'data-product_variations="([^"]+)"',b); assert m
+            vs=json.loads(html.unescape(m.group(1))); v=next(x for x in vs if x.get('is_in_stock') and x.get('is_purchasable'))
+            q={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'}; q.update(v.get('attributes') or {})
+            req=urllib.request.Request(base+product,data=urllib.parse.urlencode(q).encode()); r=o.open(req,timeout=45); r.read(); print('ADD',r.status,v['variation_id']); return v['variation_id']
+
+          es=mk(); vid=add(es)
+          es_contact=get(es,'/contacto/'); es_cart=get(es,'/carrito/')
+          assert 'woocommerce-mini-cart-item__thumb' in es_contact and 'woocommerce-mini-cart-item__info' in es_contact
+          assert 'mdo-sidecart-layout-fix-20260816' in es_contact and 'mdo-sidecart-mobile-width-final-20260816' in es_contact
+          assert 'translatepress-es_ES' in es_cart and 'Shipping savings' not in es_cart
+          print('ES_CONTACT_MINICART=PASS'); print('ES_CART_LANGUAGE=PASS')
+
+          en=mk(); add(en)
+          en_contact=get(en,'/en/contact/'); en_cart=get(en,'/en/cart/')
+          assert 'woocommerce-mini-cart-item__thumb' in en_contact and 'woocommerce-mini-cart-item__info' in en_contact
+          assert 'mdo-sidecart-layout-fix-20260816' in en_contact and 'mdo-sidecart-mobile-width-final-20260816' in en_contact
+          assert 'translatepress-en_US' in en_cart
+          assert 'Ahorro gastos de envío' not in en_cart and 'Shipping savings' in en_cart
+          new=en_contact.find('mdo-sidecart-layout-fix-20260816'); mobile=en_contact.find('mdo-sidecart-mobile-width-final-20260816')
+          assert new>0 and mobile>new
+          print('EN_CONTACT_MINICART=PASS'); print('EN_CART_LANGUAGE=PASS'); print('VARIATION_ID',vid); print('ORDER_CREATED=NO')
+          PY
+
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; [ -n "${LIVE_ROOT:-}" ] || exit 0; PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "T1='$LIVE_T1' T2='$LIVE_T2' B1='$LIVE_B1' B2='$LIVE_B2' ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$B1" = "NEW" ]; then rm -f "$T1"; else cp -a "$B1" "$T1"; fi
+          if [ "$B2" = "NEW" ]; then rm -f "$T2"; else cp -a "$B2" "$T2"; fi
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo ROLLBACK=PASS
+          REMOTE
