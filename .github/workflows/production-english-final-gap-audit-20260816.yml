@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/production-english-final-gap-audit-20260816.yml'
+  workflow_dispatch:
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -90,9 +91,7 @@ for chunk in p.parts:
     hits=[w for w in re.findall(r'[a-záéíóúüñ]+',chunk.lower()) if w in words]
     if len(hits)>=3:
         found.append((len(hits),chunk[:700]))
-found=sorted(found,reverse=True)[:8]
-for score,chunk in found: print('SPANISH?',score,chunk)
-# visible anchors with suspicious Spanish-path aliases
+for score,chunk in sorted(found,reverse=True)[:8]: print('SPANISH?',score,chunk)
 for href in sorted(set(html.unescape(x) for x in re.findall(r'<a\b[^>]*href=["\']([^"\']+)',s,re.I|re.S))):
     if any(x in href for x in ['/en/tienda/','/en/producto/','/en/politica-de-cookies/']): print('BADLINK',href)
 PY
