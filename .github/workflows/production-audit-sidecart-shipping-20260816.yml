@@ -1,0 +1,42 @@
+name: Production audit side cart and English shipping 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-audit-sidecart-shipping-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect live cart markup and English shipping copy
+        run: |
+          python3 - <<'PY'
+          import html, json, re, urllib.parse, urllib.request, http.cookiejar
+          base='https://www.elmercadodeorigen.com'
+          cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj)); op.addheaders=[('User-Agent','MDO-Sidecart-Audit/1.0')]
+          def get(p):
+              r=op.open(base+p,timeout=45); b=r.read().decode('utf-8','replace'); print('GET',p,r.status,len(b),r.geturl()); return b
+          def post(p,data):
+              req=urllib.request.Request(base+p,data=urllib.parse.urlencode(data).encode()); r=op.open(req,timeout=45); b=r.read().decode('utf-8','replace'); print('POST',p,r.status,len(b),r.geturl()); return b
+          product='/producto/aceite-de-oliva-virgen-extra-5l/'
+          b=get(product)
+          m=re.search(r'data-product_variations="([^"]+)"',b)
+          if not m: raise SystemExit('variations missing')
+          vars=json.loads(html.unescape(m.group(1)))
+          v=next(x for x in vars if x.get('is_in_stock') and x.get('is_purchasable'))
+          data={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'}
+          data.update(v.get('attributes') or {})
+          post(product,data)
+          for p in ['/contacto/','/en/contact/','/carrito/','/en/cart/']:
+              b=get(p)
+              print('\n===',p,'CART CLASSES===')
+              for pat in [r'<[^>]+class="[^"]*(?:cart|mini-cart|shopping)[^"]*"[^>]*>', r'<[^>]+id="[^"]*(?:cart|mini-cart|shopping)[^"]*"[^>]*>']:
+                  for x in re.findall(pat,b,re.I)[:80]: print(re.sub(r'\s+',' ',x)[:500])
+              print('\n===',p,'VISIBLE SHIPPING/CART TEXT===')
+              s=re.sub(r'(?is)<script\b.*?</script>|<style\b.*?</style>|<noscript\b.*?</noscript>|<svg\b.*?</svg>|<head\b.*?</head>',' ',b)
+              s=html.unescape(re.sub(r'(?s)<[^>]+>','\n',s))
+              for line in s.splitlines():
+                  line=re.sub(r'\s+',' ',line).strip()
+                  if line and re.search(r'env[ií]o|shipping|subtotal|total|carrito|cart|aceite|tama[nñ]o|variedad',line,re.I): print(line[:500])
+          PY
