@@ -96,13 +96,17 @@ final class MDO_Minimum_Order {
 			return;
 		}
 		self::$validated = true;
+		$is_english = self::is_english_request();
 		foreach ( self::cart_minimums() as $entry ) {
 			if ( $entry['missing'] <= 0 ) {
 				continue;
 			}
+			$format = $is_english
+				? 'Minimum order for %1$s: you need %2$s more to reach the minimum of %3$s.'
+				: 'Pedido mínimo de %1$s: te faltan %2$s para alcanzar el mínimo de %3$s.';
 			wc_add_notice(
 				sprintf(
-					'Pedido mínimo de %1$s: te faltan %2$s para alcanzar el mínimo de %3$s.',
+					$format,
 					$entry['name'],
 					self::plain_price( $entry['missing'] ),
 					self::plain_price( $entry['minimum'] )
@@ -137,21 +141,50 @@ final class MDO_Minimum_Order {
 		if ( ! $missing ) {
 			return;
 		}
+		$is_english = self::is_english_request();
 		?>
 		<div class="emdo-minimum-order-notices" role="alert" aria-live="polite">
 			<?php foreach ( $missing as $entry ) : ?>
 				<div class="emdo-minimum-order-card">
-					<div class="emdo-minimum-order-card__title"><?php echo esc_html( 'Pedido mínimo · ' . $entry['name'] ); ?></div>
+					<div class="emdo-minimum-order-card__title"><?php echo esc_html( ( $is_english ? 'Minimum order · ' : 'Pedido mínimo · ' ) . $entry['name'] ); ?></div>
 					<div class="emdo-minimum-order-card__message">
-						Te faltan <strong><?php echo esc_html( self::plain_price( $entry['missing'] ) ); ?></strong> para alcanzar el pedido mínimo de <strong><?php echo esc_html( self::plain_price( $entry['minimum'] ) ); ?></strong>.
+						<?php if ( $is_english ) : ?>
+							You need <strong><?php echo esc_html( self::plain_price( $entry['missing'] ) ); ?></strong> more to reach the minimum order of <strong><?php echo esc_html( self::plain_price( $entry['minimum'] ) ); ?></strong>.
+						<?php else : ?>
+							Te faltan <strong><?php echo esc_html( self::plain_price( $entry['missing'] ) ); ?></strong> para alcanzar el pedido mínimo de <strong><?php echo esc_html( self::plain_price( $entry['minimum'] ) ); ?></strong>.
+						<?php endif; ?>
 					</div>
 					<div class="emdo-minimum-order-card__meta">
-						<?php echo esc_html( 'Llevas ' . self::plain_price( $entry['subtotal'] ) . ' en productos de ' . $entry['name'] . '.' ); ?>
+						<?php
+						$meta = $is_english
+							? 'You currently have ' . self::plain_price( $entry['subtotal'] ) . ' in products from ' . $entry['name'] . '.'
+							: 'Llevas ' . self::plain_price( $entry['subtotal'] ) . ' en productos de ' . $entry['name'] . '.';
+						echo esc_html( $meta );
+						?>
 					</div>
 				</div>
 			<?php endforeach; ?>
 		</div>
 		<?php
+	}
+
+	private static function is_english_request(): bool {
+		global $TRP_LANGUAGE;
+
+		if ( isset( $TRP_LANGUAGE ) && is_string( $TRP_LANGUAGE ) && '' !== $TRP_LANGUAGE ) {
+			return 0 === strpos( strtolower( $TRP_LANGUAGE ), 'en' );
+		}
+
+		if ( function_exists( 'trp_get_current_language' ) ) {
+			$language = trp_get_current_language();
+			if ( is_string( $language ) && '' !== $language ) {
+				return 0 === strpos( strtolower( $language ), 'en' );
+			}
+		}
+
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+		return 1 === preg_match( '#^/en(?:/|$)#i', $path );
 	}
 
 	private static function has_unmet_minimum(): bool {
