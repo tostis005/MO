@@ -1,0 +1,39 @@
+name: Deploy English variation labels and policy tab removal 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-variants-policies-deploy-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Validate and deploy English variants and policy fix
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          php -l elmercadodeorigen-child/inc/english-ui-copy-final-010243.php >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"; : "${PROD_PATH:?production path not found}"
+          THEME="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$THEME/inc'; cp -p '$THEME/functions.php' '$THEME/functions.php.bak-${GITHUB_RUN_ID}'; cp -p '$THEME/inc/english-ui-copy-final-010243.php' '$THEME/inc/english-ui-copy-final-010243.php.bak-${GITHUB_RUN_ID}'"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$THEME/functions.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/english-ui-copy-final-010243.php "$STAGING_USER@$STAGING_HOST:$THEME/inc/english-ui-copy-final-010243.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$THEME/functions.php'; \"\$php_bin\" -l '$THEME/inc/english-ui-copy-final-010243.php'; grep -Fq \"'Tamaño' => 'Size'\" '$THEME/inc/english-ui-copy-final-010243.php'; grep -Fq \"wcfm_policies_tab\" '$THEME/inc/english-ui-copy-final-010243.php'; wp --path='$PROD_PATH' --allow-root cache flush >/dev/null 2>&1 || true; rm -rf '$PROD_PATH/wp-content/cache/mdo-page-cache' '$PROD_PATH/wp-content/mdo-page-cache' 2>/dev/null || true"
+          echo PRODUCTION_ENGLISH_VARIANTS_POLICIES_DEPLOY_OK
