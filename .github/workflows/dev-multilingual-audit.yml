@@ -1,0 +1,84 @@
+name: Dev multilingual audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dev-multilingual-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - name: Install SSH tool
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Audit multilingual state on development only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?}"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "WP_PATH='$WP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp_bin=$(command -v wp)
+          WP=("$php_bin" -d memory_limit=512M "$wp_bin" --path="$WP_PATH" --allow-root)
+
+          echo '=== DEV SITE ==='
+          "${WP[@]}" option get home
+          "${WP[@]}" option get siteurl
+
+          echo '=== ALL PLUGINS ==='
+          "${WP[@]}" plugin list --fields=name,status,version,title --format=table
+
+          echo '=== MULTILINGUAL CANDIDATES ==='
+          "${WP[@]}" plugin list --fields=name,status,version,title --format=csv | grep -Ei 'falang|polylang|translate|weglot|wpml|gtranslate|multilingual|language' || true
+
+          echo '=== FALANG / LANGUAGE OPTIONS ==='
+          "${WP[@]}" option list --search='*falang*' --fields=option_name,autoload --format=table || true
+          "${WP[@]}" option list --search='*language*' --fields=option_name,autoload --format=table | head -n 80 || true
+          "${WP[@]}" option list --search='*polylang*' --fields=option_name,autoload --format=table || true
+          "${WP[@]}" option list --search='*translate*' --fields=option_name,autoload --format=table | head -n 80 || true
+
+          echo '=== WP LOCALE / ACTIVE PLUGINS ==='
+          "${WP[@]}" eval 'echo "locale=" . get_locale() . PHP_EOL; echo "WPLANG=" . get_option("WPLANG") . PHP_EOL; echo "active_plugins=" . wp_json_encode(get_option("active_plugins")) . PHP_EOL;'
+
+          echo '=== FALANG PLUGIN FILE HINTS ==='
+          falang_dir="$WP_PATH/wp-content/plugins/falang"
+          if [ -d "$falang_dir" ]; then
+            echo "falang_dir=$falang_dir"
+            grep -RhoE "get_option\([^\)]{0,120}|update_option\([^\)]{0,120}|add_option\([^\)]{0,120}" "$falang_dir" --include='*.php' 2>/dev/null | grep -Ei 'falang|language|locale|url|switch' | head -n 120 || true
+          else
+            find "$WP_PATH/wp-content/plugins" -maxdepth 2 -type f -iname '*falang*.php' -print 2>/dev/null | head -n 20 || true
+          fi
+
+          echo '=== FRONTEND LANGUAGE MARKERS (SPANISH HOME) ==='
+          home_url=$("${WP[@]}" option get home)
+          curl -LksS --max-time 20 "$home_url/" | grep -Eio '(<html[^>]*lang=[^>]*>|hreflang=[^ >]+|falang[^ <"'"']*|polylang[^ <"'"']*|language-switch[^ <"'"']*|lang-item[^ <"'"']*)' | sort -u | head -n 100 || true
+
+          echo '=== COMMON ENGLISH URL PROBES ==='
+          for suffix in 'en/' 'en' '?lang=en' '?language=en'; do
+            code=$(curl -LksS -o /dev/null -w '%{http_code}' --max-time 20 "$home_url/$suffix" || true)
+            final=$(curl -LksS -o /dev/null -w '%{url_effective}' --max-time 20 "$home_url/$suffix" || true)
+            printf '%s -> %s %s\n' "$suffix" "$code" "$final"
+          done
+          REMOTE
