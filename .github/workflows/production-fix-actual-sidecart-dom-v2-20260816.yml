@@ -1,0 +1,69 @@
+name: Production fix actual Woostify side cart DOM v2 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-actual-sidecart-dom-v2-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          php -l .github/scripts/mdo-sidecart-actual-dom-fix-20260816.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install -q selenium
+      - name: Deploy runtime enforced side-cart fix
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-sidecart-actual-dom-fix-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-actual-dom-fix-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p";break;;esac;done
+          : "${ROOT:?missing production}"
+          TARGET="$ROOT/wp-content/mu-plugins/mdo-sidecart-zz-actual-dom-fix.php"; TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$TARGET" ]; then BAK="$TARGET.bak-$TS"; cp -a "$TARGET" "$BAK"; else BAK=NEW; fi
+          cp /tmp/mdo-sidecart-actual-dom-fix-20260816.php "$TARGET"; "$PHP" -l "$TARGET"; "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1||true
+          echo "ROOT=$ROOT";echo "TARGET=$TARGET";echo "BAK=$BAK"
+          REMOTE
+          ); echo "$OUT"; for k in ROOT TARGET BAK; do v=$(printf '%s\n' "$OUT"|sed -n "s/^$k=//p"|tail -n1);test -n "$v";echo "LIVE_$k=$v">>"$GITHUB_ENV";done
+      - name: Verify hydrated live geometry ES and EN desktop and mobile
+        run: |
+          python3 - <<'PY'
+          import shutil,time,urllib.parse
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          base='https://www.elmercadodeorigen.com';chrome=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=chrome;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage');o.add_argument('--window-size=1366,900')
+          d=webdriver.Chrome(options=o)
+          try:
+            q={'add-to-cart':'1056','variation_id':'2486','quantity':'1','attribute_pa_tamano':'envase-de-5l-de-pet','attribute_pa_variedad':'sin-filtrar-de-martena-picual'}
+            d.get(base+'/carrito/?'+urllib.parse.urlencode(q));time.sleep(3);assert any(c['name']=='woocommerce_items_in_cart' for c in d.get_cookies())
+            def chk(path,w,label):
+              d.set_window_size(w,900);d.get(base+path);time.sleep(6)
+              z=d.execute_script('''const li=document.querySelector('.cart-sidebar-content .woocommerce-mini-cart-item');if(!li)return {ok:false};const kids=[...li.children],a=kids.find(e=>e.tagName==='A'&&!e.classList.contains('remove')),im=a&&a.querySelector(':scope > img'),v=kids.find(e=>e.classList&&e.classList.contains('variation')),info=kids.find(e=>e.classList&&e.classList.contains('mini-cart-product-infor')),rm=kids.find(e=>e.classList&&e.classList.contains('remove'));if(!a||!im||!v||!info||!rm)return {ok:false};const tn=[...a.childNodes].filter(n=>n.nodeType===3&&n.textContent.trim())[0]||[...a.childNodes].filter(n=>n.nodeType===3&&n.textContent.trim()).pop();if(!tn)return {ok:false};tn.textContent=' Iberian acorn-fed chorizo with a deliberately long translated product title ';const rg=document.createRange();rg.selectNodeContents(tn);const rr=rg.getBoundingClientRect(),R=e=>{const r=e.getBoundingClientRect();return {l:r.left,r:r.right,t:r.top,b:r.bottom,w:r.width,h:r.height}};return {ok:true,li:R(li),a:R(a),img:R(im),title:{l:rr.left,r:rr.right,t:rr.top,b:rr.bottom,w:rr.width,h:rr.height},variation:R(v),info:R(info),remove:R(rm),display:getComputedStyle(li).display,removePos:getComputedStyle(rm).position,pad:getComputedStyle(a).paddingLeft,runtime:!!document.getElementById('mdo-sidecart-actual-dom-runtime-20260816')};''')
+              print(label,z);assert z['ok'];assert z['runtime'];assert z['display']=='block';assert z['removePos']=='absolute';assert float(z['pad'].replace('px',''))>=70;assert z['title']['l']>=z['img']['r']+8;assert z['variation']['l']>=z['img']['r']+8;assert z['info']['l']>=z['img']['r']+8;assert z['title']['r']<=z['li']['r']+1;assert z['variation']['r']<=z['li']['r']+1;assert z['info']['r']<=z['li']['r']+1;print(label+'_PASS')
+            for p,l in [('/contacto/','ES'),('/en/contact/','EN')]:chk(p,1366,l+'_DESKTOP');chk(p,390,l+'_MOBILE')
+            d.set_window_size(1366,900);d.get(base+'/en/cart/');time.sleep(4);txt=d.find_element('tag name','body').text;assert 'Ahorro gastos de envío' not in txt;print('EN_CART_COPY=PASS');print('ORDER_CREATED=NO')
+          finally:d.quit()
+          PY
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail;[ -n "${LIVE_TARGET:-}" ]||exit 0;PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TARGET='$LIVE_TARGET' BAK='$LIVE_BAK' ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail;if [ "$BAK" = NEW ];then rm -f "$TARGET";else cp -a "$BAK" "$TARGET";fi;PHP=$(command -v php||true);[ -n "$PHP" ]||PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);WP=$(command -v wp||true);"$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1||true;echo ROLLBACK=PASS
+          REMOTE
