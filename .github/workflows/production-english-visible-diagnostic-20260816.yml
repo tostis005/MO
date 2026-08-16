@@ -1,0 +1,59 @@
+name: Production English visible diagnostic 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-english-visible-diagnostic-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect visible text and SEO separately
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures,re,time,urllib.request,json
+          from html.parser import HTMLParser
+          from html import unescape
+          base='https://www.elmercadodeorigen.com'; stamp=str(time.time_ns())
+          routes=['/en/','/en/shop/','/en/privacy-policy/','/en/cookie-policy/','/en/extra-virgin-olive-oil/','/en/iberian-ham/','/en/oranges/','/en/product-category/oils/','/en/product/extra-virgin-olive-oil-5l/','/en/product/100-iberian-acorn-fed-sobrasada/']
+          terms=['DEVOLUCIÓN FÁCIL','ENVÍOS EN','RESOLVEMOS TUS DUDAS','Política de cookies','Política de privacidad','aceite de oliva virgen extra es un zumo','recolección','NUESTROS JAMONES','NUESTRAS VARIEDADES','Gastos de envío','Jamón procedente','Elaborado a partir','Información nutricional media','INTRODUCCIÓN']
+          class Text(HTMLParser):
+            def __init__(self): super().__init__(); self.skip=0; self.parts=[]
+            def handle_starttag(self,tag,attrs):
+              if tag.lower() in {'script','style','noscript','template','svg'}: self.skip+=1
+            def handle_endtag(self,tag):
+              if tag.lower() in {'script','style','noscript','template','svg'} and self.skip: self.skip-=1
+            def handle_data(self,data):
+              if not self.skip and data.strip(): self.parts.append(data.strip())
+          def get(path):
+            u=base+path+'?mdo_visible='+stamp
+            req=urllib.request.Request(u,headers={'User-Agent':'MDO-Visible-Diagnostic/1.0'})
+            with urllib.request.urlopen(req,timeout=45) as r: return path,r.read().decode('utf-8','replace')
+          def contexts(text,term):
+            out=[]
+            for m in list(re.finditer(re.escape(term),text,re.I))[:3]:
+              a=max(0,m.start()-180); b=min(len(text),m.end()+260); out.append(re.sub(r'\s+',' ',text[a:b]))
+            return out
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            for path,html in [f.result() for f in concurrent.futures.as_completed([ex.submit(get,p) for p in routes])]:
+              p=Text(); p.feed(html); visible=' '.join(p.parts)
+              print('\n===',path,'===')
+              vh=[]
+              for t in terms:
+                if re.search(re.escape(t),visible,re.I):
+                  vh.append(t)
+                  for c in contexts(visible,t): print('VISIBLE_CONTEXT|'+t+'|'+c)
+              print('VISIBLE_HITS='+','.join(vh))
+              metas=re.findall(r'<meta[^>]+(?:name=["\']description["\']|property=["\']og:description["\'])[^>]+content=["\']([^"\']*)',html,re.I)
+              for m in metas[:4]: print('META|'+unescape(m)[:500])
+              jsons=re.findall(r'<script\b[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',html,re.I|re.S)
+              for j in jsons:
+                hits=[t for t in terms if re.search(re.escape(t),j,re.I)]
+                if hits:
+                  print('JSONLD_HITS='+','.join(hits))
+                  for t in hits[:3]:
+                    for c in contexts(j,t): print('JSONLD_CONTEXT|'+t+'|'+c[:700])
+              hrefs=re.findall(r'<link[^>]+rel=["\']alternate["\'][^>]+hreflang=["\']([^"\']+)["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              print('HREFLANG='+repr(hrefs))
+          PY
