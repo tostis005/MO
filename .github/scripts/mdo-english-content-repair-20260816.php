@@ -1,0 +1,175 @@
+<?php
+if (!defined('ABSPATH')) { exit; }
+
+function mdo_repair_set_en_meta(int $id, string $field, string $value): void {
+    update_post_meta($id, '_en_US_' . $field, $value);
+}
+function mdo_repair_replace_en_text(int $id, string $field, array $replace): void {
+    $key = '_en_US_' . $field;
+    $value = (string) get_post_meta($id, $key, true);
+    foreach ($replace as $from => $to) { $value = str_replace($from, $to, $value); }
+    update_post_meta($id, $key, $value);
+}
+function mdo_repair_privacy(string $html): string {
+    libxml_use_internal_errors(true);
+    $doc = new DOMDocument('1.0', 'UTF-8');
+    $doc->loadHTML('<?xml encoding="utf-8" ?><div id="mdo-root">' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    libxml_clear_errors();
+    $xp = new DOMXPath($doc);
+    foreach ($xp->query('//text()[normalize-space(.) != ""]') as $node) {
+        $text = trim((string) $node->nodeValue);
+        $english = null;
+        if (str_starts_with($text, 'En este sentido, El Mercado de Origen garantiza')) {
+            $english = "In this respect, El Mercado de Origen complies with current personal-data protection legislation, including Spanish Organic Law 3/2018 of 5 December on Personal Data Protection and the Guarantee of Digital Rights (LOPDGDD). It also complies with Regulation (EU) 2016/679 of the European Parliament and of the Council of 27 April 2016 concerning the protection of natural persons (GDPR).\n\nUse of the Website implies acceptance of this Privacy Policy as well as the conditions included in the ";
+        } elseif (str_starts_with($text, 'Principio de limitación del plazo de conservación')) {
+            $english = "Storage limitation principle: data will be kept only for as long as strictly necessary for the purpose or purposes of processing. El Mercado de Origen will inform you of the applicable retention period according to the purpose. In the case of subscriptions, El Mercado de Origen will periodically review its lists and remove records that have remained inactive for a considerable period.";
+        } elseif (str_starts_with($text, 'El ejercicio de estos derechos es personal')) {
+            $english = "The exercise of these rights is personal and must therefore be carried out directly by the data subject by contacting El Mercado de Origen. Any customer, subscriber or collaborator who has provided personal data may ask what data is stored and how it was obtained, request rectification, request data portability, object to processing, request restriction of processing or request erasure where applicable.\n\nTo exercise your rights of access, rectification, erasure, portability and objection, send an email to ";
+        } elseif (str_starts_with($text, 'junto con la prueba válida') && str_contains($text, 'Tienes derecho')) {
+            $english = " together with valid proof of identity, such as a copy of your national identity document or equivalent. You have the right to effective judicial protection and to lodge a complaint with the supervisory authority, in this case the Spanish Data Protection Agency, if you believe that the processing of personal data concerning you infringes the Regulation.";
+        } elseif (str_starts_with($text, 'Cuando te conectas al sitio Web')) {
+            $english = "When you use the Website to email El Mercado de Origen, subscribe to its newsletter or make a purchase, you provide personal information for which El Mercado de Origen is the controller. This information may include your IP address, name and surname, postal address, email address, telephone number and other information. By providing it, you consent to its collection, use, management and storage by El Mercado de Origen only as described in the Terms and Conditions and this Privacy Policy. The personal data collected and the purpose of processing differ according to the method used to collect the information:";
+        } elseif (str_starts_with($text, 'El Mercado de Origen tratará tus datos personales con la finalidad de administrar correctamente su presencia')) {
+            $english = "El Mercado de Origen will process your personal data in order to manage its presence on social networks correctly, inform you about its activities, products or services and for any other purpose permitted by the rules of the relevant social networks. El Mercado de Origen will never use followers' social-media profiles to send individual advertising.";
+        } elseif (str_starts_with($text, 'Para proteger tus datos personales')) {
+            $english = "To protect your personal data, El Mercado de Origen takes reasonable precautions and follows industry best practices to prevent loss, misuse, unauthorised access, disclosure, alteration or destruction. The Website is hosted by Raiola Networks. Appropriate security measures are applied to protect your data. You can consult its ";
+        } elseif (str_starts_with($text, 'Las páginas de este sitio Web pueden incluir contenido incrustado')) {
+            $english = "Pages on this Website may include embedded content, such as videos, images or articles. Embedded content from other websites behaves in the same way as if you had visited those other websites directly. Those websites may collect data about you, use cookies, embed additional third-party tracking and monitor your interaction with that embedded content.";
+        } elseif (str_starts_with($text, 'Para que este sitio Web funcione correctamente necesita utilizar cookies')) {
+            $english = "For this Website to function correctly it needs to use cookies, which are pieces of information stored in your web browser. The Cookie Policy page contains full information about the collection, purpose and processing of cookies.";
+        } elseif (str_starts_with($text, 'La base legal para el tratamiento de tus datos es')) {
+            $english = "The legal basis for processing your data is consent. To contact El Mercado de Origen, subscribe to a newsletter or post comments on this Website, you must accept this Privacy Policy.";
+        } elseif (str_starts_with($text, 'se pueden recoger datos no identificativos')) {
+            $english = " non-identifying data may also be collected, including IP address, geolocation, records of how services and websites are used, browsing habits and other data that cannot by itself be used to identify you. The Website uses the following third-party analytics services:";
+        } elseif (str_starts_with($text, 'Te comprometes a que los datos facilitados')) {
+            $english = "You undertake to ensure that the data you provide to El Mercado de Origen is correct, complete, accurate and current, and to keep it duly updated. As a user of the Website, you are solely responsible for the truthfulness and accuracy of the data you submit and you release El Mercado de Origen from liability in this respect.";
+        } elseif (str_starts_with($text, 'junto con la prueba válida') && str_contains($text, 'El ejercicio de tus derechos')) {
+            $english = " together with valid proof of identity, such as a copy of your national identity document or equivalent. The exercise of your rights does not include data that El Mercado de Origen is legally required to retain for administrative, legal or security purposes.";
+        } elseif (str_starts_with($text, 'El Mercado de Origen se reserva el derecho a modificar')) {
+            $english = "El Mercado de Origen reserves the right to amend this Privacy Policy in order to adapt it to legislative or case-law developments and to industry practices. This policy will remain in force until it is replaced by another duly published version.";
+        }
+        if ($english !== null) { $node->nodeValue = $english; }
+    }
+    $root = $doc->getElementById('mdo-root');
+    $out = '';
+    foreach ($root->childNodes as $child) { $out .= $doc->saveHTML($child); }
+    return $out;
+}
+
+mdo_repair_replace_en_text(3699, 'post_content', [
+    'ENVÍO GRATIS EN VARIOS PRODUCTORES' => 'FREE SHIPPING FROM SELECT PRODUCERS',
+    'ENVÍOS EN 24-48H' => '24–48H DELIVERY',
+    'DEVOLUCIÓN FÁCIL Y SENCILLA' => 'EASY RETURNS',
+    'RESOLVEMOS TUS DUDAS' => "WE’RE HERE TO HELP",
+    'Envío gratis en varios productores' => 'Free shipping from select producers',
+    'Envíos en 24-48h' => '24–48h delivery',
+    'Devolución fácil y sencilla' => 'Easy returns',
+    'Resolvemos tus dudas' => "We’re here to help",
+]);
+
+$privacy = (string) get_post_meta(3, '_en_US_post_content', true);
+update_post_meta(3, '_en_US_post_content', mdo_repair_privacy($privacy));
+
+$oilProcess = <<<'HTML'
+<h3>How is extra virgin olive oil made?</h3>
+<p>Extra virgin olive oil is a 100% natural juice that preserves the olive’s aroma, flavour, vitamins and natural properties. It is the only vegetable oil that can be consumed exactly as it is obtained. It comes directly from olives through a process that is more complex than simply pressing fruit.</p>
+<p>When the olives reach the mill, they are first cleaned to remove leaves and small branches. Once clean, they are milled. Throughout the process, the olives and oil remain in contact only with inert materials such as stainless steel.</p>
+<p><strong>Milling.</strong> The olives are crushed to break the cells that contain the oil, producing an olive paste made up of pieces of stone and skin, oil and vegetation water.</p>
+<p><strong>Malaxation.</strong> The paste is slowly mixed so that the tiny droplets of oil join into larger drops. The mixing time should not exceed about 90 minutes and the paste should remain below roughly 27–28°C.</p>
+<p><strong>Centrifugation.</strong> A decanter spins the paste at high speed and separates its components by density: pomace forms the outer layer, vegetation water the middle layer and oil the inner layer.</p>
+<p><strong>Filtration.</strong> Depending on the mill, vertical centrifuges, settling systems or stainless-steel mesh filters remove remaining moisture and impurities. Once clean, the oil is ready for storage and bottling.</p>
+HTML;
+mdo_repair_set_en_meta(1056, 'post_content', '<p>Shipping in 24–48h.</p><p>Arbequina extra virgin olive oil is known for its mildness, while Marteña (Picual) and Lechín are more intense.</p>' . $oilProcess);
+mdo_repair_set_en_meta(1599, 'post_content', $oilProcess);
+if (get_post(1180)) { mdo_repair_set_en_meta(1180, 'post_content', $oilProcess); }
+
+$excerpts = [
+    1350 => 'Ham from a pure-bred 100% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de la Jara. Complies with Spanish Iberian quality standard RD 4/2014. Black tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an additional day depending on demand.',
+    1356 => 'Shoulder ham from a pure-bred 100% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de la Jara. Complies with Spanish Iberian quality standard RD 4/2014. Black tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an additional day depending on demand.',
+    1363 => 'Ham from a pure-bred 100% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de la Jara. Shipping included. Dispatch in 24–48h.',
+    3948 => 'Ham from a 50% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de la Jara. Complies with Spanish Iberian quality standard RD 4/2014. Red tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an additional day depending on demand.',
+    3979 => 'Shoulder ham from a 50% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de la Jara. Complies with Spanish Iberian quality standard RD 4/2014. Red tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an additional day depending on demand.',
+    4160 => 'PDO Los Pedroches ham from a pure-bred 100% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de Los Pedroches. Complies with Spanish Iberian quality standard RD 4/2014. Black tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an additional day depending on demand.',
+    4199 => 'PDO Los Pedroches shoulder ham from a pure-bred 100% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de Los Pedroches. Complies with Spanish Iberian quality standard RD 4/2014. Black tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an additional day depending on demand.',
+    5045 => 'PDO Los Pedroches ham from a pure-bred 100% Iberian pig, raised free-range and fed grain, grass and other natural resources of the dehesa, with the guarantee of Hidalgo de Los Pedroches. Complies with Spanish Iberian quality standard RD 4/2014. Green tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an additional day depending on demand.',
+    8624 => 'Ham from a pure-bred 100% Iberian pig, raised free-range and fed grain, grass and other natural resources of the dehesa, with the guarantee of Hidalgo de Los Pedroches. Shipping included. Dispatch in 24–48h.',
+    5336 => 'Made from lean meat from our 100% Iberian acorn-fed pigs, with or without PDO Los Pedroches. Marinated, stuffed into natural casing and cured in our natural cellar in Los Pedroches. Approx. weight: 1 kg.',
+    5343 => 'Made from lean meat and fat from our 100% Iberian acorn-fed pigs raised in our Los Pedroches dehesas. Marinated, stuffed into natural casing and matured in our cellar. Approx. weight: 0.8 kg.',
+    5348 => 'Lomito (cured presa loin) from our 100% Iberian acorn-fed pigs, marinated with salt and sweet paprika, stuffed into casing and matured in our natural cellar in Los Pedroches. Approx. weight: 0.4 kg.',
+];
+foreach ($excerpts as $id => $text) { if (get_post($id)) { mdo_repair_set_en_meta($id, 'post_excerpt', $text); } }
+
+mdo_repair_set_en_meta(5336, 'post_content', '<h3>Ingredients</h3><p>100% Iberian acorn-fed lean pork, salt, lactose, paprika, spices, dextrin, sugar, emulsifiers (E450, E451), antioxidant (E316), preservatives (E250, E252), colouring (E120) and garlic.</p><h3>Nutritional information</h3><p>Average values per 100g: Energy 492 kcal / 2056 kJ; total fat 42g, of which saturated 16g; carbohydrates 0g; protein 27g; salt 5g.</p>');
+mdo_repair_set_en_meta(5343, 'post_content', '<h3>Ingredients</h3><p>100% Iberian acorn-fed lean pork, paprika, salt, dextrin, glucose syrup, dextrose, spices, liqueur, emulsifiers, antioxidants and preservative (E252).</p><h3>Nutritional information</h3><p>Average values per 100g: Energy 579 kcal / 2420 kJ; total fat 59g, of which saturated 23g; carbohydrates 3g, of which sugars 0g; protein 9g; salt 3g.</p><h3>More information</h3><p>Vacuum-packed piece. Keep refrigerated. Bring to room temperature before serving so it develops its smooth, spreadable texture. Serving suggestion: delicious on toast with a little honey on top.</p>');
+mdo_repair_set_en_meta(5348, 'post_content', '<h3>Ingredients</h3><p>100% Iberian acorn-fed presa, salt, paprika, spices, dextrose, dextrin, milk protein, soy protein, antioxidants (E300, E301) and preservatives (E250, E252).</p><h3>Nutritional information</h3><p>Average values per 100g: Energy 374 kcal / 1563 kJ; saturated fat 10g; carbohydrates 0g, of which sugars 0g; protein 25g; salt 4.6g.</p>');
+
+update_term_meta(16, '_en_US_description', '<p>Extra virgin olive oil is a 100% natural juice obtained directly from olives and produced solely by mechanical means. It preserves the olive’s aroma, flavour and natural properties.</p>' . $oilProcess . '<p>Our selection includes oils from different olive varieties, each with its own intensity and aromatic profile. Use the filters to find the style that best suits your taste.</p>');
+
+$oliveArticle = <<<'HTML'
+<h2>Introduction</h2>
+<p>November marks the beginning of the olive harvest in the Córdoba countryside. The ideal harvest date depends on the year, the weather and the variety. We assess ripeness both in the grove and through daily laboratory checks, including acidity and oil yield.</p>
+<p>Our harvest generally runs from November to February. Arbequina is usually the first variety to be picked, followed by Marteña or Picual and, depending on the grove, other traditional varieties. Yield varies from season to season: what matters is not only how much oil the fruit contains, but the quality and sensory profile of the oil obtained.</p>
+<h2>Harvesting the olives</h2>
+<p>The harvest combines manual work and mechanical assistance. Teams spread nets beneath the trees, shake or comb the branches and use trunk or branch vibrators where appropriate. The olives are collected quickly and taken to the mill so that milling can begin while the fruit is fresh.</p>
+<p>The objective is to reduce the time between tree and mill and protect the fruit from unnecessary damage, heat and oxidation.</p>
+<h2>How extra virgin olive oil is made</h2>
+<p>At the mill the olives are cleaned, milled into a paste, slowly mixed so the oil droplets can join together, and then centrifuged to separate oil from vegetation water and pomace. Temperature and time are carefully controlled. Once separated, the oil may be filtered immediately or bottled unfiltered for a limited period after harvest.</p>
+<h2>Olive varieties and their character</h2>
+<h3>Arbequina</h3><p>Arbequina generally produces a mild, sweet and delicate oil with fresh fruity aromas. It is a good choice for dressings, toast, mild sauces, fish and baking, and is often an easy introduction to extra virgin olive oil for people who prefer less bitterness and pungency.</p>
+<h3>Manzanilla</h3><p>Manzanilla is best known as a table olive, but it can also produce distinctive oils with a balanced profile, green-fruit notes and good culinary versatility.</p>
+<h3>Picual (Marteña)</h3><p>Picual is one of Spain’s great oil varieties and is especially important in Andalusia. Its oils tend to be more intense, with green, herbaceous notes and a characteristic balance of bitterness and pungency. Its naturally high oleic-acid and polyphenol content also gives it excellent stability.</p>
+<h3>Lechín</h3><p>Lechín is a traditional Andalusian variety, often found in old dry-farmed groves. Its oils can be intensely fruity, with green-leaf and tomato-plant notes and a pronounced bitter and peppery finish.</p>
+<p>As a simple guide to intensity, Arbequina and Manzanilla tend to be softer, while Picual and Lechín are usually more robust. Every harvest is different, so the final profile always depends on the fruit and the season.</p>
+<h2>Filtered or unfiltered?</h2>
+<h3>Filtered oil</h3><p>Filtering removes most suspended particles and residual moisture. The result is visually clearer and usually more stable for longer storage.</p>
+<h3>Unfiltered oil</h3><p>Fresh unfiltered oil contains tiny particles from the olive and has a cloudier appearance and particularly vivid early-harvest character. Over time those particles settle naturally. We therefore offer unfiltered oil only for a limited period after harvest, when it is at its best.</p>
+<p>Neither style is automatically better: the key is freshness, correct storage and choosing the profile you enjoy.</p>
+<h2>Our best-selling olive oils</h2>
+[products limit=8 columns=4 orderby="popularity" order="DESC" category="aceites"]
+HTML;
+mdo_repair_set_en_meta(3025, 'post_content', $oliveArticle);
+
+$hamArticle = <<<'HTML'
+<h2>Introduction</h2>
+<p>Iberian ham is one of Spain’s most distinctive foods. Its character comes from the Iberian pig, the animal’s diet and way of life, and a long curing process in which salt, temperature, humidity and time all play a part.</p>
+<h2>The curing process</h2>
+<h3>Salting</h3><p>Fresh hams are covered with salt at very low temperature. The exact salting time depends on the weight of the piece. High humidity allows the salt to dissolve gradually and penetrate the ham while the cold protects the fresh meat.</p>
+<h3>Post-salting</h3><p>After salting, the pieces rest in controlled chambers. During this stage the salt redistributes through the ham while temperature slowly rises and humidity is reduced. This helps stabilise the piece before natural drying.</p>
+<h3>Natural drying</h3><p>The hams then move to drying rooms where seasonal temperature changes encourage slow dehydration and the development of the aromas associated with cured Iberian ham. In traditional natural drying rooms, ventilation can be adjusted as conditions change.</p>
+<h3>Cellar ageing</h3><p>The final stage takes place slowly in the cellar. Temperature should remain relatively stable and the ham is given the time it needs to mature. Acorn-fed hams may spend several years curing before they are ready.</p>
+<h2>Understanding the coloured tags</h2>
+<p>The official Iberian quality system uses coloured tags to make the production category easy to identify.</p>
+<ul><li><strong>Black tag:</strong> 100% Iberian acorn-fed.</li><li><strong>Red tag:</strong> acorn-fed Iberian, normally 50% or 75% Iberian breed.</li><li><strong>Green tag:</strong> free-range grain-fed Iberian.</li><li><strong>White tag:</strong> grain-fed Iberian raised on farm.</li></ul>
+<h2>The Iberian pig in the dehesa</h2>
+<p>The dehesa is a Mediterranean agroforestry landscape of holm oaks and cork oaks, pasture and open land. Iberian pigs can roam freely there and feed on grass, roots and other natural resources. During the montanera finishing season, acorns become the defining part of the diet for acorn-fed pigs.</p>
+<p>Our 100% Iberian pigs are born and raised with access to the outdoors. Depending on the time of year, their diet combines the natural resources of the dehesa with cereals and legumes grown for the herd. Animals destined for the acorn-fed category enter the montanera season when the acorn crop is available.</p>
+<h2>Why time matters</h2>
+<p>Curing is not a fixed recipe measured only in months. Weight, fat infiltration, temperature and humidity all affect how each piece evolves. A good cellar allows the ham to mature gradually until texture, aroma and flavour are in balance.</p>
+<h2>Our best-selling hams and shoulder hams</h2>
+[products limit=8 columns=4 orderby="popularity" order="DESC" category="jamones-paletas"]
+<h2>Our best-selling cured meats</h2>
+[products limit=8 columns=4 orderby="popularity" order="DESC" category="embutidos"]
+HTML;
+mdo_repair_set_en_meta(3327, 'post_content', $hamArticle);
+
+$orangeArticle = <<<'HTML'
+<h2>Introduction</h2>
+<p>November is the first month of the harvest for early orange varieties. At El Mercado de Origen we want the fruit to travel from the grove in Palma del Río, Córdoba, directly to your table at the right stage of ripeness.</p>
+<p>We harvest oranges to order. Until your order arrives, the fruit stays on the tree. This helps us avoid sending underripe fruit and lets you taste the difference that proper ripening makes.</p>
+<p>Orders are grouped around harvest and dispatch days so the fruit can be picked as close as possible to shipping. The aim is maximum freshness from grove to home.</p>
+<h2>The Guadalquivir Valley</h2>
+<p>The Guadalquivir Valley is one of Andalusia’s great agricultural areas. Its fertile soils, climate and long farming tradition have supported cereals, olive groves and vineyards for centuries, while irrigation has helped citrus and horticultural production become increasingly important.</p>
+<p>Palma del Río is one of the best-known citrus-growing areas in Córdoba. Our fruit is grown with a focus on quality, careful handling and direct delivery, reducing the distance between producer and customer.</p>
+<h2>Our orange varieties</h2>
+<h3>Navelina</h3><p>Navelina is an early Navel orange with good juice content and a balanced sweet flavour. It is one of the first varieties we harvest each season.</p>
+<h3>Salustiana</h3><p>Salustiana is highly valued for juicing. It has a high proportion of juice, relatively few seeds and a mild, pleasant flavour.</p>
+<h3>Lane Late</h3><p>Lane Late is a later Navel variety. The fruit is medium to large, with firm flesh and a sweet, balanced flavour, making it excellent for eating fresh as well as for juice.</p>
+<h3>Navel Powell</h3><p>Navel Powell is another late-season Navel variety, appreciated for its good eating quality, attractive colour and ability to remain on the tree until later in the season.</p>
+<h2>Freshness by harvesting to order</h2>
+<p>Unlike fruit that may spend long periods in storage, our oranges are picked in response to real orders. That allows us to prioritise ripeness and freshness and reduces unnecessary handling between the field and the customer.</p>
+<h2>Our best-selling oranges</h2>
+[products limit=8 columns=4 orderby="popularity" order="DESC" category="naranjas"]
+HTML;
+mdo_repair_set_en_meta(3794, 'post_content', $orangeArticle);
+
+echo "MDO English content repair complete\n";
