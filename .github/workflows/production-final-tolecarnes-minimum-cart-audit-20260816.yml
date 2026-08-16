@@ -1,0 +1,53 @@
+name: Production final Tolecarnes minimum cart audit 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-final-tolecarnes-minimum-cart-audit-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trigger live English minimum-order notice
+        run: |
+          python3 - <<'PY'
+          import re,time,urllib.request,http.cookiejar
+          from html import unescape
+          base='https://www.elmercadodeorigen.com'; stamp=str(time.time_ns())
+          def fetch(path,op):
+            sep='&' if '?' in path else '?'
+            req=urllib.request.Request(base+path+sep+'mdo_min_final='+stamp,headers={'User-Agent':'Mozilla/5.0 MDO-Final-Minimum-QA'})
+            with op.open(req,timeout=60) as r: return r.status,r.geturl(),r.read().decode('utf-8','replace')
+          def text(html):
+            h=re.sub(r'<(?:script|style|noscript|template)\b[^>]*>.*?</(?:script|style|noscript|template)>',' ',html,flags=re.I|re.S)
+            h=re.sub(r'<svg\b[^>]*>.*?</svg>',' ',h,flags=re.I|re.S)
+            return re.sub(r'\s+',' ',unescape(re.sub(r'<[^>]+>',' ',h))).strip()
+          # English session: Tolecarnes product 11097 costs 2.49, supplier minimum is 60.
+          cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+          s,u,_=fetch('/en/?add-to-cart=11097',op)
+          print('EN_ADD',s,u,[c.name for c in cj])
+          s,u,h=fetch('/en/cart/',op); t=text(h)
+          print('EN_CART',s,u,'LEN',len(h))
+          hits_en=[p for p in ['Minimum order','You need','minimum order of'] if re.search(re.escape(p),t,re.I)]
+          hits_es=[p for p in ['Pedido mínimo','Te faltan','pedido mínimo de','mínimo de'] if re.search(re.escape(p),t,re.I)]
+          print('EN_HITS',hits_en); print('ES_HITS_IN_EN',hits_es)
+          for needle in ['Minimum order','You need']:
+            m=re.search(re.escape(needle),t,re.I)
+            if m: print('EN_CONTEXT',t[max(0,m.start()-250):m.start()+700])
+          en_ok=(s==200 and len(h)>10000 and len(hits_en)>=2 and not hits_es and 'Tolecarnes' in t)
+          print('EN_MINIMUM_OK',en_ok)
+          # Spanish session, separate cookies, to confirm native Spanish behavior remains.
+          cj2=http.cookiejar.CookieJar(); op2=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj2))
+          s2,u2,_=fetch('/?add-to-cart=11097',op2)
+          s2,u2,h2=fetch('/carrito/',op2); t2=text(h2)
+          if s2 != 200 or len(h2)<10000:
+            # fallback to actual configured cart page slug if /carrito/ redirects or does not exist.
+            s2,u2,h2=fetch('/cart/',op2); t2=text(h2)
+          es_hits=[p for p in ['Pedido mínimo','Te faltan','pedido mínimo de'] if re.search(re.escape(p),t2,re.I)]
+          print('ES_CART',s2,u2,'LEN',len(h2),'HITS',es_hits)
+          es_ok=(s2==200 and len(h2)>10000 and len(es_hits)>=2 and 'Tolecarnes' in t2)
+          print('ES_MINIMUM_OK',es_ok)
+          if not en_ok or not es_ok: raise SystemExit(1)
+          print('FINAL_TOLECARNES_MINIMUM_ORDER_AUDIT=PASS')
+          PY
