@@ -1,0 +1,69 @@
+name: Production stabilize Home native cache 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-stabilize-home-native-cache-20260816.yml'
+jobs:
+  stabilize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Patch production cache bypass
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          ROOT=$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) echo "$p"; break;; esac
+          done
+          REMOTE
+          )
+          : "${ROOT:?production root not found}"
+          TS=$(date +%Y%m%d%H%M%S)
+          ADV="$ROOT/wp-content/advanced-cache.php"
+          FRESH="$ROOT/wp-content/mu-plugins/elmercado-home-fresh.php"
+          ADV_BAK="$ADV.bak-native-$TS"
+          FRESH_BAK="$FRESH.bak-native-$TS"
+          sshpass -e scp $SCP .github/scripts/patch-home-fresh-cache-20260816.py "$STAGING_USER@$STAGING_HOST:/tmp/mdo-patch-home-cache.py"
+          sshpass -e scp $SCP .github/scripts/advanced-cache-disabled-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-advanced-disabled.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -a '$ADV' '$ADV_BAK' && cp -a '$FRESH' '$FRESH_BAK' && python3 /tmp/mdo-patch-home-cache.py '$FRESH' && cp /tmp/mdo-advanced-disabled.php '$ADV' && chown --reference='$ADV_BAK' '$ADV' && chmod --reference='$ADV_BAK' '$ADV' && /opt/plesk/php/8.2/bin/php -l '$ADV' && /opt/plesk/php/8.2/bin/php -l '$FRESH'"
+          echo "ADV_BACKUP=$ADV_BAK"
+          echo "FRESH_BACKUP=$FRESH_BAK"
+
+          set +e
+          FAIL=0
+          curl -k -sS --max-time 45 -A 'MDO-Native-Prime/1.0' -D /tmp/p.h -o /tmp/p.html -w 'prime_http=%{http_code} prime_total=%{time_total} prime_start=%{time_starttransfer} prime_size=%{size_download}\n' https://www.elmercadodeorigen.com/ || FAIL=1
+          grep -q 'data-emo-vendor-count' /tmp/p.html || FAIL=1
+          grep -q 'translatepress-es_ES' /tmp/p.html || FAIL=1
+          curl -k -sS --max-time 25 -A 'MDO-Native-Hit/1.0' -D /tmp/h.h -o /tmp/h.html -w 'hit_http=%{http_code} hit_total=%{time_total} hit_start=%{time_starttransfer} hit_size=%{size_download}\n' https://www.elmercadodeorigen.com/ || FAIL=1
+          grep -Ei 'HTTP/|X-El-Mercado|Cache-Control|Vary:' /tmp/h.h || true
+          grep -qi '^X-El-Mercado-Cache: HIT' /tmp/h.h || FAIL=1
+          ! grep -qi '^X-El-Mercado-Home-Fresh: BYPASS' /tmp/h.h || FAIL=1
+          grep -q 'data-emo-vendor-count' /tmp/h.html || FAIL=1
+          grep -q 'translatepress-es_ES' /tmp/h.html || FAIL=1
+          curl -k -sS --max-time 45 -A 'MDO-Native-Cart/1.0' -H 'Cookie: woocommerce_items_in_cart=1' -D /tmp/c.h -o /dev/null -w 'cart_http=%{http_code} cart_total=%{time_total} cart_start=%{time_starttransfer}\n' https://www.elmercadodeorigen.com/ || FAIL=1
+          grep -qi '^X-El-Mercado-Cache: HIT' /tmp/c.h && FAIL=1
+          curl -k -sS --max-time 45 -A 'MDO-Native-EN/1.0' -o /tmp/e.html -w 'en_http=%{http_code} en_total=%{time_total} en_start=%{time_starttransfer} en_size=%{size_download}\n' https://www.elmercadodeorigen.com/en/ || FAIL=1
+          grep -q 'translatepress-en_US' /tmp/e.html || FAIL=1
+          grep -q 'data-emo-vendor-count' /tmp/e.html || FAIL=1
+          set -e
+          if [ "$FAIL" -ne 0 ]; then
+            echo 'QA failed; restoring production cache files'
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -a '$ADV_BAK' '$ADV' && cp -a '$FRESH_BAK' '$FRESH'"
+            exit 1
+          fi
+          echo 'NATIVE_HOME_CACHE_QA=PASS'
