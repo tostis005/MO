@@ -1,0 +1,71 @@
+name: Production English variants policies SEO audit 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-variants-policies-seo-audit-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect production attributes, policy tab and TranslatePress SEO
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"; : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          echo '=== ACTIVE TRANSLATEPRESS / SEO PLUGINS ==='
+          wp plugin list --status=active --fields=name,status,version --format=csv 2>/dev/null | grep -Ei 'translate|seo|rank|yoast|wcfm|woocommerce' || true
+          echo '=== TRANSLATEPRESS ADDON FILES ==='
+          find "$PROD_PATH/wp-content/plugins" -maxdepth 2 -type f \( -iname '*seo*pack*.php' -o -iname '*translatepress*business*.php' -o -iname '*translatepress*personal*.php' -o -iname '*translatepress*developer*.php' \) -print 2>/dev/null | head -n 60 || true
+          echo '=== PRODUCT ATTRIBUTE TAXONOMIES ==='
+          wp eval '
+            if (!function_exists("wc_get_attribute_taxonomies")) { echo "woocommerce unavailable\n"; return; }
+            foreach (wc_get_attribute_taxonomies() as $a) {
+              $tax="pa_".$a->attribute_name;
+              echo $tax." | label=".$a->attribute_label." | public=".$a->attribute_public."\n";
+              $terms=get_terms(["taxonomy"=>$tax,"hide_empty"=>false]);
+              if (!is_wp_error($terms)) foreach(array_slice($terms,0,12) as $t) echo "  - ".$t->name." | slug=".$t->slug."\n";
+            }
+          ' 2>/dev/null || true
+          echo '=== VARIABLE HAM-LIKE PRODUCTS ==='
+          wp eval '
+            $q=new WP_Query(["post_type"=>"product","post_status"=>"publish","posts_per_page"=>50,"tax_query"=>[["taxonomy"=>"product_type","field"=>"slug","terms"=>"variable"]]]);
+            foreach($q->posts as $p){$pr=wc_get_product($p->ID);$hay=preg_match("/(jam[oó]n|paleta|ham)/iu",$p->post_title); if(!$hay) continue; echo $p->ID." | ".$p->post_title." | ".$p->post_name." | ".$pr->get_permalink()."\n"; foreach($pr->get_variation_attributes() as $k=>$vals){echo "  ".$k." => ".implode(",",array_slice($vals,0,10))."\n";} }
+          ' 2>/dev/null || true
+          echo '=== FIRST VARIABLE PRODUCTS FALLBACK ==='
+          wp eval '
+            $q=new WP_Query(["post_type"=>"product","post_status"=>"publish","posts_per_page"=>8,"tax_query"=>[["taxonomy"=>"product_type","field"=>"slug","terms"=>"variable"]]]);
+            foreach($q->posts as $p){$pr=wc_get_product($p->ID); echo $p->ID." | ".$p->post_title." | ".$p->post_name."\n"; foreach($pr->get_variation_attributes() as $k=>$vals){echo "  ".$k." => ".implode(",",array_slice($vals,0,8))."\n";} }
+          ' 2>/dev/null || true
+          echo '=== WCFM POLICY TAB SOURCES ==='
+          grep -RniE --include='*.php' "woocommerce_product_tabs|Policies|policies|policy_tab" "$PROD_PATH/wp-content/plugins/wc-multivendor-marketplace" "$PROD_PATH/wp-content/plugins/wc-frontend-manager" "$PROD_PATH/wp-content/plugins" 2>/dev/null | grep -Ei 'wcfm|policy|product_tabs' | head -n 140 || true
+          echo '=== CURRENT PRODUCT TAB KEYS ON SAMPLE ==='
+          wp eval '
+            $ids=get_posts(["post_type"=>"product","post_status"=>"publish","posts_per_page"=>1,"fields"=>"ids"]); if(!$ids)return; $GLOBALS["post"]=get_post($ids[0]); setup_postdata($GLOBALS["post"]); $tabs=apply_filters("woocommerce_product_tabs",[]); foreach($tabs as $k=>$v) echo $k." | title=".wp_strip_all_tags($v["title"]??"")."\n";
+          ' 2>/dev/null || true
+          echo '=== TRP OPTIONS RE SEO / AUTO ==='
+          wp option list --search='trp_%' --fields=option_name --format=csv 2>/dev/null | head -n 100 || true
+          wp option get trp_settings --format=json 2>/dev/null || true
+          wp option get trp_advanced_settings --format=json 2>/dev/null || true
+          wp option get trp_machine_translation_settings --format=json 2>/dev/null || true
+          REMOTE
