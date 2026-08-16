@@ -47,7 +47,7 @@ jobs:
           : "${PHP_BIN:?PHP not found}"
           : "${WP_BIN:?WP-CLI not found}"
 
-          wpcli() { "$PHP_BIN" "$WP_BIN" --path="$WP_PATH" --allow-root "$@"; }
+          wpcli() { "$PHP_BIN" -d memory_limit=512M "$WP_BIN" --path="$WP_PATH" --allow-root "$@"; }
 
           echo '=== BEFORE: ACTIVE PLUGINS ==='
           wpcli plugin list --status=active --fields=name,status,version --format=table
