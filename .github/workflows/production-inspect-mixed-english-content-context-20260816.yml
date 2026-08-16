@@ -1,0 +1,59 @@
+name: Production inspect mixed English content context 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-inspect-mixed-english-content-context-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Print Spanish residual contexts from reviewed English metadata
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          cat >/tmp/mdo-mixed-context.php <<'PHP'
+          <?php
+          ini_set('memory_limit','512M'); require $argv[1].'/wp-load.php'; global $wpdb;
+          $ids=[3,3736,5231,10477,1220,1350,1356,1363,3948,3979,4160,4199,5045,8624];
+          $rx='/\b(?:carrito|tienda|comprar|producto|productos|productores|envío|envíos|devolución|selección|tamaño|variedad|alimentación|calidad|curación|preparación|raza ibérica|pedido mínimo|te faltan|para alcanzar|política|privacidad|suscríbete|descuento|primera compra|introduzca|añadir al carrito|cortado|deshuesado|loncheado|pieza|caja de|bote de|botella|lata de|saco de|tarro de|sin filtrar|tradicional|naranja|miel|garbanzos|lentejas|almendras|aceite de oliva|jamón|paleta|ibérico|ibérica|bellota|cebo|campo|elaborado|ingredientes|conservar|consumo|meses|procedente|recolección|zumo|aceituna|único|directamente|durante|nuestro|nuestra|sus|para|que|una|del|por)\b/iu';
+          foreach($ids as $id){
+            $p=get_post($id); if(!$p) continue;
+            foreach(['_en_US_post_title','_en_US_post_excerpt','_en_US_post_content'] as $key){
+              $v=(string)get_post_meta($id,$key,true); if($v==='') continue;
+              $plain=trim(preg_replace('/\s+/u',' ',html_entity_decode(wp_strip_all_tags(strip_shortcodes($v)),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+              preg_match_all($rx,$plain,$ms,PREG_OFFSET_CAPTURE);
+              if(!$ms[0]) continue;
+              echo "\n===== {$id}|{$p->post_type}|{$p->post_title}|{$key}|MATCHES=".count($ms[0])." =====\n";
+              $seen=[];
+              foreach($ms[0] as [$word,$off]){
+                $start=max(0,$off-220); $ctx=mb_substr($plain,$start,520,'UTF-8'); $ctx=trim($ctx);
+                $sig=mb_substr($ctx,0,120,'UTF-8'); if(isset($seen[$sig])) continue; $seen[$sig]=1;
+                echo "MATCH={$word}\nCONTEXT={$ctx}\n---\n";
+                if(count($seen)>=15) break;
+              }
+            }
+          }
+          PHP
+          "$PHP" -d memory_limit=512M /tmp/mdo-mixed-context.php "$ROOT" 2>/dev/null | head -n 1200
+          REMOTE
