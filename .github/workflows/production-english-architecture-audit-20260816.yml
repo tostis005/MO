@@ -38,7 +38,12 @@ jobs:
           echo '=== SITE ==='; wp option get siteurl 2>/dev/null || true
           echo '=== ACTIVE LANGUAGE PLUGINS ==='; wp plugin list --status=active --fields=name,status --format=csv 2>/dev/null | grep -Ei 'translate|wpml|polylang|language|multilingual|name' || true
           echo '=== TRANSLATEPRESS SETTINGS ==='; wp option get trp_settings --format=json 2>/dev/null || echo 'NO_TRP_SETTINGS'
+          echo '=== TRANSLATEPRESS AUTOMATIC / ADVANCED OPTIONS ==='
+          wp option list --search='trp*' --fields=option_name --format=csv 2>/dev/null | grep -Ei 'automatic|advanced|google|deepl|translate' || true
+          for opt in trp_automatic_translation_settings trp_advanced_settings; do echo "--- $opt ---"; wp option get "$opt" --format=json 2>/dev/null || echo 'NOT_SET'; done
           echo '=== FRONT PAGE ==='; front=$(wp option get page_on_front 2>/dev/null || true); echo "page_on_front=$front"; [ -n "$front" ] && wp post get "$front" --fields=ID,post_title,post_name,post_status --format=json 2>/dev/null || true
           echo '=== PUBLISHED PAGES ==='; wp post list --post_type=page --post_status=publish --fields=ID,post_title,post_name,post_parent --format=csv 2>/dev/null || true
-          echo '=== LANGUAGE-RELATED THEME / MU FILES ==='; grep -RliE --include='*.php' 'TRP_LANGUAGE|trp_get_current_language|/en/|English' "$PROD_PATH/wp-content/themes/elmercadodeorigen-child" "$PROD_PATH/wp-content/mu-plugins" 2>/dev/null | head -n 80 || true
+          echo '=== NATIVE RENDER BRIDGE ==='
+          bridge="$PROD_PATH/wp-content/mu-plugins/mdo-production-native-render-bridge.php"
+          if [ -f "$bridge" ]; then sed -n '1,260p' "$bridge"; else echo 'BRIDGE_NOT_FOUND'; fi
           REMOTE
