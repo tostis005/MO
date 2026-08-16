@@ -1,0 +1,149 @@
+name: Production English slug router 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-slug-router-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy reversible English page slug router
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          MU_DIR="$PROD_PATH/wp-content/mu-plugins"
+          mkdir -p "$MU_DIR"
+          TARGET="$MU_DIR/mdo-english-slug-router.php"
+          if [ -f "$TARGET" ]; then cp -a "$TARGET" "$TARGET.bak-$(date +%Y%m%d%H%M%S)"; fi
+          cat > "$TARGET" <<'PHP'
+          <?php
+          /**
+           * El Mercado de Origen: English page slug compatibility layer.
+           * Keeps Spanish canonical objects/slugs untouched and maps /en/<translated-slug>/
+           * to the same WordPress page using Falang's stored _en_US_post_name metadata.
+           */
+          if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+          function mdo_en_slug_request_context(): bool {
+              if ( empty( $_SERVER['REQUEST_URI'] ) ) { return false; }
+              $path = wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
+              return is_string( $path ) && ( $path === '/en' || strpos( $path, '/en/' ) === 0 );
+          }
+
+          function mdo_en_slug_for_post( int $post_id ): string {
+              $slug = get_post_meta( $post_id, '_en_US_post_name', true );
+              $published = get_post_meta( $post_id, '_en_US_published', true );
+              if ( (string) $published !== '1' ) { return ''; }
+              return sanitize_title( (string) $slug );
+          }
+
+          add_filter( 'request', static function ( array $vars ): array {
+              if ( ! mdo_en_slug_request_context() || empty( $vars['pagename'] ) ) { return $vars; }
+              $requested = sanitize_title( basename( trim( (string) $vars['pagename'], '/' ) ) );
+              if ( $requested === '' ) { return $vars; }
+              $ids = get_posts( array(
+                  'post_type'        => 'page',
+                  'post_status'      => 'publish',
+                  'posts_per_page'   => 2,
+                  'fields'           => 'ids',
+                  'no_found_rows'    => true,
+                  'suppress_filters' => true,
+                  'meta_query'       => array(
+                      'relation' => 'AND',
+                      array( 'key' => '_en_US_post_name', 'value' => $requested, 'compare' => '=' ),
+                      array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
+                  ),
+              ) );
+              if ( count( $ids ) !== 1 ) { return $vars; }
+              $source_slug = get_post_field( 'post_name', (int) $ids[0] );
+              if ( is_string( $source_slug ) && $source_slug !== '' ) {
+                  $vars['pagename'] = $source_slug;
+              }
+              return $vars;
+          }, 1 );
+
+          add_filter( 'page_link', static function ( string $url, int $post_id ): string {
+              if ( ! mdo_en_slug_request_context() ) { return $url; }
+              $slug = mdo_en_slug_for_post( $post_id );
+              if ( $slug === '' ) { return $url; }
+              return home_url( user_trailingslashit( 'en/' . $slug ) );
+          }, PHP_INT_MAX, 2 );
+
+          add_filter( 'redirect_canonical', static function ( $redirect, $requested ) {
+              if ( ! mdo_en_slug_request_context() ) { return $redirect; }
+              $path = wp_parse_url( (string) $requested, PHP_URL_PATH );
+              $slug = is_string( $path ) ? sanitize_title( basename( trim( $path, '/' ) ) ) : '';
+              if ( $slug === '' ) { return $redirect; }
+              $ids = get_posts( array(
+                  'post_type'        => 'page',
+                  'post_status'      => 'publish',
+                  'posts_per_page'   => 1,
+                  'fields'           => 'ids',
+                  'no_found_rows'    => true,
+                  'suppress_filters' => true,
+                  'meta_query'       => array(
+                      'relation' => 'AND',
+                      array( 'key' => '_en_US_post_name', 'value' => $slug, 'compare' => '=' ),
+                      array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
+                  ),
+              ) );
+              return $ids ? false : $redirect;
+          }, PHP_INT_MAX, 2 );
+          PHP
+          php -l "$TARGET"
+          echo "DEPLOYED=$TARGET"
+          REMOTE
+      - name: Verify Spanish shop remains intact and English shop resolves as WooCommerce shop
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /tienda/ /en/shop/ /en/cart/ /en/checkout/ /en/my-account/; do
+            url="https://www.elmercadodeorigen.com${path}?mdo_en_slug_verify=$(date +%s%N)"
+            code=$(curl -ksSL --max-time 35 -o /tmp/mdo-check.html -w '%{http_code}' "$url")
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/mdo-check.html | head -n1 || true)
+            h1=$(grep -oE '<h1[^>]*>[^<]{0,120}</h1>' /tmp/mdo-check.html | head -n1 | sed -E 's/<[^>]+>//g' || true)
+            products=$(grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' /tmp/mdo-check.html | wc -l | tr -d ' ')
+            echo "$path code=$code products=$products h1=$h1"
+            echo "$body"
+            [ "$code" = 200 ] || exit 21
+            if [ "$path" = "/tienda/" ] || [ "$path" = "/en/shop/" ]; then
+              echo "$body" | grep -q 'woocommerce-shop' || exit 22
+              [ "$products" -gt 0 ] || exit 23
+            fi
+          done
