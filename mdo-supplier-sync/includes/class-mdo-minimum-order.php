@@ -168,23 +168,31 @@ final class MDO_Minimum_Order {
 		<?php
 	}
 
-	private static function is_english_request(): bool {
-		global $TRP_LANGUAGE;
-
-		if ( isset( $TRP_LANGUAGE ) && is_string( $TRP_LANGUAGE ) && '' !== $TRP_LANGUAGE ) {
-			return 0 === strpos( strtolower( $TRP_LANGUAGE ), 'en' );
+	private static function current_language_slug(): string {
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+		if ( preg_match( '#^/(en|pt|fr|it)(?:/|$)#i', $path, $matches ) ) {
+			return strtolower( $matches[1] );
 		}
 
-		if ( function_exists( 'trp_get_current_language' ) ) {
-			$language = trp_get_current_language();
+		$referer      = isset( $_SERVER['HTTP_REFERER'] ) ? wp_unslash( $_SERVER['HTTP_REFERER'] ) : '';
+		$referer_path = (string) wp_parse_url( $referer, PHP_URL_PATH );
+		if ( preg_match( '#^/(en|pt|fr|it)(?:/|$)#i', $referer_path, $matches ) ) {
+			return strtolower( $matches[1] );
+		}
+
+		if ( function_exists( 'falang_current_language' ) ) {
+			$language = falang_current_language( 'slug' );
 			if ( is_string( $language ) && '' !== $language ) {
-				return 0 === strpos( strtolower( $language ), 'en' );
+				return strtolower( $language );
 			}
 		}
 
-		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
-		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
-		return 1 === preg_match( '#^/en(?:/|$)#i', $path );
+		return 'es';
+	}
+
+	private static function is_english_request(): bool {
+		return 'en' === self::current_language_slug();
 	}
 
 	private static function has_unmet_minimum(): bool {
