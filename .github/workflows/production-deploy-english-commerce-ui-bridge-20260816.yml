@@ -1,0 +1,89 @@
+name: Production deploy English commerce UI bridge 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-deploy-english-commerce-ui-bridge-20260816.yml'
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy English-only UI bridge
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SRC=".github/scripts/mdo-english-commerce-ui-bridge-20260816.php"; TMP="/tmp/mdo-en-commerce-ui-${GITHUB_RUN_ID}.php"
+          sshpass -e scp -P "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$SRC" "$STAGING_USER@$STAGING_HOST:$TMP"
+          OUT=$(sshpass -e ssh -p "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TMP='$TMP' bash -s" <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          F="$ROOT/wp-content/mu-plugins/mdo-english-commerce-ui-bridge.php"; TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$F" ]; then B="$F.bak-$TS"; cp -a "$F" "$B"; else B="NEW"; fi
+          cp "$TMP" "$F"; rm -f "$TMP"; "$PHP" -l "$F"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "TARGET=$F"; echo "BACKUP=$B"
+          REMOTE
+          )
+          echo "$OUT"
+          echo "LIVE_TARGET=$(printf '%s\n' "$OUT" | sed -n 's/^TARGET=//p' | tail -n1)" >> "$GITHUB_ENV"
+          echo "LIVE_BACKUP=$(printf '%s\n' "$OUT" | sed -n 's/^BACKUP=//p' | tail -n1)" >> "$GITHUB_ENV"
+      - name: QA English cart checkout account and Spanish regression
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html,http.cookiejar,re,time,urllib.parse,urllib.request
+          base='https://www.elmercadodeorigen.com'; jar=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar)); op.addheaders=[('User-Agent','MDO-English-Commerce-Bridge-QA/1.0')]
+          def req(path,data=None):
+              payload=urllib.parse.urlencode(data).encode() if isinstance(data,dict) else data
+              t=time.monotonic(); r=op.open(base+path,data=payload,timeout=45); raw=r.read(); b=raw.decode('utf-8','replace'); print(('POST' if payload else 'GET'),path,r.status,round(time.monotonic()-t,3),len(raw),r.geturl()); return r.status,b,r.geturl()
+          def visible(b):
+              s=re.sub(r'(?is)<script\b.*?</script>|<style\b.*?</style>|<noscript\b.*?</noscript>|<svg\b.*?</svg>|<head\b.*?</head>',' ',b); s=re.sub(r'(?s)<[^>]+>','\n',s); s=html.unescape(s)
+              return '\n'.join(re.sub(r'\s+',' ',x).strip() for x in s.splitlines() if x.strip())
+          failures=[]
+          s,empty,_=req('/en/cart/'); ev=visible(empty)
+          if s!=200 or 'translatepress-en_US' not in empty or not any(x in empty for x in ['cart-empty','wc-empty-cart-message']): failures.append('empty-cart')
+          s,acc,_=req('/en/my-account/'); av=visible(acc)
+          if s!=200 or 'translatepress-en_US' not in acc or 'Log in' not in av: failures.append('account')
+          data={'attribute_pa_tamano':'envase-de-5l-de-pet','attribute_pa_variedad':'sin-filtrar-de-martena-picual','add-to-cart':'1056','product_id':'1056','variation_id':'2486','quantity':'1'}
+          req('/producto/aceite-de-oliva-virgen-extra-5l/',data)
+          s,es,_=req('/carrito/'); esv=visible(es)
+          if s!=200 or 'translatepress-es_ES' not in es or 'Revisa tu carrito' not in esv: failures.append('spanish-regression')
+          s,cart,_=req('/en/cart/'); cv=visible(cart)
+          required=['Your selection','Review your cart','Check quantities and products before continuing.','Secure payment throughout the process','Clear information before you confirm','Personal support if you need help','Size','5 L PET container.']
+          for x in required:
+              if x not in cv: failures.append('missing:'+x)
+          forbidden=['Tu selección','Revisa tu carrito','Comprueba cantidades y productos antes de continuar.','Pago protegido durante todo el proceso','Información clara antes de confirmar','Atención cercana si necesitas ayuda','Tamaño:','Envase de 5l de PET.','Sin filtrar de marteña (picual)']
+          for x in forbidden:
+              if x in cv: failures.append('spanish-cart:'+x)
+          s,co,final=req('/en/checkout/'); cov=visible(co)
+          if s!=200 or urllib.parse.urlparse(final).path.rstrip('/')!='/en/checkout' or 'translatepress-en_US' not in co: failures.append('checkout')
+          for x in ['Tamaño:','Envase de 5l de PET.','Sin filtrar de marteña (picual)']:
+              if x in cov: failures.append('spanish-checkout:'+x)
+          print('FAILURES',failures)
+          if failures: raise SystemExit(1)
+          print('ENGLISH_COMMERCE_TRANSLATION_QA=PASS'); print('ORDER_CREATED=NO')
+          PY
+      - name: Roll back bridge on QA failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "if [ '${LIVE_BACKUP:-}' = 'NEW' ]; then rm -f '${LIVE_TARGET:-}'; elif [ -n '${LIVE_BACKUP:-}' ] && [ -n '${LIVE_TARGET:-}' ]; then cp '${LIVE_BACKUP}' '${LIVE_TARGET}'; fi"
