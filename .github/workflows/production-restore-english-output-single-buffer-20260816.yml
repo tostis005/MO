@@ -1,0 +1,97 @@
+name: Production restore English output single buffer 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-restore-english-output-single-buffer-20260816.yml'
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Remove nested buffer and merge teaser fix into runtime bridge
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          RUNTIME="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          TEASER="$ROOT/wp-content/mu-plugins/mdo-english-related-teaser-fix.php"
+          TS=$(date +%Y%m%d%H%M%S)
+          cp -a "$RUNTIME" "$RUNTIME.bak-single-buffer-$TS"
+          [ ! -f "$TEASER" ] || cp -a "$TEASER" "$TEASER.bak-disabled-$TS"
+          rm -f "$TEASER"
+          cat > /tmp/mdo-patch-runtime.php <<'PHP'
+          <?php
+          $file = $argv[1] ?? '';
+          $src = file_get_contents($file);
+          if ($src === false) { fwrite(STDERR, "Cannot read runtime\n"); exit(1); }
+          if (strpos($src, 'MDO_RELATED_ORANGE_TEASER_IN_SINGLE_BUFFER_V1') === false) {
+              $needle = '        $html = strtr( $html, $replacements );';
+              $patch = <<<'CODE'
+                  $html = strtr( $html, $replacements );
+
+                  /* MDO_RELATED_ORANGE_TEASER_IN_SINGLE_BUFFER_V1 */
+                  $html = str_replace( 'INTRODUCCIÓN', 'INTRODUCTION', $html );
+                  $html = (string) preg_replace(
+                      '#Noviembre\s+es\s+el\s+primer\s+mes\s+de\s+recolecci(?:ó|&oacute;|&#243;|&#xF3;)n\s+de\s+naranjas\s+de\s+variedades\s+tempranas\.\s*En\s+El\s+Mercado\s+de\s+Origen\s+queremos\s+llevaros\s+naranjas\s+de\s+la\s+finca\s+de[^<]{0,180}(?:…|&hellip;|&#8230;|\.\.\.)?#iu',
+                      'November is the first month of the harvest for early orange varieties. At El Mercado de Origen we want the fruit to travel from the grove in Palma del Río, Córdoba, directly to your table…',
+                      $html
+                  );
+          CODE;
+              if (strpos($src, $needle) === false) { fwrite(STDERR, "Patch anchor not found\n"); exit(2); }
+              $src = str_replace($needle, $patch, $src, $count);
+              if ($count !== 1) { fwrite(STDERR, "Unexpected patch count: $count\n"); exit(3); }
+              file_put_contents($file, $src);
+          }
+          PHP
+          "$PHP" /tmp/mdo-patch-runtime.php "$RUNTIME"
+          "$PHP" -l "$RUNTIME"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "SINGLE_BUFFER_RESTORED=1"
+          REMOTE
+      - name: Verify non-empty English output and Spanish safety
+        run: |
+          python3 - <<'PY'
+          import re,time,urllib.request
+          from html import unescape
+          base='https://www.elmercadodeorigen.com'; stamp=str(time.time_ns())
+          def get(path):
+            req=urllib.request.Request(base+path+('?' if '?' not in path else '&')+'mdo_restore='+stamp,headers={'User-Agent':'Mozilla/5.0 MDO-QA'})
+            with urllib.request.urlopen(req,timeout=60) as r: return r.status,r.geturl(),r.read().decode('utf-8','replace')
+          failures=[]
+          for path in ['/en/shop/','/en/extra-virgin-olive-oil/','/en/iberian-ham/','/en/cart/']:
+            s,u,h=get(path); print(path,'HTTP',s,'LEN',len(h),'BODY',bool(re.search(r'<body\b',h,re.I)))
+            if s!=200 or len(h)<10000 or not re.search(r'<body\b',h,re.I): failures.append('EMPTY '+path)
+            if path in ['/en/extra-virgin-olive-oil/','/en/iberian-ham/']:
+              stripped=re.sub(r'<(?:script|style|noscript|template)\b[^>]*>.*?</(?:script|style|noscript|template)>',' ',h,flags=re.I|re.S)
+              text=unescape(re.sub(r'<[^>]+>',' ',stripped)); text=re.sub(r'\s+',' ',text)
+              hits=[x for x in ['INTRODUCCIÓN','Noviembre es el primer mes de recolección'] if re.search(re.escape(x),text,re.I)]
+              print('TEASER_BAD',path,hits)
+              if hits: failures.append('TEASER '+path)
+          s,u,es=get('/tienda/'); print('SPANISH',s,'LEN',len(es),'SHOP',bool(re.search(r'woocommerce-shop',es)))
+          if s!=200 or len(es)<10000 or not re.search(r'woocommerce-shop',es): failures.append('SPANISH')
+          if failures:
+            print('FAILURES',failures); raise SystemExit(1)
+          print('SINGLE_BUFFER_RESTORE=PASS')
+          PY
