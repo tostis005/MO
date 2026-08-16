@@ -1,0 +1,226 @@
+name: Production English visible content audit 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-visible-content-audit-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Export complete published English URL inventory
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' > /tmp/mdo-url-inventory.raw <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path missing}"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            echo "URL\tcore\thome\t/en/".PHP_EOL;
+            foreach(["page","post","product"] as $type){
+              $ids=get_posts(["post_type"=>$type,"post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","orderby"=>"ID","order"=>"ASC","suppress_filters"=>true]);
+              foreach($ids as $id){
+                if((string)get_post_meta($id,"_en_US_published",true)!=="1") continue;
+                $slug=sanitize_title(wp_strip_all_tags((string)get_post_meta($id,"_en_US_post_name",true)));
+                if($slug==="") continue;
+                if($type==="product") $path="/en/product/$slug/";
+                elseif($type==="page" && $id===(int)get_option("woocommerce_shop_page_id")) $path="/en/shop/";
+                else $path="/en/$slug/";
+                echo "URL\t$type\t$id\t$path".PHP_EOL;
+              }
+            }
+            foreach(["product_cat","product_tag","category"] as $tax){
+              $terms=get_terms(["taxonomy"=>$tax,"hide_empty"=>true]);
+              foreach($terms as $term){
+                if((string)get_term_meta($term->term_id,"_en_US_published",true)!=="1") continue;
+                $slug=sanitize_title(wp_strip_all_tags((string)get_term_meta($term->term_id,"_en_US_slug",true)));
+                if($slug==="") continue;
+                $base=$tax==="product_cat"?"product-category":($tax==="product_tag"?"product-tag":"category");
+                echo "URL\t$tax\t{$term->term_id}\t/en/$base/$slug/".PHP_EOL;
+              }
+            }
+            $vendors=get_users(["role__in"=>["wcfm_vendor","dc_vendor"],"fields"=>["ID","user_nicename"]]);
+            foreach($vendors as $v){ if($v->user_nicename!=="") echo "URL\tvendor\t{$v->ID}\t/en/store/{$v->user_nicename}/".PHP_EOL; }
+          ' --path="$PROD_PATH" --allow-root 2>/dev/null
+          REMOTE
+          grep '^URL' /tmp/mdo-url-inventory.raw | sort -u > /tmp/mdo-url-inventory.tsv
+          echo '--- URL INVENTORY ---'
+          cat /tmp/mdo-url-inventory.tsv
+          echo "url_count=$(wc -l < /tmp/mdo-url-inventory.tsv | tr -d ' ')"
+
+      - name: Fetch and score visible content for Spanish residuals
+        shell: bash
+        run: |
+          set -u
+          failed_http=0
+          stamp=$(date +%s%N)
+          mkdir -p /tmp/mdo-pages
+          : > /tmp/mdo-content-report.tsv
+          n=0
+          while IFS=$'\t' read -r marker type id path; do
+            n=$((n+1))
+            safe=$(printf '%s' "$path" | tr '/?&=' '____' | tr -cd '[:alnum:]_.-')
+            file="/tmp/mdo-pages/${n}-${safe}.html"
+            code=$(curl -ksSL --max-time 40 -o "$file" -w '%{http_code}' "https://www.elmercadodeorigen.com${path}?mdo_content_audit=$stamp" || true)
+            echo "FETCH type=$type id=$id path=$path code=$code"
+            [ "$code" = 200 ] || failed_http=1
+            printf '%s\t%s\t%s\t%s\t%s\n' "$type" "$id" "$path" "$code" "$file" >> /tmp/mdo-content-report.tsv
+          done < /tmp/mdo-url-inventory.tsv
+          echo "fetched=$n failed_http=$failed_http"
+
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          import html, re, pathlib
+
+          class VisibleText(HTMLParser):
+              def __init__(self):
+                  super().__init__(convert_charrefs=True)
+                  self.hidden=0
+                  self.chunks=[]
+                  self.skip_tags={'script','style','noscript','svg','template','head'}
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() in self.skip_tags: self.hidden += 1
+              def handle_endtag(self, tag):
+                  if tag.lower() in self.skip_tags and self.hidden: self.hidden -= 1
+              def handle_data(self, data):
+                  if self.hidden: return
+                  text=' '.join(data.split())
+                  if text: self.chunks.append(text)
+
+          # Deliberately favors distinctive Spanish function/content words to avoid
+          # false positives from brand names such as Ibérico, Bellota or place names.
+          distinctive = {
+              'que','para','con','del','una','uno','unos','unas','los','las','por','desde','hasta',
+              'nuestro','nuestra','nuestros','nuestras','este','esta','estos','estas','también','más','muy',
+              'producto','productos','tienda','comprar','carrito','pedido','pedidos','envío','envíos','mínimo',
+              'añadir','selecciona','seleccionar','filtros','filtro','ordenar','precio','precios','disponible',
+              'elaborado','elaborada','elaborados','elaboradas','aceite','jamón','jamones','paleta','paletas',
+              'queso','quesos','naranjas','agricultura','ganadería','productor','productores','origen','calidad',
+              'sabor','textura','natural','artesanal','familia','finca','dehesa','cerdo','cerdos','ibérico','ibéricos',
+              'gracias','contacto','nombre','correo','mensaje','buscar','resultados','categoría','categorías',
+              'descripción','información','política','cookies','privacidad','condiciones','devoluciones','vendedor'
+          }
+          phrases = [
+              'añadir al carrito','ver producto','seguir comprando','pedido mínimo','importe mínimo','gastos de envío',
+              'política de cookies','política de privacidad','términos y condiciones','no hay productos',
+              'resultados encontrados','ordenar por','precio más','selecciona una opción','leer más','ver más',
+              'aceite de oliva','jamón ibérico','el mercado de origen'
+          ]
+          rows=[]
+          report=[]
+          for line in pathlib.Path('/tmp/mdo-content-report.tsv').read_text().splitlines():
+              typ,id_,path,code,file=line.split('\t',4)
+              src=pathlib.Path(file).read_text(encoding='utf-8',errors='ignore')
+              parser=VisibleText()
+              try: parser.feed(src)
+              except Exception: pass
+              text=' '.join(parser.chunks)
+              low=text.lower()
+              tokens=re.findall(r"[a-záéíóúüñ]+",low,re.I)
+              hits=[]
+              for w in tokens:
+                  if w in distinctive: hits.append(w)
+              phrase_hits=[p for p in phrases if p in low]
+              # snippets where likely Spanish is actually visible
+              snippets=[]
+              for chunk in parser.chunks:
+                  cl=chunk.lower()
+                  score=sum(1 for w in re.findall(r"[a-záéíóúüñ]+",cl,re.I) if w in distinctive)
+                  if score>=3 or any(p in cl for p in phrases):
+                      c=' '.join(chunk.split())
+                      if c not in snippets: snippets.append(c[:500])
+                  if len(snippets)>=8: break
+              # A single trademark/location word isn't a failure. Two distinctive hits
+              # in one page are reported; 4+ makes it a strong residual candidate.
+              score=len(hits)+4*len(phrase_hits)
+              report.append((score,typ,id_,path,sorted(set(hits)),phrase_hits,snippets,len(text)))
+          report.sort(reverse=True)
+          print('--- SPANISH RESIDUAL CANDIDATES ---')
+          strong=0
+          medium=0
+          for score,typ,id_,path,hits,ph,snips,textlen in report:
+              if score<2: continue
+              level='STRONG' if score>=4 else 'MEDIUM'
+              if level=='STRONG': strong+=1
+              else: medium+=1
+              print(f'{level}\ttype={typ}\tid={id_}\tpath={path}\tscore={score}\ttext_chars={textlen}\thits={hits}\tphrases={ph}')
+              for s in snips: print('  SNIP',s)
+          print(f'SUMMARY strong={strong} medium={medium} total_urls={len(report)}')
+          pathlib.Path('/tmp/mdo-strong-count').write_text(str(strong))
+          pathlib.Path('/tmp/mdo-medium-count').write_text(str(medium))
+          PY
+
+          echo "strong_candidates=$(cat /tmp/mdo-strong-count) medium_candidates=$(cat /tmp/mdo-medium-count)"
+          # This is an audit: HTTP failures are fatal; language candidates are reported
+          # for targeted repair in the next step rather than making the audit itself fail.
+          exit "$failed_http"
+
+      - name: Audit dynamic English cart with a real product session
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+          # Use a known published product; quantity 1 keeps any supplier minimum-order
+          # rule visible if configured for that supplier.
+          jar=/tmp/mdo-cart-cookies.txt
+          curl -ksSL --max-time 35 -c "$jar" -b "$jar" "https://www.elmercadodeorigen.com/en/product/100-iberian-acorn-fed-ham-black-tag/?add-to-cart=1350&mdo_cart_audit=$stamp" -o /tmp/add.html || failed=1
+          code=$(curl -ksSL --max-time 35 -c "$jar" -b "$jar" -o /tmp/cart.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/cart/?mdo_cart_audit=$stamp" || true)
+          echo "CART_CODE=$code"
+          [ "$code" = 200 ] || failed=1
+          body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/cart.html | head -n1 || true)
+          echo "$body"
+          printf '%s' "$body" | grep -q 'translatepress-en_US' || failed=1
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          import re
+          class P(HTMLParser):
+              def __init__(self): super().__init__(); self.skip=0; self.out=[]
+              def handle_starttag(self,t,a):
+                  if t in {'script','style','noscript','svg','head'}: self.skip+=1
+              def handle_endtag(self,t):
+                  if t in {'script','style','noscript','svg','head'} and self.skip: self.skip-=1
+              def handle_data(self,d):
+                  if not self.skip and d.strip(): self.out.append(' '.join(d.split()))
+          s=open('/tmp/cart.html',encoding='utf-8',errors='ignore').read(); p=P(); p.feed(s)
+          text=' | '.join(p.out)
+          print('CART_VISIBLE_TEXT',text[:16000])
+          spanish=['pedido mínimo','importe mínimo','te faltan','añadir','carrito','finalizar compra','seguir comprando','gastos de envío','subtotal','total del carrito']
+          bad=[x for x in spanish if x in text.lower()]
+          print('CART_SPANISH_MARKERS',bad)
+          open('/tmp/cart-bad-count','w').write(str(len(bad)))
+          PY
+          [ "$(cat /tmp/cart-bad-count)" -eq 0 ] || failed=1
+          exit "$failed"
