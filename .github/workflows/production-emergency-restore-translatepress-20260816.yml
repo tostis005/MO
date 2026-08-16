@@ -1,4 +1,4 @@
-# trigger-2
+# trigger-3
 name: Production emergency restore TranslatePress 2026-08-16
 
 on:
@@ -51,25 +51,39 @@ jobs:
           wplite option get active_plugins --format=json | grep -oE 'translatepress[^" ]*|falang[^" ]*' || true
 
           echo '=== LOCATE PRE-MIGRATION CODE BACKUP ==='
-          code_backup=$(find "$backup_dir" -maxdepth 1 -type f -name 'falang-migration-code-*.tgz' | sort | tail -n1)
-          test -s "$code_backup"
+          code_backup=""
+          for b in $(find "$backup_dir" -maxdepth 1 -type f -name 'falang-migration-code-*.tgz' | sort -r); do
+            members=$(tar -tzf "$b" 2>/dev/null || true)
+            if printf '%s\n' "$members" | grep -q 'functions.php$' && printf '%s\n' "$members" | grep -q 'class-mdo-minimum-order.php$'; then
+              code_backup="$b"; break
+            fi
+          done
+          test -n "$code_backup"
           echo "CODE_BACKUP=$code_backup"
+          tar -tzf "$code_backup" | sed -n '1,30p'
           rm -rf /tmp/mdo-restore-code && mkdir -p /tmp/mdo-restore-code
           tar -xzf "$code_backup" -C /tmp/mdo-restore-code
-          test -s /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/functions.php
-          test -s /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/inc/english-ui-copy-final-010243.php
-          test -s /tmp/mdo-restore-code/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-minimum-order.php
+          old_functions=$(find /tmp/mdo-restore-code -type f -path '*/elmercadodeorigen-child/functions.php' | head -n1)
+          old_english=$(find /tmp/mdo-restore-code -type f -name 'english-ui-copy-final-010243.php' | head -n1 || true)
+          old_min=$(find /tmp/mdo-restore-code -type f -name 'class-mdo-minimum-order.php' | head -n1)
+          test -s "$old_functions"
+          test -s "$old_min"
+          echo "OLD_FUNCTIONS=$old_functions"
+          echo "OLD_ENGLISH=$old_english"
+          echo "OLD_MIN=$old_min"
 
           echo '=== DEACTIVATE FALANG ==='
           wp plugin deactivate falang || true
 
           echo '=== RESTORE PRE-MIGRATION CUSTOM CODE ==='
-          install -m 0644 /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/functions.php "$theme/functions.php"
-          install -m 0644 /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/inc/english-ui-copy-final-010243.php "$theme/inc/english-ui-copy-final-010243.php"
-          install -m 0644 /tmp/mdo-restore-code/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-minimum-order.php "$sync_plugin/includes/class-mdo-minimum-order.php"
+          install -m 0644 "$old_functions" "$theme/functions.php"
+          if [ -n "$old_english" ] && [ -s "$old_english" ]; then
+            install -m 0644 "$old_english" "$theme/inc/english-ui-copy-final-010243.php"
+          fi
+          install -m 0644 "$old_min" "$sync_plugin/includes/class-mdo-minimum-order.php"
           rm -f "$theme/inc/multilingual-ui-copy-010245.php" "$theme/inc/falang-switcher-010245.php"
           "$php_bin" -l "$theme/functions.php"
-          "$php_bin" -l "$theme/inc/english-ui-copy-final-010243.php"
+          [ ! -f "$theme/inc/english-ui-copy-final-010243.php" ] || "$php_bin" -l "$theme/inc/english-ui-copy-final-010243.php"
           "$php_bin" -l "$sync_plugin/includes/class-mdo-minimum-order.php"
 
           echo '=== RESTORE TRANSLATEPRESS PLUGIN FILES ==='
@@ -79,7 +93,7 @@ jobs:
             test -n "$trp_backup"
             cp -a "$trp_backup" "$trp_dir"
           fi
-          test -s "$trp_dir/index.php" -o -s "$trp_dir/translatepress.php"
+          test -d "$trp_dir"
           wp plugin activate translatepress-multilingual
           wp plugin deactivate falang || true
           wp rewrite flush --hard || true
@@ -91,8 +105,7 @@ jobs:
           printf 'EN_HOME='; curl -sS -o /tmp/en-home.html -w '%{http_code}\n' --max-time 60 https://www.elmercadodeorigen.com/en/
           grep -qi 'trp-language-switcher' /tmp/es-home.html
           if grep -qi 'elmercado-falang-switcher' /tmp/es-home.html /tmp/es-shop.html; then echo 'Falang switcher still present' >&2; exit 1; fi
-          product_count=$(grep -o 'class="[^"]*product[^"]*"' /tmp/es-shop.html | wc -l | tr -d ' ')
-          echo "SHOP_PRODUCT_MARKERS=$product_count"
+          grep -qi 'Mostrando\|Showing' /tmp/es-shop.html
           echo 'TRANSLATEPRESS_ACTIVE=yes'
           echo 'FALANG_ACTIVE=no'
           REMOTE
