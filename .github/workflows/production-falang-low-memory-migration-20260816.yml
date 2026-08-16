@@ -1,0 +1,259 @@
+name: Production Falang low-memory migration 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-falang-low-memory-migration-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint custom code
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/functions.php
+          php -l elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php
+          php -l elmercadodeorigen-child/inc/falang-switcher-010245.php
+          php -l mdo-supplier-sync/includes/class-mdo-minimum-order.php
+      - name: Prepare transport
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          tar -czf /tmp/mdo-falang-code.tgz \
+            elmercadodeorigen-child/functions.php \
+            elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php \
+            elmercadodeorigen-child/inc/falang-switcher-010245.php \
+            mdo-supplier-sync/includes/class-mdo-minimum-order.php
+      - name: Locate production and upload
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no /tmp/mdo-falang-code.tgz "$STAGING_USER@$STAGING_HOST:/tmp/mdo-falang-code.tgz"
+      - name: Low-memory guarded migration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          backup_dir="$(dirname "$PROD_PATH")/mdo-private-backups"
+          mkdir -p "$backup_dir"
+          trp_dir="$PROD_PATH/wp-content/plugins/translatepress-multilingual"
+          falang_main="$PROD_PATH/wp-content/plugins/falang/falang.php"
+          capture=$(ls -1t "$backup_dir"/translatepress-english-capture-*.json 2>/dev/null | head -n1 || true)
+          : "${capture:?TranslatePress capture backup missing}"
+          test -s "$capture"
+          test -f "$falang_main"
+
+          echo '=== PRECHECK CURRENT SAFE STATE ==='
+          wp plugin list --fields=name,status,version --format=table | grep -Ei 'translatepress|falang' || true
+          wp plugin is-active translatepress-multilingual
+          test "$(wp option get siteurl --skip-plugins --skip-themes)" = "https://www.elmercadodeorigen.com"
+          prefix=$(wp db prefix --skip-plugins --skip-themes)
+          lang_rows=$(wp db query "SELECT COUNT(*) FROM ${prefix}term_taxonomy tt JOIN ${prefix}terms t ON t.term_id=tt.term_id WHERE tt.taxonomy='language' AND ((t.slug='en' AND tt.description LIKE '%en_US%') OR (t.slug='es' AND tt.description LIKE '%es_ES%'));" --skip-column-names)
+          test "$lang_rows" = "2"
+          echo "CAPTURE=$capture"
+          echo "LANGUAGE_ROWS=$lang_rows"
+
+          echo '=== SAVE ROLLBACK STATE ==='
+          wp option get active_plugins --format=json --skip-plugins --skip-themes > /tmp/mdo-active-plugins-before.json
+          wp option get falang --format=json --skip-plugins --skip-themes > /tmp/mdo-falang-before.json
+          old_wplang=$(wp option get WPLANG --skip-plugins --skip-themes 2>/dev/null || true)
+          printf '%s' "$old_wplang" > /tmp/mdo-wplang-before.txt
+          cp /tmp/mdo-active-plugins-before.json "$backup_dir/falang-active-plugins-before-$stamp.json"
+          cp /tmp/mdo-falang-before.json "$backup_dir/falang-option-before-$stamp.json"
+
+          echo '=== FRESH DATABASE BACKUP ==='
+          mkdir -p /tmp/mdo-db-tools
+          ln -sf /usr/bin/mysqldump /tmp/mdo-db-tools/mariadb-dump
+          db_backup="$backup_dir/falang-final-migration-$stamp.sql"
+          PATH="/tmp/mdo-db-tools:$PATH" wp db export "$db_backup" --add-drop-table --quiet
+          gzip -f "$db_backup"
+          test -s "$db_backup.gz"
+          echo "DB_BACKUP=$db_backup.gz"
+
+          mutated=0
+          rollback_guard() {
+            rc=$?
+            if [ "$rc" -ne 0 ] && [ "$mutated" -eq 1 ]; then
+              echo '=== LOW-MEMORY ROLLBACK ===' >&2
+              "$php_bin" -d memory_limit=256M "$wp_bin" --path="$PROD_PATH" --allow-root eval '
+                $active=json_decode(file_get_contents("/tmp/mdo-active-plugins-before.json"),true);
+                if(is_array($active)) update_option("active_plugins",$active);
+                $falang=json_decode(file_get_contents("/tmp/mdo-falang-before.json"),true);
+                if(is_array($falang)) update_option("falang",$falang);
+                $lang=file_get_contents("/tmp/mdo-wplang-before.txt"); update_option("WPLANG",$lang);
+              ' --skip-plugins --skip-themes >/dev/null 2>&1 || true
+              wp cache flush >/dev/null 2>&1 || true
+            fi
+            exit "$rc"
+          }
+          trap rollback_guard EXIT
+
+          echo '=== DEPLOY LATEST FALANG-READY CUSTOM CODE ==='
+          rm -rf /tmp/mdo-falang-code && mkdir -p /tmp/mdo-falang-code
+          tar -xzf /tmp/mdo-falang-code.tgz -C /tmp/mdo-falang-code
+          theme="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          sync_plugin="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
+          install -m 0644 /tmp/mdo-falang-code/elmercadodeorigen-child/functions.php "$theme/functions.php"
+          install -m 0644 /tmp/mdo-falang-code/elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php "$theme/inc/multilingual-ui-copy-010245.php"
+          install -m 0644 /tmp/mdo-falang-code/elmercadodeorigen-child/inc/falang-switcher-010245.php "$theme/inc/falang-switcher-010245.php"
+          install -m 0644 /tmp/mdo-falang-code/mdo-supplier-sync/includes/class-mdo-minimum-order.php "$sync_plugin/includes/class-mdo-minimum-order.php"
+          rm -f "$theme/inc/english-ui-copy-final-010243.php"
+
+          echo '=== BUILD LOW-MEMORY FALANG OPTION + SQL IMPORT ==='
+          python3 - "$capture" "$prefix" <<'PY'
+          import json, sys
+          cap_path, prefix = sys.argv[1], sys.argv[2]
+          with open(cap_path, encoding='utf-8') as f:
+              data=json.load(f)
+          with open('/tmp/mdo-falang-before.json', encoding='utf-8') as f:
+              opt=json.load(f)
+          opt['default_language']='es_ES'
+          opt['show_slug']=False
+          opt['autodetect']=False
+          opt['frontend_ajax']=True
+          opt['delete_trans_on_uninstall']=False
+          pt=opt.setdefault('post_type',{})
+          for ptype in ('post','page','product','nav_menu_item'):
+              pt.setdefault(ptype,{})['translatable']=True
+          pt.setdefault('nav_menu_item',{}).setdefault('meta_keys',[])
+          if '_menu_item_url' not in pt['nav_menu_item']['meta_keys']:
+              pt['nav_menu_item']['meta_keys'].append('_menu_item_url')
+          tax=opt.setdefault('taxonomy',{})
+          for row in data.get('terms',[]):
+              tax.setdefault(row['taxonomy'],{})['translatable']=True
+          with open('/tmp/mdo-falang-new.json','w',encoding='utf-8') as f:
+              json.dump(opt,f,ensure_ascii=False,separators=(',',':'))
+
+          attrs={}
+          for row in data.get('attributes',[]):
+              name=str(row['name'])
+              attrs[name+'_label_en_US']=str(row.get('label',''))
+              attrs[name+'_name_en_US']=str(row.get('slug',''))
+          with open('/tmp/mdo-falang-attrs.json','w',encoding='utf-8') as f:
+              json.dump(attrs,f,ensure_ascii=False,separators=(',',':'))
+
+          def q(s):
+              s='' if s is None else str(s)
+              return "'"+s.replace('\\','\\\\').replace("'","\\'").replace('\0','\\0').replace('\n','\\n').replace('\r','\\r')+"'"
+          post_table=f'`{prefix}postmeta`'; term_table=f'`{prefix}termmeta`'
+          out=['SET NAMES utf8mb4;','START TRANSACTION;']
+          for row in data.get('posts',[]):
+              if not row.get('changed'): continue
+              pid=int(row['id']); keys=['_en_US_post_title','_en_US_post_content','_en_US_post_excerpt','_en_US_post_name','_en_US_published']
+              out.append(f"DELETE FROM {post_table} WHERE post_id={pid} AND meta_key IN ({','.join(q(k) for k in keys)});")
+              vals=[(keys[0],row.get('title','')),(keys[1],row.get('content','')),(keys[2],row.get('excerpt','')),(keys[3],row.get('slug','')),(keys[4],'1')]
+              out.append(f"INSERT INTO {post_table} (post_id,meta_key,meta_value) VALUES "+','.join(f"({pid},{q(k)},{q(v)})" for k,v in vals)+';')
+          for row in data.get('terms',[]):
+              if not row.get('changed'): continue
+              tid=int(row['id']); keys=['_en_US_name','_en_US_description','_en_US_slug','_en_US_published']
+              out.append(f"DELETE FROM {term_table} WHERE term_id={tid} AND meta_key IN ({','.join(q(k) for k in keys)});")
+              vals=[(keys[0],row.get('name','')),(keys[1],row.get('description','')),(keys[2],row.get('slug','')),(keys[3],'1')]
+              out.append(f"INSERT INTO {term_table} (term_id,meta_key,meta_value) VALUES "+','.join(f"({tid},{q(k)},{q(v)})" for k,v in vals)+';')
+          out.append('COMMIT;')
+          with open('/tmp/mdo-falang-import.sql','w',encoding='utf-8') as f:
+              f.write('\n'.join(out))
+          print('POSTS',sum(1 for r in data.get('posts',[]) if r.get('changed')))
+          print('TERMS',sum(1 for r in data.get('terms',[]) if r.get('changed')))
+          print('ATTRIBUTES',len(attrs)//2)
+          PY
+          test -s /tmp/mdo-falang-new.json
+          test -s /tmp/mdo-falang-import.sql
+
+          echo '=== SWITCH ACTIVE PLUGIN LIST WITHOUT ACTIVATION HOOKS ==='
+          mutated=1
+          "$php_bin" -d memory_limit=256M "$wp_bin" --path="$PROD_PATH" --allow-root eval '
+            $active=get_option("active_plugins",array());
+            $active=array_values(array_filter($active,static function($p){return 0!==strpos($p,"translatepress-multilingual/") && 0!==strpos($p,"falang/");}));
+            $active[]="falang/falang.php";
+            update_option("active_plugins",array_values(array_unique($active)));
+          ' --skip-plugins --skip-themes
+
+          echo '=== ENSURE FALANG LANGUAGE PAIRS, NO HEAVY ADD_LANGUAGE ==='
+          wp eval '
+            foreach(array(array("English","en","en_US","us",1),array("Español","es","es_ES","es",0)) as $x){
+              [$name,$slug,$locale,$flag,$order]=$x;
+              $lang=get_term_by("slug",$slug,"language");
+              if(!$lang){$desc=serialize(array("locale"=>$locale,"rtl"=>0,"flag_code"=>$flag,"order"=>$order)); $r=wp_insert_term($name,"language",array("slug"=>$slug,"description"=>$desc)); if(is_wp_error($r)) throw new Exception($r->get_error_message());}
+              $tl=get_term_by("slug","falang_".$slug,"term_language");
+              if(!$tl){$r=wp_insert_term($name,"term_language",array("slug"=>"falang_".$slug)); if(is_wp_error($r)) throw new Exception($r->get_error_message());}
+            }
+            echo "LANG_PAIRS_OK=yes\n";
+          '
+
+          echo '=== APPLY FALANG OPTIONS USING CORE ONLY ==='
+          "$php_bin" -d memory_limit=256M "$wp_bin" --path="$PROD_PATH" --allow-root eval '
+            $o=json_decode(file_get_contents("/tmp/mdo-falang-new.json"),true); if(!is_array($o)) throw new Exception("invalid Falang options");
+            update_option("falang",$o); update_option("WPLANG","es_ES"); update_option("need_flush",1);
+            $attrs=json_decode(file_get_contents("/tmp/mdo-falang-attrs.json"),true); if(!is_array($attrs)) $attrs=array(); update_option("falang_wc_attributes",$attrs);
+          ' --skip-plugins --skip-themes
+
+          echo '=== IMPORT CAPTURED ENGLISH DIRECTLY INTO FALANG META ==='
+          wp db query < /tmp/mdo-falang-import.sql
+          test "$(wp db query "SELECT meta_value FROM ${prefix}postmeta WHERE post_id=1350 AND meta_key='_en_US_published' ORDER BY meta_id DESC LIMIT 1;" --skip-column-names)" = "1"
+          echo "SAMPLE_TITLE=$(wp db query "SELECT meta_value FROM ${prefix}postmeta WHERE post_id=1350 AND meta_key='_en_US_post_title' ORDER BY meta_id DESC LIMIT 1;" --skip-column-names)"
+          echo "SAMPLE_SLUG=$(wp db query "SELECT meta_value FROM ${prefix}postmeta WHERE post_id=1350 AND meta_key='_en_US_post_name' ORDER BY meta_id DESC LIMIT 1;" --skip-column-names)"
+
+          echo '=== VERIFY PLUGIN STATE + FLUSH ==='
+          wp plugin is-active falang
+          if wp plugin is-active translatepress-multilingual; then echo 'TranslatePress unexpectedly active' >&2; exit 1; fi
+          wp rewrite flush --hard
+          wp cache flush || true
+
+          echo '=== PUBLIC FALANG SMOKE TEST ==='
+          printf 'ES_STATUS='; curl -fsSL --max-time 60 -o /tmp/mdo-falang-es.html -w '%{http_code}\n' https://www.elmercadodeorigen.com/
+          printf 'EN_STATUS='; curl -fsSL --max-time 60 -o /tmp/mdo-falang-en.html -w '%{http_code}\n' https://www.elmercadodeorigen.com/en/
+          grep -qi 'elmercado-falang-switcher' /tmp/mdo-falang-es.html
+          grep -qi 'elmercado-falang-switcher' /tmp/mdo-falang-en.html
+          grep -qi 'falang-language-switcher' /tmp/mdo-falang-en.html
+          grep -qiE 'Home|Shop|Search|What our customers say|Our producers' /tmp/mdo-falang-en.html
+          if grep -qi 'trp-language-switcher' /tmp/mdo-falang-es.html /tmp/mdo-falang-en.html; then echo 'Old TRP switcher remains' >&2; exit 1; fi
+          echo 'FALANG_PUBLIC_OK=yes'
+
+          echo '=== UNINSTALL TRANSLATEPRESS FILES AFTER SUCCESSFUL LIVE TEST ==='
+          if [ -d "$trp_dir" ]; then mv "$trp_dir" "$backup_dir/translatepress-multilingual-files-$stamp"; fi
+          test ! -d "$trp_dir"
+          wp cache flush || true
+          wp plugin is-active falang
+          if wp plugin list --field=name | grep -qx 'translatepress-multilingual'; then echo 'TranslatePress still installed' >&2; exit 1; fi
+          curl -fsSL --max-time 60 -o /tmp/mdo-final-en.html https://www.elmercadodeorigen.com/en/
+          grep -qi 'elmercado-falang-switcher' /tmp/mdo-final-en.html
+          if grep -qi 'translatepress-multilingual' /tmp/mdo-final-en.html; then echo 'TranslatePress asset remains' >&2; exit 1; fi
+          echo 'FALANG_ACTIVE=yes'
+          echo 'TRANSLATEPRESS_INSTALLED=no'
+          echo 'MIGRATION_OK=yes'
+          mutated=0
+          trap - EXIT
+          REMOTE
