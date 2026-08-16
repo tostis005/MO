@@ -1,0 +1,62 @@
+name: Diagnose production Home render source 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-production-home-render-source-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect production source and category asset
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          THEME="$ROOT/wp-content/themes/elmercadodeorigen-child"
+          echo "ROOT=$ROOT"
+          echo '=== VERSION ==='
+          grep -n "ELMERCADO_THEME_VERSION" "$THEME/functions.php" | head -n2 || true
+          echo '=== MODULE LOADERS ==='
+          grep -nE "home-category-(visibility|truth-before-legacy|output-final)|catalog-visibility-counts" "$THEME/functions.php" || true
+          echo '=== FILES ==='
+          for f in inc/home-category-visibility-010212.php inc/catalog-visibility-counts-010217.php inc/home-category-truth-before-legacy-010226.php inc/home-category-output-final-010226.php; do
+            if [ -f "$THEME/$f" ]; then echo "YES $f $(sha256sum "$THEME/$f"|cut -d' ' -f1)"; else echo "NO $f"; fi
+          done
+          echo '=== ACEITES TERM ==='
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            $t=get_term_by("slug","aceites","product_cat");
+            if(!$t){echo "TERM=missing\n"; return;}
+            $id=(int)$t->term_id; $thumb=(int)get_term_meta($id,"thumbnail_id",true);
+            echo "TERM_ID=$id NAME={$t->name} COUNT={$t->count} PARENT={$t->parent} THUMB=$thumb\n";
+            echo "IMAGE=".($thumb?wp_get_attachment_image_url($thumb,"woocommerce_thumbnail"):"")."\n";
+            echo "IMAGE_FULL=".($thumb?wp_get_attachment_url($thumb):"")."\n";
+          ' --path="$ROOT" --allow-root 2>/dev/null || true
+          echo '=== CSS RULE LOCATIONS ==='
+          grep -RIn --include='*.css' --include='*.php' -E "emo-category-grid|emo-category-card" "$THEME" | tail -n 80 || true
+          REMOTE
+          echo '=== EXACT CARD SNIPPET ==='
+          python3 - <<'PY'
+          import urllib.request,re
+          h=urllib.request.urlopen(urllib.request.Request('https://www.elmercadodeorigen.com/',headers={'User-Agent':'Mozilla/5.0 Chrome/140 Safari/537.36'}),timeout=60).read().decode('utf-8','replace')
+          m=re.search(r'(<a class="emo-category-card"[^>]*data-mdo-aceites-restored="20260816"[^>]*>.*?</a>)',h,re.S|re.I)
+          print((m.group(1) if m else 'NO_ACEITES_SNIPPET')[:3000])
+          print('HEAD_STYLE_MARKER', 'mdo-home-category-mobile-visible-20260816' in h)
+          PY
