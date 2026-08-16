@@ -41,11 +41,12 @@ foreach ( $sensitive as $needle ) {
 	}
 }
 
-/* Uploads is writable by the WordPress PHP user and is available pre-bootstrap. */
 $cache_file   = __DIR__ . '/uploads/elmercado-home-static/index.html';
 $ttl          = 5 * 60;
 $mtime        = is_file( $cache_file ) ? @filemtime( $cache_file ) : false;
 $dropin_mtime = @filemtime( __FILE__ );
+$theme_style  = __DIR__ . '/themes/elmercadodeorigen-child/style.css';
+$theme_mtime  = is_file( $theme_style ) ? @filemtime( $theme_style ) : false;
 
 if ( ! is_readable( $cache_file ) || false === $mtime ) {
 	if ( ! headers_sent() ) {
@@ -54,27 +55,8 @@ if ( ! is_readable( $cache_file ) || false === $mtime ) {
 	return;
 }
 
-/* Require the cached Home to match the deployed child-theme version. */
-$theme_style   = __DIR__ . '/themes/elmercadodeorigen-child/style.css';
-$style_head    = is_readable( $theme_style ) ? @file_get_contents( $theme_style, false, null, 0, 2048 ) : false;
-$theme_version = '';
-
-if ( is_string( $style_head ) && preg_match( '/^\s*Version:\s*([0-9]+(?:\.[0-9]+)+)\s*$/mi', $style_head, $version_match ) ) {
-	$theme_version = trim( (string) $version_match[1] );
-}
-
-$cache_head            = @file_get_contents( $cache_file, false, null, 0, 262144 );
-$expected_deferred_css = '' !== $theme_version ? 'home-deferred-' . $theme_version . '.css' : '';
-
-if ( '' === $expected_deferred_css || ! is_string( $cache_head ) || false === strpos( $cache_head, $expected_deferred_css ) ) {
-	if ( ! headers_sent() ) {
-		header( 'X-El-Mercado-Early-Cache: MISS-VERSION' );
-	}
-	return;
-}
-
-/* Never serve HTML generated before the current cache drop-in deployment. */
-if ( false !== $dropin_mtime && (int) $mtime < (int) $dropin_mtime ) {
+/* Never serve HTML generated before the current cache drop-in or child theme. */
+if ( ( false !== $dropin_mtime && (int) $mtime < (int) $dropin_mtime ) || ( false !== $theme_mtime && (int) $mtime < (int) $theme_mtime ) ) {
 	if ( ! headers_sent() ) {
 		header( 'X-El-Mercado-Early-Cache: MISS-RELEASE' );
 	}
@@ -88,6 +70,21 @@ if ( ( time() - (int) $mtime ) > $ttl ) {
 	return;
 }
 
+/* Lightweight integrity guard for the current Spanish Home presentation. */
+$cached_html = @file_get_contents( $cache_file );
+if (
+	! is_string( $cached_html ) ||
+	strlen( $cached_html ) < 300000 ||
+	false === stripos( $cached_html, '</html>' ) ||
+	false === strpos( $cached_html, 'translatepress-es_ES' ) ||
+	false === strpos( $cached_html, 'data-emo-vendor-count' )
+) {
+	if ( ! headers_sent() ) {
+		header( 'X-El-Mercado-Early-Cache: MISS-INVALID' );
+	}
+	return;
+}
+
 if ( ! headers_sent() ) {
 	header( 'Content-Type: text/html; charset=UTF-8' );
 	header( 'Cache-Control: public, max-age=0, must-revalidate' );
@@ -95,5 +92,5 @@ if ( ! headers_sent() ) {
 	header( 'X-El-Mercado-Early-Cache: HIT' );
 }
 
-readfile( $cache_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
+echo $cached_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 exit;
