@@ -1,0 +1,51 @@
+name: Production inspect remaining Spanish raw English metadata 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-inspect-remaining-spanish-raw-meta-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Print raw surrounding HTML for remaining Spanish fragments
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac; done
+          : "${ROOT:?missing production}"
+          cat >/tmp/mdo-raw-en-meta.php <<'PHP'
+          <?php
+          ini_set('memory_limit','512M'); require $argv[1].'/wp-load.php'; global $wpdb;
+          $needles=[
+            'El aceite de oliva virgen extra es un zumo 100% natural',
+            'Constituyen el sistema utilizado en nuestro país para el reconocimiento de una calidad diferenciada',
+            'Al consumidor, fundamentalmente para garantizarle unas características específicas'
+          ];
+          $rows=$wpdb->get_results("SELECT p.ID,p.post_title,pm.meta_key,pm.meta_value FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID WHERE p.post_status='publish' AND pm.meta_key='_en_US_post_content' AND pm.meta_value<>'' ORDER BY p.ID");
+          foreach($rows as $r){
+            foreach($needles as $n){
+              $pos=mb_strpos((string)$r->meta_value,$n,0,'UTF-8'); if($pos===false) continue;
+              $start=max(0,$pos-600); $frag=mb_substr((string)$r->meta_value,$start,4200,'UTF-8');
+              echo "\n===== ID={$r->ID} TITLE=".base64_encode((string)$r->post_title)." NEEDLE=".base64_encode($n)." =====\n";
+              echo base64_encode($frag)."\n";
+            }
+          }
+          PHP
+          "$PHP" -d memory_limit=512M /tmp/mdo-raw-en-meta.php "$ROOT"
+          REMOTE
