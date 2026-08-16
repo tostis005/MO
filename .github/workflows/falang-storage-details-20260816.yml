@@ -1,0 +1,34 @@
+name: Falang storage details 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/falang-storage-details-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/falang.zip https://downloads.wordpress.org/plugin/falang.1.4.4.zip
+          unzip -q /tmp/falang.zip -d /tmp/falang-src
+      - name: Storage details
+        run: |
+          set -euo pipefail
+          R=/tmp/falang-src/falang
+          {
+            echo '=== CORE PREFIX ==='
+            sed -n '135,190p' "$R/src/Falang/Core/Falang_Core.php"
+            echo '=== TERM META METHODS ==='
+            grep -RniE "get_term_meta|update_term_meta|published.*term|term.*published" "$R/src/Falang/Core" | head -n 200 || true
+            f=$(grep -Rl "function get_term_field_translation" "$R/src/Falang/Core" | head -n1 || true); [ -n "$f" ] && { echo "FILE=$f"; sed -n '250,430p' "$f"; } || true
+            echo '=== WOOCOMMERCE ATTR OPTIONS ==='
+            grep -RniE "falang_wc_attributes|woocommerce_attribute_label|attribute_taxonomies" "$R" | head -n 220 || true
+            echo '=== LANGUAGE SWITCHER ==='
+            grep -RniE "shortcode|language_switcher|switcher" "$R/includes" "$R/src" | head -n 260 || true
+          } | tee /tmp/storage.txt
+          cat /tmp/storage.txt >> "$GITHUB_STEP_SUMMARY"
