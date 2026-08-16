@@ -1,0 +1,31 @@
+name: Diagnose English Oils URL 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-en-oils-url-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find English Oils category URL
+        run: |
+          python3 - <<'PY'
+          import urllib.request,re
+          base='https://www.elmercadodeorigen.com'
+          h=urllib.request.urlopen(urllib.request.Request(base+'/en/shop/',headers={'User-Agent':'Mozilla/5.0 Chrome/140 Safari/537.36'}),timeout=60).read().decode('utf-8','replace')
+          for pat in ['Oils','Oil','Aceites']:
+            print('PATTERN',pat)
+            for m in re.finditer(pat,h,re.I):
+              s=max(0,m.start()-500);e=min(len(h),m.end()+500);sn=h[s:e]
+              hrefs=re.findall(r'href=["\']([^"\']+)["\']',sn,re.I)
+              print('CONTEXT',re.sub(r'\s+',' ',re.sub('<[^>]+>',' ',sn))[:800])
+              print('HREFS',hrefs[:10])
+              break
+          for p in ['/en/product-category/oils/','/en/product-category/aceites/','/en/product-category/oil/']:
+            try:
+              r=urllib.request.urlopen(urllib.request.Request(base+p,headers={'User-Agent':'Mozilla/5.0 Chrome/140 Safari/537.36'}),timeout=30)
+              print('CANDIDATE',p,r.status,r.geturl(),r.read(500).decode('utf-8','replace')[:80])
+            except Exception as e: print('CANDIDATE',p,'ERR',repr(e))
+          PY
