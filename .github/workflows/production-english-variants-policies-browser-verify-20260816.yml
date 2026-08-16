@@ -52,13 +52,23 @@ jobs:
           });
           console.log('SELECTED '+JSON.stringify(selectResult));
           await new Promise(r=>setTimeout(r,1800));
-          const variationId=await p.$eval('form.variations_form input.variation_id',el=>el.value).catch(()=>null);
-          console.log('VARIATION_ID '+variationId);
-          if(!variationId || variationId==='0') throw new Error('Variation did not resolve');
-          const add=await p.$('form.variations_form button.single_add_to_cart_button');
-          if(!add) throw new Error('Add-to-cart button missing');
-          await add.click();
-          await new Promise(r=>setTimeout(r,2200));
+          const productInfo=await p.evaluate(()=>({
+            variationId:document.querySelector('form.variations_form input.variation_id')?.value||'',
+            productId:document.querySelector('form.variations_form button.single_add_to_cart_button')?.value || document.querySelector('form.variations_form input[name="product_id"]')?.value || document.querySelector('form.variations_form input[name="add-to-cart"]')?.value || ''
+          }));
+          console.log('PRODUCT_INFO '+JSON.stringify(productInfo));
+          if(!productInfo.variationId || productInfo.variationId==='0') throw new Error('Variation did not resolve');
+          if(!productInfo.productId) throw new Error('Parent product ID not found');
+          const addParams=new URLSearchParams({
+            'add-to-cart':productInfo.productId,
+            'product_id':productInfo.productId,
+            'variation_id':productInfo.variationId
+          });
+          for(const [name,value] of selectResult) addParams.set(name,value);
+          const addUrl=base+'/en/?'+addParams.toString();
+          console.log('ADD_URL '+addUrl);
+          await p.goto(addUrl,{waitUntil:'domcontentloaded',timeout:20000});
+          await new Promise(r=>setTimeout(r,1500));
           await p.goto(base+'/en/carrito/?variant_cart_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:20000});
           await new Promise(r=>setTimeout(r,1200));
           const cart=await p.evaluate(()=>({
