@@ -1,0 +1,70 @@
+name: Production English final HTML and cart diagnostic 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-english-final-html-cart-diagnostic-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify body hreflang and cart raw HTML
+        run: |
+          python3 - <<'PY'
+          import re,time,urllib.request,http.cookiejar
+          from html import unescape
+          base='https://www.elmercadodeorigen.com'; stamp=str(time.time_ns())
+          def fetch(url, opener=None):
+            op=opener or urllib.request.build_opener()
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 MDO-QA','Accept':'text/html,application/xhtml+xml'})
+            with op.open(req,timeout=60) as r: return r.status,r.geturl(),r.read().decode('utf-8','replace')
+          status,final,html=fetch(base+'/en/shop/?mdo_html='+stamp)
+          print('SHOP_HTTP',status,final)
+          body=re.search(r'<body\b[^>]*>',html,re.I)
+          print('BODY_TAG',body.group(0)[:1000] if body else 'NONE')
+          alts=re.findall(r'<link\b[^>]*rel=["\']alternate["\'][^>]*>',html,re.I)
+          print('ALT_TAGS')
+          for a in alts: print(a)
+          can=re.findall(r'<link\b[^>]*rel=["\']canonical["\'][^>]*>',html,re.I)
+          print('CANON_TAGS')
+          for c in can: print(c)
+          # Attribute-order-independent checks.
+          def attrs(tag):
+            return {k.lower():unescape(v) for k,q,v in re.findall(r'([:\w-]+)\s*=\s*(["\'])(.*?)\2',tag,re.I|re.S)}
+          body_attrs=attrs(body.group(0)) if body else {}
+          print('BODY_CLASS',body_attrs.get('class',''))
+          amap={}
+          for a in alts:
+            d=attrs(a); amap[d.get('hreflang','')]=d.get('href','')
+          print('ALT_MAP',repr(amap))
+          shop_ok=(status==200 and 'translatepress-en_US' in body_attrs.get('class','') and amap.get('es')==base+'/tienda/' and amap.get('en')==base+'/en/shop/' and amap.get('x-default')==base+'/tienda/')
+          print('SHOP_TAGS_OK',shop_ok)
+
+          # Cart session.
+          cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+          s1,u1,h1=fetch(base+'/en/?add-to-cart=5348&mdo_cart='+stamp,op)
+          print('ADD_HTTP',s1,u1,'COOKIES',[c.name for c in cj])
+          s2,u2,cart=fetch(base+'/en/cart/?mdo_cart='+stamp,op)
+          print('CART_HTTP',s2,u2,'LEN',len(cart))
+          # Remove scripts/styles to inspect text without being fooled by JS dictionaries.
+          cleaned=re.sub(r'<(?:script|style|noscript|template)\b[^>]*>.*?</(?:script|style|noscript|template)>',' ',cart,flags=re.I|re.S)
+          cleaned=re.sub(r'<svg\b[^>]*>.*?</svg>',' ',cleaned,flags=re.I|re.S)
+          text=unescape(re.sub(r'<[^>]+>',' ',cleaned))
+          text=re.sub(r'\s+',' ',text).strip()
+          print('CART_HAS_LOMITO',bool(re.search(r'Lomito|presa',text,re.I)))
+          min_en=[]
+          for pat in [r'minimum[^.]{0,180}',r'order[^.]{0,100}minimum[^.]{0,100}',r'minimum order[^.]{0,180}']:
+            min_en += [m.group(0) for m in re.finditer(pat,text,re.I)]
+          min_es=[]
+          for pat in [r'pedido mínimo[^.]{0,180}',r'importe mínimo[^.]{0,180}',r'mínimo de compra[^.]{0,180}',r'no alcanzas[^.]{0,180}']:
+            min_es += [m.group(0) for m in re.finditer(pat,text,re.I)]
+          print('MIN_EN',repr(min_en[:8]))
+          print('MIN_ES',repr(min_es[:8]))
+          idx=text.lower().find('lomito')
+          print('CART_CONTEXT',text[max(0,idx-600):idx+1600] if idx>=0 else text[:2200])
+          cart_ok=(s2==200 and bool(re.search(r'Lomito|presa',text,re.I)) and not min_es)
+          print('CART_OK',cart_ok)
+          if not shop_ok or not cart_ok: raise SystemExit(1)
+          print('FINAL_HTML_CART_DIAGNOSTIC=PASS')
+          PY
