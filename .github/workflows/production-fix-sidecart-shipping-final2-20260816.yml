@@ -1,0 +1,108 @@
+name: Production final2 side cart and English shipping fix 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-sidecart-shipping-final2-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate final CSS geometry before production
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php
+          php -l .github/scripts/mdo-sidecart-mobile-width-final-20260816.php
+          python3 -m pip install -q selenium
+          python3 - <<'PY'
+          import re,shutil,tempfile
+          from pathlib import Path
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          base=Path('.github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php').read_text()
+          hot=Path('.github/scripts/mdo-sidecart-mobile-width-final-20260816.php').read_text()
+          css1=re.search(r'<style id="mdo-sidecart-layout-fix-20260816">(.*?)</style>',base,re.S).group(1)
+          css2=re.search(r'<style id="mdo-sidecart-mobile-width-final-20260816">(.*?)</style>',hot,re.S).group(1)
+          legacy='''.shop-cart-sidebar .woocommerce-mini-cart-item{display:grid!important;grid-template-columns:72px minmax(0,1fr)!important;gap:12px!important;align-items:start!important;position:relative!important;padding:14px 30px 14px 14px!important}.shop-cart-sidebar .woocommerce-mini-cart-item__thumb{grid-column:1!important;width:72px!important}.shop-cart-sidebar .woocommerce-mini-cart-item__thumb img{display:block!important;width:72px!important;height:72px!important;object-fit:cover!important;margin:0!important;float:none!important}.shop-cart-sidebar .woocommerce-mini-cart-item__info{grid-column:2!important;min-width:0!important;width:100%!important;padding:0!important;margin:0!important}.shop-cart-sidebar .woocommerce-mini-cart-item__data,.shop-cart-sidebar .woocommerce-mini-cart-item__footer{min-width:0!important;width:100%!important}.shop-cart-sidebar .woocommerce-mini-cart-item__data>a,.shop-cart-sidebar .mini_cart_item__name{display:block!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;line-height:1.35!important;padding-right:0!important}.shop-cart-sidebar .woocommerce-mini-cart-item .variation{display:grid!important;grid-template-columns:minmax(0,max-content) minmax(0,1fr)!important;column-gap:6px!important;row-gap:3px!important;margin:6px 0 0!important;font-size:12px!important}.shop-cart-sidebar .woocommerce-mini-cart-item .variation dt,.shop-cart-sidebar .woocommerce-mini-cart-item .variation dd,.shop-cart-sidebar .woocommerce-mini-cart-item .variation p{min-width:0!important;max-width:100%!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important}.shop-cart-sidebar .woocommerce-mini-cart-item__footer{display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:8px!important;margin-top:8px!important}.shop-cart-sidebar .woocommerce-mini-cart-item__price{margin-left:auto!important;min-width:0!important;white-space:nowrap!important}.shop-cart-sidebar .woocommerce-mini-cart-item .remove{position:absolute!important;top:14px!important;right:10px!important;margin:0!important;float:none!important}'''
+          markup='''<div class="shop-cart-sidebar"><ul class="woocommerce-mini-cart"><li class="woocommerce-mini-cart-item mini_cart_item"><div class="woocommerce-mini-cart-item__thumb"><a><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Crect width='300' height='300' fill='%23ddd'/%3E%3C/svg%3E"></a></div><div class="woocommerce-mini-cart-item__info"><div class="woocommerce-mini-cart-item__data"><a>Jamón de bellota 100% ibérico con DOP Los Pedroches cortado a cuchillo, huesos y taquitos</a><dl class="variation"><dt>Tamaño:</dt><dd><p>5–5,5 kg con DOP Los Pedroches, cortado a cuchillo + huesos + taquitos</p></dd><dt>Variedad:</dt><dd><p>Selección especial de larga descripción para comprobar que nunca invade la imagen</p></dd></dl></div><div class="woocommerce-mini-cart-item__footer"><div class="mini-cart-quantity">− 1 +</div><span class="woocommerce-mini-cart-item__price">249,90 €</span><a class="remove">×</a></div></div></li></ul></div>'''
+          page=f'''<!doctype html><html><head><style>*{{box-sizing:border-box}}body{{margin:0;font:14px Arial}}ul{{list-style:none;margin:0;padding:0}}dl{{margin:0}}.shop-cart-sidebar{{width:var(--side);border:1px solid #ddd}}{legacy}{css1}{css2}</style></head><body>{markup}</body></html>'''
+          p=Path(tempfile.gettempdir())/'mdo-final2-sidecart.html';p.write_text(page)
+          chrome=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=chrome;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=o)
+          try:
+            for viewport,side,label in [(1440,360,'DESKTOP360'),(1024,340,'DESKTOP340'),(480,360,'MOBILE360'),(390,340,'MOBILE340'),(360,320,'MOBILE320'),(320,280,'MOBILE280')]:
+              d.set_window_size(viewport,900);d.get(p.as_uri());d.execute_script("document.documentElement.style.setProperty('--side',arguments[0]+'px')",side)
+              z=d.execute_script('''const i=document.querySelector('.woocommerce-mini-cart-item'),t=i.querySelector('.woocommerce-mini-cart-item__thumb'),n=i.querySelector('.woocommerce-mini-cart-item__info'),im=t.querySelector('img'),a=n.querySelector('.woocommerce-mini-cart-item__data>a'),v=n.querySelector('.variation'),f=n.querySelector('.woocommerce-mini-cart-item__footer');const r=e=>{const x=e.getBoundingClientRect();return {l:x.left,r:x.right,t:x.top,b:x.bottom,w:x.width,h:x.height}};return {item:r(i),thumb:r(t),info:r(n),img:r(im),title:r(a),variation:r(v),footer:r(f),display:getComputedStyle(i).display,gap:parseFloat(getComputedStyle(i).columnGap)||0};''')
+              print(label,z)
+              t,n,im=z['thumb'],z['info'],z['img'];ox=max(0,min(t['r'],n['r'])-max(t['l'],n['l']));oy=max(0,min(t['b'],n['b'])-max(t['t'],n['t']))
+              assert z['display']=='grid';assert ox*oy<0.5;assert n['l']>=t['r']+7;assert im['l']>=t['l']-1 and im['r']<=t['r']+1
+              for key in ('title','variation','footer'):
+                r=z[key];assert r['l']>=n['l']-1 and r['r']<=n['r']+1,label+' '+key
+              print(label+'_PASS')
+            print('STATIC_GEOMETRY_QA=PASS')
+          finally:d.quit()
+          PY
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy final MU fixes
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-layout-shipping-fix-20260816.php"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-sidecart-mobile-width-final-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-mobile-width-final-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail; PHP=$(command -v php||true); [ -n "$PHP" ]||PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1); WP=$(command -v wp||true);ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null);do p=$(dirname "$cfg");u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)ROOT="$p";break;;esac;done
+          : "${ROOT:?missing production}";T1="$ROOT/wp-content/mu-plugins/mdo-sidecart-layout-shipping-fix.php";T2="$ROOT/wp-content/mu-plugins/mdo-sidecart-z-mobile-width-final.php";TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$T1" ];then B1="$T1.bak-$TS";cp -a "$T1" "$B1";else B1=NEW;fi
+          if [ -f "$T2" ];then B2="$T2.bak-$TS";cp -a "$T2" "$B2";else B2=NEW;fi
+          cp /tmp/mdo-sidecart-layout-shipping-fix-20260816.php "$T1";cp /tmp/mdo-sidecart-mobile-width-final-20260816.php "$T2";"$PHP" -l "$T1";"$PHP" -l "$T2";"$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1||true
+          echo "ROOT=$ROOT";echo "T1=$T1";echo "T2=$T2";echo "B1=$B1";echo "B2=$B2"
+          REMOTE
+          );echo "$OUT";for k in ROOT T1 T2 B1 B2;do v=$(printf '%s\n' "$OUT"|sed -n "s/^$k=//p"|tail -n1);test -n "$v";echo "LIVE_$k=$v">>"$GITHUB_ENV";done
+
+      - name: Live production QA with real variable cart
+        run: |
+          python3 - <<'PY'
+          import html,json,re,urllib.parse,urllib.request,http.cookiejar
+          base='https://www.elmercadodeorigen.com';product='/producto/aceite-de-oliva-virgen-extra-5l/'
+          def mk():c=http.cookiejar.CookieJar();o=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(c));o.addheaders=[('User-Agent','MDO-Final2-Sidecart-QA')];return o
+          def get(o,p):r=o.open(base+p,timeout=45);b=r.read().decode('utf-8','replace');print('GET',p,r.status,len(b));return b
+          def add(o):
+            b=get(o,product);vs=json.loads(html.unescape(re.search(r'data-product_variations="([^"]+)"',b).group(1)));v=next(x for x in vs if x.get('is_in_stock') and x.get('is_purchasable'));q={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'};q.update(v.get('attributes') or {});r=o.open(urllib.request.Request(base+product,data=urllib.parse.urlencode(q).encode()),timeout=45);r.read();print('ADD',r.status,v['variation_id']);return v['variation_id']
+          es=mk();vid=add(es);c=get(es,'/contacto/');cart=get(es,'/carrito/');assert 'woocommerce-mini-cart-item__thumb' in c and 'mdo-sidecart-layout-fix-20260816' in c and 'mdo-sidecart-mobile-width-final-20260816' in c;assert 'translatepress-es_ES' in cart and 'Shipping savings' not in cart
+          print('ES_MINICART=PASS');print('ES_CART=PASS')
+          en=mk();add(en);c=get(en,'/en/contact/');cart=get(en,'/en/cart/');assert 'woocommerce-mini-cart-item__thumb' in c and 'mdo-sidecart-layout-fix-20260816' in c and 'mdo-sidecart-mobile-width-final-20260816' in c;assert 'translatepress-en_US' in cart and 'Ahorro gastos de envío' not in cart and 'Shipping savings' in cart
+          old=c.find('elmercado-minicart-layout-final');new=c.find('mdo-sidecart-layout-fix-20260816');mobile=c.find('mdo-sidecart-mobile-width-final-20260816');print('STYLE_POS',old,new,mobile);assert new>0 and mobile>new
+          print('EN_MINICART=PASS');print('EN_CART=PASS');print('VARIATION_ID',vid);print('ORDER_CREATED=NO')
+          PY
+
+      - name: Confirm production files
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail;PORT="${STAGING_PORT:-22}";sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "T1='$LIVE_T1' T2='$LIVE_T2' bash -s" <<'REMOTE'
+          set -euo pipefail;PHP=$(command -v php||true);test -f "$T1";test -f "$T2";"$PHP" -l "$T1";"$PHP" -l "$T2";grep -q 'Shipping savings' "$T1";grep -q 'min-width:66px' "$T2";echo LIVE_FILES=PASS
+          REMOTE
+
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail;[ -n "${LIVE_ROOT:-}" ]||exit 0;PORT="${STAGING_PORT:-22}";sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "T1='$LIVE_T1' T2='$LIVE_T2' B1='$LIVE_B1' B2='$LIVE_B2' ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail;for pair in "T1:B1" "T2:B2";do T=${pair%%:*};B=${pair##*:};eval target=\$$T;eval bak=\$$B;if [ "$bak" = NEW ];then rm -f "$target";else cp -a "$bak" "$target";fi;done;PHP=$(command -v php||true);WP=$(command -v wp||true);"$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1||true;echo ROLLBACK=PASS
+          REMOTE
