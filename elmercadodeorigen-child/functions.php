@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.244' );
-/* 0.10.244 traduce etiquetas de variantes en inglés y elimina Policies de producto. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.245' );
+/* 0.10.245 desacopla la capa multidioma de TranslatePress y la prepara para Falang. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -157,7 +157,7 @@ $elmercado_modules = array(
 	'inc/catalog-filter-scroll-final-010234.php',
 	'inc/catalog-vendor-truth-final-010235.php',
 	'inc/producer-list-image-square-010242.php',
-	'inc/english-ui-copy-final-010243.php',
+	'inc/multilingual-ui-copy-010245.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
