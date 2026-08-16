@@ -1,0 +1,91 @@
+name: Production isolate runaway dev FPM 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-isolate-runaway-dev-fpm-20260816.yml'
+jobs:
+  isolate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Constrain development PHP-FPM only
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          FPMROOT=/opt/plesk/php/8.2
+          FPMCONF="$FPMROOT/etc/php-fpm.conf"
+          DEVCONF=$(grep -RIl '^\[dev\.elmercadodeorigen\.com\]' "$FPMROOT/etc/php-fpm.d" 2>/dev/null | head -n1 || true)
+          if [ -z "$DEVCONF" ]; then
+            echo 'DEV_POOL_CONFIG_NOT_FOUND'
+            find "$FPMROOT/etc/php-fpm.d" -maxdepth 1 -type f -print 2>/dev/null | head -n 50
+            exit 2
+          fi
+          echo "DEVCONF=$DEVCONF"
+          echo '=== BEFORE DEV POOL SETTINGS ==='
+          grep -nE '^\[|^pm\.|^request_terminate_timeout|^request_slowlog_timeout|^slowlog' "$DEVCONF" || true
+          TS=$(date +%Y%m%d%H%M%S)
+          BACKUP="$DEVCONF.bak-prod-protect-$TS"
+          cp -a "$DEVCONF" "$BACKUP"
+          python3 - "$DEVCONF" <<'PY'
+          import re,sys
+          p=sys.argv[1]
+          s=open(p,encoding='utf-8').read()
+          if not re.search(r'^\[dev\.elmercadodeorigen\.com\]\s*$',s,re.M):
+              raise SystemExit('wrong pool file')
+          s,n=re.subn(r'(?m)^pm\.max_children\s*=\s*\d+\s*$', 'pm.max_children = 1', s, count=1)
+          if n!=1:
+              raise SystemExit('pm.max_children not found exactly once')
+          if re.search(r'(?m)^request_terminate_timeout\s*=',s):
+              s=re.sub(r'(?m)^request_terminate_timeout\s*=.*$', 'request_terminate_timeout = 45s', s, count=1)
+          else:
+              s += '\nrequest_terminate_timeout = 45s\n'
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+          echo '=== AFTER DEV POOL SETTINGS ==='
+          grep -nE '^\[|^pm\.|^request_terminate_timeout|^request_slowlog_timeout|^slowlog' "$DEVCONF" || true
+          if ! "$FPMROOT/sbin/php-fpm" -tt -y "$FPMCONF" >/tmp/mdo-fpm-test.out 2>&1; then
+            cat /tmp/mdo-fpm-test.out
+            cp -a "$BACKUP" "$DEVCONF"
+            echo 'FPM_CONFIG_INVALID_ROLLED_BACK'
+            exit 3
+          fi
+          MASTER=$(pgrep -f '^php-fpm: master process \(/opt/plesk/php/8\.2/etc/php-fpm\.conf\)$' | head -n1 || true)
+          : "${MASTER:?PHP82 master not found}"
+          echo "PHP82_MASTER=$MASTER"
+          kill -USR2 "$MASTER"
+          sleep 3
+          # Terminate any old runaway dev children left from the pre-reload generation.
+          PIDS=$(pgrep -f '^php-fpm: pool dev\.elmercadodeorigen\.com$' || true)
+          [ -z "$PIDS" ] || kill -TERM $PIDS
+          sleep 4
+          echo '=== DEV WORKERS AFTER ISOLATION ==='
+          ps -eo pid=,ppid=,etimes=,pcpu=,pmem=,rss=,args= | awk '/php-fpm: pool dev\.elmercadodeorigen\.com/ {print}' || true
+          COUNT=$(pgrep -fc '^php-fpm: pool dev\.elmercadodeorigen\.com$' || true)
+          echo "DEV_WORKER_COUNT=$COUNT"
+          if [ "$COUNT" -gt 1 ]; then
+            echo 'ERROR: dev pool still has more than one worker'
+            exit 4
+          fi
+          uptime
+          echo "DEV_POOL_BACKUP=$BACKUP"
+          REMOTE
+      - name: Measure production after dev isolation
+        run: |
+          set -euo pipefail
+          for path in / /tienda/ /carrito/ /en/; do
+            echo "--- $path"
+            curl -k -L -sS --max-time 30 -A 'MDO-Post-Isolation-QA/1.0' -o /tmp/body -w 'http=%{http_code} total=%{time_total} start=%{time_starttransfer} size=%{size_download}\n' "https://www.elmercadodeorigen.com$path"
+            grep -Eo 'translatepress-(es_ES|en_US)' /tmp/body | sort -u | head -n2 || true
+          done
