@@ -1,0 +1,14 @@
+name: Production English final parallel audit 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/scripts/mdo-final-english-parallel-audit-20260816.py'
+      - '.github/workflows/production-english-final-parallel-audit-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run parallel production audit
+        run: python3 .github/scripts/mdo-final-english-parallel-audit-20260816.py
