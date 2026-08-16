@@ -1,0 +1,53 @@
+name: Production English minimum-order browser verify 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-minimum-order-browser-verify-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Verify English minimum-order state
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./verify-minimum.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          const p=await browser.newPage();
+          await p.setRequestInterception(true);
+          p.on('request',r=>['image','font','media','stylesheet'].includes(r.resourceType())?r.abort():r.continue());
+          const base='https://www.elmercadodeorigen.com';
+          await p.goto(base+'/en/product/carne-picada-extra/?minimum_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:15000});
+          await new Promise(r=>setTimeout(r,800));
+          const formInfo=await p.evaluate(()=>{const f=document.querySelector('form.cart');const b=document.querySelector('button.single_add_to_cart_button');return {hasForm:!!f,action:f?.action||'',buttonValue:b?.value||'',buttonName:b?.name||'',buttonText:b?.innerText||''};});
+          console.log('FORM '+JSON.stringify(formInfo));
+          if(!formInfo.hasForm) throw new Error('Cart form not found');
+          await Promise.all([
+            p.waitForNavigation({waitUntil:'domcontentloaded',timeout:12000}).catch(()=>null),
+            p.evaluate(()=>{const f=document.querySelector('form.cart'); if(f.requestSubmit) f.requestSubmit(); else f.submit();})
+          ]);
+          await new Promise(r=>setTimeout(r,1000));
+          console.log('AFTER_ADD_URL '+p.url());
+          await p.goto(base+'/en/carrito/?minimum_cart='+Date.now(),{waitUntil:'domcontentloaded',timeout:15000});
+          await new Promise(r=>setTimeout(r,1000));
+          const data=await p.evaluate(()=>({lang:document.documentElement.lang,text:(document.body?.innerText||'').replace(/\n{3,}/g,'\n\n').trim(),items:[...document.querySelectorAll('.woocommerce-cart-form__cart-item,.cart_item')].map(x=>(x.innerText||'').trim()),notices:[...document.querySelectorAll('.woocommerce-error,.woocommerce-message,.woocommerce-info,.emdo-minimum-order-notices')].map(x=>(x.innerText||'').trim())}));
+          console.log('LANG '+data.lang);
+          console.log('ITEMS '+JSON.stringify(data.items));
+          console.log('NOTICES '+JSON.stringify(data.notices));
+          console.log('MINIMUM_LINES\n'+data.text.split('\n').filter(x=>/minimum|pedido mínimo|te faltan|you need|currently have/i.test(x)).join('\n'));
+          const spanish=/Pedido mínimo|te faltan|Llevas\s+.*productos/i.test(data.text);
+          const english=/Minimum order/i.test(data.text) && /Tolecarnes/i.test(data.text) && /You need/i.test(data.text);
+          if(spanish) throw new Error('Spanish minimum-order text is visible');
+          if(!data.items.length) throw new Error('Product was not added to cart');
+          if(!english) throw new Error('English minimum-order card was not visible');
+          console.log('ENGLISH_MINIMUM_ORDER_BROWSER_OK');
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./verify-minimum.mjs
