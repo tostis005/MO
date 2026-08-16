@@ -34,7 +34,9 @@ jobs:
           done
           : "${ROOT:?missing production}"
           echo "ROOT=$ROOT"
-          grep -RIl --exclude='*.bak*' --exclude-dir=uploads 'elmercado-minicart-layout-final' "$ROOT/wp-content" 2>/dev/null | head -20 | while read -r f; do echo "STYLE_SOURCE=$f"; grep -n -A120 -B10 'elmercado-minicart-layout-final' "$f" | head -150; done
+          found=0
+          while IFS= read -r f; do found=1; echo "STYLE_SOURCE=$f"; grep -n -A120 -B10 'elmercado-minicart-layout-final' "$f" | head -150 || true; done < <(grep -RIl --exclude='*.bak*' --exclude-dir=uploads 'elmercado-minicart-layout-final' "$ROOT/wp-content" 2>/dev/null || true)
+          echo "STYLE_SOURCE_FOUND=$found"
           REMOTE
       - name: Inspect side cart item and full English cart shipping block
         run: |
@@ -49,7 +51,10 @@ jobs:
           b=get('/contacto/')
           print('\n=== MINI CART ITEM HTML ===')
           m=re.search(r'(<li[^>]*class="[^"]*woocommerce-mini-cart-item[^"]*".*?</li>)',b,re.I|re.S)
-          print((m.group(1) if m else 'NOT_FOUND')[:12000])
+          print((m.group(1) if m else 'NOT_FOUND')[:16000])
+          print('\n=== INLINE MINI CART LAYOUT CSS ===')
+          m=re.search(r'<style[^>]*id="elmercado-minicart-layout-final"[^>]*>(.*?)</style>',b,re.I|re.S)
+          print((m.group(1) if m else 'NOT_FOUND')[:20000])
           b=get('/en/cart/')
           print('\n=== EN CART TOTALS HTML ===')
           m=re.search(r'(<div[^>]*class="[^"]*cart_totals[^"]*".*?</div>\s*</div>)',b,re.I|re.S)
