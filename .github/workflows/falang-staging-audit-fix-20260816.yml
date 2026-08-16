@@ -10,10 +10,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: falang-staging-audit-fix
+  cancel-in-progress: true
+
 jobs:
   falang-staging:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 8
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -47,82 +51,65 @@ jobs:
           : "${PHP_BIN:?PHP not found}"
           : "${WP_BIN:?WP-CLI not found}"
 
-          wpcli() { "$PHP_BIN" -d memory_limit=512M "$WP_BIN" --path="$WP_PATH" --allow-root "$@"; }
+          wpcli_safe() { "$PHP_BIN" -d memory_limit=512M "$WP_BIN" --path="$WP_PATH" --allow-root --skip-plugins --skip-themes "$@"; }
 
           echo '=== BEFORE: ACTIVE PLUGINS ==='
-          wpcli plugin list --status=active --fields=name,status,version --format=table
+          wpcli_safe plugin list --status=active --fields=name,status,version --format=table
 
-          if ! wpcli plugin is-installed falang >/dev/null 2>&1; then
+          if ! wpcli_safe plugin is-installed falang >/dev/null 2>&1; then
             echo 'ERROR: Falang plugin (slug: falang) is not installed on staging.' >&2
             exit 20
           fi
 
-          if ! wpcli plugin is-active falang >/dev/null 2>&1; then
+          if ! wpcli_safe plugin is-active falang >/dev/null 2>&1; then
             echo 'Activating Falang...'
-            wpcli plugin activate falang
+            wpcli_safe plugin activate falang
           else
             echo 'Falang is already active.'
           fi
 
-          # Deactivate competing runtime multilingual systems only. Falang add-ons are intentionally untouched.
           competing_plugins=(
-            sitepress-multilingual-cms
-            wpml-string-translation
-            wpml-translation-management
-            wpml-media-translation
-            wpml-sticky-links
-            wpml-cms-nav
-            woocommerce-multilingual
-            polylang
-            polylang-pro
-            polylang-for-woocommerce
-            translatepress-multilingual
-            translatepress-business
-            weglot
-            gtranslate
-            multilingualpress
-            bogo
-            qtranslate-x
-            qtranslate-xt
+            sitepress-multilingual-cms wpml-string-translation wpml-translation-management
+            wpml-media-translation wpml-sticky-links wpml-cms-nav woocommerce-multilingual
+            polylang polylang-pro polylang-for-woocommerce
+            translatepress-multilingual translatepress-business
+            weglot gtranslate multilingualpress bogo qtranslate-x qtranslate-xt
           )
           for plugin in "${competing_plugins[@]}"; do
-            if wpcli plugin is-active "$plugin" >/dev/null 2>&1; then
+            if wpcli_safe plugin is-active "$plugin" >/dev/null 2>&1; then
               echo "Deactivating competing multilingual plugin: $plugin"
-              wpcli plugin deactivate "$plugin"
+              wpcli_safe plugin deactivate "$plugin"
             fi
           done
 
           echo '=== AFTER: ACTIVE PLUGINS ==='
-          wpcli plugin list --status=active --fields=name,status,version --format=table
+          wpcli_safe plugin list --status=active --fields=name,status,version --format=table
 
           echo '=== MULTILINGUAL-RELATED INSTALLED PLUGINS ==='
-          wpcli plugin list --fields=name,status,version --format=csv | grep -Ei 'falang|wpml|sitepress|polylang|translatepress|weglot|gtranslate|multilingual|qtranslate|bogo' || true
+          wpcli_safe plugin list --fields=name,status,version --format=csv | grep -Ei 'falang|wpml|sitepress|polylang|translatepress|weglot|gtranslate|multilingual|qtranslate|bogo' || true
 
           echo '=== WOOCOMMERCE SHOP CONFIG ==='
-          HOME_URL="$(wpcli option get home)"
-          SITE_URL="$(wpcli option get siteurl)"
-          SHOP_ID="$(wpcli option get woocommerce_shop_page_id 2>/dev/null || true)"
-          PERMALINK_STRUCTURE="$(wpcli option get permalink_structure 2>/dev/null || true)"
+          HOME_URL="$(wpcli_safe option get home)"
+          SITE_URL="$(wpcli_safe option get siteurl)"
+          SHOP_ID="$(wpcli_safe option get woocommerce_shop_page_id 2>/dev/null || true)"
+          PERMALINK_STRUCTURE="$(wpcli_safe option get permalink_structure 2>/dev/null || true)"
           printf 'home=%s\nsiteurl=%s\nshop_page_id=%s\npermalink_structure=%s\n' "$HOME_URL" "$SITE_URL" "$SHOP_ID" "$PERMALINK_STRUCTURE"
 
           if [[ "$SHOP_ID" =~ ^[0-9]+$ ]] && [ "$SHOP_ID" -gt 0 ]; then
-            wpcli post get "$SHOP_ID" --fields=ID,post_title,post_name,post_status,post_type --format=json || true
-            echo 'Shop permalink (WordPress):'
-            wpcli post url "$SHOP_ID" || true
-            echo 'Falang-related shop meta:'
-            wpcli post meta list "$SHOP_ID" --format=csv | grep -Ei 'falang|slug|translation|language' || true
+            wpcli_safe post get "$SHOP_ID" --fields=ID,post_title,post_name,post_status,post_type --format=json || true
+            echo 'Shop permalink (database/core):'
+            wpcli_safe post url "$SHOP_ID" || true
+            echo 'Translation-related shop meta:'
+            wpcli_safe post meta list "$SHOP_ID" --format=csv | grep -Ei 'falang|slug|translation|language|en_US|_en' || true
           fi
 
           echo '=== FALANG OPTION NAMES ==='
-          wpcli option list --search='falang%' --fields=option_name,autoload --format=table || true
+          wpcli_safe option list --search='falang%' --fields=option_name,autoload --format=table || true
 
-          echo '=== FLUSH REWRITE RULES ==='
-          wpcli rewrite flush
-
-          echo '=== ROUTE CHECKS AFTER FLUSH ==='
+          echo '=== ROUTE CHECKS AFTER NORMALIZATION ==='
           base="${HOME_URL%/}"
           for path in / /tienda/ /shop/ /en/ /en/tienda/ /en/shop/; do
-            out="$(curl -k -sS -o /dev/null -w '%{http_code} %{url_effective} %{redirect_url}' --max-redirs 0 "$base$path" || true)"
+            out="$(curl -k -sS -o /dev/null -w '%{http_code} %{url_effective} %{redirect_url}' --connect-timeout 10 --max-time 60 --max-redirs 0 "$base$path" || true)"
             printf '%-14s %s\n' "$path" "$out"
           done
           REMOTE
