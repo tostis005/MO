@@ -1,0 +1,159 @@
+name: Production English island full audit 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-island-full-audit-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Export published English aliases
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' > /tmp/aliases.txt <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path missing}"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            foreach (["page","product"] as $type) {
+              $ids=get_posts(["post_type"=>$type,"post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","orderby"=>"ID","order"=>"ASC","suppress_filters"=>true]);
+              foreach($ids as $id){
+                if((string)get_post_meta($id,"_en_US_published",true)!=="1") continue;
+                $slug=sanitize_title(wp_strip_all_tags((string)get_post_meta($id,"_en_US_post_name",true)));
+                if($slug==="") continue;
+                $title=trim(wp_strip_all_tags((string)get_post_meta($id,"_en_US_post_title",true)));
+                echo "ALIAS\t$type\t$id\t$slug\t$title".PHP_EOL;
+              }
+            }
+          ' --path="$PROD_PATH" --allow-root 2>/dev/null
+          REMOTE
+          grep '^ALIAS' /tmp/aliases.txt | tee /tmp/aliases-clean.txt
+          echo "product_aliases=$(awk -F '\t' '$2=="product"{n++} END{print n+0}' /tmp/aliases-clean.txt)"
+          echo "page_aliases=$(awk -F '\t' '$2=="page"{n++} END{print n+0}' /tmp/aliases-clean.txt)"
+
+      - name: Verify every published English product URL
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          total=0
+          stamp=$(date +%s%N)
+          while IFS=$'\t' read -r marker type id slug title; do
+            [ "$type" = product ] || continue
+            total=$((total+1))
+            url="https://www.elmercadodeorigen.com/en/product/${slug}/?mdo_full_product=$stamp"
+            code=$(curl -ksSL --max-time 35 -o /tmp/product.html -w '%{http_code}' "$url" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/product.html | head -n1 || true)
+            ok=1
+            [ "$code" = 200 ] || ok=0
+            printf '%s' "$body" | grep -q 'single-product' || ok=0
+            printf '%s' "$body" | grep -q 'translatepress-en_US' || ok=0
+            echo "PRODUCT id=$id slug=$slug code=$code ok=$ok title=$title"
+            [ "$ok" = 1 ] || failed=1
+          done < /tmp/aliases-clean.txt
+          echo "verified_products=$total"
+          [ "$total" -eq 24 ] || failed=1
+          exit "$failed"
+
+      - name: Audit English navigation and internal URL leaks
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+          urls=(
+            "https://www.elmercadodeorigen.com/en/"
+            "https://www.elmercadodeorigen.com/en/shop/"
+            "https://www.elmercadodeorigen.com/en/journal/"
+            "https://www.elmercadodeorigen.com/en/producers/"
+            "https://www.elmercadodeorigen.com/en/contact/"
+            "https://www.elmercadodeorigen.com/en/cart/"
+            "https://www.elmercadodeorigen.com/en/my-account/"
+          )
+          rm -f /tmp/all-english.html /tmp/leaks.txt
+          touch /tmp/all-english.html /tmp/leaks.txt
+          for base in "${urls[@]}"; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/page.html -w '%{http_code}' "${base}?mdo_full_page=$stamp" || true)
+            echo "PAGE $base code=$code"
+            [ "$code" = 200 ] || failed=1
+            printf '\n<!--SOURCE %s-->\n' "$base" >> /tmp/all-english.html
+            cat /tmp/page.html >> /tmp/all-english.html
+          done
+
+          python3 - <<'PY'
+          import re, html as h, urllib.parse
+          src=open('/tmp/all-english.html',encoding='utf-8',errors='ignore').read()
+          hrefs=[]
+          for raw in re.findall(r'\bhref\s*=\s*["\']([^"\']+)',src,re.I):
+              u=h.unescape(raw.strip())
+              if not u or u.startswith(('#','mailto:','tel:','javascript:')): continue
+              p=urllib.parse.urlparse(u)
+              if p.netloc and p.netloc.lower() not in {'www.elmercadodeorigen.com','elmercadodeorigen.com'}: continue
+              path=p.path or '/'
+              static_prefixes=('/wp-content/','/wp-includes/','/wp-json/','/wp-admin/','/favicon','/robots.txt','/sitemap')
+              if path.startswith(static_prefixes): continue
+              hrefs.append(u)
+          unique=sorted(set(hrefs))
+          print('UNIQUE_INTERNAL_HREFS',len(unique))
+          for u in unique: print('HREF',u)
+          leaks=[]
+          for u in unique:
+              p=urllib.parse.urlparse(u)
+              path=p.path or '/'
+              # Front-end navigation should remain inside /en, except technical WooCommerce/AJAX endpoints.
+              if path in ('/','/en','/en/'): continue
+              if path.startswith('/en/'): continue
+              if path.startswith(('/?wc-ajax=','/wc-api/')): continue
+              leaks.append(u)
+          open('/tmp/leaks.txt','w',encoding='utf-8').write('\n'.join(leaks))
+          print('LEAK_COUNT',len(leaks))
+          for u in leaks: print('LEAK',u)
+          spanish_markers=[]
+          for u in unique:
+              path=(urllib.parse.urlparse(u).path or '').lower()
+              if path.startswith('/en/') and any('/'+x+'/' in path for x in ['tienda','producto','productos','carrito','finalizar-compra','mi-cuenta','productores','contacto','diario','categoria-producto','etiqueta-producto']):
+                  spanish_markers.append(u)
+          print('SPANISH_SLUG_IN_EN_COUNT',len(spanish_markers))
+          for u in spanish_markers: print('SPANISH_SLUG_IN_EN',u)
+          open('/tmp/spanish-slugs.txt','w',encoding='utf-8').write('\n'.join(spanish_markers))
+          PY
+
+          leak_count=$(grep -c . /tmp/leaks.txt || true)
+          spanish_count=$(grep -c . /tmp/spanish-slugs.txt || true)
+          echo "frontend_leak_count=$leak_count spanish_slug_in_en_count=$spanish_count"
+          [ "$leak_count" -eq 0 ] || failed=1
+          [ "$spanish_count" -eq 0 ] || failed=1
+          exit "$failed"
