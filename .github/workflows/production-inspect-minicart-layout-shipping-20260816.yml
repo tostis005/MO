@@ -1,0 +1,66 @@
+name: Production inspect minicart layout and shipping 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-inspect-minicart-layout-shipping-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Locate live style source
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          echo "ROOT=$ROOT"
+          grep -RIl --exclude='*.bak*' --exclude-dir=uploads 'elmercado-minicart-layout-final' "$ROOT/wp-content" 2>/dev/null | head -20 | while read -r f; do echo "STYLE_SOURCE=$f"; grep -n -A120 -B10 'elmercado-minicart-layout-final' "$f" | head -150; done
+          REMOTE
+      - name: Inspect side cart item and full English cart shipping block
+        run: |
+          python3 - <<'PY'
+          import html,json,re,urllib.parse,urllib.request,http.cookiejar
+          base='https://www.elmercadodeorigen.com'; cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj)); op.addheaders=[('User-Agent','MDO-MiniCart-DeepInspect/1.0')]
+          def get(p):
+            r=op.open(base+p,timeout=45); b=r.read().decode('utf-8','replace'); print('GET',p,r.status,len(b)); return b
+          def post(p,d):
+            req=urllib.request.Request(base+p,data=urllib.parse.urlencode(d).encode()); r=op.open(req,timeout=45); return r.read().decode('utf-8','replace')
+          p='/producto/aceite-de-oliva-virgen-extra-5l/'; b=get(p); m=re.search(r'data-product_variations="([^"]+)"',b); vs=json.loads(html.unescape(m.group(1))); v=next(x for x in vs if x.get('is_in_stock') and x.get('is_purchasable')); d={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'}; d.update(v.get('attributes') or {}); post(p,d)
+          b=get('/contacto/')
+          print('\n=== MINI CART ITEM HTML ===')
+          m=re.search(r'(<li[^>]*class="[^"]*woocommerce-mini-cart-item[^"]*".*?</li>)',b,re.I|re.S)
+          print((m.group(1) if m else 'NOT_FOUND')[:12000])
+          b=get('/en/cart/')
+          print('\n=== EN CART TOTALS HTML ===')
+          m=re.search(r'(<div[^>]*class="[^"]*cart_totals[^"]*".*?</div>\s*</div>)',b,re.I|re.S)
+          frag=(m.group(1) if m else '')
+          print(frag[:30000])
+          print('\n=== SHIPPING SUMMARY CONTEXT ===')
+          for mm in re.finditer(r'emo-cart-shipping-summary',b,re.I): print(b[max(0,mm.start()-3000):mm.start()+9000])
+          print('\n=== SPANISH-LIKE VISIBLE LINES IN EN CART ===')
+          s=re.sub(r'(?is)<script\b.*?</script>|<style\b.*?</style>|<noscript\b.*?</noscript>|<svg\b.*?</svg>|<head\b.*?</head>',' ',b); s=html.unescape(re.sub(r'(?s)<[^>]+>','\n',s))
+          rx=re.compile(r'\b(?:envío|envíos|gratis|gratuito|dirección|pedido|vendedor|productor|importe|faltan|alcanzar|costes|calcular|calculan|actualizarán|introduce|península|recogida|domicilio|agencia|transportista|días|laborables)\b',re.I)
+          for x in s.splitlines():
+            x=re.sub(r'\s+',' ',x).strip()
+            if x and rx.search(x): print(x[:1000])
+          PY
