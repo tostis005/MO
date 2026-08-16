@@ -1,0 +1,283 @@
+name: Production English island taxonomy vendor 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-island-taxonomy-vendor-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Extend English island with taxonomy and vendor aliases
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          : "${wp_bin:?wp-cli not found}"
+          : "${php_bin:?php not found}"
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-english-slug-router.php"
+          : "${TARGET:?router missing}"
+          test -f "$TARGET"
+          cp -a "$TARGET" "$TARGET.bak-tax-vendor-$(date +%Y%m%d%H%M%S)"
+
+          if ! grep -q 'MDO_ENGLISH_ISLAND_TAX_VENDOR_V1' "$TARGET"; then
+          cat >> "$TARGET" <<'PHP'
+
+          /* MDO_ENGLISH_ISLAND_TAX_VENDOR_V1 */
+          function mdo_en_term_slug( WP_Term $term ): string {
+              if ( (string) get_term_meta( $term->term_id, '_en_US_published', true ) !== '1' ) { return ''; }
+              return sanitize_title( wp_strip_all_tags( (string) get_term_meta( $term->term_id, '_en_US_slug', true ) ) );
+          }
+
+          function mdo_en_find_term_by_slug( string $taxonomy, string $slug ) {
+              if ( ! taxonomy_exists( $taxonomy ) ) { return null; }
+              $slug = sanitize_title( $slug );
+              if ( $slug === '' ) { return null; }
+              $terms = get_terms( array(
+                  'taxonomy'   => $taxonomy,
+                  'hide_empty' => false,
+                  'number'     => 2,
+                  'meta_query' => array(
+                      'relation' => 'AND',
+                      array( 'key' => '_en_US_slug', 'value' => $slug, 'compare' => '=' ),
+                      array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
+                  ),
+              ) );
+              if ( is_wp_error( $terms ) || count( $terms ) !== 1 ) { return null; }
+              return $terms[0];
+          }
+
+          function mdo_en_taxonomy_base( string $taxonomy ): string {
+              $map = array(
+                  'product_cat' => 'product-category',
+                  'product_tag' => 'product-tag',
+                  'category'    => 'category',
+              );
+              return $map[ $taxonomy ] ?? '';
+          }
+
+          function mdo_en_taxonomy_for_base( string $base ): string {
+              $map = array(
+                  'product-category' => 'product_cat',
+                  'product-tag'      => 'product_tag',
+                  'category'         => 'category',
+              );
+              return $map[ $base ] ?? '';
+          }
+
+          function mdo_en_term_url( WP_Term $term ): string {
+              $base = mdo_en_taxonomy_base( $term->taxonomy );
+              $slug = mdo_en_term_slug( $term );
+              if ( $base === '' || $slug === '' ) { return ''; }
+              return mdo_en_root() . '/en/' . $base . '/' . rawurlencode( $slug ) . '/';
+          }
+
+          function mdo_en_vendor_url( int $user_id ): string {
+              $user = get_userdata( $user_id );
+              if ( ! $user instanceof WP_User || $user->user_nicename === '' ) { return ''; }
+              return mdo_en_root() . '/en/store/' . rawurlencode( $user->user_nicename ) . '/';
+          }
+
+          add_action( 'parse_request', static function ( WP $wp ): void {
+              if ( ! mdo_en_is_request() ) { return; }
+              $parts = mdo_en_segments();
+              if ( count( $parts ) !== 2 ) { return; }
+
+              if ( $parts[0] === 'store' ) {
+                  foreach ( array( 'error', 'name', 'pagename', 'page_id', 'p', 'attachment', 'product', 'product_cat', 'product_tag', 'category_name' ) as $key ) { unset( $wp->query_vars[ $key ] ); }
+                  $wp->query_vars['post_type'] = 'product';
+                  $wp->query_vars['tienda'] = $parts[1];
+                  return;
+              }
+
+              $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+              if ( $taxonomy === '' ) { return; }
+              $term = mdo_en_find_term_by_slug( $taxonomy, $parts[1] );
+              if ( ! $term instanceof WP_Term ) { return; }
+
+              foreach ( array( 'error', 'name', 'pagename', 'page_id', 'p', 'attachment', 'product', 'product_cat', 'product_tag', 'category_name', 'cat', 'tag' ) as $key ) { unset( $wp->query_vars[ $key ] ); }
+              if ( $taxonomy === 'product_cat' ) {
+                  $wp->query_vars['post_type'] = 'product';
+                  $wp->query_vars['product_cat'] = $term->slug;
+              } elseif ( $taxonomy === 'product_tag' ) {
+                  $wp->query_vars['post_type'] = 'product';
+                  $wp->query_vars['product_tag'] = $term->slug;
+              } else {
+                  unset( $wp->query_vars['post_type'] );
+                  $wp->query_vars['category_name'] = $term->slug;
+              }
+          }, PHP_INT_MAX );
+
+          add_filter( 'term_link', static function ( string $url, WP_Term $term, string $taxonomy ): string {
+              if ( ! mdo_en_is_request() ) { return $url; }
+              $translated = mdo_en_term_url( $term );
+              return $translated !== '' ? $translated : $url;
+          }, PHP_INT_MAX, 3 );
+
+          add_filter( 'wcfmmp_get_store_url', static function ( string $url, $user_id ): string {
+              if ( ! mdo_en_is_request() ) { return $url; }
+              $translated = mdo_en_vendor_url( (int) $user_id );
+              return $translated !== '' ? $translated : $url;
+          }, PHP_INT_MAX, 2 );
+
+          add_filter( 'wcfmmp_store_list_card_url', static function ( string $url, $store_id ): string {
+              if ( ! mdo_en_is_request() ) { return $url; }
+              $translated = mdo_en_vendor_url( (int) $store_id );
+              return $translated !== '' ? $translated : $url;
+          }, PHP_INT_MAX, 2 );
+
+          add_filter( 'home_url', static function ( string $url ): string {
+              if ( ! mdo_en_is_request() ) { return $url; }
+              return preg_replace( '#/en/en/#', '/en/', $url, 1 ) ?: $url;
+          }, PHP_INT_MAX );
+
+          add_filter( 'site_url', static function ( string $url ): string {
+              if ( ! mdo_en_is_request() ) { return $url; }
+              return preg_replace( '#/en/en/#', '/en/', $url, 1 ) ?: $url;
+          }, PHP_INT_MAX );
+
+          add_filter( 'redirect_canonical', static function ( $redirect ) {
+              if ( ! mdo_en_is_request() ) { return $redirect; }
+              $parts = mdo_en_segments();
+              if ( count( $parts ) !== 2 ) { return $redirect; }
+              if ( $parts[0] === 'store' ) { return false; }
+              $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+              if ( $taxonomy !== '' && mdo_en_find_term_by_slug( $taxonomy, $parts[1] ) instanceof WP_Term ) { return false; }
+              return $redirect;
+          }, PHP_INT_MAX );
+
+          add_action( 'template_redirect', static function (): void {
+              if ( ! mdo_en_is_request() || is_admin() || wp_doing_ajax() ) { return; }
+              $parts = mdo_en_segments();
+              if ( count( $parts ) !== 2 ) { return; }
+
+              if ( $parts[0] === 'tienda' ) {
+                  $target = mdo_en_root() . '/en/store/' . rawurlencode( $parts[1] ) . '/';
+                  wp_safe_redirect( $target, 301, 'MDO English vendor base' );
+                  exit;
+              }
+
+              $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+              if ( $taxonomy === '' || mdo_en_find_term_by_slug( $taxonomy, $parts[1] ) instanceof WP_Term ) { return; }
+              $native = get_term_by( 'slug', $parts[1], $taxonomy );
+              if ( $native instanceof WP_Term ) {
+                  $target = mdo_en_term_url( $native );
+                  if ( $target !== '' ) {
+                      wp_safe_redirect( $target, 301, 'MDO English taxonomy slug' );
+                      exit;
+                  }
+              }
+          }, 2 );
+          PHP
+          fi
+
+          "$php_bin" -l "$TARGET"
+          echo "router_sha256=$(sha256sum "$TARGET" | awk '{print $1}')"
+          REMOTE
+
+      - name: Verify taxonomy and vendor English aliases
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+
+          check_200() {
+            path="$1" marker="$2"
+            code=$(curl -ksSL --max-time 35 -o /tmp/page.html -w '%{http_code}' "https://www.elmercadodeorigen.com${path}?mdo_tax_vendor=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/page.html | head -n1 || true)
+            h1=$(grep -oE '<h1[^>]*>.*?</h1>' /tmp/page.html | head -n1 | sed -E 's/<[^>]+>/ /g' | tr -s ' ' || true)
+            echo "$path code=$code h1=$h1"
+            echo "$body"
+            [ "$code" = 200 ] || failed=1
+            printf '%s' "$body" | grep -q 'translatepress-en_US' || failed=1
+            if [ -n "$marker" ]; then printf '%s' "$body" | grep -q "$marker" || failed=1; fi
+          }
+
+          check_200 /en/shop/ woocommerce-shop
+          check_200 /en/product-category/oils/ tax-product_cat
+          check_200 /en/product-category/hams-and-shoulders/ tax-product_cat
+          check_200 /en/product-tag/acorn-fed/ tax-product_tag
+          check_200 /en/category/olive-oil/ category
+          check_200 /en/store/hidalgo-de-la-jara/ wcfmmp-store-page
+
+          # Spanish originals remain untouched.
+          es_code=$(curl -ksSL --max-time 35 -o /tmp/es-shop.html -w '%{http_code}' "https://www.elmercadodeorigen.com/tienda/?mdo_es=$stamp" || true)
+          es_body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/es-shop.html | head -n1 || true)
+          echo "/tienda/ code=$es_code $es_body"
+          [ "$es_code" = 200 ] || failed=1
+          printf '%s' "$es_body" | grep -q 'woocommerce-shop' || failed=1
+          printf '%s' "$es_body" | grep -q 'translatepress-es_ES' || failed=1
+
+          # Legacy English URLs must consolidate to the new English canonical paths.
+          check_redirect() {
+            old="$1" expected="$2"
+            headers=$(mktemp)
+            curl -ksS --max-time 25 -D "$headers" -o /dev/null "https://www.elmercadodeorigen.com${old}?mdo_redirect=$stamp" || true
+            code=$(awk 'toupper($1) ~ /^HTTP\// {c=$2} END{print c}' "$headers")
+            loc=$(awk 'tolower($1)=="location:"{print $2; exit}' "$headers" | tr -d '\r')
+            echo "$old code=$code location=$loc"
+            [ "$code" = 301 ] || [ "$code" = 302 ] || failed=1
+            printf '%s' "$loc" | grep -q "$expected" || failed=1
+          }
+          check_redirect /en/product-category/aceites/ /en/product-category/oils/
+          check_redirect /en/product-tag/bellota/ /en/product-tag/acorn-fed/
+          check_redirect /en/category/aceite/ /en/category/olive-oil/
+          check_redirect /en/tienda/hidalgo-de-la-jara/ /en/store/hidalgo-de-la-jara/
+
+          # Inspect visible anchors from the English pages only (not head alternates/feeds).
+          for path in /en/ /en/shop/ /en/producers/ /en/product/100-iberian-acorn-fed-ham-black-tag/; do
+            curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com${path}?mdo_anchor=$stamp" >> /tmp/english-pages.html || failed=1
+          done
+          python3 - <<'PY'
+          import re, html
+          s=open('/tmp/english-pages.html',encoding='utf-8',errors='ignore').read()
+          anchors=[]
+          for m in re.finditer(r'<a\b[^>]*\bhref=["\']([^"\']+)',s,re.I|re.S):
+              u=html.unescape(m.group(1)).strip()
+              if 'elmercadodeorigen.com' in u or u.startswith('/'):
+                  anchors.append(u)
+          for u in sorted(set(anchors)):
+              print('ANCHOR',u)
+          bad=[u for u in anchors if '/en/en/' in u or '/en/tienda/' in u or '/en/product-category/aceites/' in u or '/en/product-category/jamones-paletas/' in u or '/en/product-tag/bellota/' in u]
+          print('BAD_ANCHOR_COUNT',len(set(bad)))
+          for u in sorted(set(bad)): print('BAD_ANCHOR',u)
+          open('/tmp/bad-anchor-count','w').write(str(len(set(bad))))
+          PY
+          [ "$(cat /tmp/bad-anchor-count)" -eq 0 ] || failed=1
+
+          exit "$failed"
