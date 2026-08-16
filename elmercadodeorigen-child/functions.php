@@ -158,6 +158,7 @@ $elmercado_modules = array(
 	'inc/catalog-vendor-truth-final-010235.php',
 	'inc/producer-list-image-square-010242.php',
 	'inc/multilingual-ui-copy-010245.php',
+	'inc/falang-switcher-010245.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
