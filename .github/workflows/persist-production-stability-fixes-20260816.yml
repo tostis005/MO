@@ -1,0 +1,45 @@
+name: Persist production stability fixes 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/persist-production-stability-fixes-20260816.yml'
+permissions:
+  contents: write
+jobs:
+  persist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Persist English Home guard and neutral early cache
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/mdo-english-island-runtime-seo-20260816.php')
+          s=p.read_text(encoding='utf-8')
+          old="""    if ( ! mdo_island_en_request() || ! is_singular() ) { return $content; }\n    $post_id = (int) get_the_ID();"""
+          new="""    if ( ! mdo_island_en_request() || ! is_singular() ) { return $content; }\n    // Home presentation changes independently of the reviewed page-copy metadata.\n    // Keep the current native Home structure and let TranslatePress render it.\n    if ( is_front_page() ) { return $content; }\n    $post_id = (int) get_the_ID();"""
+          if new not in s:
+              if old not in s:
+                  raise SystemExit('English Home target block not found')
+              s=s.replace(old,new,1)
+              p.write_text(s,encoding='utf-8')
+          PY
+          cp .github/scripts/advanced-cache-disabled-20260816.php elmercadodeorigen-child/dropins/advanced-cache.php
+          php -l .github/scripts/mdo-english-island-runtime-seo-20260816.php
+          php -l elmercadodeorigen-child/dropins/advanced-cache.php
+          grep -n "is_front_page()" .github/scripts/mdo-english-island-runtime-seo-20260816.php | head
+      - name: Commit tracked safeguards
+        run: |
+          set -euo pipefail
+          git config user.name 'MDO Production Stabilizer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/scripts/mdo-english-island-runtime-seo-20260816.php elmercadodeorigen-child/dropins/advanced-cache.php
+          if git diff --cached --quiet; then
+            echo 'No tracked changes needed'
+            exit 0
+          fi
+          git commit -m 'Persist English Home and cache stability safeguards'
+          git push origin HEAD:main
