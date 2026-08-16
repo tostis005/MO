@@ -1,0 +1,44 @@
+name: Production English architecture audit 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-architecture-audit-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect production language architecture
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -u
+          wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          echo '=== SITE ==='; wp option get siteurl 2>/dev/null || true
+          echo '=== ACTIVE LANGUAGE PLUGINS ==='; wp plugin list --status=active --fields=name,status --format=csv 2>/dev/null | grep -Ei 'translate|wpml|polylang|language|multilingual|name' || true
+          echo '=== TRANSLATEPRESS SETTINGS ==='; wp option get trp_settings --format=json 2>/dev/null || echo 'NO_TRP_SETTINGS'
+          echo '=== FRONT PAGE ==='; front=$(wp option get page_on_front 2>/dev/null || true); echo "page_on_front=$front"; [ -n "$front" ] && wp post get "$front" --fields=ID,post_title,post_name,post_status --format=json 2>/dev/null || true
+          echo '=== PUBLISHED PAGES ==='; wp post list --post_type=page --post_status=publish --fields=ID,post_title,post_name,post_parent --format=csv 2>/dev/null || true
+          echo '=== LANGUAGE-RELATED THEME / MU FILES ==='; grep -RliE --include='*.php' 'TRP_LANGUAGE|trp_get_current_language|/en/|English' "$PROD_PATH/wp-content/themes/elmercadodeorigen-child" "$PROD_PATH/wp-content/mu-plugins" 2>/dev/null | head -n 80 || true
+          REMOTE
