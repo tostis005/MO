@@ -1,0 +1,16 @@
+name: Trigger guarded Falang migration v2 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/trigger-falang-migration-v2-20260816.yml']
+permissions:
+  actions: write
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dispatch guarded migration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run production-migrate-translatepress-to-falang-v2-20260816.yml --repo "$GITHUB_REPOSITORY" --ref main
