@@ -1,0 +1,44 @@
+name: Diagnose live side cart browser DOM 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-live-sidecart-browser-dom-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect hydrated production side-cart DOM in Chrome
+        run: |
+          python3 -m pip install -q selenium
+          python3 - <<'PY'
+          import shutil,time,urllib.parse
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          base='https://www.elmercadodeorigen.com'
+          chrome=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=chrome;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage');o.add_argument('--window-size=1440,1000')
+          d=webdriver.Chrome(options=o)
+          try:
+            q={'add-to-cart':'1056','variation_id':'2486','quantity':'1','attribute_pa_tamano':'envase-de-5l-de-pet','attribute_pa_variedad':'sin-filtrar-de-martena-picual'}
+            d.get(base+'/carrito/?'+urllib.parse.urlencode(q)); time.sleep(4)
+            print('COOKIES',[c['name'] for c in d.get_cookies() if 'woocommerce' in c['name'] or 'cart' in c['name']])
+            d.get(base+'/en/contact/'); time.sleep(8)
+            print('URL',d.current_url)
+            body=d.find_element('tag name','body').text
+            print('BODY_HAS_ACEITE', 'Aceite' in body, 'BODY_HAS_SHOPPING_CART', 'SHOPPING CART' in body.upper())
+            data=d.execute_script('''
+              const els=[...document.querySelectorAll('[class*="cart" i], [id*="cart" i]')];
+              return els.slice(0,120).map((e,i)=>({i,tag:e.tagName,id:e.id,cls:e.className,txt:(e.innerText||'').slice(0,350),html:e.outerHTML.slice(0,2500)}));
+            ''')
+            for x in data:
+              if ('sidebar' in str(x['cls']).lower() or 'mini' in str(x['cls']).lower() or 'shopping' in x['txt'].lower() or 'aceite' in x['txt'].lower()):
+                print('\nCANDIDATE',x['i'],x['tag'],'ID=',x['id'],'CLASS=',x['cls'])
+                print('TEXT=',x['txt'])
+                print('HTML=',x['html'])
+            print('\nALL_CLASS_NAMES_WITH_MINI_CART')
+            print(d.execute_script('''return [...new Set([...document.querySelectorAll('*')].flatMap(e=>typeof e.className==='string'?e.className.split(/\\s+/):[]).filter(c=>/mini|cart|sidebar/i.test(c)))].sort();'''))
+            print('ORDER_CREATED=NO')
+          finally:d.quit()
+          PY
