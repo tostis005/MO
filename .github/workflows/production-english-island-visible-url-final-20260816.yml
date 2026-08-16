@@ -1,0 +1,160 @@
+name: Production English island visible URL final 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-island-visible-url-final-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Fix English cookie-policy and product archive links
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-english-slug-router.php"
+          test -f "$TARGET"
+          cp -a "$TARGET" "$TARGET.bak-visible-url-final-$(date +%Y%m%d%H%M%S)"
+
+          if ! grep -q 'MDO_ENGLISH_ISLAND_VISIBLE_URL_FINAL_V1' "$TARGET"; then
+          cat >> "$TARGET" <<'PHP'
+
+          /* MDO_ENGLISH_ISLAND_VISIBLE_URL_FINAL_V1 */
+          add_filter( 'post_type_archive_link', static function ( string $url, string $post_type ): string {
+              if ( ! mdo_en_is_request() || $post_type !== 'product' ) { return $url; }
+              $shop_id = (int) get_option( 'woocommerce_shop_page_id' );
+              $translated = $shop_id > 0 ? mdo_en_page_url( $shop_id ) : '';
+              return $translated !== '' ? $translated : mdo_en_root() . '/en/shop/';
+          }, PHP_INT_MAX, 2 );
+
+          add_filter( 'wt_cli_plugin_settings', static function ( $settings ) {
+              if ( ! mdo_en_is_request() || ! is_array( $settings ) ) { return $settings; }
+              $cookie_page = get_page_by_path( 'politica-de-cookies', OBJECT, 'page' );
+              $target = $cookie_page instanceof WP_Post ? mdo_en_page_url( (int) $cookie_page->ID ) : '';
+              if ( $target === '' ) { $target = mdo_en_root() . '/en/cookie-policy/'; }
+              $settings['button_2_url'] = $target;
+              return $settings;
+          }, PHP_INT_MAX );
+          PHP
+          fi
+
+          "$php_bin" -l "$TARGET"
+          echo "router_sha256=$(sha256sum "$TARGET" | awk '{print $1}')"
+          REMOTE
+
+      - name: Verify visible English URLs and Spanish isolation
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+
+          pages=(
+            /en/
+            /en/shop/
+            /en/producers/
+            /en/journal/
+            /en/contact/
+            /en/product/100-iberian-acorn-fed-ham-black-tag/
+            /en/store/hidalgo-de-la-jara/
+            /en/product-category/oils/
+          )
+          : > /tmp/en-all.html
+          for p in "${pages[@]}"; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/page.html -w '%{http_code}' "https://www.elmercadodeorigen.com${p}?mdo_visible_final=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/page.html | head -n1 || true)
+            echo "PAGE $p code=$code"
+            echo "$body"
+            [ "$code" = 200 ] || failed=1
+            printf '%s' "$body" | grep -q 'translatepress-en_US' || failed=1
+            cat /tmp/page.html >> /tmp/en-all.html
+          done
+
+          python3 - <<'PY'
+          import re,html
+          s=open('/tmp/en-all.html',encoding='utf-8',errors='ignore').read()
+          anchors=[html.unescape(x).strip() for x in re.findall(r'<a\b[^>]*\bhref=["\']([^"\']+)',s,re.I|re.S)]
+          unique=sorted(set(anchors))
+          bad_patterns=[
+              '/en/en/', '/en/tienda/', '/en/politica-de-cookies/', '/en/producto/',
+              '/en/aceite-de-oliva-virgen-extra/', '/en/jamon-iberico/', '/en/naranjas/',
+              '/en/product-category/aceites/', '/en/product-category/jamones-paletas/',
+              '/en/product-tag/bellota/'
+          ]
+          bad=[u for u in unique if any(p in u for p in bad_patterns)]
+          print('UNIQUE_VISIBLE_ANCHORS',len(unique))
+          print('BAD_VISIBLE_ANCHORS',len(bad))
+          for u in bad: print('BAD',u)
+          required=['/en/shop/','/en/cookie-policy/','/en/store/hidalgo-de-la-jara/','/en/product-category/oils/']
+          text='\n'.join(unique)
+          for r in required:
+              present=r in text
+              print('REQUIRED',r,present)
+              if not present: bad.append('MISSING:'+r)
+          open('/tmp/bad-count','w').write(str(len(bad)))
+          PY
+          [ "$(cat /tmp/bad-count)" -eq 0 ] || failed=1
+
+          # Directly inspect the two components that were previously wrong.
+          curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com/en/shop/?mdo_components=$stamp" -o /tmp/components.html || failed=1
+          echo '--- EN COOKIE LINK ---'
+          grep -oE '<a[^>]+id="CONSTANT_OPEN_URL"[^>]*>' /tmp/components.html | head -n1 || true
+          grep -oE '<a[^>]+id="CONSTANT_OPEN_URL"[^>]*>' /tmp/components.html | head -n1 | grep -q '/en/cookie-policy/' || failed=1
+          echo '--- EN SHOP BREADCRUMB ---'
+          python3 - <<'PY'
+          import re
+          s=open('/tmp/components.html',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'<nav class="woostify-breadcrumb".*?</nav>',s,re.I|re.S)
+          print(m.group(0)[:6000] if m else 'NO_BREADCRUMB')
+          open('/tmp/breadcrumb','w').write(m.group(0) if m else '')
+          PY
+          grep -q '/en/shop/' /tmp/breadcrumb || failed=1
+          grep -q '/en/tienda/' /tmp/breadcrumb && failed=1
+
+          # Spanish cookie policy and shop URL must remain native Spanish.
+          curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com/tienda/?mdo_es_visible=$stamp" -o /tmp/es.html || failed=1
+          es_body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/es.html | head -n1 || true)
+          echo "SPANISH $es_body"
+          printf '%s' "$es_body" | grep -q 'translatepress-es_ES' || failed=1
+          printf '%s' "$es_body" | grep -q 'woocommerce-shop' || failed=1
+          es_cookie=$(grep -oE '<a[^>]+id="CONSTANT_OPEN_URL"[^>]*>' /tmp/es.html | head -n1 || true)
+          echo "SPANISH_COOKIE=$es_cookie"
+          printf '%s' "$es_cookie" | grep -q '/politica-de-cookies/' || failed=1
+          printf '%s' "$es_cookie" | grep -q '/en/cookie-policy/' && failed=1
+
+          exit "$failed"
