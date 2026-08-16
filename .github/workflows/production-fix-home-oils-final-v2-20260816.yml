@@ -1,0 +1,106 @@
+name: Production fix Home Oils final v2 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-home-oils-final-v2-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          php -l .github/scripts/mdo-home-oils-final-guard-20260816.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install -q selenium
+      - name: Deploy final-output guard
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-home-oils-final-guard-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-home-oils-final-guard-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          TARGET="$ROOT/wp-content/mu-plugins/mdo-home-aceites-card-hotfix.php"; TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$TARGET" ]; then BAK="$TARGET.bak-$TS"; cp -a "$TARGET" "$BAK"; else BAK=NEW; fi
+          cp /tmp/mdo-home-oils-final-guard-20260816.php "$TARGET"
+          "$PHP" -l "$TARGET"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          rm -rf "$ROOT/wp-content/cache"/* 2>/dev/null || true
+          echo "ROOT=$ROOT"; echo "TARGET=$TARGET"; echo "BAK=$BAK"
+          REMOTE
+          )
+          echo "$OUT"
+          for k in ROOT TARGET BAK; do v=$(printf '%s\n' "$OUT"|sed -n "s/^$k=//p"|tail -n1); test -n "$v"; echo "LIVE_$k=$v" >> "$GITHUB_ENV"; done
+      - name: Verify exact public HTML ES EN
+        run: |
+          python3 - <<'PY'
+          import urllib.request,re
+          base='https://www.elmercadodeorigen.com'
+          for path,name,label,href in [('/','Aceites','3 productos','/categoria-producto/aceites/'),('/en/','Oils','3 products','/en/product-category/oils/')]:
+            with urllib.request.urlopen(urllib.request.Request(base+path,headers={'User-Agent':'Mozilla/5.0 Chrome/140 Safari/537.36'}),timeout=60) as r: h=r.read().decode('utf-8','replace')
+            cards=[]
+            for m in re.finditer(r'<a class="emo-category-card"([^>]*)>(.*?)</a>',h,re.S|re.I):
+              attrs,body=m.groups(); a=re.search(r'<strong[^>]*>(.*?)</strong>',body,re.S|re.I); b=re.search(r'<small[^>]*>(.*?)</small>',body,re.S|re.I); clean=lambda s:re.sub('<[^>]+>','',s).strip()
+              cards.append((clean(a.group(1)) if a else '',clean(b.group(1)) if b else '',attrs))
+            t=[c for c in cards if c[0]==name]
+            print(path,[(a,b) for a,b,_ in cards],'MARKER',('mdo-home-category-mobile-visible-20260816' in h))
+            assert len(t)==1 and t[0][1]==label and href in t[0][2]
+            assert 'mdo-home-category-mobile-visible-20260816' in h
+          print('EXACT_HTML_ES_EN=PASS')
+          PY
+      - name: Verify true desktop and mobile viewports
+        run: |
+          python3 - <<'PY'
+          import shutil,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          c=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=c;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage');o.add_argument('--window-size=1400,1600')
+          d=webdriver.Chrome(options=o)
+          try:
+            for path,name in [('/','Aceites'),('/en/','Oils')]:
+              for w in [1366,600,390]:
+                d.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {'width':w,'height':1400,'deviceScaleFactor':1,'mobile':False})
+                d.get('https://www.elmercadodeorigen.com'+path);time.sleep(6)
+                z=d.execute_script('''const name=arguments[0],a=[...document.querySelectorAll('.emo-category-card')].find(e=>(e.querySelector('strong')?.textContent||'').trim()===name),g=document.querySelector('.emo-category-grid'),r=a&&a.getBoundingClientRect(),gr=g&&g.getBoundingClientRect(),gs=g&&getComputedStyle(g);return {vw:innerWidth,text:a&&(a.innerText||'').trim().replace(/\\s+/g,' '),r:r&&{l:r.left,r:r.right,w:r.width,h:r.height},grid:gr&&{l:gr.left,r:gr.right,w:gr.width,display:gs.display,overflow:gs.overflow},marker:!!document.getElementById('mdo-home-category-mobile-visible-20260816')};''',name)
+                print(path,w,z)
+                assert z['vw']==w and z['marker'] and z['text']
+                assert z['r']['l']>=-0.5 and z['r']['r']<=z['vw']+0.5, (path,w,z)
+                assert z['grid']['l']>=-0.5 and z['grid']['r']<=z['vw']+0.5, (path,w,z)
+                if w<=640: assert z['grid']['display']=='grid' and z['grid']['overflow']=='visible', (path,w,z)
+            print('TRUE_VIEWPORT_ES_EN=PASS')
+          finally:
+            d.quit()
+          PY
+      - name: Verify category destinations
+        run: |
+          python3 - <<'PY'
+          import urllib.request
+          for p in ['/categoria-producto/aceites/','/en/product-category/oils/']:
+            with urllib.request.urlopen(urllib.request.Request('https://www.elmercadodeorigen.com'+p,headers={'User-Agent':'MDO-Oils-Final'}),timeout=60) as r:
+              print(p,r.status,r.geturl()); assert r.status==200
+          print('DESTINATIONS=PASS')
+          PY
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "if [ '${LIVE_BAK:-NEW}' = NEW ]; then rm -f '${LIVE_TARGET:-/nonexistent}'; elif [ -n '${LIVE_BAK:-}' ]; then cp -a '${LIVE_BAK}' '${LIVE_TARGET}'; fi"
