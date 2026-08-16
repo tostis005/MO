@@ -1,0 +1,48 @@
+name: Production English final gap audit simple 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-english-final-gap-audit-simple-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Audit production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true)
+          PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          echo '=== ACTIVE VENDORS ==='
+          "$PHP" -d memory_limit=512M "$WP" eval '$users=get_users(["role__in"=>["wcfm_vendor","dc_vendor"]]); foreach($users as $u){$url=function_exists("wcfmmp_get_store_url")?wcfmmp_get_store_url($u->ID):""; echo $u->ID."|".$u->user_login."|".$u->user_nicename."|".$u->display_name."|".$url.PHP_EOL;}' --path="$ROOT" --allow-root 2>/dev/null
+          echo '=== KEY URL STATUS ==='
+          for p in /en/ /en/shop/ /en/product/100-iberian-acorn-fed-ham-black-tag/ /en/product/extra-virgin-olive-oil-5l/ /en/product-category/oils/ /en/extra-virgin-olive-oil/ /en/iberian-ham/ /en/oranges/ /en/privacy-policy/ /en/store/hidalgo-de-la-jara/ /en/store/1957/ /en/store/tolecarnes/; do
+            code=$(curl -ksSL --max-time 25 -o /tmp/p.html -w '%{http_code}' "https://www.elmercadodeorigen.com$p?mdo_simple=$(date +%s%N)" || true)
+            echo "$p|$code"
+            grep -oiE '>([^<]*(añadir al carrito|pedido mínimo|importe mínimo|gastos de envío|política de privacidad|política de cookies|envíos en|elaborado|información nutricional|introducción|nuestros|nuestras|para pedidos|aceite de oliva virgen extra es|jamón procedente|paleta procedente)[^<]*)<' /tmp/p.html | head -n 12 || true
+            grep -oE 'href="[^"]*/en/(tienda|producto|politica-de-cookies)/[^"]*"' /tmp/p.html | head -n 8 || true
+          done
+          REMOTE
