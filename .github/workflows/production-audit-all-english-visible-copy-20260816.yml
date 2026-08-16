@@ -1,0 +1,63 @@
+name: Production audit all English visible copy 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-audit-all-english-visible-copy-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crawl representative English site and inventory Spanish visible copy
+        run: |
+          python3 - <<'PY'
+          import collections,html,re,time,urllib.parse,urllib.request
+          base='https://www.elmercadodeorigen.com'
+          op=urllib.request.build_opener(); op.addheaders=[('User-Agent','MDO-English-Site-Copy-Audit/1.0')]
+          rx=re.compile(r'\b(?:inicio|tienda|carrito|comprar|compra|producto|productos|productores|contacto|quienes somos|quiénes somos|buscar|búsqueda|filtros|filtrar|categor[ií]as|precio|vendedor|recomendados|populares|valorados|recientes|menor|mayor|env[ií]o|env[ií]os|devoluci[oó]n|dudas|selecci[oó]n|revisa|comprueba|cantidades|antes de continuar|pago protegido|informaci[oó]n clara|atenci[oó]n cercana|tama[nñ]o|variedad|alimentaci[oó]n|calidad|curaci[oó]n|denominaci[oó]n|origen|peso|preparaci[oó]n|raza ib[eé]rica|tipo de pieza|tipo de producto|pedido m[ií]nimo|importe m[ií]nimo|te faltan|llevas|para alcanzar|pol[ií]tica|privacidad|cookies|suscr[ií]bete|descuento|primera compra|introduzca|no gracias|cerrar|mostrar m[aá]s|acceder|registro|mi cuenta|a[nñ]adir al carrito|seguir comprando|vac[ií]o|volver a la tienda|gastos de env[ií]o|aplicar cup[oó]n|actualizar carrito|finalizar compra)\b',re.I)
+          proper_ok={'El Mercado de Origen','Hidalgo de la Jara','Dehesa de Extremadura','Los Pedroches','Jamón de Teruel'}
+          def get(path):
+              try:
+                  t=time.monotonic(); r=op.open(base+path,timeout=45); raw=r.read(); body=raw.decode('utf-8','replace'); print('GET',path,r.status,round(time.monotonic()-t,2),len(raw)); return body
+              except Exception as e:
+                  print('ERROR',path,type(e).__name__,str(e)); return ''
+          def visible(body):
+              s=re.sub(r'(?is)<script\b.*?</script>|<style\b.*?</style>|<noscript\b.*?</noscript>|<svg\b.*?</svg>|<head\b.*?</head>',' ',body)
+              s=re.sub(r'(?is)<!--.*?-->',' ',s); s=re.sub(r'(?s)<[^>]+>','\n',s); s=html.unescape(s)
+              out=[]
+              for x in s.splitlines():
+                  x=re.sub(r'\s+',' ',x).strip()
+                  if 2<=len(x)<=260 and x not in out: out.append(x)
+              return out
+          seeds=['/en/','/en/shop/','/en/cart/','/en/my-account/']
+          discovered=[]; bodies={}
+          for p in seeds[:2]:
+              b=get(p); bodies[p]=b
+              for href in re.findall(r'href=["\']([^"\']+)["\']',b,re.I):
+                  href=html.unescape(href); u=urllib.parse.urljoin(base+p,href); q=urllib.parse.urlparse(u)
+                  if q.netloc not in ('www.elmercadodeorigen.com','elmercadodeorigen.com'): continue
+                  path=q.path
+                  if not path.startswith('/en/'): continue
+                  if any(x in path for x in ['/feed/','/wp-','/cart/','/checkout/','/my-account/']) or re.search(r'\.(?:jpg|jpeg|png|webp|svg|css|js|xml)$',path,re.I): continue
+                  if path not in discovered: discovered.append(path)
+          # Cover navigation/content/store/vendor pages plus a representative spread of products/categories.
+          priority=[]; products=[]
+          for p in discovered:
+              if '/product/' in p: products.append(p)
+              else: priority.append(p)
+          paths=[]
+          for p in seeds+priority[:35]+products[:25]:
+              if p not in paths: paths.append(p)
+          findings=[]
+          for p in paths:
+              b=bodies.get(p) or get(p)
+              if not b: continue
+              if 'translatepress-en_US' not in b: findings.append((p,'LANG_MARKER_MISSING')); continue
+              for x in visible(b):
+                  if x in proper_ok: continue
+                  if rx.search(x): findings.append((p,x))
+          print('\n===== FINDINGS',len(findings),'PAGES',len(paths),'=====')
+          for p,x in findings[:500]: print(p,'|',x)
+          print('===== END FINDINGS =====')
+          PY
