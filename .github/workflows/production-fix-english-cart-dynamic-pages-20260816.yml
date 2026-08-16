@@ -1,0 +1,110 @@
+name: Production fix English WooCommerce dynamic pages 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-english-cart-dynamic-pages-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy corrected English runtime with backup
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SRC=".github/scripts/mdo-english-island-runtime-seo-20260816.php"
+          REMOTE_TMP="/tmp/mdo-english-island-runtime-seo-${GITHUB_RUN_ID}.php"
+          sshpass -e scp -P "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$SRC" "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP"
+          OUT=$(sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "REMOTE_TMP='$REMOTE_TMP' bash -s" <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          F="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          [ -f "$F" ] || { echo "missing $F" >&2; exit 2; }
+          TS=$(date +%Y%m%d%H%M%S); B="$F.bak-woo-dynamic-$TS"; cp -a "$F" "$B"
+          cp "$REMOTE_TMP" "$F"
+          rm -f "$REMOTE_TMP"
+          "$PHP" -l "$F"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "BACKUP=$B"
+          echo "TARGET=$F"
+          REMOTE
+          )
+          echo "$OUT"
+          BACKUP=$(printf '%s\n' "$OUT" | sed -n 's/^BACKUP=//p' | tail -n1)
+          TARGET=$(printf '%s\n' "$OUT" | sed -n 's/^TARGET=//p' | tail -n1)
+          test -n "$BACKUP"; test -n "$TARGET"
+          echo "LIVE_BACKUP=$BACKUP" >> "$GITHUB_ENV"
+          echo "LIVE_TARGET=$TARGET" >> "$GITHUB_ENV"
+      - name: Verify English cart checkout and account dynamically
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html, http.cookiejar, re, time, urllib.parse, urllib.request
+          base='https://www.elmercadodeorigen.com'
+          jar=http.cookiejar.CookieJar(); opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+          opener.addheaders=[('User-Agent','MDO-English-Dynamic-QA/1.0')]
+          def req(path,data=None):
+              url=base+path
+              payload=urllib.parse.urlencode(data).encode() if isinstance(data,dict) else data
+              t=time.monotonic(); r=opener.open(url,data=payload,timeout=45); raw=r.read(); body=raw.decode('utf-8','replace')
+              print(('POST' if payload else 'GET'),path,'HTTP',r.status,'SEC',round(time.monotonic()-t,3),'FINAL',r.geturl(),'LEN',len(raw))
+              return r.status,body,r.geturl()
+          failures=[]
+          # Empty cart must render WooCommerce output, never expose the shortcode literally.
+          s,cart,u=req('/en/cart/')
+          if s!=200 or 'translatepress-en_US' not in cart: failures.append('en-cart-http-lang')
+          if '[woocommerce_cart]' in cart: failures.append('en-cart-literal-shortcode')
+          if not any(x in cart for x in ['cart-empty','woocommerce-cart-form','wc-block-cart']): failures.append('en-cart-ui')
+          # Account is also a dynamic Woo system page.
+          s,account,u=req('/en/my-account/')
+          if s!=200 or 'translatepress-en_US' not in account: failures.append('en-account-http-lang')
+          if '[woocommerce_my_account]' in account: failures.append('en-account-literal-shortcode')
+          if not any(x in account for x in ['woocommerce-form-login','woocommerce-MyAccount','woocommerce-account']): failures.append('en-account-ui')
+          # Put a real purchasable variation into the cart, then test English cart + checkout.
+          data={'attribute_pa_tamano':'envase-de-5l-de-pet','attribute_pa_variedad':'sin-filtrar-de-martena-picual','add-to-cart':'1056','product_id':'1056','variation_id':'2486','quantity':'1'}
+          s,_,_=req('/producto/aceite-de-oliva-virgen-extra-5l/',data=data)
+          if not any(c.name=='woocommerce_items_in_cart' for c in jar): failures.append('cart-cookie')
+          s,es_cart,_=req('/carrito/')
+          if s!=200 or 'translatepress-es_ES' not in es_cart or 'woocommerce-cart-form' not in es_cart: failures.append('es-cart-regression')
+          s,en_cart,_=req('/en/cart/')
+          if s!=200 or 'translatepress-en_US' not in en_cart or 'woocommerce-cart-form' not in en_cart: failures.append('en-cart-filled-ui')
+          if '[woocommerce_cart]' in en_cart: failures.append('en-cart-filled-literal-shortcode')
+          s,en_checkout,final=req('/en/checkout/')
+          if s!=200 or urllib.parse.urlparse(final).path.rstrip('/')!='/en/checkout': failures.append('en-checkout-redirect')
+          if 'translatepress-en_US' not in en_checkout: failures.append('en-checkout-lang')
+          if '[woocommerce_checkout]' in en_checkout: failures.append('en-checkout-literal-shortcode')
+          if not any(x in en_checkout for x in ['woocommerce-checkout','wc-block-checkout','woocommerce-billing-fields']): failures.append('en-checkout-ui')
+          print('FAILURES',failures)
+          if failures: raise SystemExit(1)
+          print('ENGLISH_WOO_DYNAMIC_QA=PASS')
+          print('ORDER_CREATED=NO')
+          PY
+      - name: Roll back live runtime if QA fails
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          test -n "${LIVE_BACKUP:-}"; test -n "${LIVE_TARGET:-}"
+          sshpass -e ssh -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "cp '$LIVE_BACKUP' '$LIVE_TARGET' && php -l '$LIVE_TARGET'"
+          echo "ROLLBACK=PASS"
