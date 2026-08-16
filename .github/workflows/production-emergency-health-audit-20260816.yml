@@ -1,0 +1,84 @@
+name: Production emergency health audit 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-emergency-health-audit-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Audit production server and WordPress
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          echo "ROOT=$ROOT"
+          [ -n "$ROOT" ] || exit 2
+          echo '=== SYSTEM ==='
+          date -Is; uptime || true; free -m || true; df -h "$ROOT" || true
+          echo '=== WP OPTIONS ==='
+          "$PHP" "$WP" option get home --path="$ROOT" --allow-root || true
+          "$PHP" "$WP" option get siteurl --path="$ROOT" --allow-root || true
+          FRONT=$("$PHP" "$WP" option get page_on_front --path="$ROOT" --allow-root 2>/dev/null || true)
+          echo "page_on_front=$FRONT"
+          if [ -n "$FRONT" ] && [ "$FRONT" != 0 ]; then
+            "$PHP" "$WP" post get "$FRONT" --path="$ROOT" --allow-root --fields=ID,post_title,post_status,post_modified,post_name --format=json || true
+            "$PHP" "$WP" eval "\$id=(int)get_option('page_on_front'); \$p=get_post(\$id); echo 'native_content_len='.strlen((string)\$p->post_content).PHP_EOL; echo 'en_published='.get_post_meta(\$id,'_en_US_published',true).PHP_EOL; echo 'en_title='.get_post_meta(\$id,'_en_US_post_title',true).PHP_EOL; echo 'en_content_len='.strlen((string)get_post_meta(\$id,'_en_US_post_content',true)).PHP_EOL;" --path="$ROOT" --allow-root || true
+          fi
+          echo '=== MU PLUGINS ==='
+          find "$ROOT/wp-content/mu-plugins" -maxdepth 1 -type f -printf '%TY-%Tm-%Td %TH:%TM:%TS %s %f\n' 2>/dev/null | sort || true
+          F="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          if [ -f "$F" ]; then "$PHP" -l "$F" || true; sha256sum "$F" || true; fi
+          echo '=== ACTIVE PLUGINS ==='
+          "$PHP" "$WP" plugin list --path="$ROOT" --allow-root --status=active --fields=name,status,version --format=table || true
+          echo '=== CURL LOCAL/EXTERNAL ==='
+          for url in 'https://www.elmercadodeorigen.com/' 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/en/' 'https://www.elmercadodeorigen.com/en/shop/'; do
+            echo "URL=$url"
+            curl -L -k -sS -o /tmp/mdo-body -w 'http=%{http_code} total=%{time_total} connect=%{time_connect} start=%{time_starttransfer} size=%{size_download} final=%{url_effective}\n' --max-time 45 -A 'MDO-Emergency-Audit/1.0' "$url" || true
+            wc -c /tmp/mdo-body 2>/dev/null || true
+            grep -Eoi '<title>[^<]+' /tmp/mdo-body 2>/dev/null | head -1 || true
+            grep -Eo 'translatepress-(es_ES|en_US)' /tmp/mdo-body 2>/dev/null | sort -u || true
+          done
+          echo '=== RECENT PHP/WEB ERRORS ==='
+          for log in "$ROOT"/wp-content/debug.log "$(dirname "$ROOT")"/logs/error_log "$(dirname "$ROOT")"/logs/proxy_error_log /var/log/plesk-php*-fpm/error.log; do
+            [ -f "$log" ] || continue
+            echo "--- $log"
+            tail -n 80 "$log" 2>/dev/null | grep -Ei 'fatal|error|warning|timeout|memory|maximum execution|preg_|mdo|translatepress|woocommerce' | tail -n 40 || true
+          done
+          REMOTE
+      - name: External response timing
+        run: |
+          python3 - <<'PY'
+          import time, urllib.request
+          for path in ['/','/tienda/','/en/','/en/shop/']:
+              url='https://www.elmercadodeorigen.com'+path+'?mdo_health='+str(time.time_ns())
+              t=time.monotonic()
+              try:
+                  req=urllib.request.Request(url,headers={'User-Agent':'MDO-Emergency-Audit/1.0'})
+                  with urllib.request.urlopen(req,timeout=45) as r:
+                      data=r.read(); print(path,'HTTP',r.status,'SEC',round(time.monotonic()-t,3),'LEN',len(data),'FINAL',r.geturl())
+              except Exception as e:
+                  print(path,'ERROR',type(e).__name__,str(e),'SEC',round(time.monotonic()-t,3))
+          PY
