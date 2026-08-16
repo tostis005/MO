@@ -1,0 +1,12 @@
+name: Production audit English commerce visible text v4 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-audit-english-commerce-visible-text-20260816-v4.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/audit-en-commerce-visible.py
