@@ -1,0 +1,14 @@
+name: Production English SEO and cart final audit v2 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/scripts/mdo-seo-cart-final-audit-20260816.sh'
+      - '.github/workflows/production-english-seo-cart-final-audit-v2-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit production English SEO and cart
+        run: bash .github/scripts/mdo-seo-cart-final-audit-20260816.sh
