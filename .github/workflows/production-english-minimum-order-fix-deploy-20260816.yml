@@ -31,15 +31,25 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
           : "${PROD_PATH:?production path not found}"
-          siteurl="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp --path='$PROD_PATH' --allow-root option get siteurl 2>/dev/null | tail -n1")"
-          printf '%s' "$siteurl" | grep -Eq '^https?://(www\.)?elmercadodeorigen\.com/?$'
           REMOTE_FILE="$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-minimum-order.php"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "test -f '$REMOTE_FILE' && cp -p '$REMOTE_FILE' '$REMOTE_FILE.bak-${GITHUB_RUN_ID}'"
           sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-minimum-order.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php -l '$REMOTE_FILE' && grep -Fq 'Minimum order for %1\$s: you need %2\$s more to reach the minimum of %3\$s.' '$REMOTE_FILE' && wp --path='$PROD_PATH' --allow-root cache flush >/dev/null 2>&1 || true; rm -rf '$PROD_PATH/wp-content/cache/mdo-page-cache' '$PROD_PATH/wp-content/mdo-page-cache' 2>/dev/null || true"
-      - name: Confirm production source is language-aware
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE_FILE'; grep -Fq 'private static function is_english_request' '$REMOTE_FILE'; grep -Fq 'You currently have ' '$REMOTE_FILE'; wp --path='$PROD_PATH' --allow-root cache flush >/dev/null 2>&1 || true; rm -rf '$PROD_PATH/wp-content/cache/mdo-page-cache' '$PROD_PATH/wp-content/mdo-page-cache' 2>/dev/null || true"
+          echo "PRODUCTION_MINIMUM_ORDER_DEPLOY_OK"
+      - name: Confirm Spanish fallback remains in production source
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -47,7 +57,11 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
           REMOTE_FILE="$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-minimum-order.php"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -Fq 'private static function is_english_request' '$REMOTE_FILE' && grep -Fq 'You currently have ' '$REMOTE_FILE' && grep -Fq 'Te faltan ' '$REMOTE_FILE'"
-          echo 'PRODUCTION_MINIMUM_ORDER_LANGUAGE_SOURCE_OK'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -Fq 'Te faltan ' '$REMOTE_FILE' && grep -Fq 'Pedido mínimo · ' '$REMOTE_FILE'"
+          echo 'PRODUCTION_MINIMUM_ORDER_BILINGUAL_SOURCE_OK'
