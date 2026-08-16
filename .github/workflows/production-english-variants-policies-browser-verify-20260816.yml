@@ -1,0 +1,85 @@
+name: Production English variations and policies browser verify 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-variants-policies-browser-verify-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Verify variable ham cart metadata and policy tab
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./verify-variant-policy.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          const p=await browser.newPage();
+          p.setDefaultTimeout(15000);
+          await p.setRequestInterception(true);
+          p.on('request',r=>['image','font','media'].includes(r.resourceType())?r.abort():r.continue());
+          const base='https://www.elmercadodeorigen.com';
+          const slug='jamon-de-cebo-de-campo-100-iberico-con-dop-los-pedroches-brida-verde';
+          const candidates=[`${base}/en/producto/${slug}/`,`${base}/en/product/${slug}/`];
+          let loaded=false;
+          for(const url of candidates){
+            const resp=await p.goto(url+'?variant_policy_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:20000}).catch(()=>null);
+            await new Promise(r=>setTimeout(r,1200));
+            const has=await p.$('form.variations_form');
+            if(resp && resp.status()<400 && has){ loaded=true; console.log('PRODUCT_URL '+p.url()); break; }
+          }
+          if(!loaded) throw new Error('Variable ham product page not found in English');
+          const englishTabs=await p.evaluate(()=>[...document.querySelectorAll('.woocommerce-tabs ul.tabs li')].map(li=>({id:li.id,text:(li.innerText||'').trim()})));
+          console.log('ENGLISH_TABS '+JSON.stringify(englishTabs));
+          if(englishTabs.some(t=>/wcfm_policies_tab|polic(?:y|ies)|pol[ií]ticas/i.test(t.id+' '+t.text))) throw new Error('Policies tab still visible in English');
+          const selectResult=await p.evaluate(()=>{
+            const form=document.querySelector('form.variations_form');
+            const selected=[];
+            for(const select of form.querySelectorAll('select[name^="attribute_"]')){
+              const option=[...select.options].find(o=>o.value && !o.disabled);
+              if(!option) continue;
+              select.value=option.value;
+              select.dispatchEvent(new Event('change',{bubbles:true}));
+              selected.push([select.name,option.value,option.textContent.trim()]);
+            }
+            return selected;
+          });
+          console.log('SELECTED '+JSON.stringify(selectResult));
+          await new Promise(r=>setTimeout(r,1800));
+          const variationId=await p.$eval('form.variations_form input.variation_id',el=>el.value).catch(()=>null);
+          console.log('VARIATION_ID '+variationId);
+          if(!variationId || variationId==='0') throw new Error('Variation did not resolve');
+          const add=await p.$('form.variations_form button.single_add_to_cart_button');
+          if(!add) throw new Error('Add-to-cart button missing');
+          await add.click();
+          await new Promise(r=>setTimeout(r,2200));
+          await p.goto(base+'/en/carrito/?variant_cart_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:20000});
+          await new Promise(r=>setTimeout(r,1200));
+          const cart=await p.evaluate(()=>({
+            lang:document.documentElement.lang,
+            text:document.body?.innerText||'',
+            items:[...document.querySelectorAll('.woocommerce-cart-form__cart-item,.cart_item')].map(x=>(x.innerText||'').trim()),
+            meta:[...document.querySelectorAll('.variation,.wc-item-meta')].map(x=>(x.innerText||'').trim())
+          }));
+          console.log('CART_LANG '+cart.lang);
+          console.log('CART_ITEMS '+JSON.stringify(cart.items));
+          console.log('CART_META '+JSON.stringify(cart.meta));
+          if(!cart.items.length) throw new Error('Variable ham was not added to cart');
+          const metaText=(cart.meta.join('\n')+'\n'+cart.items.join('\n'));
+          if(/\bTamaño\b/i.test(metaText)) throw new Error('Spanish variation label Tamaño is still visible');
+          if(!/\bSize\b/i.test(metaText)) throw new Error('English variation label Size is not visible');
+          await p.goto(base+`/producto/${slug}/?policy_es_verify=`+Date.now(),{waitUntil:'domcontentloaded',timeout:20000});
+          await new Promise(r=>setTimeout(r,900));
+          const spanishTabs=await p.evaluate(()=>[...document.querySelectorAll('.woocommerce-tabs ul.tabs li')].map(li=>({id:li.id,text:(li.innerText||'').trim()})));
+          console.log('SPANISH_TABS '+JSON.stringify(spanishTabs));
+          if(spanishTabs.some(t=>/wcfm_policies_tab|polic(?:y|ies)|pol[ií]ticas/i.test(t.id+' '+t.text))) throw new Error('Policies tab still visible in Spanish');
+          console.log('ENGLISH_VARIANT_AND_POLICY_BROWSER_OK');
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./verify-variant-policy.mjs
