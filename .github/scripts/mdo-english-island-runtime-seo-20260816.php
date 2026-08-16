@@ -160,7 +160,9 @@ add_filter( 'the_content', static function ( $content ) {
     $post_id = (int) get_the_ID();
     if ( $post_id < 1 || $post_id !== (int) get_queried_object_id() ) { return $content; }
     $translated = mdo_island_post_meta( $post_id, 'post_content' );
-    return $translated !== '' ? $translated : $content;
+    // Reviewed English page copy can contain functional shortcodes (for example Contact Form 7).
+    // This filter runs after WordPress' normal shortcode pass, so execute shortcodes in the reviewed copy here.
+    return $translated !== '' ? do_shortcode( $translated ) : $content;
 }, PHP_INT_MAX );
 
 add_filter( 'get_the_excerpt', static function ( $excerpt, $post ) {
