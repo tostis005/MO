@@ -82,11 +82,21 @@ jobs:
             fi
           done
 
-          echo '=== AFTER: ACTIVE PLUGINS ==='
-          wpcli_safe plugin list --status=active --fields=name,status,version --format=table
+          echo '=== LEGACY TRANSLATEPRESS MU GUARD ==='
+          MU_DIR="$WP_PATH/wp-content/mu-plugins"
+          if [ -d "$MU_DIR" ]; then
+            while IFS= read -r guard; do
+              [ -n "$guard" ] || continue
+              echo "Disabling legacy MU plugin: $(basename "$guard")"
+              mv "$guard" "$guard.disabled-falang-20260816"
+            done < <(grep -RIl --include='*.php' 'mdo-staging-translatepress-shop-guard' "$MU_DIR" 2>/dev/null || true)
+          fi
 
-          echo '=== MULTILINGUAL-RELATED INSTALLED PLUGINS ==='
+          echo '=== AFTER: MULTILINGUAL STATE ==='
           wpcli_safe plugin list --fields=name,status,version --format=csv | grep -Ei 'falang|wpml|sitepress|polylang|translatepress|weglot|gtranslate|multilingual|qtranslate|bogo' || true
+
+          echo '=== MUST-USE PLUGINS AFTER CLEANUP ==='
+          wpcli_safe plugin list --status=must-use --fields=name,status,version --format=table || true
 
           echo '=== WOOCOMMERCE SHOP CONFIG ==='
           HOME_URL="$(wpcli_safe option get home)"
@@ -99,12 +109,12 @@ jobs:
             wpcli_safe post get "$SHOP_ID" --fields=ID,post_title,post_name,post_status,post_type --format=json || true
             echo 'Shop permalink (database/core):'
             wpcli_safe post url "$SHOP_ID" || true
-            echo 'Translation-related shop meta:'
-            wpcli_safe post meta list "$SHOP_ID" --format=csv | grep -Ei 'falang|slug|translation|language|en_US|_en' || true
+            echo 'Shop meta rows mentioning shop/tienda/language/slug:'
+            wpcli_safe post meta list "$SHOP_ID" --format=csv | grep -Ei 'falang|slug|translation|language|en_US|_en|shop|tienda' || true
           fi
 
-          echo '=== FALANG OPTION NAMES ==='
-          wpcli_safe option list --search='falang%' --fields=option_name,autoload --format=table || true
+          echo '=== FALANG SLUG STORAGE HINTS FROM INSTALLED SOURCE ==='
+          grep -RInE 'post_name|translate.*slug|slug.*translate|get_post_meta|update_post_meta' "$WP_PATH/wp-content/plugins/falang" 2>/dev/null | head -n 100 || true
 
           echo '=== ROUTE CHECKS AFTER NORMALIZATION ==='
           base="${HOME_URL%/}"
