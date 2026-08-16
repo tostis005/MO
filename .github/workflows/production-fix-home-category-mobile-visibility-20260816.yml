@@ -1,0 +1,85 @@
+name: Production fix Home category mobile visibility 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-home-category-mobile-visibility-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          php -l .github/scripts/mdo-home-aceites-card-hotfix-20260816.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install -q selenium
+      - name: Deploy updated Home category guard
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-home-aceites-card-hotfix-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-home-aceites-card-hotfix-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          TARGET="$ROOT/wp-content/mu-plugins/mdo-home-aceites-card-hotfix.php"; TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$TARGET" ]; then BAK="$TARGET.bak-$TS"; cp -a "$TARGET" "$BAK"; else BAK=NEW; fi
+          cp /tmp/mdo-home-aceites-card-hotfix-20260816.php "$TARGET"
+          "$PHP" -l "$TARGET"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          rm -rf "$ROOT/wp-content/cache"/* 2>/dev/null || true
+          echo "ROOT=$ROOT"; echo "TARGET=$TARGET"; echo "BAK=$BAK"
+          REMOTE
+          )
+          echo "$OUT"
+          for k in ROOT TARGET BAK; do v=$(printf '%s\n' "$OUT"|sed -n "s/^$k=//p"|tail -n1); test -n "$v"; echo "LIVE_$k=$v" >> "$GITHUB_ENV"; done
+      - name: Verify real browser layout desktop and mobile
+        run: |
+          python3 - <<'PY'
+          import shutil,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          c=shutil.which('google-chrome') or shutil.which('chromium');o=Options();o.binary_location=c;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage');o.add_argument('--window-size=1366,1200')
+          d=webdriver.Chrome(options=o)
+          try:
+            d.get('https://www.elmercadodeorigen.com/?mdo_mobile_category_verify=20260816');time.sleep(7)
+            for w,label in [(1366,'DESKTOP'),(600,'MOBILE600'),(390,'MOBILE390')]:
+              d.set_window_size(w,1200);time.sleep(1)
+              z=d.execute_script('''const g=document.querySelector('.emo-category-grid');const cards=[...document.querySelectorAll('.emo-category-card')];const ace=cards.find(e=>(e.innerText||'').trim().startsWith('Aceites'));const gr=g&&g.getBoundingClientRect(),r=ace&&ace.getBoundingClientRect(),cs=g&&getComputedStyle(g);return {count:cards.length,aceText:ace&&(ace.innerText||'').trim().replace(/\\s+/g,' '),ace:r&&{l:r.left,r:r.right,w:r.width,h:r.height,visible:r.right>0&&r.left<innerWidth},grid:gr&&{l:gr.left,r:gr.right,w:gr.width,h:gr.height},display:cs&&cs.display,overflow:cs&&cs.overflow,marker:!!document.getElementById('mdo-home-category-mobile-visible-20260816')};''')
+              print(label,z)
+              assert z['marker'] and z['aceText'].startswith('Aceites 3 producto')
+              assert z['ace']['visible'] and z['ace']['l'] >= 0 and z['ace']['r'] <= w + 1
+              if w <= 640:
+                assert z['display']=='grid' and z['overflow']=='visible'
+              print(label+'_PASS')
+            print('HOME_CATEGORY_VISIBILITY=PASS')
+          finally:d.quit()
+          PY
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; [ -n "${LIVE_TARGET:-}" ] || exit 0; PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TARGET='$LIVE_TARGET' BAK='$LIVE_BAK' ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$BAK" = "NEW" ]; then rm -f "$TARGET"; else cp -a "$BAK" "$TARGET"; fi
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          rm -rf "$ROOT/wp-content/cache"/* 2>/dev/null || true
+          echo ROLLBACK=PASS
+          REMOTE
