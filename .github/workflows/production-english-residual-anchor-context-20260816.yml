@@ -1,0 +1,38 @@
+name: Production English residual anchor context 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-residual-anchor-context-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Locate residual anchor markup
+        shell: bash
+        run: |
+          set -u
+          pages=(/en/ /en/shop/ /en/producers/ /en/journal/ /en/contact/ /en/product/100-iberian-acorn-fed-ham-black-tag/ /en/store/hidalgo-de-la-jara/ /en/product-category/oils/)
+          for p in "${pages[@]}"; do
+            echo "=== PAGE $p ==="
+            curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com${p}?mdo_anchor_context=$(date +%s%N)" -o /tmp/page.html || true
+            python3 - "$p" <<'PY'
+          import re,sys,html
+          p=sys.argv[1]
+          s=open('/tmp/page.html',encoding='utf-8',errors='ignore').read()
+          for needle in ['/en/politica-de-cookies/','https://www.elmercadodeorigen.com/en/tienda/']:
+              for m in re.finditer(re.escape(needle),s):
+                  a=max(0,m.start()-700); b=min(len(s),m.end()+700)
+                  chunk=s[a:b].replace('\n',' ')
+                  print('FOUND',needle,'AT',m.start())
+                  print(chunk)
+                  print('---')
+          PY
+          done
