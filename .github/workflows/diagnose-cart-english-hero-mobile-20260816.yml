@@ -1,0 +1,79 @@
+name: Diagnose English cart and mobile hero 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-cart-english-hero-mobile-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install -q selenium
+      - name: Inspect product attributes and translations on production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          echo "ROOT=$ROOT"
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            global $wpdb;
+            $ids=$wpdb->get_col("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key=\"_en_US_post_title\" AND meta_value LIKE \"%Iberian acorn-fed shoulder ham%\" LIMIT 10");
+            echo "MATCH_IDS=".implode(",",array_map("intval",$ids))."\n";
+            foreach($ids as $id){
+              $p=wc_get_product((int)$id); if(!$p) continue;
+              echo "PRODUCT={$id} TYPE=".$p->get_type()." ES=".get_the_title($id)." EN=".get_post_meta($id,"_en_US_post_title",true)."\n";
+              foreach($p->get_attributes() as $key=>$attr){
+                if(!is_object($attr)) continue;
+                echo "ATTR key={$key} name=".$attr->get_name()." label=".wc_attribute_label($attr->get_name(),$p)." taxonomy=".($attr->is_taxonomy()?"yes":"no")." options=".implode(",",array_map("strval",$attr->get_options()))."\n";
+                if($attr->is_taxonomy()){
+                  foreach($attr->get_options() as $tid){$t=get_term((int)$tid); if($t instanceof WP_Term){echo "TERM {$t->taxonomy} {$t->term_id} slug={$t->slug} name={$t->name} enmeta=".get_term_meta($t->term_id,"_en_US_name",true)."\n";}}
+                }
+              }
+              foreach($p->get_children() as $vid){$v=wc_get_product($vid); if(!$v) continue; echo "VAR {$vid} ".wp_json_encode($v->get_attributes(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)." price=".$v->get_price()." stock=".($v->is_in_stock()?"yes":"no")."\n";}
+            }
+            $tables=$wpdb->get_col("SHOW TABLES LIKE \"{$wpdb->prefix}trp_%\""); echo "TRP_TABLES=".implode(",",$tables)."\n";
+            foreach($tables as $table){
+              if(stripos($table,"dictionary")===false) continue;
+              foreach(array("FORMATO","Loncheado a cuchillo","Tamaño","5–5.5","5-5.5") as $needle){
+                $rows=$wpdb->get_results($wpdb->prepare("SELECT * FROM `$table` WHERE original LIKE %s OR translated LIKE %s LIMIT 8","%".$needle."%","%".$needle."%"),ARRAY_A);
+                foreach($rows as $r){echo "TRP {$table} ".wp_json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
+              }
+            }
+          ' --path="$ROOT" --allow-root 2>&1 | tail -n 300
+          REMOTE
+      - name: Inspect mobile hero card labels
+        run: |
+          python3 - <<'PY'
+          import shutil,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          c=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=c;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage');o.add_argument('--window-size=1400,1600')
+          d=webdriver.Chrome(options=o)
+          try:
+            for path in ['/','/en/']:
+              d.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+              d.get('https://www.elmercadodeorigen.com'+path);time.sleep(7)
+              z=d.execute_script('''return [...document.querySelectorAll('.emo-hero__visual--vendors .emo-hero-card')].map((a,i)=>{const cap=a.querySelector('figcaption'),s=a.querySelector('figcaption span'),st=a.querySelector('figcaption strong'),r=a.getBoundingClientRect(),cr=cap&&cap.getBoundingClientRect();return {i:i+1,text:(a.innerText||'').trim().replace(/\\s+/g,' '),rect:{l:r.left,r:r.right,t:r.top,b:r.bottom,w:r.width,h:r.height},cap:cap&&{display:getComputedStyle(cap).display,visibility:getComputedStyle(cap).visibility,opacity:getComputedStyle(cap).opacity,l:cr.left,r:cr.right,t:cr.top,b:cr.bottom,h:cr.height},span:s&&{display:getComputedStyle(s).display,font:getComputedStyle(s).fontSize},strong:st&&{display:getComputedStyle(st).display,font:getComputedStyle(st).fontSize,line:getComputedStyle(st).lineHeight,overflow:getComputedStyle(st).overflow,white:getComputedStyle(st).whiteSpace}}})''')
+              print(path,z)
+          finally:d.quit()
+          PY
