@@ -1,0 +1,148 @@
+name: Fix English cart and mobile vendor names 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-english-cart-mobile-vendor-names-20260816.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch tracked sources
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          home=Path('elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php')
+          s=home.read_text()
+          needle='''\tbody.home .emo-hero__visual--vendors.emo-vendor-count-1 .emo-hero-card--1,\n\tbody.home .emo-hero__visual--vendors.emo-vendor-count-3 .emo-hero-card--1,\n\tbody.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 {\n\t\tgrid-column: 1 / -1 !important;\n\t\tmin-height: 185px !important;\n\t}\n'''
+          addition=needle+'''\t/* Keep every producer name visible on mobile; legacy Home CSS hid captions after the first card. */\n\tbody.home .emo-hero__visual--vendors .emo-hero-card figcaption {\n\t\tdisplay: flex !important;\n\t\tvisibility: visible !important;\n\t\topacity: 1 !important;\n\t}\n\tbody.home .emo-hero__visual--vendors .emo-hero-card figcaption strong {\n\t\tdisplay: block !important;\n\t\tvisibility: visible !important;\n\t\topacity: 1 !important;\n\t\tfont-size: .78rem !important;\n\t\tline-height: 1.15 !important;\n\t}\n'''
+          if 'legacy Home CSS hid captions after the first card' not in s:
+              assert needle in s
+              s=s.replace(needle,addition,1)
+              home.write_text(s)
+
+          en=Path('.github/scripts/mdo-english-island-runtime-seo-20260816.php')
+          s=en.read_text()
+          old="""add_filter( 'get_term', static function ( $term, $taxonomy ) {\n    if ( ! mdo_island_en_request() || ! $term instanceof WP_Term || ! in_array( $taxonomy, array( 'product_cat', 'product_tag' ), true ) ) { return $term; }\n    $copy = clone $term;\n    $name = (string) get_term_meta( $term->term_id, '_en_US_name', true );\n    $desc = (string) get_term_meta( $term->term_id, '_en_US_description', true );\n    if ( $name !== '' ) { $copy->name = mdo_island_clean_title( $name ); }\n    if ( $desc !== '' ) { $copy->description = $desc; }\n    return $copy;\n}, PHP_INT_MAX, 2 );\n"""
+          new="""add_filter( 'get_term', static function ( $term, $taxonomy ) {\n    $is_english_product_taxonomy = in_array( $taxonomy, array( 'product_cat', 'product_tag' ), true ) || str_starts_with( (string) $taxonomy, 'pa_' );\n    if ( ! mdo_island_en_request() || ! $term instanceof WP_Term || ! $is_english_product_taxonomy ) { return $term; }\n    $copy = clone $term;\n    $name = (string) get_term_meta( $term->term_id, '_en_US_name', true );\n    $desc = (string) get_term_meta( $term->term_id, '_en_US_description', true );\n    if ( $name !== '' ) {\n        $clean = mdo_island_clean_title( $name );\n        if ( 'pa_curacion' === $taxonomy ) { $clean = (string) preg_replace( '/\\bmeses\\b/iu', 'months', $clean ); }\n        $copy->name = $clean;\n    }\n    if ( $desc !== '' ) { $copy->description = $desc; }\n    return $copy;\n}, PHP_INT_MAX, 2 );\n\n// WooCommerce variation labels are generated outside normal page copy; make them deterministic in English.\nadd_filter( 'woocommerce_attribute_label', static function ( $label, $name, $product ) {\n    unset( $product );\n    if ( ! mdo_island_en_request() ) { return $label; }\n    $labels = array(\n        'pa_tamano'      => 'Size',\n        'pa_tipo-pieza'  => 'Cut',\n        'pa_calidad'     => 'Quality',\n        'pa_raza-iberica'=> 'Iberian breed',\n        'pa_alimentacion'=> 'Feeding',\n        'pa_con-dop'     => 'PDO',\n        'pa_origen'      => 'Origin',\n        'pa_preparacion' => 'Preparation',\n        'pa_rango-peso'  => 'Weight',\n        'pa_curacion'    => 'Curing',\n        'pa_productor'   => 'Producer',\n    );\n    return $labels[ (string) $name ] ?? $label;\n}, PHP_INT_MAX, 3 );\n"""
+          if 'is_english_product_taxonomy' not in s:
+              assert old in s
+              s=s.replace(old,new,1)
+
+          marker="""            'Resolvemos tus dudas' => \"We’re here to help\",\n"""
+          extra=marker+"""            'FORMATO:' => 'Format:',\n            'FORMATO' => 'Format',\n            'Tamaño:' => 'Size:',\n            'Loncheado a cuchillo en rectangular+huesos+taquitos' => 'Hand-sliced (rectangular packs) + bones + diced ham',\n            'Loncheado a cuchillo en redondo+huesos+taquitos' => 'Hand-sliced (round packs) + bones + diced ham',\n            'Loncheado a cuchillo+huesos+taquitos' => 'Hand-sliced + bones + diced ham',\n            'Loncheado a máquina+huesos+taquitos' => 'Machine-sliced + bones + diced ham',\n            'Cortado a cuchillo+huesos+taquitos' => 'Hand-sliced + bones + diced ham',\n            'Cortado a máquina+huesos+taquitos' => 'Machine-sliced + bones + diced ham',\n            'Pieza entera' => 'Whole piece',\n            'Deshuesado' => 'Boneless',\n"""
+          if "'FORMATO:' => 'Format:'" not in s:
+              assert marker in s
+              s=s.replace(marker,extra,1)
+          en.write_text(s)
+          PY
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
+          php -l .github/scripts/mdo-english-island-runtime-seo-20260816.php
+      - name: Prepare deployment tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install -q selenium
+      - name: Deploy sources and complete TranslatePress strings
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php "$STAGING_USER@$STAGING_HOST:/tmp/elmercado-home-fresh.php"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-english-island-runtime-seo-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-english-island-runtime-seo.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          H="$ROOT/wp-content/mu-plugins/elmercado-home-fresh.php"; E="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"; TS=$(date +%Y%m%d%H%M%S)
+          cp -a "$H" "$H.bak-$TS"; cp -a "$E" "$E.bak-$TS"
+          cp /tmp/elmercado-home-fresh.php "$H"; cp /tmp/mdo-english-island-runtime-seo.php "$E"
+          "$PHP" -l "$H"; "$PHP" -l "$E"
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            global $wpdb; $table=$wpdb->prefix."trp_dictionary_es_es_en_us";
+            $map=array(
+              "FORMATO:"=>"Format:", "FORMATO"=>"Format", "Tamaño:"=>"Size:",
+              "Loncheado a cuchillo en rectangular+huesos+taquitos"=>"Hand-sliced (rectangular packs) + bones + diced ham",
+              "Loncheado a cuchillo en redondo+huesos+taquitos"=>"Hand-sliced (round packs) + bones + diced ham",
+              "Loncheado a cuchillo+huesos+taquitos"=>"Hand-sliced + bones + diced ham",
+              "Loncheado a máquina+huesos+taquitos"=>"Machine-sliced + bones + diced ham",
+              "Cortado a cuchillo+huesos+taquitos"=>"Hand-sliced + bones + diced ham",
+              "Cortado a máquina+huesos+taquitos"=>"Machine-sliced + bones + diced ham"
+            );
+            $rows=$wpdb->get_results("SELECT id,original,translated FROM `$table` WHERE status=0 OR translated=\"\"",ARRAY_A);
+            $changed=0;
+            foreach($rows as $row){$tr=strtr((string)$row["original"],$map); if($tr!==$row["original"]){$wpdb->update($table,array("translated"=>$tr,"status"=>2),array("id"=>(int)$row["id"]));$changed++;}}
+            foreach(array("FORMATO:"=>"Format:","FORMATO"=>"Format","Tamaño:"=>"Size:") as $o=>$t){$wpdb->update($table,array("translated"=>$t,"status"=>2),array("original"=>$o));}
+            echo "TRP_UPDATED=$changed\n";
+          ' --path="$ROOT" --allow-root 2>/dev/null || true
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          rm -rf "$ROOT/wp-content/cache"/* 2>/dev/null || true
+          echo "ROOT=$ROOT"
+          REMOTE
+          )
+          echo "$OUT"
+      - name: Verify mobile producer names
+        run: |
+          python3 - <<'PY'
+          import shutil,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          c=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=c;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage');o.add_argument('--window-size=1400,1600')
+          d=webdriver.Chrome(options=o)
+          try:
+            for path in ['/','/en/']:
+              d.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
+              d.get('https://www.elmercadodeorigen.com'+path);time.sleep(7)
+              z=d.execute_script('''return [...document.querySelectorAll('.emo-hero__visual--vendors .emo-hero-card')].map(a=>{const c=a.querySelector('figcaption'),s=a.querySelector('figcaption strong');return {text:(s?.textContent||'').trim(),display:c&&getComputedStyle(c).display,visible:c&&getComputedStyle(c).visibility,opacity:c&&getComputedStyle(c).opacity}})''')
+              print(path,z)
+              names=[x['text'] for x in z]
+              assert '1957' in names and 'Hidalgo de la Jara' in names, (path,z)
+              assert all(x['display']!='none' and x['visible']=='visible' and x['opacity']=='1' for x in z), (path,z)
+          finally:d.quit()
+          print('MOBILE_VENDOR_NAMES=PASS')
+          PY
+      - name: Verify English runtime and TranslatePress fixes
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do p=$(dirname "$cfg"); u=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac; done
+          : "${ROOT:?missing production}"
+          grep -q "'FORMATO:' => 'Format:'" "$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          grep -q "is_english_product_taxonomy" "$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          "$PHP" -d memory_limit=512M "$WP" eval '
+            global $wpdb; $t=$wpdb->prefix."trp_dictionary_es_es_en_us";
+            foreach(array("FORMATO:"=>"Format:","Tamaño:"=>"Size:") as $o=>$want){$got=$wpdb->get_var($wpdb->prepare("SELECT translated FROM `$t` WHERE original=%s ORDER BY id DESC LIMIT 1",$o)); echo "$o => $got\n"; if($got!==$want) throw new Exception("bad translation $o");}
+            $rows=$wpdb->get_results("SELECT original,translated FROM `$t` WHERE original LIKE \"Loncheado a cuchillo+huesos+taquitos%\" LIMIT 10",ARRAY_A); foreach($rows as $r){echo $r["original"]." => ".$r["translated"]."\n"; if(strpos($r["translated"],"Hand-sliced + bones + diced ham")===false) throw new Exception("untranslated slicing option");}
+          ' --path="$ROOT" --allow-root 2>/dev/null
+          echo ENGLISH_CART_TRANSLATIONS=PASS
+          REMOTE
+      - name: Persist source fixes
+        run: |
+          git config user.name 'El Mercado de Origen Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php .github/scripts/mdo-english-island-runtime-seo-20260816.php
+          if ! git diff --cached --quiet; then
+            git commit -m 'Fix English variation copy and mobile producer captions'
+            git push origin HEAD:main
+          fi
