@@ -1,0 +1,119 @@
+name: Production deploy English runtime SEO bridge 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-deploy-english-runtime-seo-bridge-20260816.yml'
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint bridge
+        run: php -l .github/scripts/mdo-english-island-runtime-seo-20260816.php
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Copy bridge
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-english-island-runtime-seo-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-english-island-runtime-seo-20260816.php"
+      - name: Deploy bridge safely
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true)
+          PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          DEST="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$DEST" ]; then cp -a "$DEST" "$DEST.bak-$TS"; fi
+          cp /tmp/mdo-english-island-runtime-seo-20260816.php "$DEST"
+          "$PHP" -l "$DEST"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "DEPLOYED=$DEST"
+          REMOTE
+      - name: Verify final English render SEO and Spanish isolation
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures, re, time, urllib.request
+          from html import unescape
+          base='https://www.elmercadodeorigen.com'
+          stamp=str(time.time_ns())
+          routes=[
+            '/en/', '/en/shop/', '/en/privacy-policy/', '/en/cookie-policy/',
+            '/en/extra-virgin-olive-oil/', '/en/iberian-ham/', '/en/oranges/',
+            '/en/product-category/oils/',
+            '/en/product/extra-virgin-olive-oil-5l/',
+            '/en/product/100-iberian-acorn-fed-ham-black-tag/',
+            '/en/product/100-iberian-acorn-fed-sobrasada/'
+          ]
+          bad=[
+            'DEVOLUCIÓN FÁCIL','ENVÍOS EN','RESOLVEMOS TUS DUDAS','Política de cookies','Política de Cookies',
+            'Política de privacidad','Política de Privacidad','aceite de oliva virgen extra es un zumo','recolección',
+            'NUESTROS JAMONES','NUESTRAS VARIEDADES','Gastos de envío','Jamón procedente','Elaborado a partir',
+            'Información nutricional media','INTRODUCCIÓN'
+          ]
+          def get(path):
+            url=base+path+('?' if '?' not in path else '&')+'mdo_bridge='+stamp
+            req=urllib.request.Request(url,headers={'User-Agent':'MDO-Final-Audit/1.0'})
+            with urllib.request.urlopen(req,timeout=45) as r:
+              return path,r.status,r.geturl(),r.read().decode('utf-8','replace')
+          failures=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            futs=[ex.submit(get,p) for p in routes]
+            for fut in concurrent.futures.as_completed(futs):
+              try: path,status,final,html=fut.result()
+              except Exception as e:
+                failures.append('REQUEST '+repr(e)); continue
+              print(f'PAGE|{path}|HTTP={status}|FINAL={final}')
+              if status!=200: failures.append(f'HTTP {path} {status}')
+              body=re.search(r'<body[^>]*class=["\']([^"\']*)',html,re.I)
+              classes=body.group(1) if body else ''
+              if 'translatepress-en_US' not in classes: failures.append(f'LANG {path}')
+              hits=[x for x in bad if re.search(re.escape(x),html,re.I)]
+              if hits:
+                print('BAD_TEXT|'+path+'|'+','.join(hits)); failures.append('TEXT '+path)
+              if re.search(r'href=["\'][^"\']*/en/(?:tienda|producto|politica-de-cookies)/',html,re.I):
+                failures.append('BAD_LINK '+path)
+              can=re.findall(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              if can and '/en/' not in can[0]: failures.append('CANON '+path+' '+can[0])
+              hrefs=dict(re.findall(r'<link[^>]+rel=["\']alternate["\'][^>]+hreflang=["\']([^"\']+)["\'][^>]+href=["\']([^"\']+)',html,re.I))
+              if not all(k in hrefs for k in ('es','en','x-default')): failures.append('HREFLANG '+path)
+              if 'en' in hrefs and '/en/' not in hrefs['en']: failures.append('HREFLANG_EN '+path)
+              if 'es' in hrefs and '/en/' in hrefs['es']: failures.append('HREFLANG_ES '+path)
+              desc=re.findall(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)',html,re.I)
+              if desc and any(re.search(re.escape(x),unescape(desc[0]),re.I) for x in bad): failures.append('META '+path)
+          path,status,final,es=get('/tienda/')
+          print(f'SPANISH|HTTP={status}|FINAL={final}')
+          if status!=200: failures.append('ES_HTTP')
+          body=re.search(r'<body[^>]*class=["\']([^"\']*)',es,re.I)
+          classes=body.group(1) if body else ''
+          if 'translatepress-es_ES' not in classes or 'woocommerce-shop' not in classes: failures.append('ES_SHOP_CONTEXT')
+          if '/politica-de-cookies/' not in es: failures.append('ES_COOKIE_LINK')
+          if failures:
+            print('FAILURES:')
+            for f in failures: print(f)
+            raise SystemExit(1)
+          print('FINAL_ENGLISH_RENDER_SEO_AUDIT=PASS')
+          PY
