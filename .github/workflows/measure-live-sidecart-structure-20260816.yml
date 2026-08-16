@@ -1,0 +1,33 @@
+name: Measure live side cart structure 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/measure-live-sidecart-structure-20260816.yml'
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Measure hydrated Woostify mini-cart
+        run: |
+          python3 -m pip install -q selenium
+          python3 - <<'PY'
+          import shutil,time,urllib.parse,json
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          base='https://www.elmercadodeorigen.com'; chrome=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=chrome;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage');o.add_argument('--window-size=1366,900')
+          d=webdriver.Chrome(options=o)
+          try:
+            q={'add-to-cart':'1056','variation_id':'2486','quantity':'1','attribute_pa_tamano':'envase-de-5l-de-pet','attribute_pa_variedad':'sin-filtrar-de-martena-picual'}
+            d.get(base+'/carrito/?'+urllib.parse.urlencode(q));time.sleep(4);d.get(base+'/en/contact/');time.sleep(8)
+            out=d.execute_script('''
+              const li=document.querySelector('.cart-sidebar-content .woocommerce-mini-cart-item');
+              const R=e=>{const r=e.getBoundingClientRect();const s=getComputedStyle(e);return {tag:e.tagName,cls:e.className,txt:(e.innerText||e.textContent||'').trim().slice(0,500),l:r.left,r:r.right,t:r.top,b:r.bottom,w:r.width,h:r.height,display:s.display,pos:s.position,float:s.cssFloat,ml:s.marginLeft,mr:s.marginRight,pl:s.paddingLeft,pr:s.paddingRight,width:s.width,maxw:s.maxWidth};};
+              return {li:R(li),children:[...li.children].map((e,i)=>({i,...R(e),html:e.outerHTML.slice(0,4000)})),all:[...li.querySelectorAll('*')].map((e,i)=>({i,...R(e)})).filter(x=>x.cls||/Size|Sold by|Variety|Tamaño|Vendido/.test(x.txt)).slice(0,100)};
+            ''')
+            print(json.dumps(out,ensure_ascii=False,indent=2))
+            print('ORDER_CREATED=NO')
+          finally:d.quit()
+          PY
