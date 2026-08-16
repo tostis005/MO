@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/production-audit-english-commerce-visible-text-20260816-v4.yml'
+      - '.github/scripts/audit-en-commerce-visible.py'
 jobs:
   audit:
     runs-on: ubuntu-24.04
