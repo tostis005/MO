@@ -1,0 +1,165 @@
+name: Production deploy English SEO routes 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-deploy-english-seo-routes-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint route layer
+        run: php -l mu-plugins/mdo-production-english-seo-routes.php
+      - name: Install helpers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Guarded production deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-production-english-seo-routes.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-production-english-seo-routes.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          target="$PROD_PATH/wp-content/mu-plugins/mdo-production-english-seo-routes.php"
+          backup="$PROD_PATH/wp-content/mu-plugins/mdo-production-english-seo-routes.php.pre-20260816"
+          mkdir -p "$PROD_PATH/wp-content/mu-plugins"
+          base='https://www.elmercadodeorigen.com'
+
+          inspect_shop(){
+            local url="$1" out="$2"
+            local code
+            code=$(curl -ksS --max-time 45 -o "$out" -w '%{http_code}' "$url?mdo_guard=$(date +%s%N)" || true)
+            local products body
+            products=$(grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' "$out" 2>/dev/null | wc -l | tr -d ' ' || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' "$out" 2>/dev/null | head -n1 || true)
+            printf '%s|%s|%s' "$code" "${products:-0}" "$body"
+          }
+
+          echo '=== PREDEPLOY SPANISH SAFETY ==='
+          before=$(inspect_shop "$base/tienda/" /tmp/es-before.html)
+          echo "$before"
+          before_code=${before%%|*}; rest=${before#*|}; before_products=${rest%%|*}; before_body=${rest#*|}
+          test "$before_code" = 200
+          printf '%s' "$before_body" | grep -q 'woocommerce-shop'
+          test "${before_products:-0}" -ge 10
+
+          had_old=0
+          if [ -f "$target" ]; then cp -a "$target" "$backup"; had_old=1; fi
+          rollback(){
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "ROLLBACK rc=$rc"
+              if [ "$had_old" -eq 1 ] && [ -f "$backup" ]; then cp -a "$backup" "$target"; else rm -f "$target"; fi
+              wp cache flush >/dev/null 2>&1 || true
+            fi
+            exit "$rc"
+          }
+          trap rollback EXIT
+
+          install -m 0644 /tmp/mdo-production-english-seo-routes.php "$target"
+          "$php_bin" -l "$target"
+          wp cache flush >/dev/null 2>&1 || true
+
+          echo '=== POSTDEPLOY SPANISH SAFETY ==='
+          after=$(inspect_shop "$base/tienda/" /tmp/es-after.html)
+          echo "$after"
+          after_code=${after%%|*}; rest=${after#*|}; after_products=${rest%%|*}; after_body=${rest#*|}
+          test "$after_code" = 200
+          printf '%s' "$after_body" | grep -q 'woocommerce-shop'
+          test "${after_products:-0}" -ge 10
+          test "$after_products" -ge "$before_products"
+
+          echo '=== ENGLISH SHOP ==='
+          en=$(inspect_shop "$base/en/shop/" /tmp/en-shop.html)
+          echo "$en"
+          en_code=${en%%|*}; rest=${en#*|}; en_products=${rest%%|*}; en_body=${rest#*|}
+          test "$en_code" = 200
+          printf '%s' "$en_body" | grep -q 'woocommerce-shop'
+          test "${en_products:-0}" -ge 10
+          grep -qiE '<h1[^>]*>[^<]*Shop|>Shop<' /tmp/en-shop.html
+          grep -q 'rel="canonical" href="https://www.elmercadodeorigen.com/en/shop/' /tmp/en-shop.html
+          grep -q 'hreflang="es-ES"' /tmp/en-shop.html
+          grep -q 'hreflang="en"' /tmp/en-shop.html
+          grep -q 'hreflang="x-default"' /tmp/en-shop.html
+
+          echo '=== LEGACY SHOP REDIRECT ==='
+          legacy_code=$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' "$base/en/tienda/")
+          legacy_location=$(curl -ksSI --max-time 30 "$base/en/tienda/" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -n1)
+          echo "legacy=$legacy_code location=$legacy_location"
+          test "$legacy_code" = 301
+          printf '%s' "$legacy_location" | grep -q '/en/shop/'
+
+          echo '=== SAMPLE ENGLISH PAGE + PRODUCT ==='
+          privacy_code=$(curl -ksS --max-time 30 -o /tmp/en-privacy.html -w '%{http_code}' "$base/en/privacy-policy/?mdo_verify=1")
+          echo "privacy=$privacy_code"
+          test "$privacy_code" = 200
+          grep -q 'rel="canonical" href="https://www.elmercadodeorigen.com/en/privacy-policy/' /tmp/en-privacy.html
+          prod_slug=$(wp db query "SELECT pm.meta_value FROM $(wp db prefix)postmeta pm JOIN $(wp db prefix)posts p ON p.ID=pm.post_id JOIN $(wp db prefix)postmeta pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1' WHERE pm.meta_key='_en_US_post_name' AND pm.meta_value<>'' AND p.post_type='product' AND p.post_status='publish' ORDER BY p.ID LIMIT 1" --skip-column-names 2>/dev/null | tail -n1)
+          test -n "$prod_slug"
+          prod_code=$(curl -ksS --max-time 30 -o /tmp/en-product.html -w '%{http_code}' "$base/en/product/$prod_slug/?mdo_verify=1")
+          echo "product_slug=$prod_slug http=$prod_code"
+          test "$prod_code" = 200
+          grep -qi 'product-template-default\|single-product' /tmp/en-product.html
+          grep -q "rel=\"canonical\" href=\"$base/en/product/$prod_slug/" /tmp/en-product.html
+
+          echo '=== ENGLISH SITEMAP ==='
+          sm_code=$(curl -ksS --max-time 30 -o /tmp/en-sitemap.xml -w '%{http_code}' "$base/english-sitemap.xml")
+          sm_count=$(grep -o '<url>' /tmp/en-sitemap.xml | wc -l | tr -d ' ')
+          echo "sitemap=$sm_code urls=$sm_count"
+          test "$sm_code" = 200
+          test "$sm_count" -ge 50
+          grep -q '/en/shop/' /tmp/en-sitemap.xml
+
+          rm -f "$backup" /tmp/mdo-production-english-seo-routes.php
+          trap - EXIT
+          echo 'DEPLOY_OK=yes'
+          REMOTE
+      - name: Browser verify both shops and English links
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > verify.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          async function audit(path,english){
+            const p=await browser.newPage();p.setViewport({width:1440,height:900});p.setDefaultTimeout(15000);const errors=[];p.on('pageerror',e=>errors.push(e.message));
+            const r=await p.goto('https://www.elmercadodeorigen.com'+path+'?mdo_browser='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000});
+            let s=await p.evaluate(()=>({products:document.querySelectorAll('ul.products>li.product').length,state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,body:document.body.className,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(x=>x.includes('elmercadodeorigen.com')).slice(0,500),selector:[...document.querySelectorAll('.trp-language-switcher,.trp-floater-ls,.falang-language-switcher,.elmercado-falang-switcher')].some(e=>getComputedStyle(e).display!=='none')}));
+            const end=Date.now()+45000;
+            while(s.state&&s.state.remaining>0&&Date.now()<end){await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));await new Promise(r=>setTimeout(r,1400));s=await p.evaluate(()=>({products:document.querySelectorAll('ul.products>li.product').length,state:window.__emoCatalogLoaderState?{shown:window.__emoCatalogLoaderState.shown,remaining:window.__emoCatalogLoaderState.remaining,loading:window.__emoCatalogLoaderState.loading}:null,body:document.body.className,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(x=>x.includes('elmercadodeorigen.com')).slice(0,500),selector:[...document.querySelectorAll('.trp-language-switcher,.trp-floater-ls,.falang-language-switcher,.elmercado-falang-switcher')].some(e=>getComputedStyle(e).display!=='none')}));}
+            console.log('BROWSER',JSON.stringify({path,status:r.status(),errors,...s}));
+            if(r.status()!==200||errors.length||!s.body.includes('woocommerce-shop')||s.products<50||s.selector)throw new Error('shop verification failed '+path);
+            if(english){if(s.links.some(x=>x.includes('/en/tienda/')||x.includes('/en/producto/')))throw new Error('legacy English links remain');if(!s.links.some(x=>x.includes('/en/product/')))throw new Error('English product links missing');}
+            await p.close();
+          }
+          await audit('/tienda/',false);await audit('/en/shop/',true);await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node verify.mjs
