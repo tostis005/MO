@@ -1,0 +1,63 @@
+name: Production minimum order rule probe 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-minimum-order-rule-probe-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Read supplier rules with high-memory WP CLI
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          echo '=== DATABASE TABLE DECLARATION ==='
+          sed -n '1,90p' "$ROOT/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-database.php"
+          echo '=== MINIMUM RULE QUERY ==='
+          sed -n '220,280p' "$ROOT/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-minimum-order.php"
+          cat > /tmp/mdo-min-rules.php <<'PHP'
+          <?php
+          global $wpdb;
+          $tables = $wpdb->get_col("SHOW TABLES LIKE '" . $wpdb->esc_like($wpdb->prefix) . "%mdo%supplier%'");
+          echo "TABLES=" . wp_json_encode($tables) . "\n";
+          foreach ($tables as $table) {
+              $cols = $wpdb->get_col("SHOW COLUMNS FROM `{$table}`", 0);
+              if (!in_array('minimum_order_amount',$cols,true)) continue;
+              $rows = $wpdb->get_results("SELECT id,name,vendor_user_id,minimum_order_amount FROM `{$table}` WHERE vendor_user_id IS NOT NULL AND minimum_order_amount IS NOT NULL AND minimum_order_amount > 0 ORDER BY id", ARRAY_A);
+              echo "RULES=" . wp_json_encode($rows, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+              foreach ($rows as $r) {
+                  $uid=(int)$r['vendor_user_id'];
+                  $products=$wpdb->get_results($wpdb->prepare("SELECT p.ID,p.post_title,pm.meta_value AS price FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} a ON a.post_id=p.ID AND a.meta_key='_wcfm_product_author' LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_price' WHERE p.post_type='product' AND p.post_status='publish' AND a.meta_value=%d ORDER BY CAST(pm.meta_value AS DECIMAL(10,2)) ASC LIMIT 8",$uid),ARRAY_A);
+                  if (!$products) {
+                    $products=$wpdb->get_results($wpdb->prepare("SELECT p.ID,p.post_title,pm.meta_value AS price FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_price' WHERE p.post_type='product' AND p.post_status='publish' AND p.post_author=%d ORDER BY CAST(pm.meta_value AS DECIMAL(10,2)) ASC LIMIT 8",$uid),ARRAY_A);
+                  }
+                  echo "PRODUCTS_FOR_{$uid}=" . wp_json_encode($products,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+              }
+          }
+          PHP
+          "$PHP" -d memory_limit=1024M "$WP" eval-file /tmp/mdo-min-rules.php --path="$ROOT" --allow-root
+          REMOTE
