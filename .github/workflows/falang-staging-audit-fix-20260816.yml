@@ -1,0 +1,128 @@
+name: Falang staging audit and fix 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/falang-staging-audit-fix-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  falang-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH tool
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Normalize multilingual plugins and inspect WooCommerce routes
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) p=\"\${raw%%/wp-content/*}\";; */wp-content) p=\"\$(dirname \"\$raw\")\";; *) p=\"\$raw\";; esac; if [ ! -f \"\$p/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); p=\$(dirname \"\$cfg\"); fi; printf '%s' \"\$p\"" )"
+          : "${WP_PATH:?Unable to resolve staging WordPress path}"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$WP_PATH'" <<'REMOTE'
+          set -euo pipefail
+          WP_PATH="$1"
+          PHP_BIN="$(command -v php || true)"
+          [ -n "$PHP_BIN" ] || PHP_BIN="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          WP_BIN="$(command -v wp || true)"
+          : "${PHP_BIN:?PHP not found}"
+          : "${WP_BIN:?WP-CLI not found}"
+
+          wpcli() { "$PHP_BIN" "$WP_BIN" --path="$WP_PATH" --allow-root "$@"; }
+
+          echo '=== BEFORE: ACTIVE PLUGINS ==='
+          wpcli plugin list --status=active --fields=name,status,version --format=table
+
+          if ! wpcli plugin is-installed falang >/dev/null 2>&1; then
+            echo 'ERROR: Falang plugin (slug: falang) is not installed on staging.' >&2
+            exit 20
+          fi
+
+          if ! wpcli plugin is-active falang >/dev/null 2>&1; then
+            echo 'Activating Falang...'
+            wpcli plugin activate falang
+          else
+            echo 'Falang is already active.'
+          fi
+
+          # Deactivate competing runtime multilingual systems only. Falang add-ons are intentionally untouched.
+          competing_plugins=(
+            sitepress-multilingual-cms
+            wpml-string-translation
+            wpml-translation-management
+            wpml-media-translation
+            wpml-sticky-links
+            wpml-cms-nav
+            woocommerce-multilingual
+            polylang
+            polylang-pro
+            polylang-for-woocommerce
+            translatepress-multilingual
+            translatepress-business
+            weglot
+            gtranslate
+            multilingualpress
+            bogo
+            qtranslate-x
+            qtranslate-xt
+          )
+          for plugin in "${competing_plugins[@]}"; do
+            if wpcli plugin is-active "$plugin" >/dev/null 2>&1; then
+              echo "Deactivating competing multilingual plugin: $plugin"
+              wpcli plugin deactivate "$plugin"
+            fi
+          done
+
+          echo '=== AFTER: ACTIVE PLUGINS ==='
+          wpcli plugin list --status=active --fields=name,status,version --format=table
+
+          echo '=== MULTILINGUAL-RELATED INSTALLED PLUGINS ==='
+          wpcli plugin list --fields=name,status,version --format=csv | grep -Ei 'falang|wpml|sitepress|polylang|translatepress|weglot|gtranslate|multilingual|qtranslate|bogo' || true
+
+          echo '=== WOOCOMMERCE SHOP CONFIG ==='
+          HOME_URL="$(wpcli option get home)"
+          SITE_URL="$(wpcli option get siteurl)"
+          SHOP_ID="$(wpcli option get woocommerce_shop_page_id 2>/dev/null || true)"
+          PERMALINK_STRUCTURE="$(wpcli option get permalink_structure 2>/dev/null || true)"
+          printf 'home=%s\nsiteurl=%s\nshop_page_id=%s\npermalink_structure=%s\n' "$HOME_URL" "$SITE_URL" "$SHOP_ID" "$PERMALINK_STRUCTURE"
+
+          if [[ "$SHOP_ID" =~ ^[0-9]+$ ]] && [ "$SHOP_ID" -gt 0 ]; then
+            wpcli post get "$SHOP_ID" --fields=ID,post_title,post_name,post_status,post_type --format=json || true
+            echo 'Shop permalink (WordPress):'
+            wpcli post url "$SHOP_ID" || true
+            echo 'Falang-related shop meta:'
+            wpcli post meta list "$SHOP_ID" --format=csv | grep -Ei 'falang|slug|translation|language' || true
+          fi
+
+          echo '=== FALANG OPTION NAMES ==='
+          wpcli option list --search='falang%' --fields=option_name,autoload --format=table || true
+
+          echo '=== FLUSH REWRITE RULES ==='
+          wpcli rewrite flush
+
+          echo '=== ROUTE CHECKS AFTER FLUSH ==='
+          base="${HOME_URL%/}"
+          for path in / /tienda/ /shop/ /en/ /en/tienda/ /en/shop/; do
+            out="$(curl -k -sS -o /dev/null -w '%{http_code} %{url_effective} %{redirect_url}' --max-redirs 0 "$base$path" || true)"
+            printf '%-14s %s\n' "$path" "$out"
+          done
+          REMOTE
