@@ -1,0 +1,70 @@
+name: Production TranslatePress switcher diagnostic 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-trp-switcher-diagnostic-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Inspect production TranslatePress switcher config
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            [ "$url" = 'https://www.elmercadodeorigen.com' ] && { PROD_PATH="$p"; break; }
+          done
+          : "${PROD_PATH:?production path not found}"
+          wp(){ "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          echo '=== TRP SWITCHER SETTINGS ==='
+          cat >/tmp/mdo-trp-switcher-settings.php <<'PHP'
+          <?php
+          foreach ( ['trp_settings','trp_advanced_settings','trp_language_switcher_settings'] as $option_name ) {
+              $value = get_option( $option_name, null );
+              echo 'OPTION=' . $option_name . PHP_EOL;
+              if ( is_array( $value ) ) {
+                  foreach ( $value as $k => $v ) {
+                      if ( preg_match('/floater|switcher|shortcode|menu|flag/i', (string) $k) ) {
+                          echo $k . '=' . ( is_scalar($v) ? (string)$v : wp_json_encode($v) ) . PHP_EOL;
+                      }
+                  }
+              } else {
+                  echo 'TYPE=' . gettype($value) . PHP_EOL;
+              }
+          }
+          PHP
+          wp eval-file /tmp/mdo-trp-switcher-settings.php
+          rm -f /tmp/mdo-trp-switcher-settings.php
+          echo '=== SOURCE REFERENCES ==='
+          grep -RniE "floater-options|shortcode-options|menu-options|floating.*switcher|flag.*full.*name" "$PROD_PATH/wp-content/plugins/translatepress-multilingual" 2>/dev/null | head -n 160 || true
+          REMOTE
