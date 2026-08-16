@@ -2,23 +2,15 @@
 /**
  * Plugin Name: MDO English SEO Routes
  * Description: Stable English slugs, hreflang and SEO routes without changing Spanish WooCommerce URLs.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-/*
- * Public URL and internal WordPress route are deliberately separated.
- * The browser keeps the SEO English URL, while TranslatePress receives the
- * already-working native Spanish route prefixed with /en/. This preserves
- * WooCommerce is_shop(), product queries and the existing Spanish storefront.
- */
 $GLOBALS['mdoer_public_request_uri'] = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '/';
 
 function mdoer_prod(): bool {
     $host = isset( $_SERVER['HTTP_HOST'] ) ? strtolower( preg_replace( '/:\d+$/', '', (string) $_SERVER['HTTP_HOST'] ) ) : '';
-    if ( '' === $host ) {
-        $host = strtolower( (string) wp_parse_url( (string) get_option( 'home' ), PHP_URL_HOST ) );
-    }
+    if ( '' === $host ) { $host = strtolower( (string) wp_parse_url( (string) get_option( 'home' ), PHP_URL_HOST ) ); }
     return in_array( $host, array( 'elmercadodeorigen.com', 'www.elmercadodeorigen.com' ), true );
 }
 function mdoer_public_uri(): string { return (string) ( $GLOBALS['mdoer_public_request_uri'] ?? ( $_SERVER['REQUEST_URI'] ?? '/' ) ); }
@@ -35,7 +27,7 @@ function mdoer_en_pub( int $id ): bool { return '1' === (string) get_post_meta( 
 function mdoer_post_row_by_en_slug( string $slug, array $types ): ?array {
     global $wpdb;
     if ( ! $types ) { return null; }
-    $in  = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+    $in = implode( ',', array_fill( 0, count( $types ), '%s' ) );
     $sql = $wpdb->prepare(
         "SELECT p.ID,p.post_type,p.post_name,p.post_parent FROM {$wpdb->posts} p
          JOIN {$wpdb->postmeta} s ON s.post_id=p.ID AND s.meta_key='_en_US_post_name'
@@ -49,7 +41,7 @@ function mdoer_post_row_by_en_slug( string $slug, array $types ): ?array {
 function mdoer_post_row_by_native_slug( string $slug, array $types ): ?array {
     global $wpdb;
     if ( ! $types ) { return null; }
-    $in  = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+    $in = implode( ',', array_fill( 0, count( $types ), '%s' ) );
     $sql = $wpdb->prepare(
         "SELECT ID,post_type,post_name,post_parent FROM {$wpdb->posts} WHERE post_status='publish' AND post_type IN ($in) AND post_name=%s ORDER BY ID ASC LIMIT 1",
         ...array_merge( $types, array( $slug ) )
@@ -90,12 +82,12 @@ function mdoer_native_page_path( int $id ): string {
 }
 function mdoer_native_post_url( WP_Post $post ): string {
     $front = (int) get_option( 'page_on_front' );
-    $shop  = (int) get_option( 'woocommerce_shop_page_id' );
+    $shop = (int) get_option( 'woocommerce_shop_page_id' );
     if ( $post->ID === $front ) { return home_url( '/' ); }
     if ( $post->ID === $shop ) { return home_url( '/' . $post->post_name . '/' ); }
     if ( 'product' === $post->post_type ) {
         $perms = (array) get_option( 'woocommerce_permalinks', array() );
-        $base  = trim( (string) ( $perms['product_base'] ?? '/producto' ), '/' );
+        $base = trim( (string) ( $perms['product_base'] ?? '/producto' ), '/' );
         return home_url( '/' . ( $base ?: 'producto' ) . '/' . $post->post_name . '/' );
     }
     if ( 'page' === $post->post_type ) { return home_url( mdoer_native_page_path( $post->ID ) ); }
@@ -103,7 +95,7 @@ function mdoer_native_post_url( WP_Post $post ): string {
 }
 function mdoer_en_url( WP_Post $post ): string {
     $front = (int) get_option( 'page_on_front' );
-    $shop  = (int) get_option( 'woocommerce_shop_page_id' );
+    $shop = (int) get_option( 'woocommerce_shop_page_id' );
     if ( $post->ID === $front ) { return home_url( '/en/' ); }
     if ( $post->ID === $shop ) { return home_url( '/en/shop/' ); }
     if ( ! mdoer_en_pub( $post->ID ) ) { return ''; }
@@ -123,12 +115,11 @@ function mdoer_native_term_url( WP_Term $term ): string {
     return $base ? home_url( '/' . $base . '/' . $term->slug . '/' ) : '';
 }
 
-/* Translate the public SEO path into the native route BEFORE normal plugins load. */
+/* Resolve public SEO slugs to the already-working native route before TranslatePress loads. */
 function mdoer_bootstrap_internal_route(): void {
     if ( ! mdoer_prod() || ! mdoer_en() ) { return; }
     $path = trim( mdoer_public_path(), '/' );
     $internal = '';
-
     if ( preg_match( '#^en/shop(?:/page/(\d+))?$#i', $path, $m ) ) {
         $internal = '/en/tienda/' . ( ! empty( $m[1] ) ? 'page/' . (int) $m[1] . '/' : '' );
     } elseif ( preg_match( '#^en/product/([^/]+)$#i', $path, $m ) ) {
@@ -144,7 +135,6 @@ function mdoer_bootstrap_internal_route(): void {
         $row = mdoer_post_row_by_en_slug( rawurldecode( $m[1] ), array( 'page', 'post' ) );
         if ( $row ) { $internal = '/en/' . $row['post_name'] . '/'; }
     }
-
     if ( '' === $internal ) { return; }
     $query = (string) wp_parse_url( mdoer_public_uri(), PHP_URL_QUERY );
     $_SERVER['REQUEST_URI'] = $internal . ( '' !== $query ? '?' . $query : '' );
@@ -157,13 +147,11 @@ foreach ( array( 'page_link', 'post_link', 'post_type_link' ) as $hook ) {
     add_filter( $hook, static function( $url, $object = null ) {
         if ( ! mdoer_en() ) { return $url; }
         $post = $object instanceof WP_Post ? $object : get_post( (int) $object );
-        if ( ! $post instanceof WP_Post ) { return $url; }
-        return mdoer_en_url( $post ) ?: $url;
+        return $post instanceof WP_Post ? ( mdoer_en_url( $post ) ?: $url ) : $url;
     }, PHP_INT_MAX, 2 );
 }
 add_filter( 'term_link', static function( $url, $term ) {
-    if ( ! mdoer_en() || ! $term instanceof WP_Term ) { return $url; }
-    return mdoer_term_en_url( $term ) ?: $url;
+    return mdoer_en() && $term instanceof WP_Term ? ( mdoer_term_en_url( $term ) ?: $url ) : $url;
 }, PHP_INT_MAX, 2 );
 
 function mdoer_preferred(): array {
@@ -180,6 +168,7 @@ function mdoer_preferred(): array {
     return array( 'es' => '', 'en' => '' );
 }
 
+add_filter( 'woocommerce_page_title', static fn( $title ) => mdoer_en() && function_exists( 'is_shop' ) && is_shop() ? 'Shop' : $title, PHP_INT_MAX );
 add_filter( 'aioseo_canonical_url', static function( $url ) { $x = mdoer_preferred(); return mdoer_en() && $x['en'] ? $x['en'] : $url; }, PHP_INT_MAX );
 add_filter( 'get_canonical_url', static function( $url ) { $x = mdoer_preferred(); return mdoer_en() && $x['en'] ? $x['en'] : $url; }, PHP_INT_MAX );
 add_filter( 'aioseo_title', static function( $title ) {
@@ -209,14 +198,6 @@ add_filter( 'aioseo_description', static function( $description ) {
     }
     return $description;
 }, PHP_INT_MAX );
-
-add_action( 'wp_head', static function(): void {
-    $x = mdoer_preferred();
-    if ( ! $x['es'] || ! $x['en'] ) { return; }
-    echo '<link rel="alternate" hreflang="es-ES" href="' . esc_url( $x['es'] ) . '" data-mdo-hreflang="1">' . "\n";
-    echo '<link rel="alternate" hreflang="en" href="' . esc_url( $x['en'] ) . '" data-mdo-hreflang="1">' . "\n";
-    echo '<link rel="alternate" hreflang="x-default" href="' . esc_url( $x['es'] ) . '" data-mdo-hreflang="1">' . "\n";
-}, 2 );
 add_action( 'wp_head', static function(): void {
     echo '<style id="mdo-hide-lang-ui">.trp-language-switcher-container,.trp-language-switcher,#trp-floater-ls,.trp-floater-ls,.elmercado-falang-switcher,.falang-language-switcher,[class*="falang-language-switcher"],li.menu-item-language,li.lang-item{display:none!important;visibility:hidden!important;pointer-events:none!important}</style>';
 }, PHP_INT_MAX );
@@ -245,32 +226,34 @@ function mdoer_rewrite_url( string $url ): string {
     if ( ! empty( $parts['fragment'] ) ) { $out .= '#' . $parts['fragment']; }
     return $out;
 }
+
+/* Outermost buffer: started while MU plugins load, so it runs AFTER TranslatePress. */
 function mdoer_html( string $html ): string {
-    if ( ! mdoer_prod() ) { return $html; }
-    $html = (string) preg_replace_callback( "#<link\\b[^>]*\\bhreflang=(\"|')[^\"']+\\1[^>]*>#iu", static fn( $m ) => str_contains( $m[0], 'data-mdo-hreflang=' ) ? $m[0] : '', $html );
-    if ( ! mdoer_en() ) { return $html; }
-    $html = (string) preg_replace_callback( "#\\b(href|action|content)=(\"|')([^\"']+)\\2#iu", static fn( $m ) => $m[1] . '=' . $m[2] . esc_attr( mdoer_rewrite_url( $m[3] ) ) . $m[2], $html );
+    if ( ! mdoer_prod() || '' === $html ) { return $html; }
+    $html = (string) preg_replace( "#<link\\b[^>]*\\bhreflang=(\"|')[^\"']+\\1[^>]*>\\s*#iu", '', $html );
+    if ( mdoer_en() ) {
+        $html = (string) preg_replace_callback( "#\\b(href|action|content)=(\"|')([^\"']+)\\2#iu", static fn( $m ) => $m[1] . '=' . $m[2] . esc_attr( mdoer_rewrite_url( $m[3] ) ) . $m[2], $html );
+        $html = (string) preg_replace( "#<link\\b[^>]*\\brel=(\"|')canonical\\1[^>]*>\\s*#iu", '', $html );
+    }
     $x = mdoer_preferred();
-    if ( $x['en'] ) {
-        $html = (string) preg_replace( "#<link\\b[^>]*\\brel=(\"|')canonical\\1[^>]*>#iu", '', $html );
-        $html = str_ireplace( '</head>', '<link rel="canonical" href="' . esc_url( $x['en'] ) . '" data-mdo-canonical="1">' . "\n</head>", $html );
+    if ( $x['es'] && $x['en'] ) {
+        $tags = '<link rel="alternate" hreflang="es-ES" href="' . esc_url( $x['es'] ) . '" data-mdo-hreflang="1">' . "\n";
+        $tags .= '<link rel="alternate" hreflang="en" href="' . esc_url( $x['en'] ) . '" data-mdo-hreflang="1">' . "\n";
+        $tags .= '<link rel="alternate" hreflang="x-default" href="' . esc_url( $x['es'] ) . '" data-mdo-hreflang="1">' . "\n";
+        if ( mdoer_en() ) { $tags .= '<link rel="canonical" href="' . esc_url( $x['en'] ) . '" data-mdo-canonical="1">' . "\n"; }
+        $html = str_ireplace( '</head>', $tags . '</head>', $html );
     }
     return $html;
 }
-add_action( 'template_redirect', static function(): void {
-    if ( ! is_admin() && ! wp_doing_ajax() && ! is_feed() && ! is_robots() ) { ob_start( 'mdoer_html' ); }
-}, -900 );
 
-/* Redirect only legacy PUBLIC English URLs, never the internal translated route. */
+/* Redirect only legacy PUBLIC English URLs. */
 add_action( 'template_redirect', static function(): void {
     if ( ! mdoer_en() || wp_doing_ajax() ) { return; }
     $public = trailingslashit( mdoer_public_path() );
     $x = mdoer_preferred();
     if ( ! $x['en'] ) { return; }
     $wanted = trailingslashit( (string) wp_parse_url( $x['en'], PHP_URL_PATH ) );
-    if ( $public !== $wanted && ( '/en/tienda/' === $public || str_starts_with( $public, '/en/producto/' ) ) ) {
-        wp_safe_redirect( $x['en'], 301, 'MDO-English-Routing' ); exit;
-    }
+    if ( $public !== $wanted && ( '/en/tienda/' === $public || str_starts_with( $public, '/en/producto/' ) ) ) { wp_safe_redirect( $x['en'], 301, 'MDO-English-Routing' ); exit; }
 }, -1000 );
 
 function mdoer_sitemap(): array {
@@ -308,3 +291,6 @@ add_filter( 'robots_txt', static function( $output, $public ) {
     $line = 'Sitemap: ' . home_url( '/english-sitemap.xml' );
     return str_contains( $output, $line ) ? $output : rtrim( $output ) . "\n" . $line . "\n";
 }, PHP_INT_MAX, 2 );
+
+/* First buffer opened = outermost buffer closed last. */
+if ( mdoer_prod() && ! is_admin() ) { ob_start( 'mdoer_html' ); }
