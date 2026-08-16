@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.243' );
-/* 0.10.243 cierra la copia inglesa manual de UI generada también en runtime. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.244' );
+/* 0.10.244 traduce etiquetas de variantes en inglés y elimina Policies de producto. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
