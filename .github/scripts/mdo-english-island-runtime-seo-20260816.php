@@ -145,9 +145,18 @@ add_filter( 'woocommerce_product_get_name', static function ( $name, $product ) 
 // Main singular content: serve the reviewed English copy stored in _en_US_* metadata.
 add_filter( 'the_content', static function ( $content ) {
     if ( ! mdo_island_en_request() || ! is_singular() ) { return $content; }
-    // Home presentation changes independently of the reviewed page-copy metadata.
-    // Keep the current native Home structure and let TranslatePress render it.
-    if ( is_front_page() ) { return $content; }
+    // Home and WooCommerce system pages are dynamic. Replacing their content here runs
+    // after do_shortcode(), which would expose literal [woocommerce_*] shortcodes and
+    // break cart, checkout and account behaviour. Keep the native executable content
+    // and let TranslatePress translate the rendered output instead.
+    if (
+        is_front_page()
+        || ( function_exists( 'is_cart' ) && is_cart() )
+        || ( function_exists( 'is_checkout' ) && is_checkout() )
+        || ( function_exists( 'is_account_page' ) && is_account_page() )
+    ) {
+        return $content;
+    }
     $post_id = (int) get_the_ID();
     if ( $post_id < 1 || $post_id !== (int) get_queried_object_id() ) { return $content; }
     $translated = mdo_island_post_meta( $post_id, 'post_content' );
