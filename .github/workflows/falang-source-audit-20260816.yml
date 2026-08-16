@@ -1,0 +1,43 @@
+name: Falang source migration audit 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/falang-source-audit-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Falang 1.4.4
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/falang.zip https://downloads.wordpress.org/plugin/falang.1.4.4.zip
+          unzip -q /tmp/falang.zip -d /tmp/falang-src
+      - name: Inspect language and translation storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/falang-src/falang
+          {
+            echo '=== MAIN FILES ==='
+            find "$ROOT" -maxdepth 2 -type f -name '*.php' | sort | head -n 100
+            echo '=== OPTIONS / SETTINGS ==='
+            grep -RniE --include='*.php' "(get_option|update_option|add_option|register_setting).*falang|falang.*(get_option|update_option|add_option|register_setting)" "$ROOT" | head -n 240 || true
+            echo '=== LANGUAGE MODEL / DEFAULT ==='
+            grep -RniE --include='*.php' "default_language|languages|locale|slug" "$ROOT/include" "$ROOT/admin" 2>/dev/null | head -n 320 || true
+            echo '=== POST META STORAGE ==='
+            grep -RniE --include='*.php' "(get_post_meta|update_post_meta|add_post_meta|delete_post_meta|meta_key)" "$ROOT" | head -n 320 || true
+            echo '=== TERM META STORAGE ==='
+            grep -RniE --include='*.php' "(get_term_meta|update_term_meta|add_term_meta|delete_term_meta)" "$ROOT" | head -n 220 || true
+            echo '=== STRING STORAGE ==='
+            grep -RniE --include='*.php' "icl_register_string|falang__|string_translation|translation.*string|wpml_register_single_string" "$ROOT" | head -n 320 || true
+            echo '=== LANGUAGE CREATE/SAVE ==='
+            grep -RniE --include='*.php' "new Language|Language\\(|save.*language|add.*language|update.*language|language.*save" "$ROOT" | head -n 320 || true
+            echo '=== PERMALINK/SLUG ==='
+            grep -RniE --include='*.php' "post_name|slug|permalink" "$ROOT" | head -n 320 || true
+          } | tee /tmp/falang-audit.txt
+          cat /tmp/falang-audit.txt >> "$GITHUB_STEP_SUMMARY"
