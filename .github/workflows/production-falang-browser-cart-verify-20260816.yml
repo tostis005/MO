@@ -1,0 +1,171 @@
+name: Production Falang English and Tolecarnes cart verify 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-falang-browser-cart-verify-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Verify Falang URLs and Tolecarnes minimum-order language through cart updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./verify-falang-cart.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          const base='https://www.elmercadodeorigen.com';
+          const pause=(ms)=>new Promise(r=>setTimeout(r,ms));
+          async function makePage(){
+            const p=await browser.newPage();
+            p.setDefaultTimeout(18000);
+            await p.setRequestInterception(true);
+            p.on('request',r=>['image','font','media'].includes(r.resourceType())?r.abort():r.continue());
+            return p;
+          }
+          async function goto(p,url){
+            const resp=await p.goto(url,{waitUntil:'domcontentloaded',timeout:30000}).catch(()=>null);
+            await pause(1400);
+            if(!resp) throw new Error('No response for '+url);
+            console.log('GOTO '+url+' => '+resp.status()+' FINAL '+p.url());
+            return resp;
+          }
+          async function pageInfo(p,label){
+            const info=await p.evaluate(()=>({
+              lang:document.documentElement.lang,
+              title:document.title,
+              h1:(document.querySelector('h1')?.innerText||'').trim(),
+              canonical:document.querySelector('link[rel="canonical"]')?.href||'',
+              alternates:[...document.querySelectorAll('link[rel="alternate"][hreflang]')].map(x=>({lang:x.hreflang,href:x.href})),
+              switcher:[...document.querySelectorAll('.elmercado-falang-switcher a')].map(a=>({text:(a.innerText||a.title||'').trim(),href:a.href})),
+              oldTrp:!!document.querySelector('.trp-language-switcher') || [...document.scripts].some(s=>(s.src||'').includes('translatepress-multilingual')) || [...document.styleSheets].some(s=>(s.href||'').includes('translatepress-multilingual')),
+              body:(document.body?.innerText||'').slice(0,12000)
+            }));
+            console.log(label+' '+JSON.stringify({...info,body:info.body.slice(0,1000)}));
+            if(info.oldTrp) throw new Error(label+': TranslatePress markup/assets still present');
+            if(info.switcher.length<2) throw new Error(label+': Falang switcher does not expose Spanish + English');
+            return info;
+          }
+          async function findCart(p,lang='en'){
+            const candidates=lang==='en'
+              ? [`${base}/en/cart/`,`${base}/en/carrito/`]
+              : [`${base}/carrito/`,`${base}/cart/`];
+            for(const url of candidates){
+              const resp=await p.goto(url+'?falang_cart_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}).catch(()=>null);
+              await pause(1300);
+              if(!resp || resp.status()>=400) continue;
+              const has=await p.evaluate(()=>!!document.querySelector('.woocommerce-cart-form,.cart_totals,.wc-block-cart') || /cart|carrito/i.test(document.body?.innerText||''));
+              if(has){console.log('CART_URL_'+lang.toUpperCase()+' '+p.url()); return p.url();}
+            }
+            throw new Error('Cart page not found for '+lang);
+          }
+          async function cartState(p,label){
+            const st=await p.evaluate(()=>({
+              url:location.href,
+              lang:document.documentElement.lang,
+              text:(document.body?.innerText||''),
+              notice:[...document.querySelectorAll('.emdo-minimum-order-notices,.woocommerce-error,.woocommerce-message,.woocommerce-info')].map(x=>(x.innerText||'').trim()).filter(Boolean),
+              qty:[...document.querySelectorAll('input.qty')].map(x=>({value:x.value,name:x.name})),
+              checkout:[...document.querySelectorAll('.checkout-button,.wc-proceed-to-checkout a')].map(x=>(x.innerText||'').trim()),
+              rows:[...document.querySelectorAll('.woocommerce-cart-form__cart-item,.cart_item')].map(x=>(x.innerText||'').trim())
+            }));
+            console.log(label+' '+JSON.stringify({...st,text:st.text.slice(0,2000)}));
+            return st;
+          }
+          async function setQtyAndUpdate(p,qty){
+            const input=await p.$('input.qty');
+            if(!input) throw new Error('Quantity input not found');
+            await input.click({clickCount:3});
+            await input.type(String(qty));
+            await p.evaluate(()=>{
+              const el=document.querySelector('input.qty');
+              if(el){el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}
+            });
+            await pause(500);
+            const button=await p.$('button[name="update_cart"],input[name="update_cart"]');
+            if(button){
+              await p.evaluate(el=>{el.disabled=false;el.removeAttribute('disabled');},button);
+              await Promise.allSettled([button.click(),p.waitForNavigation({waitUntil:'domcontentloaded',timeout:12000})]);
+            } else {
+              await p.keyboard.press('Enter');
+            }
+            await pause(2500);
+          }
+
+          // Falang homepage + shop smoke tests.
+          const p=await makePage();
+          let resp=await goto(p,`${base}/en/?falang_verify=${Date.now()}`);
+          if(resp.status()>=400) throw new Error('English home failed');
+          let info=await pageInfo(p,'EN_HOME');
+          if(!/^en/i.test(info.lang)) throw new Error('English home html lang is not English: '+info.lang);
+          if(!/Home|Shop|Search|Our producers|What our customers say/i.test(info.body)) throw new Error('English home has no expected English copy');
+
+          resp=await goto(p,`${base}/en/shop/?falang_shop_verify=${Date.now()}`);
+          if(resp.status()>=400) throw new Error('English shop failed');
+          info=await pageInfo(p,'EN_SHOP');
+          if(!/^en/i.test(info.lang)) throw new Error('English shop html lang is not English');
+
+          // Known migrated product: try English permalink bases and require actual product body.
+          const productSlug='100-iberian-acorn-fed-ham-black-tag';
+          let productInfo=null;
+          for(const u of [`${base}/en/product/${productSlug}/`,`${base}/en/producto/${productSlug}/`]){
+            const r=await p.goto(u+'?falang_product_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:30000}).catch(()=>null);
+            await pause(1300);
+            if(!r || r.status()>=400) continue;
+            const pi=await p.evaluate(()=>({isProduct:document.body.classList.contains('single-product')||!!document.querySelector('form.cart'),h1:(document.querySelector('h1')?.innerText||'').trim(),url:location.href,canonical:document.querySelector('link[rel="canonical"]')?.href||'',alts:[...document.querySelectorAll('link[rel="alternate"][hreflang]')].map(x=>({lang:x.hreflang,href:x.href}))}));
+            console.log('PRODUCT_CANDIDATE '+JSON.stringify(pi));
+            if(pi.isProduct){productInfo=pi;break;}
+          }
+          if(!productInfo) throw new Error('Migrated English product permalink not resolving');
+          if(!/100% Iberian acorn-fed ham/i.test(productInfo.h1)) throw new Error('Migrated English product title not rendered: '+productInfo.h1);
+          console.log('EN_PRODUCT_URL '+productInfo.url);
+          console.log('EN_PRODUCT_CANONICAL '+productInfo.canonical);
+          console.log('EN_PRODUCT_HREFLANG '+JSON.stringify(productInfo.alts));
+
+          // English Tolecarnes cart: one simple €9.24 item -> below €60.
+          await goto(p,`${base}/en/?add-to-cart=5193&quantity=1&falang_add=${Date.now()}`);
+          const enCartUrl=await findCart(p,'en');
+          let st=await cartState(p,'EN_CART_Q1');
+          if(!st.rows.length) throw new Error('Tolecarnes product 5193 is not in English cart');
+          let notices=st.notice.join('\n');
+          if(!/Minimum order/i.test(notices) || !/You need/i.test(notices)) throw new Error('English minimum-order notice missing at qty 1: '+notices);
+          if(/Pedido mínimo|Te faltan/i.test(notices)) throw new Error('Spanish minimum-order copy leaked into English cart at qty 1');
+
+          // Trigger real Woo cart updates. Qty 6 remains below €60, qty 7 crosses it, qty 6 brings it back.
+          await setQtyAndUpdate(p,6);
+          st=await cartState(p,'EN_CART_Q6_AFTER_UPDATE'); notices=st.notice.join('\n');
+          if(!/Minimum order/i.test(notices) || !/You need/i.test(notices)) throw new Error('English minimum-order notice missing after Woo update to qty 6: '+notices);
+          if(/Pedido mínimo|Te faltan/i.test(notices)) throw new Error('Spanish minimum-order copy appeared after Woo update to qty 6');
+          if(st.checkout.length) throw new Error('Checkout should be blocked below €60 at qty 6');
+
+          await setQtyAndUpdate(p,7);
+          st=await cartState(p,'EN_CART_Q7_AFTER_UPDATE'); notices=st.notice.join('\n');
+          if(/Minimum order|Pedido mínimo|You need|Te faltan/i.test(notices)) throw new Error('Minimum-order notice still present above €60 at qty 7: '+notices);
+          if(!st.checkout.length) throw new Error('Checkout button not restored above €60 at qty 7');
+
+          await setQtyAndUpdate(p,6);
+          st=await cartState(p,'EN_CART_Q6_REAPPEAR'); notices=st.notice.join('\n');
+          if(!/Minimum order/i.test(notices) || !/You need/i.test(notices)) throw new Error('English minimum-order notice did not reappear after dropping below €60');
+          if(/Pedido mínimo|Te faltan/i.test(notices)) throw new Error('Spanish copy appeared when minimum notice reappeared');
+          console.log('ENGLISH_MINIMUM_ORDER_AJAX_OK');
+
+          // Spanish cart must remain Spanish in a clean session.
+          const es=await makePage();
+          await goto(es,`${base}/?add-to-cart=5193&quantity=1&falang_es_add=${Date.now()}`);
+          await findCart(es,'es');
+          const esSt=await cartState(es,'ES_CART_Q1');
+          const esNotices=esSt.notice.join('\n');
+          if(!/Pedido mínimo/i.test(esNotices) || !/Te faltan/i.test(esNotices)) throw new Error('Spanish minimum-order notice missing in Spanish cart: '+esNotices);
+          if(/Minimum order|You need/i.test(esNotices)) throw new Error('English minimum-order copy leaked into Spanish cart');
+          console.log('SPANISH_MINIMUM_ORDER_OK');
+
+          console.log('FALANG_ENGLISH_URLS_AND_TOLECARNES_CART_OK');
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./verify-falang-cart.mjs
