@@ -17,7 +17,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/verify-en.mjs <<'JS'
+          cat > ./verify-en.mjs <<'JS'
           import puppeteer from 'puppeteer-core';
           const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
           const p=await browser.newPage(); p.setDefaultTimeout(20000);
@@ -68,11 +68,11 @@ jobs:
             if(!add) throw new Error('No add-to-cart button found');
             await add.click(); await new Promise(r=>setTimeout(r,2200));
           }catch(e){ failures++; console.log('FAIL ADD PRODUCT '+e.message); }
-          const cart=await inspect('CART BELOW MINIMUM MOBILE',base+'/en/carrito/',{width:390,height:844});
+          await inspect('CART BELOW MINIMUM MOBILE',base+'/en/carrito/',{width:390,height:844});
           if(!/Minimum order for Tolecarnes:/i.test((await p.evaluate(()=>document.body?.innerText||'')))){ failures++; console.log('FAIL minimum-order English notice not found'); }
           await inspect('CHECKOUT BELOW MINIMUM MOBILE',base+'/en/finalizar-compra/',{width:390,height:844});
           await browser.close();
           console.log(`\nFINAL_FAILURES=${failures}`);
           if(failures) process.exit(1);
           JS
-          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node /tmp/verify-en.mjs
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./verify-en.mjs
