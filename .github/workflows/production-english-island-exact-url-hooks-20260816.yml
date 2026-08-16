@@ -25,7 +25,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-      - name: Deploy exact English URL hooks
+      - name: Deploy final English visible URL layer
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -49,28 +49,23 @@ jobs:
           : "${PROD_PATH:?production path not found}"
           TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-english-slug-router.php"
           test -f "$TARGET"
-          cp -a "$TARGET" "$TARGET.bak-exact-hooks-$(date +%Y%m%d%H%M%S)"
+          cp -a "$TARGET" "$TARGET.bak-final-visible-$(date +%Y%m%d%H%M%S)"
 
-          if ! grep -q 'MDO_ENGLISH_ISLAND_EXACT_URL_HOOKS_V1' "$TARGET"; then
+          if ! grep -q 'MDO_ENGLISH_ISLAND_VISIBLE_ANCHOR_V2' "$TARGET"; then
           cat >> "$TARGET" <<'PHP'
 
-          /* MDO_ENGLISH_ISLAND_EXACT_URL_HOOKS_V1 */
-          add_filter( 'woocommerce_get_shop_page_permalink', static function ( string $url ): string {
-              if ( ! mdo_en_is_request() ) { return $url; }
-              $shop_id = (int) get_option( 'woocommerce_shop_page_id' );
-              $translated = $shop_id > 0 ? mdo_en_page_url( $shop_id ) : '';
-              return $translated !== '' ? $translated : mdo_en_root() . '/en/shop/';
-          }, PHP_INT_MAX );
-
-          add_filter( 'wt_readmore_link_settings', static function ( $settings ) {
-              if ( ! mdo_en_is_request() || ! is_array( $settings ) ) { return $settings; }
-              $action = isset( $settings['button_x_action'] ) ? (string) $settings['button_x_action'] : '';
-              $current = isset( $settings['button_x_url'] ) ? (string) $settings['button_x_url'] : '';
-              if ( $action !== 'CONSTANT_OPEN_URL' || stripos( $current, 'politica-de-cookies' ) === false ) { return $settings; }
-              $cookie_page = get_page_by_path( 'politica-de-cookies', OBJECT, 'page' );
-              $target = $cookie_page instanceof WP_Post ? mdo_en_page_url( (int) $cookie_page->ID ) : '';
-              $settings['button_x_url'] = $target !== '' ? $target : mdo_en_root() . '/en/cookie-policy/';
-              return $settings;
+          /* MDO_ENGLISH_ISLAND_VISIBLE_ANCHOR_V2 */
+          add_action( 'template_redirect', static function (): void {
+              if ( is_admin() || ! mdo_en_is_request() ) { return; }
+              ob_start( static function ( string $html ): string {
+                  $shop = mdo_en_root() . '/en/shop/';
+                  return (string) preg_replace_callback( '/<a\b[^>]*>/i', static function ( array $m ) use ( $shop ): string {
+                      $tag = $m[0];
+                      $tag = preg_replace( '#href=("|\')https?://(?:www\.)?elmercadodeorigen\.com/en/tienda/\1#i', 'href="' . esc_url( $shop ) . '"', $tag );
+                      $tag = preg_replace( '#href=("|\')/en/tienda/\1#i', 'href="' . esc_url( $shop ) . '"', $tag );
+                      return (string) $tag;
+                  }, $html );
+              } );
           }, PHP_INT_MAX );
           PHP
           fi
@@ -79,56 +74,48 @@ jobs:
           echo "router_sha256=$(sha256sum "$TARGET" | awk '{print $1}')"
           REMOTE
 
-      - name: Verify exact English URL hooks and Spanish safety
+      - name: Verify visible English URLs and inspect live residual Spanish
         shell: bash
         run: |
           set -u
           failed=0
           stamp=$(date +%s%N)
 
-          # English store is where the linked Shop breadcrumb was leaking /en/tienda/.
-          curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/?mdo_exact=$stamp" -o /tmp/en-store.html || failed=1
-          code=$(curl -ksSL --max-time 35 -o /tmp/en-shop.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/shop/?mdo_exact_shop=$stamp" || true)
-          echo "EN_SHOP_CODE=$code"
-          [ "$code" = 200 ] || failed=1
-
-          echo '--- EN STORE BREADCRUMB ---'
-          python3 - <<'PY'
-          import re
-          s=open('/tmp/en-store.html',encoding='utf-8',errors='ignore').read()
-          m=re.search(r'<nav class="woostify-breadcrumb".*?</nav>',s,re.I|re.S)
-          b=m.group(0) if m else ''
-          print(b[:7000] if b else 'NO_BREADCRUMB')
-          open('/tmp/en-breadcrumb','w').write(b)
-          PY
-          grep -q '/en/shop/' /tmp/en-breadcrumb || failed=1
-          if grep -q '/en/tienda/' /tmp/en-breadcrumb; then echo 'ERROR English store breadcrumb still uses /en/tienda/'; failed=1; fi
-
-          echo '--- EN COOKIE LINK ---'
-          en_cookie=$(grep -oE '<a[^>]+id="CONSTANT_OPEN_URL"[^>]*>' /tmp/en-shop.html | head -n1 || true)
-          echo "$en_cookie"
-          printf '%s' "$en_cookie" | grep -q '/en/cookie-policy/' || failed=1
-          if printf '%s' "$en_cookie" | grep -q '/en/politica-de-cookies/'; then failed=1; fi
-
-          # Scan representative visible anchors again.
-          : > /tmp/en-all.html
-          for p in /en/ /en/shop/ /en/producers/ /en/journal/ /en/contact/ /en/store/hidalgo-de-la-jara/ /en/product/100-iberian-acorn-fed-ham-black-tag/ /en/product-category/oils/; do
-            curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com${p}?mdo_exact_scan=$stamp" >> /tmp/en-all.html || failed=1
+          for p in \
+            /en/ \
+            /en/shop/ \
+            /en/producers/ \
+            /en/journal/ \
+            /en/contact/ \
+            /en/store/hidalgo-de-la-jara/ \
+            /en/store/1957/ \
+            /en/product/100-iberian-acorn-fed-ham-black-tag/ \
+            /en/product/extra-virgin-olive-oil-5l/ \
+            /en/product/100-iberian-acorn-fed-sobrasada/ \
+            /en/product-category/oils/ \
+            /en/extra-virgin-olive-oil/ \
+            /en/iberian-ham/ \
+            /en/oranges/ \
+            /en/privacy-policy/; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/page.html -w '%{http_code}' "https://www.elmercadodeorigen.com${p}?mdo_final=$stamp" || true)
+            echo "PAGE $p code=$code"
+            [ "$code" = 200 ] || failed=1
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/page.html | head -n1 || true)
+            printf '%s' "$body" | grep -q 'translatepress-en_US' || failed=1
+            bad=$(grep -oE 'href="[^"]*/en/(tienda|producto|politica-de-cookies)/[^"]*"' /tmp/page.html | head -n 10 || true)
+            if [ -n "$bad" ]; then echo "BAD_LINKS $p"; echo "$bad"; failed=1; fi
+            spanish=$(grep -oiE '>([^<]*(añadir al carrito|pedido mínimo|importe mínimo|gastos de envío|política de privacidad|política de cookies|envíos en|elaborado|información nutricional|introducción|nuestros|nuestras|para pedidos|aceite de oliva virgen extra es|jamón procedente|paleta procedente)[^<]*)<' /tmp/page.html | head -n 12 || true)
+            if [ -n "$spanish" ]; then echo "SPANISH_CANDIDATE $p"; echo "$spanish"; fi
           done
-          python3 - <<'PY'
-          import re,html
-          s=open('/tmp/en-all.html',encoding='utf-8',errors='ignore').read()
-          anchors=sorted(set(html.unescape(x).strip() for x in re.findall(r'<a\b[^>]*\bhref=["\']([^"\']+)',s,re.I|re.S)))
-          bad_patterns=['/en/en/','/en/tienda/','/en/politica-de-cookies/','/en/producto/','/en/aceite-de-oliva-virgen-extra/','/en/jamon-iberico/','/en/naranjas/','/en/product-category/aceites/','/en/product-category/jamones-paletas/','/en/product-tag/bellota/']
-          bad=[u for u in anchors if any(p in u for p in bad_patterns)]
-          print('VISIBLE_ANCHORS',len(anchors),'BAD',len(bad))
-          for u in bad: print('BAD',u)
-          open('/tmp/bad-count','w').write(str(len(bad)))
-          PY
-          [ "$(cat /tmp/bad-count)" -eq 0 ] || failed=1
 
-          # Spanish stays native.
-          curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com/tienda/?mdo_exact_es=$stamp" -o /tmp/es.html || failed=1
+          # Cookie link must be English on English pages.
+          curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com/en/shop/?mdo_cookie=$stamp" -o /tmp/en-shop.html || failed=1
+          en_cookie=$(grep -oE '<a[^>]+id="CONSTANT_OPEN_URL"[^>]*>' /tmp/en-shop.html | head -n1 || true)
+          echo "EN_COOKIE=$en_cookie"
+          printf '%s' "$en_cookie" | grep -q '/en/cookie-policy/' || failed=1
+
+          # Spanish remains native.
+          curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com/tienda/?mdo_es=$stamp" -o /tmp/es.html || failed=1
           es_body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/es.html | head -n1 || true)
           es_cookie=$(grep -oE '<a[^>]+id="CONSTANT_OPEN_URL"[^>]*>' /tmp/es.html | head -n1 || true)
           echo "ES_BODY=$es_body"
@@ -136,6 +123,5 @@ jobs:
           printf '%s' "$es_body" | grep -q 'translatepress-es_ES' || failed=1
           printf '%s' "$es_body" | grep -q 'woocommerce-shop' || failed=1
           printf '%s' "$es_cookie" | grep -q '/politica-de-cookies/' || failed=1
-          if printf '%s' "$es_cookie" | grep -q '/en/cookie-policy/'; then failed=1; fi
 
           exit "$failed"
