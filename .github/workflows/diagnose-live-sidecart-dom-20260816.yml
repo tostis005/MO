@@ -1,0 +1,36 @@
+name: Diagnose live side cart DOM 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-live-sidecart-dom-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect real production mini-cart markup
+        run: |
+          python3 -m pip install -q beautifulsoup4
+          python3 - <<'PY'
+          import html,json,re,urllib.parse,urllib.request,http.cookiejar
+          from bs4 import BeautifulSoup
+          base='https://www.elmercadodeorigen.com'; product='/producto/aceite-de-oliva-virgen-extra-5l/'
+          cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj)); op.addheaders=[('User-Agent','MDO-Live-DOM-Diagnostic')]
+          b=op.open(base+product,timeout=45).read().decode('utf-8','replace')
+          m=re.search(r'data-product_variations="([^"]+)"',b); assert m
+          vs=json.loads(html.unescape(m.group(1))); v=next(x for x in vs if x.get('is_in_stock') and x.get('is_purchasable'))
+          q={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'}; q.update(v.get('attributes') or {})
+          op.open(urllib.request.Request(base+product,data=urllib.parse.urlencode(q).encode()),timeout=45).read()
+          for path in ['/contacto/','/en/contact/']:
+            page=op.open(base+path,timeout=45).read().decode('utf-8','replace')
+            soup=BeautifulSoup(page,'html.parser')
+            item=soup.select_one('.shop-cart-sidebar .woocommerce-mini-cart-item')
+            print('\n===== PATH',path,'=====')
+            assert item
+            print(item.prettify()[:14000])
+            print('DIRECT_CHILDREN=',[(getattr(c,'name',None),c.get('class') if getattr(c,'attrs',None) else None) for c in item.children if getattr(c,'name',None)])
+            for sel in ['.woocommerce-mini-cart-item__thumb','.woocommerce-mini-cart-item__info','.woocommerce-mini-cart-item__data','.mini_cart_item__name','.variation','.woocommerce-mini-cart-item__footer']:
+              el=item.select_one(sel); print(sel,'PARENT=',el.parent.get('class') if el and getattr(el.parent,'attrs',None) else None,'TAG=',el.name if el else None)
+          print('ORDER_CREATED=NO')
+          PY
