@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.236' );
-/* 0.10.236 unifica toolbar, ordenación y filtros móviles entre Tienda y productor. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.243' );
+/* 0.10.243 cierra la copia inglesa manual de UI generada también en runtime. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -157,6 +157,7 @@ $elmercado_modules = array(
 	'inc/catalog-filter-scroll-final-010234.php',
 	'inc/catalog-vendor-truth-final-010235.php',
 	'inc/producer-list-image-square-010242.php',
+	'inc/english-ui-copy-final-010243.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
