@@ -1,0 +1,77 @@
+name: Production English island verify 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-island-verify-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify English storefront URLs and Spanish isolation
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+
+          for path in /tienda/ /en/shop/ /en/cart/ /en/my-account/; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/page.html -w '%{http_code}' "https://www.elmercadodeorigen.com${path}?mdo_verify=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/page.html | head -n1 || true)
+            products=$( (grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' /tmp/page.html || true) | wc -l | tr -d ' ' )
+            echo "$path code=$code products=$products"
+            echo "$body"
+            [ "$code" = 200 ] || failed=1
+            if [ "$path" = "/tienda/" ]; then echo "$body" | grep -q 'translatepress-es_ES' || failed=1; fi
+            if [ "$path" = "/en/shop/" ]; then
+              echo "$body" | grep -q 'woocommerce-shop' || failed=1
+              echo "$body" | grep -q 'translatepress-en_US' || failed=1
+              [ "$products" -gt 0 ] || failed=1
+              cp /tmp/page.html /tmp/en-shop.html
+            fi
+          done
+
+          mapfile -t urls < <(grep -oE 'href="(https://www\.elmercadodeorigen\.com)?/en/product/[^"]+/"' /tmp/en-shop.html | sed -E 's/^href="|"$//g' | sed 's#^/#https://www.elmercadodeorigen.com/#' | sort -u | head -n 5)
+          echo "english_product_links=${#urls[@]}"
+          printf '%s\n' "${urls[@]}"
+          [ "${#urls[@]}" -gt 0 ] || failed=1
+
+          if grep -qE 'href="(https://www\.elmercadodeorigen\.com)?/(en/)?producto/' /tmp/en-shop.html; then
+            echo 'ERROR spanish product URL leaked into English shop'
+            failed=1
+          fi
+
+          for url in "${urls[@]}"; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/product.html -w '%{http_code}' "${url}?mdo_product_verify=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/product.html | head -n1 || true)
+            echo "product=$url code=$code"
+            echo "$body"
+            [ "$code" = 200 ] || failed=1
+            echo "$body" | grep -q 'single-product' || failed=1
+            echo "$body" | grep -q 'translatepress-en_US' || failed=1
+          done
+
+          echo '--- main navigation hrefs ---'
+          grep -oE '<nav[^>]*>.*</nav>' /tmp/en-shop.html | head -c 60000 > /tmp/nav.html || true
+          grep -oE 'href="[^"]+"' /tmp/nav.html | head -n 40 || true
+          if grep -qE 'href="(https://www\.elmercadodeorigen\.com)?/(tienda|carrito|finalizar-compra|mi-cuenta)/' /tmp/nav.html; then
+            echo 'ERROR Spanish core page URL leaked into English navigation'
+            failed=1
+          fi
+
+          legacy_headers=$(mktemp)
+          curl -ksS --max-time 20 -D "$legacy_headers" -o /dev/null "https://www.elmercadodeorigen.com/en/tienda/?mdo_legacy=$stamp" || true
+          legacy_code=$(awk 'toupper($1) ~ /^HTTP\// {code=$2} END{print code}' "$legacy_headers")
+          legacy_location=$(awk 'tolower($1)=="location:"{print $2; exit}' "$legacy_headers" | tr -d '\r')
+          echo "legacy_en_tienda code=$legacy_code location=$legacy_location"
+          [ "$legacy_code" = 301 ] || [ "$legacy_code" = 302 ] || failed=1
+          echo "$legacy_location" | grep -q '/en/shop/' || failed=1
+
+          exit "$failed"
