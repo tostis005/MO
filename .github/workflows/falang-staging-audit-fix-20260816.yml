@@ -109,7 +109,7 @@ jobs:
           echo '=== ROUTE CHECKS AFTER NORMALIZATION ==='
           base="${HOME_URL%/}"
           for path in / /tienda/ /shop/ /en/ /en/tienda/ /en/shop/; do
-            out="$(curl -k -sS -o /dev/null -w '%{http_code} %{url_effective} %{redirect_url}' --connect-timeout 10 --max-time 60 --max-redirs 0 "$base$path" || true)"
+            out="$(curl -k -sS -o /dev/null -w '%{http_code} %{url_effective} %{redirect_url}' --connect-timeout 5 --max-time 12 --max-redirs 0 "$base$path" || true)"
             printf '%-14s %s\n' "$path" "$out"
           done
           REMOTE
