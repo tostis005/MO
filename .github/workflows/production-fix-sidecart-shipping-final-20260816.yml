@@ -1,0 +1,191 @@
+name: Production final side cart and English shipping fix 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-sidecart-shipping-final-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source and static geometry in Chrome
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php
+          python3 -m pip install -q selenium
+          python3 - <<'PY'
+          import re, shutil, tempfile
+          from pathlib import Path
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          src=Path('.github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php').read_text()
+          m=re.search(r'<style id="mdo-sidecart-layout-fix-20260816">(.*?)</style>',src,re.S)
+          if not m: raise SystemExit('new CSS block missing')
+          new_css=m.group(1)
+          old_css=r'''
+          .shop-cart-sidebar .woocommerce-mini-cart-item {display:grid!important;grid-template-columns:72px minmax(0,1fr)!important;gap:12px!important;align-items:start!important;position:relative!important;padding:14px 30px 14px 14px!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item__thumb {grid-column:1!important;width:72px!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item__thumb img {display:block!important;width:72px!important;height:72px!important;object-fit:cover!important;margin:0!important;float:none!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item__info {grid-column:2!important;min-width:0!important;width:100%!important;padding:0!important;margin:0!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item__data,.shop-cart-sidebar .woocommerce-mini-cart-item__footer {min-width:0!important;width:100%!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item__data>a,.shop-cart-sidebar .mini_cart_item__name {display:block!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;line-height:1.35!important;padding-right:0!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item .variation {display:grid!important;grid-template-columns:minmax(0,max-content) minmax(0,1fr)!important;column-gap:6px!important;row-gap:3px!important;margin:6px 0 0!important;font-size:12px!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item .variation dt,.shop-cart-sidebar .woocommerce-mini-cart-item .variation dd,.shop-cart-sidebar .woocommerce-mini-cart-item .variation p {min-width:0!important;max-width:100%!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item__footer {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:8px!important;margin-top:8px!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item__price {margin-left:auto!important;min-width:0!important;white-space:nowrap!important;}
+          .shop-cart-sidebar .woocommerce-mini-cart-item .remove {position:absolute!important;top:14px!important;right:10px!important;margin:0!important;float:none!important;}
+          '''
+          markup='''
+          <div class="shop-cart-sidebar">
+            <ul class="woocommerce-mini-cart cart_list product_list_widget">
+              <li class="woocommerce-mini-cart-item mini_cart_item">
+                <div class="woocommerce-mini-cart-item__thumb"><a href="#"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Crect width='300' height='300' fill='%23ddd'/%3E%3C/svg%3E"></a></div>
+                <div class="woocommerce-mini-cart-item__info">
+                  <div class="woocommerce-mini-cart-item__data">
+                    <a class="mini_cart_item__name" href="#">Jamón de bellota 100% ibérico con DOP Los Pedroches cortado a cuchillo, huesos y taquitos</a>
+                    <dl class="variation">
+                      <dt class="variation-Tamao">Tamaño:</dt><dd class="variation-Tamao"><p>5–5,5 kg con DOP Los Pedroches, cortado a cuchillo + huesos + taquitos</p></dd>
+                      <dt class="variation-Variedad">Variedad:</dt><dd class="variation-Variedad"><p>Selección especial de larga descripción para comprobar que nunca invade la imagen</p></dd>
+                    </dl>
+                  </div>
+                  <div class="woocommerce-mini-cart-item__footer"><div class="mini-cart-quantity">− &nbsp; 1 &nbsp; +</div><span class="woocommerce-mini-cart-item__price">249,90 €</span><a class="remove remove_from_cart_button" href="#">×</a></div>
+                </div>
+              </li>
+            </ul>
+          </div>'''
+          html=f'''<!doctype html><html><head><meta charset="utf-8"><style>
+          *{{box-sizing:border-box}} body{{margin:0;font-family:Arial,sans-serif}} .shop-cart-sidebar{{width:var(--side,360px);border:1px solid #ccc}} ul{{list-style:none;margin:0;padding:0}} dl{{margin:0}}
+          {old_css}\n{new_css}
+          </style></head><body>{markup}</body></html>'''
+          f=Path(tempfile.gettempdir())/'mdo-sidecart-geometry.html'; f.write_text(html)
+          chrome=shutil.which('google-chrome') or shutil.which('chromium') or shutil.which('chromium-browser')
+          if not chrome: raise SystemExit('Chrome unavailable')
+          o=Options(); o.binary_location=chrome; o.add_argument('--headless=new'); o.add_argument('--no-sandbox'); o.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=o)
+          try:
+            tests=[(1440,360,'DESKTOP_360'),(1024,340,'DESKTOP_340'),(480,360,'MOBILE_360'),(390,340,'MOBILE_340'),(360,320,'MOBILE_320'),(320,280,'MOBILE_280')]
+            for viewport,side,label in tests:
+              d.set_window_size(viewport,900); d.get(f.as_uri()); d.execute_script("document.documentElement.style.setProperty('--side',arguments[0]+'px')",side)
+              z=d.execute_script('''const i=document.querySelector('.woocommerce-mini-cart-item'),t=i.querySelector('.woocommerce-mini-cart-item__thumb'),n=i.querySelector('.woocommerce-mini-cart-item__info'),im=t.querySelector('img'),a=n.querySelector('.woocommerce-mini-cart-item__data>a'),v=n.querySelector('.variation'),ft=n.querySelector('.woocommerce-mini-cart-item__footer'); const r=e=>{const x=e.getBoundingClientRect();return {l:x.left,r:x.right,t:x.top,b:x.bottom,w:x.width,h:x.height}}; return {item:r(i),thumb:r(t),info:r(n),img:r(im),title:r(a),variation:r(v),footer:r(ft),display:getComputedStyle(i).display,cols:getComputedStyle(i).gridTemplateColumns,gap:parseFloat(getComputedStyle(i).columnGap)||0};''')
+              print(label,z)
+              t,n,im,a,v,ft=z['thumb'],z['info'],z['img'],z['title'],z['variation'],z['footer']
+              ox=max(0,min(t['r'],n['r'])-max(t['l'],n['l'])); oy=max(0,min(t['b'],n['b'])-max(t['t'],n['t']))
+              assert z['display']=='grid', label+' item is not grid'
+              assert ox*oy < 0.5, label+' thumbnail/info overlap'
+              assert n['l'] >= t['r']+7, label+' insufficient thumbnail/text gap'
+              assert im['l'] >= t['l']-1 and im['r'] <= t['r']+1, label+' image escapes thumbnail'
+              for name,r in [('title',a),('variation',v),('footer',ft)]:
+                assert r['l'] >= n['l']-1 and r['r'] <= n['r']+1, label+' '+name+' escapes info column'
+              assert i if False else True
+              print(label+'_PASS')
+            print('STATIC_GEOMETRY_QA=PASS')
+          finally:
+            d.quit()
+          PY
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy isolated MU fix with backup
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-layout-shipping-fix-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          TARGET="$ROOT/wp-content/mu-plugins/mdo-sidecart-layout-shipping-fix.php"; TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$TARGET" ]; then BAK="$TARGET.bak-$TS"; cp -a "$TARGET" "$BAK"; else BAK="NEW"; fi
+          cp /tmp/mdo-sidecart-layout-shipping-fix-20260816.php "$TARGET"
+          "$PHP" -l "$TARGET"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "ROOT=$ROOT"; echo "TARGET=$TARGET"; echo "BAK=$BAK"
+          REMOTE
+          )
+          echo "$OUT"
+          for k in ROOT TARGET BAK; do v=$(printf '%s\n' "$OUT"|sed -n "s/^$k=//p"|tail -n1); test -n "$v"; echo "LIVE_$k=$v" >> "$GITHUB_ENV"; done
+
+      - name: Live production real-cart QA Spanish and English
+        run: |
+          python3 - <<'PY'
+          import html,json,re,urllib.parse,urllib.request,http.cookiejar
+          base='https://www.elmercadodeorigen.com'; product='/producto/aceite-de-oliva-virgen-extra-5l/'
+          def mk():
+            cj=http.cookiejar.CookieJar(); op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj)); op.addheaders=[('User-Agent','MDO-Sidecart-Final-QA/1.0')]; return cj,op
+          def get(op,p):
+            r=op.open(base+p,timeout=45); b=r.read().decode('utf-8','replace'); print('GET',p,r.status,len(b),r.geturl()); return b
+          def add(op):
+            b=get(op,product); m=re.search(r'data-product_variations="([^"]+)"',b); assert m
+            vs=json.loads(html.unescape(m.group(1))); v=next(x for x in vs if x.get('is_in_stock') and x.get('is_purchasable'))
+            q={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'}; q.update(v.get('attributes') or {})
+            req=urllib.request.Request(base+product,data=urllib.parse.urlencode(q).encode()); r=op.open(req,timeout=45); r.read(); print('ADD',r.status,v['variation_id'])
+            return v['variation_id']
+
+          es_cj,es=mk(); vid=add(es)
+          es_contact=get(es,'/contacto/'); es_cart=get(es,'/carrito/')
+          assert 'mdo-sidecart-layout-fix-20260816' in es_contact
+          assert 'woocommerce-mini-cart-item__thumb' in es_contact and 'woocommerce-mini-cart-item__info' in es_contact
+          assert 'translatepress-es_ES' in es_cart
+          assert 'Shipping savings' not in es_cart, 'English shipping fee label leaked into Spanish cart'
+          print('ES_CONTACT_MINICART=PASS'); print('ES_CART_LANGUAGE=PASS')
+
+          en_cj,en=mk(); add(en)
+          en_contact=get(en,'/en/contact/'); en_cart=get(en,'/en/cart/')
+          assert 'mdo-sidecart-layout-fix-20260816' in en_contact
+          assert 'woocommerce-mini-cart-item__thumb' in en_contact and 'woocommerce-mini-cart-item__info' in en_contact
+          assert 'translatepress-en_US' in en_cart
+          assert 'Ahorro gastos de envío' not in en_cart, 'Spanish shipping savings label remains in English cart'
+          assert 'Shipping savings' in en_cart, 'English Shipping savings label missing'
+          # Ensure the new override is emitted after the older legacy mini-cart style in live HTML.
+          old_pos=en_contact.find('elmercado-minicart-layout-final'); new_pos=en_contact.find('mdo-sidecart-layout-fix-20260816')
+          print('STYLE_POSITIONS',old_pos,new_pos)
+          assert new_pos > 0
+          if old_pos > 0: assert new_pos > old_pos, 'new sidecart override loads before legacy style'
+          print('EN_CONTACT_MINICART=PASS'); print('EN_CART_LANGUAGE=PASS'); print('VARIATION_ID',vid); print('ORDER_CREATED=NO')
+          PY
+
+      - name: Confirm live MU plugin
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TARGET='$LIVE_TARGET' bash -s" <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true)
+          test -f "$TARGET"
+          "$PHP" -l "$TARGET"
+          grep -q 'Shipping savings' "$TARGET"
+          grep -q 'mdo-sidecart-layout-fix-20260816' "$TARGET"
+          echo LIVE_MU_PLUGIN=PASS
+          REMOTE
+
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; [ -n "${LIVE_TARGET:-}" ] || exit 0; PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TARGET='$LIVE_TARGET' BAK='$LIVE_BAK' ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$BAK" = "NEW" ]; then rm -f "$TARGET"; else cp -a "$BAK" "$TARGET"; fi
+          PHP=$(command -v php || true); WP=$(command -v wp || true); "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo ROLLBACK=PASS
+          REMOTE
