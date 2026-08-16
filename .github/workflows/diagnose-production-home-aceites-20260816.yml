@@ -1,0 +1,74 @@
+name: Diagnose production Home Aceites 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-production-home-aceites-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect live Home and production taxonomy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo '=== PUBLIC HOME CATEGORY TEXT ==='
+          python3 - <<'PY'
+          import re,urllib.request,time
+          base='https://www.elmercadodeorigen.com/'
+          for url in [base, base+'?mdo_aceites_diag='+str(int(time.time()))]:
+              req=urllib.request.Request(url,headers={'User-Agent':'MDO-Aceites-Diagnostic'})
+              with urllib.request.urlopen(req,timeout=45) as r:
+                  html=r.read().decode('utf-8','replace')
+              print('URL',url,'HTTP',r.status,'LEN',len(html),'HAS_ACEITES',bool(re.search(r'>\s*Aceites\s*<',html,re.I)),'TRUTH_010226', 'data-emo-category-truth="010226"' in html)
+              cards=re.findall(r'<a class="emo-category-card"[^>]*>.*?<strong[^>]*>(.*?)</strong>.*?<small[^>]*>(.*?)</small>.*?</a>',html,re.S|re.I)
+              clean=lambda s:re.sub('<[^>]+>','',s).strip()
+              print('CARDS',[(clean(a),clean(b)) for a,b in cards])
+          PY
+
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$PHP" -d memory_limit=512M "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          echo "ROOT=$ROOT"
+          PREFIX=$("$PHP" "$WP" config get table_prefix --path="$ROOT" --allow-root 2>/dev/null)
+          echo "PREFIX=$PREFIX"
+          echo '=== ACEITE TERMS ==='
+          "$PHP" "$WP" db query --path="$ROOT" --allow-root --skip-column-names "SELECT t.term_id,t.name,t.slug,tt.parent,tt.count FROM ${PREFIX}terms t INNER JOIN ${PREFIX}term_taxonomy tt ON tt.term_id=t.term_id WHERE tt.taxonomy='product_cat' AND (LOWER(t.name) LIKE '%aceit%' OR LOWER(t.slug) LIKE '%aceit%') ORDER BY tt.parent,t.name;"
+          echo '=== ROOT PRODUCT CATEGORIES ==='
+          "$PHP" "$WP" db query --path="$ROOT" --allow-root --skip-column-names "SELECT t.term_id,t.name,t.slug,tt.parent,tt.count FROM ${PREFIX}terms t INNER JOIN ${PREFIX}term_taxonomy tt ON tt.term_id=t.term_id WHERE tt.taxonomy='product_cat' AND tt.parent=0 ORDER BY tt.count DESC,t.name;"
+          echo '=== PUBLISHED OIL PRODUCTS AND CATEGORIES ==='
+          "$PHP" "$WP" db query --path="$ROOT" --allow-root --skip-column-names "SELECT p.ID,p.post_title,p.post_author,t.term_id,t.name,t.slug,tt.parent FROM ${PREFIX}posts p LEFT JOIN ${PREFIX}term_relationships tr ON tr.object_id=p.ID LEFT JOIN ${PREFIX}term_taxonomy tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='product_cat' LEFT JOIN ${PREFIX}terms t ON t.term_id=tt.term_id WHERE p.post_type='product' AND p.post_status='publish' AND LOWER(p.post_title) LIKE '%aceite%' AND t.term_id IS NOT NULL ORDER BY p.ID,t.name;"
+          echo '=== THEME/VISIBLE COUNTS ==='
+          "$PHP" -d memory_limit=512M "$WP" eval --path="$ROOT" --allow-root '
+            echo "THEME=" . wp_get_theme()->get("Version") . "\n";
+            $terms=get_terms(["taxonomy"=>"product_cat","hide_empty"=>false]);
+            foreach($terms as $t){ if(stripos($t->name,"aceit")!==false){ echo "TERM {$t->term_id}|{$t->name}|slug={$t->slug}|parent={$t->parent}|persisted={$t->count}\n"; } }
+            if(function_exists("elmercado_catalog_visible_category_counts_010217")){
+              $c=elmercado_catalog_visible_category_counts_010217();
+              foreach($terms as $t){ if(stripos($t->name,"aceit")!==false){ echo "VISIBLE {$t->term_id}|{$t->name}|count=".($c[$t->term_id]??"missing")."\n"; } }
+            } else { echo "VISIBLE_COUNT_FUNCTION=MISSING\n"; }
+            if(function_exists("elmercado_home_category_output_html_010226")){
+              $h=elmercado_home_category_output_html_010226(); echo "HOME_RENDER_HAS_ACEITES=".(stripos($h,">Aceites<")!==false?"YES":"NO")."\n"; echo "HOME_RENDER_LEN=".strlen($h)."\n";
+            } else { echo "HOME_OUTPUT_FUNCTION=MISSING\n"; }
+          '
+          REMOTE
