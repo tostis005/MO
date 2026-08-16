@@ -1,0 +1,166 @@
+name: Dev Falang shop diagnostic 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dev-falang-shop-diagnostic-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      DEV_URL: https://dev.elmercadodeorigen.com
+    steps:
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Install Falang on dev and diagnose shop
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "RAW_PATH='${STAGING_REMOTE_PATH%/}' DEV_URL='$DEV_URL' bash -s" <<'REMOTE'
+          set -euo pipefail
+          raw="$RAW_PATH"
+          case "$raw" in */wp-content/*) WP_PATH="${raw%%/wp-content/*}";; */wp-content) WP_PATH="$(dirname "$raw")";; *) WP_PATH="$raw";; esac
+          if [ ! -f "$WP_PATH/wp-config.php" ]; then
+            cfg=$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1)
+            WP_PATH=$(dirname "$cfg")
+          fi
+          test -f "$WP_PATH/wp-config.php"
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=1024M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root "$@"; }
+          wplite(){ "$php_bin" -d memory_limit=256M -d display_errors=0 "$wp_bin" --path="$WP_PATH" --allow-root --skip-plugins --skip-themes "$@"; }
+
+          siteurl=$(wplite option get siteurl | sed 's#/$##')
+          echo "WP_PATH=$WP_PATH"
+          echo "SITEURL=$siteurl"
+          test "$siteurl" = "$DEV_URL"
+          case "$siteurl" in *www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) echo 'REFUSING PRODUCTION' >&2; exit 90;; esac
+
+          echo '=== DEV BACKUP ==='
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          backup_dir="$(dirname "$WP_PATH")/mdo-dev-backups"
+          mkdir -p "$backup_dir" /tmp/mdo-db-tools
+          ln -sf /usr/bin/mysqldump /tmp/mdo-db-tools/mariadb-dump
+          db_backup="$backup_dir/pre-falang-shop-$stamp.sql"
+          PATH="/tmp/mdo-db-tools:$PATH" wplite db export "$db_backup" --add-drop-table --quiet
+          gzip -f "$db_backup"
+          test -s "$db_backup.gz"
+          echo "DB_BACKUP=$db_backup.gz"
+
+          echo '=== BASELINE ==='
+          printf 'ACTIVE_I18N='; wplite option get active_plugins --format=json | grep -oE 'translatepress[^" ]*|falang[^" ]*' | tr '\n' ' ' || true; echo
+          prefix=$(wplite db prefix)
+          published=$(wplite db query "SELECT COUNT(*) FROM ${prefix}posts WHERE post_type='product' AND post_status='publish';" --skip-column-names)
+          echo "PUBLISHED_PRODUCTS=$published"
+          printf 'SHOP_BEFORE_HTTP='; curl -sS -L -o /tmp/shop-before.html -w '%{http_code}\n' --max-time 60 "$DEV_URL/tienda/"
+          before_markers=$(grep -oE '<li[^>]+class="[^"]*product[^"]*"' /tmp/shop-before.html | wc -l | tr -d ' ' || true)
+          echo "SHOP_BEFORE_PRODUCT_MARKERS=$before_markers"
+
+          echo '=== INSTALL FALANG (DEV ONLY) ==='
+          if ! wp plugin is-installed falang >/dev/null 2>&1; then
+            curl -fsSL --retry 3 -o /tmp/falang.zip https://downloads.wordpress.org/plugin/falang.1.4.4.zip
+            wp plugin install /tmp/falang.zip --force
+          fi
+          wp plugin deactivate translatepress-multilingual >/dev/null 2>&1 || true
+          wp plugin activate falang
+          wp plugin is-active falang
+          printf 'FALANG_VERSION='; wp plugin get falang --field=version
+
+          echo '=== FALANG SETTINGS/LANGUAGES ==='
+          wplite option get falang --format=json || true
+          cat >/tmp/mdo-falang-state.php <<'PHP'
+          <?php
+          echo 'HAS_FALANG_FUNC=' . (function_exists('Falang') ? 'yes' : 'no') . PHP_EOL;
+          echo 'LANG_TAX_EXISTS=' . (taxonomy_exists('language') ? 'yes' : 'no') . PHP_EOL;
+          if ( function_exists('Falang') ) {
+              try {
+                  $m = Falang()->get_model();
+                  $d = $m->get_default_language();
+                  echo 'FALANG_DEFAULT=' . ($d ? $d->slug.'|'.$d->locale.'|'.$d->name : 'none') . PHP_EOL;
+                  foreach ( $m->get_languages_list() as $l ) echo 'FALANG_LANG='.$l->slug.'|'.$l->locale.'|'.$l->name.PHP_EOL;
+              } catch ( Throwable $e ) { echo 'FALANG_MODEL_ERROR='.$e->getMessage().PHP_EOL; }
+          }
+          if ( taxonomy_exists('language') ) {
+              $ts=get_terms(['taxonomy'=>'language','hide_empty'=>false]);
+              if (!is_wp_error($ts)) foreach($ts as $t) echo 'LANG_TERM='.$t->term_id.'|'.$t->slug.'|'.$t->name.'|'.$t->count.PHP_EOL;
+          }
+          PHP
+          wp eval-file /tmp/mdo-falang-state.php
+
+          echo '=== SHOP WITH FALANG DEFAULT SETTINGS ==='
+          wp cache flush >/dev/null 2>&1 || true
+          printf 'SHOP_FALANG_HTTP='; curl -sS -L -o /tmp/shop-falang.html -w '%{http_code}\n' --max-time 60 "$DEV_URL/tienda/"
+          falang_markers=$(grep -oE '<li[^>]+class="[^"]*product[^"]*"' /tmp/shop-falang.html | wc -l | tr -d ' ' || true)
+          echo "SHOP_FALANG_PRODUCT_MARKERS=$falang_markers"
+
+          echo '=== ENABLE PRODUCT/TAXONOMY TRANSLATION LIKE TARGET CONFIG ==='
+          cat >/tmp/mdo-falang-product-config.php <<'PHP'
+          <?php
+          $o=get_option('falang',[]); if(!is_array($o))$o=[];
+          $o['default_language']='es_ES'; $o['show_slug']=false; $o['autodetect']=false; $o['frontend_ajax']=true; $o['delete_trans_on_uninstall']=false;
+          foreach(['post','page','product','nav_menu_item'] as $type){ if(!isset($o['post_type'][$type])||!is_array($o['post_type'][$type]))$o['post_type'][$type]=[]; $o['post_type'][$type]['translatable']=true; }
+          foreach(['category','post_tag','product_cat','product_tag'] as $tax){ if(!isset($o['taxonomy'][$tax])||!is_array($o['taxonomy'][$tax]))$o['taxonomy'][$tax]=[]; $o['taxonomy'][$tax]['translatable']=true; }
+          if(function_exists('wc_get_attribute_taxonomies')) foreach(wc_get_attribute_taxonomies() as $a){$tax=wc_attribute_taxonomy_name($a->attribute_name);if(!isset($o['taxonomy'][$tax])||!is_array($o['taxonomy'][$tax]))$o['taxonomy'][$tax]=[];$o['taxonomy'][$tax]['translatable']=true;}
+          update_option('falang',$o); update_option('WPLANG','es_ES'); update_option('need_flush',1);
+          echo 'CONFIG_SAVED=yes'.PHP_EOL;
+          PHP
+          wp eval-file /tmp/mdo-falang-product-config.php
+          wp cache flush >/dev/null 2>&1 || true
+          printf 'SHOP_CONFIGURED_HTTP='; curl -sS -L -o /tmp/shop-configured.html -w '%{http_code}\n' --max-time 60 "$DEV_URL/tienda/"
+          configured_markers=$(grep -oE '<li[^>]+class="[^"]*product[^"]*"' /tmp/shop-configured.html | wc -l | tr -d ' ' || true)
+          echo "SHOP_CONFIGURED_PRODUCT_MARKERS=$configured_markers"
+
+          echo '=== QUERY/TAXONOMY DIAGNOSTICS ==='
+          cat >/tmp/mdo-falang-product-truth.php <<'PHP'
+          <?php
+          global $wpdb;
+          $total=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product' AND post_status='publish'");
+          echo 'SQL_PUBLISHED='.$total.PHP_EOL;
+          echo 'LANG_TAX='.(taxonomy_exists('language')?'yes':'no').PHP_EOL;
+          if(taxonomy_exists('language')){
+            $terms=get_terms(['taxonomy'=>'language','hide_empty'=>false]);
+            if(!is_wp_error($terms)) foreach($terms as $t){
+              $ids=get_objects_in_term($t->term_id,'language');
+              echo 'LANG_OBJECTS='.$t->slug.'|'.(is_wp_error($ids)?'ERR':count($ids)).PHP_EOL;
+            }
+            $assigned=(int)$wpdb->get_var("SELECT COUNT(DISTINCT tr.object_id) FROM {$wpdb->term_relationships} tr JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id JOIN {$wpdb->posts} p ON p.ID=tr.object_id WHERE tt.taxonomy='language' AND p.post_type='product' AND p.post_status='publish'");
+            echo 'LANG_ASSIGNED_PRODUCTS='.$assigned.PHP_EOL;
+            echo 'LANG_UNASSIGNED_PRODUCTS='.max(0,$total-$assigned).PHP_EOL;
+          }
+          $q=new WP_Query(['post_type'=>'product','post_status'=>'publish','posts_per_page'=>12]);
+          echo 'WPQ_FOUND='.$q->found_posts.PHP_EOL;
+          echo 'WPQ_POST_COUNT='.$q->post_count.PHP_EOL;
+          $q2=new WP_Query(['post_type'=>'product','post_status'=>'publish','posts_per_page'=>12,'suppress_filters'=>true]);
+          echo 'WPQ_SUPPRESS_FOUND='.$q2->found_posts.PHP_EOL;
+          echo 'WPQ_SUPPRESS_COUNT='.$q2->post_count.PHP_EOL;
+          PHP
+          wp eval-file /tmp/mdo-falang-product-truth.php
+
+          echo '=== RELEVANT FALANG SOURCE HOOKS ==='
+          grep -RniE "pre_get_posts|posts_(where|join|clauses|results)|tax_query|parse_query|product_query|language" "$WP_PATH/wp-content/plugins/falang/src" "$WP_PATH/wp-content/plugins/falang/includes" 2>/dev/null | head -n 180 || true
+
+          echo '=== FINAL DEV STATE ==='
+          printf 'ACTIVE_I18N='; wplite option get active_plugins --format=json | grep -oE 'translatepress[^" ]*|falang[^" ]*' | tr '\n' ' ' || true; echo
+          echo 'PRODUCTION_UNTOUCHED_GUARD=passed'
+          REMOTE
