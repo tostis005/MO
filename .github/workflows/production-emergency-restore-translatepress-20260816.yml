@@ -1,0 +1,97 @@
+name: Production emergency restore TranslatePress 2026-08-16
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/production-emergency-restore-translatepress-20260816.yml'
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Restore known-good multilingual runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$STAGING_PASSWORD"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          test -n "$PROD_PATH"
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          wplite(){ "$php_bin" -d memory_limit=256M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root --skip-plugins --skip-themes "$@"; }
+          backup_dir="$(dirname "$PROD_PATH")/mdo-private-backups"
+          theme="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          sync_plugin="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
+
+          echo '=== CURRENT STATE ==='
+          wplite option get active_plugins --format=json | grep -oE 'translatepress[^" ]*|falang[^" ]*' || true
+
+          echo '=== LOCATE PRE-MIGRATION CODE BACKUP ==='
+          code_backup=$(find "$backup_dir" -maxdepth 1 -type f -name 'falang-migration-code-*.tgz' | sort | tail -n1)
+          test -s "$code_backup"
+          echo "CODE_BACKUP=$code_backup"
+          rm -rf /tmp/mdo-restore-code && mkdir -p /tmp/mdo-restore-code
+          tar -xzf "$code_backup" -C /tmp/mdo-restore-code
+          test -s /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/functions.php
+          test -s /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/inc/english-ui-copy-final-010243.php
+          test -s /tmp/mdo-restore-code/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-minimum-order.php
+
+          echo '=== DEACTIVATE FALANG ==='
+          wp plugin deactivate falang || true
+
+          echo '=== RESTORE PRE-MIGRATION CUSTOM CODE ==='
+          install -m 0644 /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/functions.php "$theme/functions.php"
+          install -m 0644 /tmp/mdo-restore-code/wp-content/themes/elmercadodeorigen-child/inc/english-ui-copy-final-010243.php "$theme/inc/english-ui-copy-final-010243.php"
+          install -m 0644 /tmp/mdo-restore-code/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-minimum-order.php "$sync_plugin/includes/class-mdo-minimum-order.php"
+          rm -f "$theme/inc/multilingual-ui-copy-010245.php" "$theme/inc/falang-switcher-010245.php"
+          "$php_bin" -l "$theme/functions.php"
+          "$php_bin" -l "$theme/inc/english-ui-copy-final-010243.php"
+          "$php_bin" -l "$sync_plugin/includes/class-mdo-minimum-order.php"
+
+          echo '=== RESTORE TRANSLATEPRESS PLUGIN FILES ==='
+          trp_dir="$PROD_PATH/wp-content/plugins/translatepress-multilingual"
+          if [ ! -d "$trp_dir" ]; then
+            trp_backup=$(find "$backup_dir" -maxdepth 1 -type d -name 'translatepress-multilingual-files-*' | sort | tail -n1)
+            test -n "$trp_backup"
+            cp -a "$trp_backup" "$trp_dir"
+          fi
+          test -s "$trp_dir/index.php" -o -s "$trp_dir/translatepress.php"
+          wp plugin activate translatepress-multilingual
+          wp plugin deactivate falang || true
+          wp rewrite flush --hard || true
+          wp cache flush || true
+
+          echo '=== PUBLIC VALIDATION ==='
+          printf 'ES_HOME='; curl -sS -o /tmp/es-home.html -w '%{http_code}\n' --max-time 60 https://www.elmercadodeorigen.com/
+          printf 'ES_SHOP='; curl -sS -o /tmp/es-shop.html -w '%{http_code}\n' --max-time 60 https://www.elmercadodeorigen.com/tienda/
+          printf 'EN_HOME='; curl -sS -o /tmp/en-home.html -w '%{http_code}\n' --max-time 60 https://www.elmercadodeorigen.com/en/
+          grep -qi 'trp-language-switcher' /tmp/es-home.html
+          if grep -qi 'elmercado-falang-switcher' /tmp/es-home.html /tmp/es-shop.html; then echo 'Falang switcher still present' >&2; exit 1; fi
+          product_count=$(grep -o 'class="[^"]*product[^"]*"' /tmp/es-shop.html | wc -l | tr -d ' ')
+          echo "SHOP_PRODUCT_MARKERS=$product_count"
+          echo 'TRANSLATEPRESS_ACTIVE=yes'
+          echo 'FALANG_ACTIVE=no'
+          REMOTE
