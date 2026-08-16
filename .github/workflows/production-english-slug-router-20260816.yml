@@ -55,28 +55,22 @@ jobs:
           <?php
           /**
            * El Mercado de Origen: English page slug compatibility layer.
-           * Keeps Spanish canonical objects/slugs untouched and maps /en/<translated-slug>/
-           * to the same WordPress page using Falang's stored _en_US_post_name metadata.
+           * Spanish objects/slugs are never modified. English aliases resolve to the
+           * existing objects using _en_US_post_name metadata.
            */
           if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-          function mdo_en_slug_request_context(): bool {
-              if ( empty( $_SERVER['REQUEST_URI'] ) ) { return false; }
+          function mdo_en_path_slug(): string {
+              if ( empty( $_SERVER['REQUEST_URI'] ) ) { return ''; }
               $path = wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
-              return is_string( $path ) && ( $path === '/en' || strpos( $path, '/en/' ) === 0 );
+              if ( ! is_string( $path ) || strpos( $path, '/en/' ) !== 0 ) { return ''; }
+              $relative = trim( substr( $path, 4 ), '/' );
+              if ( $relative === '' || strpos( $relative, '/' ) !== false ) { return ''; }
+              return sanitize_title( $relative );
           }
 
-          function mdo_en_slug_for_post( int $post_id ): string {
-              $slug = get_post_meta( $post_id, '_en_US_post_name', true );
-              $published = get_post_meta( $post_id, '_en_US_published', true );
-              if ( (string) $published !== '1' ) { return ''; }
-              return sanitize_title( (string) $slug );
-          }
-
-          add_filter( 'request', static function ( array $vars ): array {
-              if ( ! mdo_en_slug_request_context() || empty( $vars['pagename'] ) ) { return $vars; }
-              $requested = sanitize_title( basename( trim( (string) $vars['pagename'], '/' ) ) );
-              if ( $requested === '' ) { return $vars; }
+          function mdo_en_page_id_for_slug( string $slug ): int {
+              if ( $slug === '' ) { return 0; }
               $ids = get_posts( array(
                   'post_type'        => 'page',
                   'post_status'      => 'publish',
@@ -86,64 +80,63 @@ jobs:
                   'suppress_filters' => true,
                   'meta_query'       => array(
                       'relation' => 'AND',
-                      array( 'key' => '_en_US_post_name', 'value' => $requested, 'compare' => '=' ),
-                      array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
-                  ),
-              ) );
-              if ( count( $ids ) !== 1 ) { return $vars; }
-              $source_slug = get_post_field( 'post_name', (int) $ids[0] );
-              if ( is_string( $source_slug ) && $source_slug !== '' ) {
-                  $vars['pagename'] = $source_slug;
-              }
-              return $vars;
-          }, 1 );
-
-          add_filter( 'page_link', static function ( string $url, int $post_id ): string {
-              if ( ! mdo_en_slug_request_context() ) { return $url; }
-              $slug = mdo_en_slug_for_post( $post_id );
-              if ( $slug === '' ) { return $url; }
-              return home_url( user_trailingslashit( 'en/' . $slug ) );
-          }, PHP_INT_MAX, 2 );
-
-          add_filter( 'redirect_canonical', static function ( $redirect, $requested ) {
-              if ( ! mdo_en_slug_request_context() ) { return $redirect; }
-              $path = wp_parse_url( (string) $requested, PHP_URL_PATH );
-              $slug = is_string( $path ) ? sanitize_title( basename( trim( $path, '/' ) ) ) : '';
-              if ( $slug === '' ) { return $redirect; }
-              $ids = get_posts( array(
-                  'post_type'        => 'page',
-                  'post_status'      => 'publish',
-                  'posts_per_page'   => 1,
-                  'fields'           => 'ids',
-                  'no_found_rows'    => true,
-                  'suppress_filters' => true,
-                  'meta_query'       => array(
-                      'relation' => 'AND',
                       array( 'key' => '_en_US_post_name', 'value' => $slug, 'compare' => '=' ),
                       array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
                   ),
               ) );
-              return $ids ? false : $redirect;
+              return count( $ids ) === 1 ? (int) $ids[0] : 0;
+          }
+
+          add_action( 'parse_request', static function ( WP $wp ): void {
+              $slug = mdo_en_path_slug();
+              $page_id = mdo_en_page_id_for_slug( $slug );
+              if ( ! $page_id ) { return; }
+
+              $shop_id = (int) get_option( 'woocommerce_shop_page_id' );
+              unset( $wp->query_vars['error'], $wp->query_vars['name'], $wp->query_vars['pagename'], $wp->query_vars['page_id'], $wp->query_vars['attachment'] );
+
+              if ( $page_id === $shop_id ) {
+                  $wp->query_vars['post_type'] = 'product';
+                  return;
+              }
+
+              unset( $wp->query_vars['post_type'] );
+              $wp->query_vars['page_id'] = $page_id;
+          }, PHP_INT_MAX );
+
+          add_filter( 'page_link', static function ( string $url, int $post_id ): string {
+              if ( mdo_en_path_slug() === '' ) { return $url; }
+              $slug = get_post_meta( $post_id, '_en_US_post_name', true );
+              $published = get_post_meta( $post_id, '_en_US_published', true );
+              $slug = sanitize_title( (string) $slug );
+              if ( (string) $published !== '1' || $slug === '' ) { return $url; }
+              return home_url( user_trailingslashit( 'en/' . $slug ) );
           }, PHP_INT_MAX, 2 );
+
+          add_filter( 'redirect_canonical', static function ( $redirect ) {
+              return mdo_en_page_id_for_slug( mdo_en_path_slug() ) ? false : $redirect;
+          }, PHP_INT_MAX );
           PHP
           "$php_bin" -l "$TARGET"
           echo "DEPLOYED=$TARGET"
           REMOTE
-      - name: Verify Spanish shop remains intact and English shop resolves as WooCommerce shop
+      - name: Verify Spanish shop remains intact and English aliases resolve
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
+          failed=0
           for path in /tienda/ /en/shop/ /en/cart/ /en/checkout/ /en/my-account/; do
             url="https://www.elmercadodeorigen.com${path}?mdo_en_slug_verify=$(date +%s%N)"
-            code=$(curl -ksSL --max-time 35 -o /tmp/mdo-check.html -w '%{http_code}' "$url")
+            code=$(curl -ksSL --max-time 35 -o /tmp/mdo-check.html -w '%{http_code}' "$url" || true)
             body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/mdo-check.html | head -n1 || true)
             h1=$(grep -oE '<h1[^>]*>[^<]{0,120}</h1>' /tmp/mdo-check.html | head -n1 | sed -E 's/<[^>]+>//g' || true)
-            products=$(grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' /tmp/mdo-check.html | wc -l | tr -d ' ')
+            products=$( (grep -oE '<li[^>]+class="[^"]*\bproduct\b[^"]*"' /tmp/mdo-check.html || true) | wc -l | tr -d ' ' )
             echo "$path code=$code products=$products h1=$h1"
             echo "$body"
-            [ "$code" = 200 ] || exit 21
+            [ "$code" = 200 ] || failed=1
             if [ "$path" = "/tienda/" ] || [ "$path" = "/en/shop/" ]; then
-              echo "$body" | grep -q 'woocommerce-shop' || exit 22
-              [ "$products" -gt 0 ] || exit 23
+              echo "$body" | grep -q 'woocommerce-shop' || failed=1
+              [ "$products" -gt 0 ] || failed=1
             fi
           done
+          exit "$failed"
