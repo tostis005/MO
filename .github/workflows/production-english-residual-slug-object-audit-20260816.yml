@@ -1,0 +1,85 @@
+name: Production English residual slug object audit 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-residual-slug-object-audit-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect matching WordPress objects and translations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path missing}"
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $slugs=["politica-de-cookies","aceite-de-oliva-virgen-extra","jamon-iberico","naranjas"];
+            foreach($slugs as $slug){
+              echo "=== $slug ===".PHP_EOL;
+              foreach(["page","post","product"] as $type){
+                $p=get_page_by_path($slug,OBJECT,$type);
+                if($p){echo "POST type=$type id={$p->ID} status={$p->post_status} title={$p->post_title} en_slug=".get_post_meta($p->ID,"_en_US_post_name",true)." en_title=".wp_strip_all_tags((string)get_post_meta($p->ID,"_en_US_post_title",true))." en_pub=".get_post_meta($p->ID,"_en_US_published",true).PHP_EOL;}
+              }
+              foreach(["product_cat","product_tag","category","post_tag"] as $tax){
+                $t=get_term_by("slug",$slug,$tax);
+                if($t){echo "TERM tax=$tax id={$t->term_id} name={$t->name} en_slug=".get_term_meta($t->term_id,"_en_US_slug",true)." en_name=".get_term_meta($t->term_id,"_en_US_name",true)." en_pub=".get_term_meta($t->term_id,"_en_US_published",true).PHP_EOL;}
+              }
+            }
+          ' --path="$PROD_PATH" --allow-root 2>/dev/null
+          REMOTE
+
+      - name: Find source pages for residual visible anchors
+        shell: bash
+        run: |
+          set -u
+          python3 - <<'PY'
+          import re, html, urllib.request, ssl
+          ctx=ssl._create_unverified_context()
+          targets=['/en/politica-de-cookies/','/en/aceite-de-oliva-virgen-extra/','/en/jamon-iberico/','/en/naranjas/']
+          pages=['/en/','/en/shop/','/en/producers/','/en/journal/','/en/contact/','/en/product/100-iberian-acorn-fed-ham-black-tag/']
+          for p in pages:
+              try:
+                  src=urllib.request.urlopen('https://www.elmercadodeorigen.com'+p+'?mdo_residual=1',context=ctx,timeout=30).read().decode('utf-8','ignore')
+              except Exception as e:
+                  print('ERROR',p,e); continue
+              print('PAGE',p)
+              for t in targets:
+                  for m in re.finditer(r'<a\b[^>]*href=["\']'+re.escape(t)+r'["\'][^>]*>(.*?)</a>',src,re.I|re.S):
+                      txt=re.sub(r'<[^>]+>',' ',m.group(1)); txt=' '.join(html.unescape(txt).split())
+                      print('ANCHOR',t,'TEXT',txt[:300])
+          PY
