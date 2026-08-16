@@ -1,0 +1,47 @@
+name: Production minimum order config audit 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-minimum-order-config-audit-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect minimum-order implementation and configured suppliers
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          echo '=== MINIMUM ORDER FILES ==='
+          find "$ROOT/wp-content" -type f \( -iname '*minimum*order*.php' -o -iname '*minimum*.php' \) -print 2>/dev/null | head -n 40
+          echo '=== IMPLEMENTATION SIGNALS ==='
+          grep -RniE 'pedido mínimo|pedido minimo|minimum order|minimum_order|min_order|order_minimum|minimum_amount' "$ROOT/wp-content/plugins/mdo-supplier-sync" --include='*.php' 2>/dev/null | head -n 240 || true
+          echo '=== USER META POSSIBLE MINIMUMS ==='
+          "$PHP" "$WP" db query "SELECT user_id, meta_key, meta_value FROM $(\"$PHP\" \"$WP\" db prefix --path=\"$ROOT\" --allow-root)usermeta WHERE meta_key REGEXP 'minimum|min_order|pedido|minimo|mínimo' ORDER BY user_id, meta_key LIMIT 200" --path="$ROOT" --allow-root 2>/dev/null || true
+          echo '=== OPTIONS POSSIBLE MINIMUMS ==='
+          P=$("$PHP" "$WP" db prefix --path="$ROOT" --allow-root)
+          "$PHP" "$WP" db query "SELECT option_name, LEFT(option_value,500) AS value FROM ${P}options WHERE option_name REGEXP 'minimum|min_order|pedido|minimo' LIMIT 100" --path="$ROOT" --allow-root 2>/dev/null || true
+          REMOTE
