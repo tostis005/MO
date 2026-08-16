@@ -1,0 +1,101 @@
+name: Production English strict audit 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-english-strict-audit-20260816.yml']
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect production configuration and Spanish runtime sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$STAGING_PASSWORD"; PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "find /var/www/vhosts -maxdepth 7 -type f -path '*/httpdocs/wp-content/themes/elmercadodeorigen-child/functions.php' 2>/dev/null | head -n1 | sed 's#/wp-content/themes/elmercadodeorigen-child/functions.php##'")"
+          test -n "$PROD_PATH"
+          {
+            echo '# Production English strict audit — 2026-08-16'
+            echo
+            echo '## Production configuration'
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          echo 'SITEURL:'; wp option get siteurl || true
+          echo 'HOME:'; wp option get home || true
+          echo 'ACTIVE PLUGINS:'; wp plugin list --status=active --field=name || true
+          echo 'TRP SETTINGS:'; wp option get trp_settings --format=json 2>/dev/null || true
+          echo 'PAGES:'; wp post list --post_type=page --post_status=publish --fields=ID,post_title,post_name --format=csv 2>/dev/null || true
+          echo 'MINIMUM ORDER / SPANISH SOURCES:'
+          grep -RniE --include='*.php' --include='*.js' 'pedido m[ií]nimo|importe m[ií]nimo|te faltan|faltan .*€|mínimo|Enviar a|Enviará a|carrito|finalizar compra|Vendido por|Mostrando|Sin existencias|Oferta|Seleccionar opciones' "$PROD_PATH/wp-content/plugins" "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes/elmercadodeorigen-child" 2>/dev/null | head -n 500 || true
+          REMOTE
+          } > docs/production-english-strict-audit-20260816.md
+      - run: npm install --no-save puppeteer-core@24 >/dev/null
+      - name: Audit rendered English pages and transaction states
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ./strict-audit.mjs <<'JS'
+          import fs from 'node:fs';
+          import puppeteer from 'puppeteer-core';
+          const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
+          const p=await browser.newPage(); p.setDefaultTimeout(20000);
+          const suspicious=[
+            /\bCarrito\b/i,/Finalizar compra/i,/Añadir al carrito/i,/\bAñadir\b/i,/Seleccionar opciones/i,/Este producto tiene múltiples variantes/i,
+            /Mostrando/i,/\bFiltro\b/i,/Ordenar por/i,/Vendido por/i,/\bOferta\b/i,/Sin existencias/i,/Valorado con/i,/Leer más/i,
+            /Escribe para buscar/i,/Buscar productos/i,/Categorías del producto/i,/Etiquetas del producto/i,/Enviar a/i,/Enviará a/i,
+            /pedido mínimo/i,/importe mínimo/i,/te faltan/i,/faltan\s+[^\n]{0,50}€/i,/Tu pedido/i,/Detalles de facturación/i,/Realizar el pedido/i,
+            /Nombre/i,/Apellidos/i,/Dirección/i,/Provincia/i,/Código postal/i,/Teléfono/i,/Correo electrónico/i
+          ];
+          const out=[];
+          async function inspect(label,url){
+            try{
+              await p.goto(url+(url.includes('?')?'&':'?')+'strict_audit='+Date.now(),{waitUntil:'networkidle2',timeout:45000});
+              await new Promise(r=>setTimeout(r,1000));
+              const d=await p.evaluate(()=>({url:location.href,status:document.readyState,lang:document.documentElement.lang,title:document.title,text:(document.body?.innerText||'').replace(/\n{3,}/g,'\n\n').trim()}));
+              const lines=d.text.split('\n').map(s=>s.trim()).filter(Boolean);
+              const hits=[];
+              for(const line of lines){ if(suspicious.some(re=>re.test(line))) hits.push(line); }
+              out.push(`\n## ${label}\nURL: ${d.url}\nLANG: ${d.lang}\nTITLE: ${d.title}\n\n### Suspicious Spanish lines\n${hits.length?hits.slice(0,120).map(x=>'- '+x).join('\n'):'NONE'}\n\n### Visible text sample\n\`\`\`\n${d.text.slice(0,12000)}\n\`\`\``);
+            }catch(e){out.push(`\n## ${label}\nERROR: ${e.message}`)}
+          }
+          const base='https://www.elmercadodeorigen.com';
+          await inspect('EN HOME',base+'/en/');
+          await inspect('EN SHOP',base+'/en/tienda/');
+          await inspect('EN PRODUCERS',base+'/en/productores/');
+          await inspect('EN ABOUT',base+'/en/quienes-somos/');
+          await inspect('EN CONTACT',base+'/en/contacto/');
+          await inspect('EN TERMS',base+'/en/politica/');
+          await inspect('EN EMPTY CART',base+'/en/carrito/');
+          try{
+            await p.goto(base+'/en/product/carne-picada-extra/?strict_add='+Date.now(),{waitUntil:'networkidle2',timeout:45000});
+            const add=await p.$('form.cart button.single_add_to_cart_button,button.single_add_to_cart_button');
+            if(add){await add.click(); await new Promise(r=>setTimeout(r,2200));}
+          }catch(e){out.push(`\n## ADD PRODUCT\nERROR: ${e.message}`)}
+          await inspect('EN CART BELOW MINIMUM',base+'/en/carrito/');
+          await inspect('EN CHECKOUT BELOW MINIMUM',base+'/en/finalizar-compra/');
+          await inspect('ES CART SAME SESSION',base+'/carrito/');
+          fs.appendFileSync('docs/production-english-strict-audit-20260816.md','\n\n# Rendered audit\n'+out.join('\n'));
+          await browser.close();
+          JS
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./strict-audit.mjs
+      - name: Commit audit report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add docs/production-english-strict-audit-20260816.md
+          git commit -m 'Record strict production English audit 2026-08-16'
+          git push
