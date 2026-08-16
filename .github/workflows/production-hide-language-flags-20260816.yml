@@ -1,0 +1,98 @@
+name: Production hide language flags 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-hide-language-flags-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      PROD_URL: https://www.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate MU plugin
+        run: php -l mu-plugins/mdo-hide-language-flags.php
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy to production only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          remote_tmp="/tmp/mdo-hide-language-flags-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-hide-language-flags.php "$STAGING_USER@$STAGING_HOST:$remote_tmp"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_TMP='$remote_tmp' PROD_URL='$PROD_URL' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=512M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          wplite(){ "$php_bin" -d memory_limit=256M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root --skip-plugins --skip-themes "$@"; }
+
+          siteurl=$(wplite option get siteurl | sed 's#/$##')
+          echo "SITEURL=$siteurl"
+          case "$siteurl" in
+            https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ;;
+            *) echo 'REFUSING NON-PRODUCTION TARGET' >&2; exit 90;;
+          esac
+
+          target="$PROD_PATH/wp-content/mu-plugins/mdo-hide-language-flags.php"
+          mkdir -p "$(dirname "$target")"
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          if [ -f "$target" ]; then cp -a "$target" "$target.bak-$stamp"; fi
+          install -m 0644 "$REMOTE_TMP" "$target"
+          rm -f "$REMOTE_TMP"
+          "$php_bin" -l "$target"
+          wp cache flush >/dev/null 2>&1 || true
+
+          echo '=== MULTILINGUAL ENGINE UNCHANGED ==='
+          wp plugin get translatepress-multilingual --fields=name,status,version --format=table || true
+          wp plugin get falang --fields=name,status,version --format=table || true
+
+          echo '=== FRONTEND VERIFY ==='
+          for path in / /tienda/ /en/; do
+            code=$(curl -sS -L -o /tmp/mdo-page.html -w '%{http_code}' --max-time 60 "$PROD_URL$path")
+            echo "HTTP_${path//\//_}=$code"
+            test "$code" = 200
+            grep -q 'mdo-hide-language-flags-20260816' /tmp/mdo-page.html
+            grep -q '#trp-floater-ls' /tmp/mdo-page.html
+          done
+          echo 'FLAG_HIDE_MARKER=present'
+          REMOTE
