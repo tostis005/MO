@@ -434,6 +434,19 @@ body.home .emo-hero-vendor-fallback {
 		grid-column: 1 / -1 !important;
 		min-height: 185px !important;
 	}
+	/* Keep every producer name visible on mobile; legacy Home CSS hid captions after the first card. */
+	body.home .emo-hero__visual--vendors .emo-hero-card figcaption {
+		display: flex !important;
+		visibility: visible !important;
+		opacity: 1 !important;
+	}
+	body.home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
+		display: block !important;
+		visibility: visible !important;
+		opacity: 1 !important;
+		font-size: .78rem !important;
+		line-height: 1.15 !important;
+	}
 	body.home .emo-trust p { font-size: .9rem !important; }
 	body.home .emo-story__values p,
 	body.home .emo-vendor-cta p { font-size: .98rem !important; }

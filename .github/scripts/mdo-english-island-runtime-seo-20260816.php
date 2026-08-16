@@ -182,14 +182,39 @@ add_filter( 'woocommerce_short_description', static function ( $description ) {
 
 // Product-category and product-tag names/descriptions.
 add_filter( 'get_term', static function ( $term, $taxonomy ) {
-    if ( ! mdo_island_en_request() || ! $term instanceof WP_Term || ! in_array( $taxonomy, array( 'product_cat', 'product_tag' ), true ) ) { return $term; }
+    $is_english_product_taxonomy = in_array( $taxonomy, array( 'product_cat', 'product_tag' ), true ) || str_starts_with( (string) $taxonomy, 'pa_' );
+    if ( ! mdo_island_en_request() || ! $term instanceof WP_Term || ! $is_english_product_taxonomy ) { return $term; }
     $copy = clone $term;
     $name = (string) get_term_meta( $term->term_id, '_en_US_name', true );
     $desc = (string) get_term_meta( $term->term_id, '_en_US_description', true );
-    if ( $name !== '' ) { $copy->name = mdo_island_clean_title( $name ); }
+    if ( $name !== '' ) {
+        $clean = mdo_island_clean_title( $name );
+        if ( 'pa_curacion' === $taxonomy ) { $clean = (string) preg_replace( '/\bmeses\b/iu', 'months', $clean ); }
+        $copy->name = $clean;
+    }
     if ( $desc !== '' ) { $copy->description = $desc; }
     return $copy;
 }, PHP_INT_MAX, 2 );
+
+// WooCommerce variation labels are generated outside normal page copy; make them deterministic in English.
+add_filter( 'woocommerce_attribute_label', static function ( $label, $name, $product ) {
+    unset( $product );
+    if ( ! mdo_island_en_request() ) { return $label; }
+    $labels = array(
+        'pa_tamano'      => 'Size',
+        'pa_tipo-pieza'  => 'Cut',
+        'pa_calidad'     => 'Quality',
+        'pa_raza-iberica'=> 'Iberian breed',
+        'pa_alimentacion'=> 'Feeding',
+        'pa_con-dop'     => 'PDO',
+        'pa_origen'      => 'Origin',
+        'pa_preparacion' => 'Preparation',
+        'pa_rango-peso'  => 'Weight',
+        'pa_curacion'    => 'Curing',
+        'pa_productor'   => 'Producer',
+    );
+    return $labels[ (string) $name ] ?? $label;
+}, PHP_INT_MAX, 3 );
 
 add_filter( 'term_description', static function ( $description, $term_id, $taxonomy ) {
     if ( ! mdo_island_en_request() || ! in_array( $taxonomy, array( 'product_cat', 'product_tag' ), true ) ) { return $description; }
@@ -277,6 +302,17 @@ add_action( 'plugins_loaded', static function (): void {
             'Devolución fácil y sencilla' => 'Easy returns',
             'RESOLVEMOS TUS DUDAS' => "WE’RE HERE TO HELP",
             'Resolvemos tus dudas' => "We’re here to help",
+            'FORMATO:' => 'Format:',
+            'FORMATO' => 'Format',
+            'Tamaño:' => 'Size:',
+            'Loncheado a cuchillo en rectangular+huesos+taquitos' => 'Hand-sliced (rectangular packs) + bones + diced ham',
+            'Loncheado a cuchillo en redondo+huesos+taquitos' => 'Hand-sliced (round packs) + bones + diced ham',
+            'Loncheado a cuchillo+huesos+taquitos' => 'Hand-sliced + bones + diced ham',
+            'Loncheado a máquina+huesos+taquitos' => 'Machine-sliced + bones + diced ham',
+            'Cortado a cuchillo+huesos+taquitos' => 'Hand-sliced + bones + diced ham',
+            'Cortado a máquina+huesos+taquitos' => 'Machine-sliced + bones + diced ham',
+            'Pieza entera' => 'Whole piece',
+            'Deshuesado' => 'Boneless',
             '>Política de cookies<' => '>Cookie Policy<',
             '>Política de Cookies<' => '>Cookie Policy<',
             '>Política de privacidad<' => '>Privacy Policy<',
