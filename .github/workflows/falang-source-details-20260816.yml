@@ -1,0 +1,38 @@
+name: Falang exact migration internals 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/falang-source-details-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/falang.zip https://downloads.wordpress.org/plugin/falang.1.4.4.zip
+          unzip -q /tmp/falang.zip -d /tmp/falang-src
+      - name: Exact internals
+        run: |
+          set -euo pipefail
+          R=/tmp/falang-src/falang
+          {
+            echo '=== GET PREFIX ==='
+            grep -Rni "function get_prefix" "$R" | head -n 20 || true
+            f=$(grep -Rl "function get_prefix" "$R" | head -n1 || true); [ -n "$f" ] && sed -n '180,225p' "$f" || true
+            echo '=== ACTIVATOR DEFAULTS ==='
+            sed -n '20,210p' "$R/includes/class-falang-activator.php"
+            echo '=== MODEL LANGUAGES ==='
+            sed -n '180,370p' "$R/src/Falang/Model/Falang_Model.php"
+            echo '=== MODEL DEFAULT ==='
+            sed -n '590,630p' "$R/src/Falang/Model/Falang_Model.php"
+            echo '=== POST TRANSLATION ==='
+            sed -n '390,470p' "$R/src/Falang/Core/Post.php"
+            echo '=== API ==='
+            sed -n '1,115p' "$R/includes/api.php"
+          } | tee /tmp/details.txt
+          cat /tmp/details.txt >> "$GITHUB_STEP_SUMMARY"
