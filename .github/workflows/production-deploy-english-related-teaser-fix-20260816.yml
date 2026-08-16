@@ -1,0 +1,108 @@
+name: Production deploy English related teaser fix 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-deploy-english-related-teaser-fix-20260816.yml'
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint fix
+        run: php -l .github/scripts/mdo-english-related-teaser-fix-20260816.php
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Copy and deploy fix
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-english-related-teaser-fix-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-english-related-teaser-fix-20260816.php"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          DEST="$ROOT/wp-content/mu-plugins/mdo-english-related-teaser-fix.php"
+          TS=$(date +%Y%m%d%H%M%S)
+          [ ! -f "$DEST" ] || cp -a "$DEST" "$DEST.bak-$TS"
+          cp /tmp/mdo-english-related-teaser-fix-20260816.php "$DEST"
+          "$PHP" -l "$DEST"
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          REMOTE
+      - name: Verify visible English and live cart
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures,re,time,urllib.request,http.cookiejar
+          from html.parser import HTMLParser
+          base='https://www.elmercadodeorigen.com'; stamp=str(time.time_ns())
+          routes=['/en/','/en/shop/','/en/privacy-policy/','/en/cookie-policy/','/en/extra-virgin-olive-oil/','/en/iberian-ham/','/en/oranges/','/en/product-category/oils/','/en/product/extra-virgin-olive-oil-5l/','/en/product/100-iberian-acorn-fed-ham-black-tag/','/en/product/100-iberian-acorn-fed-sobrasada/','/en/store/hidalgo-de-la-jara/']
+          bad=['DEVOLUCIÓN FÁCIL','ENVÍOS EN','RESOLVEMOS TUS DUDAS','Política de cookies','Política de privacidad','aceite de oliva virgen extra es un zumo','recolección','NUESTROS JAMONES','NUESTRAS VARIEDADES','Gastos de envío','Jamón procedente','Elaborado a partir','Información nutricional media','INTRODUCCIÓN']
+          class Text(HTMLParser):
+            def __init__(self): super().__init__(); self.skip=0; self.parts=[]
+            def handle_starttag(self,tag,attrs):
+              if tag.lower() in {'script','style','noscript','template','svg'}: self.skip+=1
+            def handle_endtag(self,tag):
+              if tag.lower() in {'script','style','noscript','template','svg'} and self.skip: self.skip-=1
+            def handle_data(self,data):
+              if not self.skip and data.strip(): self.parts.append(data.strip())
+          def visible(html):
+            p=Text(); p.feed(html); return ' '.join(p.parts)
+          def get(path):
+            req=urllib.request.Request(base+path+'?mdo_final='+stamp,headers={'User-Agent':'MDO-Final-English/1.0'})
+            with urllib.request.urlopen(req,timeout=45) as r: return path,r.status,r.geturl(),r.read().decode('utf-8','replace')
+          fails=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            for fut in concurrent.futures.as_completed([ex.submit(get,p) for p in routes]):
+              try: path,status,final,html=fut.result()
+              except Exception as e: fails.append('REQUEST '+repr(e)); continue
+              txt=visible(html); hits=[x for x in bad if re.search(re.escape(x),txt,re.I)]
+              print(f'PAGE|{path}|HTTP={status}|VISIBLE_BAD={hits}')
+              if status!=200: fails.append('HTTP '+path)
+              body=re.search(r'<body[^>]*class=["\']([^"\']*)',html,re.I); classes=body.group(1) if body else ''
+              if 'translatepress-en_US' not in classes: fails.append('LANG '+path)
+              if hits: fails.append('VISIBLE '+path+' '+','.join(hits))
+              hrefs=dict(re.findall(r'<link[^>]+rel=["\']alternate["\'][^>]+hreflang=["\']([^"\']+)["\'][^>]+href=["\']([^"\']+)',html,re.I))
+              if not all(k in hrefs for k in ('es','en','x-default')): fails.append('HREFLANG '+path)
+              if hrefs.get('en') and '/en/' not in hrefs['en']: fails.append('HREFLANG_EN '+path)
+              if hrefs.get('es') and '/en/' in hrefs['es']: fails.append('HREFLANG_ES '+path)
+              can=re.findall(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              if can and '/en/' not in can[0]: fails.append('CANON '+path)
+          # Spanish shop safety.
+          p,status,final,es=get('/tienda/')
+          body=re.search(r'<body[^>]*class=["\']([^"\']*)',es,re.I); classes=body.group(1) if body else ''
+          print('SPANISH_SHOP|HTTP='+str(status)+'|CLASSES='+classes[:240])
+          if status!=200 or 'translatepress-es_ES' not in classes or 'woocommerce-shop' not in classes: fails.append('SPANISH_SHOP')
+          # Real English cart session with simple Hidalgo product 5348 (Lomito, shown as direct add-to-cart product in shop).
+          cj=http.cookiejar.CookieJar(); opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+          add=urllib.request.Request(base+'/en/?add-to-cart=5348&mdo_cart='+stamp,headers={'User-Agent':'MDO-Final-Cart/1.0','Referer':base+'/en/shop/'})
+          with opener.open(add,timeout=45) as r: r.read()
+          cart=urllib.request.Request(base+'/en/cart/?mdo_cart='+stamp,headers={'User-Agent':'MDO-Final-Cart/1.0'})
+          with opener.open(cart,timeout=45) as r:
+            cart_html=r.read().decode('utf-8','replace'); cart_status=r.status
+          cart_txt=visible(cart_html)
+          cart_bad=[x for x in ['pedido mínimo','importe mínimo','mínimo de compra','Gastos de envío','Añadir al carrito','No hay productos en el carrito','Tu carrito está vacío'] if re.search(re.escape(x),cart_txt,re.I)]
+          print('CART|HTTP='+str(cart_status)+'|BAD='+repr(cart_bad)+'|EMPTY='+str('Your cart is currently empty' in cart_txt)+'|MINIMUM_EN='+str(bool(re.search(r'\bminimum\b',cart_txt,re.I))))
+          print('CART_TEXT='+re.sub(r'\s+',' ',cart_txt)[:1800])
+          if cart_status!=200: fails.append('CART_HTTP')
+          if cart_bad: fails.append('CART_SPANISH')
+          if 'Your cart is currently empty' in cart_txt or 'There are no products in your cart' in cart_txt: fails.append('CART_EMPTY')
+          if fails:
+            print('FAILURES:'); [print(x) for x in fails]; raise SystemExit(1)
+          print('FINAL_ENGLISH_SITE_AUDIT=PASS')
+          PY
