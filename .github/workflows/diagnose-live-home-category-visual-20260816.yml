@@ -1,0 +1,41 @@
+name: Diagnose live Home category visual state 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-live-home-category-visual-20260816.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install selenium
+        run: python3 -m pip install -q selenium
+      - name: Inspect final browser DOM and geometry
+        run: |
+          python3 - <<'PY'
+          import shutil,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          base='https://www.elmercadodeorigen.com/'
+          chrome=shutil.which('google-chrome') or shutil.which('chromium')
+          o=Options();o.binary_location=chrome;o.add_argument('--headless=new');o.add_argument('--no-sandbox');o.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=o)
+          try:
+            for w,label in [(1366,'DESKTOP'),(390,'MOBILE')]:
+              d.set_window_size(w,1200)
+              d.get(base+'?mdo_visual_diag='+str(int(time.time())))
+              time.sleep(7)
+              z=d.execute_script('''
+                const cards=[...document.querySelectorAll('.emo-category-card')];
+                const R=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {text:(e.innerText||'').trim().replace(/\\s+/g,' '),l:r.left,r:r.right,t:r.top,b:r.bottom,w:r.width,h:r.height,display:s.display,visibility:s.visibility,opacity:s.opacity,position:s.position,overflow:s.overflow,z:s.zIndex};};
+                const grid=document.querySelector('.emo-category-grid');
+                const section=document.querySelector('.emo-categories');
+                return {url:location.href,title:document.title,bodyClass:document.body.className,cards:cards.map(R),grid:grid?R(grid):null,gridCols:grid?getComputedStyle(grid).gridTemplateColumns:null,gridOverflow:grid?getComputedStyle(grid).overflow:null,section:section?R(section):null,htmlHasAceites:document.documentElement.innerHTML.includes('>Aceites<'),hotfix:document.documentElement.innerHTML.includes('data-mdo-aceites-restored="20260816"')};
+              ''')
+              print(label,z)
+              ace=[c for c in z['cards'] if c['text'].lower().startswith('aceites')]
+              print(label+'_ACEITES_COUNT',len(ace))
+              if ace: print(label+'_ACEITES_RECT',ace[0])
+          finally:d.quit()
+          PY
