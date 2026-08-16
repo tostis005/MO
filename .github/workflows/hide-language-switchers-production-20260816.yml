@@ -61,10 +61,12 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
+          echo 'PRODUCTION_LOCATED=1'
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
 
           REMOTE_FILE="/tmp/mdo-hide-language-switchers-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/falang-switcher-010245.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+          echo 'PRODUCTION_UPLOAD_OK=1'
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE_FILE='$REMOTE_FILE' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -72,12 +74,16 @@ jobs:
           target="$theme/inc/falang-switcher-010245.php"
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          test -d "$theme"
-          test -f "$target"
-          cp -a "$target" "$target.before-hide-language-switchers-${GITHUB_RUN_ID}"
+          test -f "$theme/functions.php"
+          mkdir -p "$theme/inc"
+          if [ -f "$target" ]; then
+            cp -a "$target" "$target.before-hide-language-switchers-${GITHUB_RUN_ID}"
+          fi
           install -m 0644 "$REMOTE_FILE" "$target"
           "$php_bin" -l "$target" >/dev/null
+          grep -Fq 'elmercado-language-switchers-hidden-010246' "$target"
           rm -f "$REMOTE_FILE"
+          echo 'PRODUCTION_INSTALL_OK=1'
           REMOTE
 
       - name: Flush production cache
