@@ -1,0 +1,59 @@
+name: Production SEO Pack and Tolecarnes fast audit 2026-08-16
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/production-seo-pack-tolecarnes-fast-audit-20260816.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Fast inspect production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"; : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp(){ "$php_bin" -d memory_limit=768M -d display_errors=0 "$wp_bin" --path="$PROD_PATH" --allow-root "$@"; }
+          echo '=== TRANSLATEPRESS PLUGINS ==='
+          wp plugin list --fields=name,status,version --format=csv 2>/dev/null | grep -Ei 'translatepress|trp|multilingual' || true
+          echo '=== PLUGIN DIRS ==='
+          find "$PROD_PATH/wp-content/plugins" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | grep -Ei 'translate|trp|seo' | sort || true
+          echo '=== TRANSLATEPRESS ZIP/BACKUP FILES ==='
+          find "$PROD_PATH/wp-content" -maxdepth 4 -type f \( -iname '*translatepress*.zip' -o -iname '*translatepress*personal*' -o -iname '*translatepress*business*' -o -iname '*translatepress*developer*' \) -printf '%p\n' 2>/dev/null | head -n 80 || true
+          echo '=== TRANSLATEPRESS SEO/COKIE CODE ==='
+          grep -RniE --include='*.php' 'SEO Pack|seo[-_ ]pack|trp_language|language_cookie' "$PROD_PATH/wp-content/plugins/translatepress-multilingual" 2>/dev/null | head -n 120 || true
+          echo '=== TOLECARNES USERS/PRODUCTS ==='
+          wp eval '
+            $users=get_users(["search"=>"*tole*","search_columns"=>["user_login","display_name","user_nicename"]]);
+            foreach($users as $u){
+              echo "VENDOR ".$u->ID." | ".$u->display_name." | ".$u->user_login."\n";
+              $ids=get_posts(["post_type"=>"product","post_status"=>"publish","author"=>$u->ID,"posts_per_page"=>50,"fields"=>"ids","orderby"=>"ID","order"=>"DESC"]);
+              foreach($ids as $id){$p=wc_get_product($id); if(!$p)continue; echo $id." | ".$p->get_type()." | ".$p->get_name()." | price=".$p->get_price()." | regular=".$p->get_regular_price()." | slug=".get_post_field("post_name",$id)."\n";}
+            }
+          ' 2>/dev/null || true
+          echo '=== SUPPLIER MINIMUMS ==='
+          wp eval '
+            global $wpdb; if(!class_exists("MDO_Database")){echo "MDO unavailable\n";return;} $t=MDO_Database::table("suppliers"); $rows=$wpdb->get_results("SELECT id,name,vendor_user_id,minimum_order_amount FROM {$t} WHERE minimum_order_amount IS NOT NULL AND minimum_order_amount>0",ARRAY_A); foreach($rows as $r)echo implode(" | ",$r)."\n";
+          ' 2>/dev/null || true
+          echo '=== MACHINE TRANSLATION ==='
+          wp option get trp_machine_translation_settings --format=json 2>/dev/null || true
+          REMOTE
