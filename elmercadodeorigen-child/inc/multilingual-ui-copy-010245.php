@@ -5,7 +5,8 @@
  *
  * The translations here are human-authored and deterministic. Language
  * detection prefers the URL/referrer so WooCommerce AJAX requests keep the
- * language of the storefront that initiated them, then falls back to Falang.
+ * language of the storefront that initiated them, then falls back to Falang
+ * only once its runtime object is fully initialized.
  *
  * @package ElMercadoDeOrigen
  */
@@ -27,7 +28,8 @@ function elmercado_current_language_slug_010245(): string {
 		return strtolower( $matches[1] );
 	}
 
-	if ( function_exists( 'falang_current_language' ) ) {
+	global $falang_core;
+	if ( function_exists( 'falang_current_language' ) && isset( $falang_core ) && is_object( $falang_core ) ) {
 		$language = falang_current_language( 'slug' );
 		if ( is_string( $language ) && '' !== $language ) {
 			return strtolower( $language );
