@@ -1,0 +1,79 @@
+name: Production final Spanish buying QA 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-final-spanish-buying-qa-20260816.yml'
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated dev pool remains contained
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Check current server load
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'echo ===LOAD===; uptime; echo ===DEV===; ps -eo pid=,etimes=,pcpu=,pmem=,rss=,args= | awk '\''/php-fpm: pool dev\.elmercadodeorigen\.com/ {print}'\''; echo DEV_COUNT=$(pgrep -fc '\''^php-fpm: pool dev\.elmercadodeorigen\.com$'\'' || true)'
+      - name: Exercise Spanish cart and checkout without creating an order
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import http.cookiejar,json,re,time,urllib.parse,urllib.request
+          base='https://www.elmercadodeorigen.com'
+          jar=http.cookiejar.CookieJar()
+          opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+          opener.addheaders=[('User-Agent','MDO-Spanish-Buying-QA/1.0')]
+          def fetch(path,timeout=30):
+              t=time.monotonic()
+              with opener.open(base+path,timeout=timeout) as r:
+                  raw=r.read(); body=raw.decode('utf-8','replace'); sec=time.monotonic()-t
+                  print(path,'HTTP',r.status,'SEC',round(sec,3),'LEN',len(raw),'FINAL',r.geturl(),'COOKIES',len(list(jar)))
+                  return r.status,body,r.geturl()
+          def text(html):
+              return re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',html)).strip()
+
+          status,shop,_=fetch('/tienda/')
+          if status!=200 or 'woocommerce-shop' not in shop:
+              raise SystemExit('shop not healthy')
+          anchors=re.findall(r'<a\b[^>]*data-product_id=["\'](\d+)["\'][^>]*>',shop,re.I)
+          candidates=[]
+          for x in anchors:
+              if x not in candidates: candidates.append(x)
+          print('CANDIDATES',candidates[:12])
+          if not candidates: raise SystemExit('no add-to-cart candidates found')
+
+          chosen=None
+          for pid in candidates[:8]:
+              try:
+                  s,body,_=fetch('/tienda/?add-to-cart='+pid)
+                  notices=re.findall(r'<(?:div|ul)[^>]*class=["\'][^"\']*woocommerce-(?:error|message|info)[^"\']*["\'][^>]*>(.*?)</(?:div|ul)>',body,re.I|re.S)
+                  if notices: print('NOTICE',pid,[text(n)[:240] for n in notices[:2]])
+                  _,cart,_=fetch('/carrito/')
+                  # Woo classic cart contains a remove link with the concrete product id.
+                  if re.search(r'data-product_id=["\']'+re.escape(pid)+r'["\']',cart,re.I) or ('remove_item' in cart and 'cart-empty' not in cart):
+                      chosen=pid
+                      print('CART_ADD_QA=PASS product_id='+pid)
+                      break
+              except Exception as e:
+                  print('TRY_ERROR',pid,type(e).__name__,str(e))
+          if not chosen:
+              raise SystemExit('could not add any visible purchasable product to cart')
+
+          s,checkout,final=fetch('/finalizar-compra/')
+          if s!=200 or '/finalizar-compra/' not in urllib.parse.urlparse(final).path:
+              raise SystemExit('checkout redirected unexpectedly: '+final)
+          if not any(m in checkout for m in ['woocommerce-checkout','wc-block-checkout','checkout_coupon']):
+              raise SystemExit('checkout UI marker missing')
+          print('CHECKOUT_QA=PASS')
+          print('ORDER_CREATED=NO')
+          PY
