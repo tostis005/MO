@@ -181,7 +181,8 @@ final class MDO_Minimum_Order {
 			return strtolower( $matches[1] );
 		}
 
-		if ( function_exists( 'falang_current_language' ) ) {
+		global $falang_core;
+		if ( function_exists( 'falang_current_language' ) && isset( $falang_core ) && is_object( $falang_core ) ) {
 			$language = falang_current_language( 'slug' );
 			if ( is_string( $language ) && '' !== $language ) {
 				return strtolower( $language );
