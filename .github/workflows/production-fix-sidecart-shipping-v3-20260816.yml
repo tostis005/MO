@@ -1,0 +1,98 @@
+name: Production fix side cart and English shipping v3 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-sidecart-shipping-v3-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source
+        run: php -l .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php
+      - name: Install helpers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python3 -m pip install -q selenium
+      - name: Deploy isolated MU fix with backup
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; PORT="${STAGING_PORT:-22}"
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no .github/scripts/mdo-sidecart-layout-shipping-fix-20260816.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-sidecart-layout-shipping-fix-20260816.php"
+          OUT=$(sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac; done
+          : "${ROOT:?missing production}"; TARGET="$ROOT/wp-content/mu-plugins/mdo-sidecart-layout-shipping-fix.php"; TS=$(date +%Y%m%d%H%M%S)
+          if [ -f "$TARGET" ]; then BAK="$TARGET.bak-$TS"; cp -a "$TARGET" "$BAK"; else BAK="NEW"; fi
+          cp /tmp/mdo-sidecart-layout-shipping-fix-20260816.php "$TARGET"; "$PHP" -l "$TARGET"; "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1||true
+          echo "ROOT=$ROOT"; echo "TARGET=$TARGET"; echo "BAK=$BAK"
+          REMOTE
+          )
+          echo "$OUT"; for k in ROOT TARGET BAK; do v=$(printf '%s\n' "$OUT"|sed -n "s/^$k=//p"|tail -n1); test -n "$v"; echo "LIVE_$k=$v" >> "$GITHUB_ENV"; done
+      - name: Functional cart copy QA
+        run: |
+          python3 - <<'PY'
+          import html,json,re,urllib.parse,urllib.request,http.cookiejar
+          base='https://www.elmercadodeorigen.com'; product='/producto/aceite-de-oliva-virgen-extra-5l/'
+          def make():
+            cj=http.cookiejar.CookieJar(); o=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj)); o.addheaders=[('User-Agent','MDO-Sidecart-QA/3')]; return o
+          def add(o):
+            b=o.open(base+product,timeout=45).read().decode('utf-8','replace'); vs=json.loads(html.unescape(re.search(r'data-product_variations="([^"]+)"',b).group(1))); v=next(x for x in vs if x.get('is_in_stock') and x.get('is_purchasable')); d={'add-to-cart':'1056','product_id':'1056','variation_id':str(v['variation_id']),'quantity':'1'}; d.update(v.get('attributes') or {}); o.open(urllib.request.Request(base+product,data=urllib.parse.urlencode(d).encode()),timeout=45).read()
+          es=make(); add(es); ec=es.open(base+'/contacto/',timeout=45).read().decode('utf-8','replace'); eca=es.open(base+'/carrito/',timeout=45).read().decode('utf-8','replace')
+          assert 'mdo-sidecart-layout-fix-20260816' in ec and 'translatepress-es_ES' in eca and 'Shipping savings' not in eca
+          en=make(); add(en); nc=en.open(base+'/en/contact/',timeout=45).read().decode('utf-8','replace'); nca=en.open(base+'/en/cart/',timeout=45).read().decode('utf-8','replace')
+          assert 'mdo-sidecart-layout-fix-20260816' in nc and 'translatepress-en_US' in nca
+          assert 'Ahorro gastos de envío' not in nca and 'Shipping savings' in nca
+          print('FUNCTIONAL_QA=PASS'); print('ORDER_CREATED=NO')
+          PY
+      - name: Real browser side-cart geometry QA
+        run: |
+          python3 - <<'PY'
+          import shutil,time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.support.ui import WebDriverWait
+          base='https://www.elmercadodeorigen.com'; chrome=shutil.which('google-chrome') or shutil.which('chromium') or shutil.which('chromium-browser'); print('CHROME',chrome)
+          if not chrome: raise SystemExit('Chrome unavailable')
+          o=Options(); o.binary_location=chrome; o.add_argument('--headless=new'); o.add_argument('--no-sandbox'); o.add_argument('--disable-dev-shm-usage'); o.add_argument('--window-size=1440,1000')
+          d=webdriver.Chrome(options=o); w=WebDriverWait(d,35)
+          try:
+            d.get(base+'/producto/aceite-de-oliva-virgen-extra-5l/?browserqa=3')
+            w.until(lambda x:x.execute_script("return !!document.querySelector('form.variations_form[data-product_variations]')"))
+            result=d.execute_async_script('''const done=arguments[0];try{const f=document.querySelector('form.variations_form'),vs=JSON.parse(f.getAttribute('data-product_variations')),v=vs.find(x=>x.is_in_stock&&x.is_purchasable);if(!v){done({ok:false,e:'no variation'});return;}const q=new URLSearchParams({'add-to-cart':'1056','product_id':'1056','variation_id':String(v.variation_id),'quantity':'1'});Object.entries(v.attributes||{}).forEach(([k,val])=>q.set(k,val));fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:q.toString(),credentials:'same-origin'}).then(r=>r.text()).then(t=>done({ok:true,id:v.variation_id,len:t.length})).catch(e=>done({ok:false,e:String(e)}));}catch(e){done({ok:false,e:String(e)})}''')
+            print('BROWSER_ADD',result); assert result.get('ok')
+            def check(path,width,height,label):
+              d.set_window_size(width,height); d.get(base+path+'?geomqa='+str(time.time_ns()))
+              w.until(lambda x:x.execute_script("return !!document.querySelector('.shop-cart-sidebar .woocommerce-mini-cart-item__thumb')"))
+              z=d.execute_script('''const i=document.querySelector('.shop-cart-sidebar .woocommerce-mini-cart-item'),t=i.querySelector('.woocommerce-mini-cart-item__thumb'),n=i.querySelector('.woocommerce-mini-cart-item__info'),im=t.querySelector('img'),title=n.querySelector('.woocommerce-mini-cart-item__data>a'),variation=n.querySelector('.variation'),foot=n.querySelector('.woocommerce-mini-cart-item__footer');const r=e=>{const x=e.getBoundingClientRect();return {l:x.left,r:x.right,t:x.top,b:x.bottom,w:x.width,h:x.height}};return {item:r(i),thumb:r(t),info:r(n),img:r(im),title:r(title),variation:variation?r(variation):null,footer:foot?r(foot):null,display:getComputedStyle(i).display,gap:parseFloat(getComputedStyle(i).columnGap)||0};''')
+              print(label,z); t,n,im,ti=z['thumb'],z['info'],z['img'],z['title']; ox=max(0,min(t['r'],n['r'])-max(t['l'],n['l'])); oy=max(0,min(t['b'],n['b'])-max(t['t'],n['t']))
+              assert ox*oy < .5, label+' thumb/info overlap'; assert n['l'] >= t['r']+7, label+' image/text gap'; assert ti['l'] >= n['l']-1 and ti['r'] <= n['r']+1, label+' title overflow'; assert im['w'] <= t['w']+1, label+' image overflow'; assert z['display']=='grid'
+              for key in ('variation','footer'):
+                r=z[key]
+                if r: assert r['l'] >= n['l']-1 and r['r'] <= n['r']+1, label+' '+key+' overflow'
+              print(label+'_PASS')
+            for path,lang in [('/contacto/','ES'),('/en/contact/','EN')]: check(path,1440,1000,lang+'_DESKTOP'); check(path,390,844,lang+'_MOBILE')
+            d.get(base+'/en/cart/?browserqa=3'); w.until(lambda x:'Cart totals' in x.page_source); txt=d.find_element('tag name','body').text
+            assert 'Ahorro gastos de envío' not in txt and 'Shipping savings' in txt
+            print('BROWSER_CART_COPY=PASS'); print('SIDECART_GEOMETRY=PASS'); print('ORDER_CREATED=NO')
+          finally: d.quit()
+          PY
+      - name: Roll back on failure
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail; [ -n "${LIVE_TARGET:-}" ]||exit 0; PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TARGET='$LIVE_TARGET' BAK='$LIVE_BAK' ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail; if [ "$BAK" = "NEW" ]; then rm -f "$TARGET"; else cp -a "$BAK" "$TARGET"; fi; PHP=$(command -v php||true); WP=$(command -v wp||true); "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1||true; echo ROLLBACK=PASS
+          REMOTE
