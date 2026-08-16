@@ -1,0 +1,55 @@
+name: Production English cart diagnostic 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-english-cart-diagnostic-20260816.yml'
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect English cart and checkout with a real cart session
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html, http.cookiejar, json, re, time, urllib.parse, urllib.request
+          base='https://www.elmercadodeorigen.com'
+          jar=http.cookiejar.CookieJar()
+          opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+          opener.addheaders=[('User-Agent','MDO-English-Cart-Diagnostic/1.0')]
+          def req(path,data=None):
+              url=path if path.startswith('http') else base+path
+              payload=urllib.parse.urlencode(data).encode() if isinstance(data,dict) else data
+              t=time.monotonic(); r=opener.open(url,data=payload,timeout=30); raw=r.read(); sec=time.monotonic()-t
+              body=raw.decode('utf-8','replace')
+              print(('POST' if payload else 'GET'),urllib.parse.urlparse(url).path,'HTTP',r.status,'SEC',round(sec,3),'FINAL',r.geturl(),'LEN',len(raw))
+              return r.status,body,r.geturl()
+          def markers(label,body):
+              checks={
+                'translatepress_en':'translatepress-en_US' in body,
+                'cart_form':'woocommerce-cart-form' in body,
+                'cart_empty':'cart-empty' in body,
+                'wc_block_cart':'wc-block-cart' in body,
+                'checkout':'woocommerce-checkout' in body or 'wc-block-checkout' in body,
+                'shortcode_cart':'[woocommerce_cart]' in body,
+                'shortcode_checkout':'[woocommerce_checkout]' in body,
+                'spanish_empty':'Tu carrito está vacío' in body or 'No hay productos en el carrito' in body,
+                'english_empty':'Your cart is currently empty' in body or 'Your cart is empty' in body,
+              }
+              print(label,json.dumps(checks,ensure_ascii=False))
+              title=re.search(r'<title[^>]*>(.*?)</title>',body,re.I|re.S)
+              print(label+'_TITLE',html.unescape(re.sub('<[^>]+>',' ',title.group(1))).strip() if title else 'NONE')
+          for p in ['/en/cart/','/en/checkout/','/en/carrito/','/en/finalizar-compra/']:
+              try:
+                  s,b,u=req(p); markers('EMPTY_'+p,b)
+              except Exception as e: print('OPEN_ERROR',p,type(e).__name__,str(e))
+          # Add known purchasable production variation through the native product form.
+          data={'attribute_pa_tamano':'envase-de-5l-de-pet','attribute_pa_variedad':'sin-filtrar-de-martena-picual','add-to-cart':'1056','product_id':'1056','variation_id':'2486','quantity':'1'}
+          s,b,u=req('/producto/aceite-de-oliva-virgen-extra-5l/',data=data)
+          print('COOKIES',[(c.name,c.domain) for c in jar])
+          for p in ['/carrito/','/en/cart/','/en/checkout/']:
+              try:
+                  s,b,u=req(p); markers('FILLED_'+p,b)
+              except Exception as e: print('FILLED_ERROR',p,type(e).__name__,str(e))
+          PY
