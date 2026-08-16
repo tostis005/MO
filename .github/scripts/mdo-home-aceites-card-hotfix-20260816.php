@@ -1,8 +1,10 @@
 <?php
 /**
- * Temporary production guard: ensure the Spanish Home category grid includes Aceites.
- * Safe to keep when the newer theme category renderer is deployed: it becomes a no-op
- * as soon as an Aceites card already exists.
+ * Temporary production guard: ensure the Spanish Home category grid includes Aceites
+ * and keep all category cards directly visible on narrow screens.
+ *
+ * Safe to keep when the newer theme category renderer is deployed: the insertion
+ * becomes a no-op as soon as an Aceites card already exists.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -62,3 +64,39 @@ add_action( 'template_redirect', static function (): void {
         return substr_replace( $html, $section, $section_start, $section_end - $section_start );
     } );
 }, -4000 );
+
+/**
+ * On phones the historical Home CSS turns category cards into a horizontal rail.
+ * With three categories this leaves the third card entirely outside the viewport,
+ * so users reasonably perceive Aceites as missing. Use a compact vertical grid on
+ * narrow screens instead. Desktop/tablet layouts are untouched.
+ */
+add_action( 'wp_head', static function (): void {
+    if ( is_admin() || ! is_front_page() ) { return; }
+    ?>
+    <style id="mdo-home-category-mobile-visible-20260816">
+    @media (max-width: 640px) {
+        html body.home.elmercado-child-theme .emo-home .emo-categories .emo-category-grid {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 14px !important;
+            overflow: visible !important;
+            overflow-x: visible !important;
+            scroll-snap-type: none !important;
+            padding-right: 0 !important;
+        }
+        html body.home.elmercado-child-theme .emo-home .emo-categories .emo-category-grid > .emo-category-card {
+            display: flex !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            flex: none !important;
+            height: clamp(180px, 45vw, 260px) !important;
+            min-height: 180px !important;
+            aspect-ratio: auto !important;
+            scroll-snap-align: none !important;
+        }
+    }
+    </style>
+    <?php
+}, PHP_INT_MAX );
