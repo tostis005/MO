@@ -1,0 +1,31 @@
+name: Production cache layer diagnostic 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-cache-layer-diagnostic-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Inspect production response headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== NORMAL HEADERS ==='
+          curl -sSIL --max-time 30 https://www.elmercadodeorigen.com/ | sed -n '1,120p'
+          echo '=== CACHE-BUSTER HEADERS ==='
+          curl -sSIL --max-time 30 'https://www.elmercadodeorigen.com/?mdo_cache_diag=2026081601' | sed -n '1,120p'
+          echo '=== NORMAL BODY MARKERS ==='
+          curl -sSL --max-time 30 https://www.elmercadodeorigen.com/ -o /tmp/normal.html
+          grep -oiE 'mdo-hide-language-flags-20260816|trp-floater-ls|cache[^< ]*|cloudflare|nginx|varnish|litespeed' /tmp/normal.html | sort -u | head -n 80 || true
+          echo '=== FRESH BODY MARKERS ==='
+          curl -sSL --max-time 30 'https://www.elmercadodeorigen.com/?mdo_cache_diag=2026081601' -o /tmp/fresh.html
+          grep -oiE 'mdo-hide-language-flags-20260816|trp-floater-ls|cache[^< ]*|cloudflare|nginx|varnish|litespeed' /tmp/fresh.html | sort -u | head -n 80 || true
