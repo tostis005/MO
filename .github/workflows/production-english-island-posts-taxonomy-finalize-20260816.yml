@@ -1,0 +1,300 @@
+name: Production English island posts taxonomy finalize 2026-08-16
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-english-island-posts-taxonomy-finalize-20260816.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Add English post aliases and native taxonomy semantics
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          : "${wp_bin:?wp-cli not found}"
+          : "${php_bin:?php not found}"
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-english-slug-router.php"
+          test -f "$TARGET"
+          cp -a "$TARGET" "$TARGET.bak-posts-tax-final-$(date +%Y%m%d%H%M%S)"
+
+          if ! grep -q 'MDO_ENGLISH_ISLAND_POSTS_FINAL_V1' "$TARGET"; then
+          cat >> "$TARGET" <<'PHP'
+
+          /* MDO_ENGLISH_ISLAND_POSTS_FINAL_V1 */
+          function mdo_en_post_url( int $post_id ): string {
+              $slug = mdo_en_slug_for_post( $post_id );
+              return $slug === '' ? '' : mdo_en_root() . '/en/' . rawurlencode( $slug ) . '/';
+          }
+
+          function mdo_en_native_post_from_slug( string $slug ) {
+              $post = get_page_by_path( sanitize_title( $slug ), OBJECT, 'post' );
+              return ( $post instanceof WP_Post && $post->post_status === 'publish' ) ? $post : null;
+          }
+
+          /*
+           * Base router sets post_type=product so its custom catalogue loader stays
+           * active. Product taxonomy aliases must instead mirror native WC taxonomy
+           * semantics; the taxonomy query var alone is enough and prevents is_shop().
+           */
+          add_action( 'parse_request', static function ( WP $wp ): void {
+              if ( ! mdo_en_is_request() ) { return; }
+              $parts = mdo_en_segments();
+              if ( count( $parts ) === 2 ) {
+                  $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+                  if ( in_array( $taxonomy, array( 'product_cat', 'product_tag' ), true ) ) {
+                      $term = mdo_en_find_term_by_slug( $taxonomy, $parts[1] );
+                      if ( $term instanceof WP_Term ) {
+                          unset( $wp->query_vars['post_type'] );
+                      }
+                  }
+                  return;
+              }
+
+              if ( count( $parts ) !== 1 ) { return; }
+              $post_id = mdo_en_find_by_slug( 'post', $parts[0] );
+              if ( ! $post_id ) { return; }
+              foreach ( array( 'error', 'name', 'pagename', 'page_id', 'attachment', 'product', 'product_cat', 'product_tag', 'category_name' ) as $key ) {
+                  unset( $wp->query_vars[ $key ] );
+              }
+              $wp->query_vars['post_type'] = 'post';
+              $wp->query_vars['p'] = $post_id;
+          }, PHP_INT_MAX );
+
+          add_filter( 'post_link', static function ( string $url, WP_Post $post ): string {
+              if ( ! mdo_en_is_request() || $post->post_type !== 'post' ) { return $url; }
+              $translated = mdo_en_post_url( (int) $post->ID );
+              return $translated !== '' ? $translated : $url;
+          }, PHP_INT_MAX, 2 );
+
+          add_filter( 'redirect_canonical', static function ( $redirect ) {
+              if ( ! mdo_en_is_request() ) { return $redirect; }
+              $parts = mdo_en_segments();
+              if ( count( $parts ) === 1 && mdo_en_find_by_slug( 'post', $parts[0] ) ) { return false; }
+              return $redirect;
+          }, PHP_INT_MAX );
+
+          add_action( 'template_redirect', static function (): void {
+              if ( ! mdo_en_is_request() || is_admin() || wp_doing_ajax() ) { return; }
+              $parts = mdo_en_segments();
+              if ( count( $parts ) !== 1 || mdo_en_find_by_slug( 'post', $parts[0] ) ) { return; }
+              $native = mdo_en_native_post_from_slug( $parts[0] );
+              if ( ! $native ) { return; }
+              $target = mdo_en_post_url( (int) $native->ID );
+              if ( $target !== '' ) {
+                  wp_safe_redirect( $target, 301, 'MDO English post canonical' );
+                  exit;
+              }
+          }, 3 );
+
+          function mdo_en_canonical_anchor_url( string $url ): string {
+              if ( ! mdo_en_is_request() || $url === '' || strpos( $url, '#' ) === 0 ) { return $url; }
+              $root = mdo_en_root();
+              $root_host = strtolower( (string) wp_parse_url( $root, PHP_URL_HOST ) );
+              $host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+              if ( $host !== '' && $host !== $root_host ) { return $url; }
+              $path = (string) wp_parse_url( $url, PHP_URL_PATH );
+              $parts = array_values( array_filter( explode( '/', trim( $path, '/' ) ), 'strlen' ) );
+              if ( count( $parts ) !== 2 || strtolower( $parts[0] ) !== 'en' ) { return $url; }
+              $slug = sanitize_title( $parts[1] );
+              if ( $slug === '' ) { return $url; }
+
+              /* Already canonical English aliases stay untouched. */
+              if ( mdo_en_find_by_slug( 'page', $slug ) || mdo_en_find_by_slug( 'post', $slug ) ) { return $url; }
+
+              $target = '';
+              $native_page = mdo_en_native_page_from_slug( $slug );
+              if ( $native_page ) {
+                  $target = mdo_en_page_url( (int) $native_page->ID );
+              } else {
+                  $native_post = mdo_en_native_post_from_slug( $slug );
+                  if ( $native_post ) { $target = mdo_en_post_url( (int) $native_post->ID ); }
+              }
+              if ( $target === '' ) { return $url; }
+
+              $query = wp_parse_url( $url, PHP_URL_QUERY );
+              $fragment = wp_parse_url( $url, PHP_URL_FRAGMENT );
+              if ( is_string( $query ) && $query !== '' ) { $target .= '?' . $query; }
+              if ( is_string( $fragment ) && $fragment !== '' ) { $target .= '#' . $fragment; }
+              return $target;
+          }
+
+          /*
+           * Some footer/legal links are hard-coded markup rather than WP menu items.
+           * Rewrite only visible <a href> attributes on English front-end responses;
+           * never touch canonical/hreflang/link tags or Spanish output.
+           */
+          add_action( 'template_redirect', static function (): void {
+              if ( ! mdo_en_is_request() || is_admin() || wp_doing_ajax() || is_feed() ) { return; }
+              ob_start( static function ( string $html ): string {
+                  return preg_replace_callback(
+                      '#<a\b([^>]*?)\bhref=("|\')([^"\']+)(\2)([^>]*)>#i',
+                      static function ( array $m ): string {
+                          $rewritten = mdo_en_canonical_anchor_url( html_entity_decode( $m[3], ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+                          if ( $rewritten === $m[3] ) { return $m[0]; }
+                          return '<a' . $m[1] . 'href=' . $m[2] . esc_url( $rewritten ) . $m[4] . $m[5] . '>';
+                      },
+                      $html
+                  ) ?: $html;
+              } );
+          }, 100 );
+          PHP
+          fi
+
+          "$php_bin" -l "$TARGET"
+          echo "router_sha256=$(sha256sum "$TARGET" | awk '{print $1}')"
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $ids=get_posts(["post_type"=>"post","post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","suppress_filters"=>true]);
+            $ok=0;$missing=[];
+            foreach($ids as $id){
+              $slug=trim((string)get_post_meta($id,"_en_US_post_name",true));
+              $pub=(string)get_post_meta($id,"_en_US_published",true);
+              if($slug!==""&&$pub==="1"){$ok++;}else{$missing[]=$id;}
+            }
+            echo "published_posts=".count($ids)." english_published_aliases=$ok missing_alias_ids=".implode(",",array_slice($missing,0,30)).PHP_EOL;
+          ' --path="$PROD_PATH" --allow-root 2>/dev/null
+          REMOTE
+
+      - name: Verify taxonomy semantics, posts, anchors and Spanish safety
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          stamp=$(date +%s%N)
+
+          # Spanish storefront safety first.
+          es_code=$(curl -ksSL --max-time 35 -o /tmp/es.html -w '%{http_code}' "https://www.elmercadodeorigen.com/tienda/?mdo_final=$stamp" || true)
+          es_body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/es.html | head -n1 || true)
+          echo "SPANISH_SHOP code=$es_code $es_body"
+          [ "$es_code" = 200 ] || failed=1
+          printf '%s' "$es_body" | grep -q 'woocommerce-shop' || failed=1
+          printf '%s' "$es_body" | grep -q 'translatepress-es_ES' || failed=1
+
+          # English shop remains healthy.
+          en_code=$(curl -ksSL --max-time 35 -o /tmp/en-shop.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/shop/?mdo_final=$stamp" || true)
+          en_body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/en-shop.html | head -n1 || true)
+          echo "ENGLISH_SHOP code=$en_code $en_body"
+          [ "$en_code" = 200 ] || failed=1
+          printf '%s' "$en_body" | grep -q 'woocommerce-shop' || failed=1
+          printf '%s' "$en_body" | grep -q 'translatepress-en_US' || failed=1
+
+          # Taxonomy aliases should be genuine taxonomy archives, not the generic shop.
+          for path in /en/product-category/oils/ /en/product-tag/acorn-fed/; do
+            code=$(curl -ksSL --max-time 35 -o /tmp/tax.html -w '%{http_code}' "https://www.elmercadodeorigen.com${path}?mdo_tax_final=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/tax.html | head -n1 || true)
+            h1=$(python3 - <<'PY'
+          import re,html
+          s=open('/tmp/tax.html',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'<h1\b[^>]*>(.*?)</h1>',s,re.I|re.S)
+          print(' '.join(html.unescape(re.sub(r'<[^>]+>',' ',m.group(1))).split()) if m else '')
+          PY
+          )
+            echo "TAX $path code=$code h1=$h1 $body"
+            [ "$code" = 200 ] || failed=1
+            printf '%s' "$body" | grep -q 'translatepress-en_US' || failed=1
+            printf '%s' "$body" | grep -q 'woocommerce-shop' && { echo "ERROR taxonomy still marked woocommerce-shop"; failed=1; }
+          done
+
+          # Published English Journal aliases resolve directly; old Spanish aliases consolidate.
+          declare -A post_pairs=(
+            [aceite-de-oliva-virgen-extra]=extra-virgin-olive-oil
+            [jamon-iberico]=iberian-ham
+            [naranjas]=oranges
+          )
+          for old in "${!post_pairs[@]}"; do
+            new="${post_pairs[$old]}"
+            code=$(curl -ksSL --max-time 35 -o /tmp/post.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/${new}/?mdo_post_final=$stamp" || true)
+            body=$(grep -oE '<body[^>]*class="[^"]*"' /tmp/post.html | head -n1 || true)
+            echo "POST /en/$new/ code=$code $body"
+            [ "$code" = 200 ] || failed=1
+            printf '%s' "$body" | grep -q 'single-post' || failed=1
+            printf '%s' "$body" | grep -q 'translatepress-en_US' || failed=1
+
+            headers=$(mktemp)
+            curl -ksS --max-time 25 -D "$headers" -o /dev/null "https://www.elmercadodeorigen.com/en/${old}/?mdo_old_post=$stamp" || true
+            rcode=$(awk 'toupper($1) ~ /^HTTP\// {c=$2} END{print c}' "$headers")
+            loc=$(awk 'tolower($1)=="location:"{print $2; exit}' "$headers" | tr -d '\r')
+            echo "REDIRECT /en/$old/ code=$rcode location=$loc"
+            [ "$rcode" = 301 ] || [ "$rcode" = 302 ] || failed=1
+            printf '%s' "$loc" | grep -q "/en/${new}/" || failed=1
+          done
+
+          # Visible anchors across representative English pages must not leak known Spanish aliases.
+          : > /tmp/english-visible.html
+          pages=(
+            /en/
+            /en/shop/
+            /en/producers/
+            /en/journal/
+            /en/contact/
+            /en/product/100-iberian-acorn-fed-ham-black-tag/
+            /en/store/hidalgo-de-la-jara/
+            /en/product-category/oils/
+          )
+          for p in "${pages[@]}"; do
+            curl -ksSL --max-time 35 "https://www.elmercadodeorigen.com${p}?mdo_anchor_final=$stamp" >> /tmp/english-visible.html || failed=1
+          done
+          python3 - <<'PY'
+          import re, html
+          s=open('/tmp/english-visible.html',encoding='utf-8',errors='ignore').read()
+          anchors=[]
+          for m in re.finditer(r'<a\b[^>]*\bhref=["\']([^"\']+)',s,re.I|re.S):
+              anchors.append(html.unescape(m.group(1)).strip())
+          bad=[]
+          patterns=[
+              '/en/en/', '/en/tienda/', '/en/politica-de-cookies/',
+              '/en/aceite-de-oliva-virgen-extra/', '/en/jamon-iberico/', '/en/naranjas/',
+              '/en/product-category/aceites/', '/en/product-category/jamones-paletas/',
+              '/en/product-tag/bellota/', '/en/producto/'
+          ]
+          for u in sorted(set(anchors)):
+              if any(p in u for p in patterns): bad.append(u)
+          print('VISIBLE_ANCHORS',len(set(anchors)))
+          print('BAD_VISIBLE_ANCHORS',len(bad))
+          for u in bad: print('BAD',u)
+          open('/tmp/bad-count','w').write(str(len(bad)))
+          # Prove canonical targets are actually present.
+          must=['/en/cookie-policy/','/en/store/hidalgo-de-la-jara/','/en/product-category/oils/']
+          joined='\n'.join(anchors)
+          for x in must: print('CANONICAL_PRESENT',x, x in joined)
+          PY
+          [ "$(cat /tmp/bad-count)" -eq 0 ] || failed=1
+
+          exit "$failed"
