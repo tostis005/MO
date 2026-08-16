@@ -69,3 +69,4 @@ jobs:
           echo '=== SHOP TIMING ==='
           curl -k -sS --max-time 45 -A 'MDO-Cache-Shop-QA/1.0' -o /dev/null -w 'shop_http=%{http_code} shop_total=%{time_total} shop_start=%{time_starttransfer}\n' "https://www.elmercadodeorigen.com/tienda/?mdo_cache_qa=$(date +%s%N)"
           echo 'CACHE_QA=PASS'
+# Retry 2: integrity guard follows current Home structure rather than removed deferred CSS marker.
