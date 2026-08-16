@@ -57,6 +57,20 @@ function elmercado_manual_english_ui_map_010243(): array {
 		'Pago protegido durante todo el proceso' => 'Secure payment throughout the process',
 		'Información clara antes de confirmar' => 'Clear information before you confirm',
 		'Atención cercana si necesitas ayuda' => 'Personal support if you need help',
+		'Alimentación' => 'Feeding',
+		'Calidad' => 'Quality',
+		'Con DOP' => 'With PDO',
+		'Curación' => 'Curing',
+		'Denominación de origen' => 'Protected Designation of Origin',
+		'Origen' => 'Origin',
+		'Peso' => 'Weight',
+		'Preparación' => 'Preparation',
+		'Productor' => 'Producer',
+		'Raza ibérica' => 'Iberian breed',
+		'Tamaño' => 'Size',
+		'Tipo de pieza' => 'Piece type',
+		'Tipo de producto' => 'Product type',
+		'Variedad' => 'Variety',
 	);
 }
 
@@ -71,6 +85,37 @@ add_filter(
 	},
 	PHP_INT_MAX,
 	3
+);
+
+/*
+ * WooCommerce creates variation metadata labels from attribute taxonomies after
+ * the translated page has already been resolved. Translate those labels at the
+ * source so Cart, mini-cart and Checkout all receive the English label.
+ */
+add_filter(
+	'woocommerce_attribute_label',
+	static function ( string $label, string $name, $product ): string {
+		if ( ! elmercado_is_english_request_010243() ) {
+			return $label;
+		}
+		$map = elmercado_manual_english_ui_map_010243();
+		return $map[ $label ] ?? $label;
+	},
+	PHP_INT_MAX,
+	3
+);
+
+/*
+ * WCFM adds its product policy tab at priority 99 under wcfm_policies_tab.
+ * The storefront intentionally does not expose this tab in either language.
+ */
+add_filter(
+	'woocommerce_product_tabs',
+	static function ( array $tabs ): array {
+		unset( $tabs['wcfm_policies_tab'], $tabs['policies'] );
+		return $tabs;
+	},
+	PHP_INT_MAX
 );
 
 add_action(
