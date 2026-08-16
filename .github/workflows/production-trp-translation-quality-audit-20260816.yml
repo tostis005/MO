@@ -1,0 +1,61 @@
+name: Production TRP translation quality audit 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-trp-translation-quality-audit-20260816.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Compare original, Falang metadata and TranslatePress output
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          OPTS="-o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $OPTS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true)
+          [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          "$PHP" -d memory_limit=1024M "$WP" eval '
+            echo "trp_translate=".(function_exists("trp_translate")?"yes":"no").PHP_EOL;
+            echo "active=".implode(",",(array)get_option("active_plugins",[])).PHP_EOL;
+            function score_es($s){
+              $t=mb_strtolower(wp_strip_all_tags((string)$s),"UTF-8");
+              $dict=array_flip(["que","para","con","del","una","los","las","por","desde","hasta","nuestro","nuestra","nuestros","nuestras","este","esta","estos","estas","también","más","muy","producto","productos","pedido","pedidos","envío","envíos","aceite","jamón","jamones","paleta","paletas","naranjas","información","nutricional","introducción","privacidad","política","cerdo","cerdos","dehesa","elaborado","elaborada"]);
+              $ws=preg_split("/[^a-záéíóúüñ]+/u",$t,-1,PREG_SPLIT_NO_EMPTY); $n=0; foreach($ws as $w){if(isset($dict[$w]))$n++;} return $n;
+            }
+            foreach([3,3025,3327,3794,3699,1056,1599,1350,1356,1363,3948,3979,4160,4199,5045,5336,5343,5348,8624] as $id){
+              $p=get_post($id); if(!$p) continue;
+              foreach(["post_title"=>"title","post_excerpt"=>"excerpt","post_content"=>"content"] as $prop=>$label){
+                $orig=(string)$p->$prop; if($orig==="") continue;
+                $falang=(string)get_post_meta($id,"_en_US_".$prop,true);
+                $trp=function_exists("trp_translate") ? (string)trp_translate($orig,"en_US") : "";
+                echo "OBJ|$id|{$p->post_type}|$label|origlen=".strlen($orig)."|falen=".strlen($falang)."|trplen=".strlen($trp)."|origES=".score_es($orig)."|falES=".score_es($falang)."|trpES=".score_es($trp).PHP_EOL;
+                if($label!=="content" || $id==1056 || $id==3025){echo "TRP_SAMPLE|$id|$label|".mb_substr(preg_replace("/\\s+/u"," ",wp_strip_all_tags($trp)),0,900,"UTF-8").PHP_EOL;}
+              }
+            }
+            $term=get_term(16,"product_cat"); if($term){
+              $orig=(string)$term->description; $fal=(string)get_term_meta(16,"_en_US_description",true); $trp=function_exists("trp_translate")?(string)trp_translate($orig,"en_US"):"";
+              echo "TERM|16|origES=".score_es($orig)."|falES=".score_es($fal)."|trpES=".score_es($trp)."|origlen=".strlen($orig)."|falen=".strlen($fal)."|trplen=".strlen($trp).PHP_EOL;
+              echo "TERM_TRP_SAMPLE|".mb_substr(preg_replace("/\\s+/u"," ",wp_strip_all_tags($trp)),0,1200,"UTF-8").PHP_EOL;
+            }
+          ' --path="$ROOT" --allow-root 2>/dev/null
+          REMOTE
