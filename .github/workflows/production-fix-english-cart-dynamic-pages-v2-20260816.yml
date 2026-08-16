@@ -1,0 +1,85 @@
+name: Production verified English cart fix 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-english-cart-dynamic-pages-v2-20260816.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy runtime and keep rollback path
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SRC=".github/scripts/mdo-english-island-runtime-seo-20260816.php"; TMP="/tmp/mdo-en-runtime-${GITHUB_RUN_ID}.php"
+          sshpass -e scp -P "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$SRC" "$STAGING_USER@$STAGING_HOST:$TMP"
+          OUT=$(sshpass -e ssh -p "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "TMP='$TMP' bash -s" <<'REMOTE'
+          set -euo pipefail
+          WP=$(command -v wp || true); PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          F="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"; TS=$(date +%Y%m%d%H%M%S); B="$F.bak-woo-dynamic-v2-$TS"
+          cp -a "$F" "$B"; cp "$TMP" "$F"; rm -f "$TMP"; "$PHP" -l "$F"; "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "BACKUP=$B"; echo "TARGET=$F"
+          REMOTE
+          )
+          echo "$OUT"; echo "LIVE_BACKUP=$(printf '%s\n' "$OUT" | sed -n 's/^BACKUP=//p' | tail -n1)" >> "$GITHUB_ENV"; echo "LIVE_TARGET=$(printf '%s\n' "$OUT" | sed -n 's/^TARGET=//p' | tail -n1)" >> "$GITHUB_ENV"
+          sleep 4
+      - name: QA real English cart and checkout flow
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import http.cookiejar,time,urllib.parse,urllib.request
+          base='https://www.elmercadodeorigen.com'; jar=http.cookiejar.CookieJar(); opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar)); opener.addheaders=[('User-Agent','MDO-English-Cart-Fix-QA/2.0')]
+          def req(path,data=None,bust=False):
+              url=base+path
+              if bust: url += ('&' if '?' in url else '?')+'mdo_woo_fix='+str(time.time_ns())
+              payload=urllib.parse.urlencode(data).encode() if isinstance(data,dict) else data
+              t=time.monotonic(); r=opener.open(url,data=payload,timeout=45); raw=r.read(); body=raw.decode('utf-8','replace'); print(('POST' if payload else 'GET'),path,'HTTP',r.status,'SEC',round(time.monotonic()-t,3),'FINAL',r.geturl(),'LEN',len(raw)); return r.status,body,r.geturl()
+          failures=[]
+          # Check both a cache-busted and normal empty English cart. Main Woo empty-cart output has return-to-shop; mini-cart does not.
+          for bust in [True,False]:
+              s,h,u=req('/en/cart/',bust=bust)
+              if s!=200 or 'translatepress-en_US' not in h: failures.append('en-empty-http-lang')
+              if 'return-to-shop' not in h or not any(x in h for x in ['cart-empty','wc-empty-cart-message']): failures.append('en-empty-main-ui')
+              if 'Tu carrito está vacío' in h or 'No hay productos en el carrito' in h: failures.append('en-empty-spanish')
+          s,account,_=req('/en/my-account/',bust=True)
+          if s!=200 or 'translatepress-en_US' not in account or not any(x in account for x in ['woocommerce-form-login','woocommerce-MyAccount','woocommerce-account']): failures.append('en-account-ui')
+          data={'attribute_pa_tamano':'envase-de-5l-de-pet','attribute_pa_variedad':'sin-filtrar-de-martena-picual','add-to-cart':'1056','product_id':'1056','variation_id':'2486','quantity':'1'}
+          req('/producto/aceite-de-oliva-virgen-extra-5l/',data=data)
+          if not any(c.name=='woocommerce_items_in_cart' for c in jar): failures.append('cart-cookie')
+          s,es,_=req('/carrito/')
+          if s!=200 or 'translatepress-es_ES' not in es or 'woocommerce-cart-form' not in es: failures.append('es-cart-regression')
+          s,en,_=req('/en/cart/')
+          if s!=200 or 'translatepress-en_US' not in en or 'woocommerce-cart-form' not in en or 'cart_totals' not in en: failures.append('en-cart-filled')
+          s,co,final=req('/en/checkout/')
+          if s!=200 or urllib.parse.urlparse(final).path.rstrip('/')!='/en/checkout' or 'translatepress-en_US' not in co or not any(x in co for x in ['woocommerce-checkout','wc-block-checkout','woocommerce-billing-fields']): failures.append('en-checkout')
+          print('FAILURES',failures)
+          if failures: raise SystemExit(1)
+          print('ENGLISH_CART_FIX_QA=PASS'); print('ORDER_CREATED=NO')
+          PY
+      - name: Roll back if QA fails
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; test -n "${LIVE_BACKUP:-}"; test -n "${LIVE_TARGET:-}"
+          sshpass -e ssh -p "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "cp '$LIVE_BACKUP' '$LIVE_TARGET'"
+          echo ROLLBACK=PASS
