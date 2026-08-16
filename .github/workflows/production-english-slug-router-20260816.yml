@@ -126,7 +126,7 @@ jobs:
               return $ids ? false : $redirect;
           }, PHP_INT_MAX, 2 );
           PHP
-          php -l "$TARGET"
+          "$php_bin" -l "$TARGET"
           echo "DEPLOYED=$TARGET"
           REMOTE
       - name: Verify Spanish shop remains intact and English shop resolves as WooCommerce shop
