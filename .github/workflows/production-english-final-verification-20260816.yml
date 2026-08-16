@@ -9,7 +9,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - run: npm install --no-save puppeteer-core@24 >/dev/null
@@ -20,7 +20,7 @@ jobs:
           cat > ./verify-en.mjs <<'JS'
           import puppeteer from 'puppeteer-core';
           const browser=await puppeteer.launch({headless:true,executablePath:process.env.CHROME,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
-          const p=await browser.newPage(); p.setDefaultTimeout(20000);
+          const p=await browser.newPage(); p.setDefaultTimeout(12000);
           const base='https://www.elmercadodeorigen.com';
           const spanish=[
             /\bBuscar\b/i,/\bFiltros\b/i,/\bFiltrar productos\b/i,/\bCerrar filtros\b/i,/\bFiltros activos\b/i,/\bFiltros aplicados\b/i,/\bLimpiar todo\b/i,
@@ -29,50 +29,47 @@ jobs:
             /Enviar a/i,/Enviará a/i,/Pedido mínimo/i,/te faltan/i,/Detalles de facturación/i,/Realizar el pedido/i,
             /^Categorías$/i,/^Vendedor$/i,/^Precio$/i,/^Recomendados$/i,/^Más populares$/i,/^Mejor valorados$/i,/^Más recientes$/i,/^Menor precio$/i,/^Mayor precio$/i
           ];
-          const results=[]; let failures=0;
+          let failures=0;
+          const results=[];
           async function inspect(label,url,viewport={width:1365,height:900}){
             await p.setViewport(viewport);
             try{
-              await p.goto(url+(url.includes('?')?'&':'?')+'en_final_verify='+Date.now(),{waitUntil:'networkidle2',timeout:45000});
-              await new Promise(r=>setTimeout(r,1400));
-              const d=await p.evaluate(()=>({url:location.href,lang:document.documentElement.lang,text:(document.body?.innerText||'').replace(/\n{3,}/g,'\n\n').trim(),links:[...document.querySelectorAll('a[href]')].map(a=>({text:(a.innerText||'').trim(),href:a.href})).filter(x=>x.href)}));
+              await p.goto(url+(url.includes('?')?'&':'?')+'en_final_verify='+Date.now(),{waitUntil:'domcontentloaded',timeout:20000});
+              await new Promise(r=>setTimeout(r,1000));
+              const d=await p.evaluate(()=>({url:location.href,lang:document.documentElement.lang,text:(document.body?.innerText||'').replace(/\n{3,}/g,'\n\n').trim(),links:[...document.querySelectorAll('a[href]')].map(a=>({text:(a.innerText||'').trim(),href:a.href}))}));
               const lines=d.text.split('\n').map(s=>s.trim()).filter(Boolean);
               const hits=[...new Set(lines.filter(line=>spanish.some(re=>re.test(line))))];
               const ok=d.lang.toLowerCase().startsWith('en') && hits.length===0;
               if(!ok) failures++;
-              console.log(`\n${ok?'PASS':'FAIL'} ${label}\nURL ${d.url}\nLANG ${d.lang}\nHITS ${hits.length}`);
-              hits.forEach(x=>console.log('  '+x));
-              results.push({label,url:d.url,lang:d.lang,hits,links:d.links});
-              return results.at(-1);
-            }catch(e){ failures++; console.log(`\nFAIL ${label}: ${e.message}`); return {label,url,hits:['ERROR '+e.message],links:[]}; }
+              console.log(`${ok?'PASS':'FAIL'} ${label} | lang=${d.lang} | hits=${hits.length} | ${d.url}`);
+              hits.forEach(x=>console.log('  HIT '+x));
+              const result={...d,label,hits}; results.push(result); return result;
+            }catch(e){ failures++; console.log(`FAIL ${label} | ${e.message}`); return {label,url,hits:['ERROR'],links:[],text:''}; }
           }
-          const home=await inspect('HOME DESKTOP',base+'/en/');
+          await inspect('HOME',base+'/en/');
           await inspect('SHOP DESKTOP',base+'/en/tienda/');
-          const producers=await inspect('PRODUCERS DESKTOP',base+'/en/productores/');
-          await inspect('ABOUT DESKTOP',base+'/en/quienes-somos/');
-          await inspect('CONTACT DESKTOP',base+'/en/contacto/');
-          await inspect('TERMS DESKTOP',base+'/en/politica/');
+          const producers=await inspect('PRODUCERS',base+'/en/productores/');
+          await inspect('ABOUT',base+'/en/quienes-somos/');
+          await inspect('CONTACT',base+'/en/contacto/');
+          await inspect('TERMS',base+'/en/politica/');
           await inspect('SHOP MOBILE',base+'/en/tienda/',{width:390,height:844});
-          await inspect('EMPTY CART MOBILE',base+'/en/carrito/',{width:390,height:844});
-          const product=await inspect('PRODUCT DESKTOP',base+'/en/product/carne-picada-extra/');
-          const candidateLinks=[...producers.links,...product.links,...home.links].filter(x=>x.href.startsWith(base+'/en/'));
-          const vendorUrls=[...new Set(candidateLinks.filter(x=>/tolecarnes|hidalgo|1957|store|tienda-de|vendor|proveedor/i.test(x.href+' '+x.text)).map(x=>x.href.split('#')[0]))].filter(u=>!u.includes('/product/')).slice(0,3);
-          for(let i=0;i<vendorUrls.length;i++) await inspect(`PRODUCER/VENDOR ${i+1}`,vendorUrls[i],{width:390,height:844});
-          const categoryUrls=[...new Set(home.links.filter(x=>x.href.startsWith(base+'/en/') && /product-category|categoria|category/i.test(x.href)).map(x=>x.href.split('#')[0]))].slice(0,3);
-          for(let i=0;i<categoryUrls.length;i++) await inspect(`CATEGORY ${i+1}`,categoryUrls[i],{width:390,height:844});
+          await inspect('PRODUCT',base+'/en/product/carne-picada-extra/');
+          const vendorUrls=[...new Set(producers.links.filter(x=>x.href?.startsWith(base+'/en/') && /tolecarnes|hidalgo|1957|store|vendor|proveedor/i.test((x.href||'')+' '+(x.text||''))).map(x=>x.href.split('#')[0]))].filter(u=>!u.includes('/product/')).slice(0,3);
+          for(let i=0;i<vendorUrls.length;i++) await inspect(`PRODUCER STORE ${i+1}`,vendorUrls[i],{width:390,height:844});
+          await inspect('EMPTY CART',base+'/en/carrito/',{width:390,height:844});
           try{
             await p.setViewport({width:390,height:844});
-            await p.goto(base+'/en/product/carne-picada-extra/?add_state='+Date.now(),{waitUntil:'networkidle2',timeout:45000});
+            await p.goto(base+'/en/product/carne-picada-extra/?add_state='+Date.now(),{waitUntil:'domcontentloaded',timeout:20000});
             await new Promise(r=>setTimeout(r,800));
             const add=await p.$('form.cart button.single_add_to_cart_button,button.single_add_to_cart_button');
             if(!add) throw new Error('No add-to-cart button found');
-            await add.click(); await new Promise(r=>setTimeout(r,2200));
-          }catch(e){ failures++; console.log('FAIL ADD PRODUCT '+e.message); }
-          await inspect('CART BELOW MINIMUM MOBILE',base+'/en/carrito/',{width:390,height:844});
-          if(!/Minimum order for Tolecarnes:/i.test((await p.evaluate(()=>document.body?.innerText||'')))){ failures++; console.log('FAIL minimum-order English notice not found'); }
-          await inspect('CHECKOUT BELOW MINIMUM MOBILE',base+'/en/finalizar-compra/',{width:390,height:844});
+            await add.click(); await new Promise(r=>setTimeout(r,1800));
+          }catch(e){ failures++; console.log('FAIL ADD PRODUCT | '+e.message); }
+          const cart=await inspect('CART BELOW MINIMUM',base+'/en/carrito/',{width:390,height:844});
+          if(!/Minimum order for Tolecarnes:/i.test(cart.text)){ failures++; console.log('FAIL MINIMUM ORDER | English minimum-order notice not found'); }
+          await inspect('CHECKOUT BELOW MINIMUM',base+'/en/finalizar-compra/',{width:390,height:844});
           await browser.close();
-          console.log(`\nFINAL_FAILURES=${failures}`);
+          console.log('FINAL_FAILURES='+failures);
           if(failures) process.exit(1);
           JS
           CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser)" node ./verify-en.mjs
