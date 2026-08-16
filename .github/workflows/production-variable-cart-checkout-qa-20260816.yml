@@ -1,0 +1,106 @@
+name: Production variable cart checkout QA 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-variable-cart-checkout-qa-20260816.yml'
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise one real variable-product purchase flow without placing order
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html, http.cookiejar, json, re, time, urllib.parse, urllib.request
+
+          base='https://www.elmercadodeorigen.com'
+          jar=http.cookiejar.CookieJar()
+          opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+          opener.addheaders=[('User-Agent','MDO-Variable-Cart-QA/1.0')]
+
+          def req(path, data=None, timeout=30):
+              url = path if path.startswith('http') else base + path
+              payload = urllib.parse.urlencode(data).encode() if isinstance(data, dict) else data
+              t=time.monotonic()
+              r=opener.open(url,data=payload,timeout=timeout)
+              raw=r.read(); body=raw.decode('utf-8','replace'); sec=time.monotonic()-t
+              print(('POST' if payload else 'GET'), urllib.parse.urlparse(url).path, 'HTTP',r.status,'SEC',round(sec,3),'LEN',len(raw),'FINAL',r.geturl(),'COOKIES',[(c.name,c.domain) for c in jar])
+              return r.status,body,r.geturl()
+
+          status,shop,_=req('/tienda/')
+          if status != 200 or 'woocommerce-shop' not in shop:
+              raise SystemExit('shop unavailable')
+
+          # Discover visible product links. Prefer variable products with an add-to-cart id.
+          pairs=[]
+          for m in re.finditer(r'<a\b([^>]*)>',shop,re.I|re.S):
+              attrs=m.group(1)
+              pm=re.search(r'data-product_id=["\'](\d+)["\']',attrs,re.I)
+              hm=re.search(r'href=["\']([^"\']+)["\']',attrs,re.I)
+              if pm and hm:
+                  pair=(pm.group(1),html.unescape(hm.group(1)))
+                  if pair not in pairs: pairs.append(pair)
+          print('VISIBLE_PRODUCT_PAIRS',pairs[:12])
+          if not pairs:
+              raise SystemExit('no visible product links found')
+
+          chosen=None
+          for parent_id, link in pairs[:12]:
+              try:
+                  _,product_html,product_url=req(link)
+              except Exception as e:
+                  print('PRODUCT_OPEN_ERROR',parent_id,type(e).__name__,str(e)); continue
+
+              vm=re.search(r'data-product_variations=(?:"([^"]*)"|\'([^\']*)\')',product_html,re.I|re.S)
+              if not vm:
+                  print('NO_VARIATION_JSON',parent_id); continue
+              encoded=vm.group(1) if vm.group(1) is not None else vm.group(2)
+              try:
+                  variations=json.loads(html.unescape(encoded))
+              except Exception as e:
+                  print('VARIATION_JSON_ERROR',parent_id,type(e).__name__,str(e)); continue
+              if not isinstance(variations,list): continue
+
+              for v in variations:
+                  if not isinstance(v,dict): continue
+                  vid=int(v.get('variation_id') or 0)
+                  attrs=v.get('attributes') or {}
+                  if not vid or not isinstance(attrs,dict): continue
+                  if v.get('is_in_stock') is False or v.get('is_purchasable') is False: continue
+                  # A concrete variation must have non-empty selections for any concrete attrs.
+                  data={str(k):str(val) for k,val in attrs.items() if str(val) != ''}
+                  data.update({'add-to-cart':str(parent_id),'product_id':str(parent_id),'variation_id':str(vid),'quantity':'1'})
+                  try:
+                      _,after,_=req(product_url,data=data)
+                      _,cart,_=req('/carrito/')
+                  except Exception as e:
+                      print('ADD_ERROR',parent_id,vid,type(e).__name__,str(e)); continue
+
+                  cart_not_empty=('cart-empty' not in cart and ('woocommerce-cart-form' in cart or 'remove_item' in cart or 'wc-block-cart' in cart))
+                  if cart_not_empty:
+                      chosen=(parent_id,vid,data)
+                      print('CART_ADD_QA=PASS parent_id=%s variation_id=%s attrs=%s' % (parent_id,vid,json.dumps(attrs,ensure_ascii=False)))
+                      break
+                  notices=re.findall(r'<(?:div|ul)[^>]*class=["\'][^"\']*woocommerce-(?:error|message|info)[^"\']*["\'][^>]*>(.*?)</(?:div|ul)>',after,re.I|re.S)
+                  if notices:
+                      cleaned=[re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',n)).strip()[:250] for n in notices]
+                      print('ADD_NOTICE',parent_id,vid,cleaned[:2])
+              if chosen: break
+
+          if not chosen:
+              raise SystemExit('no in-stock purchasable variation could be added')
+
+          status,checkout,final=req('/finalizar-compra/')
+          path=urllib.parse.urlparse(final).path.rstrip('/')
+          if status != 200 or path != '/finalizar-compra':
+              raise SystemExit('checkout redirected unexpectedly to '+final)
+          markers=['woocommerce-checkout','wc-block-checkout','checkout_coupon','woocommerce-billing-fields']
+          if not any(x in checkout for x in markers):
+              raise SystemExit('checkout UI marker missing')
+          if 'translatepress-es_ES' not in checkout:
+              raise SystemExit('checkout is not Spanish')
+          print('CHECKOUT_QA=PASS')
+          print('ORDER_CREATED=NO')
+          PY
