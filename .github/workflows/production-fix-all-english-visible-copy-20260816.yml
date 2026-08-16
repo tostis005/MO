@@ -1,0 +1,208 @@
+name: Production fix all audited English visible copy 2026-08-16
+on:
+  push:
+    paths:
+      - '.github/workflows/production-fix-all-english-visible-copy-20260816.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch tracked English runtime so translated shortcodes execute
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/mdo-english-island-runtime-seo-20260816.php')
+          s=p.read_text()
+          old="$translated = mdo_island_post_meta( $post_id, 'post_content' );\n    return $translated !== '' ? $translated : $content;"
+          new="$translated = mdo_island_post_meta( $post_id, 'post_content' );\n    // Reviewed English page copy can contain functional shortcodes (for example Contact Form 7).\n    // This filter runs after WordPress' normal shortcode pass, so execute shortcodes in the reviewed copy here.\n    return $translated !== '' ? do_shortcode( $translated ) : $content;"
+          if new in s:
+              print('runtime already patched')
+          elif old in s:
+              p.write_text(s.replace(old,new,1))
+              print('runtime patched')
+          else:
+              raise SystemExit('runtime target block not found')
+          PY
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy runtime and cleanup data with backups
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          for f in \
+            .github/scripts/mdo-english-island-runtime-seo-20260816.php \
+            .github/scripts/mdo-english-final-visible-copy-20260816.php \
+            .github/scripts/fix-english-copy-residuals-20260816.php \
+            .github/scripts/fix-english-taxonomy-extra-20260816.php; do
+            sshpass -e scp -P "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$f" "$STAGING_USER@$STAGING_HOST:/tmp/$(basename "$f")"
+          done
+          OUT=$(sshpass -e ssh -p "$PORT" -o ConnectTimeout=15 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true); ROOT=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); u=$("$PHP" "$WP" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) ROOT="$p"; break;; esac
+          done
+          : "${ROOT:?missing production}"
+          TS=$(date +%Y%m%d%H%M%S)
+          RUNTIME="$ROOT/wp-content/mu-plugins/mdo-english-island-runtime-seo.php"
+          FINAL="$ROOT/wp-content/mu-plugins/mdo-english-final-visible-copy.php"
+          RUNTIME_BAK="$RUNTIME.bak-all-copy-$TS"; cp -a "$RUNTIME" "$RUNTIME_BAK"
+          if [ -f "$FINAL" ]; then FINAL_BAK="$FINAL.bak-all-copy-$TS"; cp -a "$FINAL" "$FINAL_BAK"; else FINAL_BAK="NEW"; fi
+          cp /tmp/mdo-english-island-runtime-seo-20260816.php "$RUNTIME"
+          cp /tmp/mdo-english-final-visible-copy-20260816.php "$FINAL"
+          "$PHP" -l "$RUNTIME"; "$PHP" -l "$FINAL"
+          MAIN_OUT=$("$PHP" -d memory_limit=512M /tmp/fix-english-copy-residuals-20260816.php "$ROOT")
+          echo "$MAIN_OUT"
+          MAIN_BAK=$(printf '%s\n' "$MAIN_OUT" | sed -n 's/^BACKUP=//p' | tail -n1)
+          EXTRA_OUT=$("$PHP" -d memory_limit=512M /tmp/fix-english-taxonomy-extra-20260816.php "$ROOT")
+          echo "$EXTRA_OUT"
+          EXTRA_BAK=$(printf '%s\n' "$EXTRA_OUT" | sed -n 's/^BACKUP=//p' | tail -n1)
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "ROOT=$ROOT"
+          echo "RUNTIME=$RUNTIME"
+          echo "RUNTIME_BAK=$RUNTIME_BAK"
+          echo "FINAL=$FINAL"
+          echo "FINAL_BAK=$FINAL_BAK"
+          echo "MAIN_BAK=$MAIN_BAK"
+          echo "EXTRA_BAK=$EXTRA_BAK"
+          REMOTE
+          )
+          echo "$OUT"
+          for k in ROOT RUNTIME RUNTIME_BAK FINAL FINAL_BAK MAIN_BAK EXTRA_BAK; do
+            v=$(printf '%s\n' "$OUT" | sed -n "s/^$k=//p" | tail -n1)
+            test -n "$v"
+            echo "LIVE_$k=$v" >> "$GITHUB_ENV"
+          done
+      - name: Validate source metadata translations in production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "ROOT='$LIVE_ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          cat >/tmp/mdo-final-source-qa.php <<'PHP'
+          <?php
+          ini_set('memory_limit','512M'); require getenv('ROOT').'/wp-load.php'; global $wpdb;
+          $fail=[];
+          $needles=[
+            'ENVÍO GRATIS EN VARIOS PRODUCTORES','ENVÍOS EN 24-48H','DEVOLUCIÓN FÁCIL Y SENCILLA','RESOLVEMOS TUS DUDAS',
+            'El plazo de preparación y envío es de varios días dependiendo de la demanda del momento',
+            'El resultado es una pieza de carne limpia, que se puede presentar en trozos',
+            'Ocupa menos espacio y se puede envasar al vacío de manera más eficaz',
+            'Constituyen el sistema utilizado en nuestro país para el reconocimiento de una calidad diferenciada',
+            'Al consumidor, fundamentalmente para garantizarle unas características específicas',
+            'El aceite de oliva virgen extra es un zumo 100% natural',
+            'El uso de sitio Web implica la aceptación de esta Política de Privacidad'
+          ];
+          $rows=$wpdb->get_results("SELECT post_id,meta_key,meta_value FROM {$wpdb->postmeta} WHERE meta_key IN ('_en_US_post_content','_en_US_post_excerpt') AND meta_value<>''");
+          foreach($rows as $r){ foreach($needles as $n){ if(strpos((string)$r->meta_value,$n)!==false) $fail[]="POST {$r->post_id} {$r->meta_key}: {$n}"; } }
+          $checks=[
+            ['product_tag','almendras','Almonds'],['product_tag','garbanzos','Chickpeas'],['product_tag','lentejas','Lentils'],['product_tag','miel','Honey'],
+            ['product_tag','codillo','Pork knuckle'],['product_tag','dop-los-pedroches','Los Pedroches PDO'],['product_tag','taco','Chunk'],['product_tag','virutas','Shavings'],
+            ['pa_tamano','bote-de-1kg','1 kg jar'],['pa_tamano','garbanzos-lentejas-y-almendras-ecologicas','Organic chickpeas, lentils and almonds'],
+            ['pa_variedad','martena-6-tradicional-6-sin-filtrar','Marteña (6 traditional, 6 unfiltered)'],['pa_peso','15kg-de-naranja-de-mesa','15 kg table oranges']
+          ];
+          foreach($checks as [$tax,$slug,$expected]){ $t=get_term_by('slug',$slug,$tax); if(!$t){$fail[]="missing {$tax}/{$slug}";continue;} $v=trim(html_entity_decode(wp_strip_all_tags((string)get_term_meta($t->term_id,'_en_US_name',true)),ENT_QUOTES|ENT_HTML5,'UTF-8')); if($v!==$expected)$fail[]="{$tax}/{$slug}: {$v}"; }
+          $oil=(string)get_post_meta(1220,'_en_US_post_content',true); if(strpos($oil,'Malaxation')===false || strpos($oil,'Extra virgin olive oil is a 100% natural juice')===false)$fail[]='oil English replacement missing';
+          $privacy=(string)get_post_meta(3,'_en_US_post_content',true); if(strpos($privacy,'Spanish Organic Law 3/2018')===false)$fail[]='privacy English replacement missing';
+          echo 'SOURCE_FAILURES='.wp_json_encode($fail,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          if($fail) exit(1); echo "SOURCE_TRANSLATION_QA=PASS\n";
+          PHP
+          ROOT="$ROOT" "$PHP" -d memory_limit=512M /tmp/mdo-final-source-qa.php
+          REMOTE
+      - name: Validate visible English pages and Spanish regression
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html,re,time,urllib.request
+          base='https://www.elmercadodeorigen.com'
+          op=urllib.request.build_opener(); op.addheaders=[('User-Agent','MDO-English-All-Copy-Final-QA/1.0')]
+          def get(path):
+              url=base+path+('?' if '?' not in path else '&')+'mdo_copyqa='+str(time.time_ns())
+              t=time.monotonic(); r=op.open(url,timeout=45); raw=r.read(); b=raw.decode('utf-8','replace'); print(path,r.status,round(time.monotonic()-t,3),len(raw),r.geturl()); return b
+          def visible(b):
+              s=re.sub(r'(?is)<script\b.*?</script>|<style\b.*?</style>|<noscript\b.*?</noscript>|<svg\b.*?</svg>|<head\b.*?</head>',' ',b)
+              s=re.sub(r'(?is)<!--.*?-->',' ',s); s=re.sub(r'(?s)<[^>]+>','\n',s); return html.unescape(re.sub(r'[ \t]+',' ',s))
+          fail=[]
+          checks={
+            '/en/store/1957/':['Categorías del producto','Etiquetas del producto'],
+            '/en/store/hidalgo-de-la-jara/':['Categorías del producto','Etiquetas del producto'],
+            '/en/product-category/hams-and-shoulders/':['Tipo de pieza','Calidad','Raza ibérica','Alimentación','Denominación de origen','Preparación','Curación'],
+            '/en/product-category/cured-meats/':['Tipo de producto','Raza ibérica','Alimentación','Preparación'],
+            '/en/product/extra-virgin-olive-oil-15-x-1l/':['El aceite de oliva virgen extra es un zumo','Cuando la aceituna llega a la almazara'],
+            '/en/product/100-iberian-acorn-fed-ham-black-tag/':['El plazo de preparación y envío','El resultado es una pieza de carne limpia','Ocupa menos espacio y se puede envasar','Constituyen el sistema utilizado en nuestro país'],
+            '/en/product/100-iberian-acorn-fed-shoulder-ham-black-tag/':['El resultado es una pieza de carne limpia','Ocupa menos espacio y se puede envasar','Constituyen el sistema utilizado en nuestro país'],
+            '/en/product/100-iberian-acorn-fed-pdo-los-pedroches-ham-black-tag/':['El plazo de preparación y envío','El resultado es una pieza de carne limpia','Constituyen el sistema utilizado en nuestro país'],
+          }
+          for path,forbidden in checks.items():
+              b=get(path); v=visible(b)
+              if 'translatepress-en_US' not in b: fail.append(path+':language')
+              for x in forbidden:
+                  if x in v: fail.append(path+':'+x)
+          for path in ['/en/contact/','/en/for-producers/']:
+              b=get(path); v=visible(b)
+              if '[contact-form-7' in v or 'Formulario de contacto' in v: fail.append(path+':raw-contact-shortcode')
+              if not any(x in b for x in ['wpcf7','contact-form','wpcf7-form']): fail.append(path+':form-not-rendered')
+          b=get('/en/privacy-policy/'); v=visible(b)
+          if 'Política de Privacidad' in v or 'El uso de sitio Web implica' in v: fail.append('privacy-spanish')
+          # Spanish source must remain Spanish.
+          es=get('/producto/aceite-de-oliva-virgen-extra-1l/'); esv=visible(es)
+          if 'translatepress-es_ES' not in es or 'El aceite de oliva virgen extra es un zumo 100% natural' not in esv: fail.append('spanish-product-regression')
+          es2=get('/politica-de-privacidad/'); es2v=visible(es2)
+          if 'El uso de sitio Web implica la aceptación de esta Política de Privacidad' not in es2v: fail.append('spanish-privacy-regression')
+          print('VISIBLE_FAILURES',fail)
+          if fail: raise SystemExit(1)
+          print('VISIBLE_TRANSLATION_QA=PASS')
+          print('ORDER_CREATED=NO')
+          PY
+      - name: Persist runtime source patch after successful QA
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/scripts/mdo-english-island-runtime-seo-20260816.php
+          if ! git diff --cached --quiet; then
+            git commit -m 'Execute reviewed English page shortcodes'
+            git push origin HEAD:main
+          fi
+      - name: Roll back production if validation fails
+        if: failure()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -p "$PORT" -o StrictHostKeyChecking=no "$STAGING_USER@$STAGING_HOST" "ROOT='$LIVE_ROOT' RUNTIME='$LIVE_RUNTIME' RUNTIME_BAK='$LIVE_RUNTIME_BAK' FINAL='$LIVE_FINAL' FINAL_BAK='$LIVE_FINAL_BAK' MAIN_BAK='$LIVE_MAIN_BAK' EXTRA_BAK='$LIVE_EXTRA_BAK' bash -s" <<'REMOTE'
+          set -euo pipefail
+          PHP=$(command -v php || true); [ -n "$PHP" ] || PHP=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=$(command -v wp || true)
+          [ -f "$RUNTIME_BAK" ] && cp "$RUNTIME_BAK" "$RUNTIME"
+          if [ "$FINAL_BAK" = 'NEW' ]; then rm -f "$FINAL"; elif [ -f "$FINAL_BAK" ]; then cp "$FINAL_BAK" "$FINAL"; fi
+          cat >/tmp/mdo-restore-en-copy.php <<'PHP'
+          <?php
+          ini_set('memory_limit','512M'); require getenv('ROOT').'/wp-load.php';
+          $main=getenv('MAIN_BAK'); if($main && is_file($main)){ $d=json_decode(file_get_contents($main),true); foreach(array_reverse($d['post_meta']??[]) as $x) update_post_meta((int)$x['post_id'],(string)$x['key'],(string)$x['value']); foreach(array_reverse($d['term_meta']??[]) as $x) update_term_meta((int)$x['term_id'],(string)$x['key'],(string)$x['value']); }
+          $extra=getenv('EXTRA_BAK'); if($extra && is_file($extra)){ $d=json_decode(file_get_contents($extra),true); foreach(array_reverse($d?:[]) as $x) update_term_meta((int)$x['term_id'],'_en_US_name',(string)$x['old']); }
+          echo "DATA_ROLLBACK=PASS\n";
+          PHP
+          ROOT="$ROOT" MAIN_BAK="$MAIN_BAK" EXTRA_BAK="$EXTRA_BAK" "$PHP" -d memory_limit=512M /tmp/mdo-restore-en-copy.php
+          "$PHP" "$WP" cache flush --path="$ROOT" --allow-root >/dev/null 2>&1 || true
+          echo "ROLLBACK=PASS"
+          REMOTE
