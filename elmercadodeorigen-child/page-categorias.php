@@ -10,6 +10,28 @@ get_header();
 $items = function_exists( 'elmercado_categories_hub_items_010257' )
 	? elmercado_categories_hub_items_010257()
 	: array();
+
+$editorial_summaries = array(
+	'jamones-paletas'      => 'Una categoría dedicada a jamones y paletas, con distintas curaciones, cortes y formatos que reflejan el carácter de cada origen y el saber hacer de sus productores.',
+	'embutidos-y-curados'  => 'Tradición, tiempo y materia prima se encuentran en una selección de embutidos y curados con diferentes estilos, curaciones y formas de elaboración.',
+	'aceites'              => 'Aceites de oliva con distintos perfiles, variedades y matices, una forma de descubrir cómo cambian el aroma y el sabor según su origen y elaboración.',
+	'carnes'               => 'Cortes y elaboraciones cárnicas con diferentes formatos y preparaciones, seleccionados para poner en valor la calidad de la materia prima y su procedencia.',
+	'packs-y-lotes'        => 'Selecciones que reúnen diferentes sabores y elaboraciones en una misma propuesta, pensadas para descubrir, compartir o regalar.',
+	'accesorios'           => 'Complementos pensados para servir, conservar y disfrutar mejor los productos, cuidando también los pequeños detalles alrededor de cada experiencia.',
+	'adobados'             => 'Preparaciones en las que especias, marinados y recetas tradicionales aportan carácter y una forma distinta de disfrutar cada corte.',
+	'mentta'               => 'Una selección organizada por familias y elaboraciones, con el origen y el productor como referencia en cada propuesta.',
+);
+
+foreach ( $items as &$item ) {
+	$slug = sanitize_title( (string) ( $item['slug'] ?? '' ) );
+	$name = trim( (string) ( $item['name'] ?? '' ) );
+	$item['summary'] = $editorial_summaries[ $slug ] ?? sprintf(
+		'Una categoría para descubrir distintas propuestas de %s, poniendo el foco en su origen, su elaboración y los productores que hay detrás.',
+		$name
+	);
+}
+unset( $item );
+
 $count = count( $items );
 ?>
 
@@ -18,7 +40,7 @@ $count = count( $items );
 		<div class="emo-categories-hub__hero-inner">
 			<span class="emo-kicker"><?php esc_html_e( 'Explora el mercado', 'elmercadodeorigen' ); ?></span>
 			<h1><?php esc_html_e( 'Todas las categorías', 'elmercadodeorigen' ); ?></h1>
-			<p><?php esc_html_e( 'Recorre la despensa por tipo de producto. Cada categoría muestra únicamente lo que está disponible para ti ahora mismo, con el productor y el origen siempre en primer plano.', 'elmercadodeorigen' ); ?></p>
+			<p><?php esc_html_e( 'Una forma sencilla y visual de recorrer El Mercado de Origen por familias, descubrir distintas elaboraciones y acercarte a cada categoría a través de su procedencia, su tradición y sus productores.', 'elmercadodeorigen' ); ?></p>
 			<span class="emo-categories-hub__stat">
 				<?php
 				echo esc_html(
@@ -38,7 +60,7 @@ $count = count( $items );
 				<span class="emo-kicker"><?php esc_html_e( 'Elige por familia', 'elmercadodeorigen' ); ?></span>
 				<h2 id="emo-categories-hub-title"><?php esc_html_e( 'Encuentra lo que buscas de un vistazo', 'elmercadodeorigen' ); ?></h2>
 			</div>
-			<p><?php esc_html_e( 'Las grandes familias aparecen primero y después sus categorías más concretas, para que puedas ir directamente al tipo de producto que te interesa.', 'elmercadodeorigen' ); ?></p>
+			<p><?php esc_html_e( 'Cada familia reúne sabores, elaboraciones y estilos propios para que puedas explorar el mercado de una forma clara, visual y sencilla.', 'elmercadodeorigen' ); ?></p>
 		</header>
 
 		<?php if ( $items ) : ?>
@@ -73,7 +95,7 @@ $count = count( $items );
 		<?php else : ?>
 			<div class="emo-categories-hub__empty">
 				<h2><?php esc_html_e( 'Estamos preparando nuevas categorías.', 'elmercadodeorigen' ); ?></h2>
-				<p><?php esc_html_e( 'Vuelve pronto para descubrir la selección disponible.', 'elmercadodeorigen' ); ?></p>
+				<p><?php esc_html_e( 'Vuelve pronto para descubrir nuevas selecciones y productores.', 'elmercadodeorigen' ); ?></p>
 			</div>
 		<?php endif; ?>
 	</section>
