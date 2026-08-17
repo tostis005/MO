@@ -6,9 +6,9 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 $source_id = 9;
 $draft_id = 10;
-$recipient = 'jose.fraga@gmail.com';
+$recipient = 'josefraga@onlinetic.es';
 $future_cta_url = home_url('/tienda/tolecarnes');
-$state_key = '_emdo_fluentcrm_tolecarnes_resend_test_20260817_1130';
+$state_key = '_emdo_fluentcrm_tolecarnes_resend_test_20260817_1135_onlinetic';
 
 function emdo_crm_final_abort($m){ fwrite(STDERR, 'EMDO_CRM_FINAL_ABORT: '.$m."\n"); exit(23); }
 
