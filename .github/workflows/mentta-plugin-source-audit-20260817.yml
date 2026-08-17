@@ -51,16 +51,16 @@ jobs:
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
-            FILE='$PROD_PATH/wp-content/plugins/mentta-marketplace/mentta-marketplace.php'
-            test -f \"\$FILE\"
-            echo '--- route registration ---'
-            sed -n '130,175p' \"\$FILE\"
-            echo '--- product query ---'
-            sed -n '400,515p' \"\$FILE\"
-            echo '--- product categories payload ---'
-            sed -n '630,715p' \"\$FILE\"
-            echo '--- categories endpoint ---'
-            sed -n '755,810p' \"\$FILE\"
+            MENTTA_FILE='$PROD_PATH/wp-content/plugins/mentta-marketplace/mentta-marketplace.php'
+            WC_DIR='$PROD_PATH/wp-content/plugins/woocommerce'
+            test -f \"\$MENTTA_FILE\"
+            test -d \"\$WC_DIR\"
+            echo '--- mentta product query ---'
+            sed -n '440,500p' \"\$MENTTA_FILE\"
+            echo '--- WooCommerce query arg hook ---'
+            grep -RIn --include='*.php' 'woocommerce_product_object_query_args' \"\$WC_DIR/includes\" | head -n 20 || true
+            echo '--- WooCommerce include handling ---'
+            grep -RIn --include='*.php' \"'include'\" \"\$WC_DIR/includes/data-stores/class-wc-product-data-store-cpt.php\" | head -n 20 || true
           "
 
-# query-context trigger: 2026-08-17
+# woo-query-hook trigger: 2026-08-17
