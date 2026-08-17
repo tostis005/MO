@@ -69,3 +69,5 @@ jobs:
             rm -f '$REMOTE_TMP'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
           "
+
+# Production trigger: 2026-08-17
