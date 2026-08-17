@@ -1,0 +1,118 @@
+name: Production Tolecarnes cart responsive QA 2026-08-17
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-tolecarnes-cart-responsive-qa-20260817.yml'
+      - 'scripts/cart-responsive-production-qa-20260817.cjs'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      PRODUCTION_SITEURL: https://www.elmercadodeorigen.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install browser and SSH tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node -e "require('puppeteer-core'); console.log('PUPPETEER_OK')"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Resolve a live Tolecarnes product on production
+        id: product
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production WordPress path invalid.' >&2; exit 1; }
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+          $vendor_ids = [];
+          foreach (get_users(["number" => -1]) as $user) {
+              $haystack = strtolower($user->user_login . " " . $user->display_name . " " . $user->user_nicename);
+              if (strpos($haystack, "tole") !== false) $vendor_ids[] = (int) $user->ID;
+          }
+          if (!$vendor_ids) {
+              $fallback = get_page_by_path("hamburguesa-de-cerdo-iberico-bellota", OBJECT, "product");
+              if ($fallback) $vendor_ids[] = (int) $fallback->post_author;
+          }
+          $best = 0; $best_price = PHP_FLOAT_MAX;
+          foreach (array_unique($vendor_ids) as $author) {
+              $ids = get_posts(["post_type" => "product", "post_status" => "publish", "author" => $author, "numberposts" => -1, "fields" => "ids"]);
+              foreach ($ids as $id) {
+                  $product = function_exists("wc_get_product") ? wc_get_product($id) : null;
+                  if (!$product || !$product->is_type("simple") || !$product->is_purchasable() || !$product->is_in_stock()) continue;
+                  $price = (float) $product->get_price();
+                  if ($price >= 0 && $price < $best_price) { $best = (int) $id; $best_price = $price; }
+              }
+          }
+          if (!$best) { fwrite(STDERR, "No published purchasable simple Tolecarnes product found\n"); exit(2); }
+          $author = (int) get_post_field("post_author", $best);
+          $vendor = get_userdata($author);
+          echo "TOLE_PRODUCT_ID={$best}\n";
+          echo "TOLE_VENDOR=" . ($vendor ? $vendor->display_name : $author) . "\n";
+          echo "TOLE_PRODUCT=" . get_the_title($best) . "\n";
+          ' --path="$prod" --allow-root --skip-themes
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          PRODUCT_ID="$(printf '%s\n' "$OUT" | sed -n 's/^TOLE_PRODUCT_ID=//p' | tail -n1)"
+          [[ "$PRODUCT_ID" =~ ^[0-9]+$ ]]
+          echo "product_id=$PRODUCT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Browser QA around the 767/768 breakpoint
+        shell: bash
+        env:
+          TOLE_PRODUCT_ID: ${{ steps.product.outputs.product_id }}
+        run: |
+          set -euo pipefail
+          node scripts/cart-responsive-production-qa-20260817.cjs
