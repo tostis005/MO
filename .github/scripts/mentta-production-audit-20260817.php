@@ -112,7 +112,6 @@ if ( is_array( $cron ) ) {
 				$cron_hooks[ $hook ] = true;
 			}
 		}
-	}
 }
 if ( $cron_hooks ) {
 	foreach ( array_keys( $cron_hooks ) as $hook ) {
@@ -121,5 +120,40 @@ if ( $cron_hooks ) {
 } else {
 	mdo_audit_line_20260817( 'cron_hook', 'none' );
 }
+
+mdo_audit_line_20260817( '--- mentta plugin selection-related source lines ---' );
+$plugin_root = WP_PLUGIN_DIR . '/mentta-marketplace';
+$matches = 0;
+if ( is_dir( $plugin_root ) ) {
+	$iterator = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator( $plugin_root, FilesystemIterator::SKIP_DOTS )
+	);
+	foreach ( $iterator as $file ) {
+		if ( $matches >= 300 || ! $file->isFile() || 'php' !== strtolower( $file->getExtension() ) ) {
+			continue;
+		}
+		$relative = ltrim( str_replace( $plugin_root, '', $file->getPathname() ), '/\\' );
+		$lines = @file( $file->getPathname(), FILE_IGNORE_NEW_LINES );
+		if ( ! is_array( $lines ) ) {
+			continue;
+		}
+		foreach ( $lines as $index => $line ) {
+			if ( $matches >= 300 ) {
+				break;
+			}
+			if ( preg_match( '/product_cat|categor(?:y|ies)|tax_query|wc_get_products|WC_Product_Query|WP_Query|get_posts|register_rest_route|rest_api_init|woocommerce_rest|posts_where|pre_get_posts/i', $line ) ) {
+				$clean = trim( preg_replace( '/\s+/', ' ', $line ) );
+				if ( strlen( $clean ) > 500 ) {
+					$clean = substr( $clean, 0, 500 ) . '…';
+				}
+				mdo_audit_line_20260817( 'source', $relative . ':' . ( $index + 1 ) . ' | ' . $clean );
+				$matches++;
+			}
+		}
+	}
+} else {
+	mdo_audit_line_20260817( 'source', 'mentta-marketplace directory not found' );
+}
+mdo_audit_line_20260817( 'source_matches', $matches );
 
 mdo_audit_line_20260817( 'audit_complete', true );
