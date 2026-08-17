@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Internal MENTTA category
  * Description: Keeps the MENTTA WooCommerce category available to integrations/admins but hidden from the public storefront.
- * Version: 1.0.3
+ * Version: 1.0.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -213,52 +213,6 @@ function mdo_mentta_hide_public_menu_items( $items ) {
 	);
 }
 add_filter( 'wp_get_nav_menu_items', 'mdo_mentta_hide_public_menu_items', 20 );
-
-/**
- * Homepage DOM fallback for builders that render a stored category selection.
- * Match by the final /mentta/ path segment so translated category URL bases are
- * covered too (for example /categoria-producto/mentta/).
- */
-function mdo_mentta_hide_homepage_rendered_card() {
-	if ( ! mdo_mentta_should_hide_publicly() || ! is_front_page() ) {
-		return;
-	}
-	?>
-	<style id="mdo-hide-mentta-home-style">
-		body.home a[href$="/mentta/"], body.home a[href$="/mentta"] { visibility: hidden !important; }
-	</style>
-	<script id="mdo-hide-mentta-home-card">
-	(function () {
-		function hideMenttaCards() {
-			document.querySelectorAll('a[href]').forEach(function (link) {
-				var path;
-				try {
-					path = new URL(link.href, window.location.href).pathname.replace(/\/+$/, '').toLowerCase();
-				} catch (e) {
-					return;
-				}
-				if (!path.endsWith('/mentta')) {
-					return;
-				}
-				var card = link.closest('li.product-category, .product-category, .wc-block-product-category, .elementor-loop-item, .elementor-grid-item, .product-category-item, .category-item, article, li');
-				if (card) {
-					card.remove();
-				} else {
-					link.remove();
-				}
-			});
-		}
-		if (document.readyState === 'loading') {
-			document.addEventListener('DOMContentLoaded', hideMenttaCards);
-		} else {
-			hideMenttaCards();
-		}
-		new MutationObserver(hideMenttaCards).observe(document.documentElement, { childList: true, subtree: true });
-	})();
-	</script>
-	<?php
-}
-add_action( 'wp_footer', 'mdo_mentta_hide_homepage_rendered_card', 100 );
 
 /** Do not expose a browsable public archive for the internal category. */
 function mdo_mentta_block_public_archive() {
