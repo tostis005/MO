@@ -57,7 +57,7 @@ jobs:
                   const contentChain=[];x=content;for(let i=0;x&&i<7;i++,x=x.parentElement)contentChain.push({tag:x.tagName,id:x.id,cls:x.className?.toString().slice(0,300)||'',rect:rr(x)});
                   const prod=[...document.querySelectorAll('.woocommerce ul.products > li.product, ul.products > li.product')].filter(visible).slice(0,10).map(e=>({rect:rr(e),cls:e.className.toString().slice(0,260),title:e.querySelector('.woocommerce-loop-product__title,h2,h3')?.textContent?.trim().slice(0,80)||''}));
                   return {viewport:{w:innerWidth,h:innerHeight},scrollWidth:document.documentElement.scrollWidth,bodyClasses:document.body.className,titleChain,contentChain,items,products:prod};
-                },selectors);
+                },sel);
                 const normalize=(obj)=>JSON.parse(JSON.stringify(obj,(k,v)=> typeof v==='number'?Math.round(v):v));
                 console.log('\n### '+c.name+' '+c.path+' ###'); console.log(JSON.stringify(normalize(out),null,2));
                 await p.close();
