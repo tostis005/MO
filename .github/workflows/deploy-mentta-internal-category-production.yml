@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/mdo-internal-mentta-category.php'
+      - 'mu-plugins/000-mdo-mentta-home-final.php'
       - '.github/workflows/deploy-mentta-internal-category-production.yml'
   workflow_dispatch:
 
@@ -24,13 +25,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate MU plugin
+      - name: Validate MU plugins
         shell: bash
         run: |
           set -euo pipefail
           php -l mu-plugins/mdo-internal-mentta-category.php
+          php -l mu-plugins/000-mdo-mentta-home-final.php
 
-      - name: Deploy category and public-hiding rule
+      - name: Deploy category and public-hiding rules
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -59,8 +61,10 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          REMOTE_TMP="/tmp/mdo-internal-mentta-category-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-internal-mentta-category.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP"
+          REMOTE_TMP_MAIN="/tmp/mdo-internal-mentta-category-${GITHUB_RUN_ID}.php"
+          REMOTE_TMP_HOME="/tmp/000-mdo-mentta-home-final-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-internal-mentta-category.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP_MAIN"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/000-mdo-mentta-home-final.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP_HOME"
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
@@ -69,9 +73,11 @@ jobs:
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
 
             mkdir -p '$PROD_PATH/wp-content/mu-plugins'
-            cp '$REMOTE_TMP' '$PROD_PATH/wp-content/mu-plugins/mdo-internal-mentta-category.php'
-            rm -f '$REMOTE_TMP'
+            cp '$REMOTE_TMP_MAIN' '$PROD_PATH/wp-content/mu-plugins/mdo-internal-mentta-category.php'
+            cp '$REMOTE_TMP_HOME' '$PROD_PATH/wp-content/mu-plugins/000-mdo-mentta-home-final.php'
+            rm -f '$REMOTE_TMP_MAIN' '$REMOTE_TMP_HOME'
             \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-internal-mentta-category.php'
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/000-mdo-mentta-home-final.php'
 
             TERM_ID=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" term get product_cat mentta --by=slug --field=term_id --path='$PROD_PATH' --allow-root 2>/dev/null || true)
             if [ -z \"\$TERM_ID\" ]; then
@@ -86,5 +92,8 @@ jobs:
             test \"\$NAME\" = 'MENTTA'
             test \"\$SLUG\" = 'mentta'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            rm -rf '$PROD_PATH/wp-content/cache/'* 2>/dev/null || true
+            rm -rf '$PROD_PATH/wp-content/litespeed/'* 2>/dev/null || true
             echo 'category_ok'
+            echo 'home_filter_ok'
           "
