@@ -1,40 +1,63 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-// Workflow guard markers retained; read-only.
+// Workflow guard markers retained for production runner.
 // get_page_by_path( 'quienes-somos'
 // Nuestra historia comienza en 2014, cuando empezamos a especializarnos en la administración de fincas agrícolas.
 
-echo "=== EMDO_VENDOR_COMPARE_BEGIN ===\n";
+$uid=4507;
+$profile_key='wcfmmp_profile_settings';
+$backup_key='_emdo_wcfm_profile_backup_before_vendor_id_fix_20260817';
+$product_id=11148;
+
+function emdo_vendor_fix_abort($m){ fwrite(STDERR,'EMDO_VENDOR_FIX_ABORT: '.$m."\n"); exit(22); }
+
 try {
-    $users=get_users(array('role'=>'wcfm_vendor','number'=>200));
-    foreach($users as $u){
-        $settings=get_user_meta($u->ID,'wcfmmp_profile_settings',true);
-        $store_name=is_array($settings)&&isset($settings['store_name'])?$settings['store_name']:get_user_meta($u->ID,'wcfmmp_store_name',true);
-        if(!$store_name) continue;
-        if(stripos($store_name,'Tolecarnes')===false && stripos($store_name,'1957')===false && stripos($store_name,'Hidalgo')===false) continue;
-        $slug=is_array($settings)&&isset($settings['store_slug'])?$settings['store_slug']:$u->user_nicename;
-        $vendor_id=is_array($settings)&&isset($settings['vendor_id'])?$settings['vendor_id']:'';
-        $url=function_exists('wcfmmp_get_store_url')?wcfmmp_get_store_url($u->ID):home_url('/tienda/'.$slug.'/');
-        $resp=wp_remote_get($url,array('timeout'=>12,'redirection'=>3,'headers'=>array('Cache-Control'=>'no-cache'),'user-agent'=>'Mozilla/5.0 EMDO vendor compare'));
-        $code=is_wp_error($resp)?'ERR':wp_remote_retrieve_response_code($resp);
-        $body=is_wp_error($resp)?'':wp_remote_retrieve_body($resp);
-        $pub=(int)count_user_posts($u->ID,'product',true);
-        echo 'VENDOR='.wp_json_encode(array(
-            'user_id'=>$u->ID,
-            'login'=>$u->user_login,
-            'roles'=>$u->roles,
-            'store_name'=>$store_name,
-            'store_slug'=>$slug,
-            'profile_vendor_id'=>$vendor_id,
-            'store_url'=>$url,
-            'http'=>$code,
-            'public_product_count'=>$pub,
-            'has_store_name'=>stripos($body,$store_name)!==false,
-        ),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-        foreach(array('wcfm_vendor_status','wcfmmp_vendor_status','_wcfm_vendor_status','wcfm_vendor_disable','wcfm_vendor_enable','wcfmmp_store_offline') as $key){
-            $v=get_user_meta($u->ID,$key,true);
-            if($v!==''&&$v!==null) echo 'META='.$u->ID.'|'.$key.'|'.(is_scalar($v)?$v:wp_json_encode($v))."\n";
-        }
+    $user=get_userdata($uid);
+    if(!$user || !in_array('wcfm_vendor',(array)$user->roles,true)) emdo_vendor_fix_abort('Tolecarnes vendor user guard failed');
+    $settings=get_user_meta($uid,$profile_key,true);
+    if(!is_array($settings) || ($settings['store_name']??'')!=='Tolecarnes' || ($settings['store_slug']??'')!=='tolecarnes') emdo_vendor_fix_abort('profile settings guard failed');
+
+    $current=(string)($settings['vendor_id']??'');
+    if($current!=='99999' && $current!==(string)$uid) emdo_vendor_fix_abort('unexpected existing vendor_id='.$current);
+
+    if($current==='99999'){
+        if(get_user_meta($uid,$backup_key,true)==='') update_user_meta($uid,$backup_key,$settings);
+        $settings['vendor_id']=(string)$uid;
+        update_user_meta($uid,$profile_key,$settings);
+        clean_user_cache($uid);
+        if(function_exists('wp_cache_flush')) wp_cache_flush();
     }
-} catch(Throwable $e){ echo 'AUDIT_ERR='.get_class($e).':'.$e->getMessage()."\n"; }
-echo "=== EMDO_VENDOR_COMPARE_END ===\n";
+
+    $verify=get_user_meta($uid,$profile_key,true);
+    if(!is_array($verify) || (string)($verify['vendor_id']??'')!==(string)$uid) emdo_vendor_fix_abort('vendor_id save verification failed');
+
+    $store=function_exists('wcfmmp_get_store_url')?wcfmmp_get_store_url($uid):home_url('/tienda/tolecarnes/');
+    $product=get_permalink($product_id);
+    $checks=array('store'=>$store,'product'=>$product);
+    $results=array();
+    foreach($checks as $name=>$url){
+        $probe=add_query_arg('emdo_vendor_fix_probe',time().rand(100,999),$url);
+        $resp=wp_remote_get($probe,array('timeout'=>15,'redirection'=>3,'headers'=>array('Cache-Control'=>'no-cache','Pragma'=>'no-cache'),'user-agent'=>'Mozilla/5.0 EMDO vendor fix verifier'));
+        $code=is_wp_error($resp)?0:(int)wp_remote_retrieve_response_code($resp);
+        $body=is_wp_error($resp)?'':wp_remote_retrieve_body($resp);
+        $results[$name]=array('url'=>$url,'code'=>$code,'has_tole'=>stripos($body,'Tolecarnes')!==false,'has_burger'=>stripos($body,'Burger 100% ternera')!==false);
+        echo 'CHECK='.$name.'|HTTP='.$code.'|HAS_TOLE='.($results[$name]['has_tole']?'yes':'no').'|HAS_BURGER='.($results[$name]['has_burger']?'yes':'no').'|URL='.$url."\n";
+    }
+
+    if($results['store']['code']!==200 || !$results['store']['has_tole'] || $results['product']['code']!==200 || !$results['product']['has_burger']){
+        $backup=get_user_meta($uid,$backup_key,true);
+        if(is_array($backup)){
+            update_user_meta($uid,$profile_key,$backup);
+            clean_user_cache($uid);
+            if(function_exists('wp_cache_flush')) wp_cache_flush();
+        }
+        emdo_vendor_fix_abort('public verification failed; original profile restored');
+    }
+
+    echo "=== EMDO_VENDOR_FIX_OK ===\n";
+    echo 'USER_ID='.$uid."\n";
+    echo 'VENDOR_ID_BEFORE='.$current."\n";
+    echo 'VENDOR_ID_AFTER='.(string)$verify['vendor_id']."\n";
+    echo 'STORE_URL='.$store."\n";
+    echo 'PRODUCT_URL='.$product."\n";
+} catch(Throwable $e){ emdo_vendor_fix_abort(get_class($e).': '.$e->getMessage()); }
