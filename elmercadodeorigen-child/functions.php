@@ -159,6 +159,7 @@ $elmercado_modules = array(
 	'inc/producer-list-image-square-010242.php',
 	'inc/multilingual-ui-copy-010245.php',
 	'inc/falang-switcher-010245.php',
+	'inc/blog-editorial-body-class-010249.php',
 	'inc/blog-footer-layout-polish-010246.php',
 );
 
