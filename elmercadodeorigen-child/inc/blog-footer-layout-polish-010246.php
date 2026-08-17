@@ -220,3 +220,13 @@ $elmercado_contact_footer_hotfix_010247 = __DIR__ . '/contact-footer-hotfix-0102
 if ( is_readable( $elmercado_contact_footer_hotfix_010247 ) ) {
 	require_once $elmercado_contact_footer_hotfix_010247;
 }
+
+/*
+ * 0.10.248 unifica definitivamente el lienzo del blog y las rejillas de
+ * producto. Se carga la última para sustituir solo las reglas editoriales
+ * históricas que necesitaban un ancho diferente.
+ */
+$elmercado_blog_design_system_010248 = __DIR__ . '/blog-design-system-010248.php';
+if ( is_readable( $elmercado_blog_design_system_010248 ) ) {
+	require_once $elmercado_blog_design_system_010248;
+}
