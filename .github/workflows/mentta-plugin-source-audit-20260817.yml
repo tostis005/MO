@@ -58,3 +58,5 @@ jobs:
             echo '--- selection-related source ---'
             grep -RInE --include='*.php' 'product_cat|tax_query|category__|category_name|wc_get_products|WC_Product_Query|WP_Query|get_posts|register_rest_route|rest_api_init|woocommerce_rest|posts_where|pre_get_posts|post_type[^a-zA-Z]+product|post_type.?=.?.?product' \"\$PLUGIN_DIR\" | head -n 400 || true
           "
+
+# trigger: 2026-08-17
