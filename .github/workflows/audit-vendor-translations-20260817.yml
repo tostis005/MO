@@ -13,7 +13,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 10
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -31,7 +31,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Inspect translation layer and both sites
+      - name: Inspect English runtime and live Puente sample
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -52,53 +52,47 @@ jobs:
           php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           wp_bin="$(command -v wp || true)"
-          [ -n "$wp_bin" ] || { echo 'wp-cli not found'; exit 1; }
+          [ -n "$wp_bin" ] || exit 1
 
-          echo '=== TRANSLATION_LAYER_FILES_PROD ==='
-          for root in "$prod/wp-content/mu-plugins" "$prod/wp-content/themes" "$prod/wp-content/plugins"; do
-            [ -d "$root" ] || continue
-            grep -RIl --include='*.php' -E '_en_US_(post_title|post_content|post_name|published)|en_US_post_title|translated_post|english.*product|product.*english' "$root" 2>/dev/null | head -n 120 || true
-          done
+          echo '=== RUNTIME_SEO_SOURCE ==='
+          sed -n '1,360p' "$prod/wp-content/mu-plugins/mdo-english-island-runtime-seo.php" 2>/dev/null || true
+          echo '=== SLUG_ROUTER_SOURCE ==='
+          sed -n '1,320p' "$prod/wp-content/mu-plugins/mdo-english-slug-router.php" 2>/dev/null || true
+          echo '=== ACTIVE_LANGUAGE_PLUGINS ==='
+          "$php_bin" "$wp_bin" plugin list --status=active --field=name --path="$prod" --allow-root 2>/dev/null | grep -Ei 'falang|translate|wpml|poly|language' || true
 
-          echo '=== TRANSLATION_LAYER_MATCHES_PROD ==='
-          for root in "$prod/wp-content/mu-plugins" "$prod/wp-content/themes"; do
-            [ -d "$root" ] || continue
-            grep -RIn --include='*.php' -E '_en_US_(post_title|post_content|post_name|published)' "$root" 2>/dev/null | head -n 180 || true
-          done
-
-          cat > /tmp/mo-site-inventory.php <<'PHP'
+          cat > /tmp/mo-puente-live.php <<'PHP'
           <?php
-          global $wpdb;
-          echo "SITEURL=".get_option('siteurl')."\n";
-          echo "WCFM_VENDORS\n";
-          $users=get_users(array('role__in'=>array('wcfm_vendor','dc_vendor')));
-          foreach($users as $u){
-              $prof=get_user_meta($u->ID,'wcfmmp_profile_settings',true);
-              $store=is_array($prof)&&isset($prof['store_name'])?(string)$prof['store_name']:'';
-              $store2=(string)get_user_meta($u->ID,'_wcfm_vendor_store_name',true);
-              $disabled=(string)get_user_meta($u->ID,'_wcfm_vendor_disable',true);
-              $counts=$wpdb->get_results($wpdb->prepare("SELECT post_status,COUNT(*) qty FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d GROUP BY post_status ORDER BY post_status",$u->ID),ARRAY_A);
-              echo wp_json_encode(array('id'=>(int)$u->ID,'login'=>$u->user_login,'nicename'=>$u->user_nicename,'display'=>$u->display_name,'store'=>$store,'store2'=>$store2,'disabled'=>$disabled,'products'=>$counts),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-          }
-          echo "DIPLOM_SEARCH\n";
-          $us=$wpdb->get_results("SELECT ID,user_login,user_nicename,display_name FROM {$wpdb->users} WHERE LOWER(CONCAT_WS(' ',user_login,user_nicename,display_name)) LIKE '%diplom%'",ARRAY_A);
-          $um=$wpdb->get_results("SELECT user_id,meta_key,LEFT(meta_value,800) meta_value FROM {$wpdb->usermeta} WHERE LOWER(meta_value) LIKE '%diplom%' LIMIT 50",ARRAY_A);
-          $ps=$wpdb->get_results("SELECT ID,post_author,post_type,post_status,post_title,post_name FROM {$wpdb->posts} WHERE LOWER(CONCAT_WS(' ',post_title,post_name,post_excerpt,post_content)) LIKE '%diplom%' LIMIT 100",ARRAY_A);
-          echo wp_json_encode(array('users'=>$us,'usermeta'=>$um,'posts'=>$ps),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-          echo "TRANSLATED_DRAFT_SAMPLES\n";
-          $rows=$wpdb->get_results("SELECT p.ID,p.post_author,p.post_status,p.post_title,pm.meta_value en_title FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_en_US_post_title' WHERE p.post_type='product' AND p.post_status<>'publish' AND pm.meta_value<>'' ORDER BY p.ID DESC LIMIT 30",ARRAY_A);
-          foreach($rows as $r){$r['en_published']=(string)get_post_meta((int)$r['ID'],'_en_US_published',true);$r['en_slug']=(string)get_post_meta((int)$r['ID'],'_en_US_post_name',true);echo wp_json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
-          echo "TARGET_COUNTS\n";
-          foreach(array(4507,4508,4509) as $aid){
-              $u=get_user_by('id',$aid);if(!$u)continue;
-              $counts=$wpdb->get_results($wpdb->prepare("SELECT post_status,COUNT(*) qty FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d GROUP BY post_status ORDER BY post_status",$aid),ARRAY_A);
-              echo wp_json_encode(array('id'=>$aid,'name'=>$u->display_name,'counts'=>$counts),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          $ids=array(11170,11171,11172);
+          foreach($ids as $id){
+              $p=get_post($id); if(!$p) continue;
+              $urls=array(
+                  'es'=>get_permalink($id),
+                  'en_spanish_slug'=>home_url('/en/product/'.$p->post_name.'/'),
+              );
+              $en_slug=(string)get_post_meta($id,'_en_US_post_name',true);
+              if($en_slug!=='') $urls['en_meta_slug']=home_url('/en/product/'.sanitize_title($en_slug).'/');
+              foreach($urls as $kind=>$url){
+                  $probe=add_query_arg('emdo_translation_audit',time().$id,$url);
+                  $r=wp_remote_get($probe,array('timeout'=>20,'redirection'=>3,'headers'=>array('Cache-Control'=>'no-cache','Pragma'=>'no-cache'),'user-agent'=>'Mozilla/5.0 EMDO translation audit'));
+                  if(is_wp_error($r)){echo "LIVE|$id|$kind|ERR=".$r->get_error_message()."|URL=$url\n";continue;}
+                  $body=(string)wp_remote_retrieve_body($r);
+                  $text=html_entity_decode(wp_strip_all_tags($body),ENT_QUOTES|ENT_HTML5,'UTF-8');
+                  echo 'LIVE|'.$id.'|'.$kind.'|HTTP='.(int)wp_remote_retrieve_response_code($r)
+                      .'|TITLE='.str_replace(array("\r","\n","|"),' ',(string)$p->post_title)
+                      .'|HAS_ES_TITLE='.(stripos($text,$p->post_title)!==false?'yes':'no')
+                      .'|HAS_EN_META='.(trim((string)get_post_meta($id,'_en_US_post_title',true))!==''?'yes':'no')
+                      .'|FINAL='.wp_remote_retrieve_header($r,'location')
+                      .'|URL='.$url."\n";
+                  if($kind!=='es'){
+                      $needle='Jamón';
+                      $pos=stripos($text,$needle);
+                      if($pos!==false){echo 'CONTEXT|'.$id.'|'.preg_replace('/\s+/',' ',substr($text,max(0,$pos-160),600))."\n";}
+                  }
+              }
           }
           PHP
-
-          echo '=== PROD_INVENTORY ==='
-          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-site-inventory.php --path="$prod" --allow-root 2>/dev/null
-          echo '=== DEV_INVENTORY ==='
-          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-site-inventory.php --path="$dev" --allow-root 2>/dev/null || true
-          rm -f /tmp/mo-site-inventory.php
+          echo '=== PUENTE_LIVE ==='
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-puente-live.php --path="$prod" --allow-root
+          rm -f /tmp/mo-puente-live.php
           REMOTE
