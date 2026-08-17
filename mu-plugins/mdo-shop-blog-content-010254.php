@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO - Shop and blog content 0.10.254
- * Description: Removes the redundant shop lead, cleans legacy blog intro headings and repairs the Jamón Ibérico embutidos shortcode.
- * Version: 0.10.254
+ * Plugin Name: MDO - Shop and blog content 0.10.255
+ * Description: Removes the redundant shop lead, cleans legacy blog intro headings and guarantees the Jamón Ibérico embutidos product grid.
+ * Version: 0.10.255
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -12,6 +12,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Repair the historic Jamón Ibérico shortcode before WooCommerce expands it.
  * Production uses the canonical category slug `embutidos-y-curados`.
+ *
+ * This is kept as an early optimisation. A late rendered-HTML safeguard below
+ * is authoritative because some page-builder/content filters can restore the
+ * original post content before `do_shortcode` runs.
  */
 function mdo_fix_jamon_embutidos_shortcode_010254( string $content ): string {
 	if ( is_admin() || ! is_singular( 'post' ) ) {
@@ -49,6 +53,92 @@ function mdo_remove_legacy_introduction_heading_010254( string $content ): strin
 	return is_string( $cleaned ) ? $cleaned : $content;
 }
 add_filter( 'the_content', 'mdo_remove_legacy_introduction_heading_010254', PHP_INT_MAX );
+
+/**
+ * Guarantee a real WooCommerce product grid immediately after the Embutidos
+ * heading in the Jamón Ibérico article.
+ *
+ * Production diagnostics confirmed that the canonical category contains
+ * published products and that this exact shortcode renders the normal shop
+ * cards. We therefore inspect only the section between the Embutidos heading
+ * and the next heading. If that section has no real product <li>, we render a
+ * fresh canonical loop and inject it directly after the heading.
+ */
+function mdo_guarantee_jamon_embutidos_products_010255( string $content ): string {
+	if ( is_admin() || ! is_singular( 'post' ) ) {
+		return $content;
+	}
+
+	if ( 'jamon-iberico' !== (string) get_post_field( 'post_name', get_queried_object_id() ) ) {
+		return $content;
+	}
+
+	$heading_match = array();
+	$has_heading   = 1 === preg_match(
+		'/<h([1-6])\b[^>]*>(?:(?!<\/h\1>)[\s\S])*?embutidos(?:(?!<\/h\1>)[\s\S])*?<\/h\1>/iu',
+		$content,
+		$heading_match,
+		PREG_OFFSET_CAPTURE
+	);
+
+	if ( ! $has_heading ) {
+		return $content;
+	}
+
+	$heading_html  = (string) $heading_match[0][0];
+	$heading_start = (int) $heading_match[0][1];
+	$heading_end   = $heading_start + strlen( $heading_html );
+	$tail          = substr( $content, $heading_end );
+
+	if ( ! is_string( $tail ) ) {
+		return $content;
+	}
+
+	$next_heading_offset = false;
+	if ( preg_match( '/<h[1-6]\b[^>]*>/iu', $tail, $next_heading_match, PREG_OFFSET_CAPTURE ) ) {
+		$next_heading_offset = (int) $next_heading_match[0][1];
+	}
+
+	$section_html = false === $next_heading_offset ? $tail : substr( $tail, 0, $next_heading_offset );
+
+	$has_real_products = is_string( $section_html ) && 1 === preg_match(
+		'/<li\b[^>]*class=(?:"[^"]*\bproduct\b[^"]*"|\'[^\']*\bproduct\b[^\']*\')[^>]*>/iu',
+		$section_html
+	);
+
+	if ( $has_real_products || ! shortcode_exists( 'products' ) ) {
+		return $content;
+	}
+
+	$products_html = do_shortcode(
+		'[products category="embutidos-y-curados" limit="8" columns="4" orderby="popularity" order="DESC"]'
+	);
+
+	$rendered_cards = preg_match_all(
+		'/<li\b[^>]*class=(?:"[^"]*\bproduct\b[^"]*"|\'[^\']*\bproduct\b[^\']*\')[^>]*>/iu',
+		$products_html
+	);
+
+	if ( false === $rendered_cards || $rendered_cards < 1 ) {
+		return $content;
+	}
+
+	/* Remove a possible legacy “no products” notice from the obsolete shortcode. */
+	$tail = preg_replace(
+		'/<p\b[^>]*class=(?:"[^"]*\bwoocommerce-info\b[^"]*"|\'[^\']*\bwoocommerce-info\b[^\']*\')[^>]*>.*?<\/p>/isu',
+		'',
+		$tail,
+		1
+	);
+	if ( ! is_string( $tail ) ) {
+		$tail = substr( $content, $heading_end );
+	}
+
+	$block = '<div class="emo-entry-product-section emo-jamon-embutidos-runtime" data-emo-embutidos="010255">' . $products_html . '</div>';
+
+	return substr( $content, 0, $heading_end ) . $block . $tail;
+}
+add_filter( 'the_content', 'mdo_guarantee_jamon_embutidos_products_010255', PHP_INT_MAX );
 
 /**
  * The store already has title, filters and catalogue context. The historical
