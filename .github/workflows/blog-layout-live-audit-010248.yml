@@ -1,0 +1,68 @@
+name: Blog layout live audit 0.10.248
+
+on:
+  push:
+    branches: [design/blog-layout-010248]
+    paths:
+      - '.github/workflows/blog-layout-live-audit-010248.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser helper
+        run: |
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          command -v google-chrome || command -v google-chrome-stable
+      - name: Inspect live blog geometry and markup
+        env:
+          BASE: https://www.elmercadodeorigen.com
+        run: |
+          cat > /tmp/blog-audit.cjs <<'NODE'
+          const puppeteer=require('puppeteer-core');
+          const base=process.env.BASE.replace(/\/$/,'');
+          const cases=[
+            {name:'BLOG_DESKTOP',path:'/blog/',w:1440,h:1100},
+            {name:'POST_DESKTOP',path:'/jamon-iberico/',w:1440,h:1100},
+            {name:'POST_MOBILE',path:'/jamon-iberico/',w:390,h:844},
+          ];
+          const sel=[
+            'body','.site-header','#masthead','.site-content','#content','.site-content > .container','.container',
+            '.page-header','.page-header .container','.entry-header','.entry-content','.emo-article-content',
+            '#primary','.content-area','main.site-main','article.post','.post-loop','.site-main > article',
+            '.woocommerce','.woocommerce ul.products','ul.products','ul.products > li.product',
+            '.post-navigation','.related-posts','.emo-related-grid','.comments-area','#secondary'
+          ];
+          function roundRect(r){return r?{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),right:Math.round(r.right)}:null}
+          (async()=>{
+            const browser=await puppeteer.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--disable-dev-shm-usage']});
+            try{
+              for(const c of cases){
+                const p=await browser.newPage(); await p.setViewport({width:c.w,height:c.h,deviceScaleFactor:1});
+                await p.goto(base+c.path+'?emo-blog-audit='+Date.now(),{waitUntil:'networkidle2',timeout:60000});
+                await new Promise(r=>setTimeout(r,1200));
+                const out=await p.evaluate((selectors)=>{
+                  const visible=e=>{if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0};
+                  const rr=e=>{if(!e)return null;const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}};
+                  const items={};
+                  selectors.forEach(s=>{const els=[...document.querySelectorAll(s)].filter(visible).slice(0,8);if(els.length)items[s]=els.map(e=>({tag:e.tagName,cls:e.className?.toString().slice(0,260)||'',id:e.id||'',rect:rr(e)}));});
+                  const title=document.querySelector('h1');
+                  const titleChain=[];let x=title;for(let i=0;x&&i<7;i++,x=x.parentElement)titleChain.push({tag:x.tagName,id:x.id,cls:x.className?.toString().slice(0,300)||'',rect:rr(x)});
+                  const content=document.querySelector('.emo-article-content,.entry-content');
+                  const contentChain=[];x=content;for(let i=0;x&&i<7;i++,x=x.parentElement)contentChain.push({tag:x.tagName,id:x.id,cls:x.className?.toString().slice(0,300)||'',rect:rr(x)});
+                  const prod=[...document.querySelectorAll('.woocommerce ul.products > li.product, ul.products > li.product')].filter(visible).slice(0,10).map(e=>({rect:rr(e),cls:e.className.toString().slice(0,260),title:e.querySelector('.woocommerce-loop-product__title,h2,h3')?.textContent?.trim().slice(0,80)||''}));
+                  return {viewport:{w:innerWidth,h:innerHeight},scrollWidth:document.documentElement.scrollWidth,bodyClasses:document.body.className,titleChain,contentChain,items,products:prod};
+                },sel);
+                const normalize=(obj)=>JSON.parse(JSON.stringify(obj,(k,v)=> typeof v==='number'?Math.round(v):v));
+                console.log('\n### '+c.name+' '+c.path+' ###'); console.log(JSON.stringify(normalize(out),null,2));
+                await p.close();
+              }
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          node /tmp/blog-audit.cjs
