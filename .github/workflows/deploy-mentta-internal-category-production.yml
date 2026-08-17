@@ -81,7 +81,10 @@ jobs:
             fi
 
             echo \"MENTTA term ID: \$TERM_ID\"
+            NAME=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" term get product_cat mentta --by=slug --field=name --path='$PROD_PATH' --allow-root 2>/dev/null | tail -n1)
+            SLUG=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" term get product_cat mentta --by=slug --field=slug --path='$PROD_PATH' --allow-root 2>/dev/null | tail -n1)
+            test \"\$NAME\" = 'MENTTA'
+            test \"\$SLUG\" = 'mentta'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
-
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo get_term_by("slug", "mentta", "product_cat") instanceof WP_Term ? "category_ok\\n" : "category_missing\\n";' --path='$PROD_PATH' --allow-root
+            echo 'category_ok'
           "
