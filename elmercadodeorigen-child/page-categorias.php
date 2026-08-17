@@ -12,21 +12,21 @@ $items = function_exists( 'elmercado_categories_hub_items_010257' )
 	: array();
 
 $category_summaries = array(
-	'jamones-paletas'     => 'En esta sección encontrarás nuestra selección de jamones y paletas, con distintas calidades, alimentaciones, curaciones, formatos y presentaciones.',
-	'embutidos-y-curados' => 'Aquí reunimos nuestra selección de embutidos y curados, con chorizos, salchichones, lomos, lomitos, morcones, sobrasadas y otros productos de charcutería.',
-	'aceites'             => 'En esta categoría encontrarás nuestra selección de aceites de oliva, con distintas variedades, procedencias, formatos y perfiles de sabor.',
-	'carnes'              => 'Aquí encontrarás nuestra selección de carnes, con distintos cortes, hamburguesas, piezas y preparaciones para diferentes formas de cocinar.',
-	'packs-y-lotes'       => 'En esta sección reunimos packs y lotes que combinan varios productos en una misma selección, tanto para regalar como para probar diferentes especialidades.',
-	'accesorios'          => 'Aquí encontrarás accesorios y complementos relacionados con los productos de la tienda, pensados para servirlos, cortarlos, conservarlos o presentarlos.',
-	'adobados'            => 'En esta categoría encontrarás carnes y otros productos adobados o marinados, con diferentes preparaciones y formatos.',
-	'mentta'              => 'En esta categoría encontrarás los productos agrupados dentro de esta selección.',
+	'jamones-paletas'     => 'Jamones y paletas de distintas calidades, alimentaciones, curaciones, formatos y presentaciones.',
+	'embutidos-y-curados' => 'Chorizos, salchichones, lomos, lomitos, morcones, sobrasadas y otros embutidos y curados.',
+	'aceites'             => 'Aceites de oliva de distintas variedades, procedencias, formatos y perfiles de sabor.',
+	'carnes'              => 'Carnes en distintos cortes y formatos, desde piezas y hamburguesas hasta preparaciones para cocinar.',
+	'packs-y-lotes'       => 'Packs y lotes que combinan distintos productos, tanto para regalar como para probar varias especialidades.',
+	'accesorios'          => 'Accesorios y complementos para cortar, servir, conservar o presentar los productos.',
+	'adobados'            => 'Carnes y otros productos adobados o marinados, con distintas preparaciones y formatos.',
+	'mentta'              => 'Productos agrupados dentro de esta selección.',
 );
 
 foreach ( $items as &$item ) {
 	$slug = sanitize_title( (string) ( $item['slug'] ?? '' ) );
 	$name = trim( (string) ( $item['name'] ?? '' ) );
 	$item['summary'] = $category_summaries[ $slug ] ?? sprintf(
-		'En esta sección encontrarás nuestra selección de %s, agrupada para que puedas ver fácilmente todos los productos de esta categoría.',
+		'%s agrupados en una misma categoría para consultar toda la selección de forma sencilla.',
 		$name
 	);
 }
