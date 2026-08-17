@@ -9,13 +9,6 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit( 1 );
 }
 
-function mdo_mentta_subcat_norm( $value ) {
-    $value = wp_strip_all_tags( (string) $value );
-    $value = remove_accents( $value );
-    $value = preg_replace( '/\s+/u', ' ', trim( $value ) );
-    return function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
-}
-
 function mdo_mentta_subcat_ids( $term_id ) {
     $ids = array( (int) $term_id );
     $children = get_term_children( (int) $term_id, 'product_cat' );
@@ -64,63 +57,30 @@ $mentta_descendants = array_map( 'intval', $mentta_descendants );
 
 $groups = array(
     'jamones' => array(
-        'label' => 'Jamones y paletas',
-        'slug'  => 'mentta-jamones-y-paletas',
+        'label'       => 'Jamones y paletas',
+        'source_slug' => 'jamones-paletas',
+        'child_slug'  => 'mentta-jamones-y-paletas',
     ),
     'embutidos' => array(
-        'label' => 'Embutidos',
-        'slug'  => 'mentta-embutidos',
+        'label'       => 'Embutidos',
+        'source_slug' => 'embutidos',
+        'child_slug'  => 'mentta-embutidos',
     ),
     'aceites' => array(
-        'label' => 'Aceites',
-        'slug'  => 'mentta-aceites',
+        'label'       => 'Aceites',
+        'source_slug' => 'aceites',
+        'child_slug'  => 'mentta-aceites',
     ),
 );
 
-$all_terms = get_terms(
-    array(
-        'taxonomy'   => 'product_cat',
-        'hide_empty' => false,
-    )
-);
-if ( is_wp_error( $all_terms ) ) {
-    fwrite( STDERR, 'ERROR reading product categories: ' . $all_terms->get_error_message() . "\n" );
-    exit( 4 );
-}
-
 foreach ( $groups as $key => &$group ) {
-    $wanted_norm = mdo_mentta_subcat_norm( $group['label'] );
-    $candidates = array();
-    foreach ( $all_terms as $term ) {
-        if ( (int) $term->term_id === (int) $mentta->term_id || in_array( (int) $term->term_id, $mentta_descendants, true ) ) {
-            continue;
-        }
-        if ( mdo_mentta_subcat_norm( $term->name ) === $wanted_norm ) {
-            $candidates[] = $term;
-        }
+    $source = get_term_by( 'slug', $group['source_slug'], 'product_cat' );
+    if ( ! ( $source instanceof WP_Term ) ) {
+        fwrite( STDERR, sprintf( "ERROR: source category slug '%s' for '%s' not found.\n", $group['source_slug'], $group['label'] ) );
+        exit( 4 );
     }
-
-    $top_level = array_values(
-        array_filter(
-            $candidates,
-            static function ( $term ) {
-                return 0 === (int) $term->parent;
-            }
-        )
-    );
-
-    if ( 1 === count( $top_level ) ) {
-        $source = $top_level[0];
-    } elseif ( 1 === count( $candidates ) ) {
-        $source = $candidates[0];
-    } else {
-        $ids = array_map(
-            static function ( $term ) {
-                return (int) $term->term_id;
-            },
-            $candidates
-        );
-        fwrite( STDERR, sprintf( "ERROR: expected one unambiguous source category for '%s'; candidates=%s\n", $group['label'], implode( ',', $ids ) ) );
+    if ( (int) $source->term_id === (int) $mentta->term_id || in_array( (int) $source->term_id, $mentta_descendants, true ) ) {
+        fwrite( STDERR, sprintf( "ERROR: source category '%s' unexpectedly belongs to MENTTA.\n", $group['label'] ) );
         exit( 5 );
     }
 
@@ -130,8 +90,9 @@ foreach ( $groups as $key => &$group ) {
         exit( 6 );
     }
 
-    $group['source_id']  = (int) $source->term_id;
-    $group['source_ids'] = $source_ids;
+    $group['source_id']   = (int) $source->term_id;
+    $group['source_name'] = $source->name;
+    $group['source_ids']  = $source_ids;
 }
 unset( $group );
 
@@ -169,13 +130,16 @@ foreach ( $mentta_products as $product_id ) {
     }
 
     if ( ! $matched_keys ) {
-        $names = wp_get_object_terms( $product_id, 'product_cat', array( 'fields' => 'names' ) );
-        if ( is_wp_error( $names ) ) {
-            $names = array();
+        $terms = wp_get_object_terms( $product_id, 'product_cat' );
+        $parts = array();
+        if ( ! is_wp_error( $terms ) ) {
+            foreach ( $terms as $term ) {
+                $parts[] = sprintf( '%s[%s:%d]', $term->name, $term->slug, (int) $term->term_id );
+            }
         }
         $unmatched[ $product_id ] = array(
             'title'      => get_the_title( $product_id ),
-            'categories' => $names,
+            'categories' => $parts,
         );
     } elseif ( count( $matched_keys ) > 1 ) {
         $multi_match[ $product_id ] = $matched_keys;
@@ -211,7 +175,7 @@ foreach ( $groups as $key => &$group ) {
             'product_cat',
             array(
                 'parent' => (int) $mentta->term_id,
-                'slug'   => $group['slug'],
+                'slug'   => $group['child_slug'],
             )
         );
         if ( is_wp_error( $created ) ) {
@@ -285,8 +249,10 @@ foreach ( $groups as $key => $group ) {
         }
     }
     echo sprintf(
-        "%s | source=%d | mentta_child=%d | products=%d | published=%d\n",
+        "%s | source=%s[%s:%d] | mentta_child=%d | products=%d | published=%d\n",
         $group['label'],
+        $group['source_name'],
+        $group['source_slug'],
         (int) $group['source_id'],
         (int) $group['child_id'],
         count( $expected[ $key ] ),
