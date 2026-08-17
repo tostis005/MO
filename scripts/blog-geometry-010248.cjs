@@ -21,31 +21,41 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const value = element.getBoundingClientRect();
         return { x: value.x, w: value.width, right: value.right };
       };
-      const main = document.querySelector('.emo-journal');
-      const hero = document.querySelector('.emo-journal-hero');
-      const grid = document.querySelector('.emo-journal-grid');
+      const main = document.querySelector('main#primary.emo-journal');
+      const hero = main?.querySelector('.emo-journal-hero') || null;
+      const grid = main?.querySelector('.emo-journal-grid') || null;
       return {
         scrollWidth: document.documentElement.scrollWidth,
         viewport: innerWidth,
+        bodyClass: document.body.className,
+        journalMatches: [...document.querySelectorAll('.emo-journal')].map((element) => ({
+          tag: element.tagName,
+          id: element.id,
+          className: element.className?.toString() || '',
+          rect: rect(element),
+        })),
         main: main ? rect(main) : null,
         hero: hero ? rect(hero) : null,
         grid: grid ? rect(grid) : null,
-        marker: Boolean(document.querySelector('#elmercado-blog-design-system-010248')),
-        links: [...document.querySelectorAll('.emo-article-card__link')]
-          .map((link) => link.href)
-          .filter(Boolean)
-          .slice(0, 20),
+        marker248: Boolean(document.querySelector('#elmercado-blog-design-system-010248')),
+        marker250: Boolean(document.querySelector('#elmercado-blog-design-force-010250')),
+        links: main
+          ? [...main.querySelectorAll('.emo-article-card__link')]
+              .map((link) => link.href)
+              .filter(Boolean)
+              .slice(0, 20)
+          : [],
       };
     });
 
-    if (!blog.marker || !blog.main || !blog.hero || !blog.grid) {
+    if (!blog.marker248 || !blog.marker250 || !blog.main || !blog.hero || !blog.grid) {
       throw new Error(`Blog structure ${JSON.stringify(blog)}`);
     }
     if (blog.scrollWidth > blog.viewport + 2) {
       throw new Error(`Blog horizontal overflow ${JSON.stringify(blog)}`);
     }
     if (blog.main.w > 1182 || blog.main.w < 1100) {
-      throw new Error(`Blog shell width ${JSON.stringify(blog.main)}`);
+      throw new Error(`Blog shell width ${JSON.stringify(blog)}`);
     }
     if (Math.abs(blog.hero.w - blog.grid.w) > 3 || Math.abs(blog.main.w - blog.grid.w) > 3) {
       throw new Error(`Blog width mismatch ${JSON.stringify(blog)}`);
@@ -62,7 +72,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       });
       await sleep(350);
       const hasProducts = await page.evaluate(() => Boolean(document.querySelector(
-        '.emo-article-content .woocommerce ul.products, .emo-article-content .wc-block-grid__products, .emo-article-content .wc-block-product-template'
+        'main#primary.emo-article-page .emo-article-content .woocommerce ul.products, main#primary.emo-article-page .emo-article-content .wc-block-grid__products, main#primary.emo-article-page .emo-article-content .wc-block-product-template'
       )));
       if (hasProducts) {
         productArticle = url;
@@ -82,12 +92,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const value = element.getBoundingClientRect();
         return { x: value.x, w: value.width, right: value.right };
       };
-      const main = document.querySelector('.emo-article-page');
-      const hero = document.querySelector('.emo-article-hero');
-      const content = document.querySelector('.emo-article-content');
-      const grid = document.querySelector(
-        '.emo-article-content .woocommerce ul.products, .emo-article-content .wc-block-grid__products, .emo-article-content .wc-block-product-template'
-      );
+      const main = document.querySelector('main#primary.emo-article-page');
+      const hero = main?.querySelector('.emo-article-hero') || null;
+      const content = main?.querySelector('.emo-article-content') || null;
+      const grid = content?.querySelector(
+        '.woocommerce ul.products, .wc-block-grid__products, .wc-block-product-template'
+      ) || null;
       const wide = grid?.closest('.woocommerce,.wc-block-grid,.wp-block-woocommerce-product-collection') || grid;
       const cards = grid
         ? [...grid.children]
@@ -98,7 +108,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       return {
         scrollWidth: document.documentElement.scrollWidth,
         viewport: innerWidth,
-        marker: Boolean(document.querySelector('#elmercado-blog-design-system-010248')),
+        articlePageMatches: [...document.querySelectorAll('.emo-article-page')].map((element) => ({
+          tag: element.tagName,
+          id: element.id,
+          className: element.className?.toString() || '',
+          rect: rect(element),
+        })),
+        marker248: Boolean(document.querySelector('#elmercado-blog-design-system-010248')),
+        marker250: Boolean(document.querySelector('#elmercado-blog-design-force-010250')),
         main: main ? rect(main) : null,
         hero: hero ? rect(hero) : null,
         content: content ? rect(content) : null,
@@ -107,7 +124,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       };
     });
 
-    if (!article.marker || !article.main || !article.hero || !article.content) {
+    if (!article.marker248 || !article.marker250 || !article.main || !article.hero || !article.content) {
       throw new Error(`Article structure ${JSON.stringify(article)}`);
     }
     if (article.scrollWidth > article.viewport + 2) {
@@ -140,14 +157,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const value = element.getBoundingClientRect();
         return { x: value.x, w: value.width, right: value.right };
       };
-      const main = document.querySelector('.emo-article-page');
-      const content = document.querySelector('.emo-article-content');
-      const cards = [...document.querySelectorAll(
-        '.emo-article-content .woocommerce ul.products > li.product, .emo-article-content .wc-block-grid__product, .emo-article-content .wc-block-product'
-      )]
-        .filter((element) => element.getBoundingClientRect().width > 0)
-        .slice(0, 5)
-        .map(rect);
+      const main = document.querySelector('main#primary.emo-article-page');
+      const content = main?.querySelector('.emo-article-content') || null;
+      const cards = main
+        ? [...main.querySelectorAll(
+            '.emo-article-content .woocommerce ul.products > li.product, .emo-article-content .wc-block-grid__product, .emo-article-content .wc-block-product'
+          )]
+            .filter((element) => element.getBoundingClientRect().width > 0)
+            .slice(0, 5)
+            .map(rect)
+        : [];
       return {
         scrollWidth: document.documentElement.scrollWidth,
         viewport: innerWidth,
@@ -167,7 +186,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       throw new Error(`Mobile products ${JSON.stringify(mobile.cards)}`);
     }
 
-    console.log('PRODUCTION_BLOG_DESIGN_010248_BROWSER_OK', JSON.stringify({
+    console.log('PRODUCTION_BLOG_DESIGN_010250_BROWSER_OK', JSON.stringify({
       blog,
       articleUrl,
       productArticle: Boolean(productArticle),
