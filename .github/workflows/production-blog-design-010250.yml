@@ -1,4 +1,4 @@
-name: Production blog design 0.10.250
+name: Production blog design 0.10.251
 
 on:
   push:
@@ -6,6 +6,12 @@ on:
     paths:
       - '.github/workflows/production-blog-design-010250.yml'
       - 'scripts/blog-geometry-010248.cjs'
+      - 'elmercadodeorigen-child/single.php'
+      - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php'
+      - 'elmercadodeorigen-child/inc/blog-design-system-010248.php'
+      - 'elmercadodeorigen-child/inc/blog-editorial-body-class-010249.php'
+      - 'elmercadodeorigen-child/inc/blog-design-force-010250.php'
 
 permissions:
   contents: read
@@ -28,11 +34,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate final blog patch
+      - name: Validate blog storefront parity patch
         shell: bash
         run: |
           set -euo pipefail
           test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/single.php
           test -f elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
           test -f elmercadodeorigen-child/inc/blog-design-system-010248.php
           test -f elmercadodeorigen-child/inc/blog-editorial-body-class-010249.php
@@ -42,6 +49,9 @@ jobs:
           grep -q 'main#primary.emo-journal' elmercadodeorigen-child/inc/blog-design-force-010250.php
           grep -q 'main#primary.emo-article-page' elmercadodeorigen-child/inc/blog-design-force-010250.php
           grep -q 'blog-design-system-010248.php' elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          ! grep -q 'emo-article-hero__lead' elmercadodeorigen-child/single.php
+          ! grep -q 'aspect-ratio: 4 / 3' elmercadodeorigen-child/inc/blog-design-system-010248.php
+          ! grep -q 'aspect-ratio: 4 / 3' elmercadodeorigen-child/inc/blog-design-force-010250.php
           find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
           [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
@@ -73,10 +83,11 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          REMOTE_TMP="/tmp/elmercado-blog-010250-${GITHUB_RUN_ID}"
+          REMOTE_TMP="/tmp/elmercado-blog-010251-${GITHUB_RUN_ID}"
           echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/inc'"
           sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/functions.php"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/single.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/single.php"
           for f in blog-footer-layout-polish-010246.php blog-design-system-010248.php blog-editorial-body-class-010249.php blog-design-force-010250.php; do
             sshpass -e rsync -az -e "ssh $SSH_OPTIONS" "elmercadodeorigen-child/inc/$f" "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/inc/$f"
           done
@@ -111,16 +122,17 @@ jobs:
           siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
           case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing production deploy: siteurl=$siteurl" >&2; exit 1 ;; esac
 
-          for f in "$incoming/functions.php" "$incoming/inc/blog-footer-layout-polish-010246.php" "$incoming/inc/blog-design-system-010248.php" "$incoming/inc/blog-editorial-body-class-010249.php" "$incoming/inc/blog-design-force-010250.php"; do
+          for f in "$incoming/functions.php" "$incoming/single.php" "$incoming/inc/blog-footer-layout-polish-010246.php" "$incoming/inc/blog-design-system-010248.php" "$incoming/inc/blog-editorial-body-class-010249.php" "$incoming/inc/blog-design-force-010250.php"; do
             "$php_bin" -l "$f" >/dev/null
           done
 
           rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
           short_commit="$(printf '%.10s' "$commit")"
-          backup_name="$(date -u +%Y%m%dT%H%M%SZ)-before-blog-010250-$short_commit"
+          backup_name="$(date -u +%Y%m%dT%H%M%SZ)-before-blog-010251-$short_commit"
           backup_dir="$rollback_root/$backup_name"
           mkdir -p "$backup_dir"
           cp "$theme/functions.php" "$backup_dir/functions.php"
+          cp "$theme/single.php" "$backup_dir/single.php"
           cp "$theme/inc/blog-footer-layout-polish-010246.php" "$backup_dir/blog-footer-layout-polish-010246.php"
           for f in blog-design-system-010248.php blog-editorial-body-class-010249.php blog-design-force-010250.php; do
             if [ -f "$theme/inc/$f" ]; then
@@ -134,12 +146,14 @@ jobs:
           printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
 
           cp "$incoming/functions.php" "$theme/functions.php"
+          cp "$incoming/single.php" "$theme/single.php"
           cp "$incoming/inc/blog-footer-layout-polish-010246.php" "$theme/inc/blog-footer-layout-polish-010246.php"
           cp "$incoming/inc/blog-design-system-010248.php" "$theme/inc/blog-design-system-010248.php"
           cp "$incoming/inc/blog-editorial-body-class-010249.php" "$theme/inc/blog-editorial-body-class-010249.php"
           cp "$incoming/inc/blog-design-force-010250.php" "$theme/inc/blog-design-force-010250.php"
 
           "$php_bin" -l "$theme/functions.php" >/dev/null
+          "$php_bin" -l "$theme/single.php" >/dev/null
           "$php_bin" -l "$theme/inc/blog-footer-layout-polish-010246.php" >/dev/null
           "$php_bin" -l "$theme/inc/blog-design-system-010248.php" >/dev/null
           "$php_bin" -l "$theme/inc/blog-editorial-body-class-010249.php" >/dev/null
@@ -147,11 +161,11 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
 
           base="${siteurl%/}"
-          code="$(curl -ksS -L -o /tmp/blog-010250 -w '%{http_code}' --max-time 35 "$base/blog/?release=$commit" || true)"
+          code="$(curl -ksS -L -o /tmp/blog-010251 -w '%{http_code}' --max-time 35 "$base/blog/?release=$commit" || true)"
           [ "$code" = '200' ] || { echo "Blog HTTP $code" >&2; exit 1; }
-          grep -q 'elmercado-blog-design-system-010248' /tmp/blog-010250
-          grep -q 'elmercado-blog-design-force-010250' /tmp/blog-010250
-          ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/blog-010250
+          grep -q 'elmercado-blog-design-system-010248' /tmp/blog-010251
+          grep -q 'elmercado-blog-design-force-010250' /tmp/blog-010251
+          ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/blog-010251
 
           printf '__SITEURL__=%s\n' "$siteurl"
           printf '__PROD__=%s\n' "$prod"
@@ -170,7 +184,7 @@ jobs:
           echo "PRODUCTION_THEME_PATH=$THEME" >> "$GITHUB_ENV"
           echo "PRODUCTION_BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
 
-      - name: Browser geometry QA on production
+      - name: Browser storefront parity QA on production
         shell: bash
         run: |
           set -euo pipefail
@@ -178,7 +192,7 @@ jobs:
 
       - name: Release success
         if: success()
-        run: echo "PRODUCTION_BLOG_DESIGN_010250_OK backup=$PRODUCTION_BACKUP_DIR"
+        run: echo "PRODUCTION_BLOG_DESIGN_010251_OK backup=$PRODUCTION_BACKUP_DIR"
 
       - name: Roll back blog patch on failure
         if: failure() && steps.release.outcome == 'success'
@@ -193,6 +207,7 @@ jobs:
           set -eu
           prod="$1"; theme="$2"; backup="$3"
           cp "$backup/functions.php" "$theme/functions.php"
+          cp "$backup/single.php" "$theme/single.php"
           cp "$backup/blog-footer-layout-polish-010246.php" "$theme/inc/blog-footer-layout-polish-010246.php"
           for f in blog-design-system-010248.php blog-editorial-body-class-010249.php blog-design-force-010250.php; do
             if [ "$(cat "$backup/$f.existed" 2>/dev/null || echo no)" = yes ]; then
@@ -205,5 +220,5 @@ jobs:
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           wp_bin="$(command -v wp || true)"
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
-          echo PRODUCTION_BLOG_DESIGN_010250_ROLLED_BACK
+          echo PRODUCTION_BLOG_DESIGN_010251_ROLLED_BACK
           REMOTE
