@@ -91,18 +91,58 @@ add_action(
 				word-break: normal;
 			}
 
-			/* Tablet: el botón del aviso deja de flotar antes de que comprima el texto. */
-			@media (min-width: 768px) and (max-width: 900px) {
+			/*
+			 * Tablet: a partir de 768px Woostify recupera reglas de escritorio
+			 * para formulario/totales. Forzamos una única columna hasta 991px para
+			 * que el primer track no quede reducido a unas decenas de píxeles.
+			 */
+			@media (min-width: 768px) and (max-width: 991px) {
+				html body.elmercado-child-theme.woocommerce-cart .woocommerce-notices-wrapper {
+					width: min(100%, 1180px) !important;
+					margin-right: auto !important;
+					margin-left: auto !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout {
+					display: grid !important;
+					width: min(100%, 1180px) !important;
+					grid-template-columns: minmax(0, 1fr) !important;
+					gap: 1.25rem !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout > .woocommerce-cart-form,
+				html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout > .cart-collaterals {
+					display: block !important;
+					grid-column: 1 !important;
+					box-sizing: border-box !important;
+					width: 100% !important;
+					min-width: 0 !important;
+					max-width: 100% !important;
+					margin-right: 0 !important;
+					margin-left: 0 !important;
+					float: none !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout > .cart-collaterals .cart_totals {
+					display: block !important;
+					box-sizing: border-box !important;
+					width: 100% !important;
+					min-width: 0 !important;
+					max-width: 100% !important;
+					margin: 0 !important;
+					float: none !important;
+				}
+
 				html body.elmercado-child-theme.woocommerce-cart :is(.woocommerce-message,.woocommerce-info,.woocommerce-error) .button {
 					display: flex !important;
 					float: none !important;
+					box-sizing: border-box !important;
 					width: 100% !important;
 					max-width: 100% !important;
 					min-height: 40px !important;
 					align-items: center !important;
 					justify-content: center !important;
 					margin: .8rem 0 0 !important;
-					box-sizing: border-box !important;
 				}
 			}
 
