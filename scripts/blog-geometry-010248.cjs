@@ -173,11 +173,13 @@ const sellerImageKeys = ['display', 'width', 'height', 'borderRadius', 'objectFi
     if (article.main.w < 1100 || article.main.w > 1182 || Math.abs(article.main.w - article.hero.w) > 3) {
       throw new Error(`Article shell ${JSON.stringify(article)}`);
     }
-    if (article.content.w < 898 || article.content.w > 902) throw new Error(`Reading width ${JSON.stringify(article)}`);
-    if (article.wide.w > 1042 || article.wide.x < 120 || article.wide.right > 1320) {
+    if (article.content.w < 1176 || article.content.w > 1182 || Math.abs(article.content.w - article.hero.w) > 3) {
+      throw new Error(`Article content/header width mismatch ${JSON.stringify(article)}`);
+    }
+    if (article.wide.w > 1042 || article.wide.x < article.content.x || article.wide.right > article.content.right) {
       throw new Error(`Product block ${JSON.stringify(article)}`);
     }
-    if (article.cards.some((card) => card.w < 220 || card.w > 360 || card.x < 100 || card.right > 1340)) {
+    if (article.cards.some((card) => card.w < 220 || card.w > 360 || card.x < article.content.x || card.right > article.content.right)) {
       throw new Error(`Product cards ${JSON.stringify(article)}`);
     }
     if (!article.product.hasSeller || article.product.sellerImageCount < 1) {
