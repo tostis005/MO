@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Internal MENTTA category
  * Description: Keeps the MENTTA WooCommerce category available to integrations/admins but hidden from the public storefront.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,9 +13,31 @@ if ( ! defined( 'MDO_MENTTA_CATEGORY_SLUG' ) ) {
 	define( 'MDO_MENTTA_CATEGORY_SLUG', 'mentta' );
 }
 
+/**
+ * Resolve the marker term ID without using get_terms(), because this function is
+ * itself called from a get_terms_args filter on public requests.
+ */
 function mdo_mentta_marker_term_id() {
-	$term = get_term_by( 'slug', MDO_MENTTA_CATEGORY_SLUG, 'product_cat' );
-	return $term instanceof WP_Term ? (int) $term->term_id : 0;
+	static $term_id = null;
+
+	if ( null !== $term_id ) {
+		return $term_id;
+	}
+
+	global $wpdb;
+	$term_id = (int) $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT t.term_id
+			 FROM {$wpdb->terms} t
+			 INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_id = t.term_id
+			 WHERE t.slug = %s AND tt.taxonomy = %s
+			 LIMIT 1",
+			MDO_MENTTA_CATEGORY_SLUG,
+			'product_cat'
+		)
+	);
+
+	return $term_id;
 }
 
 /**
