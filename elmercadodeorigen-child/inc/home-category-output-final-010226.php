@@ -66,7 +66,7 @@ function elmercado_home_category_output_html_010226(): string {
 		: home_url( '/categorias/' );
 
 	$html  = '<section class="emo-section emo-categories" data-emo-category-truth="010226"><div class="emo-shell">';
-	$html .= '<div class="emo-section-heading"><div><span class="emo-kicker">' . esc_html__( 'Explora por categoría', 'elmercadodeorigen' ) . '</span><h2>' . esc_html__( 'Encuentra tu próximo descubrimiento', 'elmercadodeorigen' ) . '</h2><p>' . esc_html__( 'Explora el mercado por familias y descubre sabores, elaboraciones y formas de disfrutar cada producto desde su origen.', 'elmercadodeorigen' ) . '</p></div><a class="emo-text-link" data-emo-categories-link="010257" href="' . esc_url( $categories_url ) . '">' . esc_html__( 'Ver todas las categorías', 'elmercadodeorigen' ) . '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>';
+	$html .= '<div class="emo-section-heading"><div><span class="emo-kicker">' . esc_html__( 'Compra por categoría', 'elmercadodeorigen' ) . '</span><h2>' . esc_html__( 'Encuentra lo que buscas por categoría', 'elmercadodeorigen' ) . '</h2><p>' . esc_html__( 'Hemos agrupado los productos por categorías para que puedas encontrar fácilmente el tipo de producto que buscas.', 'elmercadodeorigen' ) . '</p></div><a class="emo-text-link" data-emo-categories-link="010257" href="' . esc_url( $categories_url ) . '">' . esc_html__( 'Ver todas las categorías', 'elmercadodeorigen' ) . '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>';
 	$html .= '<div class="emo-category-grid">';
 
 	foreach ( $items as $item ) {
