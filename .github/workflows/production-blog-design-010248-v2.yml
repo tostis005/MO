@@ -1,0 +1,219 @@
+name: Production blog design 0.10.248 v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-blog-design-010248-v2.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release and QA script
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/inc/blog-design-system-010248.php
+          test -f scripts/blog-geometry-010248.cjs
+          grep -q 'blog-design-system-010248.php' elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          grep -q 'elmercado-blog-design-system-010248' elmercadodeorigen-child/inc/blog-design-system-010248.php
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node -e "require('puppeteer-core'); console.log('PUPPETEER_OK')"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage child theme on server
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/elmercado-blog-design-010248-v2-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' --exclude='*.map' -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/"
+
+      - name: Backup and deploy production theme
+        id: release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP/theme' '$GITHUB_SHA'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"
+          dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] && [ -d "$prod/wp-content/themes" ] || { echo 'Production WordPress path invalid.' >&2; exit 1; }
+
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing production deploy: siteurl=$siteurl" >&2; exit 1 ;; esac
+
+          find "$incoming" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          test -f "$incoming/inc/blog-design-system-010248.php"
+          grep -q 'blog-design-system-010248.php' "$incoming/inc/blog-footer-layout-polish-010246.php"
+
+          parent="$prod/wp-content/themes"
+          target="$parent/elmercadodeorigen-child"
+          [ -d "$target" ] || { echo 'Existing production child theme missing.' >&2; exit 1; }
+          active_before="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          short_commit="$(printf '%.10s' "$commit")"
+          backup_name="$(date -u +%Y%m%dT%H%M%SZ)-before-blog-design-010248-v2-$short_commit"
+          backup_dir="$rollback_root/$backup_name"
+          mkdir -p "$backup_dir"
+          tar -czf "$backup_dir/theme.tar.gz" -C "$parent" elmercadodeorigen-child
+          (cd "$backup_dir" && sha256sum theme.tar.gz > theme.tar.gz.sha256 && sha256sum -c theme.tar.gz.sha256)
+          printf '%s\n' "$active_before" > "$backup_dir/active-stylesheet.txt"
+          printf '%s\n' "$siteurl" > "$backup_dir/siteurl.txt"
+          printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
+
+          old="$parent/.elmercadodeorigen-child.predeploy-$commit"
+          rm -rf "$old"
+          swapped=0
+          rollback() {
+            code=$?
+            if [ "$swapped" -eq 1 ] && [ "$code" -ne 0 ]; then
+              echo 'Initial production verification failed; restoring prior theme.' >&2
+              rm -rf "$target"
+              [ ! -d "$old" ] || mv "$old" "$target"
+              "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$active_before" --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$incoming"
+            exit "$code"
+          }
+          trap rollback EXIT HUP INT TERM
+
+          mv "$target" "$old"
+          mv "$incoming" "$target"
+          swapped=1
+          find "$target" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$prod" --skip-plugins --allow-root >/dev/null
+          active_after="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active_after" = 'elmercadodeorigen-child' ]
+          test -f "$target/inc/blog-design-system-010248.php"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+
+          base="${siteurl%/}"
+          for path in / /blog/; do
+            code="$(curl -ksS -L -o /tmp/emo-blog-page -w '%{http_code}' --max-time 35 "$base$path?release=$commit" || true)"
+            [ "$code" = '200' ] || { echo "$path HTTP $code" >&2; exit 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/emo-blog-page || { echo "Fatal marker on $path" >&2; exit 1; }
+          done
+          curl -ksS -L --max-time 35 "$base/blog/?release=$commit" | grep -q 'elmercado-blog-design-system-010248'
+
+          swapped=0
+          trap - EXIT HUP INT TERM
+          printf '__SITEURL__=%s\n' "$siteurl"
+          printf '__PROD__=%s\n' "$prod"
+          printf '__OLD__=%s\n' "$old"
+          printf '__ACTIVE_BEFORE__=%s\n' "$active_before"
+          printf '__BACKUP__=%s\n' "$backup_name"
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          SITEURL="$(printf '%s\n' "$OUT" | sed -n 's/^__SITEURL__=//p' | tail -n1)"
+          PROD="$(printf '%s\n' "$OUT" | sed -n 's/^__PROD__=//p' | tail -n1)"
+          OLD="$(printf '%s\n' "$OUT" | sed -n 's/^__OLD__=//p' | tail -n1)"
+          ACTIVE_BEFORE="$(printf '%s\n' "$OUT" | sed -n 's/^__ACTIVE_BEFORE__=//p' | tail -n1)"
+          BACKUP="$(printf '%s\n' "$OUT" | sed -n 's/^__BACKUP__=//p' | tail -n1)"
+          : "${SITEURL:?}"; : "${PROD:?}"; : "${OLD:?}"; : "${ACTIVE_BEFORE:?}"; : "${BACKUP:?}"
+          echo "PRODUCTION_SITEURL=$SITEURL" >> "$GITHUB_ENV"
+          echo "PRODUCTION_WP_PATH=$PROD" >> "$GITHUB_ENV"
+          echo "PRODUCTION_OLD_THEME=$OLD" >> "$GITHUB_ENV"
+          echo "PRODUCTION_ACTIVE_BEFORE=$ACTIVE_BEFORE" >> "$GITHUB_ENV"
+          echo "PRODUCTION_BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+      - name: Browser geometry QA on production
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/blog-geometry-010248.cjs
+
+      - name: Finalize successful release
+        if: success()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$PRODUCTION_OLD_THEME' && echo PRODUCTION_BLOG_DESIGN_010248_V2_OK backup='$PRODUCTION_BACKUP'"
+
+      - name: Roll back if browser verification fails
+        if: failure() && steps.release.outcome == 'success'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PRODUCTION_WP_PATH' '$PRODUCTION_OLD_THEME' '$PRODUCTION_ACTIVE_BEFORE'" <<'REMOTE'
+          set -eu
+          prod="$1"; old="$2"; active_before="$3"
+          parent="$prod/wp-content/themes"; target="$parent/elmercadodeorigen-child"
+          [ -d "$old" ] || { echo 'Rollback source missing.' >&2; exit 1; }
+          rm -rf "$target"
+          mv "$old" "$target"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$active_before" --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          echo PRODUCTION_BLOG_DESIGN_010248_V2_ROLLED_BACK
+          REMOTE
