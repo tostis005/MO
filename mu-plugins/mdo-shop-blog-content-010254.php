@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO - Shop and blog content 0.10.255
- * Description: Removes the redundant shop lead, cleans legacy blog intro headings and guarantees the Jamón Ibérico embutidos product grid.
- * Version: 0.10.255
+ * Plugin Name: MDO - Shop and blog content 0.10.256
+ * Description: Removes redundant shop/blog introduction labels and guarantees the Jamón Ibérico embutidos product grid.
+ * Version: 0.10.256
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -53,6 +53,40 @@ function mdo_remove_legacy_introduction_heading_010254( string $content ): strin
 	return is_string( $cleaned ) ? $cleaned : $content;
 }
 add_filter( 'the_content', 'mdo_remove_legacy_introduction_heading_010254', PHP_INT_MAX );
+
+/**
+ * The blog cards use get_the_excerpt(), which is generated before the singular
+ * `the_content` cleanup above. If a post really contains the old standalone
+ * INTRODUCCIÓN heading, remove only that leading label from its card excerpt.
+ * The actual introductory paragraph is preserved unchanged.
+ *
+ * @param string  $excerpt Generated or manual excerpt.
+ * @param WP_Post $post    Current post object.
+ */
+function mdo_clean_legacy_introduction_excerpt_010256( string $excerpt, $post ): string {
+	if ( is_admin() || ! $post instanceof WP_Post || 'post' !== $post->post_type ) {
+		return $excerpt;
+	}
+
+	$has_legacy_heading = 1 === preg_match(
+		'/<h([1-6])\b[^>]*>\s*(?:<[^>]+>\s*)*INTRODUCCI(?:Ó|O)N\s*(?:<\/[^>]+>\s*)*<\/h\1>/iu',
+		(string) $post->post_content
+	);
+
+	if ( ! $has_legacy_heading ) {
+		return $excerpt;
+	}
+
+	$cleaned = preg_replace(
+		'/^\s*INTRODUCCI(?:Ó|O)N(?:\s|&nbsp;|&#160;|&#x0*A0;|:|\-|–|—)+/iu',
+		'',
+		$excerpt,
+		1
+	);
+
+	return is_string( $cleaned ) ? trim( $cleaned ) : $excerpt;
+}
+add_filter( 'get_the_excerpt', 'mdo_clean_legacy_introduction_excerpt_010256', PHP_INT_MAX, 2 );
 
 /**
  * Guarantee a real WooCommerce product grid immediately after the Embutidos
