@@ -6,8 +6,8 @@
  * `elmercado-editorial-content`, por lo que la capa visual 0.10.248 se
  * imprimía pero sus reglas de ancho no llegaban a aplicarse.
  *
- * Incluye también el cierre responsive solicitado para los avisos del carrito
- * y la paridad de anchura entre titular y cuerpo de los artículos en escritorio.
+ * Incluye también el cierre responsive solicitado para los avisos del carrito,
+ * la lectura editorial y la geometría intermedia del carrito.
  *
  * @package ElMercadoDeOrigen
  */
@@ -92,11 +92,13 @@ add_action(
 			}
 
 			/*
-			 * Tablet: a partir de 768px Woostify recupera reglas de escritorio
-			 * para formulario/totales. Forzamos una única columna hasta 991px para
-			 * que el primer track no quede reducido a unas decenas de píxeles.
+			 * Tablet y portátil estrecho: Woostify recupera demasiado pronto la
+			 * tabla de escritorio. Si el resumen entra a la derecha antes de que
+			 * haya anchura útil suficiente, la tabla se desborda por debajo del
+			 * panel y oculta precio/subtotal. Se conserva una sola columna hasta
+			 * 1199px y el diseño de dos columnas vuelve únicamente desde 1200px.
 			 */
-			@media (min-width: 768px) and (max-width: 991px) {
+			@media (min-width: 768px) and (max-width: 1199px) {
 				html body.elmercado-child-theme.woocommerce-cart .woocommerce-notices-wrapper {
 					width: min(100%, 1180px) !important;
 					margin-right: auto !important;
@@ -124,6 +126,8 @@ add_action(
 				}
 
 				html body.elmercado-child-theme.woocommerce-cart .emo-cart-layout > .cart-collaterals .cart_totals {
+					position: static !important;
+					top: auto !important;
 					display: block !important;
 					box-sizing: border-box !important;
 					width: 100% !important;
@@ -132,7 +136,10 @@ add_action(
 					margin: 0 !important;
 					float: none !important;
 				}
+			}
 
+			/* El botón del aviso deja de flotar antes de que comprima el texto. */
+			@media (min-width: 768px) and (max-width: 900px) {
 				html body.elmercado-child-theme.woocommerce-cart :is(.woocommerce-message,.woocommerce-info,.woocommerce-error) .button {
 					display: flex !important;
 					float: none !important;
@@ -161,11 +168,22 @@ add_action(
 			<?php endif; ?>
 
 			<?php if ( $is_post ) : ?>
-			/* En PC, el cuerpo recupera la misma anchura máxima (900px) que el H1. */
-			@media (min-width: 821px) {
+			/*
+			 * Pantalla grande: la tarjeta de contenido ocupa el mismo shell de 1180px
+			 * que la cabecera. El texto mantiene una línea de lectura de 900px y los
+			 * bloques de producto (1040px) quedan contenidos, sin recortes laterales.
+			 */
+			@media (min-width: 1101px) {
 				html body.single-post.elmercado-child-theme.elmercado-editorial-content main#primary.emo-article-page .emo-article-main .emo-article-content {
-					width: min(100%, 900px) !important;
-					max-width: 900px !important;
+					width: min(100%, 1180px) !important;
+					max-width: 1180px !important;
+				}
+
+				html body.single-post.elmercado-child-theme.elmercado-editorial-content main#primary.emo-article-page .emo-article-main .emo-article-content > :is(p,ul,ol,h2,h3,h4,h5,h6,blockquote) {
+					width: min(100%, 900px);
+					max-width: 900px;
+					margin-right: auto !important;
+					margin-left: auto !important;
 				}
 			}
 			<?php endif; ?>
