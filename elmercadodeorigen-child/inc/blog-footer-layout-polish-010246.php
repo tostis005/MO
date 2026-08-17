@@ -1,10 +1,10 @@
 <?php
 /**
- * Ajustes finales de lectura del blog y copy del pie 0.10.246.
+ * Ajustes finales de lectura del blog y copy del pie 0.10.251.
  *
- * Mantiene los productos relacionados dentro de sus contenedores, evita
- * tarjetas sobredimensionadas en tablet/móvil, normaliza el ritmo de los
- * encabezados editoriales y corrige el título inglés de Terms and Conditions.
+ * Mantiene los productos relacionados dentro de sus contenedores y normaliza
+ * el ritmo editorial, sin volver a estilizar las tarjetas WooCommerce. Las
+ * tarjetas incrustadas heredan el mismo sistema global que la tienda.
  *
  * @package ElMercadoDeOrigen
  */
@@ -35,8 +35,8 @@ add_filter(
 );
 
 /**
- * Última capa visual del blog. Se imprime al final del head para ganar a los
- * estilos históricos sin alterar el catálogo ni las fichas de producto.
+ * Última capa visual histórica del blog. Sólo conserva lectura y geometría;
+ * no modifica imágenes, botones, precio ni bloque de productor del catálogo.
  */
 add_action(
 	'wp_head',
@@ -46,7 +46,6 @@ add_action(
 		}
 		?>
 		<style id="elmercado-blog-layout-polish-010246">
-			/* Los niveles editoriales menores deben respirar igual que H2/H3. */
 			body.single-post.elmercado-child-theme .emo-article-content :is(h4, h5, h6) {
 				clear: both;
 				margin: 2.15em 0 0.72em !important;
@@ -69,16 +68,16 @@ add_action(
 				font-size: clamp(17px, 1.6vw, 21px);
 			}
 
-			body.single-post.elmercado-child-theme .emo-article-content :is(h2, h3, h4, h5, h6):first-child {
+			body.single-post.elmercado-child-theme .emo-article-content > :is(h2, h3, h4, h5, h6):first-child {
 				margin-top: 0 !important;
 			}
 
-			/* Un loop de WooCommerce incrustado en una entrada nunca sale del texto. */
+			/* Sólo geometría del loop: el acabado visual lo aporta el catálogo global. */
 			body.single-post.elmercado-child-theme .emo-article-content .woocommerce {
 				width: 100%;
 				max-width: 100%;
 				margin: 2.5em 0;
-				overflow: hidden;
+				overflow: visible;
 			}
 
 			body.single-post.elmercado-child-theme .emo-article-content .woocommerce ul.products {
@@ -107,16 +106,13 @@ add_action(
 				margin: 0 !important;
 			}
 
-			body.single-post.elmercado-child-theme .emo-article-content .woocommerce ul.products > li.product img {
-				display: block;
-				width: 100% !important;
-				max-width: 100% !important;
-				height: auto;
-				margin-inline: auto;
-			}
-
-			body.single-post.elmercado-child-theme .emo-article-content .woocommerce ul.products > li.product :is(h2, h3, .woocommerce-loop-product__title) {
-				overflow-wrap: anywhere;
+			/*
+			 * El shortcode no siempre conserva la misma profundidad de wrapper que la
+			 * tienda. Igualamos únicamente este valor que el contrato global aplica a
+			 * la tarjeta de catálogo cuando el título es hijo directo del wrapper.
+			 */
+			body.single-post.elmercado-child-theme .emo-article-content .woocommerce ul.products > li.product .woocommerce-loop-product__title {
+				line-height: 1.27 !important;
 			}
 
 			/* Relacionados propios del blog: 3 → 2 → 1, sin tarjetas gigantes. */
@@ -212,20 +208,11 @@ add_action(
 	PHP_INT_MAX
 );
 
-/*
- * El hotfix 0.10.247 se mantiene separado para no mezclar la corrección del
- * formulario de contacto con la capa editorial anterior.
- */
 $elmercado_contact_footer_hotfix_010247 = __DIR__ . '/contact-footer-hotfix-010247.php';
 if ( is_readable( $elmercado_contact_footer_hotfix_010247 ) ) {
 	require_once $elmercado_contact_footer_hotfix_010247;
 }
 
-/*
- * 0.10.248 unifica definitivamente el lienzo del blog y las rejillas de
- * producto. Se carga la última para sustituir solo las reglas editoriales
- * históricas que necesitaban un ancho diferente.
- */
 $elmercado_blog_design_system_010248 = __DIR__ . '/blog-design-system-010248.php';
 if ( is_readable( $elmercado_blog_design_system_010248 ) ) {
 	require_once $elmercado_blog_design_system_010248;
