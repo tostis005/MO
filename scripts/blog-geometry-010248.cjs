@@ -3,8 +3,13 @@ const puppeteer = require('puppeteer-core');
 const base = (process.env.PRODUCTION_SITEURL || 'https://www.elmercadodeorigen.com').replace(/\/$/, '');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const withQuery = (url, key) => `${url}${url.includes('?') ? '&' : '?'}${key}=${Date.now()}`;
-
 const sameSignature = (a, b, keys) => keys.every((key) => (a?.[key] || '') === (b?.[key] || ''));
+
+const visualKeys = ['backgroundColor', 'borderRadius', 'boxShadow', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
+const imageKeys = ['borderRadius', 'objectFit', 'display'];
+const titleKeys = ['fontSize', 'lineHeight', 'fontWeight', 'color', 'marginTop', 'marginBottom'];
+const sellerKeys = ['display', 'alignItems', 'fontSize', 'lineHeight', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
+const sellerImageKeys = ['display', 'width', 'height', 'borderRadius', 'objectFit'];
 
 (async () => {
   const browser = await puppeteer.launch({
@@ -179,12 +184,6 @@ const sameSignature = (a, b, keys) => keys.every((key) => (a?.[key] || '') === (
       throw new Error(`Blog product seller image missing ${JSON.stringify({ shopCard, article: article.product })}`);
     }
 
-    const visualKeys = ['backgroundColor', 'borderRadius', 'boxShadow', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
-    const imageKeys = ['borderRadius', 'objectFit', 'display'];
-    const titleKeys = ['fontSize', 'lineHeight', 'fontWeight', 'color', 'marginTop', 'marginBottom'];
-    const sellerKeys = ['display', 'alignItems', 'fontSize', 'lineHeight', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
-    const sellerImageKeys = ['display', 'width', 'height', 'borderRadius', 'objectFit'];
-
     if (!sameSignature(shopCard.visual, article.product.visual, visualKeys)) {
       throw new Error(`Store/blog card visual mismatch ${JSON.stringify({ shop: shopCard.visual, blog: article.product.visual })}`);
     }
@@ -201,7 +200,50 @@ const sameSignature = (a, b, keys) => keys.every((key) => (a?.[key] || '') === (
       throw new Error(`Store/blog seller image mismatch ${JSON.stringify({ shop: shopCard.sellerImage, blog: article.product.sellerImage })}`);
     }
 
+    /* Mobile parity is checked against the mobile shop itself, including any responsive hiding. */
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+    await page.goto(withQuery(`${base}/tienda/`, 'shopmobileqa'), { waitUntil: 'networkidle2', timeout: 60000 });
+    await sleep(900);
+
+    const shopMobile = await page.evaluate(() => {
+      const visible = (el) => el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
+      const cards = [...document.querySelectorAll('ul.products > li.product')].filter(visible);
+      const card = cards.find((item) => item.querySelector('.wcfmmp_sold_by_container, .wcfmmp_sold_by_container_advanced')) || cards[0] || null;
+      if (!card) return null;
+      const visual = card.querySelector('.product-loop-wrapper') || card;
+      const image = card.querySelector('img.product-loop-image, .woocommerce-loop-product__link > img, img.attachment-woocommerce_thumbnail');
+      const title = card.querySelector('.woocommerce-loop-product__title, .product-title, h2, h3');
+      const seller = card.querySelector('.wcfmmp_sold_by_container, .wcfmmp_sold_by_container_advanced');
+      const sellerImage = seller?.querySelector('img') || null;
+      const style = (el, keys) => {
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return Object.fromEntries(keys.map((key) => [key, s[key]]));
+      };
+      const rect = (el) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: Math.round(r.x), w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right) };
+      };
+      return {
+        viewport: innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        card: rect(card),
+        visual: style(visual, ['backgroundColor', 'borderRadius', 'boxShadow', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']),
+        image: style(image, ['borderRadius', 'objectFit', 'display']),
+        title: style(title, ['fontSize', 'lineHeight', 'fontWeight', 'color', 'marginTop', 'marginBottom']),
+        seller: style(seller, ['display', 'alignItems', 'fontSize', 'lineHeight', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']),
+        sellerImage: style(sellerImage, ['display', 'width', 'height', 'borderRadius', 'objectFit']),
+        sellerImageRect: rect(sellerImage),
+        hasSeller: Boolean(seller),
+        sellerImageCount: seller ? seller.querySelectorAll('img').length : 0,
+      };
+    });
+
+    if (!shopMobile?.card || !shopMobile.hasSeller || shopMobile.sellerImageCount < 1) {
+      throw new Error(`Mobile storefront reference unavailable ${JSON.stringify(shopMobile)}`);
+    }
+
     await page.goto(withQuery(articleUrl, 'mobileqa'), { waitUntil: 'networkidle2', timeout: 60000 });
     await sleep(800);
 
@@ -211,18 +253,37 @@ const sameSignature = (a, b, keys) => keys.every((key) => (a?.[key] || '') === (
         const r = el.getBoundingClientRect();
         return { x: Math.round(r.x), w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right) };
       };
+      const style = (el, keys) => {
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return Object.fromEntries(keys.map((key) => [key, s[key]]));
+      };
       const main = document.querySelector('main#primary.emo-article-page');
       const cards = main ? [...main.querySelectorAll(
         '.emo-article-content .woocommerce ul.products > li.product, .emo-article-content .wc-block-grid__product, .emo-article-content .wc-block-product'
       )].filter((el) => el.getBoundingClientRect().width > 0) : [];
-      const sellerImages = cards.flatMap((card) => [...card.querySelectorAll('.wcfmmp_sold_by_container img, .wcfmmp_sold_by_container_advanced img')]).map(rect);
+      const card = cards.find((item) => item.querySelector('.wcfmmp_sold_by_container, .wcfmmp_sold_by_container_advanced')) || cards[0] || null;
+      const visual = card?.querySelector('.product-loop-wrapper') || card;
+      const image = card?.querySelector('img.product-loop-image, .woocommerce-loop-product__link > img, img.attachment-woocommerce_thumbnail') || null;
+      const title = card?.querySelector('.woocommerce-loop-product__title, .product-title, h2, h3') || null;
+      const seller = card?.querySelector('.wcfmmp_sold_by_container, .wcfmmp_sold_by_container_advanced') || null;
+      const sellerImage = seller?.querySelector('img') || null;
       return {
         viewport: innerWidth,
         scrollWidth: document.documentElement.scrollWidth,
         main: main ? rect(main) : null,
         cards: cards.slice(0, 5).map(rect),
-        sellerImages: sellerImages.slice(0, 5),
         hasLead: Boolean(main?.querySelector('.emo-article-hero__lead')),
+        product: card ? {
+          visual: style(visual, ['backgroundColor', 'borderRadius', 'boxShadow', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']),
+          image: style(image, ['borderRadius', 'objectFit', 'display']),
+          title: style(title, ['fontSize', 'lineHeight', 'fontWeight', 'color', 'marginTop', 'marginBottom']),
+          seller: style(seller, ['display', 'alignItems', 'fontSize', 'lineHeight', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']),
+          sellerImage: style(sellerImage, ['display', 'width', 'height', 'borderRadius', 'objectFit']),
+          sellerImageRect: rect(sellerImage),
+          hasSeller: Boolean(seller),
+          sellerImageCount: seller ? seller.querySelectorAll('img').length : 0,
+        } : null,
       };
     });
 
@@ -232,11 +293,39 @@ const sameSignature = (a, b, keys) => keys.every((key) => (a?.[key] || '') === (
     if (!mobile.cards.length || mobile.cards.some((card) => card.x < 10 || card.right > 380 || card.w > 360)) {
       throw new Error(`Mobile product cards ${JSON.stringify(mobile)}`);
     }
-    if (!mobile.sellerImages.length || mobile.sellerImages.some((img) => img.w <= 0 || img.h <= 0 || img.w > 96 || img.h > 96)) {
-      throw new Error(`Mobile seller images ${JSON.stringify(mobile)}`);
+    if (!mobile.product?.hasSeller || mobile.product.sellerImageCount < 1) {
+      throw new Error(`Mobile blog seller block missing ${JSON.stringify(mobile)}`);
     }
 
-    console.log('PRODUCTION_BLOG_DESIGN_010251_BROWSER_OK', JSON.stringify({ shopCard, blog, articleUrl, article, mobile }));
+    if (!sameSignature(shopMobile.visual, mobile.product.visual, visualKeys)) {
+      throw new Error(`Mobile store/blog card visual mismatch ${JSON.stringify({ shop: shopMobile.visual, blog: mobile.product.visual })}`);
+    }
+    if (!sameSignature(shopMobile.image, mobile.product.image, imageKeys)) {
+      throw new Error(`Mobile store/blog product image mismatch ${JSON.stringify({ shop: shopMobile.image, blog: mobile.product.image })}`);
+    }
+    if (!sameSignature(shopMobile.title, mobile.product.title, titleKeys)) {
+      throw new Error(`Mobile store/blog product title mismatch ${JSON.stringify({ shop: shopMobile.title, blog: mobile.product.title })}`);
+    }
+    if (!sameSignature(shopMobile.seller, mobile.product.seller, sellerKeys)) {
+      throw new Error(`Mobile store/blog seller block mismatch ${JSON.stringify({ shop: shopMobile.seller, blog: mobile.product.seller })}`);
+    }
+    if (!sameSignature(shopMobile.sellerImage, mobile.product.sellerImage, sellerImageKeys)) {
+      throw new Error(`Mobile store/blog seller image mismatch ${JSON.stringify({ shop: shopMobile.sellerImage, blog: mobile.product.sellerImage })}`);
+    }
+
+    const shopSellerVisible = Boolean(shopMobile.sellerImageRect && shopMobile.sellerImageRect.w > 0 && shopMobile.sellerImageRect.h > 0);
+    const blogSellerVisible = Boolean(mobile.product.sellerImageRect && mobile.product.sellerImageRect.w > 0 && mobile.product.sellerImageRect.h > 0);
+    if (shopSellerVisible !== blogSellerVisible) {
+      throw new Error(`Mobile seller visibility mismatch ${JSON.stringify({ shop: shopMobile.sellerImageRect, blog: mobile.product.sellerImageRect })}`);
+    }
+    if (shopSellerVisible && (
+      Math.abs(shopMobile.sellerImageRect.w - mobile.product.sellerImageRect.w) > 1 ||
+      Math.abs(shopMobile.sellerImageRect.h - mobile.product.sellerImageRect.h) > 1
+    )) {
+      throw new Error(`Mobile seller image size mismatch ${JSON.stringify({ shop: shopMobile.sellerImageRect, blog: mobile.product.sellerImageRect })}`);
+    }
+
+    console.log('PRODUCTION_BLOG_DESIGN_010251_BROWSER_OK', JSON.stringify({ shopCard, blog, articleUrl, article, shopMobile, mobile }));
   } finally {
     await browser.close();
   }
