@@ -38,8 +38,7 @@ function mdo_mentta_vendor_names( $user ) {
         $names[] = $WCFM->wcfm_vendor_support->wcfm_get_vendor_store_name( $user->ID );
     }
 
-    $names = array_values( array_unique( array_filter( array_map( 'strval', $names ) ) ) );
-    return $names;
+    return array_values( array_unique( array_filter( array_map( 'strval', $names ) ) ) );
 }
 
 $wanted = array(
@@ -76,19 +75,17 @@ if ( ! ( $term instanceof WP_Term ) ) {
     exit( 3 );
 }
 
-$target_ids = get_posts(
-    array(
-        'post_type'        => 'product',
-        'post_status'      => array( 'publish', 'draft', 'pending', 'private', 'future' ),
-        'author__in'       => array_values( $vendor_ids ),
-        'fields'           => 'ids',
-        'posts_per_page'   => -1,
-        'orderby'          => 'ID',
-        'order'            => 'ASC',
-        'suppress_filters' => false,
-    )
+global $wpdb;
+$valid_statuses = array( 'publish', 'draft', 'pending', 'private', 'future' );
+$status_placeholders = implode( ',', array_fill( 0, count( $valid_statuses ), '%s' ) );
+
+$query_args = array_merge( array_values( $vendor_ids ), $valid_statuses );
+$sql = $wpdb->prepare(
+    "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_author IN (%d,%d) AND post_status IN ($status_placeholders) ORDER BY ID ASC",
+    $query_args
 );
-$target_ids = array_values( array_unique( array_map( 'intval', $target_ids ) ) );
+$target_ids = array_map( 'intval', $wpdb->get_col( $sql ) );
+$target_ids = array_values( array_unique( $target_ids ) );
 sort( $target_ids, SORT_NUMERIC );
 
 if ( ! $target_ids ) {
@@ -113,12 +110,10 @@ foreach ( $to_remove as $product_id ) {
 }
 
 foreach ( $target_ids as $product_id ) {
-    if ( ! has_term( (int) $term->term_id, 'product_cat', $product_id ) ) {
-        $result = wp_set_object_terms( $product_id, (int) $term->term_id, 'product_cat', true );
-        if ( is_wp_error( $result ) ) {
-            fwrite( STDERR, sprintf( "ERROR adding MENTTA to product %d: %s\n", $product_id, $result->get_error_message() ) );
-            exit( 7 );
-        }
+    $result = wp_set_object_terms( $product_id, (int) $term->term_id, 'product_cat', true );
+    if ( is_wp_error( $result ) ) {
+        fwrite( STDERR, sprintf( "ERROR adding MENTTA to product %d: %s\n", $product_id, $result->get_error_message() ) );
+        exit( 7 );
     }
 }
 
@@ -139,17 +134,26 @@ if ( $final_ids !== $target_ids ) {
 
 $counts = array();
 foreach ( $vendor_ids as $norm => $vendor_id ) {
-    $ids = get_posts(
-        array(
-            'post_type'        => 'product',
-            'post_status'      => array( 'publish', 'draft', 'pending', 'private', 'future' ),
-            'author'           => $vendor_id,
-            'fields'           => 'ids',
-            'posts_per_page'   => -1,
-            'suppress_filters' => false,
-        )
+    $count_args = array_merge( array( $vendor_id ), $valid_statuses );
+    $count_sql = $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'product' AND post_author = %d AND post_status IN ($status_placeholders)",
+        $count_args
     );
-    $counts[ $norm ] = count( array_unique( array_map( 'intval', $ids ) ) );
+    $counts[ $norm ] = (int) $wpdb->get_var( $count_sql );
+}
+
+if ( $final_ids ) {
+    $id_placeholders = implode( ',', array_fill( 0, count( $final_ids ), '%d' ) );
+    $author_sql = $wpdb->prepare(
+        "SELECT DISTINCT post_author FROM {$wpdb->posts} WHERE ID IN ($id_placeholders) ORDER BY post_author ASC",
+        $final_ids
+    );
+    $final_authors = array_map( 'intval', $wpdb->get_col( $author_sql ) );
+    $unexpected_authors = array_values( array_diff( $final_authors, array_values( $vendor_ids ) ) );
+    if ( $unexpected_authors ) {
+        fwrite( STDERR, 'ERROR: unexpected product authors in MENTTA: ' . implode( ',', $unexpected_authors ) . "\n" );
+        exit( 10 );
+    }
 }
 
 echo 'MENTTA term ID: ' . (int) $term->term_id . "\n";
@@ -157,4 +161,5 @@ echo '1957 vendor ID: ' . $vendor_ids['1957'] . ' products: ' . $counts['1957'] 
 echo 'Hidalgo de la Jara vendor ID: ' . $vendor_ids['hidalgo de la jara'] . ' products: ' . $counts['hidalgo de la jara'] . "\n";
 echo 'Removed products not belonging to these vendors: ' . count( $to_remove ) . "\n";
 echo 'Final MENTTA products: ' . count( $final_ids ) . "\n";
+echo 'Final product authors: ' . implode( ',', $final_authors ) . "\n";
 echo "assignment_ok\n";
