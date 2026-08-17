@@ -108,11 +108,17 @@ add_action(
 
 			/*
 			 * El shortcode no siempre conserva la misma profundidad de wrapper que la
-			 * tienda. Igualamos únicamente este valor que el contrato global aplica a
-			 * la tarjeta de catálogo cuando el título es hijo directo del wrapper.
+			 * tienda. Igualamos únicamente la altura de línea que el contrato global
+			 * aplica al título, manteniendo el mismo valor responsive del catálogo.
 			 */
 			body.single-post.elmercado-child-theme .emo-article-content .woocommerce ul.products > li.product .woocommerce-loop-product__title {
 				line-height: 1.27 !important;
+			}
+
+			@media (max-width: 767px) {
+				body.single-post.elmercado-child-theme .emo-article-content .woocommerce ul.products > li.product .woocommerce-loop-product__title {
+					line-height: 1.23 !important;
+				}
 			}
 
 			/* Relacionados propios del blog: 3 → 2 → 1, sin tarjetas gigantes. */
