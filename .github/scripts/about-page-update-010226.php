@@ -8,7 +8,7 @@ $source_id = 9;
 $draft_id = 10;
 $recipient = 'jose.fraga@gmail.com';
 $future_cta_url = home_url('/tienda/tolecarnes');
-$state_key = '_emdo_fluentcrm_tolecarnes_final_test_20260817';
+$state_key = '_emdo_fluentcrm_tolecarnes_resend_test_20260817_1130';
 
 function emdo_crm_final_abort($m){ fwrite(STDERR, 'EMDO_CRM_FINAL_ABORT: '.$m."\n"); exit(23); }
 
@@ -32,8 +32,6 @@ try {
     if(stripos($body,'DESCUBRE TOLECARNES')===false) emdo_crm_final_abort('CTA label not found');
     if(stripos($body,'Tenemos nueva imagen')===false) emdo_crm_final_abort('final mailing body guard failed');
 
-    // Only update the CTA destination. Tolecarnes is intentionally not enabled yet,
-    // so no public URL availability check is performed here.
     $pattern='/(<a\s+class="wp-block-button__link[^>]*"\s+href=")[^"]+("[^>]*><strong>DESCUBRE TOLECARNES<\/strong>)/i';
     $replacement='$1'.esc_url($future_cta_url).'$2';
     $updated=preg_replace($pattern,$replacement,$body,1,$count);
@@ -75,7 +73,7 @@ try {
     $source_check=$campaign_class::find($source_id);
     if(!$source_check || (string)$source_check->status!=='archived') emdo_crm_final_abort('source campaign changed unexpectedly');
 
-    echo "=== EMDO_FLUENTCRM_FINAL_TEST_OK ===\n";
+    echo "=== EMDO_FLUENTCRM_RESEND_TEST_OK ===\n";
     echo 'SOURCE_ID='.(int)$source_check->id.'|STATUS='.(string)$source_check->status."\n";
     echo 'DRAFT_ID='.(int)$draft->id.'|STATUS='.(string)$draft->status.'|DESIGN='.(string)$draft->design_template.'|TEMPLATE_ID='.(int)$draft->template_id."\n";
     echo 'DRAFT_TITLE='.(string)$draft->title."\n";
