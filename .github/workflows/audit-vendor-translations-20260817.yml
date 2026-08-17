@@ -31,7 +31,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Analyze unique product copy blocks
+      - name: Inspect translation engine configuration
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -54,28 +54,27 @@ jobs:
           wp_bin="$(command -v wp || true)"
           [ -n "$wp_bin" ] || exit 1
 
-          cat > /tmp/mo-block-audit.php <<'PHP'
+          cat > /tmp/mo-tr-engine.php <<'PHP'
           <?php
-          global $wpdb;
-          function blocks($html){
-              $s=(string)$html;
-              $s=preg_replace('~<(?:br\s*/?|/p|/div|/li|/h[1-6]|/tr|/td|/th|/ul|/ol)>~iu',"\n",$s);
-              $s=html_entity_decode(wp_strip_all_tags($s),ENT_QUOTES|ENT_HTML5,'UTF-8');
-              $lines=preg_split('/[\r\n]+/u',$s);
-              $out=[];
-              foreach($lines as $line){$line=trim(preg_replace('/\s+/u',' ',$line));if($line!==''&&mb_strlen($line)>=3)$out[]=$line;}
-              return $out;
+          function redact_config($value,$key=''){
+              if(is_array($value)){
+                  $out=[];foreach($value as $k=>$v){$lk=strtolower((string)$k);if(preg_match('/key|token|secret|password|credential|auth/',$lk)){$out[$k]=is_string($v)&&$v!==''?'[configured]':'[empty]';}else{$out[$k]=redact_config($v,$k);}}return $out;
+              }
+              if(is_object($value)) return '[object]';
+              if(is_string($value)&&strlen($value)>120)return substr($value,0,120).'…';
+              return $value;
           }
-          foreach([4508=>'Puente Robles',4509=>'El Catedrático'] as $aid=>$vendor){
-              $ids=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status IN ('publish','draft','pending','private','future','archived') ORDER BY ID",$aid));
-              $freq=[];$samples=[];$total=0;$chars=0;
-              foreach($ids as $id){$p=get_post((int)$id);foreach(blocks($p->post_content) as $b){$total++;$chars+=mb_strlen($b);$k=hash('sha256',$b);if(!isset($freq[$k])){$freq[$k]=['text'=>$b,'count'=>0,'ids'=>[]];}$freq[$k]['count']++;if(count($freq[$k]['ids'])<5)$freq[$k]['ids'][]=(int)$id;}}
-              uasort($freq,function($a,$b){if($a['count']===$b['count'])return mb_strlen($b['text'])<=>mb_strlen($a['text']);return $b['count']<=>$a['count'];});
-              $repeated=array_filter($freq,fn($x)=>$x['count']>1);
-              echo 'BLOCK_SUMMARY|'.wp_json_encode(['vendor'=>$vendor,'products'=>count($ids),'total_blocks'=>$total,'unique_blocks'=>count($freq),'repeated_unique'=>count($repeated),'total_chars'=>$chars],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-              $i=0;foreach($freq as $row){$i++; if($i>180)break; echo 'BLOCK|'.wp_json_encode(['vendor'=>$vendor,'count'=>$row['count'],'ids'=>$row['ids'],'text'=>$row['text']],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
+          echo 'SITE='.get_option('siteurl')."\n";
+          foreach(['trp_settings','trp_advanced_settings','trp_machine_translation_settings','trp_automatic_translation_settings'] as $name){$v=get_option($name,null);echo 'OPTION|'.$name.'|'.wp_json_encode(redact_config($v),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
+          echo 'ACTIVE_PLUGINS|'.wp_json_encode(get_option('active_plugins',[]),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          echo 'TRANSLATEPRESS_LOADED='.(class_exists('TRP_Translate_Press')?'yes':'no')."\n";
+          if(class_exists('TRP_Translate_Press')){
+              $trp=TRP_Translate_Press::get_trp_instance();
+              foreach(['machine_translator','automatic_translation','settings'] as $component){$obj=$trp->get_component($component);echo 'COMPONENT|'.$component.'|'.(is_object($obj)?get_class($obj):gettype($obj))."\n";}
           }
           PHP
-          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-block-audit.php --path="$prod" --allow-root
-          rm -f /tmp/mo-block-audit.php
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-tr-engine.php --path="$prod" --allow-root 2>/dev/null
+          echo '=== PROVIDER_FILES ==='
+          grep -RIl --include='*.php' -E 'Google_Translate|DeepL|automatic.translation|machine.translation|Machine_Translator' "$prod/wp-content/plugins/translatepress-multilingual" "$prod/wp-content/plugins/translatepress-business" "$prod/wp-content/plugins/translatepress-developer" 2>/dev/null | head -n 80 || true
+          rm -f /tmp/mo-tr-engine.php
           REMOTE
