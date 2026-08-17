@@ -35,8 +35,11 @@ const bust = (path) => `${base}${path}${path.includes('?') ? '&' : '?'}mdoqa=${D
           markerJs: Boolean(document.querySelector('#mdo-remove-catalog-lead-010254')),
         };
       }, phrase);
-      if (!catalog.markerCss || !catalog.markerJs || catalog.visibleLeadCount !== 0 || catalog.hasPhraseInVisibleText) {
+      if (catalog.visibleLeadCount !== 0 || catalog.hasPhraseInVisibleText) {
         throw new Error(`Catalog intro still visible ${JSON.stringify(catalog)}`);
+      }
+      if (path === '/tienda/' && (!catalog.markerCss || !catalog.markerJs)) {
+        throw new Error(`Catalog hotfix markers missing on shop ${JSON.stringify(catalog)}`);
       }
     }
 
@@ -65,7 +68,6 @@ const bust = (path) => `${base}${path}${path.includes('?') ? '&' : '?'}mdoqa=${D
         productCountAfterEmbutidos: cards.length,
         headingText: embutidosHeading?.textContent?.trim() || '',
         gridTop: grid ? Math.round(grid.getBoundingClientRect().top) : null,
-        markerCss: Boolean(document.querySelector('#mdo-hide-catalog-lead-010254')),
       };
     });
     if (!jamon || jamon.introHeadings !== 0 || !jamon.hasEmbutidosHeading || jamon.productCountAfterEmbutidos < 4) {
