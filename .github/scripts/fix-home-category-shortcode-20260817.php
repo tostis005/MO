@@ -39,6 +39,27 @@ function mdo_fix_home_category_widget(&$nodes, $target_id, $fixed_shortcode, &$c
     }
 }
 
+function mdo_get_home_category_widget_editor($nodes, $target_id) {
+    if (!is_array($nodes)) {
+        return null;
+    }
+    foreach ($nodes as $node) {
+        if (!is_array($node)) {
+            continue;
+        }
+        if (isset($node['id']) && $node['id'] === $target_id) {
+            return isset($node['settings']['editor']) ? (string) $node['settings']['editor'] : '';
+        }
+        if (!empty($node['elements']) && is_array($node['elements'])) {
+            $found = mdo_get_home_category_widget_editor($node['elements'], $target_id);
+            if (null !== $found) {
+                return $found;
+            }
+        }
+    }
+    return null;
+}
+
 mdo_fix_home_category_widget($data, $target_id, $fixed_shortcode, $changed);
 
 if (1 !== $changed) {
@@ -66,17 +87,24 @@ if (class_exists('Elementor\\Plugin')) {
     }
 }
 
-$verify = get_post_meta($front, '_elementor_data', true);
-if (false === strpos((string) $verify, $fixed_shortcode)) {
-    fwrite(STDERR, "verification_failed\n");
+$verify_raw = get_post_meta($front, '_elementor_data', true);
+$verify_data = json_decode((string) $verify_raw, true);
+if (!is_array($verify_data)) {
+    fwrite(STDERR, "verification_json_invalid\n");
     exit(1);
 }
-if (false !== strpos((string) $verify, "\xC2\xA0ids=")) {
+$verify_editor = mdo_get_home_category_widget_editor($verify_data, $target_id);
+if ($verify_editor !== $fixed_shortcode) {
+    fwrite(STDERR, "verification_failed\n");
+    fwrite(STDERR, "actual_editor=" . (string) $verify_editor . "\n");
+    exit(1);
+}
+if (false !== strpos($verify_editor, "\xC2\xA0ids=")) {
     fwrite(STDERR, "nbsp_before_ids_still_present\n");
     exit(1);
 }
 
 echo "front_page_id={$front}\n";
 echo "widget_id={$target_id}\n";
-echo "shortcode={$fixed_shortcode}\n";
+echo "shortcode={$verify_editor}\n";
 echo "home_category_shortcode_fixed\n";
