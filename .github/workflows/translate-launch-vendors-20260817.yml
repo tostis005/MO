@@ -1,0 +1,407 @@
+name: Prepare English translations for launch vendors 2026-08-17
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/translate-launch-vendors-20260817.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  translate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+    steps:
+      - name: Install runtime tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python -m pip install --quiet --disable-pip-version-check torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet --disable-pip-version-check 'transformers>=4.48,<5' sentencepiece sacremoses
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Export only the target production products
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "raw='${STAGING_REMOTE_PATH%/}'; case \"\$raw\" in */wp-content/*) dev=\"\${raw%%/wp-content/*}\" ;; */wp-content) dev=\"\$(dirname \"\$raw\")\" ;; *) dev=\"\$raw\" ;; esac; if [ ! -f \"\$dev/wp-config.php\" ]; then cfg=\$(find \"\$HOME\" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1); dev=\$(dirname \"\$cfg\"); fi; dirname \"\$dev\" | sed 's#$#/httpdocs#'")"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          cat > /tmp/mdo-export-launch-products.php <<'PHP'
+          <?php
+          global $wpdb;
+          $expected = [4507=>'Tolecarnes', 4508=>'Puente Robles', 4509=>'El Catedrático'];
+          foreach ($expected as $uid=>$needle) {
+              $u=get_user_by('id',$uid);
+              if(!$u || stripos(remove_accents($u->display_name), remove_accents($needle))===false){
+                  fwrite(STDERR,"Vendor identity mismatch for {$uid}\n"); exit(10);
+              }
+          }
+          $out=['site'=>get_option('siteurl'),'products'=>[]];
+          foreach ($expected as $uid=>$vendor) {
+              $ids=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status IN ('publish','draft','pending','private','future','archived') ORDER BY ID",$uid));
+              foreach($ids as $id){
+                  $p=get_post((int)$id); if(!$p) continue;
+                  $has_title=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_title',true)))!=='';
+                  $has_content=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_content',true)))!=='' || trim(wp_strip_all_tags($p->post_content))==='';
+                  $has_slug=trim((string)get_post_meta($id,'_en_US_post_name',true))!=='';
+                  $published=(string)get_post_meta($id,'_en_US_published',true)==='1';
+                  if($uid===4507 && $has_title && $has_content && $has_slug && $published) continue;
+                  $out['products'][]=[
+                      'id'=>(int)$id,'author_id'=>(int)$uid,'vendor'=>$vendor,'status'=>$p->post_status,
+                      'title'=>$p->post_title,'content'=>$p->post_content,'excerpt'=>$p->post_excerpt,
+                      'spanish_slug'=>$p->post_name,
+                      'existing'=>[
+                          'title'=>(string)get_post_meta($id,'_en_US_post_title',true),
+                          'content'=>(string)get_post_meta($id,'_en_US_post_content',true),
+                          'excerpt'=>(string)get_post_meta($id,'_en_US_post_excerpt',true),
+                          'slug'=>(string)get_post_meta($id,'_en_US_post_name',true),
+                          'published'=>(string)get_post_meta($id,'_en_US_published',true),
+                      ],
+                  ];
+              }
+          }
+          file_put_contents('/tmp/mdo-launch-products.json',wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+          $counts=[];foreach($out['products'] as $p){$counts[$p['vendor']]=($counts[$p['vendor']]??0)+1;}
+          echo 'EXPORT '.wp_json_encode(['count'=>count($out['products']),'vendors'=>$counts],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          if(count($out['products'])!==202){fwrite(STDERR,'Expected exactly 202 untranslated target products, got '.count($out['products'])."\n");exit(11);}
+          PHP
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-export-launch-products.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-export-launch-products.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/mdo-export-launch-products.php --path='$PROD_PATH' --allow-root 2>/dev/null"
+          sshpass -e scp $SCP_OPTIONS "$STAGING_USER@$STAGING_HOST:/tmp/mdo-launch-products.json" ./mdo-launch-products.json
+          python - <<'PY'
+          import json
+          d=json.load(open('mdo-launch-products.json',encoding='utf-8'))
+          print('Local export products:',len(d['products']))
+          print('By vendor:',{v:sum(1 for p in d['products'] if p['vendor']==v) for v in sorted({p['vendor'] for p in d['products']})})
+          PY
+
+      - name: Translate product copy to English and run structural QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/mdo_translate.py <<'PY'
+          import json, re, html, unicodedata, collections, sys
+          import torch
+          from transformers import MarianMTModel, MarianTokenizer
+
+          MODEL='Helsinki-NLP/opus-mt-es-en'
+          data=json.load(open('mdo-launch-products.json',encoding='utf-8'))
+          products=data['products']
+
+          manual={
+              'Producto cárnico.':'Meat product.',
+              'Tiempo de curación':'Curing time','Almacenamiento':'Storage','Alimentación':'Diet','Consumo':'Serving','Consumo.':'Serving.',
+              'VALORES NUTRICIONALES':'NUTRITIONAL VALUES','Valores nutricionales':'Nutritional values','VALOR MEDIO POR 100 G.':'AVERAGE VALUE PER 100 G','Valor medio por 100 g.':'Average value per 100 g.',
+              'INFORMACIÓN NUTRICIONAL POR 100G:':'NUTRITIONAL INFORMATION PER 100 G:','Valor energético:':'Energy:','Valor Energético (Kcal.)':'Energy (kcal)','Valor Energético (Kj.)':'Energy (kJ)',
+              'Hidratos de carbono':'Carbohydrates','Hidratos de carbono:':'Carbohydrates:','De los cuales azúcares':'of which sugars','de los cuales azúcares:':'of which sugars:',
+              'Grasas':'Fat','Grasas:':'Fat:','Grasa:':'Fat:','De las cuales ácidos grasos saturados':'of which saturates','de las cuales ácidos grasos saturados:':'of which saturates:',
+              'Proteínas':'Protein','Proteínas:':'Protein:','Sal':'Salt','Sal:':'Salt:','VALOR:':'VALUE:',
+              'ENVÍO:':'SHIPPING:','ENVÍO':'SHIPPING','Envío':'Shipping','PESO:':'WEIGHT:','PESO':'WEIGHT','Peso':'Weight',
+              'CONSERVACIÓN Y CADUCIDAD:':'STORAGE AND SHELF LIFE:','CONSERVACIÓN Y CADUCIDAD':'STORAGE AND SHELF LIFE','Conservación y Caducidad':'Storage and shelf life','Conservación y caducidad':'Storage and shelf life',
+              'RECOMENDACIONES:':'RECOMMENDATIONS:','RECOMENDACIONES':'RECOMMENDATIONS','Recomendaciones':'Recommendations',
+              'CERTIFICACIÓN':'CERTIFICATION','Certificación':'Certification','Ingredientes':'Ingredients','INGREDIENTES':'INGREDIENTS','Premios':'Awards','Precauciones':'Precautions','Forma de envío':'Shipping format',
+              'Saborea la excelencia en cada bocado.':'Taste excellence in every bite.','Saborea la excelencia del ibérico en cada bocado.':'Taste the excellence of Iberian cured meats in every bite.',
+              'Consumo preferente: 6 meses.':'Best before: 6 months.','Consumo preferente: 6 meses':'Best before: 6 months.','Consumo preferente: 12 meses.':'Best before: 12 months.',
+              'Consumo preferente: 13 meses.':'Best before: 13 months.','Consumo preferente: 13 meses':'Best before: 13 months.','Consumo preferente: 16 meses.':'Best before: 16 months.',
+              'Consumo preferente: 16 meses':'Best before: 16 months.','Consumo preferente: 24 meses.':'Best before: 24 months.','Consumo preferente: 24 meses':'Best before: 24 months',
+              'Envasado al vacío en sobres individuales.':'Vacuum-packed in individual packs.','Envasados al vacío.':'Vacuum-packed.','Envasada al vacío.':'Vacuum-packed.','Todas las piezas van envasadas al vacío.':'All pieces are vacuum-packed.',
+              'Ubicarlo en un lugar fresco y seco que esté protegido de la luz solar directa.':'Store in a cool, dry place protected from direct sunlight.',
+              'Ubicarlos en un lugar fresco y seco que esté protegido de la luz solar directa.':'Store in a cool, dry place protected from direct sunlight.',
+              'Mantener en un lugar fresco y seco protegido de la luz solar directa.':'Store in a cool, dry place protected from direct sunlight.',
+              'Conservar en un lugar fresco y seco, protegido de la luz solar directa.':'Store in a cool, dry place protected from direct sunlight.',
+          }
+
+          tok=MarianTokenizer.from_pretrained(MODEL)
+          model=MarianMTModel.from_pretrained(MODEL)
+          model.eval()
+          torch.set_num_threads(max(1,min(4,torch.get_num_threads())))
+
+          tag_re=re.compile(r'(<[^>]+>)',re.S)
+          alpha_re=re.compile(r'[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]')
+          spanish_hint=re.compile(r'\b(?:para|con|desde|hasta|que|los|las|una|unos|unas|producto|almacenamiento|consumo|ingredientes|conservaci[oó]n|env[ií]o|peso|jam[oó]n|paleta|cerdo|curaci[oó]n|bellota|cebo|deshuesad[oa]|cortad[oa])\b',re.I)
+
+          def norm(s): return re.sub(r'\s+',' ',html.unescape(str(s))).strip()
+          def chunks_for_long(s,limit_words=100):
+              if len(s.split())<=limit_words:return [s]
+              pieces=re.split(r'(?<=[.!?])\s+',s)
+              out=[];cur=[];n=0
+              for p in pieces:
+                  w=len(p.split())
+                  if cur and n+w>limit_words: out.append(' '.join(cur));cur=[p];n=w
+                  else: cur.append(p);n+=w
+              if cur:out.append(' '.join(cur))
+              return out
+
+          cache={}
+          def polish(t):
+              fixes=[
+                  (r'\bfield bait\b','free-range grain-fed'),(r'\bbait field\b','free-range grain-fed'),(r'\bbait-fed\b','grain-fed'),(r'\bbait\b','grain-fed'),
+                  (r'\bIberian race\b','Iberian breed'),(r'\bIberian breed breed\b','Iberian breed'),
+                  (r'\bpalette(s)?\b',lambda m:'shoulder hams' if m.group(1) else 'shoulder ham'),
+                  (r'\bacorn ham\b','acorn-fed ham'),(r'\bacorn Iberian ham\b','acorn-fed Iberian ham'),
+                  (r'\bshoulder palette\b','shoulder ham'),(r'\bcane of loin\b','cured loin'),
+                  (r'\bfeed and cereals\b','natural feed and cereals'),
+              ]
+              for pat,rep in fixes:t=re.sub(pat,rep,t,flags=re.I)
+              t=t.replace('Arribes of the Duero','Arribes del Duero').replace('Arribes de Duero','Arribes del Duero')
+              t=t.replace('El Catedratico','El Catedrático').replace('El CATEDRATICO','EL CATEDRÁTICO')
+              return t
+
+          def translate_batch(strings):
+              pending=[]
+              for s in strings:
+                  n=norm(s)
+                  if not n or not alpha_re.search(n): cache.setdefault(n,n);continue
+                  if n in manual: cache[n]=manual[n];continue
+                  if n not in cache: pending.append(n)
+              pending=list(dict.fromkeys(pending))
+              for start in range(0,len(pending),24):
+                  batch=pending[start:start+24]
+                  expanded=[];owners=[]
+                  for idx,s in enumerate(batch):
+                      pcs=chunks_for_long(s)
+                      for pc in pcs: expanded.append(pc);owners.append(idx)
+                  inputs=tok(expanded,return_tensors='pt',padding=True,truncation=True,max_length=480)
+                  with torch.no_grad(): outs=model.generate(**inputs,max_length=520,num_beams=4,early_stopping=True)
+                  decoded=tok.batch_decode(outs,skip_special_tokens=True)
+                  grouped=[[] for _ in batch]
+                  for owner,text in zip(owners,decoded): grouped[owner].append(polish(text.strip()))
+                  for s,parts in zip(batch,grouped): cache[s]=' '.join(parts).strip()
+                  print(f'Translated strings {min(start+24,len(pending))}/{len(pending)}',flush=True)
+
+          # Collect every visible text chunk first so translation is deduplicated across all 202 products.
+          all_strings=[]
+          for p in products:
+              all_strings.append(p['title'])
+              all_strings.append(p.get('excerpt',''))
+              for field in ('content',):
+                  parts=tag_re.split(p.get(field,'') or '')
+                  in_script=False
+                  for part in parts:
+                      if part.startswith('<'):
+                          low=part.lower()
+                          if low.startswith('<script') or low.startswith('<style'): in_script=True
+                          elif low.startswith('</script') or low.startswith('</style'): in_script=False
+                          continue
+                      if not in_script:
+                          core=norm(part)
+                          if core: all_strings.append(core)
+          translate_batch(all_strings)
+
+          def translate_plain(s):
+              n=norm(s)
+              if not n:return ''
+              if n not in cache: translate_batch([n])
+              return cache[n]
+
+          def translate_html(src):
+              if not src:return ''
+              parts=tag_re.split(src);out=[];in_script=False
+              for part in parts:
+                  if part.startswith('<'):
+                      low=part.lower()
+                      if low.startswith('<script') or low.startswith('<style'): in_script=True
+                      elif low.startswith('</script') or low.startswith('</style'): in_script=False
+                      out.append(part);continue
+                  if in_script or not part.strip() or not alpha_re.search(html.unescape(part)):
+                      out.append(part);continue
+                  decoded=html.unescape(part)
+                  m1=re.match(r'^\s*',decoded);m2=re.search(r'\s*$',decoded)
+                  lead=m1.group(0);trail=m2.group(0);core=decoded[len(lead):len(decoded)-len(trail) if trail else None]
+                  tr=translate_plain(core)
+                  out.append(lead+html.escape(tr,quote=False)+trail)
+              return ''.join(out)
+
+          def canonical_title(src, fallback):
+              s=src.strip()
+              suffixes={
+                  '(Deshuesado)':'(Boneless)','(Deshuesada)':'(Boneless)','(Cortado a cuchillo)':'(Hand-sliced)','(Cortada a cuchillo)':'(Hand-sliced)',
+                  '(Cortado a máquina)':'(Machine-sliced)','(Cortada a máquina)':'(Machine-sliced)'
+              }
+              suffix=''
+              for es,en in suffixes.items():
+                  if es.lower() in s.lower(): s=re.sub(re.escape(es),'',s,flags=re.I).strip();suffix=' '+en;break
+              patterns=[
+                (r'^Jam[oó]n de bellota ib[eé]rico 100% raza ib[eé]rica$', '100% Iberian acorn-fed ham'),
+                (r'^Jam[oó]n de bellota ib[eé]rico 75% raza ib[eé]rica$', '75% Iberian acorn-fed ham'),
+                (r'^Jam[oó]n de bellota ib[eé]rico 50% raza ib[eé]rica$', '50% Iberian acorn-fed ham'),
+                (r'^Jam[oó]n de cebo de campo ib[eé]rico 50% raza ib[eé]rica$', '50% Iberian free-range grain-fed ham'),
+                (r'^Jam[oó]n de cebo ib[eé]rico 50% raza ib[eé]rica$', '50% Iberian grain-fed ham'),
+                (r'^Paleta de bellota ib[eé]ric[oa] 100% raza ib[eé]rica$', '100% Iberian acorn-fed shoulder ham'),
+                (r'^Paleta de bellota ib[eé]ric[oa] 75% raza ib[eé]rica$', '75% Iberian acorn-fed shoulder ham'),
+                (r'^Paleta de bellota ib[eé]ric[oa] 50% raza ib[eé]rica$', '50% Iberian acorn-fed shoulder ham'),
+                (r'^Paleta de cebo de campo ib[eé]ric[oa] 50% raza ib[eé]rica$', '50% Iberian free-range grain-fed shoulder ham'),
+                (r'^Paleta de cebo ib[eé]ric[oa] 50% raza ib[eé]rica$', '50% Iberian grain-fed shoulder ham'),
+              ]
+              for pat,en in patterns:
+                  if re.match(pat,s,re.I): return en+suffix
+              return polish(fallback)+suffix
+
+          def slugify(s):
+              s=unicodedata.normalize('NFKD',s).encode('ascii','ignore').decode().lower()
+              s=re.sub(r'[^a-z0-9]+','-',s).strip('-')
+              return s[:170].strip('-')
+
+          out=[];qa=[];used_titles=collections.Counter()
+          for p in products:
+              raw_title=translate_plain(p['title'])
+              en_title=canonical_title(p['title'],raw_title)
+              en_content=translate_html(p.get('content',''))
+              en_excerpt=translate_html(p.get('excerpt',''))
+              en_slug=slugify(en_title)
+              used_titles[en_title]+=1
+
+              def nums(s):
+                  vals=[]
+                  for x in re.findall(r'\d+(?:[.,]\d+)?',html.unescape(re.sub(r'<[^>]+>',' ',s or ''))):
+                      vals.append(x.replace(',','.'))
+                  return collections.Counter(vals)
+              def ecodes(s):
+                  return collections.Counter(re.sub(r'[^A-Z0-9]','',x.upper()) for x in re.findall(r'\bE\s*-?\s*\d+[A-Z]*\b',html.unescape(re.sub(r'<[^>]+>',' ',s or '')),re.I))
+              src_all=(p.get('content','') or '')+' '+(p.get('excerpt','') or '')
+              dst_all=en_content+' '+en_excerpt
+              if nums(src_all)!=nums(dst_all): qa.append({'id':p['id'],'type':'numbers','src':dict(nums(src_all)),'dst':dict(nums(dst_all))})
+              if ecodes(src_all)!=ecodes(dst_all): qa.append({'id':p['id'],'type':'e-codes','src':dict(ecodes(src_all)),'dst':dict(ecodes(dst_all))})
+              visible=html.unescape(re.sub(r'<[^>]+>',' ',dst_all))
+              hints=spanish_hint.findall(visible)
+              # Proper-name exceptions are expected; more than 8 strong Spanish function/content words is a likely untranslated block.
+              if len(hints)>8: qa.append({'id':p['id'],'type':'spanish-remnants','count':len(hints),'sample':hints[:20]})
+              if not en_title or (p.get('content','').strip() and not en_content.strip()): qa.append({'id':p['id'],'type':'empty'})
+              out.append({'id':p['id'],'author_id':p['author_id'],'vendor':p['vendor'],'source_status':p['status'],'title':en_title,'content':en_content,'excerpt':en_excerpt,'slug':en_slug})
+
+          # Duplicate title is fine; duplicate slug will be disambiguated during application by vendor and ID.
+          json.dump({'products':out,'qa':qa,'translation_cache_size':len(cache)},open('mdo-launch-translations.json','w',encoding='utf-8'),ensure_ascii=False)
+          print('Translated products:',len(out))
+          print('Unique translated text chunks:',len(cache))
+          print('QA issues:',len(qa))
+          for issue in qa[:80]: print('QA',json.dumps(issue,ensure_ascii=False))
+          if qa:
+              sys.exit(20)
+          PY
+          python /tmp/mdo_translate.py
+
+      - name: Apply staged English metadata without launching hidden stores
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          sshpass -e scp $SCP_OPTIONS ./mdo-launch-translations.json "$STAGING_USER@$STAGING_HOST:/tmp/mdo-launch-translations.json"
+
+          cat > /tmp/mdo-apply-launch-translations.php <<'PHP'
+          <?php
+          global $wpdb;
+          $payload=json_decode(file_get_contents('/tmp/mdo-launch-translations.json'),true);
+          if(!is_array($payload)||!isset($payload['products'])||count($payload['products'])!==202||!empty($payload['qa'])){fwrite(STDERR,"Invalid translation payload\n");exit(30);}
+          $expected=[4507=>'Tolecarnes',4508=>'Puente Robles',4509=>'El Catedrático'];
+          $used=[];
+          $rows=$wpdb->get_results("SELECT post_id,meta_value FROM {$wpdb->postmeta} WHERE meta_key='_en_US_post_name' AND meta_value<>''",ARRAY_A);
+          foreach($rows as $r){$used[sanitize_title($r['meta_value'])]=(int)$r['post_id'];}
+          $counts=[];$status_mismatches=[];
+          foreach($payload['products'] as $row){
+              $id=(int)$row['id'];$aid=(int)$row['author_id'];
+              if(!isset($expected[$aid])||$row['vendor']!==$expected[$aid]){fwrite(STDERR,"Vendor mismatch {$id}\n");exit(31);}
+              $p=get_post($id);if(!$p||$p->post_type!=='product'||(int)$p->post_author!==$aid){fwrite(STDERR,"Product identity mismatch {$id}\n");exit(32);}
+              if($p->post_status!==$row['source_status']){$status_mismatches[]=$id;continue;}
+              $slug=sanitize_title((string)$row['slug']);if($slug===''){$slug='product-'.$id;}
+              if(isset($used[$slug])&&$used[$slug]!==$id){$suffix=$aid===4508?'puente-robles':($aid===4509?'el-catedratico':'tolecarnes');$slug=sanitize_title($slug.'-'.$suffix);}
+              if(isset($used[$slug])&&$used[$slug]!==$id){$slug=sanitize_title($slug.'-'.$id);}
+              $used[$slug]=$id;
+              update_post_meta($id,'_en_US_post_title',(string)$row['title']);
+              update_post_meta($id,'_en_US_post_content',(string)$row['content']);
+              update_post_meta($id,'_en_US_post_excerpt',(string)$row['excerpt']);
+              update_post_meta($id,'_en_US_post_name',$slug);
+              if($aid===4507){
+                  // The only Tolecarnes target is a WordPress draft, so the English translation can be marked ready without exposing it.
+                  update_post_meta($id,'_en_US_published','1');
+                  delete_post_meta($id,'_en_US_ready');
+              }else{
+                  // These stores are not launched yet. Keep English routing disabled while retaining the complete copy and slug.
+                  update_post_meta($id,'_en_US_published','0');
+                  update_post_meta($id,'_en_US_ready','1');
+              }
+              $counts[$expected[$aid]]=($counts[$expected[$aid]]??0)+1;
+          }
+          if($status_mismatches){fwrite(STDERR,'Product statuses changed during translation: '.implode(',',$status_mismatches)."\n");exit(33);}
+          wp_cache_flush();
+          echo 'APPLIED '.wp_json_encode($counts,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          PHP
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-apply-launch-translations.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-apply-launch-translations.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file /tmp/mdo-apply-launch-translations.php --path='$PROD_PATH' --allow-root 2>/dev/null"
+
+      - name: Verify database completeness and pre-launch isolation
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          cat > /tmp/mdo-verify-launch-translations.php <<'PHP'
+          <?php
+          global $wpdb;
+          $targets=[4507=>'Tolecarnes',4508=>'Puente Robles',4509=>'El Catedrático'];
+          $summary=[];$bad=[];$slugs=[];
+          foreach($targets as $aid=>$vendor){
+              $ids=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status IN ('publish','draft','pending','private','future','archived') ORDER BY ID",$aid));
+              $s=['total'=>0,'english_fields_ready'=>0,'english_routing_on'=>0,'staged_ready'=>0,'by_status'=>[]];
+              foreach($ids as $id){
+                  $p=get_post((int)$id);$s['total']++;$s['by_status'][$p->post_status]=($s['by_status'][$p->post_status]??0)+1;
+                  $title=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_title',true)));
+                  $content=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_content',true)));
+                  $slug=sanitize_title((string)get_post_meta($id,'_en_US_post_name',true));
+                  $pub=(string)get_post_meta($id,'_en_US_published',true)==='1';$ready=(string)get_post_meta($id,'_en_US_ready',true)==='1';
+                  $fields=$title!==''&&$slug!==''&&(trim(wp_strip_all_tags($p->post_content))===''||$content!=='');
+                  if($fields)$s['english_fields_ready']++;else $bad[]=['id'=>(int)$id,'vendor'=>$vendor,'reason'=>'missing_field'];
+                  if($pub)$s['english_routing_on']++;if($ready)$s['staged_ready']++;
+                  if($slug!==''){$slugs[$slug][]=(int)$id;}
+                  if($aid!==4507 && $pub)$bad[]=['id'=>(int)$id,'vendor'=>$vendor,'reason'=>'premature_routing'];
+              }
+              ksort($s['by_status']);$summary[$vendor]=$s;
+          }
+          foreach($slugs as $slug=>$ids){if(count($ids)>1)$bad[]=['slug'=>$slug,'ids'=>$ids,'reason'=>'duplicate_english_slug'];}
+          echo 'VERIFY '.wp_json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)."\n";
+          if($bad){echo 'BAD '.wp_json_encode($bad,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT)."\n";exit(40);}
+          if(($summary['Tolecarnes']['english_fields_ready']??0)!==39 || ($summary['Puente Robles']['english_fields_ready']??0)!==106 || ($summary['El Catedrático']['english_fields_ready']??0)!==95){fwrite(STDERR,"Unexpected ready counts\n");exit(41);}
+          if(($summary['Puente Robles']['staged_ready']??0)!==106 || ($summary['El Catedrático']['staged_ready']??0)!==95){fwrite(STDERR,"Unexpected staged counts\n");exit(42);}
+          PHP
+          sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P "$PORT" /tmp/mdo-verify-launch-translations.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-verify-launch-translations.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/mdo-verify-launch-translations.php --path='$PROD_PATH' --allow-root 2>/dev/null"
+
+      - name: Clean temporary production files
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f /tmp/mdo-export-launch-products.php /tmp/mdo-launch-products.json /tmp/mdo-launch-translations.json /tmp/mdo-apply-launch-translations.php /tmp/mdo-verify-launch-translations.php" || true
