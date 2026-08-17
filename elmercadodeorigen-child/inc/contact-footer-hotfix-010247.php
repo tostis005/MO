@@ -155,8 +155,9 @@ add_action(
 				if (!footer) return;
 
 				footer.querySelectorAll('a').forEach((link) => {
-					const label = normalizeText(link.textContent);
-					if (label === 'terms and conditions' || label === 'terms & conditions') {
+					const current = (link.textContent || '').replace(/\s+/g, ' ').trim();
+					const label = normalizeText(current);
+					if ((label === 'terms and conditions' || label === 'terms & conditions') && current !== 'Terms and Conditions') {
 						link.textContent = 'Terms and Conditions';
 					}
 				});
