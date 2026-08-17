@@ -51,12 +51,16 @@ jobs:
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
-            PLUGIN_DIR='$PROD_PATH/wp-content/plugins/mentta-marketplace'
-            test -d \"\$PLUGIN_DIR\"
-            echo '--- files ---'
-            find \"\$PLUGIN_DIR\" -maxdepth 4 -type f -name '*.php' -printf '%P\n' | sort
-            echo '--- selection-related source ---'
-            grep -RInE --include='*.php' 'product_cat|tax_query|category__|category_name|wc_get_products|WC_Product_Query|WP_Query|get_posts|register_rest_route|rest_api_init|woocommerce_rest|posts_where|pre_get_posts|post_type[^a-zA-Z]+product|post_type.?=.?.?product' \"\$PLUGIN_DIR\" | head -n 400 || true
+            FILE='$PROD_PATH/wp-content/plugins/mentta-marketplace/mentta-marketplace.php'
+            test -f \"\$FILE\"
+            echo '--- route registration ---'
+            sed -n '130,175p' \"\$FILE\"
+            echo '--- product query ---'
+            sed -n '400,515p' \"\$FILE\"
+            echo '--- product categories payload ---'
+            sed -n '630,715p' \"\$FILE\"
+            echo '--- categories endpoint ---'
+            sed -n '755,810p' \"\$FILE\"
           "
 
-# trigger: 2026-08-17
+# query-context trigger: 2026-08-17
