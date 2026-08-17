@@ -211,3 +211,12 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/*
+ * El hotfix 0.10.247 se mantiene separado para no mezclar la corrección del
+ * formulario de contacto con la capa editorial anterior.
+ */
+$elmercado_contact_footer_hotfix_010247 = __DIR__ . '/contact-footer-hotfix-010247.php';
+if ( is_readable( $elmercado_contact_footer_hotfix_010247 ) ) {
+	require_once $elmercado_contact_footer_hotfix_010247;
+}
