@@ -1,10 +1,10 @@
 <?php
 /**
- * Capa geométrica final del blog 0.10.250.
+ * Capa geométrica final del blog 0.10.251.
  *
- * Se imprime en el footer para quedar después de las capas históricas del tema
- * y añade una salvaguarda inline únicamente para el contenedor principal. El
- * resto del acabado visual sigue viniendo del sistema editorial 0.10.248.
+ * Se imprime en el footer para quedar después de las capas históricas del tema.
+ * Sólo corrige geometría editorial; las tarjetas de producto conservan sin
+ * alteraciones el mismo acabado global que tienen en la tienda.
  *
  * @package ElMercadoDeOrigen
  */
@@ -135,7 +135,10 @@ add_action(
 				overflow: visible !important;
 			}
 
-			/* Bloques de producto: apertura controlada dentro del shell editorial. */
+			/*
+			 * Los productos abren el ancho de lectura hasta 1040 px, pero su tarjeta
+			 * no recibe estilos propios del blog: hereda WooCommerce/Woostify/WCFM.
+			 */
 			html body main#primary.emo-article-page .emo-article-content :is(.woocommerce, .wp-block-woocommerce-product-collection, .wc-block-grid) {
 				width: min(1040px, calc(100vw - 80px)) !important;
 				max-width: 1040px !important;
@@ -166,33 +169,12 @@ add_action(
 			}
 
 			html body main#primary.emo-article-page .emo-article-content :is(.woocommerce ul.products > li.product, ul.products > li.product, .wc-block-grid__product, .wc-block-product) {
-				display: flex !important;
 				float: none !important;
 				clear: none !important;
 				width: 100% !important;
 				min-width: 0 !important;
 				max-width: none !important;
-				height: 100% !important;
-				flex-direction: column !important;
 				margin: 0 !important;
-				padding: 13px 13px 16px !important;
-				background: #fff !important;
-				border: 1px solid rgba(13, 33, 27, 0.105) !important;
-				border-radius: 18px !important;
-				box-shadow: 0 9px 26px rgba(13, 33, 27, 0.065) !important;
-				box-sizing: border-box !important;
-				overflow: hidden !important;
-			}
-
-			html body main#primary.emo-article-page .emo-article-content :is(.woocommerce ul.products > li.product, ul.products > li.product, .wc-block-grid__product, .wc-block-product) img {
-				display: block !important;
-				width: 100% !important;
-				max-width: 100% !important;
-				height: auto !important;
-				aspect-ratio: 4 / 3 !important;
-				margin: 0 0 14px !important;
-				border-radius: 13px !important;
-				object-fit: cover !important;
 			}
 
 			html body main#primary.emo-article-page > .emo-related-reading {
@@ -297,7 +279,7 @@ add_action(
 			};
 			apply();
 			requestAnimationFrame(apply);
-			window.addEventListener('resize', apply, {passive: true});
+			window.addEventListener('resize', apply, { passive: true });
 		})();
 		</script>
 		<?php
