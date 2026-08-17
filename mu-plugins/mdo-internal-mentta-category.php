@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Internal MENTTA category
  * Description: Keeps the MENTTA WooCommerce category available to integrations/admins but hidden from the public storefront.
- * Version: 1.0.4
+ * Version: 1.0.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -213,6 +213,32 @@ function mdo_mentta_hide_public_menu_items( $items ) {
 	);
 }
 add_filter( 'wp_get_nav_menu_items', 'mdo_mentta_hide_public_menu_items', 20 );
+
+/**
+ * The current custom Home renderer builds its category cards from its own
+ * visibility model after WordPress term filters have run. Remove only the
+ * final MENTTA category anchor on the server. This deliberately does not use
+ * JavaScript and cannot remove any surrounding Elementor/Home container.
+ */
+function mdo_mentta_remove_final_home_card( $html ) {
+	if ( ! is_string( $html ) || false === stripos( $html, '/mentta' ) || false === strpos( $html, 'emo-category-card' ) ) {
+		return $html;
+	}
+
+	$pattern = '~<a\b[^>]*\bclass=(?:"[^"]*\bemo-category-card\b[^"]*"|\'[^\']*\bemo-category-card\b[^\']*\')[^>]*\bhref=(?:"[^"]*/mentta/?(?:\?[^\"]*)?"|\'[^\']*/mentta/?(?:\?[^\']*)?\')[^>]*>.*?</a>~is';
+	$filtered = preg_replace( $pattern, '', $html );
+
+	return is_string( $filtered ) ? $filtered : $html;
+}
+
+function mdo_mentta_start_home_output_filter() {
+	if ( ! mdo_mentta_should_hide_publicly() || ! function_exists( 'is_front_page' ) || ! is_front_page() ) {
+		return;
+	}
+
+	ob_start( 'mdo_mentta_remove_final_home_card' );
+}
+add_action( 'template_redirect', 'mdo_mentta_start_home_output_filter', -10000 );
 
 /** Do not expose a browsable public archive for the internal category. */
 function mdo_mentta_block_public_archive() {
