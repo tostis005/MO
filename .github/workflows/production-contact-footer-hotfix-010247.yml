@@ -1,0 +1,162 @@
+name: Production contact/footer hotfix 0.10.247
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-contact-footer-hotfix-010247.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-theme
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate hotfix release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f elmercadodeorigen-child/functions.php
+          test -f elmercadodeorigen-child/inc/contact-footer-hotfix-010247.php
+          grep -q 'contact-footer-hotfix-010247.php' elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          grep -q 'Terms and Conditions' elmercadodeorigen-child/inc/contact-footer-hotfix-010247.php
+          grep -q 'data-emo-contact-honeypot' elmercadodeorigen-child/inc/contact-footer-hotfix-010247.php
+          find elmercadodeorigen-child -type f -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install deployment tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage child theme on server
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/elmercado-contact-footer-010247-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' --exclude='*.map' -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/ "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/"
+
+      - name: Backup, deploy and verify production theme
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP/theme' '$GITHUB_SHA'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"
+          dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve development WordPress root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] && [ -d "$prod/wp-content/themes" ] || { echo 'Production WordPress path invalid.' >&2; exit 1; }
+
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
+
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing production deploy: siteurl=$siteurl" >&2; exit 1 ;; esac
+
+          find "$incoming" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          grep -q 'contact-footer-hotfix-010247.php' "$incoming/inc/blog-footer-layout-polish-010246.php"
+          grep -q 'data-emo-contact-honeypot' "$incoming/inc/contact-footer-hotfix-010247.php"
+
+          parent="$prod/wp-content/themes"
+          target="$parent/elmercadodeorigen-child"
+          [ -d "$target" ] || { echo 'Existing production child theme missing.' >&2; exit 1; }
+          active_before="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          short_commit="$(printf '%.10s' "$commit")"
+          backup_name="$(date -u +%Y%m%dT%H%M%SZ)-before-contact-footer-010247-$short_commit"
+          backup_dir="$rollback_root/$backup_name"
+          mkdir -p "$backup_dir"
+          tar -czf "$backup_dir/theme.tar.gz" -C "$parent" elmercadodeorigen-child
+          (cd "$backup_dir" && sha256sum theme.tar.gz > theme.tar.gz.sha256 && sha256sum -c theme.tar.gz.sha256)
+          printf '%s\n' "$active_before" > "$backup_dir/active-stylesheet.txt"
+          printf '%s\n' "$siteurl" > "$backup_dir/siteurl.txt"
+          printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
+
+          old="$parent/.elmercadodeorigen-child.predeploy-$commit"
+          rm -rf "$old"
+          swapped=0
+          rollback() {
+            code=$?
+            if [ "$swapped" -eq 1 ] && [ "$code" -ne 0 ]; then
+              echo 'Production verification failed; restoring prior theme.' >&2
+              rm -rf "$target"
+              [ ! -d "$old" ] || mv "$old" "$target"
+              "$php_bin" -d memory_limit=512M "$wp_bin" theme activate "$active_before" --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+            fi
+            rm -rf "$incoming"
+            exit "$code"
+          }
+          trap rollback EXIT HUP INT TERM
+
+          mv "$target" "$old"
+          mv "$incoming" "$target"
+          swapped=1
+          find "$target" -type f -name '*.php' -print0 | xargs -0 -n1 "$php_bin" -l >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" theme activate elmercadodeorigen-child --path="$prod" --skip-plugins --allow-root >/dev/null
+          active_after="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
+          [ "$active_after" = 'elmercadodeorigen-child' ]
+          test -f "$target/inc/contact-footer-hotfix-010247.php"
+          grep -q 'contact-footer-hotfix-010247.php' "$target/inc/blog-footer-layout-polish-010246.php"
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+
+          base="${siteurl%/}"
+          for path in / /contacto-productores/; do
+            code="$(curl -ksS -L -o /tmp/emo-hotfix-page -w '%{http_code}' --max-time 35 "$base$path?release=$commit" || true)"
+            [ "$code" = '200' ] || { echo "$path HTTP $code" >&2; exit 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/emo-hotfix-page || { echo "Fatal marker on $path" >&2; exit 1; }
+          done
+          curl -ksS -L --max-time 35 "$base/?release=$commit" | grep -q 'elmercado-contact-footer-runtime-hotfix-010247'
+
+          rm -rf "$old"
+          swapped=0
+          trap - EXIT HUP INT TERM
+          echo "PRODUCTION_CONTACT_FOOTER_010247_OK site=$siteurl backup=$backup_name"
+          REMOTE
