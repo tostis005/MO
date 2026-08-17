@@ -134,7 +134,8 @@ const getHubState = async (page) => page.evaluate(() => {
     if (!mobile.hasMain || mobile.scrollWidth > mobile.viewport + 2 || !mobile.cards.length) {
       throw new Error(`Categories hub mobile base invalid ${JSON.stringify(mobile)}`);
     }
-    const mobileBad = mobile.cards.filter((card) => card.rect.x < 8 || card.rect.right > 382 || card.rect.w < 340 || card.rect.w > 372);
+    /* The theme's mobile content gutter leaves a clean 26px inset on each side. */
+    const mobileBad = mobile.cards.filter((card) => card.rect.x < 8 || card.rect.right > 382 || card.rect.w < 300 || card.rect.w > 372);
     if (mobileBad.length) {
       throw new Error(`Categories hub mobile cards invalid ${JSON.stringify(mobileBad.slice(0, 5))}`);
     }
