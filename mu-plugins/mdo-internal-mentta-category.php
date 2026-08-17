@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Internal MENTTA category
  * Description: Keeps the MENTTA WooCommerce category available to integrations/admins but hidden from the public storefront.
- * Version: 1.0.2
+ * Version: 1.0.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -15,7 +15,7 @@ if ( ! defined( 'MDO_MENTTA_CATEGORY_SLUG' ) ) {
 
 /**
  * Resolve the marker term ID without using get_terms(), because this function is
- * itself called from a get_terms_args filter on public requests.
+ * itself called from term-query filters on public requests.
  */
 function mdo_mentta_marker_term_id() {
 	static $term_id = null;
@@ -38,6 +38,32 @@ function mdo_mentta_marker_term_id() {
 	);
 
 	return $term_id;
+}
+
+/** Resolve the marker term_taxonomy_id for queries that request tt_ids. */
+function mdo_mentta_marker_term_taxonomy_id() {
+	static $tt_id = null;
+
+	if ( null !== $tt_id ) {
+		return $tt_id;
+	}
+
+	$term_id = mdo_mentta_marker_term_id();
+	if ( ! $term_id ) {
+		$tt_id = 0;
+		return $tt_id;
+	}
+
+	global $wpdb;
+	$tt_id = (int) $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT term_taxonomy_id FROM {$wpdb->term_taxonomy} WHERE term_id = %d AND taxonomy = %s LIMIT 1",
+			$term_id,
+			'product_cat'
+		)
+	);
+
+	return $tt_id;
 }
 
 /**
@@ -80,9 +106,8 @@ function mdo_mentta_hide_from_public_term_queries( $args, $taxonomies ) {
 add_filter( 'get_terms_args', 'mdo_mentta_hide_from_public_term_queries', 20, 2 );
 
 /**
- * Final safety net for term-query results. Some builders/widgets alter the query
- * arguments after get_terms_args; filtering the returned terms keeps MENTTA out
- * of frontend grids such as the categories block on the homepage.
+ * Final safety net for term-query results. Handles WP_Term objects as well as
+ * builders that request ids, tt_ids, slugs or names from get_terms().
  */
 function mdo_mentta_hide_from_public_term_results( $terms, $taxonomies, $args, $term_query ) {
 	if ( ! mdo_mentta_should_hide_publicly() || ! is_array( $terms ) ) {
@@ -103,11 +128,34 @@ function mdo_mentta_hide_from_public_term_results( $terms, $taxonomies, $args, $
 		return $terms;
 	}
 
+	$fields = isset( $args['fields'] ) ? (string) $args['fields'] : 'all';
+	$tt_id  = mdo_mentta_marker_term_taxonomy_id();
+
 	return array_values(
 		array_filter(
 			$terms,
-			static function ( $term ) use ( $term_id ) {
-				return ! ( $term instanceof WP_Term ) || (int) $term->term_id !== $term_id;
+			static function ( $term ) use ( $term_id, $tt_id, $fields ) {
+				if ( $term instanceof WP_Term ) {
+					return (int) $term->term_id !== $term_id;
+				}
+
+				if ( 'ids' === $fields ) {
+					return (int) $term !== $term_id;
+				}
+
+				if ( 'tt_ids' === $fields ) {
+					return ! $tt_id || (int) $term !== $tt_id;
+				}
+
+				if ( 'slugs' === $fields ) {
+					return MDO_MENTTA_CATEGORY_SLUG !== strtolower( (string) $term );
+				}
+
+				if ( 'names' === $fields ) {
+					return 'mentta' !== strtolower( trim( (string) $term ) );
+				}
+
+				return true;
 			}
 		)
 	);
@@ -143,16 +191,23 @@ function mdo_mentta_hide_public_menu_items( $items ) {
 	}
 
 	$term_id = mdo_mentta_marker_term_id();
-	$needle  = '/product-category/' . MDO_MENTTA_CATEGORY_SLUG;
 
 	return array_values(
 		array_filter(
 			$items,
-			static function ( $item ) use ( $term_id, $needle ) {
+			static function ( $item ) use ( $term_id ) {
 				if ( $term_id && isset( $item->object, $item->object_id ) && 'product_cat' === $item->object && (int) $item->object_id === $term_id ) {
 					return false;
 				}
-				return ! isset( $item->url ) || false === strpos( (string) $item->url, $needle );
+
+				if ( isset( $item->url ) ) {
+					$path = (string) wp_parse_url( (string) $item->url, PHP_URL_PATH );
+					if ( preg_match( '#/mentta/?$#i', untrailingslashit( $path ) . '/' ) ) {
+						return false;
+					}
+				}
+
+				return true;
 			}
 		)
 	);
@@ -160,19 +215,32 @@ function mdo_mentta_hide_public_menu_items( $items ) {
 add_filter( 'wp_get_nav_menu_items', 'mdo_mentta_hide_public_menu_items', 20 );
 
 /**
- * Homepage DOM fallback for category widgets/builders that render a stored term
- * selection rather than querying product_cat at request time.
+ * Homepage DOM fallback for builders that render a stored category selection.
+ * Match by the final /mentta/ path segment so translated category URL bases are
+ * covered too (for example /categoria-producto/mentta/).
  */
 function mdo_mentta_hide_homepage_rendered_card() {
 	if ( ! mdo_mentta_should_hide_publicly() || ! is_front_page() ) {
 		return;
 	}
 	?>
+	<style id="mdo-hide-mentta-home-style">
+		body.home a[href$="/mentta/"], body.home a[href$="/mentta"] { visibility: hidden !important; }
+	</style>
 	<script id="mdo-hide-mentta-home-card">
 	(function () {
 		function hideMenttaCards() {
-			document.querySelectorAll('a[href*="/product-category/mentta"]').forEach(function (link) {
-				var card = link.closest('li.product-category, .product-category, .wc-block-product-category, .elementor-loop-item, .elementor-grid-item');
+			document.querySelectorAll('a[href]').forEach(function (link) {
+				var path;
+				try {
+					path = new URL(link.href, window.location.href).pathname.replace(/\/+$/, '').toLowerCase();
+				} catch (e) {
+					return;
+				}
+				if (!path.endsWith('/mentta')) {
+					return;
+				}
+				var card = link.closest('li.product-category, .product-category, .wc-block-product-category, .elementor-loop-item, .elementor-grid-item, .product-category-item, .category-item, article, li');
 				if (card) {
 					card.remove();
 				} else {
@@ -185,6 +253,7 @@ function mdo_mentta_hide_homepage_rendered_card() {
 		} else {
 			hideMenttaCards();
 		}
+		new MutationObserver(hideMenttaCards).observe(document.documentElement, { childList: true, subtree: true });
 	})();
 	</script>
 	<?php
