@@ -47,7 +47,7 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
       throw new Error(`Expected Tolecarnes/minimum-order cart notice not found ${JSON.stringify(initial)}`);
     }
 
-    const widths = [390, 740, 760, 767, 768, 800, 900, 991, 992, 1024, 1100, 1199, 1200, 1280, 1366];
+    const widths = [390, 500, 600, 700, 740, 760, 767, 768, 800, 900, 991, 992, 1024, 1100, 1199, 1200, 1280, 1366];
     const results = [];
 
     for (const width of widths) {
@@ -71,6 +71,8 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
         const wrapper = signal?.closest('.woocommerce-notices-wrapper') || document.querySelector('.woocommerce-notices-wrapper');
         const button = signal?.querySelector('.button') || null;
         const cartForm = document.querySelector('.woocommerce-cart-form');
+        const cartTable = cartForm?.querySelector('table.shop_table_responsive, table.shop_table') || null;
+        const cartRows = cartTable ? [...cartTable.querySelectorAll('tr.woocommerce-cart-form__cart-item, tr.cart_item')].filter(visible).map(rect) : [];
         const layout = document.querySelector('.emo-cart-layout');
         const collaterals = document.querySelector('.cart-collaterals');
         const totals = document.querySelector('.cart_totals');
@@ -91,6 +93,8 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
           buttonFloat: button ? getComputedStyle(button).float : null,
           buttonDisplay: button ? getComputedStyle(button).display : null,
           cartForm: rect(cartForm),
+          cartTable: rect(cartTable),
+          cartRows,
           layout: rect(layout),
           collaterals: rect(collaterals),
           totals: rect(totals),
@@ -107,6 +111,7 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
       for (const [name, box] of Object.entries({
         notice: geometry.notice,
         cartForm: geometry.cartForm,
+        cartTable: geometry.cartTable,
         layout: geometry.layout,
         collaterals: geometry.collaterals,
         totals: geometry.totals,
@@ -116,13 +121,24 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
           throw new Error(`${name} outside viewport at ${width}px ${JSON.stringify(geometry)}`);
         }
       }
-      if (!geometry.notice || !geometry.layout || !geometry.cartForm || !geometry.totals) {
+      if (!geometry.notice || !geometry.layout || !geometry.cartForm || !geometry.cartTable || !geometry.totals || !geometry.cartRows.length) {
         throw new Error(`Required cart geometry missing at ${width}px ${JSON.stringify(geometry)}`);
       }
 
       if (width <= 767) {
         if (geometry.notice.width < width * 0.78 || geometry.cartForm.width < width * 0.78) {
           throw new Error(`Mobile cart unexpectedly narrow at ${width}px ${JSON.stringify(geometry)}`);
+        }
+      }
+
+      if (width >= 500 && width <= 767) {
+        if (geometry.cartTable.width < geometry.cartForm.width - 30) {
+          throw new Error(`Wide-mobile cart table leaves unused right space at ${width}px ${JSON.stringify(geometry)}`);
+        }
+        for (const row of geometry.cartRows) {
+          if (row.width < geometry.cartTable.width * 0.98) {
+            throw new Error(`Wide-mobile cart row is not full width at ${width}px ${JSON.stringify(geometry)}`);
+          }
         }
       }
 
