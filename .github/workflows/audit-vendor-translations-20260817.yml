@@ -31,7 +31,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Discover production vendor identities and English metadata schema
+      - name: Locate El Diplomatico and audit translation completeness
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -54,83 +54,111 @@ jobs:
           wp_bin="$(command -v wp || true)"
           [ -n "$wp_bin" ] || { echo 'wp-cli not found'; exit 1; }
 
-          cat > /tmp/mo-discover-vendors.php <<'PHP'
+          cat > /tmp/mo-locate-and-audit.php <<'PHP'
           <?php
           global $wpdb;
 
-          $statuses = array('publish','draft','pending','private','future');
-          $placeholders = implode(',', array_fill(0, count($statuses), '%s'));
-          $sql = $wpdb->prepare(
-              "SELECT ID, post_author, post_status, post_title, post_name FROM {$wpdb->posts} WHERE post_type='product' AND post_status IN ($placeholders) ORDER BY post_author, ID",
-              $statuses
+          function mo_nonempty($v) { return trim(wp_strip_all_tags((string)$v)) !== ''; }
+          function mo_en($id, $key) { return (string)get_post_meta($id, '_en_US_'.$key, true); }
+          function mo_translation_state($post) {
+              $title = mo_en($post->ID, 'post_title');
+              $slug = mo_en($post->ID, 'post_name');
+              $content = mo_en($post->ID, 'post_content');
+              $excerpt = mo_en($post->ID, 'post_excerpt');
+              $published = mo_en($post->ID, 'published');
+              $missing = array();
+              if (!mo_nonempty($title)) $missing[] = 'post_title';
+              if (trim($slug) === '') $missing[] = 'post_name';
+              if (mo_nonempty($post->post_content) && !mo_nonempty($content)) $missing[] = 'post_content';
+              if (mo_nonempty($post->post_excerpt) && !mo_nonempty($excerpt)) $missing[] = 'post_excerpt';
+              if ($published !== '1') $missing[] = 'published';
+              return array(
+                  'missing' => $missing,
+                  'english' => array(
+                      'title' => $title,
+                      'slug' => $slug,
+                      'content' => $content,
+                      'excerpt' => $excerpt,
+                      'published' => $published,
+                  ),
+              );
+          }
+
+          echo "=== DIPLOMATICO_USERS ===\n";
+          $users = $wpdb->get_results(
+              "SELECT ID,user_login,user_nicename,display_name FROM {$wpdb->users} WHERE LOWER(CONCAT_WS(' ',user_login,user_nicename,display_name)) LIKE '%diplom%' ORDER BY ID",
+              ARRAY_A
           );
-          $raw_products = $wpdb->get_results($sql, ARRAY_A);
+          echo wp_json_encode($users, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT) . "\n";
 
-          $authors = array();
-          $schema = array();
-          $schema_samples = array();
+          echo "=== DIPLOMATICO_USERMETA ===\n";
+          $um = $wpdb->get_results(
+              "SELECT user_id,meta_key,LEFT(meta_value,1200) AS meta_value FROM {$wpdb->usermeta} WHERE LOWER(meta_value) LIKE '%diplom%' ORDER BY user_id,umeta_id LIMIT 100",
+              ARRAY_A
+          );
+          echo wp_json_encode($um, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT) . "\n";
 
-          foreach ($raw_products as $r) {
-              $id = (int) $r['ID'];
-              $aid = (int) $r['post_author'];
-              if (!isset($authors[$aid])) {
-                  $u = get_user_by('id', $aid);
-                  $dokan = function_exists('dokan_get_store_info') ? dokan_get_store_info($aid) : array();
-                  $profile = get_user_meta($aid, 'dokan_profile_settings', true);
-                  $authors[$aid] = array(
-                      'author_id' => $aid,
-                      'display_name' => $u ? $u->display_name : null,
-                      'user_login' => $u ? $u->user_login : null,
-                      'user_nicename' => $u ? $u->user_nicename : null,
-                      'dokan_store_name' => is_array($dokan) ? ($dokan['store_name'] ?? null) : null,
-                      'profile_store_name' => is_array($profile) ? ($profile['store_name'] ?? null) : null,
-                      'product_count' => 0,
-                      'status_counts' => array(),
-                      'seller_store_names' => array(),
-                      'samples' => array(),
-                  );
-              }
-              $authors[$aid]['product_count']++;
-              $st = $r['post_status'];
-              if (!isset($authors[$aid]['status_counts'][$st])) $authors[$aid]['status_counts'][$st] = 0;
-              $authors[$aid]['status_counts'][$st]++;
-              $seller = trim((string) get_post_meta($id, '_seller_store_name', true));
-              if ($seller !== '') $authors[$aid]['seller_store_names'][$seller] = true;
-              if (count($authors[$aid]['samples']) < 8) {
-                  $authors[$aid]['samples'][] = array('id'=>$id,'status'=>$st,'title'=>$r['post_title'],'slug'=>$r['post_name']);
-              }
+          echo "=== DIPLOMATICO_POSTS ===\n";
+          $dp = $wpdb->get_results(
+              "SELECT ID,post_author,post_type,post_status,post_title,post_name FROM {$wpdb->posts} WHERE LOWER(CONCAT_WS(' ',post_title,post_name,post_excerpt,post_content)) LIKE '%diplom%' ORDER BY ID LIMIT 200",
+              ARRAY_A
+          );
+          echo wp_json_encode($dp, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT) . "\n";
 
-              $meta = get_post_meta($id);
-              foreach ($meta as $key => $values) {
-                  if (strpos($key, '_en_US_') !== 0) continue;
-                  $schema[$key] = true;
-                  if (!isset($schema_samples[$key])) {
-                      $vals = array();
-                      foreach ((array)$values as $v) $vals[] = maybe_unserialize($v);
-                      $schema_samples[$key] = array('product_id'=>$id,'value'=>count($vals)===1?$vals[0]:$vals);
+          echo "=== DIPLOMATICO_POSTMETA ===\n";
+          $pm = $wpdb->get_results(
+              "SELECT post_id,meta_key,LEFT(meta_value,1200) AS meta_value FROM {$wpdb->postmeta} WHERE LOWER(meta_value) LIKE '%diplom%' ORDER BY post_id,meta_id LIMIT 200",
+              ARRAY_A
+          );
+          echo wp_json_encode($pm, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT) . "\n";
+
+          echo "=== TARGET_AUDIT ===\n";
+          $targets = array(4507=>'Tolecarnes', 4508=>'Puente Robles');
+          foreach ($targets as $author_id => $vendor) {
+              $ids = $wpdb->get_col($wpdb->prepare(
+                  "SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status IN ('publish','draft','pending','private','future') ORDER BY ID",
+                  $author_id
+              ));
+              $summary = array('vendor'=>$vendor,'author_id'=>$author_id,'total'=>0,'complete'=>0,'incomplete'=>0,'by_status'=>array());
+              $incomplete = array();
+              foreach ($ids as $id) {
+                  $post = get_post((int)$id);
+                  if (!$post) continue;
+                  $state = mo_translation_state($post);
+                  $summary['total']++;
+                  if (!isset($summary['by_status'][$post->post_status])) $summary['by_status'][$post->post_status] = 0;
+                  $summary['by_status'][$post->post_status]++;
+                  if (empty($state['missing'])) {
+                      $summary['complete']++;
+                  } else {
+                      $summary['incomplete']++;
+                      $incomplete[] = array(
+                          'id'=>(int)$post->ID,
+                          'status'=>$post->post_status,
+                          'sku'=>(string)get_post_meta($post->ID,'_sku',true),
+                          'missing'=>$state['missing'],
+                          'spanish'=>array(
+                              'title'=>$post->post_title,
+                              'slug'=>$post->post_name,
+                              'excerpt'=>$post->post_excerpt,
+                              'content'=>$post->post_content,
+                          ),
+                          'english'=>$state['english'],
+                      );
                   }
               }
+              echo wp_json_encode(array('summary'=>$summary,'incomplete'=>$incomplete), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
           }
 
-          foreach ($authors as &$a) {
-              $a['seller_store_names'] = array_keys($a['seller_store_names']);
-              ksort($a['status_counts']);
-          }
-          unset($a);
-          ksort($authors);
-          ksort($schema);
-          ksort($schema_samples);
-
-          echo "=== TOTAL_PRODUCTS ===\n" . count($raw_products) . "\n";
-          echo "=== ENGLISH_META_SCHEMA ===\n";
-          echo wp_json_encode(array_keys($schema), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT) . "\n";
-          echo "=== ENGLISH_META_SAMPLES ===\n";
-          echo wp_json_encode($schema_samples, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT) . "\n";
-          echo "=== AUTHORS ===\n";
-          foreach ($authors as $a) echo wp_json_encode($a, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+          echo "=== ALL_PRODUCT_AUTHORS_ANY_STATUS ===\n";
+          $authors = $wpdb->get_results(
+              "SELECT p.post_author,u.user_login,u.user_nicename,u.display_name,p.post_status,COUNT(*) qty FROM {$wpdb->posts} p LEFT JOIN {$wpdb->users} u ON u.ID=p.post_author WHERE p.post_type='product' GROUP BY p.post_author,p.post_status ORDER BY p.post_author,p.post_status",
+              ARRAY_A
+          );
+          echo wp_json_encode($authors, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT) . "\n";
           echo "=== END ===\n";
           PHP
 
-          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-discover-vendors.php --path="$prod" --allow-root
-          rm -f /tmp/mo-discover-vendors.php
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-locate-and-audit.php --path="$prod" --allow-root
+          rm -f /tmp/mo-locate-and-audit.php
           REMOTE
