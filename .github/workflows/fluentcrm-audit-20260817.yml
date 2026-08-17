@@ -1,0 +1,72 @@
+name: Audit FluentCRM production 2026-08-17
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fluentcrm-audit-20260817.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Inspect FluentCRM read-only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          echo '=== FLUENT PLUGINS ==='
+          "$php_bin" "$wp_bin" plugin list --path="$prod" --allow-root --fields=name,status,version --format=table | grep -Ei 'fluent|name' || true
+          echo '=== CAMPAIGN TABLES / RECENT CAMPAIGNS ==='
+          "$php_bin" "$wp_bin" eval --path="$prod" --allow-root '
+            global $wpdb;
+            $prefix=$wpdb->prefix;
+            $tables=$wpdb->get_col("SHOW TABLES LIKE \"{$prefix}fc%campaign%\"");
+            foreach($tables as $t){ echo "TABLE:$t\n"; $cols=$wpdb->get_results("SHOW COLUMNS FROM `$t`", ARRAY_A); echo "COLS:".implode(",", array_column($cols,"Field"))."\n"; }
+            $campaignTable=$prefix."fc_campaigns";
+            if(in_array($campaignTable,$tables,true)){
+              $rows=$wpdb->get_results("SELECT * FROM `$campaignTable` ORDER BY id DESC LIMIT 5", ARRAY_A);
+              foreach($rows as $r){
+                foreach(["email_body","design_template","settings","meta","data","content"] as $k){ if(isset($r[$k])) $r[$k]="[len=".strlen((string)$r[$k])."]"; }
+                echo "CAMPAIGN:".wp_json_encode($r, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              }
+            }
+          '
+          echo '=== DUPLICATE / TEST METHODS IN PLUGIN ==='
+          plugin_dir="$prod/wp-content/plugins/fluent-crm"
+          if [ -d "$plugin_dir" ]; then
+            grep -RniE 'function[[:space:]]+(duplicate|sendTest|send_test)|duplicateCampaign|sendTest' "$plugin_dir/app" 2>/dev/null | head -n 80 || true
+          fi
+          REMOTE
