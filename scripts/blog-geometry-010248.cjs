@@ -173,7 +173,7 @@ const sellerImageKeys = ['display', 'width', 'height', 'borderRadius', 'objectFi
     if (article.main.w < 1100 || article.main.w > 1182 || Math.abs(article.main.w - article.hero.w) > 3) {
       throw new Error(`Article shell ${JSON.stringify(article)}`);
     }
-    if (article.content.w < 650 || article.content.w > 802) throw new Error(`Reading width ${JSON.stringify(article)}`);
+    if (article.content.w < 898 || article.content.w > 902) throw new Error(`Reading width ${JSON.stringify(article)}`);
     if (article.wide.w > 1042 || article.wide.x < 120 || article.wide.right > 1320) {
       throw new Error(`Product block ${JSON.stringify(article)}`);
     }
