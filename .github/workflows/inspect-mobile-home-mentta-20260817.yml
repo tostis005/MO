@@ -15,25 +15,22 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Verify uncached mobile homepage HTML
+      - name: Final verify uncached mobile homepage HTML
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://www.elmercadodeorigen.com/?mdo_mobile_verify=${GITHUB_RUN_ID}"
+          URL="https://www.elmercadodeorigen.com/?mdo_mobile_final_verify=${GITHUB_RUN_ID}"
           UA='Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'
           curl -fsSL --max-time 30 -A "$UA" -H 'Cache-Control: no-cache' "$URL" -o /tmp/home.html
 
           grep -q 'class="emo-home"' /tmp/home.html
           grep -q 'emo-category-grid' /tmp/home.html
+          grep -q '>Jamones y paletas<' /tmp/home.html
+          grep -q '>Embutidos y curados<' /tmp/home.html
+          grep -q '>Aceites<' /tmp/home.html
 
-          if grep -Eqi '/mentta/?([?#]|&quot;|%22|\x22)' /tmp/home.html; then
-            echo 'MENTTA_LINK_STILL_PRESENT'
-            grep -in -C 3 -Ei 'mentta' /tmp/home.html | head -n 80 || true
-            exit 1
-          fi
-
-          if grep -Eqi '>[[:space:]]*MENTTA[[:space:]]*<' /tmp/home.html; then
-            echo 'MENTTA_CARD_TEXT_STILL_PRESENT'
+          if grep -Eqi 'categoria-producto/mentta|>[[:space:]]*MENTTA[[:space:]]*<' /tmp/home.html; then
+            echo 'MENTTA_STILL_PRESENT'
             grep -in -C 3 -Ei 'mentta' /tmp/home.html | head -n 80 || true
             exit 1
           fi
