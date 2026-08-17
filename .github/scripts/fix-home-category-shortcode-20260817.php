@@ -19,13 +19,9 @@ $fixed_shortcode = '[wpos_product_categories height="400" number="6" ids="149,16
 $changed = 0;
 
 function mdo_fix_home_category_widget(&$nodes, $target_id, $fixed_shortcode, &$changed) {
-    if (!is_array($nodes)) {
-        return;
-    }
+    if (!is_array($nodes)) return;
     foreach ($nodes as &$node) {
-        if (!is_array($node)) {
-            continue;
-        }
+        if (!is_array($node)) continue;
         if (isset($node['id']) && $node['id'] === $target_id) {
             if (!isset($node['settings']) || !is_array($node['settings'])) {
                 $node['settings'] = array();
@@ -40,28 +36,21 @@ function mdo_fix_home_category_widget(&$nodes, $target_id, $fixed_shortcode, &$c
 }
 
 function mdo_get_home_category_widget_editor($nodes, $target_id) {
-    if (!is_array($nodes)) {
-        return null;
-    }
+    if (!is_array($nodes)) return null;
     foreach ($nodes as $node) {
-        if (!is_array($node)) {
-            continue;
-        }
+        if (!is_array($node)) continue;
         if (isset($node['id']) && $node['id'] === $target_id) {
             return isset($node['settings']['editor']) ? (string) $node['settings']['editor'] : '';
         }
         if (!empty($node['elements']) && is_array($node['elements'])) {
             $found = mdo_get_home_category_widget_editor($node['elements'], $target_id);
-            if (null !== $found) {
-                return $found;
-            }
+            if (null !== $found) return $found;
         }
     }
     return null;
 }
 
 mdo_fix_home_category_widget($data, $target_id, $fixed_shortcode, $changed);
-
 if (1 !== $changed) {
     fwrite(STDERR, "unexpected_widget_matches={$changed}\n");
     exit(1);
@@ -82,10 +71,21 @@ if (class_exists('Elementor\\Plugin')) {
         if ($plugin && isset($plugin->files_manager)) {
             $plugin->files_manager->clear_cache();
         }
-    } catch (Throwable $e) {
-        // The meta update is the source of truth; cache clearing is best effort.
-    }
+    } catch (Throwable $e) {}
 }
+
+if (function_exists('rocket_clean_domain')) {
+    rocket_clean_domain();
+}
+if (function_exists('wp_cache_clear_cache')) {
+    wp_cache_clear_cache();
+}
+if (function_exists('w3tc_flush_all')) {
+    w3tc_flush_all();
+}
+do_action('litespeed_purge_all');
+do_action('autoptimize_action_cachepurged');
+wp_cache_flush();
 
 $verify_raw = get_post_meta($front, '_elementor_data', true);
 $verify_data = json_decode((string) $verify_raw, true);
@@ -104,7 +104,14 @@ if (false !== strpos($verify_editor, "\xC2\xA0ids=")) {
     exit(1);
 }
 
+$rendered = do_shortcode($fixed_shortcode);
+if (preg_match('#href=["\'][^"\']*/mentta/?["\']#i', $rendered) || preg_match('#>\s*MENTTA\s*<#i', $rendered)) {
+    fwrite(STDERR, "rendered_block_still_contains_mentta\n");
+    exit(1);
+}
+
 echo "front_page_id={$front}\n";
 echo "widget_id={$target_id}\n";
 echo "shortcode={$verify_editor}\n";
+echo "rendered_mentta=no\n";
 echo "home_category_shortcode_fixed\n";
