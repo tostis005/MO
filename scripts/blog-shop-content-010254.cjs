@@ -16,6 +16,28 @@ const bust = (path) => `${base}${path}${path.includes('?') ? '&' : '?'}mdoqa=${D
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1100, deviceScaleFactor: 1 });
 
+    await page.goto(bust('/blog/'), { waitUntil: 'networkidle2', timeout: 60000 });
+    await sleep(750);
+    const blogCards = await page.evaluate(() => {
+      const normalize = (text) => (text || '')
+        .trim()
+        .toLocaleLowerCase('es')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+      return [...document.querySelectorAll('.emo-journal-grid .emo-article-card')].map((card) => {
+        const title = card.querySelector('h2')?.textContent?.trim() || '';
+        const excerpt = card.querySelector('.emo-article-card__body > p')?.textContent?.trim() || '';
+        return {
+          title,
+          excerpt,
+          startsWithIntroduction: normalize(excerpt).startsWith('introduccion'),
+        };
+      });
+    });
+    if (blogCards.length < 2 || blogCards.some((card) => !card.excerpt || card.startsWithIntroduction)) {
+      throw new Error(`Blog card excerpt QA failed ${JSON.stringify(blogCards)}`);
+    }
+
     for (const path of ['/tienda/', '/product-category/embutidos-y-curados/']) {
       await page.goto(bust(path), { waitUntil: 'networkidle2', timeout: 60000 });
       await sleep(650);
@@ -89,7 +111,7 @@ const bust = (path) => `${base}${path}${path.includes('?') ? '&' : '?'}mdoqa=${D
       throw new Error(`Aceite article QA failed ${JSON.stringify(aceite)}`);
     }
 
-    console.log(JSON.stringify({ ok: true, jamon, aceite }, null, 2));
+    console.log(JSON.stringify({ ok: true, blogCards, jamon, aceite }, null, 2));
   } finally {
     await browser.close();
   }
