@@ -1,0 +1,32 @@
+name: Inspect mobile homepage MENTTA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-mobile-home-mentta-20260817.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Inspect uncached mobile homepage HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/?mdo_mobile_check=${GITHUB_RUN_ID}"
+          UA='Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'
+          curl -fsSL --max-time 30 -A "$UA" -D /tmp/headers.txt "$URL" -o /tmp/home.html
+          echo '=== RESPONSE HEADERS ==='
+          grep -iE '^(HTTP/|cache-control:|age:|cf-cache-status:|x-cache:|x-litespeed-cache:|vary:)' /tmp/headers.txt || true
+          echo '=== MENTTA OCCURRENCES ==='
+          grep -in -C 4 -E 'mentta' /tmp/home.html || echo 'NO_MENTTA_IN_RAW_HTML'
+          echo '=== CATEGORY BLOCK MARKERS ==='
+          grep -in -C 4 -E 'wpos_product_categories|wpos|product-categor|Categorías' /tmp/home.html | head -n 220 || true
+          echo '=== CATEGORY URLS ==='
+          grep -Eo 'href=["'"'][^"'"']+["'"']' /tmp/home.html | sed -E 's/^href=["'"']|["'"']$//g' | grep -Ei 'categor|product-category|mentta' | sort -u | head -n 100 || true
