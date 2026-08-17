@@ -1,6 +1,7 @@
 name: Audit vendor translations 2026-08-17
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -30,7 +31,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Audit production vendor products and WPML translations
+      - name: Audit production vendor products and custom English metadata
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -55,118 +56,102 @@ jobs:
 
           cat > /tmp/mo-audit-vendor-translations.php <<'PHP'
           <?php
-          global $wpdb;
-
           function mo_norm($value) {
               $value = remove_accents((string) $value);
               $value = strtolower($value);
               return preg_replace('/[^a-z0-9]+/', '', $value);
           }
 
-          $targets = array(
-              'Tolecarnes' => 'tolecarnes',
-              'El Diplomático' => 'eldiplomatico',
-              'Puente Robles' => 'puenterobles',
-          );
-
-          $vendors = array();
-          $users = get_users(array('fields' => 'all_with_meta'));
-          foreach ($users as $user) {
-              $pieces = array($user->display_name, $user->user_login, $user->user_nicename);
-              foreach (array('dokan_profile_settings', 'wcfmmp_profile_settings', 'pv_shop_name', 'store_name') as $key) {
-                  $meta = get_user_meta($user->ID, $key, true);
-                  if (!empty($meta)) {
-                      $pieces[] = is_scalar($meta) ? (string) $meta : wp_json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+          function mo_store_name($post) {
+              $store = trim((string) get_post_meta($post->ID, '_seller_store_name', true));
+              if ($store === '' && function_exists('dokan_get_store_info')) {
+                  $info = dokan_get_store_info((int) $post->post_author);
+                  if (is_array($info) && !empty($info['store_name'])) {
+                      $store = trim((string) $info['store_name']);
                   }
               }
-              $haystack = mo_norm(implode(' ', $pieces));
-              foreach ($targets as $label => $needle) {
-                  $needle2 = mo_norm($needle);
-                  if ($needle2 !== '' && strpos($haystack, $needle2) !== false) {
-                      $vendors[$user->ID] = array(
-                          'id' => (int) $user->ID,
-                          'label' => $label,
-                          'display_name' => $user->display_name,
-                          'user_login' => $user->user_login,
-                      );
-                  }
+              if ($store === '') {
+                  $user = get_user_by('id', (int) $post->post_author);
+                  if ($user) $store = trim((string) $user->display_name);
               }
+              return $store;
           }
 
-          echo "=== VENDORS ===\n";
-          echo wp_json_encode(array_values($vendors), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
-
-          $table = $wpdb->prefix . 'icl_translations';
-          $wpml_table = ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table);
-          echo "=== MULTILINGUAL ===\n";
-          echo wp_json_encode(array(
-              'wpml_translation_table' => $wpml_table,
-              'ICL_SITEPRESS_VERSION' => defined('ICL_SITEPRESS_VERSION') ? ICL_SITEPRESS_VERSION : null,
-              'default_language' => apply_filters('wpml_default_language', null),
-              'active_languages' => apply_filters('wpml_active_languages', null, array('skip_missing' => 0)),
-          ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
-
-          if (!$vendors) {
-              echo "NO_MATCHING_VENDORS\n";
-              exit;
+          function mo_target_vendor($store) {
+              $n = mo_norm($store);
+              if (strpos($n, 'tolecarnes') !== false) return 'Tolecarnes';
+              if (strpos($n, 'diplomatico') !== false) return 'El Diplomático';
+              if (strpos($n, 'puenterobles') !== false) return 'Puente Robles';
+              return null;
           }
 
-          $vendor_ids = array_map('intval', array_keys($vendors));
-          $products = get_posts(array(
+          function mo_en_meta($post_id) {
+              $all = get_post_meta($post_id);
+              $out = array();
+              foreach ($all as $key => $values) {
+                  if (strpos($key, '_en_US_') !== 0) continue;
+                  $decoded = array();
+                  foreach ((array) $values as $value) {
+                      $decoded[] = maybe_unserialize($value);
+                  }
+                  $out[$key] = count($decoded) === 1 ? $decoded[0] : $decoded;
+              }
+              ksort($out);
+              return $out;
+          }
+
+          $posts = get_posts(array(
               'post_type' => 'product',
               'post_status' => array('publish','draft','pending','private','future'),
               'posts_per_page' => -1,
-              'author__in' => $vendor_ids,
               'orderby' => 'ID',
               'order' => 'ASC',
           ));
 
-          echo "=== PRODUCTS ===\n";
-          foreach ($products as $p) {
-              $row = null;
-              $translations = array();
-              if ($wpml_table) {
-                  $row = $wpdb->get_row($wpdb->prepare(
-                      "SELECT translation_id, element_id, trid, language_code, source_language_code FROM {$table} WHERE element_type = 'post_product' AND element_id = %d LIMIT 1",
-                      $p->ID
-                  ), ARRAY_A);
-                  if ($row && !empty($row['trid'])) {
-                      $trs = $wpdb->get_results($wpdb->prepare(
-                          "SELECT element_id, language_code, source_language_code FROM {$table} WHERE element_type = 'post_product' AND trid = %d ORDER BY language_code",
-                          $row['trid']
-                      ), ARRAY_A);
-                      foreach ($trs as $tr) {
-                          $tp = get_post((int) $tr['element_id']);
-                          $translations[] = array(
-                              'id' => (int) $tr['element_id'],
-                              'language' => $tr['language_code'],
-                              'source_language' => $tr['source_language_code'],
-                              'status' => $tp ? $tp->post_status : null,
-                              'title' => $tp ? $tp->post_title : null,
-                              'content_len' => $tp ? strlen(trim(wp_strip_all_tags($tp->post_content))) : null,
-                              'excerpt_len' => $tp ? strlen(trim(wp_strip_all_tags($tp->post_excerpt))) : null,
-                          );
-                      }
-                  }
-              }
+          $rows = array();
+          $schema = array();
+          $counts = array('Tolecarnes' => 0, 'El Diplomático' => 0, 'Puente Robles' => 0);
+          $status_counts = array();
 
-              $out = array(
-                  'id' => (int) $p->ID,
-                  'vendor' => $vendors[$p->post_author]['label'] ?? $vendors[$p->post_author]['display_name'],
-                  'author_id' => (int) $p->post_author,
-                  'status' => $p->post_status,
-                  'title' => $p->post_title,
-                  'sku' => get_post_meta($p->ID, '_sku', true),
-                  'content_len' => strlen(trim(wp_strip_all_tags($p->post_content))),
-                  'excerpt_len' => strlen(trim(wp_strip_all_tags($p->post_excerpt))),
-                  'wpml' => $row,
-                  'translations' => $translations,
+          foreach ($posts as $post) {
+              $store = mo_store_name($post);
+              $vendor = mo_target_vendor($store);
+              if (!$vendor) continue;
+
+              $en = mo_en_meta($post->ID);
+              foreach (array_keys($en) as $key) $schema[$key] = true;
+              $counts[$vendor]++;
+              if (!isset($status_counts[$vendor])) $status_counts[$vendor] = array();
+              if (!isset($status_counts[$vendor][$post->post_status])) $status_counts[$vendor][$post->post_status] = 0;
+              $status_counts[$vendor][$post->post_status]++;
+
+              $rows[] = array(
+                  'id' => (int) $post->ID,
+                  'vendor' => $vendor,
+                  'detected_store' => $store,
+                  'author_id' => (int) $post->post_author,
+                  'status' => $post->post_status,
+                  'sku' => (string) get_post_meta($post->ID, '_sku', true),
+                  'spanish' => array(
+                      'title' => $post->post_title,
+                      'slug' => $post->post_name,
+                      'excerpt' => $post->post_excerpt,
+                      'content' => $post->post_content,
+                  ),
+                  'english_meta' => $en,
               );
-              echo wp_json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
           }
 
+          ksort($schema);
+          echo "=== ENGLISH_META_SCHEMA ===\n";
+          echo wp_json_encode(array_keys($schema), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
           echo "=== SUMMARY ===\n";
-          echo wp_json_encode(array('vendor_count' => count($vendors), 'product_post_count' => count($products)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+          echo wp_json_encode(array('counts' => $counts, 'status_counts' => $status_counts, 'total' => count($rows)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
+          echo "=== PRODUCTS_JSONL ===\n";
+          foreach ($rows as $row) {
+              echo wp_json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+          }
+          echo "=== END ===\n";
           PHP
 
           "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-audit-vendor-translations.php --path="$prod" --allow-root
