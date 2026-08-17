@@ -112,6 +112,7 @@ if ( is_array( $cron ) ) {
 				$cron_hooks[ $hook ] = true;
 			}
 		}
+	}
 }
 if ( $cron_hooks ) {
 	foreach ( array_keys( $cron_hooks ) as $hook ) {
