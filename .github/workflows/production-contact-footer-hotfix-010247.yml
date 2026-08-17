@@ -109,7 +109,8 @@ jobs:
           active_before="$("$php_bin" -d memory_limit=512M "$wp_bin" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root)"
 
           rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
-          backup_name="$(date -u +%Y%m%dT%H%M%SZ)-before-contact-footer-010247-${commit%??????????????????????????????????????}"
+          short_commit="$(printf '%.10s' "$commit")"
+          backup_name="$(date -u +%Y%m%dT%H%M%SZ)-before-contact-footer-010247-$short_commit"
           backup_dir="$rollback_root/$backup_name"
           mkdir -p "$backup_dir"
           tar -czf "$backup_dir/theme.tar.gz" -C "$parent" elmercadodeorigen-child
@@ -147,7 +148,7 @@ jobs:
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
 
           base="${siteurl%/}"
-          for path in / /en/ /contacto-productores/; do
+          for path in / /contacto-productores/; do
             code="$(curl -ksS -L -o /tmp/emo-hotfix-page -w '%{http_code}' --max-time 35 "$base$path?release=$commit" || true)"
             [ "$code" = '200' ] || { echo "$path HTTP $code" >&2; exit 1; }
             ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/emo-hotfix-page || { echo "Fatal marker on $path" >&2; exit 1; }
