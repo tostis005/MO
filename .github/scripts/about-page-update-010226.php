@@ -128,3 +128,5 @@ if ( false === strpos( $plain, $new_marker ) || false !== strpos( $plain, $old_m
 }
 
 echo "ABOUT_UPDATE_OK page_id={$page->ID} slug={$page->post_name}\n";
+
+// audit-trigger-v2
