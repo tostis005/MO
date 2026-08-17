@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable
+          sudo apt-get install -y --no-install-recommends rsync sshpass google-chrome-stable
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
           node -e "require('puppeteer-core'); console.log('PUPPETEER_OK')"
 
@@ -72,7 +72,7 @@ jobs:
           REMOTE_TMP="/tmp/mdo-shop-blog-010254-${GITHUB_RUN_ID}"
           echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP'"
-          sshpass -e scp $SSH_OPTIONS mu-plugins/mdo-shop-blog-content-010254.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/mdo-shop-blog-content-010254.php"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" mu-plugins/mdo-shop-blog-content-010254.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/mdo-shop-blog-content-010254.php"
 
       - name: Backup and deploy production hotfix
         id: release
