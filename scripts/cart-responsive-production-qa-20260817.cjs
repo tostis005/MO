@@ -47,7 +47,7 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
       throw new Error(`Expected Tolecarnes/minimum-order cart notice not found ${JSON.stringify(initial)}`);
     }
 
-    const widths = [390, 740, 760, 767, 768, 800, 900, 991, 992, 1024];
+    const widths = [390, 740, 760, 767, 768, 800, 900, 991, 992, 1024, 1100, 1199, 1200, 1280, 1366];
     const results = [];
 
     for (const width of widths) {
@@ -74,6 +74,12 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
         const layout = document.querySelector('.emo-cart-layout');
         const collaterals = document.querySelector('.cart-collaterals');
         const totals = document.querySelector('.cart_totals');
+        const priceCells = [...document.querySelectorAll('.woocommerce-cart-form tr.cart_item td.product-price, .woocommerce-cart-form tr.woocommerce-cart-form__cart-item td.product-price')]
+          .filter(visible)
+          .map(rect);
+        const subtotalCells = [...document.querySelectorAll('.woocommerce-cart-form tr.cart_item td.product-subtotal, .woocommerce-cart-form tr.woocommerce-cart-form__cart-item td.product-subtotal')]
+          .filter(visible)
+          .map(rect);
         return {
           viewport: innerWidth,
           scrollWidth: document.documentElement.scrollWidth,
@@ -88,6 +94,8 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
           layout: rect(layout),
           collaterals: rect(collaterals),
           totals: rect(totals),
+          priceCells,
+          subtotalCells,
           layoutDisplay: layout ? getComputedStyle(layout).display : null,
           layoutColumns: layout ? getComputedStyle(layout).gridTemplateColumns : null,
         };
@@ -118,31 +126,48 @@ if (!/^\d+$/.test(productId)) throw new Error(`Invalid TOLE_PRODUCT_ID: ${produc
         }
       }
 
-      if (width >= 768 && width <= 991) {
+      if (width >= 768 && width <= 1199) {
         if (geometry.layoutDisplay !== 'grid') {
-          throw new Error(`Tablet cart layout is not grid at ${width}px ${JSON.stringify(geometry)}`);
+          throw new Error(`Intermediate cart layout is not grid at ${width}px ${JSON.stringify(geometry)}`);
         }
         if (geometry.notice.width < width * 0.78) {
-          throw new Error(`Tablet notice collapsed at ${width}px ${JSON.stringify(geometry)}`);
+          throw new Error(`Intermediate notice collapsed at ${width}px ${JSON.stringify(geometry)}`);
         }
         if (geometry.cartForm.width < geometry.layout.width * 0.9) {
-          throw new Error(`Tablet cart form collapsed at ${width}px ${JSON.stringify(geometry)}`);
+          throw new Error(`Intermediate cart form collapsed at ${width}px ${JSON.stringify(geometry)}`);
         }
         if (geometry.totals.width < geometry.layout.width * 0.9) {
-          throw new Error(`Tablet totals collapsed at ${width}px ${JSON.stringify(geometry)}`);
+          throw new Error(`Intermediate totals collapsed at ${width}px ${JSON.stringify(geometry)}`);
         }
       }
 
-      if (width >= 992) {
+      if (width >= 1200) {
         if (geometry.notice.width < width * 0.78) {
           throw new Error(`Desktop notice unexpectedly narrow at ${width}px ${JSON.stringify(geometry)}`);
         }
-        if (geometry.cartForm.width < width * 0.45 || geometry.totals.width < 280) {
+        if (geometry.cartForm.width < 700 || geometry.totals.width < 280) {
           throw new Error(`Desktop two-column cart geometry invalid at ${width}px ${JSON.stringify(geometry)}`);
+        }
+        if (geometry.collaterals && geometry.cartForm.right > geometry.collaterals.x + 2) {
+          throw new Error(`Cart form overlaps totals column at ${width}px ${JSON.stringify(geometry)}`);
         }
       }
 
-      if (width <= 991 && geometry.button) {
+      if (width >= 768) {
+        if (!geometry.priceCells.length) {
+          throw new Error(`Visible product prices missing at ${width}px ${JSON.stringify(geometry)}`);
+        }
+        for (const cell of [...geometry.priceCells, ...geometry.subtotalCells]) {
+          if (cell.width < 35 || cell.x < geometry.cartForm.x - 2 || cell.right > geometry.cartForm.right + 2) {
+            throw new Error(`Price/subtotal cell clipped at ${width}px ${JSON.stringify(geometry)}`);
+          }
+          if (width >= 1200 && geometry.collaterals && cell.right > geometry.collaterals.x) {
+            throw new Error(`Price/subtotal hidden below totals panel at ${width}px ${JSON.stringify(geometry)}`);
+          }
+        }
+      }
+
+      if (width <= 900 && geometry.button) {
         if (geometry.buttonFloat !== 'none') {
           throw new Error(`Notice button still floated at ${width}px ${JSON.stringify(geometry)}`);
         }
