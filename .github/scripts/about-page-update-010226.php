@@ -4,60 +4,86 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 // get_page_by_path( 'quienes-somos'
 // Nuestra historia comienza en 2014, cuando empezamos a especializarnos en la administración de fincas agrícolas.
 
-$uid=4507;
-$profile_key='wcfmmp_profile_settings';
-$backup_key='_emdo_wcfm_profile_backup_before_vendor_id_fix_20260817';
-$product_id=11148;
+$source_id = 9;
+$draft_id = 10;
+$recipient = 'jose.fraga@gmail.com';
+$future_cta_url = home_url('/tienda/tolecarnes');
+$state_key = '_emdo_fluentcrm_tolecarnes_final_test_20260817';
 
-function emdo_vendor_fix_abort($m){ fwrite(STDERR,'EMDO_VENDOR_FIX_ABORT: '.$m."\n"); exit(22); }
+function emdo_crm_final_abort($m){ fwrite(STDERR, 'EMDO_CRM_FINAL_ABORT: '.$m."\n"); exit(23); }
 
 try {
-    $user=get_userdata($uid);
-    if(!$user || !in_array('wcfm_vendor',(array)$user->roles,true)) emdo_vendor_fix_abort('Tolecarnes vendor user guard failed');
-    $settings=get_user_meta($uid,$profile_key,true);
-    if(!is_array($settings) || ($settings['store_name']??'')!=='Tolecarnes' || ($settings['store_slug']??'')!=='tolecarnes') emdo_vendor_fix_abort('profile settings guard failed');
+    $campaign_class='\\FluentCrm\\App\\Models\\Campaign';
+    $controller_class='\\FluentCrm\\App\\Http\\Controllers\\CampaignController';
+    $app_class='\\FluentCrm\\Framework\\Foundation\\App';
 
-    $current=(string)($settings['vendor_id']??'');
-    if($current!=='99999' && $current!==(string)$uid) emdo_vendor_fix_abort('unexpected existing vendor_id='.$current);
-
-    if($current==='99999'){
-        if(get_user_meta($uid,$backup_key,true)==='') update_user_meta($uid,$backup_key,$settings);
-        $settings['vendor_id']=(string)$uid;
-        update_user_meta($uid,$profile_key,$settings);
-        clean_user_cache($uid);
-        if(function_exists('wp_cache_flush')) wp_cache_flush();
+    if (!class_exists($campaign_class) || !class_exists($controller_class) || !class_exists($app_class)) {
+        emdo_crm_final_abort('FluentCRM classes unavailable');
     }
 
-    $verify=get_user_meta($uid,$profile_key,true);
-    if(!is_array($verify) || (string)($verify['vendor_id']??'')!==(string)$uid) emdo_vendor_fix_abort('vendor_id save verification failed');
+    $source=$campaign_class::find($source_id);
+    $draft=$campaign_class::find($draft_id);
 
-    $store=function_exists('wcfmmp_get_store_url')?wcfmmp_get_store_url($uid):home_url('/tienda/tolecarnes/');
-    $product=get_permalink($product_id);
-    $checks=array('store'=>$store,'product'=>$product);
-    $results=array();
-    foreach($checks as $name=>$url){
-        $probe=add_query_arg('emdo_vendor_fix_probe',time().rand(100,999),$url);
-        $resp=wp_remote_get($probe,array('timeout'=>15,'redirection'=>3,'headers'=>array('Cache-Control'=>'no-cache','Pragma'=>'no-cache'),'user-agent'=>'Mozilla/5.0 EMDO vendor fix verifier'));
-        $code=is_wp_error($resp)?0:(int)wp_remote_retrieve_response_code($resp);
-        $body=is_wp_error($resp)?'':wp_remote_retrieve_body($resp);
-        $results[$name]=array('url'=>$url,'code'=>$code,'has_tole'=>stripos($body,'Tolecarnes')!==false,'has_burger'=>stripos($body,'Burger 100% ternera')!==false);
-        echo 'CHECK='.$name.'|HTTP='.$code.'|HAS_TOLE='.($results[$name]['has_tole']?'yes':'no').'|HAS_BURGER='.($results[$name]['has_burger']?'yes':'no').'|URL='.$url."\n";
-    }
+    if(!$source || (string)$source->status!=='archived') emdo_crm_final_abort('source campaign guard failed');
+    if(!$draft || (string)$draft->status!=='draft') emdo_crm_final_abort('draft campaign guard failed');
+    if((string)$draft->design_template!=='simple') emdo_crm_final_abort('draft design guard failed');
 
-    if($results['store']['code']!==200 || !$results['store']['has_tole'] || $results['product']['code']!==200 || !$results['product']['has_burger']){
-        $backup=get_user_meta($uid,$backup_key,true);
-        if(is_array($backup)){
-            update_user_meta($uid,$profile_key,$backup);
-            clean_user_cache($uid);
-            if(function_exists('wp_cache_flush')) wp_cache_flush();
+    $body=(string)$draft->email_body;
+    if(stripos($body,'DESCUBRE TOLECARNES')===false) emdo_crm_final_abort('CTA label not found');
+    if(stripos($body,'Tenemos nueva imagen')===false) emdo_crm_final_abort('final mailing body guard failed');
+
+    // Only update the CTA destination. Tolecarnes is intentionally not enabled yet,
+    // so no public URL availability check is performed here.
+    $pattern='/(<a\s+class="wp-block-button__link[^>]*"\s+href=")[^"]+("[^>]*><strong>DESCUBRE TOLECARNES<\/strong>)/i';
+    $replacement='$1'.esc_url($future_cta_url).'$2';
+    $updated=preg_replace($pattern,$replacement,$body,1,$count);
+    if(!$updated || $count!==1) emdo_crm_final_abort('CTA replacement did not match exactly once');
+
+    $draft->email_body=$updated;
+    $draft->status='draft';
+    $draft->save();
+
+    $draft=$campaign_class::find($draft_id);
+    if(!$draft || (string)$draft->status!=='draft') emdo_crm_final_abort('draft save verification failed');
+    if(strpos((string)$draft->email_body,esc_url($future_cta_url))===false) emdo_crm_final_abort('future Tolecarnes CTA not saved');
+
+    $state=get_option($state_key,array());
+    if(empty($state['sent'])) {
+        $app=$app_class::getInstance();
+        $request=$app['request'];
+        $controller=new $controller_class();
+        $request->merge(array(
+            'test_campaign'=>false,
+            'campaign_id'=>$draft_id,
+            'email'=>$recipient,
+        ));
+        $test=$controller->sendTestEmail();
+        if(is_array($test) && array_key_exists('result',$test) && $test['result']===false) {
+            emdo_crm_final_abort('FluentCRM test returned false');
         }
-        emdo_vendor_fix_abort('public verification failed; original profile restored');
+        $state=array(
+            'sent'=>true,
+            'sent_at'=>current_time('mysql'),
+            'recipient'=>$recipient,
+            'campaign_id'=>$draft_id,
+            'cta'=>$future_cta_url,
+            'message'=>is_array($test)&&isset($test['message'])?sanitize_text_field($test['message']):'sendTestEmail completed'
+        );
+        update_option($state_key,$state,false);
     }
 
-    echo "=== EMDO_VENDOR_FIX_OK ===\n";
-    echo 'USER_ID='.$uid."\n";
-    echo 'VENDOR_ID_BEFORE='.$current."\n";
-    echo 'VENDOR_ID_AFTER='.(string)$verify['vendor_id']."\n";
-    echo 'STORE_URL='.$store."\n";
-    echo 'PRODUCT_URL='.$product."\n";
-} catch(Throwable $e){ emdo_vendor_fix_abort(get_class($e).': '.$e->getMessage()); }
+    $source_check=$campaign_class::find($source_id);
+    if(!$source_check || (string)$source_check->status!=='archived') emdo_crm_final_abort('source campaign changed unexpectedly');
+
+    echo "=== EMDO_FLUENTCRM_FINAL_TEST_OK ===\n";
+    echo 'SOURCE_ID='.(int)$source_check->id.'|STATUS='.(string)$source_check->status."\n";
+    echo 'DRAFT_ID='.(int)$draft->id.'|STATUS='.(string)$draft->status.'|DESIGN='.(string)$draft->design_template.'|TEMPLATE_ID='.(int)$draft->template_id."\n";
+    echo 'DRAFT_TITLE='.(string)$draft->title."\n";
+    echo 'DRAFT_SUBJECT='.(string)$draft->email_subject."\n";
+    echo 'CTA_URL='.$future_cta_url."\n";
+    echo 'TEST_RECIPIENT='.$recipient."\n";
+    echo 'TEST_SENT='.(!empty($state['sent'])?'yes':'no')."\n";
+    echo 'TEST_MESSAGE='.(isset($state['message'])?$state['message']:'')."\n";
+} catch(Throwable $e) {
+    emdo_crm_final_abort(get_class($e).': '.$e->getMessage());
+}
