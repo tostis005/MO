@@ -161,6 +161,7 @@ $elmercado_modules = array(
 	'inc/falang-switcher-010245.php',
 	'inc/blog-editorial-body-class-010249.php',
 	'inc/blog-footer-layout-polish-010246.php',
+	'inc/blog-design-force-010250.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
