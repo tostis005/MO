@@ -1,0 +1,58 @@
+name: Audit two Tolecarnes numeric mismatches 2026-08-17
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-two-tolecarnes-numbers-20260817.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit production values
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in
+            */wp-content/*) dev="${raw%%/wp-content/*}" ;;
+            */wp-content) dev="$(dirname "$raw")" ;;
+            *) dev="$raw" ;;
+          esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || exit 2
+          printf '%s\n' "$prod"
+          REMOTE
+          )"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-audit-two-tolecarnes-numbers.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-audit-two-tolecarnes-numbers.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/mdo-audit-two-tolecarnes-numbers.php --path='$PROD_PATH' --allow-root 2>/dev/null"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f /tmp/mdo-audit-two-tolecarnes-numbers.php"
