@@ -18,42 +18,26 @@ try {
     echo 'DRAFT_ID='.(int)$draft->id.'|SUBJECT='.(string)$draft->email_subject."\n";
 
     $settings=get_user_meta($vendor_id,'wcfmmp_profile_settings',true);
-    echo 'WCFM_SETTINGS_TYPE='.(is_array($settings)?'array':gettype($settings))."\n";
-    if(is_array($settings)){
-        foreach($settings as $k=>$v){
-            $lk=strtolower((string)$k);
-            if(strpos($lk,'banner')!==false || strpos($lk,'logo')!==false || strpos($lk,'avatar')!==false || strpos($lk,'store')!==false){
-                if(is_scalar($v)) echo 'SETTING_'.$k.'='.(string)$v."\n";
-                elseif(is_array($v)) echo 'SETTING_'.$k.'='.wp_json_encode($v,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)."\n";
-            }
-        }
+    if(!is_array($settings)) emdo_image_audit_abort('WCFM settings unavailable');
+    foreach(array('gravatar','banner','mobile_banner','list_banner') as $key){
+        $id=isset($settings[$key])?(int)$settings[$key]:0;
+        if(!$id) continue;
+        $url=wp_get_attachment_url($id);
+        $meta=wp_get_attachment_metadata($id);
+        $w=is_array($meta)&&isset($meta['width'])?(int)$meta['width']:0;
+        $h=is_array($meta)&&isset($meta['height'])?(int)$meta['height']:0;
+        echo strtoupper($key).'_ID='.$id.'|URL='.$url.'|WIDTH='.$w.'|HEIGHT='.$h."\n";
     }
 
-    $all_meta=get_user_meta($vendor_id);
-    foreach($all_meta as $k=>$vals){
-        $lk=strtolower((string)$k);
-        if(strpos($lk,'banner')!==false || strpos($lk,'logo')!==false || strpos($lk,'avatar')!==false || strpos($lk,'store')!==false || strpos($lk,'wcfm')!==false){
-            foreach((array)$vals as $v){
-                if(is_scalar($v)){
-                    $sv=(string)$v;
-                    if(strpos($sv,'http')!==false || preg_match('/^\d+$/',$sv)) echo 'META_'.$k.'='.$sv."\n";
-                }
-            }
-        }
-    }
-
-    $products=get_posts(array(
-        'post_type'=>'product','post_status'=>array('publish','draft','pending','private'),'author'=>$vendor_id,
-        'numberposts'=>20,'orderby'=>'modified','order'=>'DESC'
-    ));
-    $n=0;
-    foreach($products as $p){
-        $thumb=get_post_thumbnail_id($p->ID);
+    foreach(array(11148,11082,11145,11154,11136) as $pid){
+        $p=get_post($pid);
+        if(!$p) continue;
+        $thumb=get_post_thumbnail_id($pid);
         $url=$thumb?wp_get_attachment_image_url($thumb,'large'):'';
-        if(!$url) continue;
-        $n++;
-        echo 'PRODUCT_IMAGE_'.$n.'|ID='.(int)$p->ID.'|STATUS='.(string)$p->post_status.'|TITLE='.str_replace(array("\n","\r"),' ',(string)$p->post_title).'|URL='.$url."\n";
-        if($n>=10) break;
+        $meta=$thumb?wp_get_attachment_metadata($thumb):array();
+        $w=is_array($meta)&&isset($meta['width'])?(int)$meta['width']:0;
+        $h=is_array($meta)&&isset($meta['height'])?(int)$meta['height']:0;
+        echo 'PRODUCT|ID='.$pid.'|TITLE='.str_replace(array("\n","\r"),' ',(string)$p->post_title).'|URL='.$url.'|WIDTH='.$w.'|HEIGHT='.$h."\n";
     }
 
     echo "=== EMDO_TOLECARNES_IMAGE_AUDIT_END ===\n";
