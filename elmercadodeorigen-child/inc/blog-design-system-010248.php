@@ -1,10 +1,10 @@
 <?php
 /**
- * Sistema visual final del blog 0.10.248.
+ * Sistema visual final del blog 0.10.251.
  *
- * Unifica el ancho del archivo y de las entradas, mejora la jerarquía visual
- * de las tarjetas y convierte los productos incrustados en un bloque editorial
- * amplio pero contenido, sin desbordar el lienzo en escritorio o móvil.
+ * Mantiene la jerarquía editorial y la geometría del blog, pero deja la
+ * apariencia interna de las tarjetas de producto íntegramente en manos del
+ * mismo sistema global de WooCommerce/Woostify/WCFM que usa la tienda.
  *
  * @package ElMercadoDeOrigen
  */
@@ -21,9 +21,6 @@ add_action(
 		}
 		?>
 		<style id="elmercado-blog-design-system-010248">
-			/* ---------------------------------------------------------
-			 * 0.10.248 · Un solo lienzo editorial
-			 * --------------------------------------------------------- */
 			body.elmercado-editorial-content {
 				--emo-blog-shell: 1180px;
 				--emo-blog-reading: 800px;
@@ -71,16 +68,12 @@ add_action(
 				text-wrap: balance;
 			}
 
-			body.elmercado-editorial-content :is(.emo-journal-hero p, .emo-article-hero__lead) {
+			body.elmercado-editorial-content .emo-journal-hero p {
 				max-width: 690px !important;
 				font-size: clamp(16px, 1.45vw, 19px) !important;
 				line-height: 1.68 !important;
 			}
 
-			/* ---------------------------------------------------------
-			 * Archivo: la cabecera y las entradas comparten exactamente
-			 * los mismos bordes exteriores.
-			 * --------------------------------------------------------- */
 			body.elmercado-editorial-content .emo-journal-listing {
 				width: 100% !important;
 				padding: clamp(46px, 6vw, 76px) 0 0 !important;
@@ -129,11 +122,7 @@ add_action(
 				transform: translateY(-4px) !important;
 			}
 
-			body.elmercado-editorial-content .emo-article-card:not(.emo-article-card--featured) .emo-article-card__media {
-				min-height: 0 !important;
-				aspect-ratio: 16 / 9;
-			}
-
+			body.elmercado-editorial-content .emo-article-card:not(.emo-article-card--featured) .emo-article-card__media,
 			body.elmercado-editorial-content .emo-article-card:not(.emo-article-card--featured) .emo-article-card__media :is(img, .emo-article-card__placeholder) {
 				min-height: 0 !important;
 				aspect-ratio: 16 / 9;
@@ -166,9 +155,6 @@ add_action(
 				letter-spacing: -0.045em;
 			}
 
-			/* ---------------------------------------------------------
-			 * Entrada: lectura estrecha y cómoda dentro del mismo shell.
-			 * --------------------------------------------------------- */
 			body.single-post.elmercado-child-theme .emo-article-main {
 				width: 100% !important;
 				padding: clamp(34px, 5vw, 64px) 0 0 !important;
@@ -247,11 +233,11 @@ add_action(
 				overflow-x: auto;
 			}
 
-			/* ---------------------------------------------------------
-			 * Productos dentro de artículos.
-			 * En escritorio se permite una apertura editorial de 1040 px,
-			 * siempre centrada y 70 px por dentro del shell de 1180 px.
-			 * --------------------------------------------------------- */
+			/*
+			 * Productos: únicamente se controla su ancho y la cuadrícula. La tarjeta,
+			 * sus imágenes, precio, botones y productor heredan exactamente las
+			 * reglas globales del catálogo, incluida la salida de WCFM.
+			 */
 			body.single-post.elmercado-child-theme .emo-article-content :is(.woocommerce, .wp-block-woocommerce-product-collection, .wc-block-grid) {
 				width: min(var(--emo-blog-wide), calc(100vw - 80px)) !important;
 				max-width: var(--emo-blog-wide) !important;
@@ -264,6 +250,7 @@ add_action(
 
 			body.single-post.elmercado-child-theme .emo-article-content :is(.woocommerce ul.products, ul.products, .wc-block-grid__products, .wc-block-product-template) {
 				display: grid !important;
+				float: none !important;
 				width: 100% !important;
 				max-width: 100% !important;
 				grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
@@ -281,75 +268,14 @@ add_action(
 			}
 
 			body.single-post.elmercado-child-theme .emo-article-content :is(.woocommerce ul.products > li.product, ul.products > li.product, .wc-block-grid__product, .wc-block-product) {
-				display: flex !important;
 				float: none !important;
 				clear: none !important;
 				width: 100% !important;
 				min-width: 0 !important;
 				max-width: none !important;
-				height: 100%;
-				flex-direction: column;
 				margin: 0 !important;
-				padding: 13px 13px 16px !important;
-				background: #fff !important;
-				border: 1px solid rgba(13, 33, 27, 0.105) !important;
-				border-radius: 18px !important;
-				box-shadow: 0 9px 26px rgba(13, 33, 27, 0.065) !important;
-				box-sizing: border-box;
-				overflow: hidden;
 			}
 
-			body.single-post.elmercado-child-theme .emo-article-content :is(.woocommerce ul.products > li.product, ul.products > li.product, .wc-block-grid__product, .wc-block-product) :is(a, .woocommerce-loop-product__link) {
-				max-width: 100%;
-			}
-
-			body.single-post.elmercado-child-theme .emo-article-content :is(.woocommerce ul.products > li.product, ul.products > li.product, .wc-block-grid__product, .wc-block-product) img {
-				display: block !important;
-				width: 100% !important;
-				max-width: 100% !important;
-				height: auto !important;
-				aspect-ratio: 4 / 3;
-				margin: 0 0 14px !important;
-				background: #f5f1ea;
-				border-radius: 13px !important;
-				object-fit: cover;
-			}
-
-			body.single-post.elmercado-child-theme .emo-article-content :is(.woocommerce-loop-product__title, .wc-block-grid__product-title, .wc-block-components-product-name, .wp-block-post-title) {
-				margin: 2px 0 9px !important;
-				color: var(--emo-forest-950, #0d211b) !important;
-				font-family: var(--emo-font-sans, Poppins, Arial, sans-serif) !important;
-				font-size: 15px !important;
-				font-weight: 700 !important;
-				line-height: 1.38 !important;
-				letter-spacing: -0.01em !important;
-				overflow-wrap: anywhere;
-			}
-
-			body.single-post.elmercado-child-theme .emo-article-content :is(.price, .wc-block-grid__product-price, .wc-block-components-product-price) {
-				margin: auto 0 13px !important;
-				color: var(--emo-clay-dark, #a84f35) !important;
-				font-size: 16px !important;
-				font-weight: 800 !important;
-				line-height: 1.35;
-			}
-
-			body.single-post.elmercado-child-theme .emo-article-content :is(.button, .wp-block-button__link, .wc-block-grid__product-add-to-cart a) {
-				display: inline-flex !important;
-				width: 100% !important;
-				min-height: 42px;
-				align-items: center;
-				justify-content: center;
-				margin: auto 0 0 !important;
-				padding: 10px 14px !important;
-				border-radius: 999px !important;
-				font-size: 12px !important;
-				font-weight: 800 !important;
-				line-height: 1.2 !important;
-				box-sizing: border-box;
-			}
-
-			/* Pie de artículo y recomendaciones dentro del mismo sistema. */
 			body.single-post.elmercado-child-theme .emo-article-footer {
 				width: min(100%, var(--emo-blog-reading)) !important;
 				max-width: var(--emo-blog-reading) !important;
@@ -382,11 +308,7 @@ add_action(
 				margin: 0 auto 28px !important;
 			}
 
-			body.single-post.elmercado-child-theme .emo-related-reading .emo-article-card__media {
-				min-height: 0 !important;
-				aspect-ratio: 16 / 10;
-			}
-
+			body.single-post.elmercado-child-theme .emo-related-reading .emo-article-card__media,
 			body.single-post.elmercado-child-theme .emo-related-reading .emo-article-card__media :is(img, .emo-article-card__placeholder) {
 				min-height: 0 !important;
 				aspect-ratio: 16 / 10;
@@ -406,9 +328,6 @@ add_action(
 				line-height: 1.6;
 			}
 
-			/* ---------------------------------------------------------
-			 * Responsive: sin saltos de ancho ni scroll horizontal.
-			 * --------------------------------------------------------- */
 			@media (max-width: 1100px) {
 				body.single-post.elmercado-child-theme .emo-article-content :is(.woocommerce, .wp-block-woocommerce-product-collection, .wc-block-grid) {
 					width: 100% !important;
@@ -429,7 +348,7 @@ add_action(
 				body.single-post.elmercado-child-theme .emo-article-page {
 					width: calc(100% - 32px) !important;
 					margin-top: 16px !important;
-			}
+				}
 
 				body.elmercado-editorial-content :is(.emo-journal-hero, .emo-article-hero) {
 					border-radius: 20px;
