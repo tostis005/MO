@@ -15,7 +15,6 @@ while ( have_posts() ) :
 	$category   = ! empty( $categories ) ? $categories[0] : null;
 	$previous   = get_previous_post();
 	$next       = get_next_post();
-	$lead       = elmercado_editorial_excerpt( $post_id, 36 );
 	?>
 	<main id="primary" class="site-main emo-article-page">
 		<article <?php post_class( 'emo-article' ); ?>>
@@ -29,9 +28,6 @@ while ( have_posts() ) :
 						<span><?php echo esc_html( (string) elmercado_reading_time( $post_id ) ); ?> <?php esc_html_e( 'min de lectura', 'elmercadodeorigen' ); ?></span>
 					</div>
 					<h1><?php the_title(); ?></h1>
-					<?php if ( $lead ) : ?>
-						<p class="emo-article-hero__lead"><?php echo esc_html( $lead ); ?></p>
-					<?php endif; ?>
 				</div>
 			</header>
 
