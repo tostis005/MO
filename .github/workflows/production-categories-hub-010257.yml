@@ -1,0 +1,307 @@
+name: Production categories hub 0.10.257
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-categories-hub-010257.yml'
+      - 'scripts/categories-hub-010257.cjs'
+      - 'scripts/categories-hub-server-010257.php'
+      - 'elmercadodeorigen-child/inc/home-category-output-final-010226.php'
+      - 'elmercadodeorigen-child/inc/categories-hub-010257.php'
+      - 'elmercadodeorigen-child/page-categorias.php'
+      - 'mu-plugins/mdo-mentta-admin-frontend-010257.php'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-production-categories-010257
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate categories release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in \
+            elmercadodeorigen-child/inc/home-category-output-final-010226.php \
+            elmercadodeorigen-child/inc/categories-hub-010257.php \
+            elmercadodeorigen-child/page-categorias.php \
+            mu-plugins/mdo-mentta-admin-frontend-010257.php \
+            scripts/categories-hub-server-010257.php; do
+            test -f "$f"
+            php -l "$f" >/dev/null
+          done
+          test -f scripts/categories-hub-010257.cjs
+          node --check scripts/categories-hub-010257.cjs
+          grep -q 'data-emo-categories-link="010257"' elmercadodeorigen-child/inc/home-category-output-final-010226.php
+          grep -q 'Ver todas las categorías' elmercadodeorigen-child/inc/home-category-output-final-010226.php
+          grep -q 'data-emo-categories-hub="010257"' elmercadodeorigen-child/page-categorias.php
+          grep -q 'elmercado_catalog_visible_category_counts_010217' elmercadodeorigen-child/inc/categories-hub-010257.php
+          grep -q 'mdo_mentta_enable_frontend_for_admin_010257' mu-plugins/mdo-mentta-admin-frontend-010257.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass google-chrome-stable
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          node -e "require('puppeteer-core'); console.log('PUPPETEER_OK')"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage categories release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          REMOTE_TMP="/tmp/mdo-categories-010257-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP/theme/inc' '$REMOTE_TMP/mu' '$REMOTE_TMP/scripts'"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/inc/home-category-output-final-010226.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/inc/home-category-output-final-010226.php"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/inc/categories-hub-010257.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/inc/categories-hub-010257.php"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/theme/page-categorias.php"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" mu-plugins/mdo-mentta-admin-frontend-010257.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/mu/mdo-mentta-admin-frontend-010257.php"
+          sshpass -e rsync -az -e "ssh $SSH_OPTIONS" scripts/categories-hub-server-010257.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/scripts/categories-hub-server-010257.php"
+
+      - name: Backup and deploy production categories hub
+        id: release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP' '$GITHUB_SHA'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve WordPress root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+
+          prod="$(dirname "$dev")/httpdocs"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
+          mu_dir="$prod/wp-content/mu-plugins"
+          [ -f "$prod/wp-config.php" ] && [ -d "$theme/inc" ] || { echo 'Production paths invalid.' >&2; exit 1; }
+          mkdir -p "$mu_dir"
+
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
+
+          siteurl="$("$php_bin" -d memory_limit=768M "$wp_bin" option get siteurl --path="$prod" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing deploy: siteurl=$siteurl" >&2; exit 1 ;; esac
+
+          for f in \
+            "$incoming/theme/inc/home-category-output-final-010226.php" \
+            "$incoming/theme/inc/categories-hub-010257.php" \
+            "$incoming/theme/page-categorias.php" \
+            "$incoming/mu/mdo-mentta-admin-frontend-010257.php" \
+            "$incoming/scripts/categories-hub-server-010257.php"; do
+            "$php_bin" -l "$f" >/dev/null
+          done
+
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          short_commit="$(printf '%.10s' "$commit")"
+          backup_dir="$rollback_root/$(date -u +%Y%m%dT%H%M%SZ)-before-categories-010257-$short_commit"
+          mkdir -p "$backup_dir"
+
+          home_target="$theme/inc/home-category-output-final-010226.php"
+          hub_target="$theme/inc/categories-hub-010257.php"
+          page_target="$theme/page-categorias.php"
+          mu_target="$mu_dir/mdo-mentta-admin-frontend-010257.php"
+
+          backup_file() {
+            target="$1"; name="$2"
+            if [ -f "$target" ]; then
+              cp "$target" "$backup_dir/$name"
+              printf '%s\n' yes > "$backup_dir/$name.existed"
+            else
+              printf '%s\n' no > "$backup_dir/$name.existed"
+            fi
+          }
+          restore_file() {
+            target="$1"; name="$2"
+            if [ "$(cat "$backup_dir/$name.existed" 2>/dev/null || echo no)" = yes ]; then
+              cp "$backup_dir/$name" "$target"
+            else
+              rm -f "$target"
+            fi
+          }
+
+          backup_file "$home_target" home-category-output-final-010226.php
+          backup_file "$hub_target" categories-hub-010257.php
+          backup_file "$page_target" page-categorias.php
+          backup_file "$mu_target" mdo-mentta-admin-frontend-010257.php
+          printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
+          printf '%s\n' "$siteurl" > "$backup_dir/siteurl.txt"
+
+          page_id="$("$php_bin" -d memory_limit=768M "$wp_bin" eval '$p=get_page_by_path("categorias",OBJECT,"page"); echo $p ? (int)$p->ID : 0;' --path="$prod" --allow-root 2>/dev/null | tail -n1)"
+          case "$page_id" in ''|*[!0-9]*) page_id=0 ;; esac
+          page_created=no
+          old_status=''
+          if [ "$page_id" -gt 0 ]; then
+            old_status="$("$php_bin" -d memory_limit=768M "$wp_bin" post get "$page_id" --field=post_status --path="$prod" --allow-root | tail -n1)"
+          fi
+          printf '%s\n' "$page_id" > "$backup_dir/page-id-before.txt"
+          printf '%s\n' "$old_status" > "$backup_dir/page-status-before.txt"
+
+          deployed=0
+          rollback_release() {
+            status=$?
+            if [ "$status" -ne 0 ] && [ "$deployed" -eq 1 ]; then
+              restore_file "$home_target" home-category-output-final-010226.php
+              restore_file "$hub_target" categories-hub-010257.php
+              restore_file "$page_target" page-categorias.php
+              restore_file "$mu_target" mdo-mentta-admin-frontend-010257.php
+              if [ "$page_created" = yes ] && [ "$page_id" -gt 0 ]; then
+                "$php_bin" -d memory_limit=768M "$wp_bin" post delete "$page_id" --force --path="$prod" --allow-root >/dev/null 2>&1 || true
+              elif [ "$page_id" -gt 0 ] && [ -n "$old_status" ]; then
+                "$php_bin" -d memory_limit=768M "$wp_bin" post update "$page_id" --post_status="$old_status" --path="$prod" --allow-root >/dev/null 2>&1 || true
+              fi
+              "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+            fi
+            exit "$status"
+          }
+          trap rollback_release EXIT
+
+          cp "$incoming/theme/inc/home-category-output-final-010226.php" "$home_target"
+          cp "$incoming/theme/inc/categories-hub-010257.php" "$hub_target"
+          cp "$incoming/theme/page-categorias.php" "$page_target"
+          cp "$incoming/mu/mdo-mentta-admin-frontend-010257.php" "$mu_target"
+          deployed=1
+
+          for f in "$home_target" "$hub_target" "$page_target" "$mu_target"; do
+            "$php_bin" -l "$f" >/dev/null
+          done
+
+          if [ "$page_id" -le 0 ]; then
+            page_id="$("$php_bin" -d memory_limit=768M "$wp_bin" post create --post_type=page --post_status=publish --post_title='Categorías' --post_name=categorias --porcelain --path="$prod" --allow-root | tail -n1)"
+            case "$page_id" in ''|*[!0-9]*) echo 'Failed to create categories page.' >&2; exit 1 ;; esac
+            page_created=yes
+          elif [ "$old_status" != publish ]; then
+            "$php_bin" -d memory_limit=768M "$wp_bin" post update "$page_id" --post_status=publish --path="$prod" --allow-root >/dev/null
+          fi
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file "$incoming/scripts/categories-hub-server-010257.php" --path="$prod" --allow-root
+
+          base="${siteurl%/}"
+          home_code="$(curl -ksS -L -o /tmp/mdo-home-010257 -w '%{http_code}' --max-time 35 "$base/?release=$commit" || true)"
+          hub_code="$(curl -ksS -L -o /tmp/mdo-categories-010257 -w '%{http_code}' --max-time 35 "$base/categorias/?release=$commit" || true)"
+          [ "$home_code" = 200 ] || { echo "Home HTTP $home_code" >&2; exit 1; }
+          [ "$hub_code" = 200 ] || { echo "Categories HTTP $hub_code" >&2; exit 1; }
+          grep -q 'data-emo-categories-link="010257"' /tmp/mdo-home-010257
+          grep -q 'data-emo-categories-hub="010257"' /tmp/mdo-categories-010257
+          ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website' /tmp/mdo-home-010257 /tmp/mdo-categories-010257
+
+          trap - EXIT
+          printf '__SITEURL__=%s\n' "$siteurl"
+          printf '__PROD__=%s\n' "$prod"
+          printf '__THEME__=%s\n' "$theme"
+          printf '__MU_DIR__=%s\n' "$mu_dir"
+          printf '__BACKUP_DIR__=%s\n' "$backup_dir"
+          printf '__PAGE_ID__=%s\n' "$page_id"
+          printf '__PAGE_CREATED__=%s\n' "$page_created"
+          printf '__PAGE_OLD_STATUS__=%s\n' "$old_status"
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          SITEURL="$(printf '%s\n' "$OUT" | sed -n 's/^__SITEURL__=//p' | tail -n1)"
+          PROD="$(printf '%s\n' "$OUT" | sed -n 's/^__PROD__=//p' | tail -n1)"
+          THEME="$(printf '%s\n' "$OUT" | sed -n 's/^__THEME__=//p' | tail -n1)"
+          MU_DIR="$(printf '%s\n' "$OUT" | sed -n 's/^__MU_DIR__=//p' | tail -n1)"
+          BACKUP_DIR="$(printf '%s\n' "$OUT" | sed -n 's/^__BACKUP_DIR__=//p' | tail -n1)"
+          PAGE_ID="$(printf '%s\n' "$OUT" | sed -n 's/^__PAGE_ID__=//p' | tail -n1)"
+          PAGE_CREATED="$(printf '%s\n' "$OUT" | sed -n 's/^__PAGE_CREATED__=//p' | tail -n1)"
+          PAGE_OLD_STATUS="$(printf '%s\n' "$OUT" | sed -n 's/^__PAGE_OLD_STATUS__=//p' | tail -n1)"
+          : "${SITEURL:?}"; : "${PROD:?}"; : "${THEME:?}"; : "${MU_DIR:?}"; : "${BACKUP_DIR:?}"; : "${PAGE_ID:?}"; : "${PAGE_CREATED:?}"
+          echo "PRODUCTION_SITEURL=$SITEURL" >> "$GITHUB_ENV"
+          echo "PRODUCTION_ROOT=$PROD" >> "$GITHUB_ENV"
+          echo "PRODUCTION_THEME=$THEME" >> "$GITHUB_ENV"
+          echo "PRODUCTION_MU_DIR=$MU_DIR" >> "$GITHUB_ENV"
+          echo "PRODUCTION_BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
+          echo "PRODUCTION_PAGE_ID=$PAGE_ID" >> "$GITHUB_ENV"
+          echo "PRODUCTION_PAGE_CREATED=$PAGE_CREATED" >> "$GITHUB_ENV"
+          echo "PRODUCTION_PAGE_OLD_STATUS=$PAGE_OLD_STATUS" >> "$GITHUB_ENV"
+
+      - name: Browser QA on production
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/categories-hub-010257.cjs
+
+      - name: Release success
+        run: echo "PRODUCTION_CATEGORIES_HUB_010257_OK backup=$PRODUCTION_BACKUP_DIR page=$PRODUCTION_PAGE_ID"
+
+      - name: Roll back categories release on failure
+        if: failure() && steps.release.outcome == 'success'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PRODUCTION_ROOT' '$PRODUCTION_THEME' '$PRODUCTION_MU_DIR' '$PRODUCTION_BACKUP_DIR' '$PRODUCTION_PAGE_ID' '$PRODUCTION_PAGE_CREATED' '$PRODUCTION_PAGE_OLD_STATUS'" <<'REMOTE'
+          set -eu
+          prod="$1"; theme="$2"; mu_dir="$3"; backup_dir="$4"; page_id="$5"; page_created="$6"; old_status="$7"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+
+          restore_file() {
+            target="$1"; name="$2"
+            if [ "$(cat "$backup_dir/$name.existed" 2>/dev/null || echo no)" = yes ]; then
+              cp "$backup_dir/$name" "$target"
+            else
+              rm -f "$target"
+            fi
+          }
+          restore_file "$theme/inc/home-category-output-final-010226.php" home-category-output-final-010226.php
+          restore_file "$theme/inc/categories-hub-010257.php" categories-hub-010257.php
+          restore_file "$theme/page-categorias.php" page-categorias.php
+          restore_file "$mu_dir/mdo-mentta-admin-frontend-010257.php" mdo-mentta-admin-frontend-010257.php
+
+          if [ "$page_created" = yes ]; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" post delete "$page_id" --force --path="$prod" --allow-root >/dev/null 2>&1 || true
+          elif [ -n "$old_status" ]; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" post update "$page_id" --post_status="$old_status" --path="$prod" --allow-root >/dev/null 2>&1 || true
+          fi
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod" --skip-plugins --allow-root >/dev/null 2>&1 || true
+          echo PRODUCTION_CATEGORIES_HUB_010257_ROLLED_BACK
+          REMOTE
