@@ -1,0 +1,83 @@
+name: Audit Jamón embutidos runtime 2026-08-17
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-jamon-embutidos-runtime-20260817.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Runtime audit
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+
+          echo '=== TERM ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" term get product_cat embutidos-y-curados --by=slug --path="$prod" --allow-root --fields=term_id,name,slug,count --format=json || true
+
+          echo '=== PUBLISHED PRODUCT IDS BY TAX QUERY ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod" --allow-root '
+            $q = new WP_Query(array("post_type"=>"product","post_status"=>"publish","posts_per_page"=>12,"fields"=>"ids","tax_query"=>array(array("taxonomy"=>"product_cat","field"=>"slug","terms"=>array("embutidos-y-curados")))));
+            echo "found=".$q->found_posts." ids=".implode(",",$q->posts)."\n";
+          '
+
+          echo '=== WC_GET_PRODUCTS CATEGORY ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod" --allow-root '
+            $products = wc_get_products(array("status"=>"publish","limit"=>12,"category"=>array("embutidos-y-curados"),"orderby"=>"popularity","order"=>"DESC","return"=>"ids"));
+            echo "count=".count($products)." ids=".implode(",",$products)."\n";
+          '
+
+          echo '=== SHORTCODE RENDER ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod" --allow-root '
+            $html = do_shortcode("[products category=\"embutidos-y-curados\" limit=8 columns=4 orderby=\"popularity\" order=\"DESC\"]");
+            echo "bytes=".strlen($html)." li_products=".preg_match_all("/<li\\b[^>]*class=\\\"[^\\\"]*\\bproduct\\b/iu",$html)." has_no_products=".(stripos($html,"woocommerce-info")!==false?"yes":"no")."\n";
+            echo substr(preg_replace("/\\s+/"," ",$html),0,700)."\n";
+          '
+
+          echo '=== JAMON CONTENT FILTER PRIORITIES ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod" --allow-root '
+            global $wp_filter;
+            if (isset($wp_filter["the_content"])) { foreach ($wp_filter["the_content"]->callbacks as $p=>$callbacks) { foreach ($callbacks as $cb) { $f=$cb["function"]; if (is_string($f)) $name=$f; elseif (is_array($f)) $name=(is_object($f[0])?get_class($f[0]):$f[0])."::".$f[1]; else $name="closure"; if (stripos($name,"shortcode")!==false || $p<=12 || $p>1000) echo $p." ".$name."\n"; } } }
+          '
+          REMOTE
