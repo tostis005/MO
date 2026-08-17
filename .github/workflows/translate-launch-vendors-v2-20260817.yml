@@ -86,8 +86,19 @@ jobs:
       - name: Translate all copy and validate numbers and additive codes
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          set +e
           python .github/scripts/mdo-launch-translate.py
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 20 ]; then
+            echo "Base translator failed unexpectedly with status $status"
+            exit "$status"
+          fi
+          if [ "$status" -eq 20 ]; then
+            echo "Base translation produced guarded QA findings; repairing technical values before any production write."
+          fi
+          python .github/scripts/mdo-launch-repair-technical.py
 
       - name: Apply English fields without exposing pre-launch stores
         shell: bash
