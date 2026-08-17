@@ -1,0 +1,88 @@
+name: Audit production blog and shop 2026-08-17
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-blog-shop-production-20260817.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read-only production audit
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; dev=""
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 1
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root)"
+          echo "SITEURL=$siteurl"
+
+          echo '=== MATCHING POSTS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" post list --path="$prod" --allow-root --post_type=post --post_status=publish --fields=ID,post_title,post_name --format=csv | grep -Eiu 'jam[oó]n|aceite|oliva' || true
+
+          echo '=== RELEVANT PRODUCT CATEGORIES ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" term list product_cat --path="$prod" --allow-root --fields=term_id,name,slug,count,description --format=csv | grep -Eiu 'embut|jam[oó]n|procedencia clara|origen a tu mesa' || true
+
+          ids="$("$php_bin" -d memory_limit=512M "$wp_bin" post list --path="$prod" --allow-root --post_type=post --post_status=publish --fields=ID,post_title --format=csv | grep -Eiu 'jam[oó]n|aceite|oliva' | cut -d, -f1 | tr '\n' ' ')"
+          for id in $ids; do
+            slug="$("$php_bin" -d memory_limit=512M "$wp_bin" post get "$id" --path="$prod" --allow-root --field=post_name)"
+            title="$("$php_bin" -d memory_limit=512M "$wp_bin" post get "$id" --path="$prod" --allow-root --field=post_title)"
+            echo "=== POST $id | $slug | $title ==="
+            content="$("$php_bin" -d memory_limit=512M "$wp_bin" post get "$id" --path="$prod" --allow-root --field=post_content)"
+            printf '%s\n' "$content" | grep -Eio '<h[1-6][^>]*>[^<]*</h[1-6]>|\[[^]]*(products|product_category)[^]]*\]' || true
+            url="$siteurl/$slug/"
+            html="$(curl -ksSL --max-time 30 "$url?audit_blog_shop=20260817" || true)"
+            echo "URL=$url HTTP_BYTES=$(printf '%s' "$html" | wc -c | tr -d ' ')"
+            printf 'RENDERED_EMBUTIDOS_HEADINGS='; printf '%s' "$html" | grep -Eio '<h[1-6][^>]*>[^<]*embutidos[^<]*</h[1-6]>' | wc -l | tr -d ' '
+            printf 'RENDERED_PRODUCT_CARDS='; printf '%s' "$html" | grep -Eo 'class="[^"]*product[^"]*"' | wc -l | tr -d ' '
+            printf 'RENDERED_INTRO_HEADINGS='; printf '%s' "$html" | grep -Eio '<h[1-6][^>]*>[[:space:]]*introducci[oó]n[[:space:]]*</h[1-6]>' | wc -l | tr -d ' '
+          done
+
+          echo '=== CATEGORY ARCHIVE INTRO PHRASE CHECK ==='
+          for slug in jamones-paletas embutidos aceite-de-oliva; do
+            html="$(curl -ksSL --max-time 30 "$siteurl/product-category/$slug/?audit_blog_shop=20260817" || true)"
+            printf '%s=' "$slug"
+            printf '%s' "$html" | grep -Fio 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.' | wc -l | tr -d ' '
+          done
+          REMOTE
