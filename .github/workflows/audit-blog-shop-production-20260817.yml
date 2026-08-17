@@ -52,17 +52,21 @@ jobs:
             dev="$(dirname "$cfg")"
           fi
           prod="$(dirname "$dev")/httpdocs"
+          theme="$prod/wp-content/themes/elmercadodeorigen-child"
           php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
           wp_bin="$(command -v wp || true)"
           siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod" --allow-root)"
           echo "SITEURL=$siteurl"
 
+          echo '=== THEME SOURCE FOR INTRO PHRASE ==='
+          grep -RniF --exclude-dir=.git 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.' "$theme" 2>/dev/null || true
+
           echo '=== MATCHING POSTS ==='
           "$php_bin" -d memory_limit=512M "$wp_bin" post list --path="$prod" --allow-root --post_type=post --post_status=publish --fields=ID,post_title,post_name --format=csv | grep -Eiu 'jam[oó]n|aceite|oliva' || true
 
           echo '=== RELEVANT PRODUCT CATEGORIES ==='
-          "$php_bin" -d memory_limit=512M "$wp_bin" term list product_cat --path="$prod" --allow-root --fields=term_id,name,slug,count,description --format=csv | grep -Eiu 'embut|jam[oó]n|procedencia clara|origen a tu mesa' || true
+          "$php_bin" -d memory_limit=512M "$wp_bin" term list product_cat --path="$prod" --allow-root --fields=term_id,name,slug,count,description --format=csv | grep -Eiu 'embut|jam[oó]n|aceite|oliva|procedencia clara|origen a tu mesa' || true
 
           ids="$("$php_bin" -d memory_limit=512M "$wp_bin" post list --path="$prod" --allow-root --post_type=post --post_status=publish --fields=ID,post_title --format=csv | grep -Eiu 'jam[oó]n|aceite|oliva' | cut -d, -f1 | tr '\n' ' ')"
           for id in $ids; do
@@ -75,14 +79,17 @@ jobs:
             html="$(curl -ksSL --max-time 30 "$url?audit_blog_shop=20260817" || true)"
             echo "URL=$url HTTP_BYTES=$(printf '%s' "$html" | wc -c | tr -d ' ')"
             printf 'RENDERED_EMBUTIDOS_HEADINGS='; printf '%s' "$html" | grep -Eio '<h[1-6][^>]*>[^<]*embutidos[^<]*</h[1-6]>' | wc -l | tr -d ' '
-            printf 'RENDERED_PRODUCT_CARDS='; printf '%s' "$html" | grep -Eo 'class="[^"]*product[^"]*"' | wc -l | tr -d ' '
             printf 'RENDERED_INTRO_HEADINGS='; printf '%s' "$html" | grep -Eio '<h[1-6][^>]*>[[:space:]]*introducci[oó]n[[:space:]]*</h[1-6]>' | wc -l | tr -d ' '
           done
 
-          echo '=== CATEGORY ARCHIVE INTRO PHRASE CHECK ==='
-          for slug in jamones-paletas embutidos aceite-de-oliva; do
-            html="$(curl -ksSL --max-time 30 "$siteurl/product-category/$slug/?audit_blog_shop=20260817" || true)"
-            printf '%s=' "$slug"
-            printf '%s' "$html" | grep -Fio 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.' | wc -l | tr -d ' '
+          echo '=== CATEGORY ARCHIVE INTRO PHRASE CONTEXT ==='
+          for slug in jamones-paletas embutidos embutidos-y-curados aceite-de-oliva aceites; do
+            html_file="/tmp/category-$slug.html"
+            curl -ksSL --max-time 30 "$siteurl/product-category/$slug/?audit_blog_shop=20260817" -o "$html_file" || true
+            count="$(grep -Fio 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.' "$html_file" | wc -l | tr -d ' ')"
+            echo "$slug=$count"
+            if [ "$count" -gt 0 ]; then
+              grep -Fin -B2 -A2 'Una selección de productos con procedencia clara para acercar el origen a tu mesa de una forma más directa.' "$html_file" | head -n 12 || true
+            fi
           done
           REMOTE
