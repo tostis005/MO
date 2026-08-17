@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Internal MENTTA category
  * Description: Keeps the MENTTA WooCommerce category available to integrations/admins but hidden from the public storefront.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -79,6 +79,41 @@ function mdo_mentta_hide_from_public_term_queries( $args, $taxonomies ) {
 }
 add_filter( 'get_terms_args', 'mdo_mentta_hide_from_public_term_queries', 20, 2 );
 
+/**
+ * Final safety net for term-query results. Some builders/widgets alter the query
+ * arguments after get_terms_args; filtering the returned terms keeps MENTTA out
+ * of frontend grids such as the categories block on the homepage.
+ */
+function mdo_mentta_hide_from_public_term_results( $terms, $taxonomies, $args, $term_query ) {
+	if ( ! mdo_mentta_should_hide_publicly() || ! is_array( $terms ) ) {
+		return $terms;
+	}
+
+	$requested_taxonomies = array_merge(
+		(array) $taxonomies,
+		isset( $args['taxonomy'] ) ? (array) $args['taxonomy'] : array()
+	);
+
+	if ( ! in_array( 'product_cat', $requested_taxonomies, true ) ) {
+		return $terms;
+	}
+
+	$term_id = mdo_mentta_marker_term_id();
+	if ( ! $term_id ) {
+		return $terms;
+	}
+
+	return array_values(
+		array_filter(
+			$terms,
+			static function ( $term ) use ( $term_id ) {
+				return ! ( $term instanceof WP_Term ) || (int) $term->term_id !== $term_id;
+			}
+		)
+	);
+}
+add_filter( 'get_terms', 'mdo_mentta_hide_from_public_term_results', 20, 4 );
+
 /** Hide MENTTA from category labels/links shown on product pages. */
 function mdo_mentta_hide_from_public_product_terms( $terms, $post_id, $taxonomy ) {
 	if ( 'product_cat' !== $taxonomy || ! mdo_mentta_should_hide_publicly() || ! is_array( $terms ) ) {
@@ -123,6 +158,38 @@ function mdo_mentta_hide_public_menu_items( $items ) {
 	);
 }
 add_filter( 'wp_get_nav_menu_items', 'mdo_mentta_hide_public_menu_items', 20 );
+
+/**
+ * Homepage DOM fallback for category widgets/builders that render a stored term
+ * selection rather than querying product_cat at request time.
+ */
+function mdo_mentta_hide_homepage_rendered_card() {
+	if ( ! mdo_mentta_should_hide_publicly() || ! is_front_page() ) {
+		return;
+	}
+	?>
+	<script id="mdo-hide-mentta-home-card">
+	(function () {
+		function hideMenttaCards() {
+			document.querySelectorAll('a[href*="/product-category/mentta"]').forEach(function (link) {
+				var card = link.closest('li.product-category, .product-category, .wc-block-product-category, .elementor-loop-item, .elementor-grid-item');
+				if (card) {
+					card.remove();
+				} else {
+					link.remove();
+				}
+			});
+		}
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', hideMenttaCards);
+		} else {
+			hideMenttaCards();
+		}
+	})();
+	</script>
+	<?php
+}
+add_action( 'wp_footer', 'mdo_mentta_hide_homepage_rendered_card', 100 );
 
 /** Do not expose a browsable public archive for the internal category. */
 function mdo_mentta_block_public_archive() {
