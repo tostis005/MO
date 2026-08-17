@@ -165,6 +165,34 @@ add_action(
 					padding-left: 1.15rem !important;
 				}
 			}
+
+			/*
+			 * Móvil ancho: la tabla responsive conservaba una anchura intrínseca
+			 * cercana a 390px aunque el formulario ya fuese mucho más ancho. Eso
+			 * dejaba una franja blanca a la derecha entre 500 y 767px. Convertimos
+			 * tabla y tbody en bloques de ancho completo y dejamos que cada fila
+			 * use todo el espacio disponible del formulario.
+			 */
+			@media (min-width: 500px) and (max-width: 767px) {
+				html body.elmercado-child-theme.woocommerce-cart table.shop_table_responsive,
+				html body.elmercado-child-theme.woocommerce-cart table.shop_table_responsive > tbody {
+					display: block !important;
+					box-sizing: border-box !important;
+					width: 100% !important;
+					min-width: 100% !important;
+					max-width: 100% !important;
+				}
+
+				html body.elmercado-child-theme.woocommerce-cart table.shop_table_responsive tr.woocommerce-cart-form__cart-item,
+				html body.elmercado-child-theme.woocommerce-cart table.shop_table_responsive tr.cart_item {
+					display: grid !important;
+					box-sizing: border-box !important;
+					width: 100% !important;
+					min-width: 100% !important;
+					max-width: 100% !important;
+					grid-template-columns: 74px minmax(0, 1fr) !important;
+				}
+			}
 			<?php endif; ?>
 
 			<?php if ( $is_post ) : ?>
