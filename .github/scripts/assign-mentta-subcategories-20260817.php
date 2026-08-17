@@ -1,29 +1,15 @@
 <?php
 /**
- * One-off production operation: create three child categories under MENTTA
- * mirroring the live catalog groups and assign every MENTTA product to the
- * corresponding child category based on its existing catalog categories.
+ * One-off production operation: mirror under MENTTA every real top-level
+ * WooCommerce product category represented by at least one MENTTA product.
+ * Categories with no MENTTA products are not created.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit( 1 );
 }
 
-function mdo_mentta_subcat_ids( $term_id ) {
-    $ids = array( (int) $term_id );
-    $children = get_term_children( (int) $term_id, 'product_cat' );
-    if ( is_wp_error( $children ) ) {
-        return $children;
-    }
-    foreach ( $children as $child_id ) {
-        $ids[] = (int) $child_id;
-    }
-    $ids = array_values( array_unique( $ids ) );
-    sort( $ids, SORT_NUMERIC );
-    return $ids;
-}
-
-function mdo_mentta_subcat_product_ids_for_term( $term_id ) {
+function mdo_mentta_product_ids_for_term( $term_id ) {
     $ids = get_objects_in_term( (int) $term_id, 'product_cat' );
     if ( is_wp_error( $ids ) ) {
         return $ids;
@@ -42,226 +28,287 @@ function mdo_mentta_subcat_product_ids_for_term( $term_id ) {
     return $ids;
 }
 
+function mdo_mentta_root_term( $term ) {
+    if ( ! ( $term instanceof WP_Term ) ) {
+        return null;
+    }
+
+    $current = $term;
+    $guard   = 0;
+    while ( (int) $current->parent > 0 && $guard < 30 ) {
+        $parent = get_term( (int) $current->parent, 'product_cat' );
+        if ( ! ( $parent instanceof WP_Term ) ) {
+            return null;
+        }
+        $current = $parent;
+        ++$guard;
+    }
+
+    return $current;
+}
+
 $mentta = get_term_by( 'slug', 'mentta', 'product_cat' );
 if ( ! ( $mentta instanceof WP_Term ) ) {
     fwrite( STDERR, "ERROR: MENTTA category with slug 'mentta' not found.\n" );
     exit( 2 );
 }
 
-$mentta_descendants = get_term_children( (int) $mentta->term_id, 'product_cat' );
-if ( is_wp_error( $mentta_descendants ) ) {
-    fwrite( STDERR, 'ERROR resolving MENTTA descendants: ' . $mentta_descendants->get_error_message() . "\n" );
-    exit( 3 );
-}
-$mentta_descendants = array_map( 'intval', $mentta_descendants );
-
-$groups = array(
-    'jamones' => array(
-        'label'       => 'Jamones y paletas',
-        'source_slug' => 'jamones-paletas',
-        'child_slug'  => 'mentta-jamones-y-paletas',
-    ),
-    'embutidos' => array(
-        'label'       => 'Embutidos',
-        'source_slug' => 'embutidos',
-        'child_slug'  => 'mentta-embutidos',
-    ),
-    'aceites' => array(
-        'label'       => 'Aceites',
-        'source_slug' => 'aceites',
-        'child_slug'  => 'mentta-aceites',
-    ),
-);
-
-foreach ( $groups as $key => &$group ) {
-    $source = get_term_by( 'slug', $group['source_slug'], 'product_cat' );
-    if ( ! ( $source instanceof WP_Term ) ) {
-        fwrite( STDERR, sprintf( "ERROR: source category slug '%s' for '%s' not found.\n", $group['source_slug'], $group['label'] ) );
-        exit( 4 );
-    }
-    if ( (int) $source->term_id === (int) $mentta->term_id || in_array( (int) $source->term_id, $mentta_descendants, true ) ) {
-        fwrite( STDERR, sprintf( "ERROR: source category '%s' unexpectedly belongs to MENTTA.\n", $group['label'] ) );
-        exit( 5 );
-    }
-
-    $source_ids = mdo_mentta_subcat_ids( (int) $source->term_id );
-    if ( is_wp_error( $source_ids ) ) {
-        fwrite( STDERR, sprintf( "ERROR reading descendants for source category '%s': %s\n", $group['label'], $source_ids->get_error_message() ) );
-        exit( 6 );
-    }
-
-    $group['source_id']   = (int) $source->term_id;
-    $group['source_name'] = $source->name;
-    $group['source_ids']  = $source_ids;
-}
-unset( $group );
-
-$mentta_products = mdo_mentta_subcat_product_ids_for_term( (int) $mentta->term_id );
+$mentta_products = mdo_mentta_product_ids_for_term( (int) $mentta->term_id );
 if ( is_wp_error( $mentta_products ) ) {
     fwrite( STDERR, 'ERROR reading MENTTA products: ' . $mentta_products->get_error_message() . "\n" );
-    exit( 7 );
+    exit( 3 );
 }
 if ( ! $mentta_products ) {
     fwrite( STDERR, "ERROR: MENTTA contains no products.\n" );
+    exit( 4 );
+}
+
+$mentta_descendants = get_term_children( (int) $mentta->term_id, 'product_cat' );
+if ( is_wp_error( $mentta_descendants ) ) {
+    fwrite( STDERR, 'ERROR resolving MENTTA descendants: ' . $mentta_descendants->get_error_message() . "\n" );
+    exit( 5 );
+}
+$mentta_tree_ids = array_merge( array( (int) $mentta->term_id ), array_map( 'intval', $mentta_descendants ) );
+$mentta_tree_ids = array_values( array_unique( $mentta_tree_ids ) );
+
+$represented = array();
+$uncategorized = array();
+
+foreach ( $mentta_products as $product_id ) {
+    $terms = wp_get_object_terms( $product_id, 'product_cat' );
+    if ( is_wp_error( $terms ) ) {
+        fwrite( STDERR, sprintf( "ERROR reading categories for product %d: %s\n", $product_id, $terms->get_error_message() ) );
+        exit( 6 );
+    }
+
+    $roots_for_product = array();
+    foreach ( $terms as $term ) {
+        if ( in_array( (int) $term->term_id, $mentta_tree_ids, true ) ) {
+            continue;
+        }
+        $root = mdo_mentta_root_term( $term );
+        if ( ! ( $root instanceof WP_Term ) ) {
+            fwrite( STDERR, sprintf( "ERROR resolving top-level category for product %d term %d.\n", $product_id, (int) $term->term_id ) );
+            exit( 7 );
+        }
+        if ( (int) $root->term_id === (int) $mentta->term_id ) {
+            continue;
+        }
+        $roots_for_product[ (int) $root->term_id ] = $root;
+    }
+
+    if ( ! $roots_for_product ) {
+        $uncategorized[] = $product_id;
+        continue;
+    }
+
+    foreach ( $roots_for_product as $root_id => $root ) {
+        if ( ! isset( $represented[ $root_id ] ) ) {
+            $represented[ $root_id ] = array(
+                'term'     => $root,
+                'products' => array(),
+            );
+        }
+        $represented[ $root_id ]['products'][] = $product_id;
+    }
+}
+
+if ( $uncategorized ) {
+    fwrite( STDERR, "ERROR: some MENTTA products have no non-MENTTA top-level catalog category. No changes were made.\n" );
+    foreach ( $uncategorized as $product_id ) {
+        fwrite( STDERR, sprintf( "UNCATEGORIZED %d | %s\n", $product_id, get_the_title( $product_id ) ) );
+    }
     exit( 8 );
 }
 
-$expected = array();
-foreach ( array_keys( $groups ) as $key ) {
-    $expected[ $key ] = array();
-}
-$unmatched = array();
-$multi_match = array();
-
-foreach ( $mentta_products as $product_id ) {
-    $product_terms = wp_get_object_terms( $product_id, 'product_cat', array( 'fields' => 'ids' ) );
-    if ( is_wp_error( $product_terms ) ) {
-        fwrite( STDERR, sprintf( "ERROR reading categories for product %d: %s\n", $product_id, $product_terms->get_error_message() ) );
-        exit( 9 );
-    }
-    $product_terms = array_map( 'intval', $product_terms );
-
-    $matched_keys = array();
-    foreach ( $groups as $key => $group ) {
-        if ( array_intersect( $product_terms, $group['source_ids'] ) ) {
-            $expected[ $key ][] = $product_id;
-            $matched_keys[] = $key;
-        }
-    }
-
-    if ( ! $matched_keys ) {
-        $terms = wp_get_object_terms( $product_id, 'product_cat' );
-        $parts = array();
-        if ( ! is_wp_error( $terms ) ) {
-            foreach ( $terms as $term ) {
-                $parts[] = sprintf( '%s[%s:%d]', $term->name, $term->slug, (int) $term->term_id );
-            }
-        }
-        $unmatched[ $product_id ] = array(
-            'title'      => get_the_title( $product_id ),
-            'categories' => $parts,
-        );
-    } elseif ( count( $matched_keys ) > 1 ) {
-        $multi_match[ $product_id ] = $matched_keys;
-    }
+if ( ! $represented ) {
+    fwrite( STDERR, "ERROR: no represented top-level categories found. No changes were made.\n" );
+    exit( 9 );
 }
 
-if ( $unmatched ) {
-    fwrite( STDERR, "ERROR: some MENTTA products do not belong to Jamones y paletas, Embutidos or Aceites. No changes were made.\n" );
-    foreach ( $unmatched as $product_id => $data ) {
-        fwrite( STDERR, sprintf( "UNMATCHED %d | %s | %s\n", $product_id, $data['title'], implode( ' > ', $data['categories'] ) ) );
-    }
-    exit( 10 );
+foreach ( $represented as &$data ) {
+    $data['products'] = array_values( array_unique( array_map( 'intval', $data['products'] ) ) );
+    sort( $data['products'], SORT_NUMERIC );
 }
+unset( $data );
 
-foreach ( $expected as &$ids ) {
-    $ids = array_values( array_unique( array_map( 'intval', $ids ) ) );
-    sort( $ids, SORT_NUMERIC );
-}
-unset( $ids );
-
-foreach ( $groups as $key => &$group ) {
-    $existing = term_exists( $group['label'], 'product_cat', (int) $mentta->term_id );
-    if ( $existing ) {
-        $child_id = is_array( $existing ) ? (int) $existing['term_id'] : (int) $existing;
-        $child = get_term( $child_id, 'product_cat' );
-        if ( ! ( $child instanceof WP_Term ) || (int) $child->parent !== (int) $mentta->term_id ) {
-            fwrite( STDERR, sprintf( "ERROR: existing child category '%s' is invalid.\n", $group['label'] ) );
-            exit( 11 );
-        }
-    } else {
-        $created = wp_insert_term(
-            $group['label'],
-            'product_cat',
-            array(
-                'parent' => (int) $mentta->term_id,
-                'slug'   => $group['child_slug'],
-            )
-        );
-        if ( is_wp_error( $created ) ) {
-            fwrite( STDERR, sprintf( "ERROR creating MENTTA child '%s': %s\n", $group['label'], $created->get_error_message() ) );
-            exit( 12 );
-        }
-        $child_id = (int) $created['term_id'];
+uasort(
+    $represented,
+    static function ( $a, $b ) {
+        return strcasecmp( $a['term']->name, $b['term']->name );
     }
-    $group['child_id'] = $child_id;
-}
-unset( $group );
+);
 
-foreach ( $groups as $key => $group ) {
-    $current = mdo_mentta_subcat_product_ids_for_term( (int) $group['child_id'] );
-    if ( is_wp_error( $current ) ) {
-        fwrite( STDERR, sprintf( "ERROR reading current assignments for '%s': %s\n", $group['label'], $current->get_error_message() ) );
-        exit( 13 );
-    }
-
-    $to_remove = array_values( array_diff( $current, $expected[ $key ] ) );
-    $to_add    = array_values( array_diff( $expected[ $key ], $current ) );
-
-    foreach ( $to_remove as $product_id ) {
-        $result = wp_remove_object_terms( $product_id, (int) $group['child_id'], 'product_cat' );
-        if ( is_wp_error( $result ) ) {
-            fwrite( STDERR, sprintf( "ERROR removing product %d from '%s': %s\n", $product_id, $group['label'], $result->get_error_message() ) );
-            exit( 14 );
-        }
-    }
-
-    foreach ( $to_add as $product_id ) {
-        $result = wp_set_object_terms( $product_id, (int) $group['child_id'], 'product_cat', true );
-        if ( is_wp_error( $result ) ) {
-            fwrite( STDERR, sprintf( "ERROR assigning product %d to '%s': %s\n", $product_id, $group['label'], $result->get_error_message() ) );
-            exit( 15 );
-        }
-    }
-
-    clean_term_cache( (int) $group['child_id'], 'product_cat' );
-}
-clean_term_cache( (int) $mentta->term_id, 'product_cat' );
-
-$verified_union = array();
-foreach ( $groups as $key => $group ) {
-    $final = mdo_mentta_subcat_product_ids_for_term( (int) $group['child_id'] );
-    if ( is_wp_error( $final ) ) {
-        fwrite( STDERR, sprintf( "ERROR verifying '%s': %s\n", $group['label'], $final->get_error_message() ) );
-        exit( 16 );
-    }
-    if ( $final !== $expected[ $key ] ) {
-        fwrite( STDERR, sprintf( "ERROR: final membership mismatch for '%s'. expected=%d actual=%d\n", $group['label'], count( $expected[ $key ] ), count( $final ) ) );
-        exit( 17 );
-    }
-    $verified_union = array_merge( $verified_union, $final );
-}
-$verified_union = array_values( array_unique( array_map( 'intval', $verified_union ) ) );
-sort( $verified_union, SORT_NUMERIC );
-
-if ( $verified_union !== $mentta_products ) {
-    fwrite( STDERR, sprintf( "ERROR: MENTTA child union mismatch. mentta=%d categorized=%d\n", count( $mentta_products ), count( $verified_union ) ) );
-    exit( 18 );
-}
-
+/* Preflight: report exactly what will be mirrored before any write. */
 echo 'MENTTA parent: ' . $mentta->name . ' (' . (int) $mentta->term_id . ")\n";
-echo 'MENTTA products categorized: ' . count( $mentta_products ) . "\n";
-foreach ( $groups as $key => $group ) {
+echo 'MENTTA products: ' . count( $mentta_products ) . "\n";
+echo 'Represented top-level categories: ' . count( $represented ) . "\n";
+foreach ( $represented as $source_id => $data ) {
     $published = 0;
-    foreach ( $expected[ $key ] as $product_id ) {
+    foreach ( $data['products'] as $product_id ) {
         if ( 'publish' === get_post_status( $product_id ) ) {
             ++$published;
         }
     }
     echo sprintf(
-        "%s | source=%s[%s:%d] | mentta_child=%d | products=%d | published=%d\n",
-        $group['label'],
-        $group['source_name'],
-        $group['source_slug'],
-        (int) $group['source_id'],
-        (int) $group['child_id'],
-        count( $expected[ $key ] ),
+        "SOURCE %s | slug=%s | id=%d | products=%d | published=%d\n",
+        $data['term']->name,
+        $data['term']->slug,
+        (int) $source_id,
+        count( $data['products'] ),
         $published
     );
 }
-if ( $multi_match ) {
-    foreach ( $multi_match as $product_id => $keys ) {
-        echo sprintf( "MULTI_MATCH %d | %s | %s\n", $product_id, get_the_title( $product_id ), implode( ',', $keys ) );
+
+$managed_child_ids = array();
+foreach ( $represented as $source_id => &$data ) {
+    $source = $data['term'];
+    $existing = term_exists( $source->name, 'product_cat', (int) $mentta->term_id );
+
+    if ( $existing ) {
+        $child_id = is_array( $existing ) ? (int) $existing['term_id'] : (int) $existing;
+        $child = get_term( $child_id, 'product_cat' );
+        if ( ! ( $child instanceof WP_Term ) || (int) $child->parent !== (int) $mentta->term_id ) {
+            fwrite( STDERR, sprintf( "ERROR: existing MENTTA child '%s' is invalid.\n", $source->name ) );
+            exit( 10 );
+        }
+
+        $updated = wp_update_term(
+            $child_id,
+            'product_cat',
+            array(
+                'name'        => $source->name,
+                'description' => $source->description,
+            )
+        );
+        if ( is_wp_error( $updated ) ) {
+            fwrite( STDERR, sprintf( "ERROR updating MENTTA child '%s': %s\n", $source->name, $updated->get_error_message() ) );
+            exit( 11 );
+        }
+    } else {
+        $created = wp_insert_term(
+            $source->name,
+            'product_cat',
+            array(
+                'parent'      => (int) $mentta->term_id,
+                'slug'        => 'mentta-' . sanitize_title( $source->slug ),
+                'description' => $source->description,
+            )
+        );
+        if ( is_wp_error( $created ) ) {
+            fwrite( STDERR, sprintf( "ERROR creating MENTTA child '%s': %s\n", $source->name, $created->get_error_message() ) );
+            exit( 12 );
+        }
+        $child_id = (int) $created['term_id'];
+    }
+
+    update_term_meta( $child_id, '_mdo_mentta_source_term_id', (int) $source_id );
+
+    $source_thumbnail = get_term_meta( (int) $source_id, 'thumbnail_id', true );
+    if ( '' !== (string) $source_thumbnail ) {
+        update_term_meta( $child_id, 'thumbnail_id', (int) $source_thumbnail );
+    }
+    $display_type = get_term_meta( (int) $source_id, 'display_type', true );
+    if ( '' !== (string) $display_type ) {
+        update_term_meta( $child_id, 'display_type', $display_type );
+    }
+
+    $data['child_id'] = $child_id;
+    $managed_child_ids[] = $child_id;
+}
+unset( $data );
+
+/* Remove only stale child categories previously managed by this operation. */
+$current_children = get_terms(
+    array(
+        'taxonomy'   => 'product_cat',
+        'hide_empty' => false,
+        'parent'     => (int) $mentta->term_id,
+    )
+);
+if ( is_wp_error( $current_children ) ) {
+    fwrite( STDERR, 'ERROR reading MENTTA children: ' . $current_children->get_error_message() . "\n" );
+    exit( 13 );
+}
+
+foreach ( $current_children as $child ) {
+    $source_marker = (int) get_term_meta( (int) $child->term_id, '_mdo_mentta_source_term_id', true );
+    if ( $source_marker && ! isset( $represented[ $source_marker ] ) ) {
+        $assigned = mdo_mentta_product_ids_for_term( (int) $child->term_id );
+        if ( is_wp_error( $assigned ) ) {
+            fwrite( STDERR, sprintf( "ERROR reading stale child '%s': %s\n", $child->name, $assigned->get_error_message() ) );
+            exit( 14 );
+        }
+        foreach ( $assigned as $product_id ) {
+            $removed = wp_remove_object_terms( $product_id, (int) $child->term_id, 'product_cat' );
+            if ( is_wp_error( $removed ) ) {
+                fwrite( STDERR, sprintf( "ERROR cleaning stale child '%s': %s\n", $child->name, $removed->get_error_message() ) );
+                exit( 15 );
+            }
+        }
+        $deleted = wp_delete_term( (int) $child->term_id, 'product_cat' );
+        if ( is_wp_error( $deleted ) ) {
+            fwrite( STDERR, sprintf( "ERROR deleting stale child '%s': %s\n", $child->name, $deleted->get_error_message() ) );
+            exit( 16 );
+        }
     }
 }
+
+foreach ( $represented as $source_id => $data ) {
+    $child_id = (int) $data['child_id'];
+    $expected = $data['products'];
+    $current  = mdo_mentta_product_ids_for_term( $child_id );
+    if ( is_wp_error( $current ) ) {
+        fwrite( STDERR, sprintf( "ERROR reading assignments for '%s': %s\n", $data['term']->name, $current->get_error_message() ) );
+        exit( 17 );
+    }
+
+    foreach ( array_values( array_diff( $current, $expected ) ) as $product_id ) {
+        $result = wp_remove_object_terms( $product_id, $child_id, 'product_cat' );
+        if ( is_wp_error( $result ) ) {
+            fwrite( STDERR, sprintf( "ERROR removing product %d from '%s': %s\n", $product_id, $data['term']->name, $result->get_error_message() ) );
+            exit( 18 );
+        }
+    }
+
+    foreach ( array_values( array_diff( $expected, $current ) ) as $product_id ) {
+        $result = wp_set_object_terms( $product_id, $child_id, 'product_cat', true );
+        if ( is_wp_error( $result ) ) {
+            fwrite( STDERR, sprintf( "ERROR assigning product %d to '%s': %s\n", $product_id, $data['term']->name, $result->get_error_message() ) );
+            exit( 19 );
+        }
+    }
+
+    clean_term_cache( $child_id, 'product_cat' );
+}
+clean_term_cache( (int) $mentta->term_id, 'product_cat' );
+
+$covered = array();
+foreach ( $represented as $source_id => $data ) {
+    $final = mdo_mentta_product_ids_for_term( (int) $data['child_id'] );
+    if ( is_wp_error( $final ) ) {
+        fwrite( STDERR, sprintf( "ERROR verifying '%s': %s\n", $data['term']->name, $final->get_error_message() ) );
+        exit( 20 );
+    }
+    if ( $final !== $data['products'] ) {
+        fwrite( STDERR, sprintf( "ERROR: final membership mismatch for '%s'. expected=%d actual=%d\n", $data['term']->name, count( $data['products'] ), count( $final ) ) );
+        exit( 21 );
+    }
+    $covered = array_merge( $covered, $final );
+    echo sprintf(
+        "MENTTA CHILD %s | id=%d | source_id=%d | products=%d\n",
+        $data['term']->name,
+        (int) $data['child_id'],
+        (int) $source_id,
+        count( $final )
+    );
+}
+
+$covered = array_values( array_unique( array_map( 'intval', $covered ) ) );
+sort( $covered, SORT_NUMERIC );
+if ( $covered !== $mentta_products ) {
+    fwrite( STDERR, sprintf( "ERROR: MENTTA coverage mismatch. mentta=%d categorized=%d\n", count( $mentta_products ), count( $covered ) ) );
+    exit( 22 );
+}
+
 echo "mentta_subcategories_ok\n";
