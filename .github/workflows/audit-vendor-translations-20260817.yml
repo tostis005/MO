@@ -31,7 +31,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Inspect English runtime and live Puente sample
+      - name: Audit reusable English product translations
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -54,45 +54,40 @@ jobs:
           wp_bin="$(command -v wp || true)"
           [ -n "$wp_bin" ] || exit 1
 
-          echo '=== RUNTIME_SEO_SOURCE ==='
-          sed -n '1,360p' "$prod/wp-content/mu-plugins/mdo-english-island-runtime-seo.php" 2>/dev/null || true
-          echo '=== SLUG_ROUTER_SOURCE ==='
-          sed -n '1,320p' "$prod/wp-content/mu-plugins/mdo-english-slug-router.php" 2>/dev/null || true
-          echo '=== ACTIVE_LANGUAGE_PLUGINS ==='
-          "$php_bin" "$wp_bin" plugin list --status=active --field=name --path="$prod" --allow-root 2>/dev/null | grep -Ei 'falang|translate|wpml|poly|language' || true
-
-          cat > /tmp/mo-puente-live.php <<'PHP'
+          cat > /tmp/mo-memory-audit.php <<'PHP'
           <?php
-          $ids=array(11170,11171,11172);
-          foreach($ids as $id){
-              $p=get_post($id); if(!$p) continue;
-              $urls=array(
-                  'es'=>get_permalink($id),
-                  'en_spanish_slug'=>home_url('/en/product/'.$p->post_name.'/'),
-              );
-              $en_slug=(string)get_post_meta($id,'_en_US_post_name',true);
-              if($en_slug!=='') $urls['en_meta_slug']=home_url('/en/product/'.sanitize_title($en_slug).'/');
-              foreach($urls as $kind=>$url){
-                  $probe=add_query_arg('emdo_translation_audit',time().$id,$url);
-                  $r=wp_remote_get($probe,array('timeout'=>20,'redirection'=>3,'headers'=>array('Cache-Control'=>'no-cache','Pragma'=>'no-cache'),'user-agent'=>'Mozilla/5.0 EMDO translation audit'));
-                  if(is_wp_error($r)){echo "LIVE|$id|$kind|ERR=".$r->get_error_message()."|URL=$url\n";continue;}
-                  $body=(string)wp_remote_retrieve_body($r);
-                  $text=html_entity_decode(wp_strip_all_tags($body),ENT_QUOTES|ENT_HTML5,'UTF-8');
-                  echo 'LIVE|'.$id.'|'.$kind.'|HTTP='.(int)wp_remote_retrieve_response_code($r)
-                      .'|TITLE='.str_replace(array("\r","\n","|"),' ',(string)$p->post_title)
-                      .'|HAS_ES_TITLE='.(stripos($text,$p->post_title)!==false?'yes':'no')
-                      .'|HAS_EN_META='.(trim((string)get_post_meta($id,'_en_US_post_title',true))!==''?'yes':'no')
-                      .'|FINAL='.wp_remote_retrieve_header($r,'location')
-                      .'|URL='.$url."\n";
-                  if($kind!=='es'){
-                      $needle='Jamón';
-                      $pos=stripos($text,$needle);
-                      if($pos!==false){echo 'CONTEXT|'.$id.'|'.preg_replace('/\s+/',' ',substr($text,max(0,$pos-160),600))."\n";}
-                  }
+          global $wpdb;
+          function ntitle($s){$s=html_entity_decode(wp_strip_all_tags((string)$s),ENT_QUOTES|ENT_HTML5,'UTF-8');$s=remove_accents(mb_strtolower(trim($s)));return preg_replace('/\s+/u',' ',$s);}
+          function ncontent($s){$s=html_entity_decode(wp_strip_all_tags((string)$s),ENT_QUOTES|ENT_HTML5,'UTF-8');$s=remove_accents(mb_strtolower(trim($s)));return preg_replace('/\s+/u',' ',$s);}
+          $translated_ids=$wpdb->get_col("SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key='_en_US_published' AND meta_value='1'");
+          $by_title=array();$by_content=array();$source_count=0;
+          foreach($translated_ids as $sid){
+              $sp=get_post((int)$sid); if(!$sp || $sp->post_type!=='product') continue;
+              $et=(string)get_post_meta($sp->ID,'_en_US_post_title',true); if(trim(wp_strip_all_tags($et))==='') continue;
+              $source_count++;
+              $tk=ntitle($sp->post_title); if($tk!=='')$by_title[$tk][]=$sp->ID;
+              $ck=ncontent($sp->post_content); if($ck!=='')$by_content[$ck][]=$sp->ID;
+          }
+          echo "SOURCE_TRANSLATED_PRODUCTS=$source_count\n";
+          foreach(array(4507=>'Tolecarnes',4508=>'Puente Robles',4509=>'El Catedrático') as $aid=>$vendor){
+              $ids=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_author=%d AND post_status IN ('publish','draft','pending','private','future','archived') ORDER BY ID",$aid));
+              $summary=array('vendor'=>$vendor,'total'=>0,'already_complete'=>0,'title_match'=>0,'content_match'=>0,'both_same_source'=>0,'needs_manual'=>0);
+              $rows=array();
+              foreach($ids as $id){
+                  $p=get_post((int)$id); if(!$p)continue; $summary['total']++;
+                  $complete=(string)get_post_meta($id,'_en_US_published',true)==='1' && trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_title',true)))!=='' && trim((string)get_post_meta($id,'_en_US_post_name',true))!=='' && (trim(wp_strip_all_tags($p->post_content))==='' || trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_content',true)))!=='');
+                  if($complete){$summary['already_complete']++;continue;}
+                  $tm=$by_title[ntitle($p->post_title)]??array(); $cm=array();$ck=ncontent($p->post_content);if($ck!==''&&isset($by_content[$ck]))$cm=$by_content[$ck];
+                  $tm=array_values(array_filter($tm,fn($v)=>(int)$v!==(int)$id));$cm=array_values(array_filter($cm,fn($v)=>(int)$v!==(int)$id));
+                  if($tm)$summary['title_match']++;if($cm)$summary['content_match']++;
+                  $same=array_values(array_intersect($tm,$cm));if($same)$summary['both_same_source']++;
+                  if(!$same)$summary['needs_manual']++;
+                  $rows[]=array('id'=>(int)$id,'status'=>$p->post_status,'title'=>$p->post_title,'content_chars'=>mb_strlen(wp_strip_all_tags($p->post_content)),'excerpt_chars'=>mb_strlen(wp_strip_all_tags($p->post_excerpt)),'title_matches'=>array_slice($tm,0,4),'content_matches'=>array_slice($cm,0,4),'same_source'=>array_slice($same,0,4));
               }
+              echo 'SUMMARY|'.wp_json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+              foreach($rows as $r) echo 'ROW|'.wp_json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
           }
           PHP
-          echo '=== PUENTE_LIVE ==='
-          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-puente-live.php --path="$prod" --allow-root
-          rm -f /tmp/mo-puente-live.php
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval-file /tmp/mo-memory-audit.php --path="$prod" --allow-root
+          rm -f /tmp/mo-memory-audit.php
           REMOTE
