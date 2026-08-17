@@ -1,10 +1,10 @@
 <?php
 /**
- * Ajustes finales de lectura del blog y copy del pie 0.10.251.
+ * Ajustes finales de lectura del blog y copy del pie 0.10.253.
  *
- * Mantiene los productos relacionados dentro de sus contenedores y normaliza
- * el ritmo editorial, sin volver a estilizar las tarjetas WooCommerce. Las
- * tarjetas incrustadas heredan el mismo sistema global que la tienda.
+ * Mantiene los productos relacionados dentro de sus contenedores, normaliza
+ * el ritmo editorial de todas las entradas y garantiza el bloque de embutidos
+ * de la entrada de Jamón Ibérico sin reestilizar las tarjetas WooCommerce.
  *
  * @package ElMercadoDeOrigen
  */
@@ -32,6 +32,113 @@ add_filter(
 	},
 	PHP_INT_MAX,
 	4
+);
+
+/**
+ * Clase contractual para que todas las entradas compartan el mismo sistema de
+ * ritmo editorial sin depender de cómo fueron maquetadas históricamente.
+ */
+add_filter(
+	'post_class',
+	static function ( array $classes, array $css_class, int $post_id ): array {
+		if ( is_singular( 'post' ) && (int) get_queried_object_id() === $post_id ) {
+			$classes[] = 'emo-entry-standard';
+		}
+
+		return array_values( array_unique( $classes ) );
+	},
+	20,
+	3
+);
+
+/**
+ * Limpia separadores vacíos heredados del editor clásico y garantiza que el
+ * epígrafe de embutidos de Jamón Ibérico tenga productos reales debajo.
+ *
+ * Se ejecuta después de do_shortcode para poder distinguir un contenedor Woo
+ * vacío de un listado que contiene tarjetas de producto de verdad.
+ */
+add_filter(
+	'the_content',
+	static function ( string $content ): string {
+		if ( is_admin() || ! is_singular( 'post' ) ) {
+			return $content;
+		}
+
+		$cleaned = preg_replace(
+			'/<p\b[^>]*>(?:\s|&nbsp;|&#160;|&#x0*a0;|<br\b[^>]*>)*<\/p>/iu',
+			'',
+			$content
+		);
+		if ( is_string( $cleaned ) ) {
+			$content = $cleaned;
+		}
+
+		/* Evita saltos manuales entre un titular y el texto que le sigue. */
+		$cleaned = preg_replace(
+			'/(<\/h[2-6]>)(?:\s*<br\b[^>]*>\s*)+/iu',
+			'$1',
+			$content
+		);
+		if ( is_string( $cleaned ) ) {
+			$content = $cleaned;
+		}
+
+		if ( 'jamon-iberico' !== (string) get_post_field( 'post_name', get_queried_object_id() ) ) {
+			return $content;
+		}
+
+		$heading_match = array();
+		$has_heading   = 1 === preg_match(
+			'/<h[1-6]\b[^>]*>(?:(?!<\/h[1-6]>)[\s\S])*?embutidos(?:(?!<\/h[1-6]>)[\s\S])*?<\/h[1-6]>/iu',
+			$content,
+			$heading_match,
+			PREG_OFFSET_CAPTURE
+		);
+
+		if ( ! $has_heading ) {
+			return $content;
+		}
+
+		$heading_start = (int) $heading_match[0][1];
+		$heading_html  = (string) $heading_match[0][0];
+		$heading_end   = $heading_start + strlen( $heading_html );
+		$tail          = substr( $content, $heading_end );
+
+		/* Un ul.products vacío no cuenta: exigimos al menos una tarjeta real. */
+		$has_real_products = is_string( $tail ) && 1 === preg_match(
+			'/<li\b[^>]*class=(?:"[^"]*\bproduct\b[^"]*"|\'[^\']*\bproduct\b[^\']*\')[^>]*>/iu',
+			$tail
+		);
+
+		if ( $has_real_products || ! shortcode_exists( 'products' ) ) {
+			return $content;
+		}
+
+		$term = get_term_by( 'slug', 'embutidos', 'product_cat' );
+		if ( ! $term instanceof WP_Term ) {
+			$term = get_term_by( 'name', 'Embutidos', 'product_cat' );
+		}
+		if ( ! $term instanceof WP_Term ) {
+			return $content;
+		}
+
+		$embutidos_products = do_shortcode(
+			sprintf(
+				'[products category="%s" limit="8" columns="3" orderby="popularity" order="DESC"]',
+				esc_attr( (string) $term->slug )
+			)
+		);
+
+		if ( 1 !== preg_match( '/<li\b[^>]*class=(?:"[^"]*\bproduct\b[^"]*"|\'[^\']*\bproduct\b[^\']*\')[^>]*>/iu', $embutidos_products ) ) {
+			return $content;
+		}
+
+		$fallback_block = '<div class="emo-jamon-embutidos-fallback emo-entry-product-section" data-emo-embutidos="010253">' . $embutidos_products . '</div>';
+
+		return substr( $content, 0, $heading_end ) . $fallback_block . substr( $content, $heading_end );
+	},
+	PHP_INT_MAX
 );
 
 /**
@@ -170,6 +277,110 @@ add_action(
 				body.single-post.elmercado-child-theme .emo-article-content .woocommerce ul.products {
 					grid-template-columns: minmax(0, 280px) !important;
 					justify-content: center;
+				}
+			}
+		</style>
+		<?php
+	},
+	PHP_INT_MAX
+);
+
+/**
+ * Contrato de espaciado 0.10.253. Se imprime en el footer para quedar después
+ * de todas las capas editoriales antiguas. Afecta a todas las entradas.
+ */
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() || ! is_singular( 'post' ) ) {
+			return;
+		}
+		?>
+		<style id="elmercado-blog-entry-rhythm-010253">
+			html body.single-post article.emo-entry-standard .emo-article-content > p {
+				margin-top: 0 !important;
+				margin-bottom: 1.05em !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(ul, ol) {
+				margin-top: 0.35em !important;
+				margin-bottom: 1.2em !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > h2 {
+				margin-top: clamp(32px, 3.2vw, 42px) !important;
+				margin-bottom: 13px !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > h3 {
+				margin-top: clamp(28px, 2.8vw, 36px) !important;
+				margin-bottom: 12px !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(h4, h5) {
+				margin-top: clamp(25px, 2.5vw, 32px) !important;
+				margin-bottom: 10px !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > h6 {
+				margin-top: clamp(20px, 2vw, 26px) !important;
+				margin-bottom: 8px !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(h2, h3, h4, h5, h6):first-child {
+				margin-top: 0 !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(h2, h3, h4, h5, h6) + :is(p, ul, ol),
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(h2, h3, h4, h5, h6) + br + :is(p, ul, ol) {
+				margin-top: 0 !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(h2, h3, h4, h5, h6) + br {
+				display: none !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content > figure {
+				margin-top: 1.4rem !important;
+				margin-bottom: 1.6rem !important;
+			}
+
+			/* El producto empieza cerca de su titular, sin una franja blanca artificial. */
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(h2, h3, h4, h5, h6) + .woocommerce,
+			html body.single-post article.emo-entry-standard .emo-article-content > :is(h2, h3, h4, h5, h6) + .emo-entry-product-section {
+				margin-top: 16px !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-jamon-embutidos-fallback {
+				margin-top: 16px !important;
+				margin-bottom: 0 !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-jamon-embutidos-fallback > .woocommerce {
+				margin-top: 0 !important;
+				margin-bottom: 0 !important;
+			}
+
+			/* Si una versión antigua dejó sólo la carcasa Woo vacía, no reserva espacio. */
+			html body.single-post article.emo-entry-standard .emo-article-content .woocommerce:has(ul.products):not(:has(li.product)) {
+				display: none !important;
+			}
+
+			@media (max-width: 767px) {
+				html body.single-post article.emo-entry-standard .emo-article-content > h2 {
+					margin-top: 30px !important;
+				}
+
+				html body.single-post article.emo-entry-standard .emo-article-content > h3 {
+					margin-top: 26px !important;
+				}
+
+				html body.single-post article.emo-entry-standard .emo-article-content > :is(h4, h5) {
+					margin-top: 23px !important;
+				}
+
+				html body.single-post article.emo-entry-standard .emo-article-content > h6 {
+					margin-top: 20px !important;
 				}
 			}
 		</style>
