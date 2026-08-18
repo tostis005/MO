@@ -12,7 +12,7 @@ function mdoqa_meta_state( int $id, string $type ): array {
     return ['id'=>$id,'type'=>$type,'es_slug'=>$post?$post->post_name:'','es_title'=>$post?$post->post_title:'','en_slug'=>$name,'en_title'=>$title,'issues'=>$issues];
 }
 
-$out=['summary'=>[],'objects'=>[],'terms'=>[],'attribute_labels'=>[],'attribute_issues'=>[],'options'=>[]];
+$out=['summary'=>[],'objects'=>[],'terms'=>[],'attribute_labels'=>[],'attribute_issues'=>[],'options'=>[],'special_routes'=>[]];
 foreach(['page','post','product'] as $type){
     $ids=get_posts(['post_type'=>$type,'post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','orderby'=>'ID','order'=>'ASC','suppress_filters'=>true]); $eligible=[];
     foreach(array_map('intval',$ids) as $id){
@@ -37,14 +37,12 @@ foreach(['product_cat','product_tag','category'] as $tax){
     $out['summary'][$tax.'_eligible']=$count;$out['summary'][$tax.'_with_issues']=$bad;
 }
 
-/* Exercise the actual English label filter and scan English term data for Spanish residues. */
 $_SERVER['REQUEST_URI']='/en/qa-attribute-audit/';
 $spanish_name_re='/\b(?:sí|meses?|menos|cortado|cortada|deshuesado|deshuesada|virutas|codillo|taco|carne|cerdo|ib[eé]ric[oa]|bellota|campo|pieza|piezas|bote|botella|caja|saco|tarro|medias|envasadas?|vac[ií]o|sin filtrar|tradicional|paleta)\b/iu';
 $spanish_slug_re='/(?:^|-)(?:si|meses?|menos|cortado|cortada|deshuesado|virutas|codillo|carne|cerdo|iberico|iberica|bellota|campo|pieza|piezas|bote|botella|caja|saco|tarro|medias|envasadas|vacio|sin-filtrar|tradicional|paleta)(?:-|$)/i';
 if(function_exists('wc_get_attribute_taxonomies')){
     foreach((array)wc_get_attribute_taxonomies() as $a){
-        $tax='pa_'.$a->attribute_name;
-        $rendered=function_exists('wc_attribute_label')?wc_attribute_label($tax):$a->attribute_label;
+        $tax='pa_'.$a->attribute_name;$rendered=function_exists('wc_attribute_label')?wc_attribute_label($tax):$a->attribute_label;
         $out['attribute_labels'][]=['taxonomy'=>$tax,'stored'=>$a->attribute_label,'english_rendered'=>$rendered,'public'=>(int)$a->attribute_public];
         if(!taxonomy_exists($tax))continue;$terms=get_terms(['taxonomy'=>$tax,'hide_empty'=>true]);if(is_wp_error($terms))continue;
         foreach($terms as $term){
@@ -52,12 +50,27 @@ if(function_exists('wc_get_attribute_taxonomies')){
             if((string)get_term_meta($term->term_id,'_en_US_published',true)!=='1')$issues[]='not_en_published';
             if($name==='')$issues[]='missing_en_name';elseif(preg_match($spanish_name_re,$name))$issues[]='spanish_word_in_en_name';
             if($slug==='')$issues[]='missing_en_slug';elseif(preg_match($spanish_slug_re,$slug))$issues[]='spanish_word_in_en_slug';
-            if(preg_match('/(?<=\d),(?=\d)/u',$name))$issues[]='decimal_comma_in_en_name';
-            if(preg_match('/\bDOP\b/u',$name))$issues[]='dop_in_en_name';
+            if(preg_match('/(?<=\d),(?=\d)/u',$name))$issues[]='decimal_comma_in_en_name'; if(preg_match('/\bDOP\b/u',$name))$issues[]='dop_in_en_name';
             if($issues)$out['attribute_issues'][]=['taxonomy'=>$tax,'id'=>$term->term_id,'native_slug'=>$term->slug,'native_name'=>$term->name,'en_slug'=>$slug,'en_name'=>$name,'issues'=>array_values(array_unique($issues))];
         }
     }
 }
 foreach(['woocommerce_shop_page_id','woocommerce_cart_page_id','woocommerce_checkout_page_id','woocommerce_myaccount_page_id'] as $key){$id=(int)get_option($key);$out['options'][$key]=['id'=>$id,'es_slug'=>$id?get_post_field('post_name',$id):'','en_slug'=>$id?(string)get_post_meta($id,'_en_US_post_name',true):''];}
+
+/* Diagnose only non-secret routing metadata for account/vendor pages. */
+$pages=get_posts(['post_type'=>'page','post_status'=>['publish','draft','private','pending'],'posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC','suppress_filters'=>true]);
+foreach($pages as $p){
+    $hay=strtolower(remove_accents($p->post_name.' '.$p->post_title));
+    if(preg_match('/vendor|register|registro|producer|productor|wcfm|account|cuenta/', $hay)){
+        $out['special_routes']['candidate_pages'][]=['id'=>$p->ID,'status'=>$p->post_status,'slug'=>$p->post_name,'title'=>$p->post_title,'en_published'=>(string)get_post_meta($p->ID,'_en_US_published',true),'en_slug'=>(string)get_post_meta($p->ID,'_en_US_post_name',true),'en_title'=>wp_strip_all_tags((string)get_post_meta($p->ID,'_en_US_post_title',true))];
+    }
+}
+foreach(['wcfm_page_options','wcfmmp_page_options','wcfm_marketplace_options'] as $option_key){
+    $val=get_option($option_key,null); if(!is_array($val))continue;
+    $safe=[];
+    $walk=function($arr,$prefix='') use (&$walk,&$safe){foreach($arr as $k=>$v){$key=$prefix.(string)$k;if(is_array($v)){$walk($v,$key.'.');continue;}if(preg_match('/page|register|registration|vendor/i',$key) && (is_numeric($v)||is_string($v))){$s=(string)$v;if(strlen($s)<120)$safe[$key]=$s;}}};
+    $walk($val);$out['special_routes']['option_keys'][$option_key]=$safe;
+}
+if(function_exists('WC')&&WC()&&isset(WC()->query)){$out['special_routes']['wc_query_vars']=WC()->query->get_query_vars();}
 $out['summary']['object_issue_total']=count($out['objects']);$out['summary']['term_issue_total']=count($out['terms']);$out['summary']['attribute_issue_total']=count($out['attribute_issues']);
 echo wp_json_encode($out,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),"\n";
