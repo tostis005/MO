@@ -1,0 +1,78 @@
+name: Verify visible English category copy v14
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-english-category-copy-v14.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-categories-v14.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-categories-v14.txt
+          git commit -m 'Record English categories v14 run id'
+          git push origin HEAD:main
+      - name: Inspect visible category cards
+        run: |
+          set -euo pipefail
+          curl -k -fsSL --connect-timeout 15 --max-time 90 -A 'Mozilla/5.0 EMDO category verify' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/categorias/?emdo_cat=${GITHUB_RUN_ID}" -o /tmp/categories.html
+          python3 - <<'PY' > runtime/english-categories-v14.txt
+          import html, re
+          from html.parser import HTMLParser
+          text=open('/tmp/categories.html',encoding='utf-8',errors='replace').read()
+          class Parser(HTMLParser):
+              def __init__(self):
+                  super().__init__(); self.in_card=0; self.in_h2=0; self.in_summary=0; self.cards=[]; self.cur=None
+              def handle_starttag(self,tag,attrs):
+                  a=dict(attrs); cls=a.get('class','')
+                  if tag=='article' and 'emo-category-hub-card' in cls:
+                      self.in_card=1; self.cur={'slug':a.get('data-category-slug',''),'name':'','summary':''}
+                  elif self.in_card and tag=='h2': self.in_h2+=1
+                  elif self.in_card and tag=='p' and 'emo-category-hub-card__summary' in cls: self.in_summary+=1
+              def handle_endtag(self,tag):
+                  if self.in_card and tag=='h2' and self.in_h2: self.in_h2-=1
+                  elif self.in_card and tag=='p' and self.in_summary: self.in_summary-=1
+                  elif self.in_card and tag=='article': self.cards.append(self.cur); self.cur=None; self.in_card=0
+              def handle_data(self,data):
+                  if not self.cur:return
+                  if self.in_h2:self.cur['name']+=data
+                  if self.in_summary:self.cur['summary']+=data
+          p=Parser(); p.feed(text)
+          print('run_id=${{ github.run_id }}')
+          print('status=complete')
+          print('card_count='+str(len(p.cards)))
+          bad=False
+          for c in p.cards:
+              c={k:re.sub(r'\s+',' ',html.unescape(v)).strip() for k,v in c.items()}
+              print(f"CARD slug={c['slug']} | name={c['name']} | summary={c['summary']}")
+              combined=(c['name']+' '+c['summary']).lower()
+              if '<' in c['name'] or '>' in c['name'] or '&lt;' in c['name'].lower(): bad=True
+              if c['slug'] in ('mentta','menta'): bad=True
+          required=('Product categories','All categories','Choose a category','View category')
+          for s in required:
+              print('STATIC '+s+'='+('yes' if s in text else 'no'))
+              if s not in text: bad=True
+          print('html_leak='+('yes' if re.search(r'&(?:amp;)?lt;span\b',text,re.I) else 'no'))
+          if re.search(r'&(?:amp;)?lt;span\b',text,re.I): bad=True
+          print('mentta_visible='+('yes' if re.search(r'data-category-slug=["\']mentt?a["\']',text,re.I) else 'no'))
+          if bad: raise SystemExit(2)
+          PY
+          cat runtime/english-categories-v14.txt
+          git add runtime/english-categories-v14.txt
+          git commit -m 'Record visible English category copy v14'
+          git pull --rebase origin main
+          git push origin HEAD:main
