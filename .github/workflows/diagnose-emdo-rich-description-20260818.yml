@@ -1,0 +1,119 @@
+name: Diagnose EMDO rich descriptions in staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-emdo-rich-description-20260818.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?Missing STAGING_HOST}"
+          : "${STAGING_USER:?Missing STAGING_USER}"
+          : "${STAGING_PASSWORD:?Missing STAGING_PASSWORD}"
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inspect live scrape, stored payload and Woo description
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"
+          domain="$2"
+          wp_path=""
+          case "$raw" in
+            */wp-content/*) wp_path="${raw%%/wp-content/*}" ;;
+            */wp-content) wp_path="$(dirname "$raw")" ;;
+            *) wp_path="$raw" ;;
+          esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            candidates="$(mktemp)"
+            trap 'rm -f "$candidates"' EXIT
+            for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www; do
+              [ -d "$base" ] || continue
+              find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null >> "$candidates" || true
+            done
+            preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
+            [ -n "$preferred" ] || { echo "No WordPress installation found for ${domain}." >&2; exit 1; }
+            wp_path="$(dirname "$preferred")"
+          fi
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1 || true)"
+          fi
+          [ -n "$wp_bin" ] && [ -x "$php_bin" ]
+
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval '
+            global $wpdb;
+            $suppliers_table = MDO_Database::table("suppliers");
+            $products_table  = MDO_Database::table("source_products");
+            $summarize = static function(string $label, string $html): void {
+              $compact = trim(preg_replace("/\\s+/u", " ", $html));
+              echo $label . " len=" . strlen($html)
+                . " strong=" . preg_match_all("/<(?:strong|b)\\b/i", $html)
+                . " p=" . preg_match_all("/<p\\b/i", $html)
+                . " br=" . preg_match_all("/<br\\b/i", $html)
+                . " sample=" . mb_substr($compact, 0, 1400, "UTF-8") . "\n";
+            };
+            foreach (array("el-catedratico", "puente-robles") as $connector) {
+              echo "=== {$connector} ===\n";
+              $supplier = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$suppliers_table} WHERE connector=%s ORDER BY id ASC LIMIT 1", $connector), ARRAY_A);
+              if (!$supplier) { echo "supplier=missing\n"; continue; }
+              $like = "%cebo%campo%";
+              $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$products_table} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id ASC LIMIT 1", (int)$supplier["id"], $like, $like), ARRAY_A);
+              if (!$row) {
+                $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$products_table} WHERE supplier_id=%d AND status=\"active\" ORDER BY id ASC LIMIT 1", (int)$supplier["id"]), ARRAY_A);
+              }
+              if (!$row) { echo "product=missing\n"; continue; }
+              echo "source_id=" . (int)$row["id"] . " wc_id=" . (int)$row["wc_product_id"] . " title=" . $row["title"] . " url=" . $row["source_url"] . "\n";
+              $payload = json_decode((string)$row["source_payload"], true);
+              $stored = is_array($payload) ? (string)($payload["description"] ?? "") : "";
+              $woo = (int)$row["wc_product_id"] > 0 ? (string)get_post_field("post_content", (int)$row["wc_product_id"], "raw") : "";
+              $summarize("stored", $stored);
+              $summarize("woo", $woo);
+              try {
+                $live = MDO_Connector_Iberico_Family::scrape_product((string)$row["source_url"], $supplier);
+                $live = MDO_Text::normalize_product($live);
+                $summarize("live", (string)($live["description"] ?? ""));
+                echo "stored_hash=" . (string)$row["source_hash"] . " live_hash=" . (string)($live["source_hash"] ?? "") . " same_hash=" . (((string)$row["source_hash"] === (string)($live["source_hash"] ?? "")) ? "yes" : "no") . "\n";
+              } catch (Throwable $e) {
+                echo "live_error=" . $e->getMessage() . "\n";
+              }
+            }
+          ' --path="$wp_path" --allow-root
+          REMOTE
