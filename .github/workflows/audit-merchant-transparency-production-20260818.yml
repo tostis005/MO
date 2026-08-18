@@ -1,0 +1,107 @@
+name: Audit merchant transparency production 20260818
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-merchant-transparency-production-20260818.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect live WordPress marketplace transparency setup
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+          PROD_PATH="/var/www/vhosts/elmercadodeorigen.com/httpdocs"
+          remote() { sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "$@"; }
+
+          echo '=== SITE ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get siteurl --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+
+          echo '=== LANGUAGE / MARKETPLACE PLUGINS ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" plugin list --status=active --fields=name,version --format=csv --path='$PROD_PATH' --allow-root | grep -Ei 'polylang|wpml|wcfm|marketplace|woocommerce|stripe|redsys|paypal|mollie' || true"
+
+          echo '=== TARGET PAGES / TRANSLATIONS ==='
+          remote "cat > /tmp/emdo-audit-pages.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH')) exit;
+          $needles=['politica','condiciones-especiales','contacto','politica-de-cookies','politica-de-privacidad','privacidad','aviso-legal','envios','devoluciones','shipping','returns','legal-notice','privacy-policy','cookie-policy','terms-and-conditions'];
+          foreach($needles as $slug){
+            $p=get_page_by_path($slug,OBJECT,'page');
+            if(!$p) continue;
+            $lang=function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'';
+            $tr=function_exists('pll_get_post_translations')?pll_get_post_translations($p->ID):[];
+            echo wp_json_encode(['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>$lang,'translations'=>$tr],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          }
+          echo "-- all ES/EN pages likely legal/contact --\n";
+          $q=new WP_Query(['post_type'=>'page','post_status'=>['publish','draft','private'],'posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']);
+          foreach($q->posts as $p){
+            $hay=mb_strtolower($p->post_title.' '.$p->post_name);
+            if(!preg_match('/(pol[ií]tica|priv|cookie|term|condici|contact|legal|env[ií]o|shipping|return|devol|refund)/u',$hay)) continue;
+            $lang=function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'';
+            echo wp_json_encode(['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>$lang],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          }
+          PHP
+          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/emdo-audit-pages.php --path='$PROD_PATH' --allow-root; rm -f /tmp/emdo-audit-pages.php"
+
+          echo '=== MENU LOCATIONS ==='
+          remote "cat > /tmp/emdo-audit-menus.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH')) exit;
+          echo wp_json_encode(get_nav_menu_locations(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          foreach(wp_get_nav_menus() as $m){
+            $lang=function_exists('pll_get_term_language')?pll_get_term_language($m->term_id):'';
+            echo 'MENU '.wp_json_encode(['id'=>$m->term_id,'name'=>$m->name,'slug'=>$m->slug,'lang'=>$lang],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            foreach(wp_get_nav_menu_items($m->term_id)?:[] as $it){
+              echo '  ITEM '.wp_json_encode(['id'=>$it->ID,'title'=>$it->title,'url'=>$it->url,'object_id'=>$it->object_id,'menu_order'=>$it->menu_order],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            }
+          }
+          PHP
+          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/emdo-audit-menus.php --path='$PROD_PATH' --allow-root; rm -f /tmp/emdo-audit-menus.php"
+
+          echo '=== PUBLIC LEGAL IDENTITY HINTS ==='
+          remote "cat > /tmp/emdo-audit-identity.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH')) exit;
+          $q=new WP_Query(['post_type'=>'page','post_status'=>'publish','posts_per_page'=>-1]);
+          foreach($q->posts as $p){
+            $text=wp_strip_all_tags((string)$p->post_content);
+            if(preg_match('/\\b(?:NIF|CIF|DNI|tax\\s*id|fiscal)\\b/ui',$text) || preg_match('/Jos[eé]\\s+Antonio/ui',$text)){
+              $safe=preg_replace('/\\s+/u',' ',trim($text));
+              echo wp_json_encode(['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'excerpt'=>mb_substr($safe,0,900)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            }
+          }
+          PHP
+          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/emdo-audit-identity.php --path='$PROD_PATH' --allow-root; rm -f /tmp/emdo-audit-identity.php"
+
+          echo '=== FOOTER IMPLEMENTATION HINTS ==='
+          remote "grep -RniE 'footer|menu-footer|footer-menu|site-info' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' '$PROD_PATH/wp-content/themes/woostify-child' '$PROD_PATH/wp-content/mu-plugins' 2>/dev/null | head -250 || true"
+
+          echo '=== PUBLIC STATUS CHECKS ==='
+          for u in \
+            'https://www.elmercadodeorigen.com/politica/' \
+            'https://www.elmercadodeorigen.com/condiciones-especiales/' \
+            'https://www.elmercadodeorigen.com/contacto/' \
+            'https://www.elmercadodeorigen.com/en/' \
+            'https://www.elmercadodeorigen.com/en/cookie-policy/'; do
+            printf '%s ' "$u"
+            curl -k -L -sS -o /dev/null -w '%{http_code} %{url_effective}\n' --max-time 30 "$u" || true
+          done
