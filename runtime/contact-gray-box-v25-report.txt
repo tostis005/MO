@@ -1,0 +1,41 @@
+PAGES
+ID,post_title,post_name
+1514,"Contacto productores",contacto-productores
+1385,Contacto,contacto
+1142,Productores,productores
+ACTIVE_FORM_PLUGINS
+name,status
+contact-form-7-honeypot,active
+contact-form-7,active
+fluent-crm,active
+fluentcampaign-pro,active
+fluentform,active
+PAGE_CONTENTS
+---PAGE 1142 Productores /productores/---
+<!-- wp:paragraph -->
+<p>[wcfm_stores has_map="no" has_country="no" theme="compact"] </p>
+<!-- /wp:paragraph -->
+---PAGE 1385 Contacto /contacto/---
+<!-- wp:heading {"textAlign":"center","level":3} -->
+<h3 class="has-text-align-center">¿Qué podemos hacer por ti?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:html -->
+<br>
+<!-- /wp:html -->
+
+<!-- wp:shortcode -->
+[contact-form-7 id="1384" title="Formulario de contacto 1"]
+<!-- /wp:shortcode -->
+---PAGE 1514 Contacto productores /contacto-productores/---
+<!-- wp:heading {"align":"center","level":3} -->
+<h3 class="has-text-align-center">Déjanos tus datos y nos pondremos en contacto contigo</h3>
+<!-- /wp:heading -->
+
+<!-- wp:html -->
+<br>
+<!-- /wp:html -->
+
+<!-- wp:paragraph -->
+<p>[contact-form-7 id="1513" title="Formulario de contacto productor"]</p>
+<!-- /wp:paragraph -->
