@@ -12,17 +12,14 @@ jobs:
   audit:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Validate audit script
-        run: php -l .github/scripts/audit-merchant-transparency-20260818.php
-      - name: Inspect live WordPress marketplace transparency setup
+      - name: Inspect live WordPress data without loading plugins
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -32,7 +29,6 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -P $PORT"
           remote() { sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "$@"; }
           PROD_PATH="$(remote '
             wp_bin=$(command -v wp || true)
@@ -49,15 +45,28 @@ jobs:
           : "${PROD_PATH:?production path not found}"
           echo "PROD_PATH=$PROD_PATH"
 
-          echo '=== PLUGINS ==='
-          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" plugin list --status=active --fields=name,version --format=csv --path='$PROD_PATH' --allow-root | grep -Ei 'polylang|wpml|wcfm|marketplace|woocommerce|stripe|redsys|paypal|mollie|invoice|factur|pdf|cookie' || true"
+          echo '=== ACTIVE PLUGIN NAMES FROM OPTION ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" option get active_plugins --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root | grep -Eoi '[^\"/]*(polylang|wpml|wcfm|marketplace|woocommerce|stripe|redsys|paypal|mollie|invoice|factur|pdf|cookie)[^\"/]*' || true"
 
-          echo '=== WORDPRESS DATA ==='
-          REMOTE_SCRIPT="/tmp/emdo-audit-merchant-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/audit-merchant-transparency-20260818.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
-          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
+          echo '=== LEGAL / CONTACT PAGES ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" post list --post_type=page --post_status=publish,draft,private --posts_per_page=-1 --fields=ID,post_title,post_name,post_status --format=csv --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root | grep -Ei 'polit|priv|cookie|term|condici|contact|legal|env[ií]o|shipping|return|devol|refund' || true"
 
-          echo '=== PUBLIC URLS ==='
+          echo '=== STORE / ADMIN OPTIONS ==='
+          for k in woocommerce_store_address woocommerce_store_address_2 woocommerce_store_city woocommerce_store_postcode woocommerce_default_country admin_email; do
+            printf '%s=' "$k"
+            remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" option get '$k' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null || true"
+          done
+
+          echo '=== ADMIN USERS ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" user list --role=administrator --fields=ID,display_name,user_login --format=csv --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+
+          echo '=== NIF / CIF / VAT OPTION CANDIDATES ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" db query \"SELECT option_name, LEFT(option_value,500) AS option_value FROM wp_options WHERE option_name REGEXP '(nif|cif|vat|tax[_-]?id|fiscal)' AND option_name NOT REGEXP '(api|key|token|secret|password|credential)' LIMIT 100\" --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null || true"
+
+          echo '=== LANGUAGE RELATIONSHIPS FOR TARGET PAGES ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" db query \"SELECT p.ID,p.post_name,p.post_title,t.slug AS language FROM wp_posts p LEFT JOIN wp_term_relationships tr ON tr.object_id=p.ID LEFT JOIN wp_term_taxonomy tt ON tt.term_taxonomy_id=tr.term_taxonomy_id AND tt.taxonomy='language' LEFT JOIN wp_terms t ON t.term_id=tt.term_id WHERE p.post_type='page' AND p.post_status IN ('publish','draft','private') AND (p.post_name REGEXP 'polit|priv|cookie|term|condici|contact|legal|envio|shipping|return|devol|refund' OR p.post_title REGEXP 'Pol.tica|Privacy|Cookie|Terms|Condici|Contact|Legal|Env.o|Shipping|Return|Devol|Refund') ORDER BY p.ID\" --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null || true"
+
+          echo '=== PUBLIC URL STATUS ==='
           for u in 'https://www.elmercadodeorigen.com/politica/' 'https://www.elmercadodeorigen.com/condiciones-especiales/' 'https://www.elmercadodeorigen.com/contacto/' 'https://www.elmercadodeorigen.com/en/' 'https://www.elmercadodeorigen.com/en/cookie-policy/'; do
             printf '%s ' "$u"
             curl -k -L -sS -o /dev/null -w '%{http_code} %{url_effective}\n' --max-time 30 "$u" || true
