@@ -102,8 +102,8 @@ jobs:
         if: always()
         run: |
           git config user.name github-actions; git config user.email github-actions@github.com
-          git pull --rebase origin main
           printf 'run_id=%s\nstatus=complete\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v43.txt
           git add runtime/english-vendor-v43.txt runtime/english-vendor-redirects-v43.txt
-          git commit -m 'Record corrected English vendor redirect trace v43' || exit 0
+          git commit -m 'Record corrected English vendor redirect trace v43' || true
+          git pull --rebase origin main
           git push origin HEAD:main
