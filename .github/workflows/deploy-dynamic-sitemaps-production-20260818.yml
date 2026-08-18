@@ -3,6 +3,8 @@ name: Deploy dynamic sitemaps production
 on:
   issues:
     types: [opened]
+  pull_request:
+    types: [opened, synchronize]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'Run dynamic sitemap deploy 20260818'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && github.event.issue.title == 'Run dynamic sitemap deploy 20260818') || (github.event_name == 'pull_request' && github.event.pull_request.title == 'Run dynamic sitemap deploy 20260818')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -115,4 +117,8 @@ jobs:
         run: |
           set -euo pipefail
           verified="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          gh issue comment "${{ github.event.issue.number }}" --body "status=success\nsource_commit=$GITHUB_SHA\nworkflow_run=$GITHUB_RUN_ID\nverified_utc=$verified"
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            gh issue comment "${{ github.event.issue.number }}" --body "status=success\nsource_commit=$GITHUB_SHA\nworkflow_run=$GITHUB_RUN_ID\nverified_utc=$verified"
+          else
+            printf 'status=success\nsource_commit=%s\nworkflow_run=%s\nverified_utc=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$verified"
+          fi
