@@ -1,0 +1,34 @@
+name: Check Puente/Catedrático English fix status
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/check-puente-catedratico-fix-status-20260818.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Record target workflow status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/fix-puente-catedratico-prelaunch-en-20260818.yml/runs?per_page=5" > runtime/prelaunch-puente-catedratico-workflow-status-20260818.json
+      - name: Commit status
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add runtime/prelaunch-puente-catedratico-workflow-status-20260818.json
+          git commit -m 'Record Puente/Catedrático workflow status' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
