@@ -1,0 +1,60 @@
+name: List public producers v56
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/list-public-producers-20260818-v56.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  list:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Record run id
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/public-producers-v56.txt
+          git add runtime/public-producers-v56.txt
+          git commit -m 'Start public producer listing v56'
+          git push origin HEAD:main
+      - name: Inspect English producers page
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            curl -k -L -sS --connect-timeout 8 --max-time 35 https://www.elmercadodeorigen.com/en/producers/ -o /tmp/producers56
+            echo "=== store links ==="
+            grep -oE "https://www\.elmercadodeorigen\.com/en/store/[^\"'\'' ]+/?|/en/store/[^\"'\'' ]+/?|https://www\.elmercadodeorigen\.com/(tienda|store)/[^\"'\'' ]+/?" /tmp/producers56 | sed "s/[?#].*$//" | sort -u
+            echo "=== names around Visit Store ==="
+            grep -oiE ".{0,220}(Visit Store|Visit shop|View Store).{0,220}" /tmp/producers56 | sed "s/<[^>]*>/ /g" | sed "s/&[^;]*;/ /g" | tr -s " " | head -20
+          ' > runtime/public-producers-list-v56.txt 2>&1
+      - name: Commit listing
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          printf 'run_id=%s\nstatus=complete\n' "$GITHUB_RUN_ID" > runtime/public-producers-v56.txt
+          git add runtime/public-producers-v56.txt runtime/public-producers-list-v56.txt
+          git commit -m 'Record public producer listing v56' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
