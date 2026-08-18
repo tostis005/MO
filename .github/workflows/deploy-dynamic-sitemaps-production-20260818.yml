@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: php -l mu-plugins/mdo-a-dynamic-sitemaps.php
 
-      - name: Deploy sitemap MU-plugin to production
+      - name: Deploy sitemap MU-plugin and robots to production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -56,6 +56,7 @@ jobs:
           : "${PROD_PATH:?production path not found}"
           REMOTE_TMP="/tmp/mdo-a-dynamic-sitemaps-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-a-dynamic-sitemaps.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP"
+          sshpass -e scp $SCP_OPTIONS config/robots-production.txt "$STAGING_USER@$STAGING_HOST:$PROD_PATH/robots.txt"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             wp_bin=\$(command -v wp)
@@ -64,7 +65,7 @@ jobs:
             target='$PROD_PATH/wp-content/mu-plugins/mdo-a-dynamic-sitemaps.php'
             mkdir -p '$PROD_PATH/wp-content/mu-plugins'
             cp '$REMOTE_TMP' \"\$target\"
-            chmod 0644 \"\$target\"
+            chmod 0644 \"\$target\" '$PROD_PATH/robots.txt'
             rm -f '$REMOTE_TMP'
             \"\$php_bin\" -l \"\$target\"
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
