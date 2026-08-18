@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/mdo-instagram-publisher.php'
+      - 'mu-plugins/mdo-instagram-status.php'
       - '.github/workflows/deploy-instagram-publisher-production.yml'
   workflow_dispatch:
 
@@ -29,9 +30,10 @@ jobs:
         run: |
           set -euo pipefail
           php -l mu-plugins/mdo-instagram-publisher.php
+          php -l mu-plugins/mdo-instagram-status.php
           grep -Fq "EMDO_IG_APP_ID', '1387712023313615" mu-plugins/mdo-instagram-publisher.php
           grep -Fq "instagram_business_content_publish" <(printf '%s\n' 'instagram_business_content_publish')
-          if grep -Eiq 'IG[A-Z0-9]{20,}|access_token[[:space:]]*=[[:space:]]*[A-Za-z0-9_-]{30,}' mu-plugins/mdo-instagram-publisher.php; then
+          if grep -Eiq 'IG[A-Z0-9]{20,}|access_token[[:space:]]*=[[:space:]]*[A-Za-z0-9_-]{30,}' mu-plugins/mdo-instagram-publisher.php mu-plugins/mdo-instagram-status.php; then
             echo 'Possible secret found in source; refusing deployment.' >&2
             exit 8
           fi
@@ -43,7 +45,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
-      - name: Deploy MU plugin to production
+      - name: Deploy MU plugins to production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -67,9 +69,11 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          REMOTE_TMP="/tmp/mdo-instagram-publisher-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-instagram-publisher.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; cp '$REMOTE_TMP' '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-publisher.php'; chmod 0644 '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-publisher.php'; rm -f '$REMOTE_TMP'"
+          REMOTE_PUBLISHER="/tmp/mdo-instagram-publisher-${GITHUB_RUN_ID}.php"
+          REMOTE_STATUS="/tmp/mdo-instagram-status-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-instagram-publisher.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PUBLISHER"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-instagram-status.php "$STAGING_USER@$STAGING_HOST:$REMOTE_STATUS"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; cp '$REMOTE_PUBLISHER' '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-publisher.php'; cp '$REMOTE_STATUS' '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-status.php'; chmod 0644 '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-publisher.php' '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-status.php'; rm -f '$REMOTE_PUBLISHER' '$REMOTE_STATUS'"
 
       - name: Verify production integration
         shell: bash
@@ -89,4 +93,4 @@ jobs:
               case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac
             done
           ')"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-publisher.php'; \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'if (!function_exists(\"emdo_instagram_publish_image\")) { fwrite(STDERR, \"EMDO Instagram function missing\\n\"); exit(9); } echo \"EMDO_INSTAGRAM_READY\\n\";' --path='$PROD_PATH' --allow-root"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-publisher.php'; \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-instagram-status.php'; \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'if (!function_exists(\"emdo_instagram_publish_image\")) { fwrite(STDERR, \"EMDO Instagram function missing\\n\"); exit(9); } echo \"EMDO_INSTAGRAM_READY\\n\";' --path='$PROD_PATH' --allow-root"
