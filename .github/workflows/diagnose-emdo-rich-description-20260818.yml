@@ -1,4 +1,4 @@
-name: Diagnose EMDO rich descriptions in staging
+name: Measure EMDO rich description blocks in staging
 
 on:
   push:
@@ -20,13 +20,9 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
       STAGING_DOMAIN: dev.elmercadodeorigen.com
-
     steps:
       - uses: actions/checkout@v4
-      - name: Install SSH tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
       - name: Configure SSH
         shell: bash
         run: |
@@ -35,7 +31,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Inspect source DOM around description labels
+      - name: Measure candidates
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -44,86 +40,57 @@ jobs:
           mkdir -p diagnostics
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE' | tee diagnostics/emdo-rich-description-dom-staging.txt
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE' | tee diagnostics/emdo-rich-description-blocks-staging.txt
           set -eu
           raw="${1%/}"; domain="$2"; wp_path="$raw"
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; esac
           if [ ! -f "$wp_path/wp-config.php" ]; then
-            candidates="$(mktemp)"; trap 'rm -f "$candidates"' EXIT
-            for base in "$raw" "$HOME" /var/www /home /srv /opt /data /web /www; do
-              [ -d "$base" ] || continue
-              find "$base" -maxdepth 9 -type f -name wp-config.php ! -path '*/cache/*' ! -path '*/backup/*' ! -path '*/backups/*' 2>/dev/null >> "$candidates" || true
-            done
-            preferred="$(grep "/${domain}/wp-config.php$" "$candidates" | head -n 1 || true)"
-            [ -n "$preferred" ] || exit 2
-            wp_path="$(dirname "$preferred")"
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 2
+            wp_path="$(dirname "$cfg")"
           fi
-          wp_bin="$(command -v wp)"
-          php_bin="$(command -v php || true)"
+          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
           [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
           "$php_bin" -d memory_limit=768M "$wp_bin" eval '
             global $wpdb;
             remove_filter("http_response", array(MDO_Rich_Description_Source::class, "preserve"), 20);
-            $suppliers = MDO_Database::table("suppliers");
-            $products  = MDO_Database::table("source_products");
-            $queries = array(
-              "//*[@id=\"tab-description\"]",
-              "//*[@id=\"descripcion\"]",
-              "//*[@id=\"description\"]",
-              "//*[contains(concat(\" \", normalize-space(@class), \" \"), \" woocommerce-product-details__short-description \")]",
-              "//*[contains(translate(@class,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"product-description\")]",
-              "//*[contains(translate(@class,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"descripcion\")]",
-              "//*[contains(translate(@class,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"description\")]"
-            );
-            $node_info = static function(DOMNode $node): string {
-              if (!$node instanceof DOMElement) return "node=" . $node->nodeName;
-              $text = trim(preg_replace("/\\s+/u", " ", (string)$node->textContent));
-              $html = "";
-              foreach ($node->childNodes as $child) { $html .= $node->ownerDocument->saveHTML($child); }
-              return "tag=".$node->tagName." id=".$node->getAttribute("id")." class=".$node->getAttribute("class")." textlen=".mb_strlen($text)." fmt=".preg_match_all("/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6])\\b/i", $html)." text=".mb_substr($text,0,500,"UTF-8");
+            $st=MDO_Database::table("suppliers"); $pt=MDO_Database::table("source_products");
+            $inner=static function(DOMNode $n): string { $h=""; foreach($n->childNodes as $c){$h.=$n->ownerDocument->saveHTML($c);} return $h; };
+            $canon=static function(string $h): string {
+              $h=preg_replace("~</(?:strong|b|em|i|span|p|div|li|h[1-6])>|<(?:br|br/)\\s*>~iu", " ", $h);
+              $h=html_entity_decode(wp_strip_all_tags($h), ENT_QUOTES|ENT_HTML5, "UTF-8");
+              $h=str_replace(array("\xC2\xA0", "\u{00A0}"), " ", $h);
+              $h=trim(preg_replace("/\\s+/u", " ", $h));
+              return mb_strtolower($h, "UTF-8");
             };
-            foreach (array("el-catedratico", "puente-robles") as $connector) {
+            $ratio=static function(string $a,string $b) use($canon): float { $a=$canon($a);$b=$canon($b);$max=max(strlen($a),strlen($b)); if(!$max)return 1; return levenshtein(substr($a,0,2500),substr($b,0,2500))/max(1,min(2500,$max)); };
+            $describe=static function(string $name, DOMNode $n, string $json) use($inner,$canon,$ratio): void {
+              $h=$inner($n); $t=$canon($h); echo $name." tag=".$n->nodeName." id=".($n instanceof DOMElement?$n->getAttribute("id"):"")." class=".($n instanceof DOMElement?$n->getAttribute("class"):"")." textlen=".mb_strlen($t)." bytes=".strlen($h)." fmt=".preg_match_all("/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6])\\b/i",$h)." ratio=".number_format($ratio($json,$h),4)." sample=".mb_substr(trim(preg_replace("/\\s+/u"," ",$h)),0,550,"UTF-8")."\n";
+            };
+            foreach(array("el-catedratico","puente-robles") as $connector){
               echo "=== {$connector} ===\n";
-              $supplier = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$suppliers} WHERE connector=%s ORDER BY id ASC LIMIT 1", $connector), ARRAY_A);
-              if (!$supplier) { echo "supplier=missing\n"; continue; }
-              $like = "%cebo%campo%";
-              $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$products} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id ASC LIMIT 1", (int)$supplier["id"], $like, $like), ARRAY_A);
-              if (!$row) { echo "product=missing\n"; continue; }
-              $url = (string)$row["source_url"];
-              echo "url={$url}\n";
-              $r = wp_remote_get($url, array("timeout"=>20,"redirection"=>5,"user-agent"=>"EMDO Catalog Sync/".MDO_SUPPLIER_SYNC_VERSION." (+https://www.elmercadodeorigen.com/)","headers"=>array("Accept"=>"text/html,application/xhtml+xml")));
-              if (is_wp_error($r)) { echo "http_error=".$r->get_error_message()."\n"; continue; }
-              $body=(string)wp_remote_retrieve_body($r); echo "http=".wp_remote_retrieve_response_code($r)." bytes=".strlen($body)."\n";
-              $dom=new DOMDocument(); $prev=libxml_use_internal_errors(true); $ok=$dom->loadHTML("<?xml encoding=\"utf-8\" ?>".$body, LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET); libxml_clear_errors(); libxml_use_internal_errors($prev);
-              if (!$ok) { echo "dom=failed\n"; continue; }
-              $xp=new DOMXPath($dom);
-              foreach ($queries as $i=>$q) {
-                $nodes=$xp->query($q); echo "candidate_q{$i}_count=".($nodes?$nodes->length:0)."\n";
-                if ($nodes) { for ($n=0;$n<min(5,$nodes->length);$n++) echo " q{$i}[{$n}] ".$node_info($nodes->item($n))."\n"; }
-              }
-              $labels=$xp->query("//text()[contains(translate(.,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"recomendaciones\") or contains(translate(.,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"peso\")]");
-              echo "label_text_nodes=".($labels?$labels->length:0)."\n";
-              $seen=0;
-              foreach ($labels ?: array() as $textNode) {
-                $rawText=trim(preg_replace("/\\s+/u"," ",(string)$textNode->nodeValue));
-                if ($rawText==="" || mb_strlen($rawText)>180) continue;
-                echo " label_text=".$rawText."\n";
-                $p=$textNode->parentNode;
-                for ($level=0; $p && $level<4; $level++, $p=$p->parentNode) {
-                  if ($p instanceof DOMElement) echo "  ancestor{$level} ".$node_info($p)."\n";
-                }
-                if (++$seen>=20) break;
+              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id LIMIT 1",$connector),ARRAY_A); if(!$s){echo "missing supplier\n";continue;}
+              $like="%cebo%campo%"; $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id LIMIT 1",(int)$s["id"],$like,$like),ARRAY_A); if(!$row){echo "missing product\n";continue;}
+              $r=wp_remote_get((string)$row["source_url"],array("timeout"=>20,"redirection"=>5,"user-agent"=>"EMDO Catalog Sync/".MDO_SUPPLIER_SYNC_VERSION." (+https://www.elmercadodeorigen.com/)","headers"=>array("Accept"=>"text/html,application/xhtml+xml")));
+              $body=(string)wp_remote_retrieve_body($r); $d=new DOMDocument();$p=libxml_use_internal_errors(true);$d->loadHTML("<?xml encoding=\"utf-8\" ?>".$body,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET);libxml_clear_errors();libxml_use_internal_errors($p);$x=new DOMXPath($d);
+              $json=""; foreach($x->query("//script[contains(translate(@type,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"ld+json\")]")?:array() as $sc){$a=json_decode(trim((string)$sc->textContent),true);$walk=function($v) use (&$walk,&$json){if(!is_array($v))return;$type=$v["@type"]??null;$types=is_array($type)?$type:array($type);if(in_array("Product",$types,true)&&isset($v["description"])&&$json==="")$json=(string)$v["description"];foreach($v as $vv)if(is_array($vv))$walk($vv);};if(is_array($a))$walk($a);}
+              echo "json textlen=".mb_strlen($canon($json))." sample=".mb_substr($canon($json),0,500,"UTF-8")."\n";
+              $qs=$connector==="el-catedratico"?array("//*[@id=\"descripcion\"]"):array("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \(")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" otros \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" bloque \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" descripcion \ ")]");
+              foreach($qs as $qi=>$q){$nodes=@$x->query($q);if(!$nodes)continue;echo "q{$qi}_count=".$nodes->length."\n";for($i=0;$i<min(12,$nodes->length);$i++)$describe("q{$qi}[{$i}]",$nodes->item($i),$json);}
+              if($connector==="puente-robles"){
+                $ad=$x->query("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]");
+                foreach($ad?:array() as $ai=>$node){echo "adicional[$ai] children:\n";foreach($node->childNodes as $ci=>$child){if($child instanceof DOMElement)$describe(" child{$ci}",$child,$json);}}
               }
             }
           ' --path="$wp_path" --allow-root
           REMOTE
-      - name: Commit diagnostic result
+      - name: Commit diagnostic
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add diagnostics/emdo-rich-description-dom-staging.txt
+          git add diagnostics/emdo-rich-description-blocks-staging.txt
           git diff --cached --quiet && exit 0
-          git commit -m 'Record EMDO rich description DOM diagnostics'
+          git commit -m 'Record EMDO rich description block measurements'
           git push
