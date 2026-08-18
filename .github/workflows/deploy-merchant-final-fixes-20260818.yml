@@ -1,0 +1,104 @@
+name: Deploy Merchant final fixes 20260818
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'mu-plugins/mdo-merchant-consistency-20260818.php'
+      - '.github/workflows/deploy-merchant-final-fixes-20260818.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP
+        run: php -l mu-plugins/mdo-merchant-consistency-20260818.php
+
+      - name: Deploy and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTS=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$PORT")
+          SCP_OPTS=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -P "$PORT")
+          remote(){ sshpass -e ssh "${SSH_OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "$@"; }
+
+          PROD_PATH="$(remote '
+            wp=$(command -v wp || true); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 8 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?site not found}"
+          echo "PROD_PATH=$PROD_PATH"
+
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-merchant-consistency-20260818.php"
+          BACKUP_DIR="$(remote 'mkdir -p "$HOME/mdo-backups"; printf "%s" "$HOME/mdo-backups"')"
+          TAG="${GITHUB_RUN_ID}-$(date -u +%Y%m%dT%H%M%SZ)"
+          remote "if [ -f '$TARGET' ]; then cp '$TARGET' '$BACKUP_DIR/mdo-merchant-consistency-$TAG.php'; fi"
+
+          TMP="/tmp/mdo-merchant-consistency-$TAG.php"
+          sshpass -e scp "${SCP_OPTS[@]}" mu-plugins/mdo-merchant-consistency-20260818.php "$STAGING_USER@$STAGING_HOST:$TMP"
+          remote "ph=\$(command -v php||true); [ -n \"\$ph\" ]||ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -l '$TMP'; install -m 0644 '$TMP' '$TARGET'; rm -f '$TMP'"
+
+          echo '=== Clean invalid stored EAN/GTIN values ==='
+          remote "wp=\$(command -v wp); ph=\$(command -v php||true); [ -n \"\$ph\" ]||ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -d memory_limit=1024M \"\$wp\" eval 'echo wp_json_encode(mdo_mc_clean_invalid_eans(), JSON_UNESCAPED_SLASHES), PHP_EOL;' --path='$PROD_PATH' --allow-root"
+
+          remote "wp=\$(command -v wp); ph=\$(command -v php||true); [ -n \"\$ph\" ]||ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -d memory_limit=1024M \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          echo '=== Verify no invalid _alg_ean remains ==='
+          invalid=$(remote "wp=\$(command -v wp); ph=\$(command -v php||true); [ -n \"\$ph\" ]||ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -d memory_limit=1024M \"\$wp\" eval '\$ids=get_posts([\"post_type\"=>[\"product\",\"product_variation\"],\"post_status\"=>\"any\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"suppress_filters\"=>true]); \$bad=[]; foreach(\$ids as \$id){\$v=trim((string)get_post_meta(\$id,\"_alg_ean\",true)); if(\$v!==\"\" && !mdo_mc_gtin_is_valid(\$v)) \$bad[(int)\$id]=\$v;} echo wp_json_encode(\$bad);' --path='$PROD_PATH' --allow-root 2>/dev/null")
+          echo "invalid_remaining=$invalid"
+          test "$invalid" = '[]' || test "$invalid" = '{}'
+
+          echo '=== Verify Spanish homepage ==='
+          curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/es.html
+          grep -Fq 'CONDICIONES DE ENVÍO POR PRODUCTOR' /tmp/es.html
+          grep -Fq 'ENVÍOS DIRECTOS DEL PRODUCTOR' /tmp/es.html
+          grep -Fq 'ASISTENCIA EN DEVOLUCIONES' /tmp/es.html
+          grep -Fq 'ATENCIÓN Y SEGUIMIENTO' /tmp/es.html
+          grep -Fq 'Marketplace operado por' /tmp/es.html
+          ! grep -Fq 'ENVÍOS EN 24-48H' /tmp/es.html
+          ! grep -Fq 'DEVOLUCIÓN FÁCIL Y SENCILLA' /tmp/es.html
+
+          echo '=== Verify English homepage ==='
+          curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/en/' -o /tmp/en.html
+          echo '-- English claim snippets --'
+          grep -oiE '.{0,120}(SHIPPING TERMS BY PRODUCER|DIRECT SHIPPING BY PRODUCERS|RETURNS SUPPORT|CUSTOMER SUPPORT|24.{0,8}48H DELIVERY|EASY RETURNS|Marketplace operated by).{0,180}' /tmp/en.html | head -80 || true
+          grep -Fq 'SHIPPING TERMS BY PRODUCER' /tmp/en.html
+          grep -Fq 'DIRECT SHIPPING BY PRODUCERS' /tmp/en.html
+          grep -Fq 'RETURNS SUPPORT' /tmp/en.html
+          grep -Fq 'CUSTOMER SUPPORT' /tmp/en.html
+          grep -Fq 'Marketplace operated by' /tmp/en.html
+          if grep -Fq '24–48H DELIVERY' /tmp/en.html || grep -Fq '24-48H DELIVERY' /tmp/en.html || grep -Fq 'EASY RETURNS' /tmp/en.html; then
+            echo 'A legacy English shipping/returns claim is still present.'
+            exit 1
+          fi
+
+          echo '=== Verify policy pages still public ==='
+          for u in \
+            'https://www.elmercadodeorigen.com/envios/' \
+            'https://www.elmercadodeorigen.com/devoluciones-y-reembolsos/' \
+            'https://www.elmercadodeorigen.com/aviso-legal/' \
+            'https://www.elmercadodeorigen.com/en/shipping/' \
+            'https://www.elmercadodeorigen.com/en/returns-refunds/' \
+            'https://www.elmercadodeorigen.com/en/legal-notice/'; do
+            code=$(curl -k -L -sS -o /dev/null -w '%{http_code}' --max-time 45 "$u")
+            echo "$code $u"
+            test "$code" = 200
+          done
+          echo 'Final Merchant consistency fixes verified.'
