@@ -14,7 +14,6 @@ samples=[
 'Lomo procedente de un cerdo de pura raza ibérica, alimentado con bellota, hierba y otros recursos de la dehesa y criado en libertad, con la garantía de Hidalgo de la Jara.'
 ]
 
-# Longest/specific phrases first. Placeholders contain only letters/digits because MT engines preserve them more reliably.
 GLOSSARY=[
  ('jamón de bellota 100% ibérico','100% Iberian acorn-fed ham'),
  ('jamón de bellota ibérico','Iberian acorn-fed ham'),
@@ -43,42 +42,30 @@ GLOSSARY=[
 ]
 
 def protect(s):
-    repl={}
-    n=1
+    repl={};n=1
     for src,en in GLOSSARY:
         pat=re.compile(r'\b'+re.escape(src)+r'\b',re.I)
         while pat.search(s):
             token=f'ZZTERM{n}ZZ'
-            s=pat.sub(token,s,count=1)
-            repl[token]=en
-            n+=1
+            s=pat.sub(token,s,count=1);repl[token]=en;n+=1
     return s,repl
 
 def restore(s,repl):
-    for token,en in repl.items():
-        # tolerate spaces the engine may insert around token characters only if exact token survives first
-        s=s.replace(token,en)
+    for token,en in repl.items(): s=s.replace(token,en)
     return s
 
-tr=GoogleTranslator(source='es',target='en')
 def translate(s):
-    protected,repl=protect(s)
-    last=None
+    protected,repl=protect(s);last=None
     for attempt in range(4):
         try:
-            out=tr.translate(protected)
-            if out:
-                return protected,restore(out,repl)
+            out=GoogleTranslator(source='es',target='en').translate(protected)
+            if out: return protected,restore(out,repl)
         except Exception as e:
-            last=e;time.sleep(1.5*(attempt+1));tr=GoogleTranslator(source='es',target='en')
+            last=e;time.sleep(1.5*(attempt+1))
     raise last or RuntimeError('no translation')
 
 for i,s in enumerate(samples,1):
-    print(f'--- SAMPLE {i} ---')
-    print('ES:',s)
+    print(f'--- SAMPLE {i} ---');print('ES:',s)
     try:
-        protected,en=translate(s)
-        print('PROTECTED:',protected)
-        print('EN:',en)
-    except Exception as e:
-        print('ERROR:',type(e).__name__,str(e))
+        protected,en=translate(s);print('PROTECTED:',protected);print('EN:',en)
+    except Exception as e: print('ERROR:',type(e).__name__,str(e))
