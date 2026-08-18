@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Storefront Stability
  * Description: Keeps English pages server-rendered from persisted translations and removes browser-side translation/catalog expansion.
- * Version: 1.2.0
+ * Version: 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -18,6 +18,20 @@ function mdoes_english_request_010258(): bool {
 	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
 	$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
 	return 1 === preg_match( '#^/en(?:/|$)#i', $path );
+}
+
+/** Read only persisted English UI copy from wp_options. */
+function mdoes_persisted_english_ui_map_010258(): array {
+	$stored = get_option( 'elmercado_en_ui_copy_010245', array() );
+	return is_array( $stored ) ? $stored : array();
+}
+
+/** Return a persisted translation, otherwise leave the source untouched. */
+function mdoes_persisted_english_ui_copy_010258( string $source ): string {
+	$map = mdoes_persisted_english_ui_map_010258();
+	return isset( $map[ $source ] ) && '' !== trim( (string) $map[ $source ] )
+		? (string) $map[ $source ]
+		: $source;
 }
 
 /** TranslatePress must not scan/rewrite the English DOM in the browser. */
@@ -48,6 +62,44 @@ function mdoes_remove_inline_script_by_id_010258( string $html, string $id ): st
 		'',
 		$html
 	);
+}
+
+/**
+ * Replace hard-coded storefront UI literals before HTML reaches the browser.
+ * Every target translation is read from the persisted wp_options map.
+ */
+function mdoes_render_persisted_english_ui_010258( string $html ): string {
+	$source_strings = array(
+		'Recomendados',
+		'Más populares',
+		'Mejor valorados',
+		'Más recientes',
+		'Menor precio',
+		'Mayor precio',
+		'Filtros',
+		'Cerrar menú',
+		'Buscar productos',
+		'Buscar',
+		'Ordenar por',
+		'resultado',
+		'resultados',
+		'producto',
+		'productos',
+	);
+
+	$replace = array();
+	foreach ( $source_strings as $source ) {
+		$translated = mdoes_persisted_english_ui_copy_010258( $source );
+		if ( $translated !== $source ) {
+			$replace[ $source ] = $translated;
+		}
+	}
+
+	if ( $replace ) {
+		$html = strtr( $html, $replace );
+	}
+
+	return $html;
 }
 
 /**
@@ -89,6 +141,9 @@ function mdoes_stabilize_english_catalog_html_010258( string $html ): string {
 
 	/* Current catalogue scroller: it fetches and appends pages automatically. */
 	$html = mdoes_remove_inline_script_by_id_010258( $html, 'elmercado-catalog-scroll-final-010234' );
+
+	/* Render remaining hard-coded interface literals from the database before delivery. */
+	$html = mdoes_render_persisted_english_ui_010258( $html );
 
 	/* Stop loader-only CSS from hiding the ordinary HTML pagination. */
 	$html = (string) preg_replace_callback(
