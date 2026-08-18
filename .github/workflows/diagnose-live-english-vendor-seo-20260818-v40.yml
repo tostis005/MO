@@ -1,0 +1,84 @@
+name: Diagnose live English vendor SEO v40
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-live-english-vendor-seo-20260818-v40.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v40.txt
+          git add runtime/english-vendor-v40.txt
+          git commit -m 'Start English vendor diagnostic v40'
+          git push
+      - name: Inspect production locally
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set +e
+            echo '=== FILE ==='
+            php -l '$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php' 2>&1
+            ls -l '$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php'
+            echo '=== META ==='
+            wpbin=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$ph\" \"\$wpbin\" eval 'global \$wpdb; \$p=get_page_by_path(\"categorias\"); echo \"categories_id=\".(\$p?\$p->ID:0).\" en_slug=\".(\$p?get_post_meta(\$p->ID,\"_en_US_post_name\",true):\"\").PHP_EOL; foreach(\$wpdb->get_results(\"SELECT user_id,meta_value FROM {\$wpdb->usermeta} WHERE meta_key=\\\"wcfmmp_profile_settings\\\"\",ARRAY_A) as \$r){\$s=maybe_unserialize(\$r[\"meta_value\"]); if(!is_array(\$s)||empty(\$s[\"store_slug\"]))continue; \$id=(int)\$r[\"user_id\"]; \$en=(string)get_user_meta(\$id,\"_mdo_en_store_description\",true); \$src=(string)get_user_meta(\$id,\"_store_description\",true); if(!trim(wp_strip_all_tags(\$src)))\$src=(string)(\$s[\"shop_description\"]??\"\"); \$pc=(int)\$wpdb->get_var(\$wpdb->prepare(\"SELECT COUNT(*) FROM {\$wpdb->posts} WHERE post_type=\\\"product\\\" AND post_status=\\\"publish\\\" AND post_author=%d\",\$id)); echo \"store=\".\$s[\"store_slug\"].\" id=\".\$id.\" products=\".\$pc.\" es_chars=\".mb_strlen(trim(wp_strip_all_tags(\$src))).\" en_chars=\".mb_strlen(trim(wp_strip_all_tags(\$en))).PHP_EOL; }' --path='$PROD_PATH' --allow-root 2>&1
+            echo '=== CURL ==='
+            for u in \
+              https://www.elmercadodeorigen.com/en/categories/ \
+              https://www.elmercadodeorigen.com/en/categorias/ \
+              https://www.elmercadodeorigen.com/en/store/1957/ \
+              https://www.elmercadodeorigen.com/en/store/1957/about/ \
+              https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/ \
+              https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/ \
+              https://www.elmercadodeorigen.com/en/tienda/1957/; do
+              echo \"--- \$u\"
+              rm -f /tmp/mdo-h /tmp/mdo-b
+              curl -k -sS --connect-timeout 8 --max-time 25 -D /tmp/mdo-h -o /tmp/mdo-b -w 'status=%{http_code} time=%{time_total} bytes=%{size_download} final=%{url_effective}\\n' \"\$u\"
+              rc=\$?; echo \"curl_rc=\$rc\"
+              grep -iE '^(HTTP/|location:)' /tmp/mdo-h 2>/dev/null | tail -4
+              if [ -f /tmp/mdo-b ]; then
+                echo \"body_bytes=\$(wc -c </tmp/mdo-b) product_links=\$(grep -oE '/en/product/[^\\\" <]+' /tmp/mdo-b | sort -u | wc -l) policies=\$(grep -oiE '>[[:space:]]*Policies[[:space:]]*<' /tmp/mdo-b | wc -l) about1957=\$(grep -oi 'The story of' /tmp/mdo-b | wc -l) abouthidalgo=\$(grep -oi 'livestock farmers' /tmp/mdo-b | wc -l)\"
+                grep -oE '<title>[^<]+' /tmp/mdo-b | head -1
+              fi
+            done
+            echo '=== PHP ERRORS TAIL ==='
+            tail -n 80 '$PROD_PATH/wp-content/debug.log' 2>/dev/null || true
+          " > runtime/english-vendor-live-v40.txt 2>&1
+      - name: Commit diagnostic regardless of probe state
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase
+          printf 'run_id=%s\nstatus=complete\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v40.txt
+          git add runtime/english-vendor-v40.txt runtime/english-vendor-live-v40.txt
+          git commit -m 'Record English vendor live diagnostic v40' || exit 0
+          git push
