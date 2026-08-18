@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Vendor SEO
  * Description: Clean English WCFM store routes, persisted English store descriptions, SEO redirects and policy-tab cleanup.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
