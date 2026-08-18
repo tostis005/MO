@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Vendor SEO
  * Description: Clean English WCFM store routes, persisted English store descriptions, SEO redirects and policy-tab cleanup.
- * Version: 1.0.3
+ * Version: 1.0.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -51,6 +51,8 @@ function mdoev_bootstrap_store_route_010260(): void {
 		$internal = '/en/tienda/' . mdoev_store_slug_010260( $m[1] ) . '/acercade/';
 	} elseif ( preg_match( '#^en/store/([^/]+)/page/(\d+)$#i', $path, $m ) ) {
 		$internal = '/en/tienda/' . mdoev_store_slug_010260( $m[1] ) . '/page/' . max( 1, (int) $m[2] ) . '/';
+	} elseif ( preg_match( '#^en/store/([^/]+)$#i', $path, $m ) ) {
+		$internal = '/en/tienda/' . mdoev_store_slug_010260( $m[1] ) . '/';
 	}
 
 	if ( '' === $internal ) {
