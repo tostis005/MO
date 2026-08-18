@@ -34,17 +34,37 @@ function elmercado_home_category_output_html_010226(): string {
 	);
 
 	$default_id = (int) get_option( 'default_product_cat' );
+	$is_english = function_exists( 'elmercado_is_english_request_010245' ) && elmercado_is_english_request_010245();
 	$items      = array();
 	foreach ( (array) $rows as $row ) {
 		$term_id = isset( $row->term_id ) ? absint( $row->term_id ) : 0;
 		$count   = max( 0, (int) ( $counts[ $term_id ] ?? 0 ) );
+		$slug    = sanitize_title( (string) ( $row->slug ?? '' ) );
 		if ( $term_id <= 0 || $term_id === $default_id || $count <= 0 ) {
 			continue;
 		}
+
+		/* Mentta is a private synchronization category, never a storefront category. */
+		if ( in_array( $slug, array( 'mentta', 'menta' ), true ) ) {
+			continue;
+		}
+
+		$name = (string) ( $row->name ?? '' );
+		if ( $is_english ) {
+			if ( '1' !== (string) get_term_meta( $term_id, '_en_US_published', true ) ) {
+				continue;
+			}
+			$name = trim( (string) get_term_meta( $term_id, '_en_US_name', true ) );
+			if ( '' === $name ) {
+				/* Do not show untranslated Spanish category labels on /en/. */
+				continue;
+			}
+		}
+
 		$items[] = array(
 			'id'    => $term_id,
-			'name'  => (string) ( $row->name ?? '' ),
-			'slug'  => (string) ( $row->slug ?? '' ),
+			'name'  => $name,
+			'slug'  => $slug,
 			'count' => $count,
 		);
 	}
@@ -79,10 +99,12 @@ function elmercado_home_category_output_html_010226(): string {
 		$image         = $thumbnail_id ? wp_get_attachment_image_url( $thumbnail_id, 'woocommerce_thumbnail' ) : '';
 		$style         = $image ? ' style="--emo-category-image:url(' . esc_url( $image ) . ')"' : '';
 		$count         = (int) $item['count'];
-		$label         = sprintf(
-			esc_html( _n( '%s producto', '%s productos', $count, 'elmercadodeorigen' ) ),
-			number_format_i18n( $count )
-		);
+		if ( $is_english && function_exists( 'elmercado_ui_copy_010245' ) ) {
+			$count_format = elmercado_ui_copy_010245( 1 === $count ? '%s producto' : '%s productos' );
+		} else {
+			$count_format = _n( '%s producto', '%s productos', $count, 'elmercadodeorigen' );
+		}
+		$label = sprintf( esc_html( $count_format ), number_format_i18n( $count ) );
 
 		$html .= '<a class="emo-category-card" href="' . esc_url( $link ) . '"' . $style . '>';
 		$html .= '<span class="emo-category-card__media" aria-hidden="true"></span>';
