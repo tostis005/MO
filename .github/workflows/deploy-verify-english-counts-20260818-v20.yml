@@ -1,0 +1,64 @@
+name: Deploy verify English counts v20
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-verify-english-counts-20260818-v20.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-counts-v20.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-counts-v20.txt; git commit -m 'Record English counts v20 run id'; git push origin HEAD:main
+      - name: Deploy stability plugin
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-english-storefront-stability-010258.php
+          sudo apt-get update -qq; sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done')"
+          : "${PROD_PATH:?production path not found}"
+          $SCP mu-plugins/mdo-english-storefront-stability-010258.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-storefront-stability-010258.php"
+          PHP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v php || find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1")"; WP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v wp")"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -l '$PROD_PATH/wp-content/mu-plugins/mdo-english-storefront-stability-010258.php'"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true"
+      - name: Verify Chrome English UI and stability
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-v20-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9225 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-v20-profile about:blank >/tmp/chrome-v20.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9225/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9225/json/list')).json();const t=targets.find(x=>x.type==='page');const ws=new WebSocket(t.webSocketDebuggerUrl);await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable');await cmd('Runtime.enable');await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/?emdo_v20='+process.env.GITHUB_RUN_ID});
+            const expr=`(() => { const spanish=/\\b(categor[ií]as?|productos?|resultado[s]?|mostrando|ordenar|recomendados|m[aá]s populares|mejor valorados|m[aá]s recientes|menor precio|mayor precio|filtros?|filtrar|vendedor|buscar|tienda|a[nñ]adir|carrito|comprar|selecci[oó]n|env[ií]o|cerrar|limpiar|aplicados|proveedor|aplicar|anterior|siguiente|p[aá]gina)\\b/i; const bad=[]; const seen=new Set(); for(const el of document.querySelectorAll('body *')){if(el.closest('script,style,svg,template,noscript,li.product,.product')||el.children.length)continue;const vals=[el.textContent||'',el.getAttribute?.('aria-label')||'',el.getAttribute?.('placeholder')||'',el.getAttribute?.('title')||''];for(const raw of vals){const s=String(raw).replace(/\\s+/g,' ').trim();if(!s||s.length>180||!spanish.test(s))continue;const k=el.tagName+'|'+s;if(!seen.has(k)){seen.add(k);bad.push(k);}}}return {readyState:document.readyState,nodes:document.getElementsByTagName('*').length,products:document.querySelectorAll('li.product').length,heap:(performance.memory||{}).usedJSHeapSize||0,bad,filterCounts:[...document.querySelectorAll('.emo-filter-count-shared-010229')].map(x=>(x.textContent||'').trim())};})()`;
+            const snaps=[];for(let i=0;i<3;i++){await sleep(6000);const r=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},10000);const v=r.result.value;snaps.push(v);console.log('SNAP',i+1,JSON.stringify(v));}
+            const a=snaps[0],b=snaps[2];if(b.bad.length)throw new Error('Spanish UI remains: '+JSON.stringify(b.bad));if(b.products>a.products+2||b.nodes>a.nodes+2000||b.heap>350000000)throw new Error('unstable shop');console.log('ENGLISH_SHOP_FINAL_OK');ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Record success
+        run: |
+          printf 'run_id=%s\nstatus=success\nenglish_ui_clean=true\nchrome_responsive=true\n' "$GITHUB_RUN_ID" > runtime/english-counts-v20.txt
+          git add runtime/english-counts-v20.txt; git commit -m 'Record successful English counts v20'; git pull --rebase origin main; git push origin HEAD:main
