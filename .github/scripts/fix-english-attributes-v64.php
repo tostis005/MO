@@ -53,7 +53,7 @@ if ( function_exists( 'wc_get_attribute_taxonomies' ) ) {
 			$clean = preg_replace( '/(?<=\d)\s*Kg\b/u', ' kg', (string) $clean );
 			$clean = preg_replace( '/\bDOP\b/u', 'PDO', (string) $clean );
 			$clean = preg_replace( '/\s+con\s+PDO\b/iu', ', PDO', (string) $clean );
-			$clean = preg_replace( '/(?<=\d(?:\.\d)?)-(?=\d)/u', '–', (string) $clean );
+			$clean = preg_replace( '/(\d(?:\.\d+)?)-(?=\d)/u', '$1–', (string) $clean );
 			if ( is_string( $clean ) && $clean !== $plain ) {
 				if ( ! isset( $backup[ $id ]['_en_US_name'] ) ) { $backup[ $id ]['_en_US_name'] = $en_name; }
 				$en_name = '<span data-no-translation>' . esc_html( $clean ) . '</span>';
