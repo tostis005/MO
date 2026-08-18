@@ -1,0 +1,93 @@
+name: Validate clean EMDO descriptions on staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-emdo-rich-description-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      STAGING_DOMAIN: dev.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rsync sshpass
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Deploy and validate
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          WP_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; domain="$2"; wp_path="$raw"
+          case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; esac
+          if [ ! -f "$wp_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || exit 2
+            wp_path="$(dirname "$cfg")"
+          fi
+          printf '%s' "$wp_path"
+          REMOTE
+          )"
+          test -n "$WP_PATH"
+          TARGET="${WP_PATH%/}/wp-content/plugins/mdo-supplier-sync/"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$TARGET'"
+          sshpass -e rsync -az --delete -e "ssh $SSH_OPTIONS" mdo-supplier-sync/ "$STAGING_USER@$STAGING_HOST:$TARGET"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$WP_PATH'" <<'REMOTE' | tee diagnostics/emdo-rich-description-validation-v2.txt
+          set -eu
+          wp_path="$1"; wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin activate mdo-supplier-sync --path="$wp_path" --allow-root >/dev/null
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval '
+            global $wpdb;
+            $st=MDO_Database::table("suppliers");$pt=MDO_Database::table("source_products");$failed=false;
+            foreach(array("el-catedratico","puente-robles") as $connector){
+              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id ASC LIMIT 1",$connector),ARRAY_A);if(!$s){echo "{$connector}: supplier_missing\n";$failed=true;continue;}
+              $like="%cebo%campo%";$row=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id ASC LIMIT 1",(int)$s["id"],$like,$like),ARRAY_A);if(!$row){echo "{$connector}: target_missing\n";$failed=true;continue;}
+              try{$p=MDO_Text::normalize_product(MDO_Connector_Iberico_Family::scrape_product((string)$row["source_url"],$s));}catch(Throwable $e){echo "{$connector}: error=".$e->getMessage()."\n";$failed=true;continue;}
+              $h=(string)($p["description"]??"");$plain=wp_strip_all_tags($h);$strong=preg_match_all("/<strong\\b/i",$h);$pars=preg_match_all("/<p\\b/i",$h);$bad=array();
+              foreach(array("PesoPiezas","PesoOfrecemos","RecomendacionesPara","RecomendacionesRetirar","EnvíoCada","CertificaciónNuestros") as $needle){if(stripos($plain,$needle)!==false)$bad[]=$needle;}
+              $unbalanced=(substr_count(strtolower($h),"<strong")!==substr_count(strtolower($h),"</strong>"))||(substr_count(strtolower($h),"<p")!==substr_count(strtolower($h),"</p>"));
+              echo "{$connector}: bytes=".strlen($h)." strong={$strong} p={$pars} balanced=".($unbalanced?"no":"yes")." bad=".implode(",",$bad)." hash=".(string)($p["source_hash"]??"")."\n";
+              echo "{$connector}: sample=".mb_substr(trim(preg_replace("/\\s+/u"," ",$h)),0,1600,"UTF-8")."\n";
+              if($strong<2||$pars<5||$bad||$unbalanced||stripos($plain,"Peso")===false||stripos($plain,"Recomendaciones")===false){$failed=true;}
+            }
+            if($failed){throw new RuntimeException("Semantic description validation failed");}
+          ' --path="$wp_path" --allow-root
+          REMOTE
+      - name: Commit result
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f diagnostics/emdo-rich-description-validation-v2.txt || printf 'workflow failed before validation output\n' > diagnostics/emdo-rich-description-validation-v2.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add diagnostics/emdo-rich-description-validation-v2.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record clean EMDO description staging validation'
+          git push
