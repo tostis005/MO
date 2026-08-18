@@ -1,0 +1,43 @@
+name: Locate old English vendor base v44
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/locate-old-english-vendor-base-20260818-v44.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Search production customization
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf %s "$p";break;;esac;done')"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            echo '=== exact phrase ==='
+            grep -RIn --include='*.php' --include='*.js' --include='*.html' 'MDO English vendor base' '$PROD_PATH/wp-content' 2>/dev/null || true
+            echo '=== english vendor related custom files ==='
+            find '$PROD_PATH/wp-content' -maxdepth 4 -type f \( -name '*.php' -o -name '*.js' \) -print 2>/dev/null | grep -Ei 'vendor|store|english|seo|wcfm' | head -250 || true
+            echo '=== redirects containing vendor/store ==='
+            grep -RIn --include='*.php' -E 'wp_(safe_)?redirect|X-Redirect-By|vendor base|/en/store/' '$PROD_PATH/wp-content/mu-plugins' '$PROD_PATH/wp-content/themes' 2>/dev/null | head -350 || true
+          " > runtime/old-english-vendor-base-v44.txt
+      - name: Commit
+        run: |
+          git config user.name github-actions; git config user.email github-actions@github.com
+          git pull --rebase
+          git add runtime/old-english-vendor-base-v44.txt
+          git commit -m 'Locate old English vendor base customization v44' || exit 0
+          git push
