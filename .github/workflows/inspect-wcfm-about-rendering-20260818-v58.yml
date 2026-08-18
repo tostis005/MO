@@ -1,0 +1,56 @@
+name: Inspect WCFM About rendering v58
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-wcfm-about-rendering-20260818-v58.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect production WCFM source and Hidalgo HTML
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf %s "$p";break;;esac;done
+          ')"
+          : "${PROD_PATH:?}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            echo '=== ABOUT TEMPLATE FILES ==='
+            find '$PROD_PATH/wp-content/plugins/wc-multivendor-marketplace' -type f -name '*.php' | grep -Ei 'store.*about|about.*store' | head -50
+            echo '=== DESCRIPTION REFERENCES ==='
+            grep -RIn --include='*.php' -E '_store_description|shop_description|store_description' '$PROD_PATH/wp-content/plugins/wc-multivendor-marketplace' | head -180
+            echo '=== HIDALGO HTML CLASSES ==='
+            curl -k -L -sS --max-time 35 https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/ -o /tmp/hidalgo58
+            grep -oiE '.{0,180}(store_description|shop_description|store-about|store_about|wcfm[^\" ]*about|description).{0,350}' /tmp/hidalgo58 | head -80
+          " > runtime/wcfm-about-rendering-v58.txt 2>&1
+      - name: Commit inspection
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add runtime/wcfm-about-rendering-v58.txt
+          git commit -m 'Inspect WCFM About rendering v58' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
