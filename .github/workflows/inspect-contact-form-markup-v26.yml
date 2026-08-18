@@ -1,0 +1,57 @@
+name: Inspect contact form markup v26
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-contact-form-markup-v26.yml'
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect public form markup
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/contact-v26.txt
+          import urllib.request,re,html
+          urls=[
+            'https://www.elmercadodeorigen.com/contacto/?v26=1',
+            'https://www.elmercadodeorigen.com/contacto-productores/?v26=1',
+            'https://www.elmercadodeorigen.com/en/contacto/?v26=1',
+            'https://www.elmercadodeorigen.com/en/contacto-productores/?v26=1',
+          ]
+          for url in urls:
+            print('\nURL',url)
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 EMDO v26','Cache-Control':'no-cache'})
+            try:
+              doc=urllib.request.urlopen(req,timeout=60).read().decode('utf-8','replace')
+            except Exception as e:
+              print('ERROR',repr(e)); continue
+            print('bytes',len(doc))
+            for pattern,name in [
+              (r'<div[^>]+wpcf7-response-output[^>]*>.*?</div>','response'),
+              (r'<[^>]+honeypot[^>]*>.*?</[^>]+>','honeypot'),
+              (r'<input[^>]+(?:honeypot|_wpcf7|wpcf7)[^>]*>','input-special'),
+            ]:
+              ms=list(re.finditer(pattern,doc,re.I|re.S))
+              print(name,'count',len(ms))
+              for m in ms[:8]:
+                s=re.sub(r'\s+',' ',m.group(0)).strip()
+                print(' ',s[:1200])
+            idx=doc.lower().find('wpcf7-response-output')
+            if idx>=0:
+              print('RESPONSE_CONTEXT',re.sub(r'\s+',' ',doc[max(0,idx-900):idx+1400])[:2400])
+          PY
+          cat /tmp/contact-v26.txt
+      - name: Commit report
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p runtime
+          cp /tmp/contact-v26.txt runtime/contact-form-markup-v26-report.txt
+          git add runtime/contact-form-markup-v26-report.txt
+          git commit -m 'Record contact form markup v26'
+          git pull --rebase origin main
+          git push origin HEAD:main
