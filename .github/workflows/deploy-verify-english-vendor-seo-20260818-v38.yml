@@ -1,0 +1,139 @@
+name: Deploy and verify English vendor SEO v38
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-z-english-vendor-seo-010260.php'
+      - '.github/scripts/seed-english-vendor-seo-20260818-v38.php'
+      - '.github/workflows/deploy-verify-english-vendor-seo-20260818-v38.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP syntax
+        run: |
+          php -l mu-plugins/mdo-z-english-vendor-seo-010260.php
+          php -l .github/scripts/seed-english-vendor-seo-20260818-v38.php
+
+      - name: Deploy plugin and persisted translations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          echo "$PROD_PATH" > /tmp/prod_path
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-z-english-vendor-seo-010260.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php"
+          REMOTE_SEED="/tmp/mdo-seed-en-vendor-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/seed-english-vendor-seo-20260818-v38.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SEED"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SEED' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SEED'; exit \$rc" > runtime/english-vendor-seed-v38.json
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify public English SEO and WCFM routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36'
+          report=runtime/english-vendor-verify-v38.txt
+          : > "$report"
+
+          probe_redirect() {
+            local url="$1" expected="$2"
+            curl -A "$UA" -sS --max-time 25 -o /dev/null -D /tmp/h "$url"
+            local status location
+            status=$(awk 'toupper($1) ~ /^HTTP\// {s=$2} END{print s}' /tmp/h)
+            location=$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); sub(/\r$/,""); print; exit}' /tmp/h)
+            echo "REDIRECT url=$url status=$status location=$location" >> "$report"
+            test "$status" = 301
+            case "$location" in *"$expected"*) ;; *) echo "Expected $expected" >&2; exit 1;; esac
+          }
+
+          probe_page() {
+            local label="$1" url="$2"
+            local status
+            status=$(curl -A "$UA" -L -sS --max-time 30 -o /tmp/body -w '%{http_code}' "$url")
+            local bytes products
+            bytes=$(wc -c < /tmp/body)
+            products=$(grep -oE 'href=["'"'][^"'"']*/en/product/[^"'"']+' /tmp/body | sort -u | wc -l | tr -d ' ')
+            echo "PAGE label=$label status=$status bytes=$bytes product_links=$products url=$url" >> "$report"
+            test "$status" = 200
+          }
+
+          probe_page categories https://www.elmercadodeorigen.com/en/categories/
+          grep -qiE '<title>[^<]*Categories|>Categories<' /tmp/body
+          probe_redirect https://www.elmercadodeorigen.com/en/categorias/ /en/categories/
+          probe_redirect https://www.elmercadodeorigen.com/en/tienda/1957/ /en/store/1957/
+          probe_redirect https://www.elmercadodeorigen.com/en/tienda/hidalgo-de-la-jara/acercade/ /en/store/hidalgo-de-la-jara/about/
+
+          probe_page store-1957 https://www.elmercadodeorigen.com/en/store/1957/
+          count1957=$(grep -oE 'href=["'"'][^"'"']*/en/product/[^"'"']+' /tmp/body | sort -u | wc -l | tr -d ' ')
+          echo "store_1957_product_links=$count1957" >> "$report"
+          test "$count1957" -gt 0
+          ! grep -qiE '>\s*Policies\s*<' /tmp/body
+          grep -qiE '>\s*Products\s*<' /tmp/body
+          grep -qiE '>\s*About\s*<' /tmp/body
+          grep -qE '/en/store/1957/about/?["'"']' /tmp/body
+
+          probe_page about-1957 https://www.elmercadodeorigen.com/en/store/1957/about/
+          grep -qi 'The story of' /tmp/body
+          ! grep -qi 'La historia de' /tmp/body
+          ! grep -qiE '>\s*Policies\s*<' /tmp/body
+
+          probe_page store-hidalgo https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/
+          counth=$(grep -oE 'href=["'"'][^"'"']*/en/product/[^"'"']+' /tmp/body | sort -u | wc -l | tr -d ' ')
+          echo "store_hidalgo_product_links=$counth" >> "$report"
+          test "$counth" -gt 0
+          ! grep -qiE '>\s*Policies\s*<' /tmp/body
+          grep -qE '/en/store/hidalgo-de-la-jara/about/?["'"']' /tmp/body
+
+          probe_page about-hidalgo https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/
+          grep -qi 'livestock farmers' /tmp/body
+          ! grep -qi 'Los ganaderos que integran' /tmp/body
+          ! grep -qiE '>\s*Policies\s*<' /tmp/body
+
+          product_url=$(curl -A "$UA" -L -sS --max-time 30 https://www.elmercadodeorigen.com/en/store/1957/ | grep -oE 'https://www\.elmercadodeorigen\.com/en/product/[^"'"' ]+/' | head -n1 || true)
+          if [ -z "$product_url" ]; then
+            product_url=$(curl -A "$UA" -L -sS --max-time 30 https://www.elmercadodeorigen.com/en/store/1957/ | grep -oE '/en/product/[^"'"' ]+/' | head -n1 | sed 's#^#https://www.elmercadodeorigen.com#' || true)
+          fi
+          test -n "$product_url"
+          probe_page product "$product_url"
+          ! grep -qiE '>\s*Policies\s*<|>\s*Store Policies\s*<' /tmp/body
+          ! grep -qi 'Políticas de la tienda' /tmp/body
+          grep -qE '/en/store/1957/?["'"']' /tmp/body
+          echo "product_checked=$product_url" >> "$report"
+
+          echo 'status=success' >> "$report"
+
+      - name: Commit verification evidence
+        shell: bash
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase
+          git add runtime/english-vendor-seed-v38.json runtime/english-vendor-verify-v38.txt
+          git commit -m 'Record English vendor SEO production verification v38' || exit 0
+          git push
