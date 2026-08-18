@@ -1,0 +1,430 @@
+     1	<?php
+     2	/**
+     3	 * MDO English Island Router.
+     4	 * Keeps Spanish WordPress/WooCommerce objects untouched while exposing
+     5	 * their reviewed English aliases stored in _en_US_* metadata.
+     6	 */
+     7	if ( ! defined( 'ABSPATH' ) ) { exit; }
+     8	
+     9	function mdo_en_is_request(): bool {
+    10	    if ( empty( $_SERVER['REQUEST_URI'] ) ) { return false; }
+    11	    $path = wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
+    12	    return is_string( $path ) && ( $path === '/en' || strpos( $path, '/en/' ) === 0 );
+    13	}
+    14	
+    15	function mdo_en_segments(): array {
+    16	    if ( ! mdo_en_is_request() ) { return array(); }
+    17	    $path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
+    18	    $relative = trim( preg_replace( '#^/en/?#', '', $path ), '/' );
+    19	    if ( $relative === '' ) { return array(); }
+    20	    return array_values( array_filter( array_map( 'sanitize_title', explode( '/', $relative ) ), 'strlen' ) );
+    21	}
+    22	
+    23	function mdo_en_root(): string {
+    24	    return rtrim( (string) get_option( 'home' ), '/' );
+    25	}
+    26	
+    27	function mdo_en_slug_for_post( int $post_id ): string {
+    28	    if ( (string) get_post_meta( $post_id, '_en_US_published', true ) !== '1' ) { return ''; }
+    29	    return sanitize_title( wp_strip_all_tags( (string) get_post_meta( $post_id, '_en_US_post_name', true ) ) );
+    30	}
+    31	
+    32	function mdo_en_find_by_slug( string $post_type, string $slug ): int {
+    33	    $slug = sanitize_title( $slug );
+    34	    if ( $slug === '' ) { return 0; }
+    35	    $ids = get_posts( array(
+    36	        'post_type'        => $post_type,
+    37	        'post_status'      => 'publish',
+    38	        'posts_per_page'   => 2,
+    39	        'fields'           => 'ids',
+    40	        'no_found_rows'    => true,
+    41	        'suppress_filters' => true,
+    42	        'meta_query'       => array(
+    43	            'relation' => 'AND',
+    44	            array( 'key' => '_en_US_post_name', 'value' => $slug, 'compare' => '=' ),
+    45	            array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
+    46	        ),
+    47	    ) );
+    48	    return count( $ids ) === 1 ? (int) $ids[0] : 0;
+    49	}
+    50	
+    51	function mdo_en_page_url( int $post_id ): string {
+    52	    $slug = mdo_en_slug_for_post( $post_id );
+    53	    return $slug === '' ? '' : mdo_en_root() . '/en/' . rawurlencode( $slug ) . '/';
+    54	}
+    55	
+    56	function mdo_en_product_url( int $post_id ): string {
+    57	    $slug = mdo_en_slug_for_post( $post_id );
+    58	    return $slug === '' ? '' : mdo_en_root() . '/en/product/' . rawurlencode( $slug ) . '/';
+    59	}
+    60	
+    61	function mdo_en_native_page_from_slug( string $slug ) {
+    62	    $page = get_page_by_path( sanitize_title( $slug ), OBJECT, 'page' );
+    63	    return ( $page instanceof WP_Post && $page->post_status === 'publish' ) ? $page : null;
+    64	}
+    65	
+    66	function mdo_en_native_product_from_slug( string $slug ) {
+    67	    $product = get_page_by_path( sanitize_title( $slug ), OBJECT, 'product' );
+    68	    return ( $product instanceof WP_Post && $product->post_status === 'publish' ) ? $product : null;
+    69	}
+    70	
+    71	function mdo_en_translate_internal_url( string $url ): string {
+    72	    if ( $url === '' || strpos( $url, '#' ) === 0 || stripos( $url, 'mailto:' ) === 0 || stripos( $url, 'tel:' ) === 0 || stripos( $url, 'javascript:' ) === 0 ) { return $url; }
+    73	    $root = mdo_en_root();
+    74	    $root_host = wp_parse_url( $root, PHP_URL_HOST );
+    75	    $host = wp_parse_url( $url, PHP_URL_HOST );
+    76	    if ( $host && $root_host && strtolower( (string) $host ) !== strtolower( (string) $root_host ) ) { return $url; }
+    77	
+    78	    $query = wp_parse_url( $url, PHP_URL_QUERY );
+    79	    $fragment = wp_parse_url( $url, PHP_URL_FRAGMENT );
+    80	    $suffix = '';
+    81	    if ( is_string( $query ) && $query !== '' ) { $suffix .= '?' . $query; }
+    82	    if ( is_string( $fragment ) && $fragment !== '' ) { $suffix .= '#' . $fragment; }
+    83	
+    84	    $path = (string) wp_parse_url( $url, PHP_URL_PATH );
+    85	    $parts = array_values( array_filter( explode( '/', trim( $path, '/' ) ), 'strlen' ) );
+    86	    if ( ! $parts ) { return $root . '/en/' . $suffix; }
+    87	
+    88	    $is_en = strtolower( $parts[0] ) === 'en';
+    89	    if ( $is_en ) { array_shift( $parts ); }
+    90	    if ( ! $parts ) { return $root . '/en/' . $suffix; }
+    91	
+    92	    if ( count( $parts ) === 1 ) {
+    93	        $english_id = mdo_en_find_by_slug( 'page', $parts[0] );
+    94	        if ( $english_id ) { return mdo_en_page_url( $english_id ) . $suffix; }
+    95	        $native = mdo_en_native_page_from_slug( $parts[0] );
+    96	        if ( $native ) {
+    97	            $translated = mdo_en_page_url( (int) $native->ID );
+    98	            if ( $translated !== '' ) { return $translated . $suffix; }
+    99	        }
+   100	    }
+   101	
+   102	    if ( count( $parts ) === 2 && in_array( sanitize_title( $parts[0] ), array( 'producto', 'product' ), true ) ) {
+   103	        $english_id = mdo_en_find_by_slug( 'product', $parts[1] );
+   104	        if ( $english_id ) { return mdo_en_product_url( $english_id ) . $suffix; }
+   105	        $native = mdo_en_native_product_from_slug( $parts[1] );
+   106	        if ( $native ) {
+   107	            $translated = mdo_en_product_url( (int) $native->ID );
+   108	            if ( $translated !== '' ) { return $translated . $suffix; }
+   109	        }
+   110	    }
+   111	
+   112	    return $url;
+   113	}
+   114	
+   115	add_action( 'parse_request', static function ( WP $wp ): void {
+   116	    $parts = mdo_en_segments();
+   117	    if ( ! $parts ) { return; }
+   118	
+   119	    if ( count( $parts ) === 2 && $parts[0] === 'product' ) {
+   120	        $id = mdo_en_find_by_slug( 'product', $parts[1] );
+   121	        if ( ! $id ) { return; }
+   122	        foreach ( array( 'error', 'name', 'pagename', 'page_id', 'attachment', 'product', 'product_cat', 'product_tag' ) as $key ) { unset( $wp->query_vars[ $key ] ); }
+   123	        $wp->query_vars['post_type'] = 'product';
+   124	        $wp->query_vars['p'] = $id;
+   125	        return;
+   126	    }
+   127	
+   128	    if ( count( $parts ) !== 1 ) { return; }
+   129	    $id = mdo_en_find_by_slug( 'page', $parts[0] );
+   130	    if ( ! $id ) { return; }
+   131	    foreach ( array( 'error', 'name', 'pagename', 'page_id', 'attachment', 'p' ) as $key ) { unset( $wp->query_vars[ $key ] ); }
+   132	    if ( $id === (int) get_option( 'woocommerce_shop_page_id' ) ) {
+   133	        $wp->query_vars['post_type'] = 'product';
+   134	    } else {
+   135	        unset( $wp->query_vars['post_type'] );
+   136	        $wp->query_vars['page_id'] = $id;
+   137	    }
+   138	}, PHP_INT_MAX );
+   139	
+   140	add_filter( 'page_link', static function ( string $url, int $post_id ): string {
+   141	    if ( ! mdo_en_is_request() ) { return $url; }
+   142	    $translated = mdo_en_page_url( $post_id );
+   143	    return $translated !== '' ? $translated : $url;
+   144	}, PHP_INT_MAX, 2 );
+   145	
+   146	add_filter( 'post_type_link', static function ( string $url, WP_Post $post ): string {
+   147	    if ( ! mdo_en_is_request() || $post->post_type !== 'product' ) { return $url; }
+   148	    $translated = mdo_en_product_url( (int) $post->ID );
+   149	    return $translated !== '' ? $translated : $url;
+   150	}, PHP_INT_MAX, 2 );
+   151	
+   152	add_filter( 'wp_nav_menu_objects', static function ( array $items ): array {
+   153	    if ( ! mdo_en_is_request() ) { return $items; }
+   154	    foreach ( $items as $item ) {
+   155	        if ( ! $item instanceof WP_Post ) { continue; }
+   156	        $translated = '';
+   157	        if ( $item->type === 'post_type' && $item->object === 'page' ) {
+   158	            $translated = mdo_en_page_url( (int) $item->object_id );
+   159	        } elseif ( $item->type === 'post_type' && $item->object === 'product' ) {
+   160	            $translated = mdo_en_product_url( (int) $item->object_id );
+   161	        } elseif ( ! empty( $item->url ) ) {
+   162	            $translated = mdo_en_translate_internal_url( (string) $item->url );
+   163	        }
+   164	        if ( $translated !== '' ) { $item->url = $translated; }
+   165	    }
+   166	    return $items;
+   167	}, PHP_INT_MAX );
+   168	
+   169	add_filter( 'woocommerce_get_cart_url', static function ( string $url ): string {
+   170	    if ( ! mdo_en_is_request() || ! function_exists( 'wc_get_page_id' ) ) { return $url; }
+   171	    $translated = mdo_en_page_url( (int) wc_get_page_id( 'cart' ) );
+   172	    return $translated !== '' ? $translated : $url;
+   173	}, PHP_INT_MAX );
+   174	
+   175	add_filter( 'woocommerce_get_checkout_url', static function ( string $url ): string {
+   176	    if ( ! mdo_en_is_request() || ! function_exists( 'wc_get_page_id' ) ) { return $url; }
+   177	    $translated = mdo_en_page_url( (int) wc_get_page_id( 'checkout' ) );
+   178	    return $translated !== '' ? $translated : $url;
+   179	}, PHP_INT_MAX );
+   180	
+   181	add_filter( 'woocommerce_get_myaccount_page_permalink', static function ( string $url ): string {
+   182	    if ( ! mdo_en_is_request() || ! function_exists( 'wc_get_page_id' ) ) { return $url; }
+   183	    $translated = mdo_en_page_url( (int) wc_get_page_id( 'myaccount' ) );
+   184	    return $translated !== '' ? $translated : $url;
+   185	}, PHP_INT_MAX );
+   186	
+   187	add_filter( 'redirect_canonical', static function ( $redirect ) {
+   188	    if ( ! mdo_en_is_request() ) { return $redirect; }
+   189	    $parts = mdo_en_segments();
+   190	    if ( count( $parts ) === 1 && mdo_en_find_by_slug( 'page', $parts[0] ) ) { return false; }
+   191	    if ( count( $parts ) === 2 && $parts[0] === 'product' && mdo_en_find_by_slug( 'product', $parts[1] ) ) { return false; }
+   192	    return $redirect;
+   193	}, PHP_INT_MAX );
+   194	
+   195	add_action( 'template_redirect', static function (): void {
+   196	    if ( ! mdo_en_is_request() || is_admin() || wp_doing_ajax() ) { return; }
+   197	    $parts = mdo_en_segments();
+   198	    if ( count( $parts ) === 1 ) {
+   199	        if ( mdo_en_find_by_slug( 'page', $parts[0] ) ) { return; }
+   200	        $native = mdo_en_native_page_from_slug( $parts[0] );
+   201	        if ( $native ) {
+   202	            $target = mdo_en_page_url( (int) $native->ID );
+   203	            if ( $target !== '' ) { wp_safe_redirect( $target, 301, 'MDO English page canonical' ); exit; }
+   204	        }
+   205	    }
+   206	    if ( count( $parts ) === 2 && in_array( $parts[0], array( 'producto', 'product' ), true ) ) {
+   207	        if ( $parts[0] === 'product' && mdo_en_find_by_slug( 'product', $parts[1] ) ) { return; }
+   208	        $native = mdo_en_native_product_from_slug( $parts[1] );
+   209	        if ( $native ) {
+   210	            $target = mdo_en_product_url( (int) $native->ID );
+   211	            if ( $target !== '' ) { wp_safe_redirect( $target, 301, 'MDO English product canonical' ); exit; }
+   212	        }
+   213	    }
+   214	}, 1 );
+   215	
+   216	/* MDO_ENGLISH_ISLAND_TAX_VENDOR_V1 */
+   217	function mdo_en_term_slug( WP_Term $term ): string {
+   218	    if ( (string) get_term_meta( $term->term_id, '_en_US_published', true ) !== '1' ) { return ''; }
+   219	    return sanitize_title( wp_strip_all_tags( (string) get_term_meta( $term->term_id, '_en_US_slug', true ) ) );
+   220	}
+   221	
+   222	function mdo_en_find_term_by_slug( string $taxonomy, string $slug ) {
+   223	    if ( ! taxonomy_exists( $taxonomy ) ) { return null; }
+   224	    $slug = sanitize_title( $slug );
+   225	    if ( $slug === '' ) { return null; }
+   226	    $terms = get_terms( array(
+   227	        'taxonomy'   => $taxonomy,
+   228	        'hide_empty' => false,
+   229	        'number'     => 2,
+   230	        'meta_query' => array(
+   231	            'relation' => 'AND',
+   232	            array( 'key' => '_en_US_slug', 'value' => $slug, 'compare' => '=' ),
+   233	            array( 'key' => '_en_US_published', 'value' => '1', 'compare' => '=' ),
+   234	        ),
+   235	    ) );
+   236	    if ( is_wp_error( $terms ) || count( $terms ) !== 1 ) { return null; }
+   237	    return $terms[0];
+   238	}
+   239	
+   240	function mdo_en_taxonomy_base( string $taxonomy ): string {
+   241	    $map = array(
+   242	        'product_cat' => 'product-category',
+   243	        'product_tag' => 'product-tag',
+   244	        'category'    => 'category',
+   245	    );
+   246	    return $map[ $taxonomy ] ?? '';
+   247	}
+   248	
+   249	function mdo_en_taxonomy_for_base( string $base ): string {
+   250	    $map = array(
+   251	        'product-category' => 'product_cat',
+   252	        'product-tag'      => 'product_tag',
+   253	        'category'         => 'category',
+   254	    );
+   255	    return $map[ $base ] ?? '';
+   256	}
+   257	
+   258	function mdo_en_term_url( WP_Term $term ): string {
+   259	    $base = mdo_en_taxonomy_base( $term->taxonomy );
+   260	    $slug = mdo_en_term_slug( $term );
+   261	    if ( $base === '' || $slug === '' ) { return ''; }
+   262	    return mdo_en_root() . '/en/' . $base . '/' . rawurlencode( $slug ) . '/';
+   263	}
+   264	
+   265	function mdo_en_vendor_url( int $user_id ): string {
+   266	    $user = get_userdata( $user_id );
+   267	    if ( ! $user instanceof WP_User || $user->user_nicename === '' ) { return ''; }
+   268	    return mdo_en_root() . '/en/store/' . rawurlencode( $user->user_nicename ) . '/';
+   269	}
+   270	
+   271	add_action( 'parse_request', static function ( WP $wp ): void {
+   272	    if ( ! mdo_en_is_request() ) { return; }
+   273	    $parts = mdo_en_segments();
+   274	    if ( count( $parts ) !== 2 ) { return; }
+   275	
+   276	    if ( $parts[0] === 'store' ) {
+   277	        foreach ( array( 'error', 'name', 'pagename', 'page_id', 'p', 'attachment', 'product', 'product_cat', 'product_tag', 'category_name' ) as $key ) { unset( $wp->query_vars[ $key ] ); }
+   278	        $wp->query_vars['post_type'] = 'product';
+   279	        $wp->query_vars['tienda'] = $parts[1];
+   280	        return;
+   281	    }
+   282	
+   283	    $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+   284	    if ( $taxonomy === '' ) { return; }
+   285	    $term = mdo_en_find_term_by_slug( $taxonomy, $parts[1] );
+   286	    if ( ! $term instanceof WP_Term ) { return; }
+   287	
+   288	    foreach ( array( 'error', 'name', 'pagename', 'page_id', 'p', 'attachment', 'product', 'product_cat', 'product_tag', 'category_name', 'cat', 'tag' ) as $key ) { unset( $wp->query_vars[ $key ] ); }
+   289	    if ( $taxonomy === 'product_cat' ) {
+   290	        $wp->query_vars['post_type'] = 'product';
+   291	        $wp->query_vars['product_cat'] = $term->slug;
+   292	    } elseif ( $taxonomy === 'product_tag' ) {
+   293	        $wp->query_vars['post_type'] = 'product';
+   294	        $wp->query_vars['product_tag'] = $term->slug;
+   295	    } else {
+   296	        unset( $wp->query_vars['post_type'] );
+   297	        $wp->query_vars['category_name'] = $term->slug;
+   298	    }
+   299	}, PHP_INT_MAX );
+   300	
+   301	add_filter( 'term_link', static function ( string $url, WP_Term $term, string $taxonomy ): string {
+   302	    if ( ! mdo_en_is_request() ) { return $url; }
+   303	    $translated = mdo_en_term_url( $term );
+   304	    return $translated !== '' ? $translated : $url;
+   305	}, PHP_INT_MAX, 3 );
+   306	
+   307	add_filter( 'wcfmmp_get_store_url', static function ( string $url, $user_id ): string {
+   308	    if ( ! mdo_en_is_request() ) { return $url; }
+   309	    $translated = mdo_en_vendor_url( (int) $user_id );
+   310	    return $translated !== '' ? $translated : $url;
+   311	}, PHP_INT_MAX, 2 );
+   312	
+   313	add_filter( 'wcfmmp_store_list_card_url', static function ( string $url, $store_id ): string {
+   314	    if ( ! mdo_en_is_request() ) { return $url; }
+   315	    $translated = mdo_en_vendor_url( (int) $store_id );
+   316	    return $translated !== '' ? $translated : $url;
+   317	}, PHP_INT_MAX, 2 );
+   318	
+   319	add_filter( 'home_url', static function ( string $url ): string {
+   320	    if ( ! mdo_en_is_request() ) { return $url; }
+   321	    return preg_replace( '#/en/en/#', '/en/', $url, 1 ) ?: $url;
+   322	}, PHP_INT_MAX );
+   323	
+   324	add_filter( 'site_url', static function ( string $url ): string {
+   325	    if ( ! mdo_en_is_request() ) { return $url; }
+   326	    return preg_replace( '#/en/en/#', '/en/', $url, 1 ) ?: $url;
+   327	}, PHP_INT_MAX );
+   328	
+   329	add_filter( 'redirect_canonical', static function ( $redirect ) {
+   330	    if ( ! mdo_en_is_request() ) { return $redirect; }
+   331	    $parts = mdo_en_segments();
+   332	    if ( count( $parts ) !== 2 ) { return $redirect; }
+   333	    if ( $parts[0] === 'store' ) { return false; }
+   334	    $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+   335	    if ( $taxonomy !== '' && mdo_en_find_term_by_slug( $taxonomy, $parts[1] ) instanceof WP_Term ) { return false; }
+   336	    return $redirect;
+   337	}, PHP_INT_MAX );
+   338	
+   339	add_action( 'template_redirect', static function (): void {
+   340	    if ( ! mdo_en_is_request() || is_admin() || wp_doing_ajax() ) { return; }
+   341	    $parts = mdo_en_segments();
+   342	    if ( count( $parts ) !== 2 ) { return; }
+   343	
+   344	    if ( $parts[0] === 'tienda' ) {
+   345	        $target = mdo_en_root() . '/en/store/' . rawurlencode( $parts[1] ) . '/';
+   346	        wp_safe_redirect( $target, 301, 'MDO English vendor base' );
+   347	        exit;
+   348	    }
+   349	
+   350	    $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+   351	    if ( $taxonomy === '' || mdo_en_find_term_by_slug( $taxonomy, $parts[1] ) instanceof WP_Term ) { return; }
+   352	    $native = get_term_by( 'slug', $parts[1], $taxonomy );
+   353	    if ( $native instanceof WP_Term ) {
+   354	        $target = mdo_en_term_url( $native );
+   355	        if ( $target !== '' ) {
+   356	            wp_safe_redirect( $target, 301, 'MDO English taxonomy slug' );
+   357	            exit;
+   358	        }
+   359	    }
+   360	}, 2 );
+   361	
+   362	/* MDO_ENGLISH_ISLAND_POSTS_FINAL_V1 */
+   363	function mdo_en_post_url( int $post_id ): string {
+   364	    $slug = mdo_en_slug_for_post( $post_id );
+   365	    return $slug === '' ? '' : mdo_en_root() . '/en/' . rawurlencode( $slug ) . '/';
+   366	}
+   367	
+   368	function mdo_en_native_post_from_slug( string $slug ) {
+   369	    $post = get_page_by_path( sanitize_title( $slug ), OBJECT, 'post' );
+   370	    return ( $post instanceof WP_Post && $post->post_status === 'publish' ) ? $post : null;
+   371	}
+   372	
+   373	/*
+   374	 * Base router sets post_type=product so its custom catalogue loader stays
+   375	 * active. Product taxonomy aliases must instead mirror native WC taxonomy
+   376	 * semantics; the taxonomy query var alone is enough and prevents is_shop().
+   377	 */
+   378	add_action( 'parse_request', static function ( WP $wp ): void {
+   379	    if ( ! mdo_en_is_request() ) { return; }
+   380	    $parts = mdo_en_segments();
+   381	    if ( count( $parts ) === 2 ) {
+   382	        $taxonomy = mdo_en_taxonomy_for_base( $parts[0] );
+   383	        if ( in_array( $taxonomy, array( 'product_cat', 'product_tag' ), true ) ) {
+   384	            $term = mdo_en_find_term_by_slug( $taxonomy, $parts[1] );
+   385	            if ( $term instanceof WP_Term ) {
+   386	                unset( $wp->query_vars['post_type'] );
+   387	            }
+   388	        }
+   389	        return;
+   390	    }
+   391	
+   392	    if ( count( $parts ) !== 1 ) { return; }
+   393	    $post_id = mdo_en_find_by_slug( 'post', $parts[0] );
+   394	    if ( ! $post_id ) { return; }
+   395	    foreach ( array( 'error', 'name', 'pagename', 'page_id', 'attachment', 'product', 'product_cat', 'product_tag', 'category_name' ) as $key ) {
+   396	        unset( $wp->query_vars[ $key ] );
+   397	    }
+   398	    $wp->query_vars['post_type'] = 'post';
+   399	    $wp->query_vars['p'] = $post_id;
+   400	}, PHP_INT_MAX );
+   401	
+   402	add_filter( 'post_link', static function ( string $url, WP_Post $post ): string {
+   403	    if ( ! mdo_en_is_request() || $post->post_type !== 'post' ) { return $url; }
+   404	    $translated = mdo_en_post_url( (int) $post->ID );
+   405	    return $translated !== '' ? $translated : $url;
+   406	}, PHP_INT_MAX, 2 );
+   407	
+   408	add_filter( 'redirect_canonical', static function ( $redirect ) {
+   409	    if ( ! mdo_en_is_request() ) { return $redirect; }
+   410	    $parts = mdo_en_segments();
+   411	    if ( count( $parts ) === 1 && mdo_en_find_by_slug( 'post', $parts[0] ) ) { return false; }
+   412	    return $redirect;
+   413	}, PHP_INT_MAX );
+   414	
+   415	add_action( 'template_redirect', static function (): void {
+   416	    if ( ! mdo_en_is_request() || is_admin() || wp_doing_ajax() ) { return; }
+   417	    $parts = mdo_en_segments();
+   418	    if ( count( $parts ) !== 1 || mdo_en_find_by_slug( 'post', $parts[0] ) ) { return; }
+   419	    $native = mdo_en_native_post_from_slug( $parts[0] );
+   420	    if ( ! $native ) { return; }
+   421	    $target = mdo_en_post_url( (int) $native->ID );
+   422	    if ( $target !== '' ) {
+   423	        wp_safe_redirect( $target, 301, 'MDO English post canonical' );
+   424	        exit;
+   425	    }
+   426	}, 3 );
+   427	
+   428	function mdo_en_canonical_anchor_url( string $url ): string {
+   429	    if ( ! mdo_en_is_request() || $url === '' || strpos( $url, '#' ) === 0 ) { return $url; }
+   430	    $root = mdo_en_root();
