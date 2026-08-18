@@ -1,0 +1,49 @@
+name: Inspect contact visible elements v28
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-contact-visible-elements-v28.yml'
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect visible elements in Chrome
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-contact-v28
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9232 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-contact-v28 about:blank >/tmp/chrome-contact-v28.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9232/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE' > /tmp/contact-visible-v28.txt
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9232/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable');await cmd('Runtime.enable');
+            const urls=['https://www.elmercadodeorigen.com/en/contacto/?v28=1','https://www.elmercadodeorigen.com/en/contacto-productores/?v28=1'];
+            for(const url of urls){
+              await cmd('Page.navigate',{url}); await sleep(4500);
+              const expr=`(() => { const form=document.querySelector('.wpcf7 form'); if(!form)return {href:location.href,error:'no form'}; const fr=form.getBoundingClientRect(); const rows=[]; for(const el of form.querySelectorAll('*')){ const r=el.getBoundingClientRect(); const s=getComputedStyle(el); if(r.width<1||r.height<1||r.top>fr.top+500||r.bottom<fr.top-10||s.display==='none'||s.visibility==='hidden')continue; if(el.children.length && !['LABEL','P','DIV'].includes(el.tagName))continue; rows.push({tag:el.tagName,type:el.getAttribute('type'),name:el.getAttribute('name'),cls:el.className||'',text:(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,100),ariaHidden:el.getAttribute('aria-hidden'),top:Math.round(r.top),left:Math.round(r.left),width:Math.round(r.width),height:Math.round(r.height),display:s.display,opacity:s.opacity,html:el.outerHTML.replace(/\\s+/g,' ').slice(0,500)}); } return {href:location.href,formTop:Math.round(fr.top),rows}; })()`;
+              const res=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},15000); console.log(JSON.stringify(res.result.value,null,2));
+            }
+            ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          cat /tmp/contact-visible-v28.txt
+      - name: Commit report
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p runtime
+          cp /tmp/contact-visible-v28.txt runtime/contact-visible-elements-v28-report.txt
+          git add runtime/contact-visible-elements-v28-report.txt
+          git commit -m 'Record contact visible elements v28'
+          git pull --rebase origin main
+          git push origin HEAD:main
