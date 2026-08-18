@@ -1,0 +1,70 @@
+name: Trace English vendor redirects v43
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/trace-english-vendor-redirects-20260818-v43.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Marker
+        run: |
+          git config user.name github-actions; git config user.email github-actions@github.com
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v43.txt
+          git add runtime/english-vendor-v43.txt; git commit -m 'Start English vendor redirect trace v43'; git push
+      - name: Trace public responses from production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set +e
+            trace_one(){
+              url="$1"; echo "=== START $url"
+              i=0
+              while [ $i -lt 8 ]; do
+                i=$((i+1)); rm -f /tmp/h43 /tmp/b43
+                curl -k -sS --connect-timeout 8 --max-time 25 -D /tmp/h43 -o /tmp/b43 "$url"
+                rc=$?; status=$(awk "toupper(\$1) ~ /^HTTP\\// {s=\$2} END{print s}" /tmp/h43 2>/dev/null)
+                loc=$(awk "BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,\"\"); sub(/\\r$/,\"\"); print; exit}" /tmp/h43 2>/dev/null)
+                xrb=$(awk "BEGIN{IGNORECASE=1} /^x-redirect-by:/ {sub(/^[^:]+:[[:space:]]*/,\"\"); sub(/\\r$/,\"\"); print; exit}" /tmp/h43 2>/dev/null)
+                echo "hop=$i rc=$rc status=$status url=$url location=$loc x_redirect_by=$xrb bytes=$(wc -c </tmp/b43 2>/dev/null || echo 0)"
+                [ "$status" = 301 ] || [ "$status" = 302 ] || [ "$status" = 307 ] || [ "$status" = 308 ] || break
+                [ -n "$loc" ] || break
+                case "$loc" in http*) url="$loc";; /*) url="https://www.elmercadodeorigen.com$loc";; *) break;; esac
+              done
+              if [ -f /tmp/b43 ]; then
+                echo "title=$(grep -oE "<title>[^<]+" /tmp/b43 | head -1)"
+                echo "products=$(grep -oE "/en/product/[^\" <]+" /tmp/b43 | sort -u | wc -l) policies=$(grep -oiE ">[[:space:]]*Policies[[:space:]]*<" /tmp/b43 | wc -l) story=$(grep -oi "The story of" /tmp/b43 | wc -l) livestock=$(grep -oi "livestock farmers" /tmp/b43 | wc -l)"
+              fi
+            }
+            trace_one https://www.elmercadodeorigen.com/en/categories/
+            trace_one https://www.elmercadodeorigen.com/en/categorias/
+            trace_one https://www.elmercadodeorigen.com/en/store/1957/
+            trace_one https://www.elmercadodeorigen.com/en/store/1957/about/
+            trace_one https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/
+            trace_one https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/
+            trace_one https://www.elmercadodeorigen.com/en/tienda/1957/
+          ' > runtime/english-vendor-redirects-v43.txt 2>&1
+      - name: Commit trace
+        if: always()
+        run: |
+          git config user.name github-actions; git config user.email github-actions@github.com
+          git pull --rebase
+          printf 'run_id=%s\nstatus=complete\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v43.txt
+          git add runtime/english-vendor-v43.txt runtime/english-vendor-redirects-v43.txt
+          git commit -m 'Record English vendor redirect trace v43' || exit 0
+          git push
