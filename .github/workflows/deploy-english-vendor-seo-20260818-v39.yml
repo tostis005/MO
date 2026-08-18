@@ -38,19 +38,14 @@ jobs:
           PROD_PATH=''
           for n in 1 2 3; do
             PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-              wp_bin=$(command -v wp || true)
-              php_bin=$(command -v php || true)
+              wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
               [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
               for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-                p=$(dirname "$cfg")
-                url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-                case "$url" in
-                  https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-                esac
+                p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+                case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
               done
             ' || true)"
-            [ -n "$PROD_PATH" ] && break
-            sleep $((n*2))
+            [ -n "$PROD_PATH" ] && break; sleep $((n*2))
           done
           : "${PROD_PATH:?production path not found}"
           echo "Production path resolved."
@@ -59,6 +54,7 @@ jobs:
           REMOTE_SCRIPT="/tmp/mdo-english-launch-v62-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/fix-english-launch-content-20260818-v62.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc" | tee /tmp/english-launch-fixes-v62.json
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$PROD_PATH/wp-content/cache/mdo-page-cache' '$PROD_PATH/wp-content/mdo-page-cache'; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
       - name: Smoke test corrected pages and cart session
         shell: bash
         run: |
@@ -66,8 +62,7 @@ jobs:
           UA='Mozilla/5.0 AppleWebKit/537.36 Chrome/126 Safari/537.36'
           check(){ u="$1"; f="$2"; s=$(curl -A "$UA" -L -sS --max-time 40 -o "$f" -w '%{http_code}' "$u"); echo "$s $u"; test "$s" = 200; }
           check https://www.elmercadodeorigen.com/en/journal/ /tmp/journal
-          grep -q 'Iberian ham is a unique product' /tmp/journal
-          grep -q 'November is harvest time' /tmp/journal
+          grep -q 'Iberian ham is a unique product' /tmp/journal; grep -q 'November is harvest time' /tmp/journal
           ! grep -qiE 'El Jam[oó]n Ib[eé]rico es|Noviembre es la [ée]poca' /tmp/journal
           check https://www.elmercadodeorigen.com/en/product-category/oils/ /tmp/oils
           grep -q 'Remove' /tmp/oils; ! grep -q 'Quitar' /tmp/oils; grep -q '3 results' /tmp/oils
