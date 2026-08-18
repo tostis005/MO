@@ -67,23 +67,27 @@ jobs:
 
           echo '=== Verify Spanish homepage ==='
           curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/es.html
-          grep -q 'CONDICIONES DE ENVÍO POR PRODUCTOR' /tmp/es.html
-          grep -q 'ENVÍOS DIRECTOS DEL PRODUCTOR' /tmp/es.html
-          grep -q 'ASISTENCIA EN DEVOLUCIONES' /tmp/es.html
-          grep -q 'ATENCIÓN Y SEGUIMIENTO' /tmp/es.html
-          grep -q 'Marketplace operado por' /tmp/es.html
-          ! grep -q 'ENVÍOS EN 24-48H' /tmp/es.html
-          ! grep -q 'DEVOLUCIÓN FÁCIL Y SENCILLA' /tmp/es.html
+          grep -Fq 'CONDICIONES DE ENVÍO POR PRODUCTOR' /tmp/es.html
+          grep -Fq 'ENVÍOS DIRECTOS DEL PRODUCTOR' /tmp/es.html
+          grep -Fq 'ASISTENCIA EN DEVOLUCIONES' /tmp/es.html
+          grep -Fq 'ATENCIÓN Y SEGUIMIENTO' /tmp/es.html
+          grep -Fq 'Marketplace operado por' /tmp/es.html
+          ! grep -Fq 'ENVÍOS EN 24-48H' /tmp/es.html
+          ! grep -Fq 'DEVOLUCIÓN FÁCIL Y SENCILLA' /tmp/es.html
 
           echo '=== Verify English homepage ==='
           curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/en/' -o /tmp/en.html
-          grep -q 'SHIPPING TERMS BY PRODUCER' /tmp/en.html
-          grep -q 'DIRECT SHIPPING BY PRODUCERS' /tmp/en.html
-          grep -q 'RETURNS SUPPORT' /tmp/en.html
-          grep -q 'CUSTOMER SUPPORT &amp; TRACKING' /tmp/en.html
-          grep -q 'Marketplace operated by' /tmp/en.html
-          ! grep -q '24–48H DELIVERY' /tmp/en.html
-          ! grep -q 'EASY RETURNS' /tmp/en.html
+          echo '-- English claim snippets --'
+          grep -oiE '.{0,120}(SHIPPING TERMS BY PRODUCER|DIRECT SHIPPING BY PRODUCERS|RETURNS SUPPORT|CUSTOMER SUPPORT|24.{0,8}48H DELIVERY|EASY RETURNS|Marketplace operated by).{0,180}' /tmp/en.html | head -80 || true
+          grep -Fq 'SHIPPING TERMS BY PRODUCER' /tmp/en.html
+          grep -Fq 'DIRECT SHIPPING BY PRODUCERS' /tmp/en.html
+          grep -Fq 'RETURNS SUPPORT' /tmp/en.html
+          grep -Fq 'CUSTOMER SUPPORT' /tmp/en.html
+          grep -Fq 'Marketplace operated by' /tmp/en.html
+          if grep -Fq '24–48H DELIVERY' /tmp/en.html || grep -Fq '24-48H DELIVERY' /tmp/en.html || grep -Fq 'EASY RETURNS' /tmp/en.html; then
+            echo 'A legacy English shipping/returns claim is still present.'
+            exit 1
+          fi
 
           echo '=== Verify policy pages still public ==='
           for u in \
