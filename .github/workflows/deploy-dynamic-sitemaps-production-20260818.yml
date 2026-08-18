@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  issues: write
 
 jobs:
   deploy:
@@ -109,17 +110,9 @@ jobs:
 
       - name: Record successful production deployment
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p .github/deploy-status
-          cat > .github/deploy-status/dynamic-sitemaps-production.txt <<EOF
-          status=success
-          source_commit=$GITHUB_SHA
-          workflow_run=$GITHUB_RUN_ID
-          verified_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          EOF
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/deploy-status/dynamic-sitemaps-production.txt
-          git commit -m 'Record dynamic sitemap production deploy' || exit 0
-          git push
+          verified="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh issue comment "${{ github.event.issue.number }}" --body "status=success\nsource_commit=$GITHUB_SHA\nworkflow_run=$GITHUB_RUN_ID\nverified_utc=$verified"
