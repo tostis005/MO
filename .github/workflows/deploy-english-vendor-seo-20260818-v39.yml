@@ -33,17 +33,32 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
-          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT")
-          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P "$PORT")
-          PROD=/var/www/vhosts/elmercadodeorigen.com/httpdocs
-          remote() { local n; for n in 1 2 3; do sshpass -e ssh "${SSH[@]}" "$STAGING_USER@$STAGING_HOST" "$@" && return 0; sleep $((n*2)); done; return 1; }
-          upload() { local src="$1" dst="$2" n; for n in 1 2 3; do sshpass -e scp "${SCP[@]}" "$src" "$STAGING_USER@$STAGING_HOST:$dst" && return 0; sleep $((n*2)); done; return 1; }
-          remote "test -f '$PROD/wp-config.php' && mkdir -p '$PROD/wp-content/mu-plugins'"
-          remote "test ! -f '$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php' || cp -p '$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php' '$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php.bak-${GITHUB_RUN_ID}'"
-          upload mu-plugins/mdo-zzz-english-launch-quality-010262.php "$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH=''
+          for n in 1 2 3; do
+            PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+              wp_bin=$(command -v wp || true)
+              php_bin=$(command -v php || true)
+              [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+              for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+                p=$(dirname "$cfg")
+                url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+                case "$url" in
+                  https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+                esac
+              done
+            ' || true)"
+            [ -n "$PROD_PATH" ] && break
+            sleep $((n*2))
+          done
+          : "${PROD_PATH:?production path not found}"
+          echo "Production path resolved."
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'; test ! -f '$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php' || cp -p '$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php' '$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php.bak-${GITHUB_RUN_ID}'"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-zzz-english-launch-quality-010262.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php"
           REMOTE_SCRIPT="/tmp/mdo-english-launch-v62-${GITHUB_RUN_ID}.php"
-          upload .github/scripts/fix-english-launch-content-20260818-v62.php "$REMOTE_SCRIPT"
-          remote "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$ph\" -d memory_limit=768M \"\$wp\" eval-file '$REMOTE_SCRIPT' --path='$PROD' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc" | tee /tmp/english-launch-fixes-v62.json
+          sshpass -e scp $SCP_OPTIONS .github/scripts/fix-english-launch-content-20260818-v62.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc" | tee /tmp/english-launch-fixes-v62.json
       - name: Smoke test corrected pages and cart session
         shell: bash
         run: |
