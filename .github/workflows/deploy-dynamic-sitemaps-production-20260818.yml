@@ -94,12 +94,17 @@ jobs:
           }
 
           fetch INDEX "$base/sitemap_index.xml?mdo_verify=$GITHUB_RUN_ID" /tmp/index.xml
-          echo '--- INDEX PREVIEW ---'; head -c 1200 /tmp/index.xml || true; echo
           require 'index root' '<sitemapindex' /tmp/index.xml
           require 'pages child' 'mdo-sitemap-pages\.xml' /tmp/index.xml
           require 'categories child' 'mdo-sitemap-categories\.xml' /tmp/index.xml
           require 'products child' 'mdo-sitemap-products\.xml' /tmp/index.xml
           forbid 'no legacy children' 'tag-sitemap|author-sitemap|post-sitemap' /tmp/index.xml
+
+          fetch PAGES "$base/mdo-sitemap-pages.xml?mdo_verify=$GITHUB_RUN_ID" /tmp/pages.xml
+          echo "PAGE_URLS=$(grep -o '<loc>' /tmp/pages.xml | wc -l) PAGE_EN=$(grep -o '<loc>https://www.elmercadodeorigen.com/en/' /tmp/pages.xml | wc -l)"
+          require 'pages root' '<urlset' /tmp/pages.xml
+          require 'English pages present' '<loc>https://www\.elmercadodeorigen\.com/en/' /tmp/pages.xml
+          forbid 'private commerce pages excluded' '/(carrito|cart|checkout|finalizar-compra|mi-cuenta|my-account)/' /tmp/pages.xml
 
           fetch CATEGORIES "$base/mdo-sitemap-categories.xml?mdo_verify=$GITHUB_RUN_ID" /tmp/categories.xml
           echo "CATEGORY_URLS=$(grep -o '<loc>' /tmp/categories.xml | wc -l)"
@@ -108,12 +113,10 @@ jobs:
 
           fetch PRODUCTS "$base/mdo-sitemap-products.xml?mdo_verify=$GITHUB_RUN_ID" /tmp/products.xml
           echo "PRODUCT_URLS=$(grep -o '<loc>' /tmp/products.xml | wc -l) EN_ALTERNATES=$(grep -o 'hreflang=\"en\"' /tmp/products.xml | wc -l)"
-          echo '--- PRODUCTS PREVIEW ---'; head -c 1600 /tmp/products.xml || true; echo
           require 'products root' '<urlset' /tmp/products.xml
           require 'English alternates present' 'hreflang="en"' /tmp/products.xml
 
           fetch ROBOTS "$base/robots.txt?mdo_verify=$GITHUB_RUN_ID" /tmp/robots.txt
-          echo '--- ROBOTS ---'; cat /tmp/robots.txt; echo
           require 'robots canonical sitemap' 'Sitemap: .*sitemap_index\.xml' /tmp/robots.txt
           forbid 'robots old English sitemap removed' 'english-sitemap\.xml' /tmp/robots.txt
 
