@@ -24,7 +24,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
       - name: Configure SSH
-        shell: bash
         run: |
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
@@ -32,7 +31,6 @@ jobs:
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
       - name: Measure candidates
-        shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
@@ -56,36 +54,25 @@ jobs:
             remove_filter("http_response", array(MDO_Rich_Description_Source::class, "preserve"), 20);
             $st=MDO_Database::table("suppliers"); $pt=MDO_Database::table("source_products");
             $inner=static function(DOMNode $n): string { $h=""; foreach($n->childNodes as $c){$h.=$n->ownerDocument->saveHTML($c);} return $h; };
-            $canon=static function(string $h): string {
-              $h=preg_replace("~</(?:strong|b|em|i|span|p|div|li|h[1-6])>|<(?:br|br/)\\s*>~iu", " ", $h);
-              $h=html_entity_decode(wp_strip_all_tags($h), ENT_QUOTES|ENT_HTML5, "UTF-8");
-              $h=str_replace(array("\xC2\xA0", "\u{00A0}"), " ", $h);
-              $h=trim(preg_replace("/\\s+/u", " ", $h));
-              return mb_strtolower($h, "UTF-8");
-            };
-            $ratio=static function(string $a,string $b) use($canon): float { $a=$canon($a);$b=$canon($b);$max=max(strlen($a),strlen($b)); if(!$max)return 1; return levenshtein(substr($a,0,2500),substr($b,0,2500))/max(1,min(2500,$max)); };
-            $describe=static function(string $name, DOMNode $n, string $json) use($inner,$canon,$ratio): void {
-              $h=$inner($n); $t=$canon($h); echo $name." tag=".$n->nodeName." id=".($n instanceof DOMElement?$n->getAttribute("id"):"")." class=".($n instanceof DOMElement?$n->getAttribute("class"):"")." textlen=".mb_strlen($t)." bytes=".strlen($h)." fmt=".preg_match_all("/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6])\\b/i",$h)." ratio=".number_format($ratio($json,$h),4)." sample=".mb_substr(trim(preg_replace("/\\s+/u"," ",$h)),0,550,"UTF-8")."\n";
-            };
+            $canon=static function(string $h): string { $h=preg_replace("~</(?:strong|b|em|i|span|p|div|li|h[1-6])>|<br\\s*/?>~iu"," ",$h); $h=html_entity_decode(wp_strip_all_tags($h),ENT_QUOTES|ENT_HTML5,"UTF-8"); $h=str_replace(array("\xC2\xA0","\u{00A0}")," ",$h); return mb_strtolower(trim(preg_replace("/\\s+/u"," ",$h)),"UTF-8"); };
+            $ratio=static function(string $a,string $b) use($canon): float { $a=$canon($a);$b=$canon($b);$max=max(strlen($a),strlen($b)); if($max===0)return 0.0; return levenshtein(substr($a,0,2500),substr($b,0,2500))/max(1,min(2500,$max)); };
+            $show=static function(string $name,DOMNode $n,string $json) use($inner,$canon,$ratio): void { $h=$inner($n); echo $name." tag=".$n->nodeName." id=".($n instanceof DOMElement?$n->getAttribute("id"):"")." class=".($n instanceof DOMElement?$n->getAttribute("class"):"")." textlen=".mb_strlen($canon($h))." fmt=".preg_match_all("/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6])\\b/i",$h)." ratio=".number_format($ratio($json,$h),4)." sample=".mb_substr(trim(preg_replace("/\\s+/u"," ",$h)),0,650,"UTF-8")."\n"; };
             foreach(array("el-catedratico","puente-robles") as $connector){
               echo "=== {$connector} ===\n";
-              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id LIMIT 1",$connector),ARRAY_A); if(!$s){echo "missing supplier\n";continue;}
-              $like="%cebo%campo%"; $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id LIMIT 1",(int)$s["id"],$like,$like),ARRAY_A); if(!$row){echo "missing product\n";continue;}
-              $r=wp_remote_get((string)$row["source_url"],array("timeout"=>20,"redirection"=>5,"user-agent"=>"EMDO Catalog Sync/".MDO_SUPPLIER_SYNC_VERSION." (+https://www.elmercadodeorigen.com/)","headers"=>array("Accept"=>"text/html,application/xhtml+xml")));
-              $body=(string)wp_remote_retrieve_body($r); $d=new DOMDocument();$p=libxml_use_internal_errors(true);$d->loadHTML("<?xml encoding=\"utf-8\" ?>".$body,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET);libxml_clear_errors();libxml_use_internal_errors($p);$x=new DOMXPath($d);
-              $json=""; foreach($x->query("//script[contains(translate(@type,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"ld+json\")]")?:array() as $sc){$a=json_decode(trim((string)$sc->textContent),true);$walk=function($v) use (&$walk,&$json){if(!is_array($v))return;$type=$v["@type"]??null;$types=is_array($type)?$type:array($type);if(in_array("Product",$types,true)&&isset($v["description"])&&$json==="")$json=(string)$v["description"];foreach($v as $vv)if(is_array($vv))$walk($vv);};if(is_array($a))$walk($a);}
-              echo "json textlen=".mb_strlen($canon($json))." sample=".mb_substr($canon($json),0,500,"UTF-8")."\n";
-              $qs=$connector==="el-catedratico"?array("//*[@id=\"descripcion\"]"):array("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \(")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" otros \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" bloque \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" descripcion \ ")]");
-              foreach($qs as $qi=>$q){$nodes=@$x->query($q);if(!$nodes)continue;echo "q{$qi}_count=".$nodes->length."\n";for($i=0;$i<min(12,$nodes->length);$i++)$describe("q{$qi}[{$i}]",$nodes->item($i),$json);}
-              if($connector==="puente-robles"){
-                $ad=$x->query("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]");
-                foreach($ad?:array() as $ai=>$node){echo "adicional[$ai] children:\n";foreach($node->childNodes as $ci=>$child){if($child instanceof DOMElement)$describe(" child{$ci}",$child,$json);}}
-              }
+              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id LIMIT 1",$connector),ARRAY_A); if(!$s){continue;}
+              $like="%cebo%campo%"; $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id LIMIT 1",(int)$s["id"],$like,$like),ARRAY_A); if(!$row){continue;}
+              $r=wp_remote_get((string)$row["source_url"],array("timeout"=>20,"redirection"=>5,"user-agent"=>"EMDO Catalog Sync/".MDO_SUPPLIER_SYNC_VERSION,"headers"=>array("Accept"=>"text/html,application/xhtml+xml"))); $body=(string)wp_remote_retrieve_body($r);
+              $d=new DOMDocument();$prev=libxml_use_internal_errors(true);$d->loadHTML("<?xml encoding=\"utf-8\" ?>".$body,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET);libxml_clear_errors();libxml_use_internal_errors($prev);$x=new DOMXPath($d);
+              $json=""; $scan=function($v) use (&$scan,&$json){ if(!is_array($v))return; $type=$v["@type"]??null;$types=is_array($type)?$type:array($type);if($json===""&&in_array("Product",$types,true)&&isset($v["description"]))$json=(string)$v["description"];foreach($v as $vv){if(is_array($vv))$scan($vv);} };
+              foreach($x->query("//script[contains(translate(@type,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"ld+json\")]")?:array() as $sc){$a=json_decode(trim((string)$sc->textContent),true);if(is_array($a))$scan($a);}
+              echo "json textlen=".mb_strlen($canon($json))."\n";
+              $queries=$connector==="el-catedratico"?array("//*[@id=\"descripcion\"]"):array("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" otros \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" bloque \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" descripcion \ ")]");
+              foreach($queries as $qi=>$q){$nodes=$x->query($q);echo "q{$qi}_count=".($nodes?$nodes->length:0)."\n";foreach($nodes?:array() as $i=>$n){if($i>=12)break;$show("q{$qi}[{$i}]",$n,$json);}}
+              if($connector==="puente-robles"){$nodes=$x->query("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]");foreach($nodes?:array() as $ai=>$n){echo "adicional{$ai}_children\n";foreach($n->childNodes as $ci=>$c){if($c instanceof DOMElement)$show(" child{$ci}",$c,$json);}}}
             }
           ' --path="$wp_path" --allow-root
           REMOTE
       - name: Commit diagnostic
-        shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
