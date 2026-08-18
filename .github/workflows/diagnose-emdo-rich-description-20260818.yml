@@ -1,4 +1,4 @@
-name: Measure EMDO rich description blocks in staging
+name: Validate EMDO rich descriptions in staging
 
 on:
   push:
@@ -10,9 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -22,7 +22,7 @@ jobs:
       STAGING_DOMAIN: dev.elmercadodeorigen.com
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends rsync sshpass
       - name: Configure SSH
         run: |
           set -euo pipefail
@@ -30,7 +30,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Measure candidates
+      - name: Deploy current EMDO to staging and validate live scrape
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
@@ -38,46 +38,58 @@ jobs:
           mkdir -p diagnostics
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE' | tee diagnostics/emdo-rich-description-blocks-staging.txt
+          RESOLVED="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
           set -eu
           raw="${1%/}"; domain="$2"; wp_path="$raw"
           case "$raw" in */wp-content/*) wp_path="${raw%%/wp-content/*}" ;; */wp-content) wp_path="$(dirname "$raw")" ;; esac
           if [ ! -f "$wp_path/wp-config.php" ]; then
-            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
+            cfg="$(find "$HOME" /var/www /home /srv /opt /data /web /www -maxdepth 9 -type f -path "*/${domain}/wp-config.php" 2>/dev/null | head -n1 || true)"
             [ -n "$cfg" ] || exit 2
             wp_path="$(dirname "$cfg")"
           fi
-          wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
-          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n 1)"
+          printf '%s' "$wp_path"
+          REMOTE
+          )"
+          test -n "$RESOLVED"
+          TARGET="${RESOLVED%/}/wp-content/plugins/mdo-supplier-sync/"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p -- '$TARGET'"
+          sshpass -e rsync -az --delete --exclude='.DS_Store' -e "ssh $SSH_OPTIONS" mdo-supplier-sync/ "$STAGING_USER@$STAGING_HOST:$TARGET"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$RESOLVED'" <<'REMOTE' | tee diagnostics/emdo-rich-description-validation-staging.txt
+          set -eu
+          wp_path="$1"; wp_bin="$(command -v wp)"; php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin activate mdo-supplier-sync --path="$wp_path" --allow-root >/dev/null
           "$php_bin" -d memory_limit=768M "$wp_bin" eval '
             global $wpdb;
-            remove_filter("http_response", array(MDO_Rich_Description_Source::class, "preserve"), 20);
-            $st=MDO_Database::table("suppliers"); $pt=MDO_Database::table("source_products");
-            $inner=static function(DOMNode $n): string { $h=""; foreach($n->childNodes as $c){$h.=$n->ownerDocument->saveHTML($c);} return $h; };
-            $canon=static function(string $h): string { $h=preg_replace("~</(?:strong|b|em|i|span|p|div|li|h[1-6])>|<br\\s*/?>~iu"," ",$h); $h=html_entity_decode(wp_strip_all_tags($h),ENT_QUOTES|ENT_HTML5,"UTF-8"); $h=str_replace(array("\xC2\xA0","\u{00A0}")," ",$h); return mb_strtolower(trim(preg_replace("/\\s+/u"," ",$h)),"UTF-8"); };
-            $ratio=static function(string $a,string $b) use($canon): float { $a=$canon($a);$b=$canon($b);$max=max(strlen($a),strlen($b)); if($max===0)return 0.0; return levenshtein(substr($a,0,2500),substr($b,0,2500))/max(1,min(2500,$max)); };
-            $show=static function(string $name,DOMNode $n,string $json) use($inner,$canon,$ratio): void { $h=$inner($n); echo $name." tag=".$n->nodeName." id=".($n instanceof DOMElement?$n->getAttribute("id"):"")." class=".($n instanceof DOMElement?$n->getAttribute("class"):"")." textlen=".mb_strlen($canon($h))." fmt=".preg_match_all("/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6])\\b/i",$h)." ratio=".number_format($ratio($json,$h),4)." sample=".mb_substr(trim(preg_replace("/\\s+/u"," ",$h)),0,650,"UTF-8")."\n"; };
+            $st=MDO_Database::table("suppliers");
+            $pt=MDO_Database::table("source_products");
+            $failed=false;
             foreach(array("el-catedratico","puente-robles") as $connector){
-              echo "=== {$connector} ===\n";
-              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id LIMIT 1",$connector),ARRAY_A); if(!$s){continue;}
-              $like="%cebo%campo%"; $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id LIMIT 1",(int)$s["id"],$like,$like),ARRAY_A); if(!$row){continue;}
-              $r=wp_remote_get((string)$row["source_url"],array("timeout"=>20,"redirection"=>5,"user-agent"=>"EMDO Catalog Sync/".MDO_SUPPLIER_SYNC_VERSION,"headers"=>array("Accept"=>"text/html,application/xhtml+xml"))); $body=(string)wp_remote_retrieve_body($r);
-              $d=new DOMDocument();$prev=libxml_use_internal_errors(true);$d->loadHTML("<?xml encoding=\"utf-8\" ?>".$body,LIBXML_NOWARNING|LIBXML_NOERROR|LIBXML_NONET);libxml_clear_errors();libxml_use_internal_errors($prev);$x=new DOMXPath($d);
-              $json=""; $scan=function($v) use (&$scan,&$json){ if(!is_array($v))return; $type=$v["@type"]??null;$types=is_array($type)?$type:array($type);if($json===""&&in_array("Product",$types,true)&&isset($v["description"]))$json=(string)$v["description"];foreach($v as $vv){if(is_array($vv))$scan($vv);} };
-              foreach($x->query("//script[contains(translate(@type,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\"),\"ld+json\")]")?:array() as $sc){$a=json_decode(trim((string)$sc->textContent),true);if(is_array($a))$scan($a);}
-              echo "json textlen=".mb_strlen($canon($json))."\n";
-              $queries=$connector==="el-catedratico"?array("//*[@id=\"descripcion\"]"):array("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" otros \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" bloque \ ")]","//*[contains(concat(\" \",normalize-space(@class),\" \"),\" descripcion \ ")]");
-              foreach($queries as $qi=>$q){$nodes=$x->query($q);echo "q{$qi}_count=".($nodes?$nodes->length:0)."\n";foreach($nodes?:array() as $i=>$n){if($i>=12)break;$show("q{$qi}[{$i}]",$n,$json);}}
-              if($connector==="puente-robles"){$nodes=$x->query("//*[contains(concat(\" \",normalize-space(@class),\" \"),\" adicional \ ")]");foreach($nodes?:array() as $ai=>$n){echo "adicional{$ai}_children\n";foreach($n->childNodes as $ci=>$c){if($c instanceof DOMElement)$show(" child{$ci}",$c,$json);}}}
+              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id ASC LIMIT 1",$connector),ARRAY_A);
+              if(!$s){echo "{$connector}: supplier missing\n";$failed=true;continue;}
+              $like="%cebo%campo%";
+              $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id ASC LIMIT 1",(int)$s["id"],$like,$like),ARRAY_A);
+              if(!$row){echo "{$connector}: target product missing\n";$failed=true;continue;}
+              try{$p=MDO_Connector_Iberico_Family::scrape_product((string)$row["source_url"],$s);$p=MDO_Text::normalize_product($p);}catch(Throwable $e){echo "{$connector}: scrape_error=".$e->getMessage()."\n";$failed=true;continue;}
+              $h=(string)($p["description"]??"");
+              $strong=preg_match_all("/<(?:strong|b)\\b/i",$h);$pars=preg_match_all("/<p\\b/i",$h);
+              $bad=array();foreach(array("PesoPiezas","PesoOfrecemos","RecomendacionesPara","RecomendacionesRetirar","EnvíoCada","CertificaciónNuestros") as $needle){if(stripos(wp_strip_all_tags($h),$needle)!==false)$bad[]=$needle;}
+              $hasPeso=stripos(wp_strip_all_tags($h),"Peso")!==false;$hasRec=stripos(wp_strip_all_tags($h),"Recomendaciones")!==false;
+              echo "{$connector}: url=".$row["source_url"]." bytes=".strlen($h)." strong={$strong} p={$pars} has_peso=".($hasPeso?"yes":"no")." has_recomendaciones=".($hasRec?"yes":"no")." bad=".implode(",",$bad)." hash=".(string)($p["source_hash"]??"")."\n";
+              echo "{$connector}: sample=".mb_substr(trim(preg_replace("/\\s+/u"," ",$h)),0,1800,"UTF-8")."\n";
+              if($strong<1||$pars<1||!$hasPeso||!$hasRec||$bad){$failed=true;}
             }
+            if($failed){throw new RuntimeException("Rich description validation failed.");}
           ' --path="$wp_path" --allow-root
           REMOTE
-      - name: Commit diagnostic
+      - name: Commit validation result
+        if: always()
         run: |
           set -euo pipefail
+          test -f diagnostics/emdo-rich-description-validation-staging.txt || printf 'validation workflow failed before result capture\n' > diagnostics/emdo-rich-description-validation-staging.txt
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add diagnostics/emdo-rich-description-blocks-staging.txt
+          git add diagnostics/emdo-rich-description-validation-staging.txt
           git diff --cached --quiet && exit 0
-          git commit -m 'Record EMDO rich description block measurements'
+          git commit -m 'Record EMDO rich description staging validation'
           git push
