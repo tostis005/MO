@@ -1,0 +1,56 @@
+name: Audit final English vendor content v48
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/audit-final-english-vendor-content-20260818-v48.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit production DB and public HTML
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf %s "$p";break;;esac;done')"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1)
+            echo '=== DB ==='
+            \"\$ph\" -d memory_limit=768M \"\$wp\" eval 'global \$wpdb; \$rows=\$wpdb->get_results(\"SELECT user_id,meta_value FROM {\$wpdb->usermeta} WHERE meta_key=\\\"wcfmmp_profile_settings\\\" ORDER BY user_id\",ARRAY_A); foreach(\$rows as \$r){\$s=maybe_unserialize(\$r[\"meta_value\"]); if(!is_array(\$s)||empty(\$s[\"store_slug\"]))continue; \$id=(int)\$r[\"user_id\"]; \$slug=(string)\$s[\"store_slug\"]; \$es=(string)get_user_meta(\$id,\"_store_description\",true); if(!trim(wp_strip_all_tags(\$es)))\$es=(string)(\$s[\"shop_description\"]??\"\"); \$en=(string)get_user_meta(\$id,\"_mdo_en_store_description\",true); \$pc=(int)\$wpdb->get_var(\$wpdb->prepare(\"SELECT COUNT(*) FROM {\$wpdb->posts} WHERE post_type=\\\"product\\\" AND post_status=\\\"publish\\\" AND post_author=%d\",\$id)); echo wp_json_encode([\"id\"=>\$id,\"slug\"=>\$slug,\"products\"=>\$pc,\"es_chars\"=>mb_strlen(trim(wp_strip_all_tags(\$es))),\"en_chars\"=>mb_strlen(trim(wp_strip_all_tags(\$en))),\"es_start\"=>mb_substr(trim(preg_replace(\"/\\s+/u\",\" \",wp_strip_all_tags(\$es))),0,400),\"en_start\"=>mb_substr(trim(preg_replace(\"/\\s+/u\",\" \",wp_strip_all_tags(\$en))),0,400)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL; }' --path='$PROD_PATH' --allow-root
+            echo '=== HTML ==='
+            for u in \
+              https://www.elmercadodeorigen.com/tienda/1957/ \
+              https://www.elmercadodeorigen.com/en/store/1957/ \
+              https://www.elmercadodeorigen.com/tienda/1957/acercade/ \
+              https://www.elmercadodeorigen.com/en/store/1957/about/ \
+              https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/ \
+              https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/ \
+              https://www.elmercadodeorigen.com/tienda/hidalgo-de-la-jara/acercade/ \
+              https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/; do
+              echo \"--- \$u\"
+              curl -k -L -sS --max-time 35 \"\$u\" -o /tmp/v48.html
+              echo \"li_products=\$(grep -oEi '<li[^>]+class=\\\"[^\\\"]*product[^\\\"]*\\\"' /tmp/v48.html|wc -l) product_urls=\$(grep -oE '/(en/)?producto?/[^\\\" <]+' /tmp/v48.html|sort -u|wc -l) en_product_urls=\$(grep -oE '/en/product/[^\\\" <]+' /tmp/v48.html|sort -u|wc -l)\"
+              grep -oE '<title>[^<]+' /tmp/v48.html | head -1
+              grep -oiE '.{0,180}(The story of|livestock farmers|La historia de|Los ganaderos que integran|Hidalgo de la Jara|Gregorio).{0,350}' /tmp/v48.html | head -8 | sed 's/<[^>]*>/ /g' | tr '\n' ' '; echo
+            done
+          " > runtime/final-english-vendor-audit-v48.txt 2>&1
+      - name: Commit audit
+        run: |
+          git config user.name github-actions; git config user.email github-actions@github.com
+          git add runtime/final-english-vendor-audit-v48.txt
+          git commit -m 'Record final English vendor content audit v48' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
