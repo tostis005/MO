@@ -1,0 +1,153 @@
+name: Finalize categories and English shop v19
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-categories-english-shop-20260818-v19.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/categories-shop-v19.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/categories-shop-v19.txt
+          git commit -m 'Record categories shop v19 run id'
+          git push origin HEAD:main
+      - name: Deploy files and persist database translations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/page-categorias.php
+          php -l mu-plugins/mdo-english-storefront-stability-010258.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1);
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          $SCP elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/themes/elmercadodeorigen-child/page-categorias.php"
+          $SCP mu-plugins/mdo-english-storefront-stability-010258.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-storefront-stability-010258.php"
+          PHP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v php || find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1")"
+          WP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v wp")"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -l '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/page-categorias.php' && '$PHP_BIN' -l '$PROD_PATH/wp-content/mu-plugins/mdo-english-storefront-stability-010258.php'"
+
+          # Persist exact English translations of the Spanish category-card copy using core DB data only.
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' eval 'global \$wpdb; \$map=array(
+            \"jamones-paletas\"=>\"Hams and shoulders of different qualities, feeding regimes, curing periods, formats and presentations.\",
+            \"embutidos-y-curados\"=>\"Chorizos, salchichones, loins, tenderloins, morcones, sobrasadas and other cured sausages and meats.\",
+            \"aceites\"=>\"Olive oils of different varieties, origins, formats and flavour profiles.\",
+            \"carnes\"=>\"Meat in different cuts and formats, from whole cuts and burgers to preparations ready for cooking.\",
+            \"packs-y-lotes\"=>\"Packs and bundles combining different products, both for gifting and for trying several specialities.\",
+            \"accesorios\"=>\"Accessories and complements for slicing, serving, preserving or presenting the products.\",
+            \"adobados\"=>\"Marinated meats and other products, with different preparations and formats.\"
+          ); foreach(\$map as \$slug=>\$copy){\$id=(int)\$wpdb->get_var(\$wpdb->prepare(\"SELECT t.term_id FROM {\$wpdb->terms} t INNER JOIN {\$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id WHERE tt.taxonomy=%s AND t.slug=%s LIMIT 1\",\"product_cat\",\$slug)); if(\$id>0){update_metadata(\"term\",\$id,\"_emdo_en_hub_summary\",\$copy); echo \$slug.\"=saved\\n\";}}' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+
+          # Persist all interface translations used by the English shop server renderer.
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' eval '\$key=\"elmercado_en_ui_copy_010245\"; \$map=get_option(\$key,array()); if(!is_array(\$map))\$map=array(); \$add=array(
+            \"Recomendados\"=>\"Recommended\",
+            \"Más populares\"=>\"Most popular\",
+            \"Mejor valorados\"=>\"Top rated\",
+            \"Más recientes\"=>\"Newest\",
+            \"Menor precio\"=>\"Lowest price\",
+            \"Mayor precio\"=>\"Highest price\",
+            \"Filtros\"=>\"Filters\",
+            \"Cerrar menú\"=>\"Close menu\",
+            \"Buscar productos\"=>\"Search products\",
+            \"Buscar\"=>\"Search\",
+            \"Ordenar por\"=>\"Sort by\",
+            \"resultado\"=>\"result\",
+            \"resultados\"=>\"results\",
+            \"producto\"=>\"product\",
+            \"productos\"=>\"products\"
+          ); update_option(\$key,array_merge(\$map,\$add),false); echo \"UI_COPY_SAVED=\".count(\$add);' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true"
+      - name: Verify category hubs publicly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re,ssl,urllib.request,html,os
+          ctx=ssl._create_unverified_context(); rid=os.environ['GITHUB_RUN_ID']
+          def get(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 EMDO v19','Cache-Control':'no-cache'})
+            with urllib.request.urlopen(req,context=ctx,timeout=90) as r:return r.read().decode('utf-8','replace')
+          es=get(f'https://www.elmercadodeorigen.com/categorias/?v19={rid}')
+          en=get(f'https://www.elmercadodeorigen.com/en/categorias/?v19={rid}')
+          def cards(doc):
+            out=[]
+            for m in re.finditer(r'<article[^>]+data-category-slug=["\']([^"\']+)["\'][^>]*>(.*?)</article>',doc,re.S|re.I):
+              slug=m.group(1);block=m.group(2)
+              nm=re.search(r'<h2[^>]*>.*?<a[^>]*>(.*?)</a>',block,re.S|re.I)
+              sm=re.search(r'emo-category-hub-card__summary[^>]*>(.*?)</p>',block,re.S|re.I)
+              clean=lambda x: re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>',' ',x or ''))).strip()
+              out.append((slug,clean(nm.group(1) if nm else ''),clean(sm.group(1) if sm else '')))
+            return out
+          esc=cards(es); enc=cards(en)
+          assert esc and enc
+          assert all(not (s.startswith('mentta-') or s in ('mentta','menta')) for s,_,_ in esc),esc
+          assert all(not (s.startswith('mentta-') or s in ('mentta','menta')) for s,_,_ in enc),enc
+          assert set(s for s,_,_ in esc)==set(s for s,_,_ in enc),(esc,enc)
+          byslug={s:(n,d) for s,n,d in enc}
+          expected={
+            'carnes':'Meat in different cuts and formats, from whole cuts and burgers to preparations ready for cooking.',
+            'jamones-paletas':'Hams and shoulders of different qualities, feeding regimes, curing periods, formats and presentations.',
+            'embutidos-y-curados':'Chorizos, salchichones, loins, tenderloins, morcones, sobrasadas and other cured sausages and meats.',
+            'packs-y-lotes':'Packs and bundles combining different products, both for gifting and for trying several specialities.',
+            'aceites':'Olive oils of different varieties, origins, formats and flavour profiles.'
+          }
+          for slug,text in expected.items(): assert byslug.get(slug,('', ''))[1]==text,(slug,byslug.get(slug))
+          assert 'Explore the available' not in en
+          print('ES_CARDS',esc)
+          print('EN_CARDS',enc)
+          print('CATEGORY_HUBS_OK')
+          PY
+      - name: Verify live English shop in Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-v19-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9224 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-v19-profile about:blank >/tmp/chrome-v19.log 2>&1 &
+          CPID=$!
+          trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9224/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9224/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable');await cmd('Runtime.enable');await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/?emdo_v19='+process.env.GITHUB_RUN_ID});
+            const expr=`(() => { const spanish=/\\b(categor[ií]as?|productos?|resultado[s]?|mostrando|ordenar|recomendados|m[aá]s populares|mejor valorados|m[aá]s recientes|menor precio|mayor precio|filtros?|filtrar|vendedor|buscar|tienda|a[nñ]adir|carrito|comprar|selecci[oó]n|env[ií]o|cerrar|limpiar|aplicados|proveedor|aplicar|anterior|siguiente|p[aá]gina)\\b/i; const bad=[]; const seen=new Set(); for(const el of document.querySelectorAll('body *')){ if(el.closest('script,style,svg,template,noscript,li.product,.product')||el.children.length)continue; const vals=[el.textContent||'',el.getAttribute?.('aria-label')||'',el.getAttribute?.('placeholder')||'',el.getAttribute?.('title')||'']; for(const raw of vals){const s=String(raw).replace(/\\s+/g,' ').trim();if(!s||s.length>180||!spanish.test(s))continue;const k=el.tagName+'|'+s;if(!seen.has(k)){seen.add(k);bad.push(k);}} } return {href:location.href,readyState:document.readyState,nodes:document.getElementsByTagName('*').length,products:document.querySelectorAll('li.product').length,heap:(performance.memory||{}).usedJSHeapSize||0,bad}; })()`;
+            const snaps=[];for(let i=0;i<3;i++){await sleep(6000);const r=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},10000);const v=r.result.value;snaps.push(v);console.log('SNAP',i+1,JSON.stringify(v));}
+            const a=snaps[0],b=snaps[2]; if(b.bad.length)throw new Error('Spanish UI remains: '+JSON.stringify(b.bad)); if(b.products>a.products+2)throw new Error('products growing'); if(b.nodes>a.nodes+2000)throw new Error('DOM growing'); if(b.heap>350000000)throw new Error('heap too large'); console.log('ENGLISH_SHOP_OK'); ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Record success
+        run: |
+          printf 'run_id=%s\nstatus=success\nroot_categories_only=true\ncategory_copy_persisted=true\nenglish_shop_ui=true\nchrome_responsive=true\n' "$GITHUB_RUN_ID" > runtime/categories-shop-v19.txt
+          git add runtime/categories-shop-v19.txt
+          git commit -m 'Record successful categories shop v19 verification'
+          git pull --rebase origin main
+          git push origin HEAD:main
