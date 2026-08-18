@@ -1,0 +1,66 @@
+name: Audit all product translations v66
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit every published product, including hidden vendors
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          php -l .github/scripts/audit-all-product-translations-v66.php
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/mdo-all-product-translations-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-all-product-translations-v66.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/all-products-en-v66.json
+          python3 - <<'PY'
+          import json
+          p='/tmp/all-products-en-v66.json'
+          d=json.load(open(p,encoding='utf-8'))
+          print('=== FULL CATALOG ENGLISH AUDIT ===')
+          print(json.dumps(d['summary'],ensure_ascii=False,indent=2))
+          print('\n=== TARGET PRODUCERS ===')
+          print(json.dumps(d['targets'],ensure_ascii=False,indent=2))
+          print('\n=== VENDOR COUNTS ===')
+          print(json.dumps(d['vendors'],ensure_ascii=False,indent=2))
+          print('\n=== ISSUES ===')
+          print(json.dumps(d['issues'],ensure_ascii=False,indent=2))
+          print('\n=== EXACT-COPY REVIEW (TARGETS FIRST) ===')
+          rows=sorted(d['exact_copy_review'], key=lambda x:(0 if x.get('target') else 1,x.get('vendor',''),x.get('id',0)))
+          print(json.dumps(rows,ensure_ascii=False,indent=2))
+          for name,row in d['targets'].items():
+              if row['products'] == 0:
+                  raise SystemExit(f'TARGET_NOT_FOUND:{name}')
+          if d['summary']['products_with_any_issue']:
+              raise SystemExit('PRODUCT_TRANSLATION_ISSUES_FOUND')
+          print('ALL_PRODUCT_TRANSLATIONS_V66_OK')
+          PY
