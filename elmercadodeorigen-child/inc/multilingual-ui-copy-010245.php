@@ -170,6 +170,29 @@ add_filter(
 	3
 );
 
+/**
+ * WooCommerce can build a product-category archive title from the raw taxonomy
+ * object. On /en/ force the already-persisted Falang term name from termmeta.
+ */
+function elmercado_english_product_category_title_010245( string $title ): string {
+	if ( ! elmercado_is_english_request_010245() || ! function_exists( 'is_product_category' ) || ! is_product_category() ) {
+		return $title;
+	}
+
+	$term = get_queried_object();
+	if ( ! $term instanceof WP_Term || 'product_cat' !== $term->taxonomy ) {
+		return $title;
+	}
+	if ( '1' !== (string) get_term_meta( $term->term_id, '_en_US_published', true ) ) {
+		return $title;
+	}
+
+	$name = trim( (string) get_term_meta( $term->term_id, '_en_US_name', true ) );
+	return '' !== $name ? $name : $title;
+}
+add_filter( 'woocommerce_page_title', 'elmercado_english_product_category_title_010245', PHP_INT_MAX );
+add_filter( 'single_term_title', 'elmercado_english_product_category_title_010245', PHP_INT_MAX );
+
 /* The storefront intentionally does not expose the WCFM Policies product tab. */
 add_filter(
 	'woocommerce_product_tabs',
