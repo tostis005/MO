@@ -1,0 +1,137 @@
+name: Diagnose English shop with CDP 2026-08-18 v11
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cdp-diagnose-english-shop-20260818-v11.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-cdp-v11.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-cdp-v11.txt
+          git commit -m 'Record English CDP v11 run id'
+          git push origin HEAD:main
+
+      - name: Compare Chrome with scripts disabled and enabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-chrome-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --remote-debugging-port=9222 --remote-allow-origins='*' \
+            --user-data-dir=/tmp/emdo-chrome-profile about:blank >/tmp/emdo-chrome.log 2>&1 &
+          CHROME_PID=$!
+          trap 'kill $CHROME_PID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:9222/json/list >/dev/null 2>&1 && break
+            sleep 1
+          done
+          node --version
+          node - <<'NODE' > runtime/english-cdp-v11.json
+          const fs = require('fs');
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          const report = { run_id: process.env.GITHUB_RUN_ID, stages: {} };
+
+          async function main() {
+            const targets = await (await fetch('http://127.0.0.1:9222/json/list')).json();
+            const target = targets.find(x => x.type === 'page');
+            if (!target) throw new Error('No page target');
+            if (typeof WebSocket !== 'function') throw new Error('Node WebSocket API unavailable');
+            const ws = new WebSocket(target.webSocketDebuggerUrl);
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(() => reject(new Error('WebSocket open timeout')), 5000);
+              ws.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+              ws.addEventListener('error', reject, { once: true });
+            });
+            let seq = 0;
+            const pending = new Map();
+            ws.addEventListener('message', ev => {
+              let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+              if (!msg.id || !pending.has(msg.id)) return;
+              const p = pending.get(msg.id); pending.delete(msg.id); clearTimeout(p.timer);
+              if (msg.error) p.reject(new Error(JSON.stringify(msg.error))); else p.resolve(msg.result || {});
+            });
+            const cmd = (method, params = {}, timeout = 6000) => new Promise((resolve, reject) => {
+              const id = ++seq;
+              const timer = setTimeout(() => { pending.delete(id); reject(new Error(method + ' timeout')); }, timeout);
+              pending.set(id, { resolve, reject, timer });
+              ws.send(JSON.stringify({ id, method, params }));
+            });
+            const snapshotExpr = `(() => {
+              const scripts = Array.from(document.scripts || [], s => s.src || s.id || '');
+              const mem = performance.memory || {};
+              return {
+                href: location.href,
+                readyState: document.readyState,
+                title: document.title,
+                nodes: document.getElementsByTagName('*').length,
+                products: document.querySelectorAll('li.product').length,
+                htmlChars: document.documentElement ? document.documentElement.outerHTML.length : 0,
+                bodyClasses: document.body ? document.body.className : '',
+                translateDomScript: scripts.some(v => String(v).includes('trp-translate-dom-changes')),
+                continuousLoader: !!document.getElementById('elmercado-continuous-catalog-loader-010181'),
+                treeWalkerSource: document.documentElement ? document.documentElement.innerHTML.includes('createTreeWalker') : false,
+                heapUsed: Number(mem.usedJSHeapSize || 0),
+                heapTotal: Number(mem.totalJSHeapSize || 0),
+                resources: performance.getEntriesByType('resource').length
+              };
+            })()`;
+            const evaluate = async () => {
+              const r = await cmd('Runtime.evaluate', { expression: snapshotExpr, returnByValue: true }, 7000);
+              return r.result && r.result.value ? r.result.value : null;
+            };
+            const stage = async (name, scriptsDisabled, url) => {
+              const out = { scriptsDisabled, url, snapshots: [], errors: [] };
+              report.stages[name] = out;
+              try { await cmd('Emulation.setScriptExecutionDisabled', { value: scriptsDisabled }, 5000); }
+              catch (e) { out.errors.push('setScript:' + e.message); }
+              try { out.navigate = await cmd('Page.navigate', { url }, 7000); }
+              catch (e) { out.errors.push('navigate:' + e.message); }
+              for (let i = 0; i < 3; i++) {
+                await sleep(5000);
+                try { out.snapshots.push(await evaluate()); }
+                catch (e) { out.errors.push('snapshot' + (i+1) + ':' + e.message); out.snapshots.push(null); }
+              }
+            };
+            await cmd('Page.enable');
+            await cmd('Runtime.enable');
+            await cmd('Network.enable');
+            await stage('scripts_disabled', true, 'https://www.elmercadodeorigen.com/en/shop/?emdo_cdp_nojs=' + process.env.GITHUB_RUN_ID);
+            try { await cmd('Page.navigate', { url: 'about:blank' }, 5000); } catch {}
+            await sleep(1000);
+            await stage('scripts_enabled', false, 'https://www.elmercadodeorigen.com/en/shop/?emdo_cdp_js=' + process.env.GITHUB_RUN_ID);
+            ws.close();
+          }
+
+          main().catch(e => { report.fatal = e.stack || String(e); }).finally(() => {
+            process.stdout.write(JSON.stringify(report, null, 2));
+          });
+          NODE
+          cat runtime/english-cdp-v11.json
+
+      - name: Commit diagnostic report
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'run_id=%s\nstatus=diagnostic_complete\n' "$GITHUB_RUN_ID" > runtime/english-cdp-v11.txt
+          git add runtime/english-cdp-v11.txt runtime/english-cdp-v11.json
+          git commit -m 'Record English Chrome CDP diagnostic v11'
+          git pull --rebase origin main
+          git push origin HEAD:main
