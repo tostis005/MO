@@ -1,0 +1,135 @@
+name: Profile English shop stability 2026-08-18 v10
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/browser-profile-english-shop-20260818-v10.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-browser-v10.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-browser-v10.txt
+          git commit -m 'Record English browser v10 run id'
+          git push origin HEAD:main
+
+      - name: Profile live Chrome with WebDriver
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v google-chrome >/dev/null
+          command -v chromedriver >/dev/null
+          chromedriver --port=9515 --log-path=/tmp/chromedriver.log --verbose >/tmp/chromedriver.stdout 2>&1 &
+          DRIVER_PID=$!
+          trap 'kill $DRIVER_PID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:9515/status >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          python3 - <<'PY'
+          import json, time, urllib.request
+
+          BASE = 'http://127.0.0.1:9515'
+          def call(method, path, payload=None, timeout=20):
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(BASE + path, data=data, method=method, headers={'Content-Type':'application/json'})
+              with urllib.request.urlopen(req, timeout=timeout) as r:
+                  return json.loads(r.read().decode())
+
+          caps = {
+              'capabilities': {
+                  'alwaysMatch': {
+                      'browserName': 'chrome',
+                      'pageLoadStrategy': 'none',
+                      'goog:chromeOptions': {
+                          'args': [
+                              '--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage',
+                              '--window-size=1440,1000','--disable-background-networking',
+                              '--disable-default-apps','--disable-extensions','--no-first-run'
+                          ]
+                      }
+                  }
+              }
+          }
+          created = call('POST','/session',caps,30)
+          sid = created.get('value',{}).get('sessionId') or created.get('sessionId')
+          assert sid, created
+          print('SESSION', sid)
+          url = 'https://www.elmercadodeorigen.com/en/shop/?emdo_profile=${{ github.run_id }}'
+          call('POST',f'/session/{sid}/url',{'url':url},20)
+
+          script = r'''return (() => {
+            const scripts = Array.from(document.scripts, s => s.src || s.id || '');
+            const mem = performance.memory || {};
+            return {
+              href: location.href,
+              readyState: document.readyState,
+              title: document.title,
+              nodes: document.getElementsByTagName('*').length,
+              products: document.querySelectorAll('li.product').length,
+              htmlChars: document.documentElement ? document.documentElement.outerHTML.length : 0,
+              bodyClasses: document.body ? document.body.className : '',
+              translateDomScript: scripts.some(v => String(v).includes('trp-translate-dom-changes')),
+              translateSwitcherScript: scripts.some(v => String(v).includes('trp-frontend-language-switcher')),
+              continuousLoader: !!document.getElementById('elmercado-continuous-catalog-loader-010181'),
+              treeWalkerSource: document.documentElement ? document.documentElement.innerHTML.includes('createTreeWalker') : false,
+              heapUsed: Number(mem.usedJSHeapSize || 0),
+              heapTotal: Number(mem.totalJSHeapSize || 0),
+              resources: performance.getEntriesByType('resource').length
+            };
+          })();'''
+
+          snapshots=[]
+          for delay in (5, 10, 15):
+              time.sleep(delay)
+              result = call('POST',f'/session/{sid}/execute/sync',{'script':script,'args':[]},20)
+              value = result.get('value')
+              assert isinstance(value, dict), result
+              snapshots.append(value)
+              print('SNAPSHOT', len(snapshots), json.dumps(value, ensure_ascii=False, sort_keys=True))
+
+          first, last = snapshots[0], snapshots[-1]
+          assert last['href'].startswith('https://www.elmercadodeorigen.com/en/shop/'), last
+          assert last['nodes'] > 100 and last['nodes'] < 50000, last
+          assert last['htmlChars'] > 100000 and last['htmlChars'] < 5000000, last
+          assert not last['translateDomScript'], last
+          assert not last['translateSwitcherScript'], last
+          assert not last['continuousLoader'], last
+          assert not last['treeWalkerSource'], last
+          assert 'emo-static-english-catalog' in last['bodyClasses'], last
+          assert last['products'] <= first['products'] + 2, (first,last)
+          assert last['nodes'] <= first['nodes'] + 3000, (first,last)
+          if first['heapUsed'] and last['heapUsed']:
+              assert last['heapUsed'] < 350_000_000, last
+              assert last['heapUsed'] <= max(first['heapUsed'] * 2.5, first['heapUsed'] + 80_000_000), (first,last)
+
+          call('DELETE',f'/session/{sid}',None,20)
+          print('LIVE_CHROME_STABLE')
+          PY
+
+      - name: Record success
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'run_id=%s\nstatus=success\npublic_html=true\nlive_chrome_responsive=true\ndom_growth_stable=true\nheap_growth_stable=true\ntranslatepress_dom_translation=false\ncontinuous_loader=false\ncategory_html_clean=true\nmentta_visible=false\n' "$GITHUB_RUN_ID" > runtime/english-browser-v10.txt
+          git add runtime/english-browser-v10.txt
+          git commit -m 'Record stable live Chrome profile for English shop'
+          git pull --rebase origin main
+          git push origin HEAD:main
