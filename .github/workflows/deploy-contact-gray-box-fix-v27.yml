@@ -1,0 +1,88 @@
+name: Deploy contact gray box fix v27
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-contact-form-empty-response-fix-010259.php'
+      - '.github/workflows/deploy-contact-gray-box-fix-v27.yml'
+permissions:
+  contents: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy fix
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-contact-form-empty-response-fix-010259.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1);
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          $SCP mu-plugins/mdo-contact-form-empty-response-fix-010259.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-contact-form-empty-response-fix-010259.php"
+          PHP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v php || find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1")"
+          WP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v wp")"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -l '$PROD_PATH/wp-content/mu-plugins/mdo-contact-form-empty-response-fix-010259.php'"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true"
+      - name: Verify in Chrome
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-contact-v27
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9231 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-contact-v27 about:blank >/tmp/chrome-contact-v27.log 2>&1 &
+          CPID=$!
+          trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9231/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9231/json/list')).json();
+            const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl);
+            await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0; const pending=new Map();
+            ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable'); await cmd('Runtime.enable');
+            const urls=[
+              'https://www.elmercadodeorigen.com/contacto/?v27=1',
+              'https://www.elmercadodeorigen.com/contacto-productores/?v27=1',
+              'https://www.elmercadodeorigen.com/en/contacto/?v27=1',
+              'https://www.elmercadodeorigen.com/en/contacto-productores/?v27=1'
+            ];
+            for(const url of urls){
+              await cmd('Page.navigate',{url}); await sleep(4500);
+              const expr=`(() => { const r=document.querySelector('.wpcf7-response-output'); const s=document.getElementById('mdo-contact-form-empty-response-fix-010259'); return {href:location.href,title:document.title,form:!!document.querySelector('.wpcf7'),response:!!r,text:r?(r.textContent||'').trim():null,display:r?getComputedStyle(r).display:null,height:r?r.getBoundingClientRect().height:null,stylePresent:!!s}; })()`;
+              const res=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true});
+              const v=res.result.value; console.log(JSON.stringify(v));
+              if(!v.form) throw new Error('Contact form missing at '+url);
+              if(!v.stylePresent) throw new Error('Fix CSS missing at '+url);
+              if(v.text==='' && (v.display!=='none' || v.height!==0)) throw new Error('Empty response still visible at '+url+': '+JSON.stringify(v));
+            }
+            console.log('CONTACT_GRAY_BOX_FIX_OK'); ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Record success
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p runtime
+          printf 'status=success\ncontact_empty_response_hidden=true\ncontact_producers_empty_response_hidden=true\nenglish_verified=true\nspanish_verified=true\n' > runtime/contact-gray-box-v27.txt
+          git add runtime/contact-gray-box-v27.txt
+          git commit -m 'Record contact gray box v27 success'
+          git pull --rebase origin main
+          git push origin HEAD:main
