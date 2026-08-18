@@ -1,0 +1,174 @@
+name: Fix English shop and categories 2026-08-18 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-english-shop-categories-20260818-production.yml'
+      - 'elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php'
+      - 'elmercadodeorigen-child/inc/home-category-output-final-010226.php'
+      - 'elmercadodeorigen-child/page-categorias.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate English storefront fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php >/dev/null
+          php -l elmercadodeorigen-child/inc/home-category-output-final-010226.php >/dev/null
+          php -l elmercadodeorigen-child/page-categorias.php >/dev/null
+          if grep -R -n -E 'MutationObserver|translateTextNode|TreeWalker' elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php; then
+            echo 'ENGLISH_STOREFRONT_ABORT: browser-side DOM translator still present' >&2
+            exit 3
+          fi
+          grep -Fq 'elmercado_en_ui_copy_010245' elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php
+          grep -Fq "'_en_US_name'" elmercadodeorigen-child/inc/home-category-output-final-010226.php
+          grep -Fq "array( 'mentta', 'menta' )" elmercadodeorigen-child/inc/home-category-output-final-010226.php
+          grep -Fq "array( 'mentta', 'menta' )" elmercadodeorigen-child/page-categorias.php
+
+      - name: Deploy guarded files to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          STYLESHEET="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" option get stylesheet --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root")"
+          : "${STYLESHEET:?active stylesheet not found}"
+          THEME_PATH="$PROD_PATH/wp-content/themes/$STYLESHEET"
+          echo "Deploying to $THEME_PATH"
+
+          REMOTE_BASE="/tmp/emdo-en-fix-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_BASE/inc'"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/multilingual-ui-copy-010245.php "$STAGING_USER@$STAGING_HOST:$REMOTE_BASE/inc/multilingual-ui-copy-010245.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-category-output-final-010226.php "$STAGING_USER@$STAGING_HOST:$REMOTE_BASE/inc/home-category-output-final-010226.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$REMOTE_BASE/page-categorias.php"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -eu
+            test -d '$THEME_PATH/inc'
+            backup='$THEME_PATH/.emdo-backup-${GITHUB_RUN_ID}'
+            mkdir -p \"\$backup/inc\"
+            cp -p '$THEME_PATH/inc/multilingual-ui-copy-010245.php' \"\$backup/inc/\" 2>/dev/null || true
+            cp -p '$THEME_PATH/inc/home-category-output-final-010226.php' \"\$backup/inc/\" 2>/dev/null || true
+            cp -p '$THEME_PATH/page-categorias.php' \"\$backup/\" 2>/dev/null || true
+            cp '$REMOTE_BASE/inc/multilingual-ui-copy-010245.php' '$THEME_PATH/inc/multilingual-ui-copy-010245.php'
+            cp '$REMOTE_BASE/inc/home-category-output-final-010226.php' '$THEME_PATH/inc/home-category-output-final-010226.php'
+            cp '$REMOTE_BASE/page-categorias.php' '$THEME_PATH/page-categorias.php'
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$THEME_PATH/inc/multilingual-ui-copy-010245.php' >/dev/null
+            \"\$php_bin\" -l '$THEME_PATH/inc/home-category-output-final-010226.php' >/dev/null
+            \"\$php_bin\" -l '$THEME_PATH/page-categorias.php' >/dev/null
+            rm -rf '$REMOTE_BASE'"
+
+          # Load WordPress with the deployed theme and force the DB-backed UI-copy migration.
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" eval 'if ( function_exists( \"elmercado_seed_manual_english_ui_010245\" ) ) { elmercado_seed_manual_english_ui_010245(); }' --path='$PROD_PATH' --allow-root"
+          DB_COPY="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" option get elmercado_en_ui_copy_010245 --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root")"
+          grep -Fq 'Shop by category' <<< "$DB_COPY"
+          grep -Fq 'All categories' <<< "$DB_COPY"
+          echo 'ENGLISH_UI_DB_COPY_OK'
+
+          # Confirm that English product-category translations actually exist in termmeta.
+          TERM_ROWS="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" eval '\$terms=get_terms(array(\"taxonomy\"=>\"product_cat\",\"hide_empty\"=>false)); foreach(\$terms as \$t){ if(in_array(\$t->slug,array(\"mentta\",\"menta\"),true)) continue; \$name=trim((string)get_term_meta(\$t->term_id,\"_en_US_name\",true)); \$slug=trim((string)get_term_meta(\$t->term_id,\"_en_US_slug\",true)); \$pub=(string)get_term_meta(\$t->term_id,\"_en_US_published\",true); if(\$pub===\"1\" && \$name!==\"\" && \$slug!==\"\") echo \$t->term_id.\"|\".\$t->slug.\"|\".\$slug.\"|\".\$name.PHP_EOL; }' --path='$PROD_PATH' --allow-root")"
+          echo "$TERM_ROWS"
+          [ "$(printf '%s\n' "$TERM_ROWS" | sed '/^$/d' | wc -l)" -ge 1 ]
+          printf '%s\n' "$TERM_ROWS" > /tmp/en-term-rows.txt
+          printf '%s' "$PROD_PATH" > /tmp/prod-path.txt
+          printf '%s' "$STYLESHEET" > /tmp/stylesheet.txt
+
+      - name: Verify live English storefront without cache
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(cat /tmp/prod-path.txt)"
+
+          # Clear WordPress object cache before public verification.
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          UA='Mozilla/5.0 EMDO English storefront verifier'
+          HOME_URL="https://www.elmercadodeorigen.com/en/?emdo_verify=${GITHUB_RUN_ID}"
+          SHOP_URL="https://www.elmercadodeorigen.com/en/shop/?emdo_verify=${GITHUB_RUN_ID}"
+
+          CATEGORIES_SLUG="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); id=\$(\"\$wp_bin\" post list --post_type=page --name=categorias --field=ID --path='$PROD_PATH' --allow-root | head -n1); if [ -n \"\$id\" ]; then \"\$wp_bin\" post meta get \"\$id\" _en_US_post_name --path='$PROD_PATH' --allow-root 2>/dev/null || true; fi")"
+          CATEGORIES_SLUG="${CATEGORIES_SLUG:-categories}"
+          CATEGORIES_URL="https://www.elmercadodeorigen.com/en/${CATEGORIES_SLUG}/?emdo_verify=${GITHUB_RUN_ID}"
+
+          FIRST_ROW="$(head -n1 /tmp/en-term-rows.txt)"
+          FIRST_EN_SLUG="$(cut -d'|' -f3 <<< "$FIRST_ROW")"
+          FIRST_EN_NAME="$(cut -d'|' -f4- <<< "$FIRST_ROW")"
+          ARCHIVE_URL="https://www.elmercadodeorigen.com/en/product-category/${FIRST_EN_SLUG}/?emdo_verify=${GITHUB_RUN_ID}"
+
+          HOME_HTML="$(curl -fsSL --retry 4 --retry-delay 2 -A "$UA" -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$HOME_URL")"
+          SHOP_HTML="$(curl -fsSL --retry 4 --retry-delay 2 -A "$UA" -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$SHOP_URL")"
+          CATEGORIES_HTML="$(curl -fsSL --retry 4 --retry-delay 2 -A "$UA" -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$CATEGORIES_URL")"
+          ARCHIVE_HTML="$(curl -fsSL --retry 4 --retry-delay 2 -A "$UA" -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$ARCHIVE_URL")"
+
+          grep -Fq 'Shop by category' <<< "$HOME_HTML"
+          grep -Fq 'Find what you are looking for by category' <<< "$HOME_HTML"
+          grep -Fq 'Product categories' <<< "$CATEGORIES_HTML"
+          grep -Fq 'All categories' <<< "$CATEGORIES_HTML"
+          grep -Fq 'Choose a category' <<< "$CATEGORIES_HTML"
+          grep -Fq "$FIRST_EN_NAME" <<< "$ARCHIVE_HTML"
+
+          for html_name in HOME_HTML SHOP_HTML CATEGORIES_HTML ARCHIVE_HTML; do
+            html="${!html_name}"
+            if grep -Fq 'MutationObserver' <<< "$html" || grep -Fq 'translateTextNode' <<< "$html"; then
+              echo "ENGLISH_STOREFRONT_ABORT: DOM translator present in $html_name" >&2
+              exit 7
+            fi
+          done
+
+          for html_name in HOME_HTML CATEGORIES_HTML; do
+            html="${!html_name}"
+            if grep -Eiq 'data-category-slug=["'"'](mentta|menta)["'"']|/(categoria-producto|product-category)/(mentta|menta)/|>\s*(Mentta|Menta)\s*<' <<< "$html"; then
+              echo "ENGLISH_STOREFRONT_ABORT: Mentta leaked into $html_name" >&2
+              exit 8
+            fi
+          done
+
+          echo "ENGLISH_STOREFRONT_PUBLIC_VERIFY_OK"
+          echo "HOME=$HOME_URL"
+          echo "SHOP=$SHOP_URL"
+          echo "CATEGORIES=$CATEGORIES_URL"
+          echo "ARCHIVE=$ARCHIVE_URL"
