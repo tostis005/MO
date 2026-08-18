@@ -36,14 +36,11 @@ jobs:
         run: |
           set -euo pipefail
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
-
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true)
             php_bin=$(command -v php || true)
@@ -57,10 +54,8 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-
           REMOTE_TMP="/tmp/mdo-a-dynamic-sitemaps-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-a-dynamic-sitemaps.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP"
-
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             wp_bin=\$(command -v wp)
@@ -78,37 +73,54 @@ jobs:
       - name: Verify public sitemap policy
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           base="https://www.elmercadodeorigen.com"
-          curl -fsSL --max-time 30 "$base/sitemap_index.xml?mdo_verify=$GITHUB_RUN_ID" -o /tmp/sitemap-index.xml
-          grep -q '<sitemapindex' /tmp/sitemap-index.xml
-          grep -q 'mdo-sitemap-pages.xml' /tmp/sitemap-index.xml
-          grep -q 'mdo-sitemap-categories.xml' /tmp/sitemap-index.xml
-          grep -q 'mdo-sitemap-products.xml' /tmp/sitemap-index.xml
-          if grep -qiE 'tag-sitemap|author-sitemap|post-sitemap' /tmp/sitemap-index.xml; then
-            echo 'Unexpected legacy sitemap in canonical index' >&2
-            exit 1
-          fi
+          failed=0
 
-          curl -fsSL --max-time 30 "$base/mdo-sitemap-categories.xml?mdo_verify=$GITHUB_RUN_ID" -o /tmp/categories.xml
-          if grep -qi 'mentta' /tmp/categories.xml; then
-            echo 'MENTTA leaked into category sitemap' >&2
-            exit 1
-          fi
+          fetch() {
+            local label="$1" url="$2" out="$3"
+            local meta
+            meta=$(curl -sS -L --max-time 30 -o "$out" -w 'code=%{http_code} effective=%{url_effective} type=%{content_type} bytes=%{size_download}' "$url") || { echo "FETCH_FAIL $label $url"; failed=1; return 1; }
+            echo "$label $meta"
+          }
+          require() {
+            local label="$1" pattern="$2" file="$3"
+            if grep -qE "$pattern" "$file"; then echo "PASS $label"; else echo "FAIL $label"; failed=1; fi
+          }
+          forbid() {
+            local label="$1" pattern="$2" file="$3"
+            if grep -qiE "$pattern" "$file"; then echo "FAIL $label"; failed=1; else echo "PASS $label"; fi
+          }
 
-          curl -fsSL --max-time 30 "$base/mdo-sitemap-products.xml?mdo_verify=$GITHUB_RUN_ID" -o /tmp/products.xml
-          grep -q '<urlset' /tmp/products.xml
-          grep -q 'hreflang="en"' /tmp/products.xml
+          fetch INDEX "$base/sitemap_index.xml?mdo_verify=$GITHUB_RUN_ID" /tmp/index.xml
+          echo '--- INDEX PREVIEW ---'; head -c 1200 /tmp/index.xml || true; echo
+          require 'index root' '<sitemapindex' /tmp/index.xml
+          require 'pages child' 'mdo-sitemap-pages\.xml' /tmp/index.xml
+          require 'categories child' 'mdo-sitemap-categories\.xml' /tmp/index.xml
+          require 'products child' 'mdo-sitemap-products\.xml' /tmp/index.xml
+          forbid 'no legacy children' 'tag-sitemap|author-sitemap|post-sitemap' /tmp/index.xml
 
-          curl -fsSL --max-time 30 "$base/robots.txt?mdo_verify=$GITHUB_RUN_ID" -o /tmp/robots.txt
-          grep -q 'Sitemap: .*sitemap_index.xml' /tmp/robots.txt
-          if grep -q 'english-sitemap.xml' /tmp/robots.txt; then
-            echo 'Old English sitemap is still advertised in robots.txt' >&2
-            exit 1
-          fi
+          fetch CATEGORIES "$base/mdo-sitemap-categories.xml?mdo_verify=$GITHUB_RUN_ID" /tmp/categories.xml
+          echo "CATEGORY_URLS=$(grep -o '<loc>' /tmp/categories.xml | wc -l)"
+          require 'categories root' '<urlset' /tmp/categories.xml
+          forbid 'MENTTA excluded' 'mentta' /tmp/categories.xml
 
-          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$base/english-sitemap.xml?mdo_verify=$GITHUB_RUN_ID")"
-          test "$code" = "301"
+          fetch PRODUCTS "$base/mdo-sitemap-products.xml?mdo_verify=$GITHUB_RUN_ID" /tmp/products.xml
+          echo "PRODUCT_URLS=$(grep -o '<loc>' /tmp/products.xml | wc -l) EN_ALTERNATES=$(grep -o 'hreflang=\"en\"' /tmp/products.xml | wc -l)"
+          echo '--- PRODUCTS PREVIEW ---'; head -c 1600 /tmp/products.xml || true; echo
+          require 'products root' '<urlset' /tmp/products.xml
+          require 'English alternates present' 'hreflang="en"' /tmp/products.xml
+
+          fetch ROBOTS "$base/robots.txt?mdo_verify=$GITHUB_RUN_ID" /tmp/robots.txt
+          echo '--- ROBOTS ---'; cat /tmp/robots.txt; echo
+          require 'robots canonical sitemap' 'Sitemap: .*sitemap_index\.xml' /tmp/robots.txt
+          forbid 'robots old English sitemap removed' 'english-sitemap\.xml' /tmp/robots.txt
+
+          redirect_meta=$(curl -sS --max-time 30 -o /tmp/english-old.xml -w 'code=%{http_code} redirect=%{redirect_url}' "$base/english-sitemap.xml?mdo_verify=$GITHUB_RUN_ID") || { echo 'FAIL english old endpoint fetch'; failed=1; redirect_meta=''; }
+          echo "ENGLISH_OLD $redirect_meta"
+          if echo "$redirect_meta" | grep -q 'code=301' && echo "$redirect_meta" | grep -q 'sitemap_index\.xml'; then echo 'PASS old English redirect'; else echo 'FAIL old English redirect'; failed=1; fi
+
+          exit "$failed"
 
       - name: Record successful production deployment
         shell: bash
