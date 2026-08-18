@@ -1,0 +1,53 @@
+name: Read live producer About v60
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/read-live-producer-about-20260818-v60.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  read:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read live About blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess,re,html
+          slugs=['1957','hidalgo-de-la-jara','tolecarnes']
+          out=[]
+          for slug in slugs:
+              url=f'https://www.elmercadodeorigen.com/en/store/{slug}/about/'
+              p=subprocess.run(['curl','-L','-sS','--connect-timeout','8','--max-time','40',url],capture_output=True,text=True)
+              s=p.stdout
+              m=re.search(r'<div class="wcfm_store_description"[^>]*>(.*?)</div>',s,re.I|re.S)
+              block=m.group(1) if m else ''
+              text=re.sub(r'<[^>]+>',' ',block)
+              text=html.unescape(text)
+              text=re.sub(r'\s+',' ',text).strip()
+              out.append(f'=== {slug} ===')
+              out.append(f'curl_rc={p.returncode} bytes={len(s)} block_chars={len(text)}')
+              out.append('text='+text[:1400])
+              out.append('story='+str(s.lower().count('the story of')))
+              out.append('wrong_product='+str(s.lower().count('shoulder ham from a pure-bred 100% iberian pig')))
+              out.append('spanish='+str(s.lower().count('la historia de')))
+              out.append('policies='+str(len(re.findall(r'>\s*(?:Policies|Store Policies)\s*<|Políticas de la tienda',s,re.I))))
+          open('runtime/live-producer-about-v60.txt','w').write('\n'.join(out)+'\n')
+          PY
+      - name: Commit report
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add runtime/live-producer-about-v60.txt
+          git commit -m 'Record live producer About blocks v60' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
