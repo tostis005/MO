@@ -1,0 +1,120 @@
+name: Verify English storefront stability 2026-08-18 v9
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-english-stability-20260818-v9.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-stability-v9.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-stability-v9.txt
+          git commit -m 'Record English stability v9 run id'
+          git push origin HEAD:main
+
+      - name: Verify public HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ssl
+          import urllib.request
+
+          run_id = '${{ github.run_id }}'
+          ctx = ssl._create_unverified_context()
+          headers = {'User-Agent': 'Mozilla/5.0 EMDO stability verify', 'Cache-Control': 'no-cache'}
+          urls = {
+              'shop': f'https://www.elmercadodeorigen.com/en/shop/?emdo_stable={run_id}',
+              'categories': f'https://www.elmercadodeorigen.com/en/categorias/?emdo_stable={run_id}',
+              'home': f'https://www.elmercadodeorigen.com/en/?emdo_stable={run_id}',
+          }
+          pages = {}
+          for name, url in urls.items():
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, context=ctx, timeout=90) as response:
+                  data = response.read()
+                  assert response.status == 200, (name, response.status)
+                  pages[name] = data.decode('utf-8', errors='replace')
+                  print(name, 'bytes=', len(data), 'final=', response.geturl())
+
+          categories = pages['categories']
+          home = pages['home']
+          shop = pages['shop']
+
+          for text in ('Product categories', 'All categories', 'Choose a category', 'View category'):
+              assert text in categories, f'missing English category copy: {text}'
+          for text in ('Categorías de producto', 'Elige una categoría'):
+              assert text not in categories, f'Spanish category copy still visible: {text}'
+
+          low_categories = categories.lower()
+          assert '&lt;span data-no-translation' not in low_categories
+          assert '&amp;lt;span data-no-translation' not in low_categories
+          assert 'data-category-slug="mentta"' not in low_categories
+          assert "data-category-slug='mentta'" not in low_categories
+          assert 'data-category-slug="menta"' not in low_categories
+          assert "data-category-slug='menta'" not in low_categories
+
+          assert 'Shop by category' in home
+          low_home = home.lower()
+          assert 'data-category-slug="mentta"' not in low_home
+          assert 'data-category-slug="menta"' not in low_home
+
+          forbidden = (
+              'trp-translate-dom-changes.js',
+              'trp-frontend-language-switcher.js',
+              'createTreeWalker',
+              'elmercado-continuous-catalog-loader-010181',
+              'elmercado-continuous-catalog-history-010181',
+          )
+          for name, html in pages.items():
+              for token in forbidden:
+                  assert token not in html, f'{token} still present in {name}'
+
+          assert 'emo-static-english-catalog' in shop, 'English shop not switched to static catalog mode'
+          print('PUBLIC_HTML_OK')
+          PY
+
+      - name: Chrome smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          BROWSER=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then BROWSER="$candidate"; break; fi
+          done
+          : "${BROWSER:?No Chromium browser available on runner}"
+          timeout 45s "$BROWSER" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=8000 --dump-dom "https://www.elmercadodeorigen.com/en/shop/?emdo_browser=${GITHUB_RUN_ID}" > /tmp/browser-shop.html 2>/tmp/browser-stderr.txt
+          test -s /tmp/browser-shop.html
+          bytes=$(wc -c < /tmp/browser-shop.html | tr -d ' ')
+          test "$bytes" -lt 5000000
+          ! grep -Fq 'trp-translate-dom-changes.js' /tmp/browser-shop.html
+          ! grep -Fq 'createTreeWalker' /tmp/browser-shop.html
+          ! grep -Fq 'elmercado-continuous-catalog-loader-010181' /tmp/browser-shop.html
+          echo "CHROME_OK bytes=$bytes browser=$BROWSER"
+
+      - name: Record success
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'run_id=%s\nstatus=success\ntranslatepress_dom_translation=false\ncontinuous_loader=false\ncategory_html_clean=true\ncategory_translations_database=true\nmentta_visible=false\nchrome_smoke=true\n' "$GITHUB_RUN_ID" > runtime/english-stability-v9.txt
+          git add runtime/english-stability-v9.txt
+          git commit -m 'Record successful English stability v9 verification'
+          git pull --rebase origin main
+          git push origin HEAD:main
