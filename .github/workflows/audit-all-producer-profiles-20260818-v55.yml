@@ -1,0 +1,75 @@
+name: Audit all producer profiles v55
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-all-producer-profiles-20260818-v55.yml'
+      - '.github/scripts/audit-all-producer-profiles-v55.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Marker
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/all-producer-v55.txt
+          git add runtime/all-producer-v55.txt
+          git commit -m 'Start all producer profile audit v55'
+          git push origin HEAD:main
+      - name: Audit production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/audit-all-producers-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-all-producer-profiles-v55.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > runtime/all-producer-profiles-v55.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set +e
+            for url in https://www.elmercadodeorigen.com/en/producers/ https://www.elmercadodeorigen.com/en/for-producers/; do
+              echo "=== $url ==="
+              curl -k -L -sS --max-redirs 5 --connect-timeout 8 --max-time 35 "$url" -o /tmp/p55
+              echo "bytes=$(wc -c </tmp/p55)"
+              echo "spanish_labels=$(grep -oiE ">[[:space:]]*(Productores|Visitar Tienda|Buscar tienda|Contacto productores|Acerca de|Políticas)[[:space:]]*<" /tmp/p55 | wc -l)"
+              echo "english_labels=$(grep -oiE ">[[:space:]]*(Producers|Visit Store|Search stores|For producers|About|Products)[[:space:]]*<" /tmp/p55 | wc -l)"
+              grep -oE "<title>[^<]+" /tmp/p55 | head -1
+            done
+          ' > runtime/producer-pages-ui-v55.txt 2>&1
+      - name: Commit audit
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          printf 'run_id=%s\nstatus=complete\n' "$GITHUB_RUN_ID" > runtime/all-producer-v55.txt
+          git add runtime/all-producer-v55.txt runtime/all-producer-profiles-v55.json runtime/producer-pages-ui-v55.txt
+          git commit -m 'Record all producer profile audit v55' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
