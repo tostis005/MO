@@ -1,0 +1,67 @@
+name: Diagnose contact forms Samsung v30
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-contact-samsung-v30.yml'
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect Samsung mobile rendering
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-contact-v30
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9234 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-contact-v30 about:blank >/tmp/chrome-contact-v30.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9234/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE' > /tmp/contact-samsung-v30.txt
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9234/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=15000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable');await cmd('Runtime.enable');await cmd('Network.enable');
+            await cmd('Network.setUserAgentOverride',{userAgent:'Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0 Chrome/130.0.0.0 Mobile Safari/537.36',platform:'Android',acceptLanguage:'en-GB,en;q=0.9'});
+            await cmd('Emulation.setDeviceMetricsOverride',{width:360,height:780,deviceScaleFactor:3,mobile:true,screenWidth:360,screenHeight:780});
+            const urls=['https://www.elmercadodeorigen.com/en/contact/','https://www.elmercadodeorigen.com/en/for-producers/'];
+            for(const url of urls){
+              await cmd('Page.navigate',{url:url+'?v30='+Date.now()}); await sleep(6000);
+              const expr=`(() => {
+                const form=document.querySelector('.wpcf7 form');
+                const h=[...document.querySelectorAll('h3')].find(x=>/How can we help|Leave your details/i.test(x.textContent||''));
+                const firstLabel=form?.querySelector('label');
+                const start=h?Math.floor(h.getBoundingClientRect().bottom):0;
+                const end=firstLabel?Math.ceil(firstLabel.getBoundingClientRect().top):start+400;
+                const boxes=[];
+                for(const el of document.querySelectorAll('body *')){
+                  const r=el.getBoundingClientRect();const s=getComputedStyle(el);
+                  if(r.width<2||r.height<2||r.bottom<start||r.top>end+10||s.display==='none'||s.visibility==='hidden'||s.opacity==='0')continue;
+                  if(el===document.body||el===document.documentElement)continue;
+                  boxes.push({tag:el.tagName,type:el.getAttribute('type'),name:el.getAttribute('name'),id:el.id,cls:typeof el.className==='string'?el.className:'',text:(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,120),top:Math.round(r.top),bottom:Math.round(r.bottom),left:Math.round(r.left),width:Math.round(r.width),height:Math.round(r.height),display:s.display,position:s.position,border:s.border,outline:s.outline,background:s.backgroundColor,overflow:s.overflow,ariaHidden:el.getAttribute('aria-hidden'),html:el.outerHTML.replace(/\\s+/g,' ').slice(0,650)});
+                }
+                const inputs=[...form.querySelectorAll('input,textarea,select,fieldset,.wpcf7-response-output,.screen-reader-response,.hp-message,.wpcf7-form-control-wrap')].map(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {tag:el.tagName,type:el.getAttribute('type'),name:el.getAttribute('name'),cls:typeof el.className==='string'?el.className:'',top:Math.round(r.top),left:Math.round(r.left),width:Math.round(r.width),height:Math.round(r.height),display:s.display,visibility:s.visibility,opacity:s.opacity,border:s.border,background:s.backgroundColor,ariaHidden:el.getAttribute('aria-hidden'),parent:(el.parentElement?.outerHTML||'').replace(/\\s+/g,' ').slice(0,500)};});
+                return {href:location.href,ua:navigator.userAgent,start,end,heading:h?.textContent?.trim(),firstLabel:firstLabel?.textContent?.replace(/\\s+/g,' ').trim(),boxes,inputs};
+              })()`;
+              const res=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},15000); console.log(JSON.stringify(res.result.value,null,2));
+              const shot=await cmd('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},15000); require('fs').writeFileSync('/tmp/'+(url.includes('for-producers')?'producers':'contact')+'-samsung-v30.png',Buffer.from(shot.data,'base64'));
+            }
+            ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          cat /tmp/contact-samsung-v30.txt
+      - name: Commit report
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p runtime
+          cp /tmp/contact-samsung-v30.txt runtime/contact-samsung-v30-report.txt
+          git add runtime/contact-samsung-v30-report.txt
+          git commit -m 'Record Samsung contact diagnostic v30'
+          git pull --rebase origin main
+          git push origin HEAD:main
