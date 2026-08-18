@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Vendor SEO
  * Description: Clean English WCFM store routes, persisted English store descriptions, SEO redirects and policy-tab cleanup.
- * Version: 1.0.4
+ * Version: 1.0.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -133,6 +133,36 @@ add_filter(
 			$shop_data['store_description'] = $english;
 		}
 		return $shop_data;
+	},
+	PHP_INT_MAX,
+	2
+);
+
+
+/**
+ * MDO producer About must win after WCFM runs woocommerce_short_description.
+ * Some storefront code uses that WooCommerce filter for product excerpts and can
+ * otherwise replace the producer biography with a random product description.
+ */
+add_filter(
+	'wcfmmp_store_about',
+	static function ( $about, $native_about ) {
+		if ( ! mdoev_en_010260() ) {
+			return $about;
+		}
+
+		$path = trim( mdoev_public_path_010260(), '/' );
+		if ( ! preg_match( '#^en/store/([^/]+)/about$#i', $path, $m ) ) {
+			return $about;
+		}
+
+		$user_id = mdoev_vendor_id_by_store_slug_010260( (string) $m[1] );
+		if ( $user_id < 1 ) {
+			return $about;
+		}
+
+		$english = mdoev_persisted_store_description_010260( $user_id );
+		return '' !== trim( wp_strip_all_tags( $english ) ) ? $english : $about;
 	},
 	PHP_INT_MAX,
 	2
