@@ -1,0 +1,78 @@
+name: Inventory English shop scripts 2026-08-18 v12
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inventory-english-shop-scripts-20260818-v12.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-script-inventory-v12.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-script-inventory-v12.txt
+          git commit -m 'Record script inventory v12 run id'
+          git push origin HEAD:main
+
+      - name: Inspect public script blocks and production sources
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          curl -k -fsSL --connect-timeout 15 --max-time 90 -A 'Mozilla/5.0 EMDO script inventory' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/shop/?emdo_scripts=${GITHUB_RUN_ID}" -o /tmp/shop.html
+          python3 - <<'PY' > /tmp/report.txt
+          import re, html
+          text=open('/tmp/shop.html',encoding='utf-8',errors='replace').read()
+          scripts=list(re.finditer(r'<script\b([^>]*)>(.*?)</script>',text,re.I|re.S))
+          print('html_chars=',len(text),'script_blocks=',len(scripts))
+          suspicious=('MutationObserver','querySelectorAll','setInterval','requestAnimationFrame','while (','while(','for (','for(','fetch(','innerHTML','textContent','document.documentElement','document.body','location.reload','history.','wp.ajax','$.ajax')
+          for i,m in enumerate(scripts,1):
+              attrs=m.group(1); code=m.group(2)
+              srcm=re.search(r'\bsrc=["\']([^"\']+)',attrs,re.I)
+              idm=re.search(r'\bid=["\']([^"\']+)',attrs,re.I)
+              typem=re.search(r'\btype=["\']([^"\']+)',attrs,re.I)
+              src=html.unescape(srcm.group(1)) if srcm else ''
+              sid=idm.group(1) if idm else ''
+              stype=typem.group(1) if typem else ''
+              tokens=[t for t in suspicious if t in code]
+              compact=re.sub(r'\s+',' ',code).strip()
+              print(f'#{i} id={sid!r} type={stype!r} src={src!r} code_len={len(code)} tokens={tokens}')
+              if not src and (tokens or len(code)>1500):
+                  print('  head=',compact[:500])
+                  print('  tail=',compact[-300:])
+          PY
+
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1);
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          echo >> /tmp/report.txt
+          echo 'PRODUCTION_SOURCE_MATCHES:' >> /tmp/report.txt
+          $SSH "$STAGING_USER@$STAGING_HOST" "grep -RInE 'MutationObserver|querySelectorAll\\([^)]*\\*|createTreeWalker|setInterval\\(|requestAnimationFrame\\(' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' '$PROD_PATH/wp-content/mu-plugins' --include='*.php' --include='*.js' 2>/dev/null | head -300" >> /tmp/report.txt || true
+          cp /tmp/report.txt runtime/english-script-inventory-v12.txt
+          git add runtime/english-script-inventory-v12.txt
+          git commit -m 'Record live English shop script inventory v12'
+          git pull --rebase origin main
+          git push origin HEAD:main
