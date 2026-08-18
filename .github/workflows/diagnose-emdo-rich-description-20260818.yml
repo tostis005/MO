@@ -7,7 +7,7 @@ on:
       - '.github/workflows/diagnose-emdo-rich-description-20260818.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
@@ -48,9 +48,10 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
+          mkdir -p diagnostics
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$STAGING_DOMAIN'" <<'REMOTE' | tee diagnostics/emdo-rich-description-staging.txt
           set -eu
           raw="${1%/}"
           domain="$2"
@@ -117,3 +118,14 @@ jobs:
             }
           ' --path="$wp_path" --allow-root
           REMOTE
+
+      - name: Commit diagnostic result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add diagnostics/emdo-rich-description-staging.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record EMDO rich description staging diagnostics'
+          git push
