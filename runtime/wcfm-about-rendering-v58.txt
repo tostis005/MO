@@ -1,0 +1,65 @@
+=== ABOUT TEMPLATE FILES ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store/wcfmmp-view-store-about.php
+=== DESCRIPTION REFERENCES ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/helpers/class-wcfmmp-store-setup.php:408:		$shop_description = wcfm_get_user_meta( $user_id, '_store_description', true );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/helpers/class-wcfmmp-store-setup.php:471:			if( apply_filters( 'wcfm_is_allow_store_description', true ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/helpers/class-wcfmmp-store-setup.php:473:					"shop_description" => array('label' => __('Shop Description', 'wc-frontend-manager') , 'type' => 'wpeditor', 'class' => 'wcfm-textarea wcfm_ele wcfm_wpeditor', 'label_class' => 'wcfm_title', 'value' => $shop_description, 'hints' => __( 'This is displayed on your shop page.', 'wc-frontend-manager' ) ),
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/helpers/class-wcfmmp-store-setup.php:1214:		if( isset( $_POST['shop_description'] ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/helpers/class-wcfmmp-store-setup.php:1215:			$shop_description = apply_filters( 'wcfm_editor_content_before_save', stripslashes( html_entity_decode( $_POST['shop_description'], ENT_QUOTES, 'UTF-8' ) ) );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/helpers/class-wcfmmp-store-setup.php:1216:			update_user_meta( $user_id, '_store_description', $shop_description );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php:644:        $shop_description = wcfm_get_user_meta($vendor_id, '_store_description', true);
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php:760:                            "shop_description" => array('label' => __('Shop Description', 'wc-frontend-manager'), 'type' => 'wpeditor', 'class' => 'wcfm-textarea wcfm_ele wcfm_wpeditor', 'label_class' => 'wcfm_title', 'value' => $shop_description, 'hints' => __('This is displayed on your shop page.', 'wc-frontend-manager')),
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php:2529:        if (!apply_filters('wcfm_is_allow_store_description', true)) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php:2577:        $shop_description = wcfm_get_user_meta($user_id, '_store_description', true);
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php:2660:        if (apply_filters('wcfm_is_allow_store_description', true) && isset($profile_complete_components['about'])) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-vendor.php:2661:            if ($shop_description) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-store.php:81:				'about'                 => $this->get_shop_description(),
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-store.php:163:		if( !$WCFM->wcfm_vendor_support->wcfm_vendor_has_capability( $this->id, 'store_description' ) || ( $store_hide_description == 'yes' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-store.php:315:	function get_shop_description() {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-store.php:316:		return wcfm_get_user_meta( $this->id, '_store_description', true );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store/wcfmmp-view-store-about.php:15:$wcfm_shop_description = apply_filters( 'wcfmmp_store_about', apply_filters( 'woocommerce_short_description', $store_user->get_shop_description() ), $store_user->get_shop_description() );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store/wcfmmp-view-store-about.php:24:		<?php if( $wcfm_shop_description ) { ?>
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store/wcfmmp-view-store-about.php:26:				<div class="wcfm_store_description" ><?php echo wp_kses_post($wcfm_shop_description); ?></div>
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store-lists/wcfmmp-view-store-lists-card.php:49:$store_description = $store_user->get_shop_description();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store-lists/wcfmmp-view-store-lists-card.php:124:					<?php if ( $store_description && apply_filters( 'wcfm_is_allow_store_list_about', false ) ) { ?>
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store-lists/wcfmmp-view-store-lists-card.php:127:							$pos = strpos( $store_description, ' ', 100 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/store-lists/wcfmmp-view-store-lists-card.php:128:							echo wp_kses_post( substr( wp_unslash( $store_description ), 0, $pos ) . '...' ); 
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/sold-by/wcfmmp-view-sold-by-tab.php:79:			$wcfm_shop_description = apply_filters( 'woocommerce_short_description', $store_user->get_shop_description() );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/sold-by/wcfmmp-view-sold-by-tab.php:81:			<?php if( $wcfm_shop_description ) { ?>
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/views/sold-by/wcfmmp-view-sold-by-tab.php:83:					<div class="wcfm_store_description" ><?php echo wp_kses_post($wcfm_shop_description); ?></div>
+=== HIDALGO HTML CLASSES ===
+:root{--yith-wapo-required-option-color:#AF2323;--yith-wapo-checkbox-style:50%;--yith-wapo-color-swatch-style:2px;--yith-wapo-label-font-size:16px;--yith-wapo-description-font-size:12px;--yith-wapo-color-swatch-size:40px;--yith-wapo-block-padding:0px 0px 0px 0px ;--yith-wapo-block-background-color:#ffffff;--yith-wapo-accent-color-color:#03bfac;--yith-wapo-form-border-color-color:#7a7a7a;--yith-wapo-price-box-colors-text:#474747;--yith-wapo-price-box-colors-background:#ffffff;--yith-wapo-uploads-file-colors-backgrou
+.elmercado-child-theme.tax-product_cat .term-description,
+.elmercado-child-theme.tax-product_cat .woocommerce-products-header__description,
+.elmercado-child-theme.tax-product_cat .archive-description {
+	<div class="woocommerce-variation-description">{{{ data.variation.variation_description }}}</div>
+			body.elmercado-child-theme.tax-product_cat .term-description,
+			body.elmercado-child-theme.tax-product_cat .woocommerce-products-header__description,
+			body.elmercado-child-theme.tax-product_cat .page-description {
+				body.elmercado-child-theme .site-header .site-branding .site-description {
+			body.elmercado-child-theme.single-product .woocommerce-Tabs-panel--description > :is(p, h2, h3, h4, ul, ol, blockquote) {
+			body.elmercado-child-theme.single-product .woocommerce-Tabs-panel--description > :is(p, ul, ol) {
+			body.elmercado-child-theme.single-product .emo-product-description-toggle {
+				body.elmercado-child-theme.single-product .woocommerce-Tabs-panel--description.emo-description-collapsible {
+				body.elmercado-child-theme.single-product .emo-product-description-content {
+				body.elmercado-child-theme.single-product .emo-description-collapsible:not(.is-expanded) .emo-product-description-content {
+				body.elmercado-child-theme.single-product .emo-description-collapsible:not(.is-expanded) .emo-product-description-content::after {
+				body.elmercado-child-theme.single-product .emo-description-collapsible.is-expanded .emo-product-description-content {
+				body.elmercado-child-theme.single-product .emo-description-collapsible .emo-product-description-toggle {
+				body.elmercado-child-theme.single-product .emo-description-collapsible .emo-product-description-toggle::after {
+				body.elmercado-child-theme.single-product .emo-description-collapsible.is-expanded .emo-product-description-toggle::after {
+			<div class="beta site-title"><a href="https://www.elmercadodeorigen.com/en/" rel="home">El Mercado de Origen</a></div><span class="site-description"></span>		</div>
+<div class="_area" id="wcfmmp_store_about">
+	<div class="wcfmmp-store-description">
+					<div class="wcfm-store-about">
+				<div class="wcfm_store_description" ><p>Shoulder ham from a pure-bred 100% Iberian pig, acorn-fed and raised free-range on grass and other natural resources of the dehesa, with the guarantee of Hidalgo de la Jara. Complies with Spanish Iberian quality standard RD 4/2014. Black tag. Shipping included. Dispatch in 1–2 business days for whole pieces; sliced pieces may take an addition
+								<div class="wt-cli-cookie-description">
+								<div class="wt-cli-cookie-description">
+var wcfmu_products_manage_messages = {"no_title":"Please insert Product Title before submit.","no_excerpt":"Please insert Product Short Description before submit.","no_description":"Please insert Product Description before submit.","sku_unique":"Product SKU must be unique.","variation_sku_unique":"Variation SKU must be unique.","product_saved":"Product Successfully Saved.","product_pending":"Product Successfully submitted for moderation.","product_published":"Product Successfully Published.","set_stock":"Set Stock","increas
+			const setupDescription = () => {
+				const panel = document.querySelector('.woocommerce-Tabs-panel--description,#tab-description');
+				if (!panel.id) panel.id = 'emo-product-description';
+				inner.className = 'emo-product-description-content';
+				button.className = 'emo-product-description-toggle';
+					panel.classList.toggle('emo-description-collapsible', mobile && long);
+			document.addEventListener('DOMContentLoaded', setupDescription);
