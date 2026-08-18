@@ -1,13 +1,16 @@
 name: Deploy English launch fixes v62
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -30,22 +33,23 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
-          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          SSH=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT")
+          SCP=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P "$PORT")
           PROD=/var/www/vhosts/elmercadodeorigen.com/httpdocs
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$PROD/wp-config.php' && mkdir -p '$PROD/wp-content/mu-plugins'"
-          sshpass -e scp $SCP mu-plugins/mdo-zzz-english-launch-quality-010262.php "$STAGING_USER@$STAGING_HOST:$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php"
-          REMOTE="/tmp/mdo-english-launch-v62-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP .github/scripts/fix-english-launch-content-20260818-v62.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$ph\" -d memory_limit=768M \"\$wp\" eval-file '$REMOTE' --path='$PROD' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" | tee runtime/english-launch-fixes-v62.json
+          remote() { local n; for n in 1 2 3; do sshpass -e ssh "${SSH[@]}" "$STAGING_USER@$STAGING_HOST" "$@" && return 0; sleep $((n*2)); done; return 1; }
+          upload() { local src="$1" dst="$2" n; for n in 1 2 3; do sshpass -e scp "${SCP[@]}" "$src" "$STAGING_USER@$STAGING_HOST:$dst" && return 0; sleep $((n*2)); done; return 1; }
+          remote "test -f '$PROD/wp-config.php' && mkdir -p '$PROD/wp-content/mu-plugins'"
+          remote "test ! -f '$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php' || cp -p '$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php' '$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php.bak-${GITHUB_RUN_ID}'"
+          upload mu-plugins/mdo-zzz-english-launch-quality-010262.php "$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php"
+          REMOTE_SCRIPT="/tmp/mdo-english-launch-v62-${GITHUB_RUN_ID}.php"
+          upload .github/scripts/fix-english-launch-content-20260818-v62.php "$REMOTE_SCRIPT"
+          remote "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$ph\" -d memory_limit=768M \"\$wp\" eval-file '$REMOTE_SCRIPT' --path='$PROD' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc" | tee /tmp/english-launch-fixes-v62.json
       - name: Smoke test corrected pages and cart session
         shell: bash
         run: |
           set -euo pipefail
           UA='Mozilla/5.0 AppleWebKit/537.36 Chrome/126 Safari/537.36'
-          out=runtime/english-launch-qa-v62.txt
-          : > "$out"
-          check(){ u="$1"; f="$2"; s=$(curl -A "$UA" -L -sS --max-time 40 -o "$f" -w '%{http_code}' "$u"); echo "$s $u" >> "$out"; test "$s" = 200; }
+          check(){ u="$1"; f="$2"; s=$(curl -A "$UA" -L -sS --max-time 40 -o "$f" -w '%{http_code}' "$u"); echo "$s $u"; test "$s" = 200; }
           check https://www.elmercadodeorigen.com/en/journal/ /tmp/journal
           grep -q 'Iberian ham is a unique product' /tmp/journal
           grep -q 'November is harvest time' /tmp/journal
@@ -60,18 +64,9 @@ jobs:
           ! grep -q 'NEW HARVEST 23/24' /tmp/oil; grep -q '2023/24 harvest' /tmp/oil
           rm -f /tmp/cj
           curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj 'https://www.elmercadodeorigen.com/en/?add-to-cart=1382' -o /tmp/add
-          checkcart=$(curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj -o /tmp/cart -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/cart/')
-          echo "cart=$checkcart" >> "$out"; test "$checkcart" = 200; grep -qi 'Sobrasada' /tmp/cart
+          cart=$(curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj -o /tmp/cart -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/cart/')
+          echo "cart=$cart"; test "$cart" = 200; grep -qi 'Sobrasada' /tmp/cart
           checkout=$(curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj -o /tmp/checkout -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/checkout/')
-          echo "checkout=$checkout" >> "$out"; test "$checkout" = 200
+          echo "checkout=$checkout"; test "$checkout" = 200
           ! grep -qiE '>\s*(Carrito|Finalizar compra|Detalles de facturación|Realizar pedido|Pedido mínimo|Importe mínimo)\s*<' /tmp/cart /tmp/checkout
-          echo status=success >> "$out"
-      - name: Record results
-        if: always()
-        run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git pull --rebase
-          git add runtime/english-launch-fixes-v62.json runtime/english-launch-qa-v62.txt 2>/dev/null || true
-          git commit -m 'Record English launch fixes and QA v62' || exit 0
-          git push
+          echo ENGLISH_LAUNCH_QA_V62_OK
