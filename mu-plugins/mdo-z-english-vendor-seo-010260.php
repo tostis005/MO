@@ -2,28 +2,31 @@
 /**
  * Plugin Name: MDO English Vendor SEO
  * Description: Clean English WCFM store routes, persisted English store descriptions, SEO redirects and policy-tab cleanup.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-function mdoev_en_010260(): bool {
-	if ( function_exists( 'mdoer_en' ) ) {
-		return mdoer_en();
-	}
-	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
-	$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
-	return 1 === preg_match( '#^/en(?:/|$)#i', $path );
+// Capture the browser-facing URI before this MU plugin maps clean English
+// WCFM routes to the plugin's native Spanish endpoints internally.
+if ( ! isset( $GLOBALS['mdoev_original_public_uri_010260'] ) ) {
+	$GLOBALS['mdoev_original_public_uri_010260'] = isset( $_SERVER['REQUEST_URI'] )
+		? (string) wp_unslash( $_SERVER['REQUEST_URI'] )
+		: '/';
 }
 
 function mdoev_public_path_010260(): string {
-	if ( function_exists( 'mdoer_public_path' ) ) {
-		return (string) mdoer_public_path();
-	}
-	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+	$uri = isset( $GLOBALS['mdoev_original_public_uri_010260'] )
+		? (string) $GLOBALS['mdoev_original_public_uri_010260']
+		: ( isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/' );
 	return (string) wp_parse_url( $uri, PHP_URL_PATH );
+}
+
+function mdoev_en_010260(): bool {
+	$path = mdoev_public_path_010260();
+	return 1 === preg_match( '#^/en(?:/|$)#i', $path );
 }
 
 function mdoev_store_slug_010260( string $slug ): string {
