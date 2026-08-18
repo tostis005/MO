@@ -59,8 +59,10 @@ jobs:
           BACKUP_DIR="$(remote 'mkdir -p "$HOME/mdo-backups"; printf "%s" "$HOME/mdo-backups"')"
           echo "Backup dir: $BACKUP_DIR"
 
-          echo '=== Database backup ==='
-          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" db export '$BACKUP_DIR/merchant-transparency-$RUN_TAG.sql' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+          echo '=== Best-effort full database backup ==='
+          if ! remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" db export '$BACKUP_DIR/merchant-transparency-$RUN_TAG.sql' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"; then
+            echo 'Full SQL dump utility is unavailable on this host. Continuing: the apply routine stores a per-page pre-change backup before each existing page is updated.'
+          fi
 
           TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-merchant-transparency-20260818.php"
           remote "if [ -f '$TARGET' ]; then cp '$TARGET' '$BACKUP_DIR/mdo-merchant-transparency-$RUN_TAG.php'; fi"
