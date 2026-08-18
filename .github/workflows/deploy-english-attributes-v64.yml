@@ -1,0 +1,68 @@
+name: Deploy English attributes v64
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: |
+          php -l mu-plugins/mdo-zzz-english-attributes-010263.php
+          php -l .github/scripts/fix-english-attributes-v64.php
+      - name: Deploy and persist English attribute fixes
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE_PLUGIN="$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-attributes-010263.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'; test ! -f '$REMOTE_PLUGIN' || cp -p '$REMOTE_PLUGIN' '$REMOTE_PLUGIN.bak-${GITHUB_RUN_ID}'"
+          sshpass -e scp $SCP mu-plugins/mdo-zzz-english-attributes-010263.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PLUGIN"
+          REMOTE_SCRIPT="/tmp/mdo-fix-en-attributes-v64-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/fix-english-attributes-v64.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -l '$REMOTE_PLUGIN'; \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$PROD_PATH/wp-content/cache/mdo-page-cache' '$PROD_PATH/wp-content/mdo-page-cache'; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify English attribute URLs and labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 AppleWebKit/537.36 Chrome/126 Safari/537.36'
+          new='https://www.elmercadodeorigen.com/en/variety/traditional-martena-picual/'
+          old='https://www.elmercadodeorigen.com/en/variedad/tradicional-martena-picual/'
+          s=$(curl -A "$UA" -L -sS --max-time 35 -o /tmp/variety -w '%{http_code}' "$new"); echo "new_status=$s"; test "$s" = 200
+          grep -qi 'Variety' /tmp/variety
+          ! grep -qiE '>\s*Variedad\s*:|/en/variedad/' /tmp/variety
+          curl -A "$UA" -sS --max-time 25 -o /dev/null -D /tmp/h "$old"
+          code=$(awk 'toupper($1)~/^HTTP\//{x=$2}END{print x}' /tmp/h)
+          loc=$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/^[^:]+:[[:space:]]*/,"");sub(/\r$/,"");print;exit}' /tmp/h)
+          echo "old_status=$code location=$loc"
+          test "$code" = 301
+          case "$loc" in */en/variety/traditional-martena-picual/) ;; *) exit 1;; esac
+          oil='https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-5l/'
+          s=$(curl -A "$UA" -L -sS --max-time 35 -o /tmp/oil -w '%{http_code}' "$oil"); test "$s" = 200
+          ! grep -qiE '>\s*(Variedad|Tamaño|Peso|Preparación|Origen|Productor|Calidad|Alimentación|Curación)\s*<' /tmp/oil
+          echo ENGLISH_ATTRIBUTES_V64_OK
