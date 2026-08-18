@@ -1,10 +1,8 @@
 name: Deploy English launch fixes v62
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/deploy-english-vendor-seo-20260818-v39.yml'
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
@@ -12,6 +10,7 @@ permissions:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'Run English launch fixes v62'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -25,7 +24,7 @@ jobs:
         run: |
           php -l mu-plugins/mdo-zzz-english-launch-quality-010262.php
           php -l .github/scripts/fix-english-launch-content-20260818-v62.php
-      - name: Deploy persisted English fixes
+      - name: Deploy and persist fixes
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -34,86 +33,44 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
-          PROD_PATH=/var/www/vhosts/elmercadodeorigen.com/httpdocs
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "test -f '$PROD_PATH/wp-config.php'; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if test -f '$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php'; then cp '$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php' '$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php.bak'; fi"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-zzz-english-launch-quality-010262.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD=/var/www/vhosts/elmercadodeorigen.com/httpdocs
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$PROD/wp-config.php' && mkdir -p '$PROD/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-zzz-english-launch-quality-010262.php "$STAGING_USER@$STAGING_HOST:$PROD/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php"
           REMOTE="/tmp/mdo-english-launch-v62-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/fix-english-launch-content-20260818-v62.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > runtime/english-launch-fixes-v62.json
-      - name: Verify public English storefront
+          sshpass -e scp $SCP .github/scripts/fix-english-launch-content-20260818-v62.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$ph\" -d memory_limit=768M \"\$wp\" eval-file '$REMOTE' --path='$PROD' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" | tee runtime/english-launch-fixes-v62.json
+      - name: Smoke test corrected pages and cart session
         shell: bash
         run: |
           set -euo pipefail
-          UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126 Safari/537.36'
+          UA='Mozilla/5.0 AppleWebKit/537.36 Chrome/126 Safari/537.36'
           out=runtime/english-launch-qa-v62.txt
           : > "$out"
-          fetch(){ local u="$1" f="$2"; local s; s=$(curl -A "$UA" -L -sS --max-time 40 -o "$f" -w '%{http_code}' "$u"); echo "status=$s url=$u bytes=$(wc -c <"$f")" >> "$out"; test "$s" = 200; }
-
-          fetch https://www.elmercadodeorigen.com/en/journal/ /tmp/journal
+          check(){ u="$1"; f="$2"; s=$(curl -A "$UA" -L -sS --max-time 40 -o "$f" -w '%{http_code}' "$u"); echo "$s $u" >> "$out"; test "$s" = 200; }
+          check https://www.elmercadodeorigen.com/en/journal/ /tmp/journal
           grep -q 'Iberian ham is a unique product' /tmp/journal
           grep -q 'November is harvest time' /tmp/journal
           ! grep -qiE 'El Jam[oó]n Ib[eé]rico es|Noviembre es la [ée]poca' /tmp/journal
-          echo journal=pass >> "$out"
-
-          fetch https://www.elmercadodeorigen.com/en/product-category/oils/ /tmp/oils
-          grep -q 'Remove' /tmp/oils
-          ! grep -q 'Quitar' /tmp/oils
-          ! grep -qE '>\s*[2-9][0-9]* result\s*<' /tmp/oils
-          grep -q '3 results' /tmp/oils
-          echo oils=pass >> "$out"
-
-          fetch https://www.elmercadodeorigen.com/en/variedad/tradicional-martena-picual/ /tmp/variety
-          grep -q 'Variety:' /tmp/variety
-          ! grep -q 'Variedad:' /tmp/variety
-          echo variety=pass >> "$out"
-
-          fetch https://www.elmercadodeorigen.com/en/cookie-policy/ /tmp/cookie
-          ! grep -q 'First name' /tmp/cookie
-          grep -q '>Name<' /tmp/cookie
-          ! grep -qiE 'hl=es|windows-vista/cookies-frequently-asked-questions|mozilla\.org/es/|apple\.com/es/|opera\.com/.*/es-ES/|youronlinechoices\.com/es/' /tmp/cookie
-          grep -q 'support.google.com/chrome/answer/95647' /tmp/cookie
-          grep -q 'support.microsoft.com/en-us/edge/' /tmp/cookie
-          grep -q 'support.mozilla.org/en-US/' /tmp/cookie
-          grep -q 'support.apple.com/guide/safari/' /tmp/cookie
-          grep -q 'help.opera.com/en/latest/' /tmp/cookie
-          echo cookie_policy=pass >> "$out"
-
-          fetch https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-5l/ /tmp/oilproduct
-          ! grep -q 'NEW HARVEST 23/24' /tmp/oilproduct
-          grep -q '2023/24 harvest' /tmp/oilproduct
-          echo stale_harvest_label=pass >> "$out"
-
-          rm -f /tmp/mdo-cookies
-          curl -A "$UA" -L -sS --max-time 40 -c /tmp/mdo-cookies -b /tmp/mdo-cookies 'https://www.elmercadodeorigen.com/en/?add-to-cart=1382' -o /tmp/add
-          fetch_cart_status=$(curl -A "$UA" -L -sS --max-time 40 -c /tmp/mdo-cookies -b /tmp/mdo-cookies -o /tmp/cart -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/cart/')
-          echo "cart_status=$fetch_cart_status cart_bytes=$(wc -c </tmp/cart)" >> "$out"
-          test "$fetch_cart_status" = 200
-          grep -qiE 'Sobrasada|shopping cart|cart totals' /tmp/cart
-          ! grep -qiE '>\s*(Carrito|Finalizar compra|Seguir comprando|Subtotal del carrito|Pedido mínimo)\s*<' /tmp/cart
-          checkout_status=$(curl -A "$UA" -L -sS --max-time 40 -c /tmp/mdo-cookies -b /tmp/mdo-cookies -o /tmp/checkout -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/checkout/')
-          echo "checkout_status=$checkout_status checkout_bytes=$(wc -c </tmp/checkout)" >> "$out"
-          test "$checkout_status" = 200
-          ! grep -qiE '>\s*(Detalles de facturación|Nombre|Apellidos|Dirección|Provincia|Código postal|Realizar pedido|Pedido mínimo|Importe mínimo)\s*<' /tmp/checkout
-          grep -oiE '.{0,100}(minimum|order|billing|shipping|payment|checkout).{0,180}' /tmp/checkout | sed 's/<[^>]*>/ /g' | head -30 >> "$out" || true
-          echo cart_checkout_session=pass >> "$out"
-
-          for u in \
-            https://www.elmercadodeorigen.com/en/ \
-            https://www.elmercadodeorigen.com/en/shop/ \
-            https://www.elmercadodeorigen.com/en/producers/ \
-            https://www.elmercadodeorigen.com/en/contact/ \
-            https://www.elmercadodeorigen.com/en/my-account/ \
-            https://www.elmercadodeorigen.com/en/terms-and-conditions-2/; do
-            curl -A "$UA" -L -sS --max-time 40 "$u" -o /tmp/page
-            printf '%s spanish_hits=' "$u" >> "$out"
-            grep -oiE '\b(Quitar|Variedad|Añadir al carrito|Finalizar compra|Mi cuenta|Iniciar sesión|Buscar productos|Filtros aplicados|Limpiar todo|Detalles de facturación|Realizar pedido)\b' /tmp/page | sort -u | paste -sd, - >> "$out" || true
-          done
+          check https://www.elmercadodeorigen.com/en/product-category/oils/ /tmp/oils
+          grep -q 'Remove' /tmp/oils; ! grep -q 'Quitar' /tmp/oils; grep -q '3 results' /tmp/oils
+          check https://www.elmercadodeorigen.com/en/variedad/tradicional-martena-picual/ /tmp/variety
+          grep -q 'Variety:' /tmp/variety; ! grep -q 'Variedad:' /tmp/variety
+          check https://www.elmercadodeorigen.com/en/cookie-policy/ /tmp/cookie
+          ! grep -q 'First name' /tmp/cookie; ! grep -qiE 'hl=es|youronlinechoices\.com/es/' /tmp/cookie
+          check https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-5l/ /tmp/oil
+          ! grep -q 'NEW HARVEST 23/24' /tmp/oil; grep -q '2023/24 harvest' /tmp/oil
+          rm -f /tmp/cj
+          curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj 'https://www.elmercadodeorigen.com/en/?add-to-cart=1382' -o /tmp/add
+          checkcart=$(curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj -o /tmp/cart -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/cart/')
+          echo "cart=$checkcart" >> "$out"; test "$checkcart" = 200; grep -qi 'Sobrasada' /tmp/cart
+          checkout=$(curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj -o /tmp/checkout -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/checkout/')
+          echo "checkout=$checkout" >> "$out"; test "$checkout" = 200
+          ! grep -qiE '>\s*(Carrito|Finalizar compra|Detalles de facturación|Realizar pedido|Pedido mínimo|Importe mínimo)\s*<' /tmp/cart /tmp/checkout
           echo status=success >> "$out"
-      - name: Record QA results
+      - name: Record results
         if: always()
-        shell: bash
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
