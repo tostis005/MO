@@ -1,6 +1,8 @@
 name: Deploy English launch fixes v62
 
 on:
+  schedule:
+    - cron: '*/5 * * * *'
   issues:
     types: [opened]
   workflow_dispatch:
@@ -10,7 +12,7 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'Run English launch fixes v62'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && github.event.issue.title == 'Run English launch fixes v62')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
