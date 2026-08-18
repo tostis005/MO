@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Launch Quality
  * Description: Final server-side English storefront fixes for launch-critical copy.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -43,7 +43,25 @@ function mdoelq_render_english_010262( string $html ): string {
 		return '1' === $m[1] ? $m[0] : $m[1] . ' results';
 	}, $html );
 
-	/* Render-time fallbacks for persisted English data while CDN/page caches rotate. */
+	/*
+	 * Some Journal/category/related-post templates build their teaser before
+	 * the ordinary excerpt filters run. Remove the two known Spanish source
+	 * teasers from the final English HTML as a server-side safety net.
+	 */
+	$evoo = 'November is harvest time in the Córdoba countryside. Although the timing differs in other parts of Spain, choosing the right moment to pick the olives is essential to the aroma, flavour and quality of the resulting extra virgin olive oil.';
+	$ham  = 'Iberian ham is a unique product whose history, according to documentary evidence, dates back to Roman times. Its distinctive sensory characteristics and nutritional properties give it an exceptional quality closely linked to breed, feeding, curing and origin.';
+	$html = (string) preg_replace(
+		'#Noviembre\s+es\s+la\s+[ée]poca\s+de\s+recolecci[oó]n\s+en\s+la\s+campi[nñ]a\s+cordobesa[^<]*#iu',
+		esc_html( $evoo ),
+		$html
+	);
+	$html = (string) preg_replace(
+		'#El\s+Jam[oó]n\s+Ib[eé]rico\s+es[^<]*#iu',
+		esc_html( $ham ),
+		$html
+	);
+
+	/* Render-time fallbacks for persisted English data while page caches rotate. */
 	$html = str_replace( 'First name  | Type', 'Name  | Type', $html );
 	$html = strtr( $html, array(
 		'https://support.google.com/chrome/answer/95647?hl=es' => 'https://support.google.com/chrome/answer/95647?hl=en',
