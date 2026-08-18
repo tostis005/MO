@@ -1,0 +1,129 @@
+name: Deploy verify contact fieldset v31
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-verify-contact-fieldset-v31.yml'
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/contact-fieldset-v31.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/contact-fieldset-v31.txt
+          git commit -m 'Record contact fieldset v31 run id'
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: Deploy fieldset fix
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-contact-form-empty-response-fix-010259.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          $SCP mu-plugins/mdo-contact-form-empty-response-fix-010259.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-contact-form-empty-response-fix-010259.php"
+          PHP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v php || find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1")"
+          WP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v wp")"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -l '$PROD_PATH/wp-content/mu-plugins/mdo-contact-form-empty-response-fix-010259.php'"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true"
+      - name: Verify Samsung mobile on all contact pages
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-contact-v31
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9235 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-contact-v31 about:blank >/tmp/chrome-contact-v31.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9235/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9235/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0; const pending=new Map();
+            ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=15000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable'); await cmd('Runtime.enable'); await cmd('Network.enable');
+            await cmd('Network.setUserAgentOverride',{userAgent:'Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0 Chrome/130.0.0.0 Mobile Safari/537.36',platform:'Android',acceptLanguage:'es-ES,es;q=0.9,en;q=0.8'});
+            await cmd('Emulation.setDeviceMetricsOverride',{width:360,height:780,deviceScaleFactor:3,mobile:true,screenWidth:360,screenHeight:780});
+            const urls=[
+              ['contact_ok','https://www.elmercadodeorigen.com/contacto/'],
+              ['producer_contact_ok','https://www.elmercadodeorigen.com/contacto-productores/'],
+              ['en_contact_ok','https://www.elmercadodeorigen.com/en/contact/'],
+              ['en_producer_contact_ok','https://www.elmercadodeorigen.com/en/for-producers/']
+            ];
+            const results={};
+            for(const [key,url] of urls){
+              await cmd('Page.navigate',{url:url+'?emdo_v31='+Date.now()}); await sleep(5000);
+              const expr=`(() => {
+                const form=document.querySelector('.wpcf7 form');
+                const fs=form?.querySelector('fieldset.hidden-fields-container');
+                const response=form?.querySelector('.wpcf7-response-output');
+                const first=form?.querySelector('input:not([type="hidden"]),textarea,select');
+                const heading=[...document.querySelectorAll('h1,h2,h3')].filter(x=>x.getBoundingClientRect().height>0).find(x=>x.getBoundingClientRect().top < (first?.getBoundingClientRect().top||9999));
+                const fsc=fs?getComputedStyle(fs):null, rr=response?.getBoundingClientRect(), fr=first?.getBoundingClientRect();
+                const visibleGray=[];
+                if(first){
+                  const top=heading?heading.getBoundingClientRect().bottom:0, bottom=fr.top;
+                  for(const el of document.querySelectorAll('.wpcf7 form > *')){
+                    if(el===fs||el===response)continue;
+                    const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+                    if(r.height<2||r.width<20||r.bottom<=top||r.top>=bottom||s.display==='none'||s.visibility==='hidden')continue;
+                    if((parseFloat(s.borderTopWidth)||0)>0 && (el.textContent||'').trim()==='') visibleGray.push({tag:el.tagName,cls:el.className,top:r.top,width:r.width,height:r.height,border:s.border});
+                  }
+                }
+                return {href:location.href,fieldsetDisplay:fsc?.display||'missing',fieldsetWidth:fs?fs.getBoundingClientRect().width:-1,fieldsetHeight:fs?fs.getBoundingClientRect().height:-1,fieldsetBorder:fsc?.border||'',responseDisplay:response?getComputedStyle(response).display:'missing',responseHeight:rr?.height??-1,firstName:first?.getAttribute('name')||'',firstTop:fr?.top??-1,visibleGray};
+              })()`;
+              const r=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},15000); const v=r.result.value;
+              console.log(key,JSON.stringify(v));
+              const hidden=v.fieldsetDisplay==='none'||(v.fieldsetWidth===0&&v.fieldsetHeight===0);
+              if(!hidden) throw new Error(key+' hidden fieldset visible: '+JSON.stringify(v));
+              if(v.firstName!=='your-name') throw new Error(key+' first field is not your-name: '+JSON.stringify(v));
+              if(v.responseDisplay!=='none' && v.responseHeight>0) throw new Error(key+' empty response visible: '+JSON.stringify(v));
+              if(v.visibleGray.length) throw new Error(key+' other empty bordered block remains: '+JSON.stringify(v));
+              results[key]=true;
+            }
+            console.log('SAMSUNG_CONTACT_FIELDSET_OK',JSON.stringify(results)); ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Record success
+        if: success()
+        run: |
+          set -euo pipefail
+          printf 'run_id=%s\nstatus=success\nsamsung_fieldset_hidden=true\ncontact_ok=true\nproducer_contact_ok=true\nen_contact_ok=true\nen_producer_contact_ok=true\n' "$GITHUB_RUN_ID" > runtime/contact-fieldset-v31.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/contact-fieldset-v31.txt
+          git commit -m 'Record successful contact fieldset v31 verification'
+          git pull --rebase origin main
+          git push origin HEAD:main
