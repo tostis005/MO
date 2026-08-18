@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Storefront Stability
  * Description: Keeps English pages server-rendered from persisted translations and removes browser-side translation/catalog expansion.
- * Version: 1.3.2
+ * Version: 1.3.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -95,8 +95,10 @@ function mdoes_render_persisted_english_ui_010258( string $html ): string {
 		$html = strtr( $html, $replace );
 	}
 
+	$count_words = array( 'resultado', 'resultados', 'producto', 'productos' );
+
 	/* Singular/plural nouns are replaced only as quoted JS literals or visible count text. */
-	foreach ( array( 'resultado', 'resultados', 'producto', 'productos' ) as $source ) {
+	foreach ( $count_words as $source ) {
 		$translated = mdoes_persisted_english_ui_copy_010258( $source );
 		if ( $translated === $source ) {
 			continue;
@@ -109,6 +111,30 @@ function mdoes_render_persisted_english_ui_010258( string $html ): string {
 			$html
 		);
 	}
+
+	/*
+	 * Count widgets expose a numeric visible value but keep strings such as
+	 * "3 productos" in aria-label/title. Translate those server-side too.
+	 */
+	$html = (string) preg_replace_callback(
+		'#\b(aria-label|title)\s*=\s*(["\'])(.*?)\2#isu',
+		static function ( array $matches ) use ( $count_words ): string {
+			$value = (string) $matches[3];
+			foreach ( $count_words as $source ) {
+				$translated = mdoes_persisted_english_ui_copy_010258( $source );
+				if ( $translated === $source ) {
+					continue;
+				}
+				$value = (string) preg_replace(
+					'#\b([0-9][0-9.,]*)\s+' . preg_quote( $source, '#' ) . '\b#iu',
+					'$1 ' . $translated,
+					$value
+				);
+			}
+			return $matches[1] . '=' . $matches[2] . $value . $matches[2];
+		},
+		$html
+	);
 
 	return $html;
 }
