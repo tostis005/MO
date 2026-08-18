@@ -1,0 +1,21 @@
+name: Test Google priority translation v70
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sample:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run representative ES to EN sample
+        run: |
+          python3 -m pip install --quiet deep-translator
+          python3 .github/scripts/test-google-priority-translation-v70.py
