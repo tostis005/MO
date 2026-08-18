@@ -49,6 +49,7 @@ def alpha_code(n):
 
 def norm(s):return re.sub(r'\s+',' ',html.unescape(str(s))).strip()
 def num_counter(s):return collections.Counter(x.replace(',','.') for x in NUM_RE.findall(html.unescape(str(s))))
+def num_total(s):return sum(num_counter(s).values())
 
 def protect(s):
     repl={};idx=0
@@ -74,7 +75,7 @@ def polish(s):
     for pat,rep in fixes:s=re.sub(pat,rep,s,flags=re.I)
     s=re.sub(r'(?<=\d),(?=\d)', '.', s);s=re.sub(r'\s+([,.;:!?])',r'\1',s);s=re.sub(r' {2,}',' ',s);return s.strip()
 
-def gtranslate(s):
+def gtranslate_atomic(s):
     if not s or not ALPHA_RE.search(s):return s
     protected,repl=protect(s);err=None
     for attempt in range(6):
@@ -86,7 +87,66 @@ def gtranslate(s):
                 err=RuntimeError('numeric token integrity mismatch')
         except Exception as e:err=e
         time.sleep(min(8,1.2*(attempt+1)))
-    raise RuntimeError(f'translation failed/integrity mismatch: {err}: {s[:160]}')
+    raise RuntimeError(f'atomic translation failed/integrity mismatch: {err}: {s[:180]}')
+
+def split_once(text, pattern):
+    parts=re.split(pattern,text)
+    return [p.strip() for p in parts if p and p.strip()]
+
+def hard_chunks(text,max_chars=520):
+    words=text.split();out=[];cur=[];n=0
+    for w in words:
+        extra=len(w)+(1 if cur else 0)
+        if cur and n+extra>max_chars:
+            out.append(' '.join(cur));cur=[w];n=len(w)
+        else:
+            cur.append(w);n+=extra
+    if cur:out.append(' '.join(cur))
+    return out
+
+def safe_chunks(s,max_chars=650,max_nums=7):
+    s=norm(s)
+    if len(s)<=max_chars and num_total(s)<=max_nums:return [s]
+    # Sentence boundaries first; then semicolons/colons; then commas; finally whitespace.
+    candidates=split_once(s,r'(?<=[.!?])\s+')
+    if len(candidates)==1:candidates=split_once(s,r'(?<=[;])\s*')
+    if len(candidates)==1:candidates=split_once(s,r'(?<=:)\s+')
+    if len(candidates)==1 and (len(s)>max_chars or num_total(s)>max_nums):candidates=split_once(s,r'(?<=[,])\s+')
+    refined=[]
+    for p in candidates:
+        if len(p)<=max_chars and num_total(p)<=max_nums:refined.append(p);continue
+        sub=split_once(p,r'(?<=[;:])\s*')
+        if len(sub)==1 and num_total(p)>max_nums:sub=split_once(p,r'(?<=[,])\s+')
+        if len(sub)==1:sub=hard_chunks(p,max_chars)
+        for q in sub:
+            if len(q)>max_chars:refined.extend(hard_chunks(q,max_chars))
+            else:refined.append(q)
+    # If a chunk still has too many numbers, split greedily at commas/whitespace.
+    final=[]
+    for p in refined:
+        if num_total(p)<=max_nums:final.append(p);continue
+        comma=split_once(p,r'(?<=[,])\s+')
+        if len(comma)>1:
+            cur=[];count=0
+            for q in comma:
+                qc=num_total(q)
+                if cur and count+qc>max_nums:
+                    final.append(' '.join(cur));cur=[q];count=qc
+                else:cur.append(q);count+=qc
+            if cur:final.append(' '.join(cur))
+        else:
+            # Numeric-dense nutrition text: short whitespace chunks are safest.
+            final.extend(hard_chunks(p,260))
+    return [x for x in final if x]
+
+def gtranslate(s):
+    chunks=safe_chunks(s)
+    if len(chunks)==1:return gtranslate_atomic(chunks[0])
+    translated=[]
+    for ch in chunks:translated.append(gtranslate_atomic(ch))
+    out=' '.join(translated)
+    if num_counter(s)!=num_counter(out):raise RuntimeError(f'chunk reassembly numeric mismatch: {s[:180]}')
+    return polish(out)
 
 cache={}
 def collect_html(s,bag):
@@ -103,13 +163,14 @@ def collect_html(s,bag):
         if k and ALPHA_RE.search(k):bag.add(k)
 
 def translate_bundle(items):
-    if len(items)==1:return [gtranslate(items[0])]
+    # Never batch numeric-rich or long blocks: translate them via safe_chunks individually.
+    if len(items)==1 or any(num_total(x)>4 or len(x)>700 for x in items):return [gtranslate(x) for x in items]
     markers=['ZZSEG'+alpha_code(i)+'ZZ' for i in range(len(items)-1)];combined=''
     for i,x in enumerate(items):
         if i:combined+='\n'+markers[i-1]+'\n'
         combined+=x
     try:
-        out=gtranslate(combined)
+        out=gtranslate_atomic(combined)
         pattern=r'\s*(?:'+'|'.join(re.escape(m) for m in markers)+r')\s*'
         pieces=re.split(pattern,out,flags=re.I)
         if len(pieces)==len(items):
@@ -127,10 +188,11 @@ def fill_cache(strings):
         for k,v in zip(bundle,vals):cache[k]=v
         done+=len(bundle);print(f'TRANSLATED {done}/{len(pending)}',flush=True);bundle=[];chars=0
     for s in pending:
-        if len(s)>3000:
+        # Numeric-rich and long content is handled alone to prevent cross-segment token movement.
+        if num_total(s)>4 or len(s)>700:
             flush();cache[s]=gtranslate(s);done+=1;print(f'TRANSLATED {done}/{len(pending)}',flush=True);continue
         extra=len(s)+18
-        if bundle and (len(bundle)>=12 or chars+extra>3200):flush()
+        if bundle and (len(bundle)>=10 or chars+extra>2400):flush()
         bundle.append(s);chars+=extra
     flush()
 
