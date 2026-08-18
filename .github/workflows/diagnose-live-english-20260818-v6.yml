@@ -64,8 +64,7 @@ jobs:
           import pathlib
           import re
           root = pathlib.Path('/tmp/emdo')
-          metrics = (root / 'metrics.txt').read_text(errors='replace')
-          print(metrics, end='')
+          print((root / 'metrics.txt').read_text(errors='replace'), end='')
           markers = [
               'Shop by category','Product categories','All categories','Choose a category','View category',
               'Compra por categoría','Categorías de producto','Todas las categorías','Elige una categoría','Ver categoría',
@@ -115,14 +114,12 @@ jobs:
           cp /tmp/emdo/html-report.txt /tmp/emdo/report.txt
           echo 'DATABASE product_cat:' >> /tmp/emdo/report.txt
           $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '\$terms=get_terms(array(\"taxonomy\"=>\"product_cat\",\"hide_empty\"=>false)); foreach((array)\$terms as \$t){if(!is_object(\$t))continue;\$row=array(\"id\"=>(int)\$t->term_id,\"slug\"=>(string)\$t->slug,\"name\"=>(string)\$t->name,\"description\"=>(string)\$t->description,\"en_published\"=>(string)get_term_meta(\$t->term_id,\"_en_US_published\",true),\"en_name\"=>(string)get_term_meta(\$t->term_id,\"_en_US_name\",true),\"en_slug\"=>(string)get_term_meta(\$t->term_id,\"_en_US_slug\",true),\"en_description\"=>(string)get_term_meta(\$t->term_id,\"_en_US_description\",true));echo wp_json_encode(\$row,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;}' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" >> /tmp/emdo/report.txt
-          echo 'THEME get_terms/filter grep:' >> /tmp/emdo/report.txt
-          $SSH "$STAGING_USER@$STAGING_HOST" "grep -RInE 'get_terms|terms_pre_query|terms_clauses|pre_get_terms|MutationObserver|createTreeWalker' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' --include='*.php' --include='*.js' 2>/dev/null | head -160" >> /tmp/emdo/report.txt || true
           echo 'DB_UI_OPTION:' >> /tmp/emdo/report.txt
           $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" option get elmercado_en_ui_copy_010245 --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" >> /tmp/emdo/report.txt
 
           cp /tmp/emdo/report.txt runtime/english-live-diagnostic-v6.txt
           printf '\nstatus=complete\n' >> runtime/english-live-diagnostic-v6.txt
-          git pull --rebase origin main
           git add runtime/english-live-diagnostic-v6.txt
           git commit -m 'Record live English storefront diagnostic v6'
+          git pull --rebase origin main
           git push origin HEAD:main
