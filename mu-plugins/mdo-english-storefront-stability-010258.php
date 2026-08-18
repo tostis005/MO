@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Storefront Stability
  * Description: Keeps English pages server-rendered from persisted translations and removes browser-side translation/catalog expansion.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -40,13 +40,21 @@ function mdoes_dequeue_live_translation_scripts_010258(): void {
 add_action( 'wp_enqueue_scripts', 'mdoes_dequeue_live_translation_scripts_010258', PHP_INT_MAX );
 add_action( 'wp_footer', 'mdoes_dequeue_live_translation_scripts_010258', 1 );
 
+/** Remove one inline script by its exact WordPress id. */
+function mdoes_remove_inline_script_by_id_010258( string $html, string $id ): string {
+	$id = preg_quote( $id, '#' );
+	return (string) preg_replace(
+		'#<script\b[^>]*\bid=("|\')' . $id . '\1[^>]*>.*?</script>\s*#isu',
+		'',
+		$html
+	);
+}
+
 /**
  * Final safety net for English HTML.
  *
- * - removes TranslatePress browser-side DOM translation assets;
- * - removes any residual inline DOM translation scanner;
- * - removes the custom continuous catalog loader so English shop/category pages
- *   use ordinary server-rendered pagination and cannot grow the DOM recursively.
+ * English is rendered from persisted WordPress/Falang data. Browser-side text
+ * translation and automatic catalogue expansion are intentionally disabled.
  */
 function mdoes_stabilize_english_catalog_html_010258( string $html ): string {
 	if ( '' === $html || ! mdoes_english_request_010258() ) {
@@ -58,6 +66,9 @@ function mdoes_stabilize_english_catalog_html_010258( string $html ): string {
 		'',
 		$html
 	);
+
+	/* TranslatePress dynamic-translation config is unnecessary when its client translator is disabled. */
+	$html = mdoes_remove_inline_script_by_id_010258( $html, 'trp-dynamic-translator-js-extra' );
 
 	/* Remove a residual inline whole-DOM translator regardless of where it was registered. */
 	$html = (string) preg_replace_callback(
@@ -72,16 +83,12 @@ function mdoes_stabilize_english_catalog_html_010258( string $html ): string {
 		$html
 	);
 
-	$html = (string) preg_replace(
-		'#<script\b[^>]*\bid=("|\')elmercado-continuous-catalog-history-010181\1[^>]*>.*?</script>\s*#isu',
-		'',
-		$html
-	);
-	$html = (string) preg_replace(
-		'#<script\b[^>]*\bid=("|\')elmercado-continuous-catalog-loader-010181\1[^>]*>.*?</script>\s*#isu',
-		'',
-		$html
-	);
+	/* Legacy continuous loader. */
+	$html = mdoes_remove_inline_script_by_id_010258( $html, 'elmercado-continuous-catalog-history-010181' );
+	$html = mdoes_remove_inline_script_by_id_010258( $html, 'elmercado-continuous-catalog-loader-010181' );
+
+	/* Current catalogue scroller: it fetches and appends pages automatically. */
+	$html = mdoes_remove_inline_script_by_id_010258( $html, 'elmercado-catalog-scroll-final-010234' );
 
 	/* Stop loader-only CSS from hiding the ordinary HTML pagination. */
 	$html = (string) preg_replace_callback(
