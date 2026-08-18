@@ -2,11 +2,11 @@
 /**
  * Plugin Name: MDO Merchant Consistency
  * Description: Keeps homepage marketplace claims consistent with seller-specific shipping/returns and removes invalid stored GTIN/EAN values.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const MDO_MC_VERSION = '2026-08-18-1';
+const MDO_MC_VERSION = '2026-08-18-2';
 
 /**
  * Validate a stored GTIN after removing spaces and hyphens.
