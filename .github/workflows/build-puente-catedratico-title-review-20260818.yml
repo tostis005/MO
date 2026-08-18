@@ -1,0 +1,31 @@
+name: Build Puente/Catedrático title review
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-puente-catedratico-title-review-20260818.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build title review TSV
+        run: |
+          set -euo pipefail
+          jq -r '.products[] | [.id,.vendor,.title,.current_en_title,.spanish_slug,.current_en_slug] | @tsv' runtime/prelaunch-puente-catedratico-source-20260818.json > runtime/prelaunch-puente-catedratico-titles-20260818.tsv
+      - name: Commit review
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add runtime/prelaunch-puente-catedratico-titles-20260818.tsv
+          git commit -m 'Record Puente/Catedrático title review' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
