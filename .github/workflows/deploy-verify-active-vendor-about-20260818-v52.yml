@@ -1,0 +1,134 @@
+name: Deploy verify active vendor About v52
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-verify-active-vendor-about-20260818-v52.yml'
+      - '.github/scripts/seed-active-vendor-english-about-v52.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/vendor-about-v52.txt
+          git add runtime/vendor-about-v52.txt
+          git commit -m 'Start vendor About verification v52'
+          git push origin HEAD:main
+
+      - name: Seed persisted English About copy in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/seed-active-vendor-english-about-v52.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          echo "$PROD_PATH" > /tmp/prod_v52
+          REMOTE="/tmp/seed-vendor-about-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/seed-active-vendor-english-about-v52.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > runtime/vendor-about-seed-v52.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify public About pages and database coverage
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(cat /tmp/prod_v52)"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            out=/tmp/vendor-about-v52-report.txt
+            : > "$out"
+
+            check_about() {
+              slug="$1"
+              expected="$2"
+              forbidden="$3"
+              url="https://www.elmercadodeorigen.com/en/store/$slug/about/"
+              rm -f /tmp/v52h /tmp/v52b
+              code=$(curl -k -L --max-redirs 4 -sS --connect-timeout 8 --max-time 40 -D /tmp/v52h -o /tmp/v52b -w "%{http_code}" "$url")
+              redirects=$(grep -ic "^location:" /tmp/v52h || true)
+              policies=$(grep -oiE ">[[:space:]]*(Policies|Store Policies)[[:space:]]*<|Políticas de la tienda" /tmp/v52b | wc -l | tr -d " ")
+              english=$(grep -Fio "$expected" /tmp/v52b | wc -l | tr -d " ")
+              spanish=$(grep -Fio "$forbidden" /tmp/v52b | wc -l | tr -d " ")
+              echo "about slug=$slug code=$code redirects=$redirects english_marker=$english spanish_marker=$spanish policies=$policies" >> "$out"
+              test "$code" = 200
+              test "$english" -gt 0
+              test "$spanish" = 0
+              test "$policies" = 0
+            }
+
+            check_about 1957 "The story of" "La historia de"
+            check_about hidalgo-de-la-jara "deeply connected to the Iberian pig" "La historia de Hidalgo de la Jara"
+            check_about tolecarnes "linked to cattle farming since" "La historia de Tolecarnes"
+
+            wp_bin=$(command -v wp)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            "$php_bin" -d memory_limit=768M "$wp_bin" eval '
+              $slugs=array("1957","hidalgo-de-la-jara","tolecarnes","puente-robles","el-catedratico");
+              foreach($slugs as $slug){
+                $u=get_user_by("slug",$slug);
+                $en=$u?(string)get_user_meta($u->ID,"_mdo_en_store_description",true):"";
+                echo "db slug=".$slug." user=".($u?$u->ID:0)." chars=".mb_strlen(trim(wp_strip_all_tags($en))).PHP_EOL;
+                if(!$u || mb_strlen(trim(wp_strip_all_tags($en))) < 600){ exit(21); }
+              }
+            ' --path="$PROD_PATH" --allow-root >> "$out"
+
+            echo status=success >> "$out"
+            cat "$out"
+          ' > runtime/vendor-about-verify-v52.txt
+
+      - name: Record success
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=success\n' "$GITHUB_RUN_ID" > runtime/vendor-about-v52.txt
+          git add runtime/vendor-about-v52.txt runtime/vendor-about-seed-v52.json runtime/vendor-about-verify-v52.txt
+          git commit -m 'Verify producer About translations v52'
+          git push origin HEAD:main
