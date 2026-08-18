@@ -9,11 +9,21 @@ if ( ! is_array( $backup ) ) { $backup = array(); }
 $report = array( 'backup_key' => $backup_key, 'posts' => array(), 'terms' => array(), 'ui' => array() );
 
 $find_post_by_en_meta = static function ( string $key, string $value ) use ( $wpdb ): int {
-	return (int) $wpdb->get_var(
+	$id = (int) $wpdb->get_var(
 		$wpdb->prepare(
 			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key=%s AND meta_value=%s ORDER BY post_id ASC LIMIT 1",
 			$key,
 			$value
+		)
+	);
+	if ( $id > 0 ) {
+		return $id;
+	}
+	return (int) $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key=%s AND meta_value LIKE %s ORDER BY post_id ASC LIMIT 1",
+			$key,
+			'%' . $wpdb->esc_like( $value ) . '%'
 		)
 	);
 };
@@ -117,7 +127,6 @@ $report['ui'] = array( 'Quitar' => $ui['Quitar'], 'Variedad' => $ui['Variedad'] 
 
 update_option( $backup_key, $backup, false );
 
-/* Clear caches/transients that can retain translated HTML or taxonomy labels. */
 if ( function_exists( 'wc_delete_product_transients' ) ) { wc_delete_product_transients(); }
 wp_cache_flush();
 
