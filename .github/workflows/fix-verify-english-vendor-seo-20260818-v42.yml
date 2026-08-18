@@ -1,0 +1,231 @@
+name: Fix and verify English vendor SEO v42
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-verify-english-vendor-seo-20260818-v42.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix-deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v42.txt
+          git add runtime/english-vendor-v42.txt
+          git commit -m 'Start English vendor SEO v42'
+          git push origin HEAD:main
+
+      - name: Fix original public URI handling in source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('mu-plugins/mdo-z-english-vendor-seo-010260.php')
+          s=p.read_text()
+          old="""if ( ! defined( 'ABSPATH' ) ) {
+          \texit;
+          }
+
+          function mdoev_en_010260(): bool {
+          \tif ( function_exists( 'mdoer_en' ) ) {
+          \t\treturn mdoer_en();
+          \t}
+          \t$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+          \t$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+          \treturn 1 === preg_match( '#^/en(?:/|$)#i', $path );
+          }
+
+          function mdoev_public_path_010260(): string {
+          \tif ( function_exists( 'mdoer_public_path' ) ) {
+          \t\treturn (string) mdoer_public_path();
+          \t}
+          \t$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+          \treturn (string) wp_parse_url( $uri, PHP_URL_PATH );
+          }
+          """
+          new="""if ( ! defined( 'ABSPATH' ) ) {
+          \texit;
+          }
+
+          // Capture the browser-facing URI before this MU plugin maps clean English
+          // WCFM routes to the plugin's native Spanish endpoints internally.
+          if ( ! isset( $GLOBALS['mdoev_original_public_uri_010260'] ) ) {
+          \t$GLOBALS['mdoev_original_public_uri_010260'] = isset( $_SERVER['REQUEST_URI'] )
+          \t\t? (string) wp_unslash( $_SERVER['REQUEST_URI'] )
+          \t\t: '/';
+          }
+
+          function mdoev_public_path_010260(): string {
+          \t$uri = isset( $GLOBALS['mdoev_original_public_uri_010260'] )
+          \t\t? (string) $GLOBALS['mdoev_original_public_uri_010260']
+          \t\t: ( isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/' );
+          \treturn (string) wp_parse_url( $uri, PHP_URL_PATH );
+          }
+
+          function mdoev_en_010260(): bool {
+          \t$path = mdoev_public_path_010260();
+          \treturn 1 === preg_match( '#^/en(?:/|$)#i', $path );
+          }
+          """
+          if old not in s:
+              raise SystemExit('Expected source block not found; refusing unsafe edit')
+          s=s.replace(old,new,1)
+          s=s.replace(' * Version: 1.0.0',' * Version: 1.0.1',1)
+          p.write_text(s)
+          PY
+          php -l mu-plugins/mdo-z-english-vendor-seo-010260.php
+          git add mu-plugins/mdo-z-english-vendor-seo-010260.php
+          git commit -m 'Fix original URI handling for English vendor routes'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Deploy corrected source and flush cache
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          echo "$PROD_PATH" > /tmp/prod_path
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-z-english-vendor-seo-010260.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-zz-english-store-canonical-010261.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-zz-english-store-canonical-010261.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php'; wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify from production server
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(cat /tmp/prod_path)"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -euo pipefail
+            out=/tmp/mdo-v42.txt
+            : >\"\$out\"
+            getpage() {
+              u=\"\$1\"
+              rm -f /tmp/mdo42h /tmp/mdo42b
+              status=\$(curl -k -L --max-redirs 6 -sS --connect-timeout 8 --max-time 35 -D /tmp/mdo42h -o /tmp/mdo42b -w '%{http_code}' \"\$u\")
+              echo \"PAGE status=\$status url=\$u bytes=\$(wc -c </tmp/mdo42b) redirects=\$(grep -ic '^location:' /tmp/mdo42h || true)\" >>\"\$out\"
+              test \"\$status\" = 200
+            }
+            redirect() {
+              u=\"\$1\"; want=\"\$2\"
+              rm -f /tmp/mdo42h /tmp/mdo42b
+              curl -k -sS --connect-timeout 8 --max-time 25 -D /tmp/mdo42h -o /tmp/mdo42b \"\$u\"
+              status=\$(awk 'toupper(\$1) ~ /^HTTP\\// {s=\$2} END{print s}' /tmp/mdo42h)
+              loc=\$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,\"\"); sub(/\\r$/,\"\"); print; exit}' /tmp/mdo42h)
+              echo \"REDIRECT status=\$status from=\$u to=\$loc\" >>\"\$out\"
+              test \"\$status\" = 301
+              case \"\$loc\" in *\"\$want\"*) ;; *) echo \"Bad redirect: \$loc expected \$want\" >&2; exit 1;; esac
+            }
+
+            getpage https://www.elmercadodeorigen.com/en/categories/
+            grep -qi 'Categories' /tmp/mdo42b
+            redirect https://www.elmercadodeorigen.com/en/categorias/ /en/categories/
+
+            getpage https://www.elmercadodeorigen.com/en/store/1957/
+            p1957=\$(grep -oE '/en/product/[^\" <]+' /tmp/mdo42b | sort -u | wc -l | tr -d ' ')
+            echo \"1957_product_links=\$p1957\" >>\"\$out\"
+            test \"\$p1957\" -gt 0
+            ! grep -qiE '>[[:space:]]*Policies[[:space:]]*<' /tmp/mdo42b
+            grep -qiE '>[[:space:]]*Products[[:space:]]*<' /tmp/mdo42b
+            grep -qiE '>[[:space:]]*About[[:space:]]*<' /tmp/mdo42b
+            grep -q '/en/store/1957/about/' /tmp/mdo42b
+
+            getpage https://www.elmercadodeorigen.com/en/store/1957/about/
+            grep -qi 'The story of' /tmp/mdo42b
+            ! grep -qi 'La historia de' /tmp/mdo42b
+            ! grep -qiE '>[[:space:]]*Policies[[:space:]]*<' /tmp/mdo42b
+
+            getpage https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/
+            ph=\$(grep -oE '/en/product/[^\" <]+' /tmp/mdo42b | sort -u | wc -l | tr -d ' ')
+            echo \"hidalgo_product_links=\$ph\" >>\"\$out\"
+            test \"\$ph\" -gt 0
+            ! grep -qiE '>[[:space:]]*Policies[[:space:]]*<' /tmp/mdo42b
+            grep -q '/en/store/hidalgo-de-la-jara/about/' /tmp/mdo42b
+
+            getpage https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/
+            grep -qi 'livestock farmers' /tmp/mdo42b
+            ! grep -qi 'Los ganaderos que integran' /tmp/mdo42b
+            ! grep -qiE '>[[:space:]]*Policies[[:space:]]*<' /tmp/mdo42b
+
+            redirect https://www.elmercadodeorigen.com/en/tienda/1957/ /en/store/1957/
+            redirect https://www.elmercadodeorigen.com/en/tienda/hidalgo-de-la-jara/acercade/ /en/store/hidalgo-de-la-jara/about/
+
+            getpage https://www.elmercadodeorigen.com/en/shop/
+            shopcount=\$(grep -oE '/en/product/[^\" <]+' /tmp/mdo42b | sort -u | wc -l | tr -d ' ')
+            echo \"shop_product_links=\$shopcount\" >>\"\$out\"
+            test \"\$shopcount\" -gt 0
+            hybrid=\$(grep -oE 'href=[\"'"''][^\"'"'']*/en/(tienda|categorias|producto|categoria-producto|etiqueta-producto)/[^\"'"'']*' /tmp/mdo42b | wc -l | tr -d ' ')
+            echo \"shop_hybrid_links=\$hybrid\" >>\"\$out\"
+            test \"\$hybrid\" = 0
+
+            product=\$(grep -oE 'https://www\.elmercadodeorigen\.com/en/product/[^\" <]+/' /tmp/mdo42b | head -n1 || true)
+            if [ -z \"\$product\" ]; then product=\$(grep -oE '/en/product/[^\" <]+/' /tmp/mdo42b | head -n1 | sed 's#^#https://www.elmercadodeorigen.com#'); fi
+            test -n \"\$product\"
+            getpage \"\$product\"
+            ! grep -qiE '>[[:space:]]*(Policies|Store Policies)[[:space:]]*<|Políticas de la tienda' /tmp/mdo42b
+            if grep -q '/en/tienda/' /tmp/mdo42b; then echo 'Product contains hybrid /en/tienda link' >&2; exit 1; fi
+            echo \"product_checked=\$product\" >>\"\$out\"
+
+            echo status=success >>\"\$out\"
+            cat \"\$out\"
+          " > runtime/english-vendor-verify-v42.txt
+
+      - name: Audit all vendor descriptions with high memory
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(cat /tmp/prod_path)"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'global \$wpdb; foreach(\$wpdb->get_results(\"SELECT user_id,meta_value FROM {\$wpdb->usermeta} WHERE meta_key=\\\"wcfmmp_profile_settings\\\"\",ARRAY_A) as \$r){\$s=maybe_unserialize(\$r[\"meta_value\"]);if(!is_array(\$s)||empty(\$s[\"store_slug\"]))continue;\$id=(int)\$r[\"user_id\"];\$es=(string)get_user_meta(\$id,\"_store_description\",true);if(!trim(wp_strip_all_tags(\$es)))\$es=(string)(\$s[\"shop_description\"]??\"\");\$en=(string)get_user_meta(\$id,\"_mdo_en_store_description\",true);\$pc=(int)\$wpdb->get_var(\$wpdb->prepare(\"SELECT COUNT(*) FROM {\$wpdb->posts} WHERE post_type=\\\"product\\\" AND post_status=\\\"publish\\\" AND post_author=%d\",\$id));echo \"slug=\".\$s[\"store_slug\"].\" products=\".\$pc.\" es_chars=\".mb_strlen(trim(wp_strip_all_tags(\$es))).\" en_chars=\".mb_strlen(trim(wp_strip_all_tags(\$en))).PHP_EOL;}' --path='$PROD_PATH' --allow-root" > runtime/vendor-description-audit-v42.txt
+
+      - name: Record final success
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=success\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v42.txt
+          git add runtime/english-vendor-v42.txt runtime/english-vendor-verify-v42.txt runtime/vendor-description-audit-v42.txt
+          git commit -m 'Verify English vendor SEO production v42'
+          git push origin HEAD:main
