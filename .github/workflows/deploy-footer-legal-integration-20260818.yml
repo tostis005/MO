@@ -1,0 +1,97 @@
+name: Deploy footer legal integration 20260818
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'mu-plugins/mdo-footer-legal-integration-20260818.php'
+      - '.github/workflows/deploy-footer-legal-integration-20260818.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PHP
+        run: php -l mu-plugins/mdo-footer-legal-integration-20260818.php
+
+      - name: Deploy and verify production footer
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTS=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$PORT")
+          SCP_OPTS=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -P "$PORT")
+          remote(){ sshpass -e ssh "${SSH_OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "$@"; }
+
+          PROD_PATH="$(remote '
+            wp=$(command -v wp || true); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 8 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?site not found}"
+          echo "PROD_PATH=$PROD_PATH"
+
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-footer-legal-integration-20260818.php"
+          BACKUP_DIR="$(remote 'mkdir -p "$HOME/mdo-backups"; printf "%s" "$HOME/mdo-backups"')"
+          TAG="${GITHUB_RUN_ID}-$(date -u +%Y%m%dT%H%M%SZ)"
+          remote "if [ -f '$TARGET' ]; then cp '$TARGET' '$BACKUP_DIR/mdo-footer-legal-integration-$TAG.php'; fi"
+
+          TMP="/tmp/mdo-footer-legal-integration-$TAG.php"
+          sshpass -e scp "${SCP_OPTS[@]}" mu-plugins/mdo-footer-legal-integration-20260818.php "$STAGING_USER@$STAGING_HOST:$TMP"
+          remote "ph=\$(command -v php||true); [ -n \"\$ph\" ]||ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -l '$TMP'; install -m 0644 '$TMP' '$TARGET'; rm -f '$TMP'"
+          remote "wp=\$(command -v wp); ph=\$(command -v php||true); [ -n \"\$ph\" ]||ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -d memory_limit=1024M \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/es.html
+          curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/en/' -o /tmp/en.html
+
+          python3 - <<'PY'
+          import re, sys
+          checks = [
+              ('/tmp/es.html', [
+                  '/contacto/', '/aviso-legal/', '/envios/', '/devoluciones-y-reembolsos/', '/politica-de-privacidad/'
+              ], ['José Antonio Fraga Sánchez', '11854364A', 'mdo-mt-footer__identity', 'mdo-mt-footer__role']),
+              ('/tmp/en.html', [
+                  '/en/contact/', '/en/legal-notice/', '/en/shipping/', '/en/returns-refunds/', '/en/privacy-policy/'
+              ], ['José Antonio Fraga Sánchez', '11854364A', 'mdo-mt-footer__identity', 'mdo-mt-footer__role']),
+          ]
+          for path, required, forbidden in checks:
+              html = open(path, encoding='utf-8', errors='replace').read()
+              m = re.search(r'<footer\b[^>]*>.*?</footer>', html, re.I | re.S)
+              if not m:
+                  raise SystemExit(f'No <footer> found in {path}')
+              footer = m.group(0)
+              missing = [x for x in required if x not in footer]
+              bad = [x for x in forbidden if x in footer]
+              if missing:
+                  raise SystemExit(f'Missing integrated footer links in {path}: {missing}')
+              if bad:
+                  raise SystemExit(f'Personal/standalone transparency data still visible in footer {path}: {bad}')
+              if 'mdo-mt-footer"' in html or "mdo-mt-footer'" in html:
+                  raise SystemExit(f'Standalone Merchant footer still rendered in {path}')
+              print(f'Footer OK: {path}')
+          PY
+
+          echo '=== Verify legal identity remains inside relevant sections ==='
+          curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/aviso-legal/' -o /tmp/legal-es.html
+          curl -k -L -sS --max-time 45 'https://www.elmercadodeorigen.com/en/legal-notice/' -o /tmp/legal-en.html
+          grep -Fq '11854364A' /tmp/legal-es.html
+          grep -Fq '11854364A' /tmp/legal-en.html
+          grep -Fq 'José Antonio Fraga Sánchez' /tmp/legal-es.html
+          grep -Fq 'José Antonio Fraga Sánchez' /tmp/legal-en.html
+          echo 'Footer integration verified in ES and EN.'
