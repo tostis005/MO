@@ -1,0 +1,109 @@
+name: Fix Puente/Catedrático English before launch v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-puente-catedratico-prelaunch-en-20260818-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record run marker
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/prelaunch-puente-catedratico-v2-status.txt
+          git add runtime/prelaunch-puente-catedratico-v2-status.txt
+          git commit -m 'Start Puente/Catedrático English prelaunch fix v2'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Translate apply and audit production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          python3 -m pip install --quiet deep-translator
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          EXPORT_PHP="/tmp/mdo-export-${GITHUB_RUN_ID}.php"
+          SOURCE_REMOTE="/tmp/mdo-source-${GITHUB_RUN_ID}.json"
+          sshpass -e scp $SCP .github/scripts/export-puente-catedratico-prelaunch-20260818.php "$STAGING_USER@$STAGING_HOST:$EXPORT_PHP"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); MDO_EXPORT_PATH='$SOURCE_REMOTE' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$EXPORT_PHP' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$EXPORT_PHP'; exit \$rc"
+          sshpass -e scp $SCP "$STAGING_USER@$STAGING_HOST:$SOURCE_REMOTE" /tmp/mdo-source.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$SOURCE_REMOTE'"
+          jq -e '(.products|length)==201 and ([.products[]|select(.vendor=="Puente Robles")]|length)==106 and ([.products[]|select(.vendor=="El Catedrático")]|length)==95' /tmp/mdo-source.json >/dev/null
+
+          cp .github/scripts/mdo-final-en-translate-v73.py /tmp/mdo-target-translate.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/mdo-target-translate.py')
+          s=p.read_text(encoding='utf-8')
+          needle="GLOSSARY={\n"
+          inject="GLOSSARY={\n'Cesáreo':'Cesáreo','Cesareo':'Cesareo','taco de jamón reserva':'reserve ham chunk','jamón reserva':'reserve ham','selección gourmet':'Gourmet Selection','cabecero lomo':'cured loin head','Cátedra':'Masterclass','cátedra':'masterclass',\n"
+          if needle not in s: raise SystemExit('glossary marker not found')
+          p.write_text(s.replace(needle,inject,1),encoding='utf-8')
+          PY
+          python3 /tmp/mdo-target-translate.py /tmp/mdo-source.json /tmp/mdo-translated.json
+          python3 .github/scripts/polish-puente-catedratico-titles-20260818.py /tmp/mdo-source.json /tmp/mdo-translated.json /tmp/mdo-polished.json
+          python3 .github/scripts/finalize-puente-catedratico-special-titles-20260818.py /tmp/mdo-source.json /tmp/mdo-polished.json /tmp/mdo-final0.json
+          python3 .github/scripts/clean-puente-catedratico-en-content-20260818.py /tmp/mdo-final0.json /tmp/mdo-final.json
+          jq -e '(.products|length)==201' /tmp/mdo-final.json >/dev/null
+          jq -r '.products[] | [.id,.vendor,.title,.slug] | @tsv' /tmp/mdo-final.json > runtime/prelaunch-puente-catedratico-final-titles-20260818.tsv
+
+          APPLY_PHP="/tmp/mdo-apply-${GITHUB_RUN_ID}.php"
+          FINAL_REMOTE="/tmp/mdo-final-${GITHUB_RUN_ID}.json"
+          sshpass -e scp $SCP .github/scripts/apply-puente-catedratico-prelaunch-en-20260818.php "$STAGING_USER@$STAGING_HOST:$APPLY_PHP"
+          sshpass -e scp $SCP /tmp/mdo-final.json "$STAGING_USER@$STAGING_HOST:$FINAL_REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); MDO_PAYLOAD_PATH='$FINAL_REMOTE' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$APPLY_PHP' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$APPLY_PHP' '$FINAL_REMOTE'; exit \$rc" | tee runtime/prelaunch-puente-catedratico-apply-v2-20260818.log
+          grep -q 'APPLIED_OK' runtime/prelaunch-puente-catedratico-apply-v2-20260818.log
+
+          AUDIT_PHP="/tmp/mdo-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-all-product-translations-v66.php "$STAGING_USER@$STAGING_HOST:$AUDIT_PHP"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$AUDIT_PHP' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$AUDIT_PHP'; exit \$rc" > runtime/prelaunch-puente-catedratico-after-v2-20260818.json
+          jq -e '.targets["Puente Robles"].total==106 and .targets["Puente Robles"].english_fields_ready==106 and .targets["Puente Robles"].staged_ready==106 and .targets["Puente Robles"].english_routing_on==0 and .targets["El Catedrático"].total==95 and .targets["El Catedrático"].english_fields_ready==95 and .targets["El Catedrático"].staged_ready==95 and .targets["El Catedrático"].english_routing_on==0' runtime/prelaunch-puente-catedratico-after-v2-20260818.json >/dev/null
+          jq '{targets:{"Puente Robles":.targets["Puente Robles"],"El Catedrático":.targets["El Catedrático"]},issues:[.issues[]|select(.target=="Puente Robles" or .target=="El Catedrático")],exact_copy_review:[.exact_copy_review[]|select(.target=="Puente Robles" or .target=="El Catedrático")]}' runtime/prelaunch-puente-catedratico-after-v2-20260818.json > runtime/prelaunch-puente-catedratico-after-v2-focused-20260818.json
+
+      - name: Commit evidence and status
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -e
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          printf 'run_id=%s\nstatus=%s\n' "$GITHUB_RUN_ID" "$JOB_STATUS" > runtime/prelaunch-puente-catedratico-v2-status.txt
+          for f in runtime/prelaunch-puente-catedratico-v2-status.txt runtime/prelaunch-puente-catedratico-final-titles-20260818.tsv runtime/prelaunch-puente-catedratico-apply-v2-20260818.log runtime/prelaunch-puente-catedratico-after-v2-20260818.json runtime/prelaunch-puente-catedratico-after-v2-focused-20260818.json; do [ -f "$f" ] && git add "$f"; done
+          git commit -m 'Record Puente/Catedrático English prelaunch fix v2' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
