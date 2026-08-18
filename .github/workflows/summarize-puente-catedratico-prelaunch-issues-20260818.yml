@@ -1,0 +1,35 @@
+name: Summarize Puente/Catedrático prelaunch issues
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/summarize-puente-catedratico-prelaunch-issues-20260818.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  summarize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build focused summary
+        run: |
+          set -euo pipefail
+          jq '{
+            targets: (.targets | {"Puente Robles": .["Puente Robles"], "El Catedrático": .["El Catedrático"]}),
+            issues: [.issues[] | select(.target == "Puente Robles" or .target == "El Catedrático")],
+            exact_copy_review: [.exact_copy_review[] | select(.target == "Puente Robles" or .target == "El Catedrático")]
+          }' runtime/prelaunch-puente-catedratico-20260818.json > runtime/prelaunch-puente-catedratico-focused-20260818.json
+      - name: Commit focused summary
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add runtime/prelaunch-puente-catedratico-focused-20260818.json
+          git commit -m 'Record focused Puente/Catedrático English issues' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
