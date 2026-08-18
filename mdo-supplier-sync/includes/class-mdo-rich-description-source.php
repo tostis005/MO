@@ -67,7 +67,7 @@ final class MDO_Rich_Description_Source {
 				continue;
 			}
 			if ( self::inject_description( $data, $rich, $force_visible ) ) {
-				$encoded = wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+				$encoded = wp_json_encode( $data, JSON_UNESCAPED_UNICODE );
 				if ( is_string( $encoded ) && '' !== $encoded ) {
 					while ( $script->firstChild ) {
 						$script->removeChild( $script->firstChild );
