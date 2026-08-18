@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Algunos proveedores publican una descripción rica en el HTML visible pero una
  * versión de texto plano en JSON-LD. Los conectores priorizan JSON-LD, por lo que
  * aquí sustituimos únicamente description del Product JSON-LD por el HTML visible
- * equivalente antes de que el conector lo procese.
+ * antes de que el conector lo procese.
  */
 final class MDO_Rich_Description_Source {
 	public static function init(): void {
@@ -41,11 +41,23 @@ final class MDO_Rich_Description_Source {
 			return $response;
 		}
 
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		$host = preg_replace( '/^www\./i', '', $host );
+
 		$xpath = new DOMXPath( $dom );
-		$rich  = self::find_rich_description( $xpath );
-		if ( '' === $rich || ! preg_match( '/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6])\b/i', $rich ) ) {
+		$rich  = self::find_rich_description( $xpath, $host );
+		$rich  = self::normalize_rich_markup( $rich, $host );
+		if ( '' === $rich || ! preg_match( '/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6]|table)\b/i', $rich ) ) {
 			return $response;
 		}
+
+		/*
+		 * Estos dos proveedores son conectores explícitamente soportados por EMDO.
+		 * Su JSON-LD aplana el contenido visible y, en Puente Robles, además omite
+		 * parte de los bloques auxiliares. La descripción visible es la fuente de
+		 * verdad y no debe descartarse por una comparación de texto plano.
+		 */
+		$force_visible = in_array( $host, array( 'elcatedratico.com', 'puenterobles.com' ), true );
 
 		$changed = false;
 		$scripts = $xpath->query( "//script[contains(translate(@type,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'ld+json')]" );
@@ -54,7 +66,7 @@ final class MDO_Rich_Description_Source {
 			if ( ! is_array( $data ) ) {
 				continue;
 			}
-			if ( self::inject_description( $data, $rich ) ) {
+			if ( self::inject_description( $data, $rich, $force_visible ) ) {
 				$encoded = wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 				if ( is_string( $encoded ) && '' !== $encoded ) {
 					while ( $script->firstChild ) {
@@ -77,7 +89,27 @@ final class MDO_Rich_Description_Source {
 		return $response;
 	}
 
-	private static function find_rich_description( DOMXPath $xpath ): string {
+	private static function find_rich_description( DOMXPath $xpath, string $host ): string {
+		if ( 'elcatedratico.com' === $host ) {
+			$nodes = $xpath->query( "//*[@id='descripcion'][1]" );
+			if ( $nodes && $nodes->length ) {
+				return wp_kses_post( trim( self::inner_html( $nodes->item( 0 ) ) ) );
+			}
+		}
+
+		if ( 'puenterobles.com' === $host ) {
+			/*
+			 * Puente Robles divide la ficha entre una descripcion principal y los
+			 * bloques de ingredientes, conservacion, envio, peso y recomendaciones.
+			 * Todos cuelgan de .adicional; seleccionar solo .descripcion pierde los
+			 * ultimos bloques y deja el JSON-LD plano como ganador.
+			 */
+			$nodes = $xpath->query( "//*[contains(concat(' ', normalize-space(@class), ' '), ' adicional ')][1]" );
+			if ( $nodes && $nodes->length ) {
+				return wp_kses_post( trim( self::inner_html( $nodes->item( 0 ) ) ) );
+			}
+		}
+
 		$queries = array(
 			"//*[@id='tab-description']",
 			"//*[@id='descripcion']",
@@ -98,7 +130,7 @@ final class MDO_Rich_Description_Source {
 				if ( mb_strlen( $text ) < 30 ) {
 					continue;
 				}
-				$format_count = preg_match_all( '/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6])\b/i', $html, $matches );
+				$format_count = preg_match_all( '/<(?:strong|b|em|i|ul|ol|li|br|p|h[2-6]|table)\b/i', $html, $matches );
 				$score = (int) $format_count * 1000 + mb_strlen( $text );
 				if ( $score > $best_score ) {
 					$best = wp_kses_post( trim( $html ) );
@@ -109,6 +141,61 @@ final class MDO_Rich_Description_Source {
 		return $best;
 	}
 
+	/**
+	 * Convierte estilos que solo existen en la web del proveedor en semantica
+	 * portable para WooCommerce y corrige fronteras inline sin espacio.
+	 */
+	private static function normalize_rich_markup( string $html, string $host ): string {
+		if ( '' === trim( $html ) ) {
+			return '';
+		}
+
+		if ( 'puenterobles.com' === $host ) {
+			$fragment = new DOMDocument();
+			$previous = libxml_use_internal_errors( true );
+			$loaded = $fragment->loadHTML( '<?xml encoding="utf-8" ?><div id="mdo-rich-root">' . $html . '</div>', LIBXML_NOWARNING | LIBXML_NOERROR | LIBXML_NONET );
+			libxml_clear_errors();
+			libxml_use_internal_errors( $previous );
+			if ( $loaded ) {
+				$fragment_xpath = new DOMXPath( $fragment );
+				$titles = array();
+				foreach ( $fragment_xpath->query( "//*[@id='mdo-rich-root']//*[contains(concat(' ', normalize-space(@class), ' '), ' titulo ')]" ) ?: array() as $title ) {
+					$titles[] = $title;
+				}
+				foreach ( $titles as $title ) {
+					$text = trim( preg_replace( '/\s+/u', ' ', (string) $title->textContent ) );
+					if ( '' === $text ) {
+						$title->parentNode->removeChild( $title );
+						continue;
+					}
+					if ( in_array( mb_strtolower( $text, 'UTF-8' ), array( 'descripción', 'descripcion' ), true ) ) {
+						$title->parentNode->removeChild( $title );
+						continue;
+					}
+					$paragraph = $fragment->createElement( 'p' );
+					$strong = $fragment->createElement( 'strong' );
+					$strong->appendChild( $fragment->createTextNode( $text ) );
+					$paragraph->appendChild( $strong );
+					$title->parentNode->replaceChild( $paragraph, $title );
+				}
+
+				$root = $fragment_xpath->query( "//*[@id='mdo-rich-root']" );
+				if ( $root && $root->length ) {
+					$html = self::inner_html( $root->item( 0 ) );
+				}
+			}
+		}
+
+		/*
+		 * El Catedratico publica, por ejemplo, <strong>Peso</strong>Ofrecemos...
+		 * La negrita marca la frontera semantica, pero sin un espacio el contenido
+		 * se ve pegado al reutilizarlo fuera de su CSS original.
+		 */
+		$html = preg_replace( '~</(strong|b)>(?=[\p{L}\p{N}])~u', '</$1> ', $html );
+
+		return wp_kses_post( trim( $html ) );
+	}
+
 	private static function inner_html( DOMNode $node ): string {
 		$html = '';
 		foreach ( $node->childNodes as $child ) {
@@ -117,20 +204,20 @@ final class MDO_Rich_Description_Source {
 		return $html;
 	}
 
-	private static function inject_description( array &$data, string $rich ): bool {
+	private static function inject_description( array &$data, string $rich, bool $force = false ): bool {
 		$changed = false;
 		$type = $data['@type'] ?? null;
 		$types = is_array( $type ) ? $type : array( $type );
 		if ( in_array( 'Product', $types, true ) ) {
 			$current = isset( $data['description'] ) ? trim( wp_strip_all_tags( (string) $data['description'] ) ) : '';
-			$visible = trim( wp_strip_all_tags( $rich ) );
-			if ( '' !== $visible && ( '' === $current || self::same_description_text( $current, $visible ) ) ) {
+			$visible = trim( self::comparison_text( $rich ) );
+			if ( '' !== $visible && ( $force || '' === $current || self::same_description_text( $current, $visible ) ) ) {
 				$data['description'] = $rich;
 				$changed = true;
 			}
 		}
 		foreach ( $data as &$value ) {
-			if ( is_array( $value ) && self::inject_description( $value, $rich ) ) {
+			if ( is_array( $value ) && self::inject_description( $value, $rich, $force ) ) {
 				$changed = true;
 			}
 		}
@@ -138,11 +225,17 @@ final class MDO_Rich_Description_Source {
 		return $changed;
 	}
 
+	private static function comparison_text( string $value ): string {
+		$value = preg_replace( '~</(?:strong|b|em|i|span|p|div|li|h[1-6])>|<br\s*/?>~iu', ' ', $value );
+		$value = wp_strip_all_tags( $value );
+		$value = html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$value = str_replace( array( "\xC2\xA0", "\u{00A0}" ), ' ', $value );
+		return trim( preg_replace( '/\s+/u', ' ', $value ) );
+	}
+
 	private static function same_description_text( string $a, string $b ): bool {
 		$normalize = static function ( string $value ): string {
-			$value = html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-			$value = str_replace( array( "\xC2\xA0", "\u{00A0}" ), ' ', $value );
-			$value = trim( preg_replace( '/\s+/u', ' ', $value ) );
+			$value = self::comparison_text( $value );
 			return function_exists( 'mb_strtolower' ) ? mb_strtolower( $value, 'UTF-8' ) : strtolower( $value );
 		};
 		$left  = $normalize( $a );
