@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Storefront Stability
  * Description: Keeps English pages server-rendered from persisted translations and removes browser-side translation/catalog expansion.
- * Version: 1.3.0
+ * Version: 1.3.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -69,6 +69,7 @@ function mdoes_remove_inline_script_by_id_010258( string $html, string $id ): st
  * Every target translation is read from the persisted wp_options map.
  */
 function mdoes_render_persisted_english_ui_010258( string $html ): string {
+	/* Whole UI phrases are safe to replace globally, including their inline JS literals. */
 	$source_strings = array(
 		'Recomendados',
 		'Más populares',
@@ -81,10 +82,6 @@ function mdoes_render_persisted_english_ui_010258( string $html ): string {
 		'Buscar productos',
 		'Buscar',
 		'Ordenar por',
-		'resultado',
-		'resultados',
-		'producto',
-		'productos',
 	);
 
 	$replace = array();
@@ -94,9 +91,23 @@ function mdoes_render_persisted_english_ui_010258( string $html ): string {
 			$replace[ $source ] = $translated;
 		}
 	}
-
 	if ( $replace ) {
 		$html = strtr( $html, $replace );
+	}
+
+	/* Singular/plural nouns are replaced only as quoted JS literals or visible count text. */
+	foreach ( array( 'resultado', 'resultados', 'producto', 'productos' ) as $source ) {
+		$translated = mdoes_persisted_english_ui_copy_010258( $source );
+		if ( $translated === $source ) {
+			continue;
+		}
+		$html = str_replace( "'" . $source . "'", "'" . $translated . "'", $html );
+		$html = str_replace( '"' . $source . '"', '"' . $translated . '"', $html );
+		$html = (string) preg_replace(
+			'#(>\s*[0-9][0-9.,]*\s+)' . preg_quote( $source, '#' ) . '(\s*<)#iu',
+			'$1' . $translated . '$2',
+			$html
+		);
 	}
 
 	return $html;
