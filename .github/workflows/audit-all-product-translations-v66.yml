@@ -30,6 +30,7 @@ jobs:
           php -l .github/scripts/audit-all-product-translations-v66.php
           php -l .github/scripts/mdo-audit-two-tolecarnes-numbers.php
           php -l .github/scripts/audit-priority-codillo-context-v68.php
+          php -l .github/scripts/audit-priority-lexicon-hidalgo-v68.php
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
@@ -49,13 +50,16 @@ jobs:
           sshpass -e scp $SCP .github/scripts/audit-priority-codillo-context-v68.php "$STAGING_USER@$STAGING_HOST:$COD_REMOTE"
           echo '=== RESIDUAL CODILLO CONTEXTS ==='
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$COD_REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$COD_REMOTE'; exit \$rc"
+          LEX_REMOTE="/tmp/mdo-lex-hidalgo-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-priority-lexicon-hidalgo-v68.php "$STAGING_USER@$STAGING_HOST:$LEX_REMOTE"
+          echo '=== BROADER PRIORITY RESIDUE + HIDALGO SOURCE EXPORT ==='
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$LEX_REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$LEX_REMOTE'; exit \$rc"
           REMOTE="/tmp/mdo-all-product-translations-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/audit-all-product-translations-v66.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/all-products-en-v66.json
           python3 - <<'PY'
           import json
-          p='/tmp/all-products-en-v66.json'
-          d=json.load(open(p,encoding='utf-8'))
+          d=json.load(open('/tmp/all-products-en-v66.json',encoding='utf-8'))
           print('=== FULL CATALOG ENGLISH AUDIT ===')
           print(json.dumps(d['summary'],ensure_ascii=False,indent=2))
           print('\n=== TARGET PRODUCERS ===')
@@ -68,9 +72,7 @@ jobs:
           rows=sorted(d['exact_copy_review'], key=lambda x:(0 if x.get('target') else 1,x.get('vendor',''),x.get('id',0)))
           print(json.dumps(rows,ensure_ascii=False,indent=2))
           for name,row in d['targets'].items():
-              if row['products'] == 0:
-                  raise SystemExit(f'TARGET_NOT_FOUND:{name}')
-          if d['summary']['products_with_any_issue']:
-              raise SystemExit('PRODUCT_TRANSLATION_ISSUES_FOUND')
+              if row['products'] == 0: raise SystemExit(f'TARGET_NOT_FOUND:{name}')
+          if d['summary']['products_with_any_issue']: raise SystemExit('PRODUCT_TRANSLATION_ISSUES_FOUND')
           print('ALL_PRODUCT_TRANSLATIONS_V66_OK')
           PY
