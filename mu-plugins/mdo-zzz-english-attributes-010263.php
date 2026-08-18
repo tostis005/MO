@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO English Attributes
- * Description: English-only WooCommerce attribute labels and canonical public Variety URLs.
- * Version: 1.0.0
+ * Description: English-only WooCommerce attribute labels, values and canonical public Variety URLs.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -37,16 +37,7 @@ function mdoea_attribute_labels_010263(): array {
 	);
 }
 
-add_filter( 'woocommerce_attribute_label', static function ( string $label, string $name, $product = null ): string {
-	if ( ! mdoea_en_010263() ) { return $label; }
-	$map = mdoea_attribute_labels_010263();
-	$key = taxonomy_exists( $name ) ? $name : ( taxonomy_exists( 'pa_' . sanitize_title( $name ) ) ? 'pa_' . sanitize_title( $name ) : $name );
-	return $map[ $key ] ?? $label;
-}, PHP_INT_MAX, 3 );
-
-/* Catch theme/filter UIs that print the stored attribute label directly. */
-add_filter( 'gettext', static function ( string $translated, string $text, string $domain ): string {
-	if ( ! mdoea_en_010263() ) { return $translated; }
+function mdoea_stored_label_en_010263( string $label ): string {
 	$map = array(
 		'Alimentación' => 'Feeding',
 		'Calidad' => 'Quality',
@@ -63,7 +54,46 @@ add_filter( 'gettext', static function ( string $translated, string $text, strin
 		'Tipo de producto' => 'Product type',
 		'Variedad' => 'Variety',
 	);
-	return $map[ $text ] ?? $translated;
+	return $map[ $label ] ?? $label;
+}
+
+/** Pure value translator so QA can exercise the same transformation without changing Spanish source data. */
+function mdoea_translate_custom_attribute_value_010263( string $value ): string {
+	$value = (string) preg_replace_callback(
+		'/\bpieza\s+de\s+(\d+(?:[.,]\d+)?)\s*kg\b/iu',
+		static function ( array $m ): string {
+			return str_replace( ',', '.', $m[1] ) . ' kg piece';
+		},
+		$value
+	);
+	return $value;
+}
+
+add_filter( 'woocommerce_attribute_label', static function ( string $label, string $name, $product = null ): string {
+	if ( ! mdoea_en_010263() ) { return $label; }
+	$map = mdoea_attribute_labels_010263();
+	$key = taxonomy_exists( $name ) ? $name : ( taxonomy_exists( 'pa_' . sanitize_title( $name ) ) ? 'pa_' . sanitize_title( $name ) : $name );
+	return $map[ $key ] ?? mdoea_stored_label_en_010263( $label );
+}, PHP_INT_MAX, 3 );
+
+/* Translate custom (non-taxonomy) attribute labels/values only in the English storefront. */
+add_filter( 'woocommerce_display_product_attributes', static function ( array $rows, $product ): array {
+	if ( ! mdoea_en_010263() ) { return $rows; }
+	foreach ( $rows as $key => $row ) {
+		if ( isset( $row['label'] ) ) {
+			$rows[ $key ]['label'] = mdoea_stored_label_en_010263( (string) $row['label'] );
+		}
+		if ( isset( $row['value'] ) ) {
+			$rows[ $key ]['value'] = mdoea_translate_custom_attribute_value_010263( (string) $row['value'] );
+		}
+	}
+	return $rows;
+}, PHP_INT_MAX, 2 );
+
+/* Catch theme/filter UIs that print the stored attribute label directly. */
+add_filter( 'gettext', static function ( string $translated, string $text, string $domain ): string {
+	if ( ! mdoea_en_010263() ) { return $translated; }
+	return mdoea_stored_label_en_010263( $text ) !== $text ? mdoea_stored_label_en_010263( $text ) : $translated;
 }, PHP_INT_MAX, 3 );
 
 function mdoea_find_variety_english_010263( string $slug ) {
