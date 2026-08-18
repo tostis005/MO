@@ -1,0 +1,97 @@
+name: Deploy root categories translations v18
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-root-categories-translations-20260818-v18.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/categories-root-v18.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/categories-root-v18.txt
+          git commit -m 'Record categories root v18 run id'
+          git push origin HEAD:main
+      - name: Deploy template and persist translations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/page-categorias.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1);
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          $SCP elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/themes/elmercadodeorigen-child/page-categorias.php"
+          PHP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v php || find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1")"
+          WP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v wp")"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -l '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/page-categorias.php'"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' eval '\$map=array(
+            \"jamones-paletas\"=>\"Hams and shoulders of different qualities, feeding regimes, curing periods, formats and presentations.\",
+            \"embutidos-y-curados\"=>\"Chorizos, salchichones, loins, tenderloins, morcones, sobrasadas and other cured sausages and meats.\",
+            \"aceites\"=>\"Olive oils of different varieties, origins, formats and flavour profiles.\",
+            \"carnes\"=>\"Meat in different cuts and formats, from whole cuts and burgers to preparations ready for cooking.\",
+            \"packs-y-lotes\"=>\"Packs and bundles combining different products, both for gifting and for trying several specialities.\",
+            \"accesorios\"=>\"Accessories and complements for slicing, serving, preserving or presenting the products.\",
+            \"adobados\"=>\"Marinated meats and other products, with different preparations and formats.\"
+          ); foreach(\$map as \$slug=>\$copy){\$term=get_term_by(\"slug\",\$slug,\"product_cat\"); if(\$term && !is_wp_error(\$term)){update_term_meta((int)\$term->term_id,\"_emdo_en_hub_summary\",\$copy); echo \$slug.\"=saved\\n\";}}' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true"
+      - name: Verify Spanish and English category hubs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re,ssl,urllib.request,html,os
+          ctx=ssl._create_unverified_context(); rid=os.environ['GITHUB_RUN_ID']
+          def get(url):
+            req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 EMDO v18','Cache-Control':'no-cache'})
+            with urllib.request.urlopen(req,context=ctx,timeout=90) as r:return r.read().decode('utf-8','replace')
+          es=get(f'https://www.elmercadodeorigen.com/categorias/?v18={rid}')
+          en=get(f'https://www.elmercadodeorigen.com/en/categorias/?v18={rid}')
+          def slugs(doc): return re.findall(r'<article[^>]+data-category-slug=["\']([^"\']+)',doc,re.I)
+          es_slugs=slugs(es); en_slugs=slugs(en)
+          assert es_slugs and en_slugs
+          assert not any(s.startswith('mentta-') or s in ('mentta','menta') for s in es_slugs),es_slugs
+          assert not any(s.startswith('mentta-') or s in ('mentta','menta') for s in en_slugs),en_slugs
+          assert 'Explore the available' not in en
+          expected=(
+            'Meat in different cuts and formats, from whole cuts and burgers to preparations ready for cooking.',
+            'Hams and shoulders of different qualities, feeding regimes, curing periods, formats and presentations.',
+            'Chorizos, salchichones, loins, tenderloins, morcones, sobrasadas and other cured sausages and meats.',
+            'Packs and bundles combining different products, both for gifting and for trying several specialities.',
+            'Olive oils of different varieties, origins, formats and flavour profiles.'
+          )
+          for text in expected: assert text in html.unescape(en),text
+          print('ES_ROOT_SLUGS',es_slugs)
+          print('EN_ROOT_SLUGS',en_slugs)
+          print('CATEGORY_HUBS_OK')
+          PY
+      - name: Record success
+        run: |
+          printf 'run_id=%s\nstatus=success\nroot_categories_only=true\nenglish_summaries_persisted=true\n' "$GITHUB_RUN_ID" > runtime/categories-root-v18.txt
+          git add runtime/categories-root-v18.txt
+          git commit -m 'Record successful categories root v18 deploy'
+          git pull --rebase origin main
+          git push origin HEAD:main
