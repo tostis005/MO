@@ -21,7 +21,7 @@ $ui_copy = static function ( string $source ) use ( $is_english ): string {
 	return $source;
 };
 
-/* Falang term meta can contain encoded HTML. Decode first, then strip tags. */
+/* Persisted multilingual metadata can contain encoded HTML. Decode first, then strip tags. */
 $clean_persisted_text = static function ( $value ): string {
 	$value   = (string) $value;
 	$charset = get_bloginfo( 'charset' ) ?: 'UTF-8';
@@ -37,6 +37,7 @@ $clean_persisted_text = static function ( $value ): string {
 	return trim( $value );
 };
 
+/* Spanish editorial source of truth for the category cards. */
 $category_summaries = array(
 	'jamones-paletas'     => 'Jamones y paletas de distintas calidades, alimentaciones, curaciones, formatos y presentaciones.',
 	'embutidos-y-curados' => 'Chorizos, salchichones, lomos, lomitos, morcones, sobrasadas y otros embutidos y curados.',
@@ -49,8 +50,14 @@ $category_summaries = array(
 
 $visible_items = array();
 foreach ( $items as $item ) {
-	$term_id = absint( $item['id'] ?? 0 );
-	$slug    = sanitize_title( (string) ( $item['slug'] ?? '' ) );
+	$term_id   = absint( $item['id'] ?? 0 );
+	$slug      = sanitize_title( (string) ( $item['slug'] ?? '' ) );
+	$parent_id = absint( $item['parent'] ?? 0 );
+
+	/* The public hub is intentionally a top-level catalogue: never show subcategories. */
+	if ( $parent_id > 0 ) {
+		continue;
+	}
 
 	/* Mentta/Menta is an internal synchronization category and is never public. */
 	if ( in_array( $slug, array( 'mentta', 'menta' ), true ) ) {
@@ -67,20 +74,15 @@ foreach ( $items as $item ) {
 			/* Never leak the Spanish category name into the English catalogue. */
 			continue;
 		}
-
 		$item['name'] = $translated_name;
 
-		$translated_description = $clean_persisted_text( get_term_meta( $term_id, '_en_US_description', true ) );
-		if ( '' !== $translated_description ) {
-			$item['summary'] = wp_trim_words( $translated_description, 34, '…' );
+		/* Exact translation of the Spanish card copy, persisted per term in the database. */
+		$translated_summary = $clean_persisted_text( get_term_meta( $term_id, '_emdo_en_hub_summary', true ) );
+		if ( '' !== $translated_summary ) {
+			$item['summary'] = $translated_summary;
 		} else {
-			$format          = $ui_copy( 'Explora la selección disponible de %s, con origen claro, productor visible y disponibilidad actual.' );
-			$item['summary'] = sprintf( $format, $translated_name );
-		}
-
-		$parent_id = absint( $item['parent'] ?? 0 );
-		if ( $parent_id > 0 ) {
-			$item['parent_name'] = $clean_persisted_text( get_term_meta( $parent_id, '_en_US_name', true ) );
+			/* Safe fallback: do not invent an English marketing sentence. */
+			$item['summary'] = '';
 		}
 	} else {
 		$name            = trim( (string) ( $item['name'] ?? '' ) );
@@ -95,7 +97,7 @@ foreach ( $items as $item ) {
 $items = $visible_items;
 ?>
 
-<main id="primary" class="site-main emo-categories-hub" data-emo-categories-hub="010258">
+<main id="primary" class="site-main emo-categories-hub" data-emo-categories-hub="010259">
 	<section class="emo-categories-hub__hero">
 		<div class="emo-categories-hub__hero-inner">
 			<span class="emo-kicker"><?php echo esc_html( $ui_copy( 'Categorías de producto' ) ); ?></span>
@@ -131,11 +133,10 @@ $items = $visible_items;
 					<article class="emo-category-hub-card" data-category-slug="<?php echo esc_attr( (string) $item['slug'] ); ?>"<?php echo $style ? ' style="' . esc_attr( $style ) . '"' : ''; ?>>
 						<a class="emo-category-hub-card__media" href="<?php echo esc_url( (string) $item['link'] ); ?>" aria-label="<?php echo esc_attr( (string) $item['name'] ); ?>"></a>
 						<div class="emo-category-hub-card__body">
-							<?php if ( ! empty( $item['parent_name'] ) ) : ?>
-								<span class="emo-category-hub-card__parent"><?php echo esc_html( (string) $item['parent_name'] ); ?></span>
-							<?php endif; ?>
 							<h2><a href="<?php echo esc_url( (string) $item['link'] ); ?>"><?php echo esc_html( (string) $item['name'] ); ?></a></h2>
-							<p class="emo-category-hub-card__summary"><?php echo esc_html( (string) $item['summary'] ); ?></p>
+							<?php if ( ! empty( $item['summary'] ) ) : ?>
+								<p class="emo-category-hub-card__summary"><?php echo esc_html( (string) $item['summary'] ); ?></p>
+							<?php endif; ?>
 							<footer class="emo-category-hub-card__footer">
 								<span class="emo-category-hub-card__count" data-category-count="<?php echo esc_attr( (string) $count_value ); ?>"><?php echo esc_html( $count_label ); ?></span>
 								<a class="emo-category-hub-card__link" href="<?php echo esc_url( (string) $item['link'] ); ?>"><?php echo esc_html( $ui_copy( 'Ver categoría' ) ); ?> <span aria-hidden="true">→</span></a>
