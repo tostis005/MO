@@ -1,0 +1,148 @@
+name: Final English storefront production 2026-08-18
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/final-english-storefront-production-20260818.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  final-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\nstarted_at=%s\n' "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/english-final-production-20260818.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-final-production-20260818.txt
+          git commit -m 'Record final English production run id'
+          git push origin HEAD:main
+
+      - name: Persist English copy and inspect translated terms
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          REMOTE_SEED="/tmp/seed-english-ui-copy-${GITHUB_RUN_ID}.php"
+          $SCP scripts/seed-english-ui-copy-20260818.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SEED"
+          $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval-file '$REMOTE_SEED' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root; rm -f '$REMOTE_SEED'"
+
+          DB_COPY="$($SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" option get elmercado_en_ui_copy_010245 --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root")"
+          grep -Fq 'Shop by category' <<< "$DB_COPY"
+          grep -Fq 'Find what you are looking for by category' <<< "$DB_COPY"
+          grep -Fq 'Product categories' <<< "$DB_COPY"
+          grep -Fq 'Choose a category' <<< "$DB_COPY"
+          echo 'DB_UI_COPY_PERSISTED_OK'
+
+          TERM_ROW="$($SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval 'global \$wpdb; \$sql=\"SELECT t.slug AS es_slug, n.meta_value AS en_name, s.meta_value AS en_slug FROM {\$wpdb->terms} t INNER JOIN {\$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id LEFT JOIN {\$wpdb->termmeta} n ON n.term_id=t.term_id AND n.meta_key=\\\"_en_US_name\\\" LEFT JOIN {\$wpdb->termmeta} s ON s.term_id=t.term_id AND s.meta_key=\\\"_en_US_slug\\\" LEFT JOIN {\$wpdb->termmeta} p ON p.term_id=t.term_id AND p.meta_key=\\\"_en_US_published\\\" WHERE tt.taxonomy=\\\"product_cat\\\" AND tt.parent=0 AND p.meta_value=\\\"1\\\" AND n.meta_value<>\\\"\\\" AND t.slug NOT IN (\\\"mentta\\\",\\\"menta\\\") ORDER BY t.term_id ASC LIMIT 1\"; \$r=\$wpdb->get_row(\$sql); if(!\$r) exit(13); echo \$r->es_slug.\"|\".\$r->en_slug.\"|\".\$r->en_name;' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root")"
+          echo "TERM_ROW=$TERM_ROW"
+          test -n "$TERM_ROW"
+          ES_SLUG="${TERM_ROW%%|*}"
+          REST="${TERM_ROW#*|}"
+          EN_SLUG="${REST%%|*}"
+          EN_NAME="${REST#*|}"
+          echo "ES_SLUG=$ES_SLUG" >> "$GITHUB_ENV"
+          echo "EN_SLUG=$EN_SLUG" >> "$GITHUB_ENV"
+          echo "EN_NAME=$EN_NAME" >> "$GITHUB_ENV"
+          echo 'TERM_TRANSLATION_DB_OK'
+
+      - name: Verify public English pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 EMDO final English verifier'
+          Q="emdo_verify=${GITHUB_RUN_ID}"
+          fetch() { curl -fsSL --connect-timeout 15 --max-time 90 --retry 3 --retry-delay 2 -A "$UA" -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$1"; }
+
+          HOME_HTML="$(fetch "https://www.elmercadodeorigen.com/en/?$Q")"
+          SHOP_HTML="$(fetch "https://www.elmercadodeorigen.com/en/shop/?$Q")"
+          CAT_HTML=''
+          CAT_URL=''
+          for u in "https://www.elmercadodeorigen.com/en/categories/?$Q" "https://www.elmercadodeorigen.com/en/categorias/?$Q"; do
+            if out="$(fetch "$u" 2>/dev/null)"; then CAT_HTML="$out"; CAT_URL="$u"; break; fi
+          done
+          test -n "$CAT_HTML"
+
+          grep -Fq 'Shop by category' <<< "$HOME_HTML"
+          grep -Fq 'Find what you are looking for by category' <<< "$HOME_HTML"
+          grep -Fq 'Product categories' <<< "$CAT_HTML"
+          grep -Fq 'All categories' <<< "$CAT_HTML"
+          grep -Fq 'Choose a category' <<< "$CAT_HTML"
+          grep -Fq "$EN_NAME" <<< "$HOME_HTML"
+
+          for html in "$HOME_HTML" "$SHOP_HTML" "$CAT_HTML"; do
+            ! grep -Fq 'MutationObserver' <<< "$html"
+            ! grep -Fq 'translateTextNode' <<< "$html"
+            ! grep -Fq 'createTreeWalker' <<< "$html"
+          done
+          for html in "$HOME_HTML" "$CAT_HTML"; do
+            ! grep -Eiq 'data-category-slug=["'"'](mentta|menta)["'"']|/(categoria-producto|product-category)/(mentta|menta)/|>\s*(Mentta|Menta)\s*<' <<< "$html"
+          done
+
+          ARCHIVE_HTML=''
+          ARCHIVE_URL=''
+          if [ -n "$EN_SLUG" ]; then
+            for u in "https://www.elmercadodeorigen.com/en/product-category/${EN_SLUG}/?$Q" "https://www.elmercadodeorigen.com/en/categoria-producto/${EN_SLUG}/?$Q"; do
+              if out="$(fetch "$u" 2>/dev/null)"; then ARCHIVE_HTML="$out"; ARCHIVE_URL="$u"; break; fi
+            done
+          fi
+          if [ -z "$ARCHIVE_HTML" ]; then
+            for u in "https://www.elmercadodeorigen.com/en/product-category/${ES_SLUG}/?$Q" "https://www.elmercadodeorigen.com/en/categoria-producto/${ES_SLUG}/?$Q"; do
+              if out="$(fetch "$u" 2>/dev/null)"; then ARCHIVE_HTML="$out"; ARCHIVE_URL="$u"; break; fi
+            done
+          fi
+          test -n "$ARCHIVE_HTML"
+          grep -Fq "$EN_NAME" <<< "$ARCHIVE_HTML"
+          ! grep -Fq 'MutationObserver' <<< "$ARCHIVE_HTML"
+
+          echo "CATEGORIES_URL=$CAT_URL"
+          echo "ARCHIVE_URL=$ARCHIVE_URL"
+          echo 'PUBLIC_ENGLISH_VERIFY_OK'
+
+      - name: Record success
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=success\nfinished_at=%s\nfiles_deployed=true\nui_copy_in_database=true\nterm_translations_in_database=true\ndom_translator=false\nhome_categories_english=true\ncategories_page_english=true\ncategory_archive_english=true\nmentta_visible=false\n' "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/english-final-production-20260818.txt
+          git add runtime/english-final-production-20260818.txt
+          git commit -m 'Record final English storefront production success'
+          git push origin HEAD:main
