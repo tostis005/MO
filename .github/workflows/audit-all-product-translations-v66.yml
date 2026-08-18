@@ -29,6 +29,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           php -l .github/scripts/audit-all-product-translations-v66.php
           php -l .github/scripts/mdo-audit-two-tolecarnes-numbers.php
+          php -l .github/scripts/audit-priority-codillo-context-v68.php
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
@@ -44,6 +45,10 @@ jobs:
           sshpass -e scp $SCP .github/scripts/mdo-audit-two-tolecarnes-numbers.php "$STAGING_USER@$STAGING_HOST:$NUM_REMOTE"
           echo '=== TOLECARNES NUMERIC CONTEXTS ==='
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$NUM_REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$NUM_REMOTE'; exit \$rc"
+          COD_REMOTE="/tmp/mdo-codillo-contexts-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-priority-codillo-context-v68.php "$STAGING_USER@$STAGING_HOST:$COD_REMOTE"
+          echo '=== RESIDUAL CODILLO CONTEXTS ==='
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$COD_REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$COD_REMOTE'; exit \$rc"
           REMOTE="/tmp/mdo-all-product-translations-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/audit-all-product-translations-v66.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/all-products-en-v66.json
