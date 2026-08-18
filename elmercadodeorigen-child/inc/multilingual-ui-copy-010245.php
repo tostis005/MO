@@ -1,12 +1,11 @@
 <?php
 /**
- * Manual multilingual copy layer for runtime UI generated outside the normal
- * translated post/term fields (notably late JavaScript-injected controls).
+ * Persisted multilingual copy for storefront UI that is not represented by
+ * normal translated posts/terms.
  *
- * The translations here are human-authored and deterministic. Language
- * detection prefers the URL/referrer so WooCommerce AJAX requests keep the
- * language of the storefront that initiated them, then falls back to Falang
- * only once its runtime object is fully initialized.
+ * English strings are seeded once into wp_options and the storefront only
+ * reads those persisted values. There is deliberately no DOM scanner,
+ * MutationObserver or client-side translation pass.
  *
  * @package ElMercadoDeOrigen
  */
@@ -14,6 +13,10 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+const ELMERCADO_EN_UI_OPTION_010245         = 'elmercado_en_ui_copy_010245';
+const ELMERCADO_EN_UI_OPTION_VERSION_010245 = 'elmercado_en_ui_copy_version_010245';
+const ELMERCADO_EN_UI_VERSION_010245        = '2026-08-18.2';
 
 function elmercado_current_language_slug_010245(): string {
 	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
@@ -43,8 +46,13 @@ function elmercado_is_english_request_010245(): bool {
 	return 'en' === elmercado_current_language_slug_010245();
 }
 
-/** @return array<string,string> */
-function elmercado_manual_english_ui_map_010245(): array {
+/**
+ * Seed values. They are copied to wp_options and are not used as a browser-side
+ * translation table.
+ *
+ * @return array<string,string>
+ */
+function elmercado_manual_english_ui_defaults_010245(): array {
 	return array(
 		'Buscar' => 'Search',
 		'Filtros' => 'Filters',
@@ -84,9 +92,58 @@ function elmercado_manual_english_ui_map_010245(): array {
 		'Tipo de pieza' => 'Piece type',
 		'Tipo de producto' => 'Product type',
 		'Variedad' => 'Variety',
+		'Compra por categoría' => 'Shop by category',
+		'Encuentra lo que buscas por categoría' => 'Find what you are looking for by category',
+		'Hemos agrupado los productos por categorías para que puedas encontrar fácilmente el tipo de producto que buscas.' => 'We have grouped products by category so you can easily find the type of product you are looking for.',
+		'Ver todas las categorías' => 'View all categories',
+		'Categorías de producto' => 'Product categories',
+		'Todas las categorías' => 'All categories',
+		'Aquí encontrarás todos los productos agrupados por categorías. Entra en la que te interese para ver la selección completa.' => 'Here you will find all products grouped by category. Open the one you are interested in to see the full selection.',
+		'Elige una categoría' => 'Choose a category',
+		'Cada categoría reúne productos del mismo tipo para que puedas encontrarlos y compararlos más fácilmente.' => 'Each category brings together products of the same type so you can find and compare them more easily.',
+		'Ver categoría' => 'View category',
+		'No hay categorías para mostrar.' => 'There are no categories to show.',
+		'%s producto' => '%s product',
+		'%s productos' => '%s products',
+		'Explora la selección disponible de %s, con origen claro, productor visible y disponibilidad actual.' => 'Explore the available %s selection, with clear origin, visible producer and current availability.',
 	);
 }
 
+/** Persist seed translations in the database without overwriting later edits. */
+function elmercado_seed_manual_english_ui_010245(): void {
+	if ( ELMERCADO_EN_UI_VERSION_010245 === (string) get_option( ELMERCADO_EN_UI_OPTION_VERSION_010245, '' ) ) {
+		return;
+	}
+
+	$stored = get_option( ELMERCADO_EN_UI_OPTION_010245, array() );
+	if ( ! is_array( $stored ) ) {
+		$stored = array();
+	}
+
+	$next = array_merge( elmercado_manual_english_ui_defaults_010245(), $stored );
+	update_option( ELMERCADO_EN_UI_OPTION_010245, $next, false );
+	update_option( ELMERCADO_EN_UI_OPTION_VERSION_010245, ELMERCADO_EN_UI_VERSION_010245, false );
+}
+add_action( 'init', 'elmercado_seed_manual_english_ui_010245', -100 );
+
+/** @return array<string,string> */
+function elmercado_manual_english_ui_map_010245(): array {
+	$map = get_option( ELMERCADO_EN_UI_OPTION_010245, array() );
+	return is_array( $map ) ? $map : array();
+}
+
+/** Read one persisted English UI string, falling back to the source text. */
+function elmercado_ui_copy_010245( string $source ): string {
+	if ( ! elmercado_is_english_request_010245() ) {
+		return $source;
+	}
+	$map = elmercado_manual_english_ui_map_010245();
+	return isset( $map[ $source ] ) && is_string( $map[ $source ] ) && '' !== trim( $map[ $source ] )
+		? $map[ $source ]
+		: $source;
+}
+
+/* Server-side lookup only: values come from wp_options; no live translation. */
 add_filter(
 	'gettext',
 	static function ( string $translated, string $text, string $domain ): string {
@@ -119,82 +176,6 @@ add_filter(
 	static function ( array $tabs ): array {
 		unset( $tabs['wcfm_policies_tab'], $tabs['policies'] );
 		return $tabs;
-	},
-	PHP_INT_MAX
-);
-
-add_action(
-	'wp_footer',
-	static function (): void {
-		if ( is_admin() || ! elmercado_is_english_request_010245() ) {
-			return;
-		}
-		$map = elmercado_manual_english_ui_map_010245();
-		?>
-		<script id="elmercado-manual-english-ui-copy-010245">
-		(() => {
-			'use strict';
-			const map = <?php echo wp_json_encode( $map, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ); ?>;
-			const skip = new Set(['SCRIPT','STYLE','NOSCRIPT','TEXTAREA']);
-			const translateString = (value) => {
-				if (typeof value !== 'string') return value;
-				if (Object.prototype.hasOwnProperty.call(map, value)) return map[value];
-				const filterCount = value.match(/^Filtros\s*\((\d+)\)$/u);
-				if (filterCount) return `Filters (${filterCount[1]})`;
-				const productCount = value.match(/^(\d+)\s+product$/u);
-				if (productCount && productCount[1] !== '1') return `${productCount[1]} products`;
-				return value;
-			};
-			const replaceTextNode = (node) => {
-				if (!node || node.nodeType !== Node.TEXT_NODE || !node.parentElement || skip.has(node.parentElement.tagName)) return;
-				const raw = node.nodeValue || '';
-				const core = raw.trim();
-				if (!core) return;
-				const translated = translateString(core);
-				if (translated === core) return;
-				const lead = raw.match(/^\s*/u)?.[0] || '';
-				const trail = raw.match(/\s*$/u)?.[0] || '';
-				node.nodeValue = lead + translated + trail;
-			};
-			const translateElement = (el) => {
-				if (!(el instanceof Element) || skip.has(el.tagName)) return;
-				for (const attr of ['aria-label','title','placeholder','alt']) {
-					if (!el.hasAttribute(attr)) continue;
-					const current = el.getAttribute(attr) || '';
-					const translated = translateString(current.trim());
-					if (translated !== current.trim()) el.setAttribute(attr, translated);
-				}
-				for (const child of el.childNodes) {
-					if (child.nodeType === Node.TEXT_NODE) replaceTextNode(child);
-				}
-			};
-			const scan = (root) => {
-				if (!root) return;
-				if (root.nodeType === Node.TEXT_NODE) { replaceTextNode(root); return; }
-				if (!(root instanceof Element || root instanceof Document || root instanceof DocumentFragment)) return;
-				if (root instanceof Element) translateElement(root);
-				const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
-				let node;
-				while ((node = walker.nextNode())) {
-					if (node.nodeType === Node.TEXT_NODE) replaceTextNode(node);
-					else translateElement(node);
-				}
-			};
-			const start = () => {
-				scan(document.body);
-				const observer = new MutationObserver((mutations) => {
-					for (const mutation of mutations) {
-						if (mutation.type === 'characterData') replaceTextNode(mutation.target);
-						for (const node of mutation.addedNodes) scan(node);
-					}
-				});
-				observer.observe(document.body, {subtree:true, childList:true, characterData:true});
-			};
-			if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true});
-			else start();
-		})();
-		</script>
-		<?php
 	},
 	PHP_INT_MAX
 );
