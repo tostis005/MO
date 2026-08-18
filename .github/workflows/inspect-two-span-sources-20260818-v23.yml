@@ -1,0 +1,76 @@
+name: Inspect remaining Spanish span sources v23
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-two-span-sources-20260818-v23.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/span-sources-v23.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/span-sources-v23.txt
+          git commit -m 'Record span sources v23 run id'
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: Inspect live offending nodes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-v23-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9228 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-v23-profile about:blank >/tmp/chrome-v23.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9228/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE'
+          const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9228/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0; const pending=new Map();
+            ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable'); await cmd('Runtime.enable');
+            await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/?emdo_v23='+process.env.GITHUB_RUN_ID});
+            await sleep(10000);
+            const expr=`(() => {
+              const rows=[];
+              for(const el of document.querySelectorAll('body *')){
+                const s=(el.textContent||'').replace(/\\s+/g,' ').trim();
+                if(el.children.length || !/^(3|38)\\s+productos$/i.test(s)) continue;
+                const style=getComputedStyle(el); const rect=el.getBoundingClientRect();
+                rows.push({
+                  text:s,tag:el.tagName,id:el.id||'',cls:String(el.className||''),
+                  visible:style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0,
+                  rect:{x:rect.x,y:rect.y,w:rect.width,h:rect.height},
+                  outer:el.outerHTML.slice(0,1800),
+                  parent:el.parentElement?el.parentElement.outerHTML.slice(0,4500):'',
+                  grand:el.parentElement?.parentElement?el.parentElement.parentElement.outerHTML.slice(0,7000):'',
+                  path:(()=>{let n=el,a=[];for(let i=0;n&&i<6;i++,n=n.parentElement)a.push(n.tagName.toLowerCase()+(n.id?'#'+n.id:'')+(n.className?'.'+String(n.className).trim().replace(/\\s+/g,'.'):''));return a.join(' <- ');})()
+                });
+              }
+              return rows;
+            })()`;
+            const r=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},10000); const rows=r.result.value||[];
+            let out='count='+rows.length+'\n'; rows.forEach((x,i)=>{out+=`#${i+1} ${JSON.stringify(x,null,2)}\n---\n`;});
+            console.log(out); fs.writeFileSync('runtime/span-sources-v23-report.txt',out); ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Commit report
+        run: |
+          set -euo pipefail
+          git add runtime/span-sources-v23-report.txt
+          git commit -m 'Record span sources v23 report'
+          git pull --rebase origin main
+          git push origin HEAD:main
