@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Storefront Stability
  * Description: Keeps English pages server-rendered from persisted translations and removes browser-side translation/catalog expansion.
- * Version: 1.3.1
+ * Version: 1.3.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -104,7 +104,7 @@ function mdoes_render_persisted_english_ui_010258( string $html ): string {
 		$html = str_replace( "'" . $source . "'", "'" . $translated . "'", $html );
 		$html = str_replace( '"' . $source . '"', '"' . $translated . '"', $html );
 		$html = (string) preg_replace(
-			'#(>\s*[0-9][0-9.,]*\s+)' . preg_quote( $source, '#' ) . '(\s*<)#iu',
+			'#(>\s*\(?\s*[0-9][0-9.,]*\s+)' . preg_quote( $source, '#' ) . '(\s*\)?\s*<)#iu',
 			'$1' . $translated . '$2',
 			$html
 		);
