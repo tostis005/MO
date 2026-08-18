@@ -70,7 +70,7 @@ jobs:
 
           get 'https://www.elmercadodeorigen.com/en/my-account/lost-password/' /tmp/lost
           grep -qiE 'lost.*password|reset.*password' /tmp/lost
-          ! grep -qiE 'contrase(?:ña|&ntilde;a)|correo electr[oó]nico' /tmp/lost
+          ! grep -qiE 'contrase(ñ|&ntilde;)a|correo electr[oó]nico' /tmp/lost
 
           curl -A "$UA" -sS --max-time 30 -o /dev/null -D /tmp/vendorh 'https://www.elmercadodeorigen.com/en/vendor-registration/'
           code=$(awk 'toupper($1)~/^HTTP\//{x=$2}END{print x}' /tmp/vendorh)
@@ -84,10 +84,23 @@ jobs:
           loc=$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/^[^:]+:[[:space:]]*/,"");sub(/\r$/,"");print;exit}' /tmp/tagh)
           echo "tag_old=$code $loc"; test "$code" = 301; case "$loc" in */en/product-tag/pork-knuckle/) ;; *) exit 1;; esac
 
+          # Pick a currently advertised simple product rather than depending on a historical ID/name.
+          get 'https://www.elmercadodeorigen.com/en/shop/' /tmp/shop_cart
+          pid=$(grep -oE 'add-to-cart=[0-9]+' /tmp/shop_cart | head -1 | cut -d= -f2 || true)
+          if [ -z "$pid" ]; then
+            pid=$(grep -oE 'data-product_id=("|\x27)[0-9]+("|\x27)' /tmp/shop_cart | head -1 | grep -oE '[0-9]+' || true)
+          fi
+          echo "cart_product_id=$pid"
+          test -n "$pid"
+
           rm -f /tmp/cj
-          curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj 'https://www.elmercadodeorigen.com/en/?add-to-cart=1382' -o /tmp/add
+          curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj "https://www.elmercadodeorigen.com/en/?add-to-cart=$pid" -o /tmp/add
           cart=$(curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj -o /tmp/cart -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/cart/')
-          echo "cart=$cart"; test "$cart" = 200; grep -qi 'Sobrasada' /tmp/cart
+          echo "cart=$cart"; test "$cart" = 200
+          grep -qiE 'woocommerce-cart-form|cart_item|remove_from_cart_button|product-quantity' /tmp/cart
+          ! grep -qiE 'Your cart is currently empty|Your basket is currently empty|Tu carrito está vacío|Tu cesta está vacía' /tmp/cart
+          ! grep -qiE '>\s*(Carrito|Finalizar compra|Pedido mínimo|Importe mínimo|Quitar)\s*<' /tmp/cart
+
           checkout=$(curl -A "$UA" -L -sS -c /tmp/cj -b /tmp/cj -o /tmp/checkout -w '%{http_code}' 'https://www.elmercadodeorigen.com/en/checkout/')
           echo "checkout=$checkout"; test "$checkout" = 200
           grep -qiE 'Billing|Your order|Place order|Checkout' /tmp/checkout
