@@ -1,0 +1,137 @@
+name: Deploy English storefront stability 2026-08-18 v7
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-english-stability-20260818-v7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-stability-v7.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-stability-v7.txt
+          git commit -m 'Record English stability v7 run id'
+          git push origin HEAD:main
+
+      - name: Lint changed PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-english-storefront-stability-010258.php
+          php -l elmercadodeorigen-child/page-categorias.php
+
+      - name: Deploy, persist and normalize translations
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="sshpass -e scp -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); [ -n "$wp_bin" ] && [ -n "$php_bin" ] || exit 11;
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo PRODUCTION_FOUND
+
+          $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child'"
+          $SCP mu-plugins/mdo-english-storefront-stability-010258.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-storefront-stability-010258.php"
+          $SCP elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/themes/elmercadodeorigen-child/page-categorias.php"
+
+          PHP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v php || find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1")"
+          WP_BIN="$($SSH "$STAGING_USER@$STAGING_HOST" "command -v wp")"
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -l '$PROD_PATH/wp-content/mu-plugins/mdo-english-storefront-stability-010258.php' && '$PHP_BIN' -l '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/page-categorias.php'"
+
+          # Persistently clean Falang English category metadata in the database.
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' eval '\$charset=(string)get_option(\"blog_charset\",\"UTF-8\"); global \$wpdb; \$rows=\$wpdb->get_results(\"SELECT tm.meta_id,tm.meta_key,tm.meta_value FROM {\$wpdb->termmeta} tm INNER JOIN {\$wpdb->term_taxonomy} tt ON tt.term_id=tm.term_id WHERE tt.taxonomy=\\\"product_cat\\\" AND tm.meta_key IN (\\\"_en_US_name\\\",\\\"_en_US_description\\\")\",ARRAY_A); \$changed=0; foreach((array)\$rows as \$r){\$v=(string)\$r[\"meta_value\"]; for(\$i=0;\$i<3;\$i++){\$d=html_entity_decode(\$v,ENT_QUOTES|ENT_HTML5,\$charset?:\"UTF-8\"); if(\$d===\$v)break; \$v=\$d;} \$v=trim((string)preg_replace(\"/\\\\s+/u\",\" \",wp_strip_all_tags(\$v,true))); if(\$v!==(string)\$r[\"meta_value\"]){\$wpdb->update(\$wpdb->termmeta,array(\"meta_value\"=>\$v),array(\"meta_id\"=>(int)\$r[\"meta_id\"]),array(\"%s\"),array(\"%d\"));\$changed++;}} echo \"NORMALIZED=\".\$changed;' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+
+          # Mentta/Menta is never a public English category.
+          $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' eval 'global \$wpdb; \$ids=\$wpdb->get_col(\"SELECT t.term_id FROM {\$wpdb->terms} t INNER JOIN {\$wpdb->term_taxonomy} tt ON tt.term_id=t.term_id WHERE tt.taxonomy=\\\"product_cat\\\" AND t.slug IN (\\\"mentta\\\",\\\"menta\\\")\"); foreach((array)\$ids as \$id){update_term_meta((int)\$id,\"_en_US_published\",\"0\");} echo \"PRIVATE_TERMS=\".count(\$ids);' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
+
+          "$SSH" "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' -d memory_limit=512M '$WP_BIN' cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true"
+          echo DEPLOY_DATABASE_OK
+
+      - name: Verify public English HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          Q="emdo_stable=${GITHUB_RUN_ID}"
+          curl -k -fsSL --connect-timeout 15 --max-time 90 -A 'Mozilla/5.0 EMDO stability verify' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/shop/?$Q" -o /tmp/shop.html
+          curl -k -fsSL --connect-timeout 15 --max-time 90 -A 'Mozilla/5.0 EMDO stability verify' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/categorias/?$Q" -o /tmp/categories.html
+          curl -k -fsSL --connect-timeout 15 --max-time 90 -A 'Mozilla/5.0 EMDO stability verify' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/en/?$Q" -o /tmp/home.html
+
+          grep -Fq 'Product categories' /tmp/categories.html
+          grep -Fq 'All categories' /tmp/categories.html
+          grep -Fq 'Choose a category' /tmp/categories.html
+          grep -Fq 'View category' /tmp/categories.html
+          ! grep -Fq 'Categorías de producto' /tmp/categories.html
+          ! grep -Fq 'Elige una categoría' /tmp/categories.html
+          ! grep -Eiq '&(amp;)?lt;span[^&]*(data-no-translation|translate)[^&]*&(amp;)?gt;' /tmp/categories.html
+          ! grep -Eiq 'data-category-slug=["'"'](mentta|menta)["'"']|>\s*(Mentta|Menta)\s*<' /tmp/categories.html
+
+          grep -Fq 'Shop by category' /tmp/home.html
+          ! grep -Eiq 'data-category-slug=["'"'](mentta|menta)["'"']|>\s*(Mentta|Menta)\s*<' /tmp/home.html
+
+          for file in /tmp/shop.html /tmp/categories.html /tmp/home.html; do
+            ! grep -Fq 'trp-translate-dom-changes.js' "$file"
+            ! grep -Fq 'trp-frontend-language-switcher.js' "$file"
+            ! grep -Fq 'createTreeWalker' "$file"
+            ! grep -Fq 'elmercado-continuous-catalog-loader-010181' "$file"
+            ! grep -Fq 'elmercado-continuous-catalog-history-010181' "$file"
+          done
+          grep -Fq 'emo-static-english-catalog' /tmp/shop.html
+          echo PUBLIC_HTML_OK
+
+      - name: Browser smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          BROWSER=''
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then BROWSER="$candidate"; break; fi
+          done
+          : "${BROWSER:?No Chromium browser available on runner}"
+          timeout 45s "$BROWSER" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=8000 --dump-dom "https://www.elmercadodeorigen.com/en/shop/?emdo_browser=${GITHUB_RUN_ID}" > /tmp/browser-shop.html 2>/tmp/browser-stderr.txt
+          test -s /tmp/browser-shop.html
+          bytes=$(wc -c < /tmp/browser-shop.html | tr -d ' ')
+          test "$bytes" -lt 5000000
+          ! grep -Fq 'trp-translate-dom-changes.js' /tmp/browser-shop.html
+          ! grep -Fq 'createTreeWalker' /tmp/browser-shop.html
+          ! grep -Fq 'elmercado-continuous-catalog-loader-010181' /tmp/browser-shop.html
+          echo "BROWSER_OK bytes=$bytes browser=$BROWSER"
+
+      - name: Record success
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'run_id=%s\nstatus=success\ntranslatepress_dom_translation=false\ncontinuous_loader=false\ncategory_html_clean=true\ncategory_translations_database=true\nmentta_visible=false\nbrowser_smoke=true\n' "$GITHUB_RUN_ID" > runtime/english-stability-v7.txt
+          git add runtime/english-stability-v7.txt
+          git commit -m 'Record successful English stability v7 verification'
+          git pull --rebase origin main
+          git push origin HEAD:main
