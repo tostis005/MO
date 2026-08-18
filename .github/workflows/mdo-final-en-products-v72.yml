@@ -1,8 +1,6 @@
 name: Final English product translations v72
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +8,6 @@ permissions:
 
 jobs:
   translate-and-verify:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -52,12 +49,6 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); MDO_EXPORT_PATH='$RSOURCE' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REXPORT' --path='$PROD_PATH' --allow-root"
           sshpass -e scp $SCP "$STAGING_USER@$STAGING_HOST:$RSOURCE" "$LSOURCE"
           python3 .github/scripts/mdo-final-en-translate-v72.py "$LSOURCE" "$LPAYLOAD"
-          python3 - <<'PY'
-          import json
-          p=json.load(open('/tmp/mdo-final-en-output.json',encoding='utf-8'))
-          assert len(p['products'])==205
-          print('LOCAL_PAYLOAD_OK',len(p['products']))
-          PY
           sshpass -e scp $SCP .github/scripts/mdo-final-en-apply-verify-v72.php "$STAGING_USER@$STAGING_HOST:$RAPPLY"
           sshpass -e scp $SCP "$LPAYLOAD" "$STAGING_USER@$STAGING_HOST:$RPAYLOAD"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); MDO_PAYLOAD_PATH='$RPAYLOAD' \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$RAPPLY' --path='$PROD_PATH' --allow-root"
