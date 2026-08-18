@@ -4,8 +4,8 @@
  * normal translated posts/terms.
  *
  * English strings are seeded once into wp_options and the storefront only
- * reads those persisted values. There is deliberately no DOM scanner,
- * MutationObserver or client-side translation pass.
+ * reads those persisted values. There is deliberately no browser-side DOM
+ * scanning or client-side translation pass.
  *
  * @package ElMercadoDeOrigen
  */
