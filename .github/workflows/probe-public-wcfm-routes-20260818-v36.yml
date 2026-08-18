@@ -1,0 +1,45 @@
+name: Probe public WCFM routes v36
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/probe-public-wcfm-routes-20260818-v36.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe
+        shell: bash
+        run: |
+          set -u
+          UA='Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36'
+          : > runtime/public-wcfm-v36.txt
+          for u in \
+            https://www.elmercadodeorigen.com/en/shop/ \
+            https://www.elmercadodeorigen.com/en/tienda/1957/ \
+            https://www.elmercadodeorigen.com/en/store/1957/ \
+            https://www.elmercadodeorigen.com/en/tienda/1957/acercade/ \
+            https://www.elmercadodeorigen.com/en/tienda/1957/about/ \
+            https://www.elmercadodeorigen.com/en/store/1957/about/ \
+            https://www.elmercadodeorigen.com/en/tienda/hidalgo-de-la-jara/ \
+            https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/ \
+            https://www.elmercadodeorigen.com/en/tienda/hidalgo-de-la-jara/acercade/ \
+            https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/; do
+            echo "=== $u" >> runtime/public-wcfm-v36.txt
+            curl -A "$UA" -L --max-time 20 -sS -o /tmp/body -w 'status=%{http_code} final=%{url_effective} bytes=%{size_download}\n' "$u" >> runtime/public-wcfm-v36.txt || echo curl_failed >> runtime/public-wcfm-v36.txt
+            grep -oE '<title>[^<]+' /tmp/body | head -1 >> runtime/public-wcfm-v36.txt || true
+            echo -n 'product_items=' >> runtime/public-wcfm-v36.txt; grep -oE '<li[^>]+class="[^"]*product' /tmp/body | wc -l >> runtime/public-wcfm-v36.txt || true
+            echo -n 'shop_links=' >> runtime/public-wcfm-v36.txt; grep -oE 'https://www\.elmercadodeorigen\.com/en/(tienda|store)/[^" ]+' /tmp/body | sort -u | head -5 | tr '\n' ' ' >> runtime/public-wcfm-v36.txt || true; echo >> runtime/public-wcfm-v36.txt
+            echo -n 'about_links=' >> runtime/public-wcfm-v36.txt; grep -oE 'https://www\.elmercadodeorigen\.com/en/[^" ]+/(acercade|about)/?' /tmp/body | sort -u | head -5 | tr '\n' ' ' >> runtime/public-wcfm-v36.txt || true; echo >> runtime/public-wcfm-v36.txt
+            echo -n 'policies_text=' >> runtime/public-wcfm-v36.txt; grep -oiE '>Policies<|>Políticas<' /tmp/body | head -5 | tr '\n' ' ' >> runtime/public-wcfm-v36.txt || true; echo >> runtime/public-wcfm-v36.txt
+          done
+      - name: Commit
+        run: |
+          git config user.name github-actions; git config user.email github-actions@github.com
+          git add runtime/public-wcfm-v36.txt
+          git commit -m 'Record public WCFM route probe v36' || exit 0
+          git push
