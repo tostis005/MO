@@ -1,0 +1,41 @@
+name: Diagnose remaining Spanish counts v21
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-remaining-spanish-counts-20260818-v21.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/spanish-counts-v21.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/spanish-counts-v21.txt; git commit -m 'Record Spanish counts v21 run id'; git push origin HEAD:main
+      - name: Inspect offending elements in Chrome
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-v21-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9226 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-v21-profile about:blank >/tmp/chrome-v21.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9226/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE'
+          const fs=require('fs'); const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9226/json/list')).json();const t=targets.find(x=>x.type==='page');const ws=new WebSocket(t.webSocketDebuggerUrl);await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable');await cmd('Runtime.enable');await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/?emdo_v21='+process.env.GITHUB_RUN_ID});await sleep(7000);
+            const expr=`(() => [...document.querySelectorAll('span')].filter(el=>/\\bproductos?\\b/i.test((el.textContent||'').trim())).map(el=>({text:(el.textContent||'').trim(),id:el.id||'',cls:String(el.className||''),html:el.outerHTML.slice(0,800),parent:el.parentElement?el.parentElement.outerHTML.slice(0,1600):'',grand:el.parentElement?.parentElement?el.parentElement.parentElement.outerHTML.slice(0,2200):''})))()`;
+            const r=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},10000);const rows=r.result.value||[];let out='count='+rows.length+'\n';rows.forEach((x,i)=>{out+=`#${i+1} text=${x.text}\nid=${x.id}\nclass=${x.cls}\nhtml=${x.html}\nparent=${x.parent}\ngrand=${x.grand}\n---\n`;});console.log(out);fs.writeFileSync('runtime/spanish-counts-v21-report.txt',out);ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Commit report
+        run: |
+          git add runtime/spanish-counts-v21-report.txt; git commit -m 'Record Spanish counts v21 report'; git pull --rebase origin main; git push origin HEAD:main
