@@ -1,4 +1,4 @@
-name: Test Google priority translation v70
+name: Test Google priority translation v71
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Run representative ES to EN sample
+      - name: Run glossary-protected representative ES to EN sample
         run: |
           python3 -m pip install --quiet deep-translator
-          python3 .github/scripts/test-google-priority-translation-v70.py
+          python3 .github/scripts/test-glossary-google-priority-v71.py
