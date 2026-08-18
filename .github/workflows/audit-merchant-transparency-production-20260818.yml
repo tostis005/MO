@@ -20,6 +20,8 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate audit script
+        run: php -l .github/scripts/audit-merchant-transparency-20260818.php
       - name: Inspect live WordPress marketplace transparency setup
         shell: bash
         env:
@@ -30,6 +32,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -P $PORT"
           remote() { sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "$@"; }
           PROD_PATH="$(remote '
             wp_bin=$(command -v wp || true)
@@ -47,38 +50,15 @@ jobs:
           echo "PROD_PATH=$PROD_PATH"
 
           echo '=== PLUGINS ==='
-          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" plugin list --status=active --fields=name,version --format=csv --path='$PROD_PATH' --allow-root | grep -Ei 'polylang|wpml|wcfm|marketplace|woocommerce|stripe|redsys|paypal|mollie|invoice|factur|pdf' || true"
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" plugin list --status=active --fields=name,version --format=csv --path='$PROD_PATH' --allow-root | grep -Ei 'polylang|wpml|wcfm|marketplace|woocommerce|stripe|redsys|paypal|mollie|invoice|factur|pdf|cookie' || true"
 
           echo '=== WORDPRESS DATA ==='
-          remote "cat > /tmp/emdo-audit-merchant.php <<'PHP'
-          <?php
-          if(!defined('ABSPATH')) exit;
-          function out($label,$value){echo $label.' '.wp_json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
-          $targets=['politica','condiciones-especiales','contacto','politica-de-cookies','politica-de-privacidad','privacidad','aviso-legal','envios','devoluciones','shipping','returns','legal-notice','privacy-policy','cookie-policy','terms-and-conditions'];
-          foreach($targets as $slug){
-            $p=get_page_by_path($slug,OBJECT,'page'); if(!$p) continue;
-            out('PAGE',['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'','translations'=>function_exists('pll_get_post_translations')?pll_get_post_translations($p->ID):[],'elementor'=>get_post_meta($p->ID,'_elementor_edit_mode',true)]);
-          }
-          $q=new WP_Query(['post_type'=>'page','post_status'=>['publish','draft','private'],'posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']);
-          foreach($q->posts as $p){
-            $hay=mb_strtolower($p->post_title.' '.$p->post_name);
-            if(preg_match('/(pol[ií]tica|priv|cookie|term|condici|contact|legal|env[ií]o|shipping|return|devol|refund)/u',$hay)) out('MATCH',['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'','elementor'=>get_post_meta($p->ID,'_elementor_edit_mode',true)]);
-            if($p->post_status==='publish'){
-              $text=preg_replace('/\\s+/u',' ',trim(wp_strip_all_tags((string)$p->post_content)));
-              if(preg_match('/\\b(?:NIF|CIF|DNI|tax\\s*id|fiscal)\\b/ui',$text)||preg_match('/Jos[eé]\\s+Antonio/ui',$text)) out('PUBLIC_HINT',['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'excerpt'=>mb_substr($text,0,1200)]);
-            }
-          }
-          foreach(['woocommerce_store_address','woocommerce_store_address_2','woocommerce_store_city','woocommerce_store_postcode','woocommerce_default_country','admin_email'] as $k) out('OPTION',[$k=>get_option($k,'')]);
-          foreach(get_users(['role'=>'administrator','fields'=>['ID','display_name','user_nicename']]) as $u) out('ADMIN',['id'=>$u->ID,'display_name'=>$u->display_name,'nicename'=>$u->user_nicename]);
-          global $wpdb;
-          $rows=$wpdb->get_results("SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name REGEXP '(nif|cif|vat|tax[_-]?id|fiscal)' LIMIT 100",ARRAY_A);
-          foreach($rows as $r){
-            if(preg_match('/(api|key|token|secret|password|credential)/i',$r['option_name'])) continue;
-            $v=maybe_unserialize($r['option_value']); $s=wp_json_encode($v,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); if(strlen((string)$s)>1500)$s=substr((string)$s,0,1500).'...';
-            out('ID_OPTION',['name'=>$r['option_name'],'value'=>$s]);
-          }
-          PHP
-          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-audit-merchant.php --path='$PROD_PATH' --allow-root; rc=\$?; rm -f /tmp/emdo-audit-merchant.php; exit \$rc"
+          REMOTE_SCRIPT="/tmp/emdo-audit-merchant-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/audit-merchant-transparency-20260818.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
 
           echo '=== PUBLIC URLS ==='
-          for u in 'https://www.elmercadodeorigen.com/politica/' 'https://www.elmercadodeorigen.com/condiciones-especiales/' 'https://www.elmercadodeorigen.com/contacto/' 'https://www.elmercadodeorigen.com/en/' 'https://www.elmercadodeorigen.com/en/cookie-policy/'; do printf '%s ' "$u"; curl -k -L -sS -o /dev/null -w '%{http_code} %{url_effective}\n' --max-time 30 "$u" || true; done
+          for u in 'https://www.elmercadodeorigen.com/politica/' 'https://www.elmercadodeorigen.com/condiciones-especiales/' 'https://www.elmercadodeorigen.com/contacto/' 'https://www.elmercadodeorigen.com/en/' 'https://www.elmercadodeorigen.com/en/cookie-policy/'; do
+            printf '%s ' "$u"
+            curl -k -L -sS -o /dev/null -w '%{http_code} %{url_effective}\n' --max-time 30 "$u" || true
+          done
