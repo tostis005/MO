@@ -1,0 +1,75 @@
+name: Probe WCFM English live v34
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-wcfm-english-live-20260818-v34.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate production and inspect WCFM source
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "cd '$PROD_PATH' && { grep -RIn --include='*.php' -E 'wcfmmp_store_tabs|shop_description|product.*polic|polic.*product|wcfm_store_endpoints' wp-content/plugins/wc-multivendor-marketplace wp-content/plugins/wc-frontend-manager 2>/dev/null | head -n 180; }" > runtime/wcfm-source-hooks-v34.txt
+      - name: Probe current public English links and routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36'
+          curl -A "$UA" -L -sS https://www.elmercadodeorigen.com/en/shop/ -o /tmp/shop.html
+          {
+            echo '=== LINKS FROM EN SHOP ==='
+            grep -oE 'href="https://www\.elmercadodeorigen\.com/en/[^"]+' /tmp/shop.html | sed 's/^href="//' | grep -E '/(product|producto|store|tienda)/' | head -n 30 || true
+            echo '=== ROUTE PROBES ==='
+            for u in \
+              https://www.elmercadodeorigen.com/en/tienda/1957/ \
+              https://www.elmercadodeorigen.com/en/store/1957/ \
+              https://www.elmercadodeorigen.com/en/tienda/1957/acercade/ \
+              https://www.elmercadodeorigen.com/en/tienda/1957/about/ \
+              https://www.elmercadodeorigen.com/en/store/1957/about/ \
+              https://www.elmercadodeorigen.com/en/tienda/hidalgo-de-la-jara/ \
+              https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/ \
+              https://www.elmercadodeorigen.com/en/tienda/hidalgo-de-la-jara/acercade/ \
+              https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/; do
+              echo "--- $u"
+              curl -A "$UA" -L -sS -o /tmp/body -w 'status=%{http_code} final=%{url_effective} bytes=%{size_download}\n' "$u" || true
+              grep -oE '<title>[^<]+' /tmp/body | head -1 || true
+              printf 'products='; grep -oE 'class="[^"]*product[^"]*"' /tmp/body | wc -l || true
+              printf 'about='; grep -oiE '>About<|>Acerca de<' /tmp/body | head -3 | tr '\n' ' '; echo
+              printf 'policies='; grep -oiE '>Policies<|>Políticas<' /tmp/body | head -3 | tr '\n' ' '; echo
+            done
+          } > runtime/wcfm-live-routes-v34.txt
+      - name: Commit probe
+        shell: bash
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add runtime/wcfm-source-hooks-v34.txt runtime/wcfm-live-routes-v34.txt
+          git commit -m 'Record WCFM English live probe v34' || exit 0
+          git push
