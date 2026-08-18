@@ -1,0 +1,64 @@
+name: Verify English category archives v15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-english-category-archives-v15.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-category-archives-v15.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-category-archives-v15.txt
+          git commit -m 'Record category archives v15 run id'
+          git push origin HEAD:main
+      - name: Verify category destinations
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > runtime/english-category-archives-v15.txt
+          import html, re, ssl, urllib.request
+          from html.parser import HTMLParser
+          run='${{ github.run_id }}'; ctx=ssl._create_unverified_context(); headers={'User-Agent':'Mozilla/5.0 EMDO archive verify','Cache-Control':'no-cache'}
+          def get(url):
+              sep='&' if '?' in url else '?'
+              req=urllib.request.Request(url+sep+'emdo_archive='+run,headers=headers)
+              with urllib.request.urlopen(req,context=ctx,timeout=90) as r:
+                  return r.geturl(),r.read().decode('utf-8',errors='replace')
+          final,hub=get('https://www.elmercadodeorigen.com/en/categorias/')
+          cards=re.findall(r'<article\b[^>]*data-category-slug=["\']([^"\']+)["\'][^>]*>(.*?)</article>',hub,re.I|re.S)
+          print('run_id='+run); print('status=complete'); print('hub_final='+final); print('archive_count='+str(len(cards)))
+          expected={'carnes':'Meat','jamones-paletas':'Hams and shoulders','embutidos-y-curados':'Cured meats','packs-y-lotes':'Packs and bundles','aceites':'Oils'}
+          bad=False
+          for slug,body in cards:
+              m=re.search(r'<h2[^>]*>\s*<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',body,re.I|re.S)
+              if not m: print('ERROR no_link '+slug); bad=True; continue
+              href=html.unescape(m.group(1)); label=re.sub(r'<[^>]+>','',m.group(2)); label=html.unescape(label).strip()
+              dest,doc=get(href)
+              plain=re.sub(r'<script\b[^>]*>.*?</script>',' ',doc,flags=re.I|re.S); plain=re.sub(r'<style\b[^>]*>.*?</style>',' ',plain,flags=re.I|re.S); plain=html.unescape(re.sub(r'<[^>]+>',' ',plain)); plain=re.sub(r'\s+',' ',plain)
+              title=re.search(r'<title>(.*?)</title>',doc,re.I|re.S); title=html.unescape(re.sub(r'<[^>]+>','',title.group(1))).strip() if title else ''
+              ok_en=dest.startswith('https://www.elmercadodeorigen.com/en/') and expected.get(slug,label).lower() in (title+' '+plain[:8000]).lower()
+              no_dynamic=all(t not in doc for t in ('trp-translate-dom-changes.js','createTreeWalker','elmercado-catalog-scroll-final-010234'))
+              no_mentta='>Mentta<' not in doc and '>Menta<' not in doc
+              print(f'ARCHIVE slug={slug} | label={label} | final={dest} | title={title} | english={str(ok_en).lower()} | dynamic={str(not no_dynamic).lower()} | mentta={str(not no_mentta).lower()}')
+              if not(ok_en and no_dynamic and no_mentta): bad=True
+          if bad: raise SystemExit(2)
+          PY
+          cat runtime/english-category-archives-v15.txt
+          git add runtime/english-category-archives-v15.txt
+          git commit -m 'Record verified English category archives v15'
+          git pull --rebase origin main
+          git push origin HEAD:main
