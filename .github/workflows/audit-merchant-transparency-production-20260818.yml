@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   audit:
@@ -20,6 +20,8 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Inspect live WordPress marketplace transparency setup
         shell: bash
         env:
@@ -32,68 +34,64 @@ jobs:
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p $PORT"
           PROD_PATH="/var/www/vhosts/elmercadodeorigen.com/httpdocs"
           remote() { sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "$@"; }
+          mkdir -p .github/audits
+          exec > >(tee .github/audits/merchant-transparency-live.txt) 2>&1
 
+          echo '=== AUDIT UTC ==='
+          date -u '+%Y-%m-%dT%H:%M:%SZ'
           echo '=== SITE ==='
           remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get siteurl --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
 
-          echo '=== LANGUAGE / MARKETPLACE PLUGINS ==='
-          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" plugin list --status=active --fields=name,version --format=csv --path='$PROD_PATH' --allow-root | grep -Ei 'polylang|wpml|wcfm|marketplace|woocommerce|stripe|redsys|paypal|mollie' || true"
+          echo '=== LANGUAGE / MARKETPLACE / PAYMENT / INVOICE PLUGINS ==='
+          remote "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" plugin list --status=active --fields=name,version --format=csv --path='$PROD_PATH' --allow-root | grep -Ei 'polylang|wpml|wcfm|marketplace|woocommerce|stripe|redsys|paypal|mollie|invoice|factur|pdf' || true"
 
-          echo '=== TARGET PAGES / TRANSLATIONS ==='
-          remote "cat > /tmp/emdo-audit-pages.php <<'PHP'
+          echo '=== WORDPRESS STRUCTURE ==='
+          remote "cat > /tmp/emdo-audit-merchant.php <<'PHP'
           <?php
           if(!defined('ABSPATH')) exit;
-          $needles=['politica','condiciones-especiales','contacto','politica-de-cookies','politica-de-privacidad','privacidad','aviso-legal','envios','devoluciones','shipping','returns','legal-notice','privacy-policy','cookie-policy','terms-and-conditions'];
-          foreach($needles as $slug){
+          function emdo_line($label,$value){echo $label.' '.wp_json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}
+          $targets=['politica','condiciones-especiales','contacto','politica-de-cookies','politica-de-privacidad','privacidad','aviso-legal','envios','devoluciones','shipping','returns','legal-notice','privacy-policy','cookie-policy','terms-and-conditions'];
+          foreach($targets as $slug){
             $p=get_page_by_path($slug,OBJECT,'page');
             if(!$p) continue;
-            $lang=function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'';
-            $tr=function_exists('pll_get_post_translations')?pll_get_post_translations($p->ID):[];
-            echo wp_json_encode(['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>$lang,'translations'=>$tr],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            emdo_line('PAGE',['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'','translations'=>function_exists('pll_get_post_translations')?pll_get_post_translations($p->ID):[]]);
           }
-          echo "-- all ES/EN pages likely legal/contact --\n";
+          echo "-- likely legal/contact pages --\n";
           $q=new WP_Query(['post_type'=>'page','post_status'=>['publish','draft','private'],'posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC']);
           foreach($q->posts as $p){
             $hay=mb_strtolower($p->post_title.' '.$p->post_name);
-            if(!preg_match('/(pol[ií]tica|priv|cookie|term|condici|contact|legal|env[ií]o|shipping|return|devol|refund)/u',$hay)) continue;
-            $lang=function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'';
-            echo wp_json_encode(['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>$lang],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+            if(preg_match('/(pol[ií]tica|priv|cookie|term|condici|contact|legal|env[ií]o|shipping|return|devol|refund)/u',$hay)) emdo_line('MATCH',['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'status'=>$p->post_status,'lang'=>function_exists('pll_get_post_language')?pll_get_post_language($p->ID):'']);
           }
-          PHP
-          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/emdo-audit-pages.php --path='$PROD_PATH' --allow-root; rm -f /tmp/emdo-audit-pages.php"
-
-          echo '=== MENU LOCATIONS ==='
-          remote "cat > /tmp/emdo-audit-menus.php <<'PHP'
-          <?php
-          if(!defined('ABSPATH')) exit;
-          echo wp_json_encode(get_nav_menu_locations(),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
+          echo "-- menus --\n";
+          emdo_line('LOCATIONS',get_nav_menu_locations());
           foreach(wp_get_nav_menus() as $m){
-            $lang=function_exists('pll_get_term_language')?pll_get_term_language($m->term_id):'';
-            echo 'MENU '.wp_json_encode(['id'=>$m->term_id,'name'=>$m->name,'slug'=>$m->slug,'lang'=>$lang],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-            foreach(wp_get_nav_menu_items($m->term_id)?:[] as $it){
-              echo '  ITEM '.wp_json_encode(['id'=>$it->ID,'title'=>$it->title,'url'=>$it->url,'object_id'=>$it->object_id,'menu_order'=>$it->menu_order],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-            }
+            emdo_line('MENU',['id'=>$m->term_id,'name'=>$m->name,'slug'=>$m->slug,'lang'=>function_exists('pll_get_term_language')?pll_get_term_language($m->term_id):'']);
+            foreach(wp_get_nav_menu_items($m->term_id)?:[] as $it) emdo_line('ITEM',['menu'=>$m->term_id,'id'=>$it->ID,'title'=>$it->title,'url'=>$it->url,'object_id'=>$it->object_id,'order'=>$it->menu_order]);
           }
-          PHP
-          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/emdo-audit-menus.php --path='$PROD_PATH' --allow-root; rm -f /tmp/emdo-audit-menus.php"
-
-          echo '=== PUBLIC LEGAL IDENTITY HINTS ==='
-          remote "cat > /tmp/emdo-audit-identity.php <<'PHP'
-          <?php
-          if(!defined('ABSPATH')) exit;
-          $q=new WP_Query(['post_type'=>'page','post_status'=>'publish','posts_per_page'=>-1]);
+          echo "-- identity already public in published pages --\n";
           foreach($q->posts as $p){
-            $text=wp_strip_all_tags((string)$p->post_content);
-            if(preg_match('/\\b(?:NIF|CIF|DNI|tax\\s*id|fiscal)\\b/ui',$text) || preg_match('/Jos[eé]\\s+Antonio/ui',$text)){
-              $safe=preg_replace('/\\s+/u',' ',trim($text));
-              echo wp_json_encode(['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'excerpt'=>mb_substr($safe,0,900)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-            }
+            if($p->post_status!=='publish') continue;
+            $text=preg_replace('/\\s+/u',' ',trim(wp_strip_all_tags((string)$p->post_content)));
+            if(preg_match('/\\b(?:NIF|CIF|DNI|tax\\s*id|fiscal)\\b/ui',$text) || preg_match('/Jos[eé]\\s+Antonio/ui',$text)) emdo_line('PUBLIC_HINT',['id'=>$p->ID,'slug'=>$p->post_name,'title'=>$p->post_title,'excerpt'=>mb_substr($text,0,1200)]);
+          }
+          echo "-- configured store identity candidates --\n";
+          foreach(['woocommerce_store_address','woocommerce_store_address_2','woocommerce_store_city','woocommerce_store_postcode','woocommerce_default_country'] as $k){emdo_line('OPTION',[$k=>get_option($k,'')]);}
+          $admins=get_users(['role'=>'administrator','fields'=>['ID','display_name','user_nicename']]);
+          foreach($admins as $u) emdo_line('ADMIN',['id'=>$u->ID,'display_name'=>$u->display_name,'nicename'=>$u->user_nicename]);
+          global $wpdb;
+          $rows=$wpdb->get_results("SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name REGEXP '(nif|cif|vat|tax[_-]?id|fiscal)' LIMIT 100",ARRAY_A);
+          foreach($rows as $r){
+            if(preg_match('/(api|key|token|secret|password|credential)/i',$r['option_name'])) continue;
+            $v=maybe_unserialize($r['option_value']);
+            $encoded=wp_json_encode($v,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            if(strlen((string)$encoded)>1500) $encoded=substr((string)$encoded,0,1500).'...';
+            echo 'ID_OPTION '.wp_json_encode(['name'=>$r['option_name'],'value'=>$encoded],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
           }
           PHP
-          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/emdo-audit-identity.php --path='$PROD_PATH' --allow-root; rm -f /tmp/emdo-audit-identity.php"
+          wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-audit-merchant.php --path='$PROD_PATH' --allow-root; rm -f /tmp/emdo-audit-merchant.php"
 
           echo '=== FOOTER IMPLEMENTATION HINTS ==='
-          remote "grep -RniE 'footer|menu-footer|footer-menu|site-info' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' '$PROD_PATH/wp-content/themes/woostify-child' '$PROD_PATH/wp-content/mu-plugins' 2>/dev/null | head -250 || true"
+          remote "grep -RniE 'footer|menu-footer|footer-menu|site-info' '$PROD_PATH/wp-content/themes' '$PROD_PATH/wp-content/mu-plugins' 2>/dev/null | grep -E 'elmercadodeorigen|woostify|mdo|emdo' | head -300 || true"
 
           echo '=== PUBLIC STATUS CHECKS ==='
           for u in \
@@ -105,3 +103,18 @@ jobs:
             printf '%s ' "$u"
             curl -k -L -sS -o /dev/null -w '%{http_code} %{url_effective}\n' --max-time 30 "$u" || true
           done
+
+      - name: Persist audit result
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .github/audits/merchant-transparency-live.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/audits/merchant-transparency-live.txt
+          if git diff --cached --quiet; then
+            echo 'No audit changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Record live Merchant transparency audit'
+          git push
