@@ -2,7 +2,9 @@ name: Export active vendor descriptions v49
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/export-active-vendor-descriptions-20260818-v49.yml']
+    paths:
+      - '.github/workflows/export-active-vendor-descriptions-20260818-v49.yml'
+      - '.github/scripts/export-active-vendor-descriptions-v49.php'
   workflow_dispatch:
 permissions:
   contents: write
@@ -17,26 +19,37 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          fetch-depth: 0
       - name: Marker
         run: |
-          git config user.name github-actions; git config user.email github-actions@github.com
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           git pull --rebase origin main
           printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/active-vendor-v49.txt
-          git add runtime/active-vendor-v49.txt; git commit -m 'Start active vendor description export v49'; git push origin HEAD:main
+          git add runtime/active-vendor-v49.txt
+          git commit -m 'Restart active vendor description export v49' || true
+          git push origin HEAD:main
       - name: Export current Spanish descriptions
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf %s "$p";break;;esac;done')"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -d memory_limit=768M \"\$wp\" eval 'global \$wpdb; \$rows=\$wpdb->get_results(\"SELECT user_id,meta_value FROM {\$wpdb->usermeta} WHERE meta_key=\\\"wcfmmp_profile_settings\\\" ORDER BY user_id\",ARRAY_A); foreach(\$rows as \$r){\$s=maybe_unserialize(\$r[\"meta_value\"]); if(!is_array(\$s)||empty(\$s[\"store_slug\"]))continue; \$id=(int)\$r[\"user_id\"]; \$count=(int)\$wpdb->get_var(\$wpdb->prepare(\"SELECT COUNT(*) FROM {\$wpdb->posts} WHERE post_type=\\\"product\\\" AND post_status=\\\"publish\\\" AND post_author=%d\",\$id)); if(\$count<1)continue; \$es=(string)get_user_meta(\$id,\"_store_description\",true); if(!trim(wp_strip_all_tags(\$es)))\$es=(string)(\$s[\"shop_description\"]??\"\"); echo \"===== STORE ".\$s[\"store_slug\"].\" | USER \".\$id.\" | PRODUCTS \".\$count.\" =====\\n\"; echo \$es.\"\\n===== END =====\\n\\n\"; }' --path='$PROD_PATH' --allow-root --skip-plugins --skip-themes" > runtime/active-vendor-spanish-v49.txt
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/export-active-vendor-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/export-active-vendor-descriptions-v49.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -d memory_limit=768M \"\$wp\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root --skip-plugins --skip-themes; rc=\$?; rm -f '$REMOTE'; exit \$rc" > runtime/active-vendor-spanish-v49.txt
       - name: Commit export
         run: |
-          git config user.name github-actions; git config user.email github-actions@github.com
+          git config user.name github-actions
+          git config user.email github-actions@github.com
           printf 'run_id=%s\nstatus=success\n' "$GITHUB_RUN_ID" > runtime/active-vendor-v49.txt
           git add runtime/active-vendor-v49.txt runtime/active-vendor-spanish-v49.txt
           git commit -m 'Export active vendor Spanish descriptions v49'
