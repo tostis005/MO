@@ -1,0 +1,42 @@
+name: Audit English storefront v63
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install crawler dependencies
+        run: python3 -m pip install --quiet requests beautifulsoup4
+      - name: Crawl production English storefront
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/audit-english-public-v63.py | tee /tmp/english-public-audit-v63.log
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/english-public-audit-v63.json',encoding='utf-8'))
+          print('\n=== ENGLISH AUDIT SUMMARY ===')
+          for k,v in d['summary'].items(): print(f'{k}={v}')
+          for section in ('http_errors','lang_issues','canonical_issues','spanish_slug_links','links_escaping_english','pages_with_spanish_text'):
+              pass
+          print('\n=== SPANISH URL SLUGS ===')
+          for x in d['spanish_slug_links'][:80]: print(x)
+          print('\n=== LINKS ESCAPING /en/ ===')
+          for x in d['links_escaping_english'][:80]: print(x)
+          print('\n=== SPANISH TEXT ===')
+          for x in d['spanish_text'][:80]:
+              print('\nURL',x['url'])
+              for s in x['snippets'][:8]: print(' -',s)
+          print('\n=== CANONICAL / LANG / HTTP ===')
+          for sec in ('canonical_issues','lang_issues','errors'):
+              print(sec, d[sec][:80])
+          PY
