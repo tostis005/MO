@@ -1,11 +1,8 @@
 name: Deploy dynamic sitemaps production
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'mu-plugins/mdo-a-dynamic-sitemaps.php'
-      - '.github/workflows/deploy-dynamic-sitemaps-production-20260818.yml'
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
@@ -13,6 +10,7 @@ permissions:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'Run dynamic sitemap deploy 20260818'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
