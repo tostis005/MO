@@ -1,0 +1,90 @@
+name: Diagnose live English storefront 2026-08-18 v6
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-english-20260818-v6.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-live-diagnostic-v6.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-live-diagnostic-v6.txt
+          git commit -m 'Record English diagnostic v6 run id'
+          git push origin HEAD:main
+
+      - name: Inspect public HTML and database
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          Q="emdo_diag=${GITHUB_RUN_ID}"
+          mkdir -p /tmp/emdo
+          urls=(
+            "home|https://www.elmercadodeorigen.com/en/?$Q"
+            "shop|https://www.elmercadodeorigen.com/en/shop/?$Q"
+            "tienda|https://www.elmercadodeorigen.com/en/tienda/?$Q"
+            "categorias|https://www.elmercadodeorigen.com/en/categorias/?$Q"
+            "categories|https://www.elmercadodeorigen.com/en/categories/?$Q"
+          )
+          : > /tmp/emdo/report.txt
+          for entry in "${urls[@]}"; do
+            name="${entry%%|*}"; url="${entry#*|}"
+            file="/tmp/emdo/${name}.html"
+            metrics=$(curl -k -L -sS --connect-timeout 15 --max-time 90 -A 'Mozilla/5.0 EMDO diagnostic' -H 'Cache-Control: no-cache' -o "$file" -w 'http=%{http_code} bytes=%{size_download} ttfb=%{time_starttransfer} total=%{time_total} final=%{url_effective}' "$url" || true)
+            echo "PAGE $name $metrics" >> /tmp/emdo/report.txt
+            if [ -s "$file" ]; then
+              printf '  script_tags=%s product_items=%s category_cards=%s\n' "$(grep -Eoi '<script([[:space:]>])' "$file" | wc -l | tr -d ' ')" "$(grep -Eo 'class=["'"'][^"'"']*(product|wc-block-grid__product)[^"'"']*["'"']' "$file" | wc -l | tr -d ' ')" "$(grep -Eo 'emo-category(-hub)?-card' "$file" | wc -l | tr -d ' ')" >> /tmp/emdo/report.txt
+              echo '  suspicious_tokens:' >> /tmp/emdo/report.txt
+              grep -Eio 'MutationObserver|createTreeWalker|TreeWalker|querySelectorAll\([^)]*\*[^)]*\)|setInterval\(|requestAnimationFrame\(|google[^<]{0,30}translate|translate[^<]{0,30}(dom|node|text)|innerHTML[[:space:]]*=|textContent[[:space:]]*=' "$file" | sort | uniq -c | head -80 >> /tmp/emdo/report.txt || true
+              echo '  script_srcs:' >> /tmp/emdo/report.txt
+              grep -Eoi '<script[^>]+src=["'"'][^"'"']+' "$file" | sed -E 's/^.*src=["'"']//I' | sed 's/[?&]ver=[^&]*//g' | sort -u | head -120 >> /tmp/emdo/report.txt || true
+              echo '  visible_markers:' >> /tmp/emdo/report.txt
+              grep -Eio 'Shop by category|Product categories|All categories|Choose a category|View category|Compra por categoría|Categorías de producto|Todas las categorías|Elige una categoría|Ver categoría|Mentta|Menta|&lt;/?[a-zA-Z][^&]*&gt;|&amp;lt;/?[a-zA-Z][^&]*&amp;gt;' "$file" | sort | uniq -c | head -100 >> /tmp/emdo/report.txt || true
+            fi
+          done
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$($SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); [ -n "$wp_bin" ] && [ -n "$php_bin" ] || exit 11;
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          COMMON="php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp);"
+          echo 'DATABASE product_cat:' >> /tmp/emdo/report.txt
+          $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '\$terms=get_terms(array(\"taxonomy\"=>\"product_cat\",\"hide_empty\"=>false)); foreach((array)\$terms as \$t){ if(!is_object(\$t)) continue; \$row=array(\"id\"=>(int)\$t->term_id,\"slug\"=>(string)\$t->slug,\"name\"=>(string)\$t->name,\"description\"=>(string)\$t->description,\"en_published\"=>(string)get_term_meta(\$t->term_id,\"_en_US_published\",true),\"en_name\"=>(string)get_term_meta(\$t->term_id,\"_en_US_name\",true),\"en_slug\"=>(string)get_term_meta(\$t->term_id,\"_en_US_slug\",true),\"en_description\"=>(string)get_term_meta(\$t->term_id,\"_en_US_description\",true)); echo wp_json_encode(\$row,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL; }' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" >> /tmp/emdo/report.txt
+
+          echo 'DB_UI_OPTION:' >> /tmp/emdo/report.txt
+          $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" option get elmercado_en_ui_copy_010245 --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" | grep -Eo '"(Compra por categoría|Categorías de producto|Todas las categorías|Elige una categoría|Ver categoría)"[[:space:]]*:[[:space:]]*"[^"]+"' >> /tmp/emdo/report.txt || true
+
+          cp /tmp/emdo/report.txt runtime/english-live-diagnostic-v6.txt
+          printf '\nstatus=complete\n' >> runtime/english-live-diagnostic-v6.txt
+          git pull --rebase origin main
+          git add runtime/english-live-diagnostic-v6.txt
+          git commit -m 'Record live English storefront diagnostic v6'
+          git push origin HEAD:main
