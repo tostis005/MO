@@ -1,12 +1,10 @@
 name: Audit English launch live v49
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/audit-english-launch-live-20260818-v49.yml']
-  pull_request:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   audit:
     runs-on: ubuntu-24.04
@@ -17,50 +15,45 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
       - name: Inspect production English implementation and HTML
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p runtime
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf %s "$p";break;;esac;done')"
-          {
-            echo "PROD_PATH=$PROD_PATH"
-            echo '=== ACTIVE PLUGINS ==='
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" \"\$wp\" plugin list --status=active --fields=name,status,version --format=table --path='$PROD_PATH' --allow-root"
-            echo '=== MU PLUGINS ==='
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "find '$PROD_PATH/wp-content/mu-plugins' -maxdepth 2 -type f -printf '%p\n' 2>/dev/null | sort | head -200"
-            echo '=== ENGLISH RELATED CODE HITS ==='
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "grep -RniE 'mdo_en|pll_current_language|determine_locale|Quitar|Variedad|result[s]?|journal|excerpt' '$PROD_PATH/wp-content/mu-plugins' 2>/dev/null | head -300 || true"
-            echo '=== ENGLISH POSTS / PAGES / PRODUCTS SNAPSHOT ==='
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -d memory_limit=768M \"\$wp\" eval 'foreach([\"page\",\"post\",\"product\"] as \$pt){echo \"-- \$pt --\\n\"; \$q=new WP_Query([\"post_type\"=>\$pt,\"post_status\"=>[\"publish\",\"draft\",\"private\"],\"posts_per_page\"=>-1,\"orderby\"=>\"ID\",\"order\"=>\"ASC\"]); foreach(\$q->posts as \$p){\$lang=function_exists(\"pll_get_post_language\")?pll_get_post_language(\$p->ID):\"\"; if(\$lang===\"en\" || stripos((string)\$p->post_name,\"en-\")===0){\$ex=trim(preg_replace(\"/\\s+/u\",\" \",wp_strip_all_tags((string)\$p->post_excerpt))); echo wp_json_encode([\"id\"=>\$p->ID,\"lang\"=>\$lang,\"type\"=>\$pt,\"slug\"=>\$p->post_name,\"title\"=>\$p->post_title,\"excerpt\"=>mb_substr(\$ex,0,220)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).\"\\n\";}}}' --path='$PROD_PATH' --allow-root"
-            echo '=== TARGET URL TEXT CHECKS ==='
-            for u in \
-              'https://www.elmercadodeorigen.com/en/' \
-              'https://www.elmercadodeorigen.com/en/journal/' \
-              'https://www.elmercadodeorigen.com/en/product-category/oils/' \
-              'https://www.elmercadodeorigen.com/en/variedad/tradicional-martena-picual/' \
-              'https://www.elmercadodeorigen.com/en/cookie-policy/' \
-              'https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-5l/' \
-              'https://www.elmercadodeorigen.com/en/cart/' \
-              'https://www.elmercadodeorigen.com/en/checkout/'; do
-              echo "--- $u"
-              curl -k -L -sS --max-time 40 "$u" -o /tmp/mdo-v49.html || true
-              grep -oE '<title>[^<]+' /tmp/mdo-v49.html | head -1 || true
-              grep -oiE '.{0,100}(Quitar|Variedad|[0-9]+ result([^s]|$)|El Jam[oó]n|Noviembre|First name|NEW HARVEST 23/24|cosecha|añadir|carrito|finalizar compra|pedido mínimo|importe mínimo).{0,220}' /tmp/mdo-v49.html | sed 's/<[^>]*>/ /g' | head -30 || true
+          SSH_OPTS=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$PORT")
+          remote() {
+            local n
+            for n in 1 2 3; do
+              if sshpass -e ssh "${SSH_OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "$@"; then return 0; fi
+              sleep $((n*2))
             done
-          } > runtime/english-launch-diagnostic-v49.txt 2>&1
-      - name: Commit diagnostic
-        if: github.event_name != 'pull_request'
-        run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add runtime/english-launch-diagnostic-v49.txt
-          git commit -m 'Record English launch diagnostic v49' || exit 0
-          git pull --rebase origin main
-          git push origin HEAD:main
+            return 1
+          }
+          echo '=== CONNECTIVITY ==='
+          remote "test -f /var/www/vhosts/elmercadodeorigen.com/httpdocs/wp-config.php && echo production-path-ok"
+          echo '=== ACTIVE PLUGINS ==='
+          remote 'wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1); "$ph" "$wp" plugin list --status=active --fields=name,status,version --format=table --path=/var/www/vhosts/elmercadodeorigen.com/httpdocs --allow-root'
+          echo '=== MU PLUGINS ==='
+          remote 'find /var/www/vhosts/elmercadodeorigen.com/httpdocs/wp-content/mu-plugins -maxdepth 2 -type f -printf "%p\n" 2>/dev/null | sort | head -200'
+          echo '=== ENGLISH-RELATED MU CODE ==='
+          remote 'grep -RniE "mdo_en|pll_current_language|determine_locale|Quitar|Variedad|result[s]?|journal|excerpt|NEW HARVEST" /var/www/vhosts/elmercadodeorigen.com/httpdocs/wp-content/mu-plugins 2>/dev/null | head -400 || true'
+          echo '=== ENGLISH CONTENT SNAPSHOT ==='
+          remote 'wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1); "$ph" -d memory_limit=768M "$wp" eval '\''foreach(["page","post","product"] as $pt){echo "-- $pt --\n"; $q=new WP_Query(["post_type"=>$pt,"post_status"=>["publish","draft","private"],"posts_per_page"=>-1,"orderby"=>"ID","order"=>"ASC"]); foreach($q->posts as $p){$lang=function_exists("pll_get_post_language")?pll_get_post_language($p->ID):""; if($lang==="en"){ $ex=trim(preg_replace("/\\s+/u"," ",wp_strip_all_tags((string)$p->post_excerpt))); echo wp_json_encode(["id"=>$p->ID,"lang"=>$lang,"type"=>$pt,"slug"=>$p->post_name,"title"=>$p->post_title,"excerpt"=>mb_substr($ex,0,260)],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";}}}'\'' --path=/var/www/vhosts/elmercadodeorigen.com/httpdocs --allow-root'
+          echo '=== TARGET URL TEXT CHECKS ==='
+          for u in \
+            'https://www.elmercadodeorigen.com/en/' \
+            'https://www.elmercadodeorigen.com/en/journal/' \
+            'https://www.elmercadodeorigen.com/en/product-category/oils/' \
+            'https://www.elmercadodeorigen.com/en/variedad/tradicional-martena-picual/' \
+            'https://www.elmercadodeorigen.com/en/cookie-policy/' \
+            'https://www.elmercadodeorigen.com/en/product/extra-virgin-olive-oil-5l/' \
+            'https://www.elmercadodeorigen.com/en/cart/' \
+            'https://www.elmercadodeorigen.com/en/checkout/'; do
+            echo "--- $u"
+            curl -k -L -sS --max-time 40 "$u" -o /tmp/mdo-v49.html || true
+            grep -oE '<title>[^<]+' /tmp/mdo-v49.html | head -1 || true
+            grep -oiE '.{0,100}(Quitar|Variedad|[0-9]+ result([^s]|$)|El Jam[oó]n|Noviembre|First name|NEW HARVEST 23/24|cosecha|añadir|carrito|finalizar compra|pedido mínimo|importe mínimo).{0,220}' /tmp/mdo-v49.html | sed 's/<[^>]*>/ /g' | head -40 || true
+          done
