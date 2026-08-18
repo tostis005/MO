@@ -44,29 +44,65 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           Q="emdo_diag=${GITHUB_RUN_ID}"
           mkdir -p /tmp/emdo
-          urls=(
-            "home|https://www.elmercadodeorigen.com/en/?$Q"
-            "shop|https://www.elmercadodeorigen.com/en/shop/?$Q"
-            "tienda|https://www.elmercadodeorigen.com/en/tienda/?$Q"
-            "categorias|https://www.elmercadodeorigen.com/en/categorias/?$Q"
+          : > /tmp/emdo/metrics.txt
+          for spec in \
+            "home|https://www.elmercadodeorigen.com/en/?$Q" \
+            "shop|https://www.elmercadodeorigen.com/en/shop/?$Q" \
+            "tienda|https://www.elmercadodeorigen.com/en/tienda/?$Q" \
+            "categorias|https://www.elmercadodeorigen.com/en/categorias/?$Q" \
             "categories|https://www.elmercadodeorigen.com/en/categories/?$Q"
-          )
-          : > /tmp/emdo/report.txt
-          for entry in "${urls[@]}"; do
-            name="${entry%%|*}"; url="${entry#*|}"
+          do
+            name="${spec%%|*}"
+            url="${spec#*|}"
             file="/tmp/emdo/${name}.html"
             metrics=$(curl -k -L -sS --connect-timeout 15 --max-time 90 -A 'Mozilla/5.0 EMDO diagnostic' -H 'Cache-Control: no-cache' -o "$file" -w 'http=%{http_code} bytes=%{size_download} ttfb=%{time_starttransfer} total=%{time_total} final=%{url_effective}' "$url" || true)
-            echo "PAGE $name $metrics" >> /tmp/emdo/report.txt
-            if [ -s "$file" ]; then
-              printf '  script_tags=%s product_items=%s category_cards=%s\n' "$(grep -Eoi '<script([[:space:]>])' "$file" | wc -l | tr -d ' ')" "$(grep -Eo 'class=["'"'][^"'"']*(product|wc-block-grid__product)[^"'"']*["'"']' "$file" | wc -l | tr -d ' ')" "$(grep -Eo 'emo-category(-hub)?-card' "$file" | wc -l | tr -d ' ')" >> /tmp/emdo/report.txt
-              echo '  suspicious_tokens:' >> /tmp/emdo/report.txt
-              grep -Eio 'MutationObserver|createTreeWalker|TreeWalker|querySelectorAll\([^)]*\*[^)]*\)|setInterval\(|requestAnimationFrame\(|google[^<]{0,30}translate|translate[^<]{0,30}(dom|node|text)|innerHTML[[:space:]]*=|textContent[[:space:]]*=' "$file" | sort | uniq -c | head -80 >> /tmp/emdo/report.txt || true
-              echo '  script_srcs:' >> /tmp/emdo/report.txt
-              grep -Eoi '<script[^>]+src=["'"'][^"'"']+' "$file" | sed -E 's/^.*src=["'"']//I' | sed 's/[?&]ver=[^&]*//g' | sort -u | head -120 >> /tmp/emdo/report.txt || true
-              echo '  visible_markers:' >> /tmp/emdo/report.txt
-              grep -Eio 'Shop by category|Product categories|All categories|Choose a category|View category|Compra por categoría|Categorías de producto|Todas las categorías|Elige una categoría|Ver categoría|Mentta|Menta|&lt;/?[a-zA-Z][^&]*&gt;|&amp;lt;/?[a-zA-Z][^&]*&amp;gt;' "$file" | sort | uniq -c | head -100 >> /tmp/emdo/report.txt || true
-            fi
+            printf 'PAGE %s %s\n' "$name" "$metrics" >> /tmp/emdo/metrics.txt
           done
+
+          python3 - <<'PY' > /tmp/emdo/html-report.txt
+          import html
+          import pathlib
+          import re
+          root = pathlib.Path('/tmp/emdo')
+          metrics = (root / 'metrics.txt').read_text(errors='replace')
+          print(metrics, end='')
+          markers = [
+              'Shop by category','Product categories','All categories','Choose a category','View category',
+              'Compra por categoría','Categorías de producto','Todas las categorías','Elige una categoría','Ver categoría',
+              'Mentta','Menta'
+          ]
+          suspicious = [
+              'MutationObserver','createTreeWalker','TreeWalker','setInterval(','requestAnimationFrame(',
+              'querySelectorAll("*")',"querySelectorAll('*')",'google.translate','innerHTML =','textContent ='
+          ]
+          for p in sorted(root.glob('*.html')):
+              text = p.read_text(errors='replace')
+              low = text.lower()
+              print(f'HTML {p.stem} chars={len(text)} scripts={len(re.findall(r"<script\\b", text, re.I))} products={low.count("class=\\\"product")} category_cards={low.count("emo-category-hub-card")}')
+              print('  suspicious=' + ', '.join(f'{tok}:{text.count(tok)}' for tok in suspicious if tok in text))
+              print('  markers=' + ', '.join(f'{m}:{text.count(m)}' for m in markers if m in text))
+              encoded_tags = re.findall(r'&(?:amp;)?lt;/?[a-zA-Z][^&]{0,100}&(?:amp;)?gt;', text)
+              if encoded_tags:
+                  print('  encoded_html=' + ' | '.join(encoded_tags[:12]))
+              srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)', text, re.I)
+              print('  script_srcs=' + ' | '.join(srcs[:80]))
+              for token in ('MutationObserver','createTreeWalker','setInterval(','querySelectorAll'):
+                  idx = text.find(token)
+                  if idx >= 0:
+                      snippet = re.sub(r'\s+', ' ', text[max(0,idx-180):idx+360])
+                      print(f'  around_{token}=' + snippet[:600])
+              if 'emo-categories-hub' in text:
+                  plain = re.sub(r'<script\b[^>]*>.*?</script>', ' ', text, flags=re.I|re.S)
+                  plain = re.sub(r'<style\b[^>]*>.*?</style>', ' ', plain, flags=re.I|re.S)
+                  plain = re.sub(r'<[^>]+>', ' ', plain)
+                  plain = html.unescape(plain)
+                  plain = re.sub(r'\s+', ' ', plain)
+                  pos = plain.find('Product categories')
+                  if pos < 0:
+                      pos = plain.find('Categorías de producto')
+                  if pos >= 0:
+                      print('  category_visible_text=' + plain[pos:pos+2200])
+          PY
 
           PORT="${STAGING_PORT:-22}"
           SSH="sshpass -e ssh -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
@@ -76,11 +112,13 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
           COMMON="php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp);"
+          cp /tmp/emdo/html-report.txt /tmp/emdo/report.txt
           echo 'DATABASE product_cat:' >> /tmp/emdo/report.txt
-          $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '\$terms=get_terms(array(\"taxonomy\"=>\"product_cat\",\"hide_empty\"=>false)); foreach((array)\$terms as \$t){ if(!is_object(\$t)) continue; \$row=array(\"id\"=>(int)\$t->term_id,\"slug\"=>(string)\$t->slug,\"name\"=>(string)\$t->name,\"description\"=>(string)\$t->description,\"en_published\"=>(string)get_term_meta(\$t->term_id,\"_en_US_published\",true),\"en_name\"=>(string)get_term_meta(\$t->term_id,\"_en_US_name\",true),\"en_slug\"=>(string)get_term_meta(\$t->term_id,\"_en_US_slug\",true),\"en_description\"=>(string)get_term_meta(\$t->term_id,\"_en_US_description\",true)); echo wp_json_encode(\$row,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL; }' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" >> /tmp/emdo/report.txt
-
+          $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '\$terms=get_terms(array(\"taxonomy\"=>\"product_cat\",\"hide_empty\"=>false)); foreach((array)\$terms as \$t){if(!is_object(\$t))continue;\$row=array(\"id\"=>(int)\$t->term_id,\"slug\"=>(string)\$t->slug,\"name\"=>(string)\$t->name,\"description\"=>(string)\$t->description,\"en_published\"=>(string)get_term_meta(\$t->term_id,\"_en_US_published\",true),\"en_name\"=>(string)get_term_meta(\$t->term_id,\"_en_US_name\",true),\"en_slug\"=>(string)get_term_meta(\$t->term_id,\"_en_US_slug\",true),\"en_description\"=>(string)get_term_meta(\$t->term_id,\"_en_US_description\",true));echo wp_json_encode(\$row,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;}' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" >> /tmp/emdo/report.txt
+          echo 'THEME get_terms/filter grep:' >> /tmp/emdo/report.txt
+          $SSH "$STAGING_USER@$STAGING_HOST" "grep -RInE 'get_terms|terms_pre_query|terms_clauses|pre_get_terms|MutationObserver|createTreeWalker' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' --include='*.php' --include='*.js' 2>/dev/null | head -160" >> /tmp/emdo/report.txt || true
           echo 'DB_UI_OPTION:' >> /tmp/emdo/report.txt
-          $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" option get elmercado_en_ui_copy_010245 --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" | grep -Eo '"(Compra por categoría|Categorías de producto|Todas las categorías|Elige una categoría|Ver categoría)"[[:space:]]*:[[:space:]]*"[^"]+"' >> /tmp/emdo/report.txt || true
+          $SSH "$STAGING_USER@$STAGING_HOST" "$COMMON \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" option get elmercado_en_ui_copy_010245 --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root" >> /tmp/emdo/report.txt
 
           cp /tmp/emdo/report.txt runtime/english-live-diagnostic-v6.txt
           printf '\nstatus=complete\n' >> runtime/english-live-diagnostic-v6.txt
