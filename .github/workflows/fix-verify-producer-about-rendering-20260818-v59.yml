@@ -1,0 +1,201 @@
+name: Fix verify producer About rendering v59
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-verify-producer-about-rendering-20260818-v59.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/producer-about-v59.txt
+          git add runtime/producer-about-v59.txt
+          git commit -m 'Start producer About rendering fix v59'
+          git push origin HEAD:main
+
+      - name: Patch English producer About filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('mu-plugins/mdo-z-english-vendor-seo-010260.php')
+          s = p.read_text()
+          if "'wcfmmp_store_about'" in s and 'MDO producer About must win' in s:
+              raise SystemExit('Producer About override already present; refusing duplicate insertion')
+          needle = """add_filter(
+          \t'wcfmmp_popluate_store_data',
+          \tstatic function ( $shop_data, $store_id ) {
+          \t\tif ( ! mdoev_en_010260() || ! is_array( $shop_data ) ) {
+          \t\t\treturn $shop_data;
+          \t\t}
+          \t\t$english = mdoev_persisted_store_description_010260( (int) $store_id );
+          \t\tif ( '' !== trim( wp_strip_all_tags( $english ) ) ) {
+          \t\t\t$shop_data['shop_description'] = $english;
+          \t\t\t$shop_data['store_description'] = $english;
+          \t\t}
+          \t\treturn $shop_data;
+          \t},
+          \tPHP_INT_MAX,
+          \t2
+          );
+          """
+          addition = needle + """
+
+          /**
+           * MDO producer About must win after WCFM runs woocommerce_short_description.
+           * Some storefront code uses that WooCommerce filter for product excerpts and can
+           * otherwise replace the producer biography with a random product description.
+           */
+          add_filter(
+          \t'wcfmmp_store_about',
+          \tstatic function ( $about, $native_about ) {
+          \t\tif ( ! mdoev_en_010260() ) {
+          \t\t\treturn $about;
+          \t\t}
+
+          \t\t$path = trim( mdoev_public_path_010260(), '/' );
+          \t\tif ( ! preg_match( '#^en/store/([^/]+)/about$#i', $path, $m ) ) {
+          \t\t\treturn $about;
+          \t\t}
+
+          \t\t$user_id = mdoev_vendor_id_by_store_slug_010260( (string) $m[1] );
+          \t\tif ( $user_id < 1 ) {
+          \t\t\treturn $about;
+          \t\t}
+
+          \t\t$english = mdoev_persisted_store_description_010260( $user_id );
+          \t\treturn '' !== trim( wp_strip_all_tags( $english ) ) ? $english : $about;
+          \t},
+          \tPHP_INT_MAX,
+          \t2
+          );
+          """
+          if needle not in s:
+              raise SystemExit('Expected WCFM store-data filter block not found')
+          s = s.replace(needle, addition, 1)
+          s = s.replace(' * Version: 1.0.4', ' * Version: 1.0.5', 1)
+          p.write_text(s)
+          PY
+          php -l mu-plugins/mdo-z-english-vendor-seo-010260.php
+          grep -n "MDO producer About must win\|wcfmmp_store_about\|Version: 1.0.5" mu-plugins/mdo-z-english-vendor-seo-010260.php
+          git add mu-plugins/mdo-z-english-vendor-seo-010260.php
+          git commit -m 'Force persisted producer copy in English About'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Deploy corrected MU plugin to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          echo "$PROD_PATH" > /tmp/prod_v59
+          sshpass -e scp $SCP mu-plugins/mdo-z-english-vendor-seo-010260.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php'; wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify all public producer About pages
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            out=/tmp/producer-about-v59-report.txt
+            : > "$out"
+
+            check_about() {
+              slug="$1"
+              marker1="$2"
+              marker2="$3"
+              url="https://www.elmercadodeorigen.com/en/store/$slug/about/"
+              rm -f /tmp/h59 /tmp/b59
+              code=$(curl -k -L --max-redirs 4 -sS --connect-timeout 8 --max-time 40 -D /tmp/h59 -o /tmp/b59 -w "%{http_code}" "$url")
+              redirects=$(grep -ic "^location:" /tmp/h59 || true)
+              m1=$(grep -Fio "$marker1" /tmp/b59 | wc -l | tr -d " ")
+              m2=$(grep -Fio "$marker2" /tmp/b59 | wc -l | tr -d " ")
+              spanish=$(grep -Fio "La historia de" /tmp/b59 | wc -l | tr -d " ")
+              wrong_product=$(grep -Fio "Shoulder ham from a pure-bred 100% Iberian pig" /tmp/b59 | wc -l | tr -d " ")
+              policies=$(grep -oiE ">[[:space:]]*(Policies|Store Policies)[[:space:]]*<|Políticas de la tienda" /tmp/b59 | wc -l | tr -d " ")
+              echo "slug=$slug code=$code redirects=$redirects marker1=$m1 marker2=$m2 spanish=$spanish wrong_product=$wrong_product policies=$policies bytes=$(wc -c </tmp/b59)" >> "$out"
+              test "$code" = 200
+              test "$redirects" = 0
+              test "$m1" -gt 0
+              test "$m2" -gt 0
+              test "$spanish" = 0
+              test "$wrong_product" = 0
+              test "$policies" = 0
+            }
+
+            check_about 1957 "The story of 1957" "three generations"
+            check_about hidalgo-de-la-jara "The story of Hidalgo de la Jara" "deeply connected to the Iberian pig"
+            check_about tolecarnes "The story of Tolecarnes" "linked to cattle farming since 1960"
+
+            curl -k -L -sS --connect-timeout 8 --max-time 40 https://www.elmercadodeorigen.com/en/producers/ -o /tmp/producers59
+            for slug in 1957 hidalgo-de-la-jara tolecarnes; do
+              count=$(grep -Fio "/en/store/$slug/" /tmp/producers59 | wc -l | tr -d " ")
+              echo "producer_list slug=$slug links=$count" >> "$out"
+              test "$count" -gt 0
+            done
+            spanish_labels=$(grep -oiE ">[[:space:]]*(Productores|Visitar Tienda|Acerca de|Políticas)[[:space:]]*<" /tmp/producers59 | wc -l | tr -d " ")
+            echo "producer_list spanish_labels=$spanish_labels" >> "$out"
+            test "$spanish_labels" = 0
+
+            echo status=success >> "$out"
+            cat "$out"
+          ' > runtime/producer-about-verify-v59.txt
+
+      - name: Record success
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          printf 'run_id=%s\nstatus=success\n' "$GITHUB_RUN_ID" > runtime/producer-about-v59.txt
+          git add runtime/producer-about-v59.txt runtime/producer-about-verify-v59.txt
+          git commit -m 'Verify public producer English About copy v59'
+          git push origin HEAD:main
