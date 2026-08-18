@@ -1,0 +1,82 @@
+name: Diagnose categories and English shop v16
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-categories-shop-en-20260818-v16.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/categories-shop-v16.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/categories-shop-v16.txt
+          git commit -m 'Record categories shop v16 run id'
+          git push origin HEAD:main
+      - name: Inspect category hierarchy and visible shop text
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, ssl, urllib.request, html
+          from html.parser import HTMLParser
+          ctx=ssl._create_unverified_context()
+          headers={'User-Agent':'Mozilla/5.0 EMDO v16','Cache-Control':'no-cache'}
+          urls={
+            'es_categories':f'https://www.elmercadodeorigen.com/categorias/?v16={__import__("os").environ["GITHUB_RUN_ID"]}',
+            'en_categories':f'https://www.elmercadodeorigen.com/en/categorias/?v16={__import__("os").environ["GITHUB_RUN_ID"]}',
+            'en_shop':f'https://www.elmercadodeorigen.com/en/shop/?v16={__import__("os").environ["GITHUB_RUN_ID"]}',
+          }
+          pages={}
+          for k,u in urls.items():
+            req=urllib.request.Request(u,headers=headers)
+            with urllib.request.urlopen(req,context=ctx,timeout=90) as r:
+              pages[k]=r.read().decode('utf-8','replace')
+          def cards(doc):
+            out=[]
+            for m in re.finditer(r'<article[^>]+data-category-slug=["\']([^"\']+)["\'][^>]*>(.*?)</article>',doc,re.S|re.I):
+              slug=m.group(1); block=m.group(2)
+              name_m=re.search(r'<h2[^>]*>.*?<a[^>]*>(.*?)</a>',block,re.S|re.I)
+              sum_m=re.search(r'class=["\'][^"\']*emo-category-hub-card__summary[^"\']*["\'][^>]*>(.*?)</p>',block,re.S|re.I)
+              parent_m=re.search(r'class=["\'][^"\']*emo-category-hub-card__parent[^"\']*["\'][^>]*>(.*?)</span>',block,re.S|re.I)
+              clean=lambda s: html.unescape(re.sub(r'<[^>]+>',' ',s or '')).strip()
+              out.append((slug,clean(name_m.group(1) if name_m else ''),clean(sum_m.group(1) if sum_m else ''),clean(parent_m.group(1) if parent_m else '')))
+            return out
+          lines=[]
+          for lang in ('es_categories','en_categories'):
+            lines.append(lang.upper())
+            for row in cards(pages[lang]): lines.append('CARD '+' | '.join(row))
+          # Extract visible-ish shop text by stripping script/style/template/svg/head.
+          shop=pages['en_shop']
+          shop=re.sub(r'<(script|style|template|svg|head)\b.*?</\1>',' ',shop,flags=re.S|re.I)
+          shop=re.sub(r'<!--.*?-->',' ',shop,flags=re.S)
+          text=html.unescape(re.sub(r'<[^>]+>','\n',shop))
+          text=re.sub(r'[\t\r ]+',' ',text)
+          candidates=[]
+          spanish_markers=re.compile(r'\b(categor[ií]as?|productos?|resultado[s]?|mostrando|ordenar|recomendados|m[aá]s populares|mejor valorados|m[aá]s recientes|menor precio|mayor precio|filtros?|precio|vendedor|buscar|tienda|a[nñ]adir|carrito|comprar|selecci[oó]n|env[ií]o|desde|hasta|ver|cerrar|limpiar|aplicados|disponible|origen|productor)\b',re.I)
+          seen=set()
+          for raw in text.split('\n'):
+            s=re.sub(r'\s+',' ',raw).strip()
+            if not s or len(s)>240: continue
+            if spanish_markers.search(s) or re.search(r'[áéíóúñ¿¡]',s,re.I):
+              if s not in seen:
+                seen.add(s); candidates.append(s)
+          lines.append('EN_SHOP_SPANISH_CANDIDATES')
+          lines.extend(candidates[:250])
+          open('runtime/categories-shop-v16-report.txt','w',encoding='utf-8').write('\n'.join(lines)+'\n')
+          PY
+      - name: Commit report
+        run: |
+          git add runtime/categories-shop-v16-report.txt
+          git commit -m 'Record categories shop v16 diagnostic'
+          git pull --rebase origin main
+          git push origin HEAD:main
