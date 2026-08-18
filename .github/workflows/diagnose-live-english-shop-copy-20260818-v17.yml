@@ -1,0 +1,82 @@
+name: Diagnose live English shop copy v17
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-english-shop-copy-20260818-v17.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record run id
+        run: |
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-shop-copy-v17.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/english-shop-copy-v17.txt
+          git commit -m 'Record English shop copy v17 run id'
+          git push origin HEAD:main
+      - name: Inspect rendered UI in Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-copy-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9223 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-copy-profile about:blank >/tmp/chrome.log 2>&1 &
+          CPID=$!
+          trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9223/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE'
+          const fs=require('fs');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9223/json/list')).json();
+            const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl);
+            await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0; const pending=new Map();
+            ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable'); await cmd('Runtime.enable');
+            await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/?emdo_copy_v17='+process.env.GITHUB_RUN_ID});
+            await sleep(8000);
+            const expression=`(() => {
+              const spanish = /\\b(categor[ií]as?|productos?|resultado[s]?|mostrando|ordenar|recomendados|m[aá]s populares|mejor valorados|m[aá]s recientes|menor precio|mayor precio|filtros?|filtrar|precio|vendedor|buscar|tienda|a[nñ]adir|carrito|comprar|selecci[oó]n|env[ií]o|desde|hasta|cerrar|limpiar|aplicados|disponible|proveedor|aplicar|anterior|siguiente|p[aá]gina|todos|todas)\\b/i;
+              const results=[]; const seen=new Set();
+              const skip=(el)=>!!el.closest('script,style,svg,template,noscript,li.product,.product');
+              for(const el of document.querySelectorAll('body *')){
+                if(skip(el) || el.children.length) continue;
+                const txt=(el.textContent||'').replace(/\\s+/g,' ').trim();
+                const attrs=['aria-label','placeholder','title','value'].map(a=>el.getAttribute?.(a)||'').filter(Boolean);
+                const vals=[txt,...attrs];
+                for(const v of vals){
+                  const s=String(v).replace(/\\s+/g,' ').trim();
+                  if(!s || s.length>180 || !spanish.test(s)) continue;
+                  const key=el.tagName+'|'+el.className+'|'+s;
+                  if(seen.has(key)) continue; seen.add(key);
+                  results.push({tag:el.tagName,id:el.id||'',cls:String(el.className||'').slice(0,120),text:s});
+                }
+              }
+              return {href:location.href,readyState:document.readyState,results};
+            })()`;
+            const r=await cmd('Runtime.evaluate',{expression,returnByValue:true},10000);
+            const out=r.result.value;
+            let report='href='+out.href+'\nreadyState='+out.readyState+'\n';
+            for(const x of out.results) report+=`UI tag=${x.tag} id=${x.id} class=${x.cls} | ${x.text}\n`;
+            fs.writeFileSync('runtime/english-shop-copy-v17-report.txt',report);
+            console.log(report);
+            ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+      - name: Commit report
+        run: |
+          git add runtime/english-shop-copy-v17-report.txt
+          git commit -m 'Record English shop copy v17 report'
+          git pull --rebase origin main
+          git push origin HEAD:main
