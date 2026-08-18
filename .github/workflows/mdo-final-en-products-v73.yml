@@ -53,9 +53,15 @@ jobs:
           sshpass -e scp $SCP "$STAGING_USER@$STAGING_HOST:$RSOURCE" "$LSOURCE"
           python3 .github/scripts/mdo-final-en-translate-v73.py "$LSOURCE" "$LPAYLOAD"
           python3 - <<'PY'
-          import json
-          p=json.load(open('/tmp/mdo-final-en-output.json',encoding='utf-8'))
+          import json,re
+          path='/tmp/mdo-final-en-output.json'
+          p=json.load(open(path,encoding='utf-8'))
           assert len(p['products'])==205
+          for row in p['products']:
+              for field in ('title','content','excerpt'):
+                  row[field]=re.sub(r'Cátedra Ibérica', 'Iberian Masterclass', row.get(field,'') or '', flags=re.I)
+          with open(path,'w',encoding='utf-8') as f:
+              json.dump(p,f,ensure_ascii=False,separators=(',',':'))
           print('LOCAL_PAYLOAD_OK',len(p['products']))
           PY
           sshpass -e scp $SCP .github/scripts/mdo-final-en-apply-verify-v73.php "$STAGING_USER@$STAGING_HOST:$RAPPLY"
