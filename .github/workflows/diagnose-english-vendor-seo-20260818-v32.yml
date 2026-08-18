@@ -1,0 +1,67 @@
+name: Diagnose English vendor and SEO v32
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-english-vendor-seo-20260818-v32.yml'
+      - '.github/scripts/diagnose-english-vendor-seo-20260818-v32.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose production WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/diagnose-vendor-seo-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/diagnose-english-vendor-seo-20260818-v32.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > runtime/english-vendor-seo-v32.json
+      - name: Probe public English routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            for u in \
+              https://www.elmercadodeorigen.com/en/shop/ \
+              https://www.elmercadodeorigen.com/en/categorias/ \
+              https://www.elmercadodeorigen.com/en/categories/ \
+              https://www.elmercadodeorigen.com/en/product-category/meat/; do
+              echo "=== $u"
+              curl -L -sS -o /tmp/body -D /tmp/headers -w 'status=%{http_code} final=%{url_effective}\n' "$u" || true
+              grep -iE '^(location|link):' /tmp/headers || true
+              grep -oE '<title>[^<]+' /tmp/body | head -1 || true
+            done
+          } > runtime/english-route-probe-v32.txt
+      - name: Commit diagnostics
+        shell: bash
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add runtime/english-vendor-seo-v32.json runtime/english-route-probe-v32.txt
+          git commit -m 'Record English vendor SEO diagnostic v32' || exit 0
+          git push
