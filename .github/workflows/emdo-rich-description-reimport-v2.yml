@@ -1,0 +1,134 @@
+name: Retry EMDO supplier description reimports v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emdo-rich-description-reimport-v2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: emdo-rich-description-reimport-v2
+  cancel-in-progress: false
+
+jobs:
+  reimport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+      PRODUCTION_DOMAIN: elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Reimport descriptions with progress
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$PRODUCTION_DOMAIN'" <<'REMOTE' | tee diagnostics/emdo-rich-description-reimport-v2-result.txt
+          set -eu
+          raw="${1%/}"; domain="$2"; dev_path="$raw"
+          case "$raw" in */wp-content/*) dev_path="${raw%%/wp-content/*}" ;; */wp-content) dev_path="$(dirname "$raw")" ;; esac
+          if [ ! -f "$dev_path/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve staging root.' >&2; exit 1; }
+            dev_path="$(dirname "$cfg")"
+          fi
+          prod_path="$(dirname "$dev_path")/httpdocs"
+          [ -f "$prod_path/wp-config.php" ] || { echo 'Production root not found.' >&2; exit 1; }
+          php_bin="$(command -v php || true)"; [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || exit 1
+          siteurl="$("$php_bin" -d memory_limit=512M "$wp_bin" option get siteurl --path="$prod_path" --allow-root 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Unexpected siteurl=$siteurl" >&2; exit 1 ;; esac
+          echo "SITEURL=$siteurl"
+          "$php_bin" -d memory_limit=1024M "$wp_bin" eval '
+            @set_time_limit(0);
+            while (ob_get_level()) { @ob_end_flush(); }
+            global $wpdb;
+            $st=MDO_Database::table("suppliers");
+            $pt=MDO_Database::table("source_products");
+            $needles=array("PesoPiezas","PesoOfrecemos","RecomendacionesPara","RecomendacionesRetirar","EnvíoCada","CertificaciónNuestros");
+            $all_errors=0;
+            foreach(array("el-catedratico","puente-robles") as $connector){
+              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id ASC LIMIT 1",$connector),ARRAY_A);
+              if(!$s){echo "{$connector}: supplier_missing\n";flush();$all_errors++;continue;}
+              $rows=$wpdb->get_results($wpdb->prepare("SELECT id,source_url,wc_product_id,title FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND wc_product_id>0 ORDER BY id ASC",(int)$s["id"]),ARRAY_A);
+              echo "{$connector}: active_linked=".count($rows)."\n";flush();
+              $ok=0;$errors=0;$changed=0;$unchanged=0;
+              foreach($rows as $idx=>$row){
+                $n=$idx+1;
+                try{
+                  $payload=MDO_Text::normalize_product(MDO_Connector_Iberico_Family::scrape_product((string)$row["source_url"],$s));
+                  $desc=wp_kses_post((string)($payload["description"]??""));
+                  if($desc==="") throw new RuntimeException("empty description");
+                  $plain=wp_strip_all_tags($desc);
+                  $bad=array(); foreach($needles as $needle){if(stripos($plain,$needle)!==false)$bad[]=$needle;}
+                  $so=substr_count(strtolower($desc),"<strong");$sc=substr_count(strtolower($desc),"</strong>");$po=substr_count(strtolower($desc),"<p");$pc=substr_count(strtolower($desc),"</p>");
+                  if($so!==$sc||$po!==$pc||$bad) throw new RuntimeException("description validation failed: strong={$so}/{$sc} p={$po}/{$pc} bad=".implode(",",$bad));
+                  $result=MDO_Connector_Iberico_Family::upsert_product((int)$s["id"],$payload);
+                  if($result==="updated")$changed++;else $unchanged++;
+                  $post_result=wp_update_post(array("ID"=>(int)$row["wc_product_id"],"post_content"=>$desc),true);
+                  if(is_wp_error($post_result)) throw new RuntimeException($post_result->get_error_message());
+                  update_post_meta((int)$row["wc_product_id"],"_emdo_source_hash",sanitize_text_field((string)($payload["source_hash"]??"")));
+                  clean_post_cache((int)$row["wc_product_id"]);
+                  if(function_exists("wc_delete_product_transients")) wc_delete_product_transients((int)$row["wc_product_id"]);
+                  $saved=(string)get_post_field("post_content",(int)$row["wc_product_id"],"raw");
+                  if($saved!==$desc) throw new RuntimeException("Woo post_content verification mismatch");
+                  $ok++;
+                  echo "{$connector}: OK {$n}/".count($rows)." wc_id=".(int)$row["wc_product_id"]." source_id=".(int)$row["id"]." strong={$so}/{$sc} p={$po}/{$pc} result={$result}\n";
+                } catch(Throwable $e){
+                  $errors++;$all_errors++;
+                  echo "{$connector}: ERROR {$n}/".count($rows)." wc_id=".(int)$row["wc_product_id"]." source_id=".(int)$row["id"]." url=".$row["source_url"]." message=".$e->getMessage()."\n";
+                }
+                flush();
+              }
+              echo "{$connector}: COMPLETE ok={$ok} errors={$errors} source_updated={$changed} source_unchanged={$unchanged}\n";flush();
+            }
+            echo "TOTAL_ERRORS={$all_errors}\n";flush();
+            if($all_errors>0) throw new RuntimeException("Reimport finished with {$all_errors} errors");
+          ' --path="$prod_path" --allow-root
+
+          echo '=== TARGET VERIFICATION ==='
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval '
+            global $wpdb;$st=MDO_Database::table("suppliers");$pt=MDO_Database::table("source_products");$failed=false;
+            foreach(array("el-catedratico","puente-robles") as $connector){
+              $s=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$st} WHERE connector=%s ORDER BY id LIMIT 1",$connector),ARRAY_A);$like="%cebo%campo%";
+              $r=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$pt} WHERE supplier_id=%d AND status=\"active\" AND wc_product_id>0 AND (LOWER(title) LIKE %s OR LOWER(source_url) LIKE %s) ORDER BY id LIMIT 1",(int)$s["id"],$like,$like),ARRAY_A);
+              if(!$r){echo "{$connector}: target_missing\n";$failed=true;continue;}
+              $payload=json_decode((string)$r["source_payload"],true);$stored=is_array($payload)?(string)($payload["description"]??""):"";$woo=(string)get_post_field("post_content",(int)$r["wc_product_id"],"raw");
+              foreach(array("stored"=>$stored,"woo"=>$woo) as $where=>$h){$plain=wp_strip_all_tags($h);$so=substr_count(strtolower($h),"<strong");$sc=substr_count(strtolower($h),"</strong>");$po=substr_count(strtolower($h),"<p");$pc=substr_count(strtolower($h),"</p>");$bad=array();foreach(array("PesoPiezas","PesoOfrecemos","RecomendacionesPara","RecomendacionesRetirar","EnvíoCada","CertificaciónNuestros") as $n){if(stripos($plain,$n)!==false)$bad[]=$n;}echo "{$connector}: {$where} strong={$so}/{$sc} p={$po}/{$pc} bad=".implode(",",$bad)." bytes=".strlen($h)."\n";if($so!==$sc||$po!==$pc||$bad||$so<1||$po<1)$failed=true;}
+              echo "{$connector}: wc_id=".(int)$r["wc_product_id"]." permalink=".get_permalink((int)$r["wc_product_id"])." source=".$r["source_url"]."\n";
+            }
+            if($failed) throw new RuntimeException("Target verification failed");
+          ' --path="$prod_path" --allow-root
+          echo 'REIMPORT_V2_RESULT=success'
+          REMOTE
+      - name: Commit result
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f diagnostics/emdo-rich-description-reimport-v2-result.txt || printf 'workflow failed before output\n' > diagnostics/emdo-rich-description-reimport-v2-result.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add diagnostics/emdo-rich-description-reimport-v2-result.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record EMDO supplier description reimport v2 result'
+          git push
