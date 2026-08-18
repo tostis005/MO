@@ -1,0 +1,53 @@
+name: Verify contact forms mobile v29
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-contact-mobile-v29.yml'
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect mobile layout in Chrome
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-contact-v29
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9233 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-contact-v29 about:blank >/tmp/chrome-contact-v29.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9233/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE' > /tmp/contact-mobile-v29.txt
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9233/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=10000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable');await cmd('Runtime.enable');
+            await cmd('Emulation.setDeviceMetricsOverride',{width:360,height:780,deviceScaleFactor:2,mobile:true});
+            const urls=['https://www.elmercadodeorigen.com/en/contact/','https://www.elmercadodeorigen.com/en/for-producers/'];
+            for(const url of urls){
+              await cmd('Page.navigate',{url:url+'?v29=1'}); await sleep(5000);
+              const expr=`(() => { const main=document.querySelector('main'); const form=document.querySelector('.wpcf7 form'); const first=form?.querySelector('input:not([type=hidden]),textarea,select'); const heading=[...document.querySelectorAll('h1,h2,h3')].find(h=>h.getBoundingClientRect().top>=0&&h.getBoundingClientRect().top<700); const start=heading?heading.getBoundingClientRect().bottom:0; const end=first?first.getBoundingClientRect().top+5:start+500; const rows=[]; for(const el of (main||document.body).querySelectorAll('*')){const r=el.getBoundingClientRect();const s=getComputedStyle(el);if(r.width<1||r.height<1||r.bottom<start||r.top>end||s.display==='none'||s.visibility==='hidden'||s.opacity==='0')continue;if(el.children.length>0 && !['DIV','P','LABEL','SPAN'].includes(el.tagName))continue;rows.push({tag:el.tagName,type:el.getAttribute('type'),name:el.getAttribute('name'),cls:typeof el.className==='string'?el.className:'',text:(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,100),ariaHidden:el.getAttribute('aria-hidden'),top:Math.round(r.top),bottom:Math.round(r.bottom),left:Math.round(r.left),width:Math.round(r.width),height:Math.round(r.height),display:s.display,border:s.border,background:s.backgroundColor,html:el.outerHTML.replace(/\\s+/g,' ').slice(0,450)});} const resp=document.querySelector('.wpcf7-response-output'); return {href:location.href,innerWidth,heading:heading?(heading.textContent||'').trim():null,headingBottom:heading?Math.round(heading.getBoundingClientRect().bottom):null,firstTop:first?Math.round(first.getBoundingClientRect().top):null,responseDisplay:resp?getComputedStyle(resp).display:null,responseHeight:resp?Math.round(resp.getBoundingClientRect().height):null,rows}; })()`;
+              const res=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},15000); const v=res.result.value; console.log(JSON.stringify(v,null,2));
+              if(v.responseDisplay!=='none' || v.responseHeight!==0) throw new Error('Empty CF7 response visible on mobile '+url);
+              const suspicious=v.rows.filter(x=>!x.text && x.height>=10 && x.width>=200 && ['INPUT','DIV','SPAN'].includes(x.tag));
+              console.log('SUSPICIOUS',JSON.stringify(suspicious,null,2));
+            }
+            ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          cat /tmp/contact-mobile-v29.txt
+      - name: Commit report
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p runtime
+          cp /tmp/contact-mobile-v29.txt runtime/contact-mobile-v29-report.txt
+          git add runtime/contact-mobile-v29-report.txt
+          git commit -m 'Record contact mobile v29 verification'
+          git pull --rebase origin main
+          git push origin HEAD:main
