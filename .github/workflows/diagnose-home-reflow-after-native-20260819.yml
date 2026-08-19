@@ -1,0 +1,50 @@
+name: Diagnose Home reflow after native lazy 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-reflow-after-native-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Lighthouse detailed reflow
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/reflow.json --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' > runtime/home-reflow-after-native-20260819.txt
+          import json
+          a=json.load(open('/tmp/reflow.json')); x=a['audits']
+          print('score=',round(a['categories']['performance']['score']*100))
+          print('fcp=',round(x['first-contentful-paint']['numericValue']))
+          print('lcp=',round(x['largest-contentful-paint']['numericValue']))
+          print('tbt=',round(x['total-blocking-time']['numericValue']))
+          for key in ('forced-reflow-insight','bootup-time','mainthread-work-breakdown','third-parties-insight','unused-javascript'):
+              v=x.get(key,{})
+              print('\n###',key)
+              print('display=',v.get('displayValue'),'numeric=',v.get('numericValue'),'score=',v.get('score'))
+              print(json.dumps(v.get('details') or {},ensure_ascii=False)[:60000])
+          PY
+          cat runtime/home-reflow-after-native-20260819.txt
+      - name: Record
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-reflow-after-native-20260819.txt
+          git commit -m 'Record remaining Home reflow after native lazy' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
