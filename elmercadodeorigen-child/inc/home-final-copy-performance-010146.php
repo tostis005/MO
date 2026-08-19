@@ -109,6 +109,7 @@ add_filter(
 			if ( str_contains( $href, $needle ) ) {
 				return '';
 			}
+		}
 
 		return $html;
 	},
@@ -127,6 +128,7 @@ add_filter(
 			if ( str_contains( $src, $needle ) ) {
 				return '';
 			}
+		}
 
 		return $html;
 	},
