@@ -1,10 +1,10 @@
 <?php
 /**
- * Home-only accessibility, motion and initial mobile drawer stability 0.10.266.
+ * Home-only accessibility, motion and initial mobile drawer stability 0.10.267.
  *
  * Keeps the review proof legible, limits custom Home card transitions to
- * compositor-friendly properties and gives Woostify's mobile drawer a stable
- * off-canvas state before the deferred theme stylesheet arrives.
+ * compositor-friendly properties and guarantees that the mobile navigation
+ * drawer/backdrop can only become visible after a real menu interaction.
  *
  * @package ElMercadoDeOrigen
  */
@@ -24,10 +24,18 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-home-a11y-motion-010266">
+		<style id="elmercado-home-a11y-motion-010267">
 			/* Lighthouse: review-count copy must pass normal-text contrast. */
 			body.home .emo-home .mdo-review-proof small {
 				color: #666 !important;
+			}
+
+			/* Keep the above-the-fold LCP copy immediately paintable. */
+			body.home .emo-hero,
+			body.home .emo-hero__grid,
+			body.home .emo-hero__copy,
+			body.home .emo-hero__copy > p {
+				content-visibility: visible !important;
 			}
 
 			/*
@@ -42,11 +50,21 @@ add_action(
 			}
 
 			/*
-			 * Critical mobile drawer geometry.
-			 * The full Woostify stylesheet is intentionally deferred on Home. Without
-			 * these initial rules #mobile-navigation briefly participates in normal
-			 * document layout on slow connections, producing a CLS close to 1.0.
+			 * The editorial mobile backdrop is created by theme.js. refinement.css
+			 * intentionally reveals it whenever html.sidebar-menu-open is present.
+			 * On a cold load a legacy/native menu class can exist for a brief frame,
+			 * which produces the dark curtain reported on hard refresh and delays the
+			 * apparent hero paint. Until a user actually activates the menu, neither
+			 * the backdrop nor the drawer may be visible.
 			 */
+			body.home .emo-mobile-menu-overlay[aria-hidden="true"],
+			html:not([data-emo-menu-intent="1"]) body.home .emo-mobile-menu-overlay {
+				visibility: hidden !important;
+				opacity: 0 !important;
+				pointer-events: none !important;
+				transition: none !important;
+			}
+
 			@media (max-width: 991px) {
 				body.home #mobile-navigation.sidebar-menu {
 					position: fixed !important;
@@ -64,14 +82,37 @@ add_action(
 					contain: layout paint;
 				}
 
-				body.home #mobile-navigation.sidebar-menu[aria-hidden="true"] {
+				body.home #mobile-navigation.sidebar-menu[aria-hidden="true"],
+				html:not([data-emo-menu-intent="1"]) body.home #mobile-navigation.sidebar-menu {
 					visibility: hidden !important;
 					opacity: 0 !important;
 					pointer-events: none !important;
 					transform: translate3d(-105%, 0, 0) !important;
+					transition: none !important;
 				}
 			}
 		</style>
+		<script id="elmercado-home-menu-intent-010267">
+		(() => {
+			'use strict';
+			const root = document.documentElement;
+
+			/* A fresh navigation must always begin with the drawer closed. */
+			root.classList.remove('sidebar-menu-open');
+			root.removeAttribute('data-emo-menu-intent');
+
+			/*
+			 * Capture runs before the existing Home click handler toggles the class,
+			 * so the normal menu continues to open on the very first interaction.
+			 */
+			document.addEventListener('click', (event) => {
+				const target = event.target instanceof Element
+					? event.target.closest('.toggle-sidebar-menu-btn')
+					: null;
+				if (target) root.setAttribute('data-emo-menu-intent', '1');
+			}, true);
+		})();
+		</script>
 		<?php
 	},
 	PHP_INT_MAX
