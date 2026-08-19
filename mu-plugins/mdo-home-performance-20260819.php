@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO - Home Performance Hardening 2026-08-19
- * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica, elimina CSS muerto y ajusta imágenes/ logos WCFM.
- * Version: 1.3.0
+ * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica, elimina CSS muerto y reduce JS/imagen en la portada.
+ * Version: 1.4.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -106,6 +106,62 @@ function mdo_home_perf_set_tag_attribute( string $tag, string $name, string $val
     return mdo_home_perf_add_img_attributes( $tag, $name . '="' . $escaped . '"' );
 }
 
+/**
+ * Convierte una imagen diferida por Smush en lazy loading nativo del navegador.
+ * En la Home actual Smush sólo difiere IMG (sin iframe, background ni SOURCE),
+ * de modo que podemos eliminar su runtime sin perder funcionalidad.
+ */
+function mdo_home_perf_native_lazy_image( string $tag ): string {
+    if ( ! preg_match( '~\bdata-src\s*=\s*(["\'])(.*?)\1~i', $tag, $src_match ) ) {
+        return $tag;
+    }
+
+    $src = html_entity_decode( $src_match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+    if ( '' === trim( $src ) ) {
+        return $tag;
+    }
+
+    $tag = mdo_home_perf_set_tag_attribute( $tag, 'src', $src );
+    $tag = mdo_home_perf_set_tag_attribute( $tag, 'loading', 'lazy' );
+
+    if ( preg_match( '~\bdata-srcset\s*=\s*(["\'])(.*?)\1~i', $tag, $srcset_match ) ) {
+        $tag = mdo_home_perf_set_tag_attribute(
+            $tag,
+            'srcset',
+            html_entity_decode( $srcset_match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8' )
+        );
+    }
+
+    if ( preg_match( '~\bdata-sizes\s*=\s*(["\'])(.*?)\1~i', $tag, $sizes_match ) ) {
+        $tag = mdo_home_perf_set_tag_attribute(
+            $tag,
+            'sizes',
+            html_entity_decode( $sizes_match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8' )
+        );
+    }
+
+    $tag = preg_replace( '~\s+data-(?:src|srcset|sizes)\s*=\s*(["\']).*?\1~i', '', $tag ) ?? $tag;
+    $tag = preg_replace( '~\s+data-ll-status\s*=\s*(["\']).*?\1~i', '', $tag ) ?? $tag;
+
+    $tag = preg_replace_callback(
+        '~\bclass\s*=\s*(["\'])(.*?)\1~i',
+        static function ( array $matches ): string {
+            $classes = preg_split( '/\s+/', trim( $matches[2] ) ) ?: array();
+            $classes = array_values(
+                array_filter(
+                    $classes,
+                    static fn ( string $class ): bool => ! in_array( $class, array( 'lazyload', 'lazyloaded', 'lazyloading' ), true )
+                )
+            );
+            return 'class=' . $matches[1] . implode( ' ', $classes ) . $matches[1];
+        },
+        $tag,
+        1
+    ) ?? $tag;
+
+    return $tag;
+}
+
 function mdo_home_perf_transform_html( string $html ): string {
     if ( '' === $html ) {
         return $html;
@@ -117,6 +173,17 @@ function mdo_home_perf_transform_html( string $html ): string {
      */
     $html = preg_replace(
         '~<style\b[^>]*\bid=["\']hustle_inline_styles_front-inline-css["\'][^>]*>.*?</style\s*>~is',
+        '',
+        $html,
+        1
+    ) ?? $html;
+
+    /*
+     * La Home sólo contiene IMG diferidas por Smush. Se convierten a loading
+     * nativo y se evita ~236 ms de CPU observados en su runtime de lazy load.
+     */
+    $html = preg_replace(
+        '~<script\b[^>]*(?:\bid=["\']smush-lazy-load-js["\']|\bsrc=["\'][^"\']*smush-lazy-load-native\.min\.js[^"\']*["\'])[^>]*>.*?</script\s*>~is',
         '',
         $html,
         1
@@ -198,7 +265,7 @@ HTML;
     $html = preg_replace_callback(
         '~<img\b[^>]*>~i',
         static function ( array $matches ): string {
-            $tag = $matches[0];
+            $tag = mdo_home_perf_native_lazy_image( $matches[0] );
 
             /*
              * En móvil estas tarjetas ocupan ~78vw (315 px en viewport 412), no
@@ -208,9 +275,6 @@ HTML;
             if ( preg_match( '~\bclass=["\'][^"\']*\belmercado-catalog-card-image-010241\b[^"\']*["\']~i', $tag ) ) {
                 $sizes = '(max-width: 767px) 78vw, (max-width: 1100px) calc(50vw - 32px), 280px';
                 $tag   = mdo_home_perf_set_tag_attribute( $tag, 'sizes', $sizes );
-                if ( preg_match( '~\bdata-sizes\s*=~i', $tag ) ) {
-                    $tag = mdo_home_perf_set_tag_attribute( $tag, 'data-sizes', $sizes );
-                }
             }
 
             if ( ! preg_match( '~\bclass=["\'][^"\']*\bwcfmmp_sold_by_logo\b[^"\']*["\']~i', $tag ) ) {
@@ -227,8 +291,6 @@ HTML;
             if ( ! $has_width || ! $has_height ) {
                 $src = '';
                 if ( preg_match( '~\bsrc=["\']([^"\']+)["\']~i', $tag, $src_match ) && '' !== trim( $src_match[1] ) ) {
-                    $src = $src_match[1];
-                } elseif ( preg_match( '~\bdata-src=["\']([^"\']+)["\']~i', $tag, $src_match ) ) {
                     $src = $src_match[1];
                 }
 
