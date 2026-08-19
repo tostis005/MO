@@ -1,30 +1,25 @@
-first-contentful-paint: numeric=2381.5374 display=2.4 s score=0.71
-largest-contentful-paint: numeric=4861.818 display=4.9 s score=0.29
-total-blocking-time: numeric=1398.5 display=1,400 ms score=0.16
-cumulative-layout-shift: numeric=0.03931145201758157 display=0.039 score=0.99
+first-contentful-paint: numeric=1781.70672 display=1.8 s score=0.9
+largest-contentful-paint: numeric=2706.8032000000003 display=2.7 s score=0.85
+total-blocking-time: numeric=1345.0000000000002 display=1,350 ms score=0.17
+cumulative-layout-shift: numeric=0.027953571400466826 display=0.028 score=1
 render-blocking-resources: numeric=0 display=None score=1
 --- shifts ---
-shift= 0.0269975523288671 selector= body.home > div#view > div#content label= NUESTRA SELECCIÓN
+shift= 0.02734655042156092 selector= body.home > div#view > div#content label= NUESTRA SELECCIÓN
 Una forma distinta
 de elegir.
 
 En El Mercado de Origen buscam…
-shift= 0.01122781238791371 selector= body.home > div#shop-cart-sidebar > div.cart-sidebar-content label= body.home > div#shop-cart-sidebar > div.cart-sidebar-content
 shift= 0.0005754148214989583 selector= div#text-field-container label= div#text-field-container
-shift= 0.000397275759043371 selector= body.home > div#mobile-navigation > div.sidebar-menu-bottom label= Acceder / Registro
-shift= 8.179056285148143e-05 selector= body.home > div#mobile-navigation > div.sidebar-menu-bottom label= Acceder / Registro
 shift= 3.160615740694886e-05 selector= div.site-header-inner > div.woostify-container > div.site-tools > div.tools-icon label= Mi cuenta
 --- culprits ---
-culprit= 0.03931145201758157 selector= None label= None
-culprit= 0.0269975523288671 selector= body.home > div#view > div#content label= NUESTRA SELECCIÓN
+culprit= 0.027953571400466826 selector= None label= None
+culprit= 0.02734655042156092 selector= body.home > div#view > div#content label= NUESTRA SELECCIÓN
 Una forma distinta
 de elegir.
 
 En El Mercado de Origen buscam…
-culprit= 0.01122781238791371 selector= body.home > div#shop-cart-sidebar > div.cart-sidebar-content label= body.home > div#shop-cart-sidebar > div.cart-sidebar-content
 culprit= 0.0005754148214989583 selector= div#text-field-container label= div#text-field-container
-culprit= 0.000397275759043371 selector= body.home > div#mobile-navigation > div.sidebar-menu-bottom label= Acceder / Registro
-culprit= 8.179056285148143e-05 selector= body.home > div#mobile-navigation > div.sidebar-menu-bottom label= Acceder / Registro
+culprit= 3.160615740694886e-05 selector= div.site-header-inner > div.woostify-container > div.site-tools > div.tools-icon label= Mi cuenta
 --- lcp breakdown ---
-{"type":"table","headings":[{"key":"label","valueType":"text","label":"Subpart"},{"key":"duration","valueType":"ms","label":"Duration"}],"items":[{"subpart":"timeToFirstByte","label":"Time to first byte","duration":2723.95},{"subpart":"elementRenderDelay","label":"Element render delay","duration":319.029}]}
+{"type":"table","headings":[{"key":"label","valueType":"text","label":"Subpart"},{"key":"duration","valueType":"ms","label":"Duration"}],"items":[{"subpart":"timeToFirstByte","label":"Time to first byte","duration":2459.966},{"subpart":"elementRenderDelay","label":"Element render delay","duration":219.296}]}
 {"type":"node","lhId":"page-0-P","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV,2,P","selector":"section.emo-hero > div.emo-shell > div.emo-hero__copy > p","boundingRect":{"top":254,"bottom":405,"left":14,"right":398,"width":384,"height":151},"snippet":"<p>","nodeLabel":"En El Mercado de Origen buscamos productores que han conseguido hacer de sus pr…"}
