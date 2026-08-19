@@ -1,0 +1,154 @@
+name: Confirmed production deploy - EN preview and MENTTA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-confirm-en-preview-mentta-production-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate local files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-english-staged-admin-preview-20260819.php >/dev/null
+          php -l mu-plugins/mdo-internal-mentta-category.php >/dev/null
+          grep -Fq 'Version: 1.1.0' mu-plugins/mdo-english-staged-admin-preview-20260819.php
+          grep -Fq 'Version: 1.2.0' mu-plugins/mdo-internal-mentta-category.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy and verify on production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          MU_DIR="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval 'echo WPMU_PLUGIN_DIR;' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root")"
+          : "${MU_DIR:?MU plugin directory not found}"
+
+          A="/tmp/mdo-en-preview-${GITHUB_RUN_ID}.php"
+          B="/tmp/mdo-mentta-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/mdo-english-staged-admin-preview-20260819.php "$STAGING_USER@$STAGING_HOST:$A"
+          sshpass -e scp $SCP mu-plugins/mdo-internal-mentta-category.php "$STAGING_USER@$STAGING_HOST:$B"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$MU_DIR'; install -m 0644 '$A' '$MU_DIR/mdo-english-staged-admin-preview-20260819.php'; install -m 0644 '$B' '$MU_DIR/mdo-internal-mentta-category.php'; rm -f '$A' '$B'"
+
+          cat > /tmp/mdo-live-verify.php <<'PHP'
+          <?php
+          define( 'DOING_AJAX', true );
+          define( 'WP_ADMIN', true );
+          $_SERVER['REQUEST_URI'] = '/wp-admin/admin-ajax.php';
+          $_SERVER['HTTP_REFERER'] = 'https://www.elmercadodeorigen.com/en/shop/';
+          require $argv[1] . '/wp-load.php';
+
+          if ( ! function_exists( 'mdo_en_preview_allowed_20260819' ) || ! function_exists( 'mdo_mentta_should_hide_publicly' ) ) {
+              fwrite( STDERR, "MU_PLUGIN_LOAD_FAILED\n" ); exit( 20 );
+          }
+          if ( ! mdo_mentta_should_hide_publicly() ) {
+              fwrite( STDERR, "MENTTA_AJAX_VISIBILITY_FAILED\n" ); exit( 21 );
+          }
+
+          $admins = get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) );
+          if ( ! $admins ) { fwrite( STDERR, "NO_ADMIN\n" ); exit( 22 ); }
+          wp_set_current_user( (int) $admins[0] );
+          if ( ! mdo_en_preview_allowed_20260819() ) {
+              fwrite( STDERR, "EN_ADMIN_AJAX_CONTEXT_FAILED\n" ); exit( 23 );
+          }
+
+          $ids = get_posts( array(
+              'post_type' => 'product', 'post_status' => 'publish', 'author' => 4509,
+              'posts_per_page' => 1, 'fields' => 'ids',
+              'meta_query' => array(
+                  array( 'key' => '_en_US_ready', 'value' => '1' ),
+                  array( 'key' => '_en_US_post_title', 'compare' => 'EXISTS' ),
+                  array( 'key' => '_en_US_post_name', 'compare' => 'EXISTS' ),
+              ),
+          ) );
+          if ( ! $ids ) { fwrite( STDERR, "NO_STAGED_PRODUCT\n" ); exit( 24 ); }
+
+          $id = (int) $ids[0];
+          $original = (string) get_post_field( 'post_title', $id );
+          $expected = (string) get_post_meta( $id, '_en_US_post_title', true );
+          $slug = sanitize_title( (string) get_post_meta( $id, '_en_US_post_name', true ) );
+          $actual = (string) apply_filters( 'the_title', $original, $id );
+          $url = (string) get_permalink( $id );
+          $resolved = (int) mdo_en_preview_find_product_20260819( $slug );
+
+          if ( '' === trim( $expected ) || $actual !== $expected ) {
+              fwrite( STDERR, "TITLE_FAILED id={$id} expected={$expected} actual={$actual}\n" ); exit( 25 );
+          }
+          if ( false === strpos( $url, '/en/product/' . rawurlencode( $slug ) . '/' ) ) {
+              fwrite( STDERR, "PERMALINK_FAILED id={$id} url={$url}\n" ); exit( 26 );
+          }
+          if ( $resolved !== $id ) {
+              fwrite( STDERR, "ROUTE_FAILED id={$id} resolved={$resolved}\n" ); exit( 27 );
+          }
+          if ( '1' === (string) get_post_meta( $id, '_en_US_published', true ) ) {
+              fwrite( STDERR, "PUBLICATION_GUARD_FAILED id={$id}\n" ); exit( 28 );
+          }
+          if ( '1' !== (string) get_post_meta( $id, '_en_US_ready', true ) ) {
+              fwrite( STDERR, "READY_GUARD_FAILED id={$id}\n" ); exit( 29 );
+          }
+          echo "LIVE_VERIFY_OK|{$id}|{$expected}|{$url}\n";
+          PHP
+
+          V="/tmp/mdo-live-verify-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/mdo-live-verify.php "$STAGING_USER@$STAGING_HOST:$V"
+          RESULT="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M '$V' '$PROD_PATH'; rc=\$?; rm -f '$V'; exit \$rc")"
+          echo "$RESULT"
+          grep -Fq 'LIVE_VERIFY_OK|' <<< "$RESULT"
+          printf '%s\n' "$RESULT" > /tmp/mdo-live-result.txt
+
+      - name: Record successful production verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/deploy-status
+          {
+            echo "status=success"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "source_sha=${GITHUB_SHA}"
+            echo "verified_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            cat /tmp/mdo-live-result.txt
+          } > .github/deploy-status/en-admin-preview-mentta-production-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/deploy-status/en-admin-preview-mentta-production-20260819.txt
+          git commit -m 'Confirm live EN preview and MENTTA fix [skip ci]'
+          git push origin HEAD:main
