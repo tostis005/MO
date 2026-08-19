@@ -1,0 +1,50 @@
+name: Inspect Home search and language scripts 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-home-search-language-scripts-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Inspect markup
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY' > runtime/home-search-language-scripts-20260819.txt
+          from pathlib import Path
+          import re
+          s=Path('/tmp/home.html').read_text(errors='replace')
+          keys=('ajax-search-for-woocommerce','search.min.js','dgwt-wcas','translatepress','trp-frontend-language-switcher','trp-language-switcher')
+          for m in re.finditer(r'<script\b[^>]*>.*?</script\s*>',s,re.I|re.S):
+              b=m.group(0)
+              if any(k.lower() in b.lower() for k in keys):
+                  print('SCRIPT=',b[:10000])
+                  print('---')
+          for m in re.finditer(r'<link\b[^>]*>',s,re.I):
+              b=m.group(0)
+              if any(k.lower() in b.lower() for k in keys): print('LINK=',b[:4000])
+          print('search_wrappers=',len(re.findall(r'dgwt-wcas-search-wrapp',s,re.I)))
+          print('language_switchers=',len(re.findall(r'trp-language-switcher',s,re.I)))
+          PY
+          cat runtime/home-search-language-scripts-20260819.txt
+      - name: Record
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-search-language-scripts-20260819.txt
+          git commit -m 'Record Home search and language script markup' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
