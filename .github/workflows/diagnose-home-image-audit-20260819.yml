@@ -1,0 +1,44 @@
+name: Diagnose Home image audit 20260819
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-home-image-audit-20260819.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Capture DOM and Lighthouse image details
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > /tmp/dom.json
+          const puppeteer=require('puppeteer-core');(async()=>{const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const p=await b.newPage();await p.setViewport({width:412,height:915,deviceScaleFactor:1});await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});const h=await p.evaluate(()=>document.documentElement.scrollHeight);for(let y=0;y<h;y+=600){await p.evaluate(v=>scrollTo(0,v),y);await new Promise(r=>setTimeout(r,120));}const imgs=await p.evaluate(()=>[...document.images].map(i=>({alt:i.alt,cls:i.className,src:i.src,currentSrc:i.currentSrc,srcset:i.srcset,sizes:i.sizes,loading:i.loading,nw:i.naturalWidth,nh:i.naturalHeight})));console.log(JSON.stringify(imgs,null,2));await b.close();})().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lh.json --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' > runtime/home-image-audit-detail-20260819.txt
+          import json
+          imgs=json.load(open('/tmp/dom.json'))
+          print('=== DOM target images ===')
+          for x in imgs:
+            s=' '.join([x.get('alt',''),x.get('cls',''),x.get('src',''),x.get('currentSrc','')])
+            if any(k.lower() in s.lower() for k in ['Garrafa_5L','Aceite-sin-filtrar','JAMON_ACT','Tolecarnes','Cerdo-ib','Packs-lotes','emo-home-vendor-responsive-image']): print(json.dumps(x,ensure_ascii=False))
+          a=json.load(open('/tmp/lh.json'));audit=a['audits'].get('image-delivery-insight',{})
+          print('\n=== image audit ===')
+          print('display=',audit.get('displayValue'),'score=',audit.get('score'))
+          print(json.dumps(audit.get('details'),ensure_ascii=False,indent=2)[:50000])
+          print('\n=== LCP ===')
+          print(json.dumps(a['audits'].get('largest-contentful-paint-element',{}).get('details'),ensure_ascii=False,indent=2)[:12000])
+          PY
+          cat runtime/home-image-audit-detail-20260819.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail; git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; git add runtime/home-image-audit-detail-20260819.txt || true; if ! git diff --cached --quiet; then git commit -m 'Record detailed Home image audit [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main; fi
