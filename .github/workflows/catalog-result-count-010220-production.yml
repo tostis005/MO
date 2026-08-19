@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -97,6 +97,31 @@ jobs:
           curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO catalog verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/emdo-shop.html "$URL"
           OLD_COUNT="$(grep -Fc '<p class="woocommerce-result-count emo-catalog-result-count-010218"' /tmp/emdo-shop.html || true)"
           NEW_COUNT="$(grep -Fc '<p class="woocommerce-result-count emo-catalog-result-count-010220"' /tmp/emdo-shop.html || true)"
+          printf 'old=%s\nnew=%s\n' "$OLD_COUNT" "$NEW_COUNT" >/tmp/catalog-result-count-verify.txt
           echo "CATALOG_RESULT_COUNTS old=$OLD_COUNT new=$NEW_COUNT"
           test "$OLD_COUNT" -eq 0
           test "$NEW_COUNT" -eq 1
+
+      - name: Record deployment status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          mkdir -p .deploy-status
+          OLD_COUNT='unknown'
+          NEW_COUNT='unknown'
+          if [ -f /tmp/catalog-result-count-verify.txt ]; then
+            OLD_COUNT="$(sed -n 's/^old=//p' /tmp/catalog-result-count-verify.txt | head -n1)"
+            NEW_COUNT="$(sed -n 's/^new=//p' /tmp/catalog-result-count-verify.txt | head -n1)"
+          fi
+          STATUS='${{ job.status }}'
+          NOW="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          cat > .deploy-status/catalog-result-count-010220.json <<EOF
+          {"status":"$STATUS","run_id":"$GITHUB_RUN_ID","source_sha":"$GITHUB_SHA","old_count":"$OLD_COUNT","new_count":"$NEW_COUNT","verified_at":"$NOW"}
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-result-count-010220.json
+          git commit -m 'Record catalog result count deployment status [skip ci]' || exit 0
+          git push origin HEAD:main
