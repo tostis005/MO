@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -37,6 +37,7 @@ jobs:
           php -l .github/scripts/pagespeed-production-010251.php
 
       - name: Deploy guarded PageSpeed fixes
+        id: deploy
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -101,23 +102,26 @@ jobs:
           "
 
       - name: Verify live delivery
+        id: verify
         shell: bash
         run: |
           set -euo pipefail
-          echo '--- Static cache headers ---'
-          curl -fsSI --max-time 30 https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo.jpg | grep -Ei '^(HTTP/|cache-control:|expires:|age:)' || true
+          : > /tmp/pagespeed-verification.txt
 
-          echo '--- Fresh Home response ---'
+          echo '--- Static cache headers ---' | tee -a /tmp/pagespeed-verification.txt
+          curl -fsSI --max-time 30 https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo.jpg | grep -Ei '^(HTTP/|cache-control:|expires:|age:)' | tee -a /tmp/pagespeed-verification.txt || true
+
+          echo '--- Fresh Home response ---' | tee -a /tmp/pagespeed-verification.txt
           HOME_HTML="$(mktemp)"
           curl -fsS --compressed --max-time 45 -D /tmp/home-headers.txt https://www.elmercadodeorigen.com/ -o "$HOME_HTML"
-          grep -Ei '^(HTTP/|x-el-mercado-cache:|cache-control:)' /tmp/home-headers.txt || true
-          printf 'HTML bytes: %s\n' "$(wc -c < "$HOME_HTML")"
+          grep -Ei '^(HTTP/|x-el-mercado-cache:|cache-control:)' /tmp/home-headers.txt | tee -a /tmp/pagespeed-verification.txt || true
+          printf 'HTML bytes: %s\n' "$(wc -c < "$HOME_HTML")" | tee -a /tmp/pagespeed-verification.txt
 
-          echo '--- jQuery tags ---'
-          grep -oE '<script[^>]+src=[^>]+jquery[^>]*>' "$HOME_HTML" | head -n 5 || true
+          echo '--- jQuery tags ---' | tee -a /tmp/pagespeed-verification.txt
+          grep -oE '<script[^>]+src=[^>]+jquery[^>]*>' "$HOME_HTML" | head -n 5 | tee -a /tmp/pagespeed-verification.txt || true
 
-          echo '--- PageSpeed image snippets ---'
-          python3 - "$HOME_HTML" <<'PY'
+          echo '--- PageSpeed image snippets ---' | tee -a /tmp/pagespeed-verification.txt
+          python3 - "$HOME_HTML" <<'PY' | tee -a /tmp/pagespeed-verification.txt
           import pathlib, sys
           html = pathlib.Path(sys.argv[1]).read_text(errors='replace')
           for needle in ('Tolecarnes-fondo.jpg', 'JAMON_ACT'):
@@ -130,3 +134,26 @@ jobs:
               print(f'[{needle}]')
               print(html[start:end].replace('\n', ' ')[:1200])
           PY
+
+      - name: Record deployment result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            printf 'recorded_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [ -f /tmp/pagespeed-verification.txt ]; then
+              cat /tmp/pagespeed-verification.txt
+            fi
+          } > runtime/home-pagespeed-010251.txt
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-pagespeed-010251.txt
+          git commit -m 'Record Home PageSpeed production verification' || exit 0
+          git push origin HEAD:main
