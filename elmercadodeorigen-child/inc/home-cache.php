@@ -65,6 +65,52 @@ function elmercado_write_home_static_cache( string $html ): void {
 }
 
 /**
+ * Reduce JavaScript innecesario de la portada sin alterar tienda/productores.
+ *
+ * - El header móvil ya tiene su geometría fijada en el CSS crítico de Home.
+ * - La paridad de controles 0.10.236 sólo trabaja sobre catálogo/vendedores.
+ * - Google for WooCommerce conserva dataLayer, consentimiento y eventos, pero
+ *   la descarga pesada de gtag.js de Ads se activa tras la primera interacción.
+ */
+function elmercado_optimize_home_runtime_010258( string $html ): string {
+	if ( '' === $html ) {
+		return $html;
+	}
+
+	foreach ( array( 'elmercado-mobile-header-hitareas-final', 'elmercado-catalog-mobile-controls-parity-script-010236' ) as $script_id ) {
+		$pattern = '~<script\b[^>]*\bid=["\']' . preg_quote( $script_id, '~' ) . '["\'][^>]*>.*?</script\s*>~is';
+		$html    = preg_replace( $pattern, '', $html ) ?? $html;
+	}
+
+	if ( false !== strpos( $html, 'id="elmercado-delayed-google-ads-loader"' ) ) {
+		return $html;
+	}
+
+	$ads_src = '';
+	$html    = preg_replace_callback(
+		'~<script\b[^>]*\bsrc=["\'](https://www\.googletagmanager\.com/gtag/js\?id=AW-[^"\']+)["\'][^>]*>\s*</script\s*>~i',
+		static function ( array $matches ) use ( &$ads_src ): string {
+			$ads_src = html_entity_decode( (string) $matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			return '<script type="application/json" id="elmercado-delayed-google-ads-source" data-src="' . esc_attr( $ads_src ) . '"></script>';
+		},
+		$html,
+		1
+	) ?? $html;
+
+	if ( '' === $ads_src ) {
+		return $html;
+	}
+
+	$loader = <<<'HTML'
+<script id="elmercado-delayed-google-ads-loader">
+(()=>{'use strict';const marker=document.getElementById('elmercado-delayed-google-ads-source');if(!marker)return;let loaded=false;const events=['pointerdown','touchstart','keydown','scroll'];const cleanup=()=>events.forEach((name)=>window.removeEventListener(name,load,true));const load=()=>{if(loaded)return;loaded=true;cleanup();const src=marker.dataset.src;if(!src)return;const script=document.createElement('script');script.async=true;script.src=src;script.dataset.elmercadoDelayed='google-ads';document.head.appendChild(script);};events.forEach((name)=>window.addEventListener(name,load,{once:true,capture:true,passive:name!=='keydown'}));window.setTimeout(load,30000);})();
+</script>
+HTML;
+
+	return preg_replace( '~</body>~i', $loader . '</body>', $html, 1 ) ?? $html;
+}
+
+/**
  * Reduce la ruta de render de Home sin eliminar ninguna regla visual:
  * - conserva al inicio solo el CSS medido para el primer viewport;
  * - agrupa el CSS inline completo existente en una hoja asíncrona;
@@ -79,6 +125,8 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 	if ( function_exists( 'elmercado_home_responsive_producer_cards_010252' ) ) {
 		$html = elmercado_home_responsive_producer_cards_010252( $html );
 	}
+
+	$html = elmercado_optimize_home_runtime_010258( $html );
 
 	if ( '' === $html || false !== strpos( $html, 'id="elmercado-home-first-view-css"' ) ) {
 		return $html;
