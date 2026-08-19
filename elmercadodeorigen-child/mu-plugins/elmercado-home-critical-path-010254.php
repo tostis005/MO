@@ -18,6 +18,38 @@ function elmercado_home_critical_is_front_010254(): bool {
 }
 
 /**
+ * Jetpack/WordPress CDN rewrites core jQuery to c0.wp.com. jQuery remains
+ * intentionally synchronous when WordPress says the dependency tree requires
+ * it, but serving it first-party reuses the document connection and avoids an
+ * extra cross-origin critical request. The core version busts browser caches.
+ */
+add_filter(
+	'script_loader_src',
+	static function ( string $src, string $handle ): string {
+		if ( ! elmercado_home_critical_is_front_010254() ) {
+			return $src;
+		}
+
+		global $wp_version;
+		$version = is_string( $wp_version ) && '' !== $wp_version ? $wp_version : null;
+
+		if ( 'jquery-core' === $handle ) {
+			$url = includes_url( 'js/jquery/jquery.min.js' );
+			return $version ? add_query_arg( 'ver', $version, $url ) : $url;
+		}
+
+		if ( 'jquery-migrate' === $handle ) {
+			$url = includes_url( 'js/jquery/jquery-migrate.min.js' );
+			return $version ? add_query_arg( 'ver', $version, $url ) : $url;
+		}
+
+		return $src;
+	},
+	PHP_INT_MAX,
+	2
+);
+
+/**
  * Ask WordPress itself to defer jQuery on the Home. Core evaluates the complete
  * dependency tree and falls back to blocking when a delayed strategy is unsafe.
  */
