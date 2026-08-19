@@ -1,0 +1,37 @@
+=== CART ===
+elmercadodeorigen-child/inc/cart-counter-visibility-final.php:27:			body.elmercado-child-theme .site-header .emo-cart-pseudo-empty::before,
+elmercadodeorigen-child/inc/cart-counter-visibility-final.php:28:			body.elmercado-child-theme .site-header .emo-cart-pseudo-empty::after,
+elmercadodeorigen-child/inc/cart-counter-visibility-final.php:48:			const pseudoNumber = (value) => {
+elmercadodeorigen-child/inc/cart-counter-visibility-final.php:68:					const before = pseudoNumber(getComputedStyle(node, '::before').content);
+elmercadodeorigen-child/inc/cart-counter-visibility-final.php:69:					const after = pseudoNumber(getComputedStyle(node, '::after').content);
+elmercadodeorigen-child/inc/cart-counter-visibility-final.php:70:					node.classList.toggle('emo-cart-pseudo-empty', before === 0 || after === 0);
+=== CAROUSEL ===
+elmercadodeorigen-child/inc/product-card-carousel-finish.php:269:					const max = Math.max(0, track.scrollWidth - track.clientWidth);
+elmercadodeorigen-child/inc/product-card-carousel-finish.php:273:					next.disabled = !active || track.scrollLeft >= max - 4;
+=== SEARCH HANDLE ===
+elmercadodeorigen-child/inc/mobile-visual-corrections-01023.php:97:					.dgwt-wcas-search-wrapp,
+elmercadodeorigen-child/inc/mobile-visual-corrections-01023.php:98:					.dgwt-wcas-sf-wrapp,
+elmercadodeorigen-child/inc/mobile-visual-corrections-01023.php:117:					.dgwt-wcas-search-input,
+elmercadodeorigen-child/inc/header-search-finish.php:285:			body.elmercado-child-theme .dgwt-wcas-overlay-mobile {
+elmercadodeorigen-child/inc/header-search-finish.php:296:			body.elmercado-child-theme .dgwt-wcas-search-input,
+elmercadodeorigen-child/inc/header-search-finish.php:309:			body.elmercado-child-theme .dgwt-wcas-suggestions-wrapp,
+elmercadodeorigen-child/inc/header-search-finish.php:310:			body.elmercado-child-theme .dgwt-wcas-details-wrapp {
+elmercadodeorigen-child/inc/header-search-finish.php:317:			body.elmercado-child-theme .dgwt-wcas-suggestion {
+elmercadodeorigen-child/inc/header-search-finish.php:321:			body.elmercado-child-theme .dgwt-wcas-suggestion:hover,
+elmercadodeorigen-child/inc/header-search-finish.php:322:			body.elmercado-child-theme .dgwt-wcas-suggestion-selected {
+elmercadodeorigen-child/inc/sitewide-visual-harmony-final.php:152:				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu :is(.dgwt-wcas-search-wrapp,.aws-container,.search-form) {
+elmercadodeorigen-child/inc/sitewide-visual-harmony-final.php:161:				html.sidebar-menu-open body.elmercado-child-theme .sidebar-menu :is(.dgwt-wcas-search-form,.dgwt-wcas-sf-wrapp,.aws-search-form) {
+elmercadodeorigen-child/inc/mobile-visual-corrections-01024.php:46:				html body.elmercado-child-theme .sidebar-menu li.menu-item .dgwt-wcas-search-wrapp {
+elmercadodeorigen-child/inc/header-finish.php:83:				body.elmercado-child-theme .site-header .primary-navigation > li:has(> .dgwt-wcas-search-wrapp),
+elmercadodeorigen-child/inc/mobile-menu-visual-final.php:178:				const searchRoot = menu.querySelector('.dgwt-wcas-search-wrapp,.aws-container,form.search-form');
+elmercadodeorigen-child/inc/interaction-finish.php:85:			body.elmercado-child-theme .dgwt-wcas-overlay-mobile,
+elmercadodeorigen-child/inc/interaction-finish.php:86:			body.elmercado-child-theme .dgwt-wcas-search-wrapp.dgwt-wcas-layout-icon-open {
+elmercadodeorigen-child/inc/interaction-finish.php:99:			body.elmercado-child-theme .dgwt-wcas-search-input,
+elmercadodeorigen-child/inc/interaction-finish.php:114:			body.elmercado-child-theme .dgwt-wcas-search-input:focus,
+elmercadodeorigen-child/inc/interaction-finish.php:123:			body.elmercado-child-theme .dgwt-wcas-suggestions-wrapp,
+elmercadodeorigen-child/inc/interaction-finish.php:124:			body.elmercado-child-theme .dgwt-wcas-details-wrapp {
+elmercadodeorigen-child/inc/interaction-finish.php:132:			body.elmercado-child-theme .dgwt-wcas-suggestion {
+elmercadodeorigen-child/inc/interaction-finish.php:138:			body.elmercado-child-theme .dgwt-wcas-suggestion:hover,
+elmercadodeorigen-child/inc/interaction-finish.php:139:			body.elmercado-child-theme .dgwt-wcas-suggestion-selected {
+elmercadodeorigen-child/inc/interaction-finish.php:143:			body.elmercado-child-theme .dgwt-wcas-si img {
+elmercadodeorigen-child/inc/interaction-finish.php:153:				body.elmercado-child-theme .dgwt-wcas-overlay-mobile {
