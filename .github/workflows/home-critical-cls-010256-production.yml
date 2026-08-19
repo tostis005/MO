@@ -1,4 +1,4 @@
-name: Home critical CLS 0.10.256 production
+name: Home critical CLS production
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   patch-deploy-measure:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 18
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -22,22 +22,69 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Put CLS rules in critical CSS
+
+      - name: Align critical CSS with final desktop frame
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
-          s=p.read_text()
-          marker='body.home .topbar{display:none!important}'
-          if marker not in s:
-              s += '\nbody.home .topbar{display:none!important}@media(max-width:767px){body.home:not(.emo-js-ready) #shop-cart-sidebar{position:fixed!important;top:0!important;right:0!important;left:auto!important;width:min(390px,calc(100vw - 22px))!important;height:100dvh!important;display:flex!important;transform:translateX(100%)!important;visibility:hidden!important;opacity:1!important;z-index:200!important;margin:0!important}body.home:not(.emo-js-ready) #shop-cart-sidebar .cart-sidebar-content{visibility:hidden!important}}\n'
-          p.write_text(s)
-          print('critical_bytes=',p.stat().st_size)
+          p = Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
+          s = p.read_text()
+          marker = '/*emo-final-first-frame-010280*/'
+          if marker in s:
+              s = s.split(marker, 1)[0].rstrip() + '\n'
+          lock = r'''/*emo-final-first-frame-010280*/
+          body.home .topbar{display:none!important}
+          @media(min-width:992px){
+          body.home.elmercado-child-theme .site-header{position:sticky!important;top:0!important;height:72px!important;min-height:72px!important;max-height:72px!important}
+          body.home.elmercado-child-theme .site-header-inner{height:72px!important;min-height:72px!important;max-height:72px!important;padding:0!important}
+          body.home.elmercado-child-theme .site-header-inner>.woostify-container{display:flex!important;align-items:center!important;width:min(calc(100% - 40px),1320px)!important;max-width:1320px!important;height:72px!important;min-height:72px!important;max-height:72px!important;margin-inline:auto!important;padding-block:0!important}
+          body.home.elmercado-child-theme .site-branding{flex:0 0 auto!important;align-self:center!important;margin:0!important;min-width:0!important}
+          body.home.elmercado-child-theme .site-header .site-navigation{display:flex!important;flex:1 1 auto!important;min-width:0!important;height:44px!important;min-height:44px!important;max-height:44px!important;align-items:center!important;justify-content:center!important;margin:0!important;padding:0!important}
+          body.home.elmercado-child-theme .site-header .main-navigation{display:flex!important;min-width:0!important;height:44px!important;min-height:44px!important;max-height:44px!important;align-items:center!important;justify-content:center!important;margin-inline:auto!important;padding:0!important}
+          body.home.elmercado-child-theme .site-header .primary-navigation{display:flex!important;align-items:center!important;justify-content:center!important;flex-wrap:nowrap!important;height:44px!important;min-height:44px!important;max-height:44px!important;margin:0!important;padding:0!important}
+          body.home.elmercado-child-theme .site-header .primary-navigation>li{display:flex!important;align-items:center!important;height:44px!important;min-height:44px!important;max-height:44px!important;margin:0!important;padding:0!important}
+          body.home.elmercado-child-theme .site-header .primary-navigation>li>a{display:flex!important;align-items:center!important;height:44px!important;min-height:44px!important;margin:0 .9rem!important;padding:.7rem 0!important;font-size:.86rem!important;font-weight:760!important;letter-spacing:.025em!important;line-height:1.2!important;white-space:nowrap!important}
+          body.home.elmercado-child-theme .site-tools .header-search-icon,body.home.elmercado-child-theme .site-header .site-search,body.home.elmercado-child-theme .site-tools .my-account .subbox{display:none!important}
+          body.home.elmercado-child-theme .site-tools{display:flex!important;min-width:94px!important;height:44px!important;min-height:44px!important;max-height:44px!important;flex:0 0 auto!important;align-items:center!important;justify-content:flex-end!important;gap:.35rem!important;margin:0!important;padding:0!important}
+          body.home.elmercado-child-theme .site-tools>a.tools-icon,body.home.elmercado-child-theme .site-tools>.my-account>a.tools-icon{width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;margin:0!important;padding:0!important}
+
+          body.home.elmercado-child-theme .emo-home>.emo-hero,body.home .emo-hero{position:relative!important;isolation:isolate!important;min-height:min(600px,calc(100svh - 108px))!important;padding-top:clamp(1.75rem,2.35vw,2.35rem)!important;padding-bottom:clamp(2rem,3vw,3rem)!important}
+          body.home.elmercado-child-theme .emo-home>.emo-hero>.emo-hero__grid,body.home .emo-hero__grid{display:grid!important;grid-template-columns:minmax(0,.92fr) minmax(480px,.85fr)!important;align-items:center!important;gap:clamp(2rem,4vw,4rem)!important;width:min(calc(100% - 40px),1320px)!important;max-width:1320px!important;margin-inline:auto!important}
+          body.home .emo-hero__copy{max-width:700px!important}
+          body.home .emo-hero h1{max-width:760px!important;margin:0 0 1.5rem!important;font-size:clamp(3.75rem,5.45vw,4.9rem)!important;line-height:.94!important}
+          body.home .emo-hero__copy>p{max-width:600px!important;margin:.75rem 0 1rem!important;font-size:clamp(1rem,1.25vw,1.12rem)!important;line-height:1.5!important}
+          body.home .emo-hero__proof{margin-top:clamp(1.2rem,2vw,1.75rem)!important;padding-top:.8rem!important;gap:.65rem!important}
+          body.home .emo-hero__visual--vendors{display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;grid-template-rows:repeat(10,38px)!important;height:380px!important;min-height:380px!important;max-height:380px!important;min-width:0!important;transform:translateY(-34px)!important}
+          body.home .emo-hero__visual--vendors .emo-hero-card{position:relative!important;display:block!important;min-width:0!important;min-height:0!important;overflow:hidden!important;contain:layout paint}
+          body.home .emo-hero__visual--vendors .emo-hero-card--1{grid-column:1/7!important;grid-row:1/11!important;transform:rotate(-1.2deg)!important}
+          body.home .emo-hero__visual--vendors .emo-hero-card--2{grid-column:7/13!important;grid-row:1/6!important;transform:rotate(1.1deg)!important}
+          body.home .emo-hero__visual--vendors .emo-hero-card--3{grid-column:7/13!important;grid-row:6/11!important;transform:rotate(.45deg)!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--1{grid-column:1/7!important;grid-row:1/7!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--2{grid-column:7/13!important;grid-row:1/6!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--3{grid-column:1/6!important;grid-row:7/11!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--4{grid-column:6/13!important;grid-row:6/11!important;transform:rotate(-.55deg)!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1{grid-column:1/6!important;grid-row:1/7!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2{grid-column:6/13!important;grid-row:1/5!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3{grid-column:1/5!important;grid-row:7/11!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4{grid-column:5/9!important;grid-row:5/11!important;transform:rotate(-.55deg)!important}
+          body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5{grid-column:9/13!important;grid-row:5/11!important;transform:rotate(.65deg)!important}
+          body.home .emo-hero__visual--vendors .emo-hero-card figure{position:relative!important;display:block!important;width:100%!important;height:100%!important;margin:0!important;overflow:hidden!important}
+          body.home .emo-hero__visual--vendors .emo-hero-card figure>img{position:absolute!important;inset:0!important;display:block!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover!important;object-position:center center!important}
+          body.home.elmercado-child-theme .emo-home>.emo-hero::after{display:none!important;content:none!important;width:0!important;height:0!important}
+          body.home #mobile-navigation.sidebar-menu{display:none!important;position:fixed!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;transform:translate3d(-105%,0,0)!important}
+          }
+          @media(min-width:992px) and (max-width:1180px){body.home.elmercado-child-theme .emo-home>.emo-hero>.emo-hero__grid{grid-template-columns:minmax(0,1fr) minmax(420px,.82fr)!important}}
+          body.home:not(.emo-js-ready) #shop-cart-sidebar{position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:auto!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;transform:translate3d(105%,0,0)!important;margin:0!important}
+          body.home:not(.emo-js-ready) #woostify-overlay{position:fixed!important;inset:0!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}
+          '''
+          p.write_text(s + '\n' + lock + '\n')
+          print('critical_bytes=', p.stat().st_size)
           PY
-          grep -q 'body.home .topbar{display:none!important}' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
-      - name: Deploy critical CSS and invalidate Home transient
+          grep -q 'emo-final-first-frame-010280' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+
+      - name: Deploy critical CSS and clear every Home cache layer
         id: deploy
         shell: bash
         env:
@@ -51,74 +98,80 @@ jobs:
             wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
           ')"
-          : "${PROD_PATH:?}"
-          cat > /tmp/flush-home.php <<'PHP'
-          <?php
-          if ( function_exists( 'elmercado_flush_home_cache' ) ) {
-              elmercado_flush_home_cache();
-              echo "home-cache-flushed\n";
-          } else {
-              echo "home-cache-function-missing\n";
-              exit(12);
-          }
-          PHP
-          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:/tmp/critical-home-010256.css"
-          sshpass -e scp $SCP /tmp/flush-home.php "$STAGING_USER@$STAGING_HOST:/tmp/flush-home-010256.php"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:/tmp/critical-home-010280.css"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -e
-            install -m 0644 /tmp/critical-home-010256.css '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+            install -m 0644 /tmp/critical-home-010280.css '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
             php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
-            \"\$php_bin\" \"\$wp_bin\" eval-file /tmp/flush-home-010256.php --path='$PROD_PATH' --allow-root
-            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            \"\$php_bin\" \"\$wp_bin\" eval 'if (function_exists("elmercado_flush_home_cache")) { elmercado_flush_home_cache(); echo "home-cache-flushed\\n"; }' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
-            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-0.10.256.css
-            rm -f /tmp/critical-home-010256.css /tmp/flush-home-010256.php
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f /tmp/critical-home-010280.css
           "
-      - name: Verify critical HTML and Lighthouse
+
+      - name: Verify served first frame and run Lighthouse desktop 3x
         id: verify
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          URL='https://www.elmercadodeorigen.com/'
+          curl -fsS --compressed --max-time 45 -H 'Cache-Control: no-cache' "$URL" -o /dev/null
           HTML=$(mktemp)
-          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
-          topbar=$(grep -c 'body.home .topbar{display:none!important}' "$HTML" || true)
-          cart=$(grep -c 'body.home:not(.emo-js-ready) #shop-cart-sidebar' "$HTML" || true)
-          version=$(grep -c 'home-deferred-0.10.256.css' "$HTML" || true)
-          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
-          export CHROME_PATH="$CHROME"
-          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lhr.json --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
-          TOPBAR="$topbar" CART="$cart" VERSION="$version" python3 - <<'PY' > runtime/home-critical-cls-010256.txt
-          import json,os
-          a=json.load(open('/tmp/lhr.json'))['audits']
-          print('deploy=success')
-          print('initial_topbar_rule=',os.environ['TOPBAR'])
-          print('initial_cart_rule=',os.environ['CART'])
-          print('deferred_010256=',os.environ['VERSION'])
-          for k in ('first-contentful-paint','largest-contentful-paint','total-blocking-time','cumulative-layout-shift','render-blocking-resources'):
-              x=a.get(k,{})
-              print(f'{k}: numeric={x.get("numericValue")} display={x.get("displayValue")} score={x.get("score")}')
-          for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or []):
-              n=item.get('node') or {}
-              print('shift=',item.get('score'),'selector=',n.get('selector'),'label=',n.get('nodeLabel'))
-          for group in ((a.get('lcp-breakdown-insight',{}).get('details') or {}).get('items') or []):
-              if group.get('type')=='table': print('lcp_breakdown=',json.dumps(group,ensure_ascii=False,separators=(',',':')))
+          curl -fsS --compressed --max-time 45 -H 'Cache-Control: no-cache' "$URL" -o "$HTML"
+          grep -q 'emo-final-first-frame-010280' "$HTML"
+          for i in 1 2 3; do
+            npx --yes lighthouse@12.8.2 "$URL" \
+              --only-categories=performance \
+              --form-factor=desktop \
+              --screenEmulation.mobile=false \
+              --screenEmulation.width=1350 \
+              --screenEmulation.height=940 \
+              --screenEmulation.deviceScaleFactor=1 \
+              --throttling-method=simulate \
+              --output=json \
+              --output-path="/tmp/lhr-$i.json" \
+              --quiet \
+              --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          done
+          python3 - <<'PY' | tee runtime/home-critical-cls-010280.txt
+          import json, statistics
+          rows=[]
+          for i in range(1,4):
+              r=json.load(open(f'/tmp/lhr-{i}.json'))
+              a=r['audits']
+              row={
+                'score': round(r['categories']['performance']['score']*100),
+                'fcp': a['first-contentful-paint']['numericValue'],
+                'lcp': a['largest-contentful-paint']['numericValue'],
+                'tbt': a['total-blocking-time']['numericValue'],
+                'cls': a['cumulative-layout-shift']['numericValue'],
+              }
+              rows.append(row)
+              print('run',i,row)
+              for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:8]:
+                  n=item.get('node') or {}
+                  print(' shift',item.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          print('median_score=',statistics.median(x['score'] for x in rows))
+          print('median_fcp=',round(statistics.median(x['fcp'] for x in rows)))
+          print('median_lcp=',round(statistics.median(x['lcp'] for x in rows)))
+          print('median_tbt=',round(statistics.median(x['tbt'] for x in rows)))
+          print('median_cls=',statistics.median(x['cls'] for x in rows))
           PY
-          cat runtime/home-critical-cls-010256.txt
-          test "$topbar" -ge 1
-          test "$cart" -ge 1
-      - name: Commit critical source and result
+
+      - name: Persist critical source and measurement
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          [ -f runtime/home-critical-cls-010256.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-critical-cls-010256.txt
+          [ -f runtime/home-critical-cls-010280.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-critical-cls-010280.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-critical-cls-010256.txt
-          git commit -m 'Put Home CLS guards in critical CSS and measure' || exit 0
+          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-critical-cls-010280.txt
+          git commit -m 'Align Home critical CSS with final hero geometry' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
