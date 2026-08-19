@@ -1,0 +1,92 @@
+name: Home live critical diagnostic 0.10.254
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-live-critical-diagnostic-010254.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Inspect live Home
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOME_HTML="$(mktemp)"
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HOME_HTML"
+          OUT=runtime/home-live-critical-010254.txt
+          mkdir -p runtime
+          : > "$OUT"
+          printf 'html_bytes=%s\n' "$(wc -c < "$HOME_HTML")" >> "$OUT"
+          printf 'html_lines=%s\n' "$(wc -l < "$HOME_HTML")" >> "$OUT"
+
+          echo '--- viewport ---' >> "$OUT"
+          grep -oiE '<meta[^>]+name=["'"']viewport["'"'][^>]*>' "$HOME_HTML" | head -n 3 >> "$OUT" || true
+
+          echo '--- critical tags ---' >> "$OUT"
+          grep -oiE '<(script|link)[^>]+(trp-frontend-compatibility|trp-frontend-language-switcher|trp-language-switcher-v2|jquery(\.min|\-migrate)?\.js|hooks\.min\.js)[^>]*>' "$HOME_HTML" | head -n 30 >> "$OUT" || true
+
+          echo '--- star font references ---' >> "$OUT"
+          grep -oiE '.{0,180}star\.woff.{0,180}' "$HOME_HTML" | head -n 10 >> "$OUT" || true
+
+          echo '--- hustle ---' >> "$OUT"
+          grep -oiE '<style[^>]*hustle[^>]*>|<link[^>]+hustle[^>]*>' "$HOME_HTML" | head -n 20 >> "$OUT" || true
+
+          echo '--- page lines 3415-3450 ---' >> "$OUT"
+          nl -ba "$HOME_HTML" | sed -n '3415,3450p' >> "$OUT" || true
+
+          echo '--- inline JS syntax ---' >> "$OUT"
+          python3 - "$HOME_HTML" <<'PY' > /tmp/inline-manifest.txt
+          import pathlib,re,sys
+          html=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          n=0
+          for m in re.finditer(r'<script\b([^>]*)>(.*?)</script\s*>',html,re.I|re.S):
+              attrs,body=m.group(1),m.group(2)
+              if re.search(r'\bsrc\s*=',attrs,re.I):
+                  continue
+              typem=re.search(r'\btype\s*=\s*(["\''])\s*([^"\'']+)\1',attrs,re.I)
+              typ=typem.group(2).lower() if typem else ''
+              if typ and typ not in ('text/javascript','application/javascript','module'):
+                  continue
+              n+=1
+              path=f'/tmp/inline-{n}.js'
+              pathlib.Path(path).write_text(body)
+              line=html.count('\n',0,m.start())+1
+              print(f'{n}\t{line}\t{path}\t{attrs[:180].replace(chr(10)," ")}')
+          PY
+          bad=0
+          while IFS=$'\t' read -r n line path attrs; do
+            [ -n "$n" ] || continue
+            if ! node --check "$path" >/tmp/node-check.txt 2>&1; then
+              printf 'FAIL block=%s html_line=%s attrs=%s\n' "$n" "$line" "$attrs" >> "$OUT"
+              cat /tmp/node-check.txt >> "$OUT"
+              start=$(( line > 8 ? line - 8 : 1 ))
+              end=$(( line + 20 ))
+              nl -ba "$HOME_HTML" | sed -n "${start},${end}p" >> "$OUT"
+              bad=$((bad+1))
+              [ "$bad" -ge 5 ] && break
+            fi
+          done < /tmp/inline-manifest.txt
+          printf 'inline_failures=%s\n' "$bad" >> "$OUT"
+
+      - name: Record diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-live-critical-010254.txt
+          git commit -m 'Record live Home critical diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
