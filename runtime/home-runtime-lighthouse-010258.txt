@@ -1,0 +1,67 @@
+performance_score= 0.57
+--- browser Ads state ---
+{
+  "before": {
+    "scripts": [
+      {
+        "src": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
+        "delayed": ""
+      },
+      {
+        "src": "https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4",
+        "delayed": ""
+      }
+    ],
+    "resources": [
+      "https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4",
+      "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
+      "https://www.google.com/ccm/collect?rcb=14&frm=0&apvc=1&auid=301333535.1787137261&dt=Inicio%20-%20El%20Mercado%20de%20Origen&tid=AW-18396600140&en=page_view&dl=https%3A%2F%2Fwww.elmercadodeorigen.com%2F&scrsrc=www.googletagmanager.com&rnd=124121895.1787137261&navt=n&npa=0&did=dZGIzZG%2CdOGY3NW&gdid=dZGIzZG.dOGY3NW&gtm=45be68h1za200zb896721384zd896721384xec&gcs=G1--&gcd=13l3l3l3l5l1&dma=0&tag_exp=115616985~115938466~115938468~118897920~118897930~119367802~119367810~120385422&tft=1787137260838&tfd=2380&gap.plf=4.5.3&tids=AW-18396600140&fmt=8"
+    ],
+    "marker": true,
+    "dataLayer": true,
+    "queued": 11
+  },
+  "after": {
+    "scripts": [
+      {
+        "src": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
+        "delayed": ""
+      },
+      {
+        "src": "https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4",
+        "delayed": ""
+      },
+      {
+        "src": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140",
+        "delayed": "google-ads"
+      }
+    ],
+    "resources": [
+      "https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4",
+      "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
+      "https://www.google.com/ccm/collect?rcb=14&frm=0&apvc=1&auid=301333535.1787137261&dt=Inicio%20-%20El%20Mercado%20de%20Origen&tid=AW-18396600140&en=page_view&dl=https%3A%2F%2Fwww.elmercadodeorigen.com%2F&scrsrc=www.googletagmanager.com&rnd=124121895.1787137261&navt=n&npa=0&did=dZGIzZG%2CdOGY3NW&gdid=dZGIzZG.dOGY3NW&gtm=45be68h1za200zb896721384zd896721384xec&gcs=G1--&gcd=13l3l3l3l5l1&dma=0&tag_exp=115616985~115938466~115938468~118897920~118897930~119367802~119367810~120385422&tft=1787137260838&tfd=2380&gap.plf=4.5.3&tids=AW-18396600140&fmt=8",
+      "https://www.googletagmanager.com/gtag/js?id=AW-18396600140"
+    ],
+    "marker": true,
+    "dataLayer": true,
+    "queued": 11
+  }
+}
+--- metrics ---
+first-contentful-paint: numeric=2375.9904 display=2.4 s score=0.72
+largest-contentful-paint: numeric=4077.8835 display=4.1 s score=0.47
+total-blocking-time: numeric=1180.9999999999995 display=1,180 ms score=0.21
+cumulative-layout-shift: numeric=0.006424266109952275 display=0.006 score=1
+speed-index: numeric=4575.320606273966 display=4.6 s score=0.71
+interactive: numeric=7144.559459999999 display=7.1 s score=0.51
+mainthread-work-breakdown: numeric=5229.46799999999 display=5.2 s score=0
+[{"group":"other","groupLabel":"Other","duration":2421.080000000004},{"group":"styleLayout","groupLabel":"Style & Layout","duration":1429.3159999999993},{"group":"scriptEvaluation","groupLabel":"Script Evaluation","duration":874.1479999999866},{"group":"scriptParseCompile","groupLabel":"Script Parsing & Compilation","duration":200.39600000000024},{"group":"paintCompositeRender","groupLabel":"Rendering","duration":147.00399999999982},{"group":"parseHTML","groupLabel":"Parse HTML & CSS","duration":140.86399999999998},{"group":"garbageCollection","groupLabel":"Garbage Collection","duration":16.66}]
+unused-javascript: numeric=300 display=Est savings of 122 KiB score=0
+[{"url":"https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4","totalBytes":153178,"wastedBytes":65308,"wastedPercent":42.635489258768644},{"url":"https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1","totalBytes":146971,"wastedBytes":59175,"wastedPercent":40.262836288956}]
+render-blocking-resources: numeric=0 display=None score=1
+--- forced reflow candidates ---
+AUDIT forced-reflow-insight numeric= None display= None score= 1
+[{"type":"table","headings":[{"key":"source","valueType":"source-location","label":"Source"},{"key":"reflowTime","valueType":"ms","granularity":1,"label":"Total reflow time"}],"items":[]}]
+--- LCP breakdown ---
+lcp-breakdown-insight {"type":"list","items":[{"type":"table","headings":[{"key":"label","valueType":"text","label":"Subpart"},{"key":"duration","valueType":"ms","label":"Duration"}],"items":[{"subpart":"timeToFirstByte","label":"Time to first byte","duration":1304.8399999999926},{"subpart":"elementRenderDelay","label":"Element render delay","duration":240.04800000000745}]},{"type":"node","lhId":"page-0-P","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV,2,P","selector":"section.emo-hero > div.emo-shell > div.emo-hero__copy > p","boundingRect":{"top":254,"bottom":405,"left":14,"right":398,"width":384,"height":151},"snippet":"<p>","nodeLabel":"En El Mercado de Origen buscamos productores que han conseguido hacer de sus pr…"}]}
+largest-contentful-paint-element {"type":"list","items":[{"type":"table","headings":[{"key":"node","valueType":"node","label":"Element"}],"items":[{"node":{"type":"node","lhId":"page-0-P","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV,2,P","selector":"section.emo-hero > div.emo-shell > div.emo-hero__copy > p","boundingRect":{"top":254,"bottom":405,"left":14,"right":398,"width":384,"height":151},"snippet":"<p>","nodeLabel":"En El Mercado de Origen buscamos productores que han conseguido hacer de sus pr…"}}]},{"type":"table","headings":[{"key":"phase","valueType":"text","label":"Phase"},{"key":"percent","valueType":"text","label":"% of LCP"},{"key":"timing","valueType":"ms","label":"Timing"}],"items":[{"phase":"TTFB","timing":1304.8399999999926,"percent":"32%"},{"phase":"Load Delay","timing":0,"percent":"0%"},{"phase":"Load Time","timing":0,"percent":"0%"},{"phase":"Render Delay","timing":2773.043500000007,"percent":"68%"}]}]}
