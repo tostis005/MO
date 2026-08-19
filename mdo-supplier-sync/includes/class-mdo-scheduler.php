@@ -119,9 +119,11 @@ final class MDO_Scheduler {
 			if ( ! $connector ) {
 				throw new RuntimeException( 'El conector seleccionado todavía no está implementado.' );
 			}
-			$product = 'tolecarnes' === (string) $supplier['connector']
-				? MDO_Connector_Tolecarnes::scrape_product( $url )
-				: MDO_Connector_Iberico_Family::scrape_product( $url, $supplier );
+			$product = match ( (string) $supplier['connector'] ) {
+				'tolecarnes'           => MDO_Connector_Tolecarnes::scrape_product( $url ),
+				'la-huerta-ana-mary'   => MDO_Connector_Huerta_Ana_Mary::scrape_product( $url ),
+				default                => MDO_Connector_Iberico_Family::scrape_product( $url, $supplier ),
+			};
 			$product = MDO_Text::normalize_product( $product );
 			$result   = $connector::upsert_product( $supplier_id, $product );
 			$restored = MDO_Woo_Importer::restore_if_unavailable( $supplier_id, (string) $product['source_url'] );
@@ -223,10 +225,11 @@ final class MDO_Scheduler {
 
 	private static function connector_class( array $supplier ): ?string {
 		return match ( (string) ( $supplier['connector'] ?? 'none' ) ) {
-			'tolecarnes'      => MDO_Connector_Tolecarnes::class,
+			'tolecarnes'         => MDO_Connector_Tolecarnes::class,
+			'la-huerta-ana-mary' => MDO_Connector_Huerta_Ana_Mary::class,
 			'el-catedratico',
-			'puente-robles'   => MDO_Connector_Iberico_Family::class,
-			default           => null,
+			'puente-robles'      => MDO_Connector_Iberico_Family::class,
+			default              => null,
 		};
 	}
 
