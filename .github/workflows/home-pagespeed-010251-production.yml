@@ -15,6 +15,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: home-pagespeed-production
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
@@ -134,26 +138,32 @@ jobs:
           python3 - "$HOME_HTML" <<'PY' | tee -a /tmp/pagespeed-verification.txt
           import pathlib, re, sys
           html = pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          producer_ok = True
           for needle in ('Tolecarnes-fondo', 'JAMON_ACT'):
               pos = html.find(needle)
               if pos < 0:
                   print(f'{needle}: not found')
+                  producer_ok = False
                   continue
               start = html.rfind('<img', 0, pos)
               end = html.find('>', pos)
-              print(f'[{needle}] {html[start:end+1].replace(chr(10), " ")[:1800]}')
+              tag = html[start:end+1]
+              print(f'[{needle}] {tag.replace(chr(10), " ")[:1800]}')
+              if 'srcset=' not in tag or 'sizes=' not in tag:
+                  producer_ok = False
 
-          styles = [(len(m.group(1).encode()), m.group(0)[:120].replace('\n',' ')) for m in re.finditer(r'<style\\b[^>]*>(.*?)</style\\s*>', html, re.I|re.S)]
-          scripts = [(len(m.group(1).encode()), m.group(0)[:120].replace('\n',' ')) for m in re.finditer(r'<script\\b(?![^>]*\\bsrc=)[^>]*>(.*?)</script\\s*>', html, re.I|re.S)]
+          styles = [(len(m.group(1).encode()), m.group(0)[:120].replace('\n',' ')) for m in re.finditer(r'<style\b[^>]*>(.*?)</style\s*>', html, re.I|re.S)]
+          scripts = [(len(m.group(1).encode()), m.group(0)[:120].replace('\n',' ')) for m in re.finditer(r'<script\b(?![^>]*\bsrc=)[^>]*>(.*?)</script\s*>', html, re.I|re.S)]
           print(f'inline_style_bytes={sum(x[0] for x in styles)} blocks={len(styles)}')
           print(f'inline_script_bytes={sum(x[0] for x in scripts)} blocks={len(scripts)}')
           for kind, items in [('style', styles), ('script', scripts)]:
               for size, opening in sorted(items, reverse=True)[:5]:
                   print(f'top_{kind}_bytes={size} {opening}')
+          if not producer_ok:
+              sys.exit(12)
           PY
 
           grep -q 'wp-includes/js/dist/hooks.min.js' "$HOME_HTML"
-          grep -q 'emo-hero-card__image[^>]*srcset=' "$HOME_HTML" || grep -q 'srcset=[^>]*emo-hero-card__image' "$HOME_HTML"
 
       - name: Record deployment result
         if: always()
