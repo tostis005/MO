@@ -1,0 +1,62 @@
+name: Diagnose Woostify Home CSS 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-woostify-home-css-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: diagnose-woostify-home-css-20260819
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Compare with parent stylesheet blocked
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > /tmp/css-compare.json
+          const puppeteer=require('puppeteer-core');
+          const selectors=['body','#page','.site-header','.site-header-inner','.site-branding','.main-navigation','.primary-navigation','.dgwt-wcas-search-wrapp','.shopping-bag-button','.emo-shell','.emo-category-grid','.emo-category-card','ul.products','li.product','.woocommerce-loop-product__title','.site-footer','.trp-language-switcher','#shop-cart-sidebar'];
+          const props=['display','position','width','height','minWidth','maxWidth','marginTop','marginRight','marginBottom','marginLeft','paddingTop','paddingRight','paddingBottom','paddingLeft','fontSize','fontWeight','lineHeight','color','backgroundColor','borderTopWidth','borderRadius','flexDirection','justifyContent','alignItems','gridTemplateColumns','overflow','zIndex'];
+          async function snap(browser,block){
+            const p=await browser.newPage(); await p.setViewport({width:412,height:915,deviceScaleFactor:1});
+            if(block){await p.setRequestInterception(true);p.on('request',r=>{const u=r.url(); if(/\/wp-content\/themes\/woostify\/style\.css/i.test(u)) r.abort(); else r.continue();});}
+            await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});
+            await p.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important} video{visibility:hidden!important}'});
+            await new Promise(r=>setTimeout(r,300));
+            const data=await p.evaluate(({selectors,props})=>{
+              const out={};
+              for(const sel of selectors){const els=[...document.querySelectorAll(sel)].slice(0,3);out[sel]=els.map(el=>{const cs=getComputedStyle(el),r=el.getBoundingClientRect(),s={rect:[+r.x.toFixed(1),+r.y.toFixed(1),+r.width.toFixed(1),+r.height.toFixed(1)]};for(const k of props)s[k]=cs[k];return s;});}
+              return out;
+            },{selectors,props});
+            await p.close(); return data;
+          }
+          (async()=>{const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const base=await snap(b,false),blocked=await snap(b,true);await b.close();let diffs=[];for(const sel of selectors){const a=base[sel]||[],c=blocked[sel]||[];for(let i=0;i<Math.max(a.length,c.length);i++){if(JSON.stringify(a[i])!==JSON.stringify(c[i]))diffs.push({selector:sel,index:i,base:a[i]||null,blocked:c[i]||null});}}console.log(JSON.stringify({diffCount:diffs.length,diffs},null,2));})().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat /tmp/css-compare.json > runtime/woostify-home-css-diagnostic-20260819.txt
+          cat runtime/woostify-home-css-diagnostic-20260819.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/woostify-home-css-diagnostic-20260819.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Woostify Home CSS diagnostic [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
