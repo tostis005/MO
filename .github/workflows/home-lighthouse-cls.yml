@@ -22,6 +22,60 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Trace layout shift rectangles
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save puppeteer-core@24.16.0 >/dev/null 2>&1
+          node <<'NODE' | tee layout-shift-trace.txt
+          const puppeteer = require('puppeteer-core');
+          const {execSync} = require('child_process');
+          const chrome = (() => {
+            for (const cmd of ['which google-chrome', 'which chromium', 'which chromium-browser']) {
+              try { return execSync(cmd).toString().trim(); } catch (_) {}
+            }
+            throw new Error('Chrome executable not found');
+          })();
+          const rect = r => r ? ({x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,right:r.right,bottom:r.bottom,left:r.left}) : null;
+          (async () => {
+            const browser = await puppeteer.launch({executablePath: chrome, headless: true, args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page = await browser.newPage();
+            await page.setViewport({width:1350,height:940,deviceScaleFactor:1});
+            await page.evaluateOnNewDocument(() => {
+              window.__emoLayoutShifts = [];
+              const selector = node => {
+                if (!node || node.nodeType !== 1) return '';
+                if (node.id) return `${node.tagName.toLowerCase()}#${node.id}`;
+                const cls = [...node.classList].slice(0,4).join('.');
+                return `${node.tagName.toLowerCase()}${cls ? '.'+cls : ''}`;
+              };
+              new PerformanceObserver(list => {
+                for (const e of list.getEntries()) {
+                  if (e.hadRecentInput) continue;
+                  window.__emoLayoutShifts.push({
+                    value:e.value,
+                    startTime:e.startTime,
+                    sources:(e.sources || []).map(s => ({
+                      selector: selector(s.node),
+                      previousRect:s.previousRect ? {x:s.previousRect.x,y:s.previousRect.y,width:s.previousRect.width,height:s.previousRect.height,top:s.previousRect.top,right:s.previousRect.right,bottom:s.previousRect.bottom,left:s.previousRect.left} : null,
+                      currentRect:s.currentRect ? {x:s.currentRect.x,y:s.currentRect.y,width:s.currentRect.width,height:s.currentRect.height,top:s.currentRect.top,right:s.currentRect.right,bottom:s.currentRect.bottom,left:s.currentRect.left} : null,
+                    }))
+                  });
+                }
+              }).observe({type:'layout-shift', buffered:true});
+            });
+            await page.goto('https://www.elmercadodeorigen.com/', {waitUntil:'domcontentloaded', timeout:60000});
+            await new Promise(r => setTimeout(r, 8000));
+            const result = await page.evaluate(() => ({
+              shifts: window.__emoLayoutShifts || [],
+              hero: (() => { const e=document.querySelector('.emo-hero__grid'); if(!e) return null; const r=e.getBoundingClientRect(); const s=getComputedStyle(e); return {rect:{x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,right:r.right,bottom:r.bottom,left:r.left},display:s.display,gridTemplateColumns:s.gridTemplateColumns,gap:s.gap}; })(),
+              card: (() => { const e=document.querySelector('.emo-hero-card--1'); if(!e) return null; const r=e.getBoundingClientRect(); const s=getComputedStyle(e); return {rect:{x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,right:r.right,bottom:r.bottom,left:r.left},display:s.display,gridColumn:s.gridColumn,gridRow:s.gridRow,transform:s.transform}; })()
+            }));
+            console.log(JSON.stringify(result,null,2));
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
+
       - name: Check production and run Lighthouse desktop
         shell: bash
         run: |
@@ -67,28 +121,24 @@ jobs:
               const score = item.score ?? item.value ?? 0;
               const node = item.node?.selector || item.node?.snippet || item.node?.nodeLabel || '';
               console.log(`${j+1}. ${Number(score).toFixed(4)} ${String(node).replace(/\s+/g,' ').slice(0,220)}`);
-              if (j < 3) console.log(`   detail: ${JSON.stringify(item).slice(0,2200)}`);
             });
-            const culprit = r.audits['cls-culprits-insight'];
-            if (culprit?.details) {
-              console.log(`CLS culprit insight: ${JSON.stringify(culprit.details).slice(0,7000)}`);
-            }
           });
           NODE
 
-      - name: Persist latest summary
+      - name: Persist latest diagnostics
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p reports
           cp lighthouse-summary.txt reports/home-lighthouse-latest.txt
+          cp layout-shift-trace.txt reports/home-layout-shift-trace-latest.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add reports/home-lighthouse-latest.txt
+          git add reports/home-lighthouse-latest.txt reports/home-layout-shift-trace-latest.txt
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m 'Update Home Lighthouse CLS report'
+          git commit -m 'Update Home Lighthouse CLS diagnostics'
           git push
 
       - name: Upload Lighthouse reports
@@ -98,4 +148,5 @@ jobs:
           path: |
             lighthouse-*.json
             lighthouse-summary.txt
+            layout-shift-trace.txt
           retention-days: 3
