@@ -1,0 +1,56 @@
+=== META ===
+540003 /tmp/home.html
+=== BODY ===
+<body class="home wp-singular page-template-default page page-id-3699 wp-embed-responsive wp-theme-woostify wp-child-theme-elmercadodeorigen-child theme-woostify woocommerce-no-js translatepress-es_ES elmercado-child-theme elmercado-has-woocommerce elmercado-premium-home child-theme-detected site-full-width-container has-header-layout-1 no-sidebar has-gallery-slider-layout hid-skus wcfm-theme-el-mercado-de-origen elementor-default elementor-kit-1458 elementor-page elementor-page-3699">
+=== LINES 385-405 ===
+   385					if (!header) return;
+   386	
+   387					const nodes = [header, ...header.querySelectorAll('*')];
+   388					nodes.forEach((node) => {
+   389						if (!(node instanceof HTMLElement)) return;
+   390	
+   391						const textCount = node.children.length === 0 ? numericText(node) : null;
+   392						const textEmpty = textCount === 0;
+   393						node.classList.toggle('emo-cart-count-empty', textEmpty);
+   394						if (textCount !== null) node.setAttribute('aria-hidden', textEmpty ? 'true' : 'false');
+   395	
+   396						const before = pseudoNumber(getComputedStyle(node, '::before').content);
+   397						const after = pseudoNumber(getComputedStyle(node, '::after').content);
+   398						node.classList.toggle('emo-cart-pseudo-empty', before === 0 || after === 0);
+   399					});
+   400				};
+   401	
+   402				const start = () => {
+   403					sync();
+   404					let scheduled = false;
+   405					const observer = new MutationObserver(() => {
+=== LINES 2345-2360 ===
+  2345						const styles = getComputedStyle(track);
+  2346						return card.getBoundingClientRect().width + parseFloat(styles.columnGap || styles.gap || '0');
+  2347					};
+  2348	
+  2349					const update = () => {
+  2350						const max = Math.max(0, track.scrollWidth - track.clientWidth);
+  2351						const active = max > 4 && matchMedia('(max-width: 991px)').matches;
+  2352						controls.hidden = !active;
+  2353						previous.disabled = !active || track.scrollLeft <= 4;
+  2354						next.disabled = !active || track.scrollLeft >= max - 4;
+  2355					};
+  2356	
+  2357					previous.addEventListener('click', () => track.scrollBy({ left: -cardStep(), behavior: 'smooth' }));
+  2358					next.addEventListener('click', () => track.scrollBy({ left: cardStep(), behavior: 'smooth' }));
+  2359					track.addEventListener('scroll', () => requestAnimationFrame(update), { passive: true });
+  2360					window.addEventListener('resize', update, { passive: true });
+=== SEARCH SCRIPT ===
+1938:<script defer id="jquery-dgwt-wcas-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/ajax-search-for-woocommerce/assets/js/search.min.js?ver=1.34.0"></script>
+=== GENERAL SCRIPT ===
+1898:<script defer id="woostify-general-js" src="https://www.elmercadodeorigen.com/wp-content/themes/woostify/assets/js/general.min.js?ver=2.0.6"></script>
+=== STAR RATING ===
+945:		<div class="star-rating" role="img" aria-label="Valorado con 4.89 de 5"><span style="width:97.8%">Valorado con <strong class="rating">4.89</strong> de 5</span></div><div class="product-loop-meta no-transform"><div class="animated-meta">			<span class="price"><span class="woocommerce-Price-amount amount" aria-hidden="true">39,20<span class="woocommerce-Price-currencySymbol">&euro;</span></span> <span aria-hidden="true">-</span> <span class="woocommerce-Price-amount amount" aria-hidden="true">41,20<span class="woocommerce-Price-currencySymbol">&euro;</span></span><span class="screen-reader-text">Rango de precios: desde 39,20&euro; hasta 41,20&euro;</span></span>
+1015:		<div class="star-rating" role="img" aria-label="Valorado con 4.94 de 5"><span style="width:98.8%">Valorado con <strong class="rating">4.94</strong> de 5</span></div><div class="product-loop-meta no-transform"><div class="animated-meta">			<span class="price"><span class="woocommerce-Price-amount amount" aria-hidden="true">165,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span> <span aria-hidden="true">-</span> <span class="woocommerce-Price-amount amount" aria-hidden="true">210,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span><span class="screen-reader-text">Rango de precios: desde 165,00&euro; hasta 210,00&euro;</span></span>
+1085:		<div class="star-rating" role="img" aria-label="Valorado con 4.90 de 5"><span style="width:98%">Valorado con <strong class="rating">4.90</strong> de 5</span></div><div class="product-loop-meta no-transform"><div class="animated-meta">			<span class="price"><span class="woocommerce-Price-amount amount" aria-hidden="true">405,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span> <span aria-hidden="true">-</span> <span class="woocommerce-Price-amount amount" aria-hidden="true">505,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span><span class="screen-reader-text">Rango de precios: desde 405,00&euro; hasta 505,00&euro;</span></span>
+1155:		<div class="star-rating" role="img" aria-label="Valorado con 5.00 de 5"><span style="width:100%">Valorado con <strong class="rating">5.00</strong> de 5</span></div><div class="product-loop-meta no-transform"><div class="animated-meta">			<span class="price"><span class="woocommerce-Price-amount amount" aria-hidden="true">170,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span> <span aria-hidden="true">-</span> <span class="woocommerce-Price-amount amount" aria-hidden="true">185,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span><span class="screen-reader-text">Rango de precios: desde 170,00&euro; hasta 185,00&euro;</span></span>
+1223:		<div class="star-rating" role="img" aria-label="Valorado con 4.88 de 5"><span style="width:97.6%">Valorado con <strong class="rating">4.88</strong> de 5</span></div><div class="product-loop-meta no-transform"><div class="animated-meta">			<span class="price"><span class="woocommerce-Price-amount amount" aria-hidden="true">13,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span> <span aria-hidden="true">-</span> <span class="woocommerce-Price-amount amount" aria-hidden="true">25,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span><span class="screen-reader-text">Rango de precios: desde 13,00&euro; hasta 25,00&euro;</span></span>
+1293:		<div class="star-rating" role="img" aria-label="Valorado con 5.00 de 5"><span style="width:100%">Valorado con <strong class="rating">5.00</strong> de 5</span></div><div class="product-loop-meta no-transform"><div class="animated-meta">			<span class="price"><span class="woocommerce-Price-amount amount" aria-hidden="true">440,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span> <span aria-hidden="true">-</span> <span class="woocommerce-Price-amount amount" aria-hidden="true">500,00<span class="woocommerce-Price-currencySymbol">&euro;</span></span><span class="screen-reader-text">Rango de precios: desde 440,00&euro; hasta 500,00&euro;</span></span>
+=== STAR WOFF ===
+691:@font-face{font-family:star;src:url('/wp-content/plugins/woocommerce/assets/fonts/star.woff') format('woff');font-weight:400;font-style:normal;font-display:swap}
