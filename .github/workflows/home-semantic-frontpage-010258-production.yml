@@ -1,0 +1,87 @@
+name: Home semantic front-page 0.10.258 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-semantic-frontpage-010258-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Deploy semantic guard and refresh Home
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/semantic-polish.php
+          grep -q '! is_front_page()' elmercadodeorigen-child/inc/semantic-polish.php
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/semantic-polish.php "$STAGING_USER@$STAGING_HOST:/tmp/semantic-frontpage-010258.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            TARGET='$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/semantic-polish.php'
+            cp \"\$TARGET\" \"\$TARGET.bak-$GITHUB_RUN_ID\"
+            install -m 0644 /tmp/semantic-frontpage-010258.php \"\$TARGET\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$TARGET\"
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f /tmp/semantic-frontpage-010258.php
+          "
+      - name: Verify H1 probe absent on live front page
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          HTML=/tmp/home-semantic-010258.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          count=$(grep -c 'visibleHeadingOne' "$HTML" || true)
+          {
+            printf 'deploy=success\n'
+            printf 'visibleHeadingOne=%s\n' "$count"
+            printf 'mobile_hitareas=%s\n' "$(grep -c 'id="elmercado-mobile-header-hitareas-final"' "$HTML" || true)"
+            printf 'catalog_parity=%s\n' "$(grep -c 'id="elmercado-catalog-mobile-controls-parity-script-010236"' "$HTML" || true)"
+            printf 'ads_marker=%s\n' "$(grep -c 'elmercado-delayed-google-ads-source' "$HTML" || true)"
+            printf 'ga4=%s\n' "$(grep -c 'G-515YQ0XMS4' "$HTML" || true)"
+          } > runtime/home-semantic-frontpage-010258.txt
+          cat runtime/home-semantic-frontpage-010258.txt
+          test "$count" -eq 0
+      - name: Record
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-semantic-frontpage-010258.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-semantic-frontpage-010258.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-semantic-frontpage-010258.txt
+          git commit -m 'Record Home semantic front-page verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
