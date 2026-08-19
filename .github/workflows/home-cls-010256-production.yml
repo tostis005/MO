@@ -1,0 +1,112 @@
+name: Home CLS 0.10.256 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php'
+      - '.github/workflows/home-cls-010256-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate PHP
+        run: php -l elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php
+      - name: Deploy CLS MU plugin
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          export SSHPASS="$STAGING_PASSWORD"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/elmercado-home-cls-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            TARGET='$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php'
+            install -m 0644 '$REMOTE' \"\$TARGET\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$TARGET\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$REMOTE'
+          "
+      - name: Verify live cart behavior
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          CHROME_PATH="$CHROME" node <<'JS' > /tmp/cart-verify.txt
+          const { chromium }=require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915}});
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:90000});
+            await page.waitForTimeout(1200);
+            const closed=await page.evaluate(()=>{const e=document.querySelector('#shop-cart-sidebar');const s=e?getComputedStyle(e):null,r=e?.getBoundingClientRect();return e?{visibility:s.visibility,x:r.x,width:r.width,body:document.body.className}:null});
+            let opened=null;
+            const trigger=page.locator('a.shopping-cart, a.shopping-bag-button, .shopping-cart > a, .cart-contents').first();
+            if(await trigger.count()){
+              await trigger.click({timeout:5000}).catch(()=>{}); await page.waitForTimeout(500);
+              opened=await page.evaluate(()=>{const e=document.querySelector('#shop-cart-sidebar');const s=e?getComputedStyle(e):null,r=e?.getBoundingClientRect();return e?{visibility:s.visibility,x:r.x,width:r.width}:null});
+            }
+            console.log(JSON.stringify({closed,opened},null,2));
+            await browser.close();
+            if(!closed || closed.visibility!=='hidden' || closed.x < 400) process.exit(12);
+            if(opened && opened.visibility==='hidden' && opened.x>=400) process.exit(13);
+          })().catch(e=>{console.error(e);process.exit(14)});
+          JS
+          cat /tmp/cart-verify.txt
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            cat /tmp/cart-verify.txt
+          } > runtime/home-cls-cart-010256.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          if [ ! -f runtime/home-cls-cart-010256.txt ]; then
+            printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-cls-cart-010256.txt
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-cls-cart-010256.txt
+          git commit -m 'Record Home CLS cart verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
