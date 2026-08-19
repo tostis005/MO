@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO - Home Performance Hardening 2026-08-19
- * Description: Autorrepara la caché estática de Home, difiere Meta fuera del parseo crítico y estabiliza los logos WCFM.
- * Version: 1.0.0
+ * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica y estabiliza los logos WCFM.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -95,6 +95,65 @@ function mdo_home_perf_transform_html( string $html ): string {
     if ( '' === $html ) {
         return $html;
     }
+
+    $html = preg_replace_callback(
+        '~<script\b[^>]*\bid=["\']facebook-capi-param-builder-js["\'][^>]*\bsrc=["\']([^"\']+)["\'][^>]*>\s*</script\s*>~i',
+        static function ( array $matches ): string {
+            $src = htmlspecialchars( html_entity_decode( $matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8' ), ENT_QUOTES, 'UTF-8' );
+            return '<script id="facebook-capi-param-builder-js" type="application/x-mdo-deferred" data-mdo-src="' . $src . '"></script>';
+        },
+        $html,
+        1
+    ) ?? $html;
+
+    $meta_loader = <<<'HTML'
+<script id="facebook-capi-param-builder-js-after">
+(() => {
+    'use strict';
+    let started = false;
+
+    const collect = () => {
+        if (typeof clientParamBuilder !== 'undefined' && !/(?:^|;\s*)wc_facebook_signals_state=held(?:;|$)/.test(document.cookie)) {
+            clientParamBuilder.processAndCollectAllParams(window.location.href);
+        }
+    };
+
+    const load = () => {
+        if (started) return;
+        started = true;
+        const placeholder = document.getElementById('facebook-capi-param-builder-js');
+        const src = placeholder?.dataset?.mdoSrc || '';
+        if (!src) return;
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = collect;
+        document.head.appendChild(script);
+    };
+
+    const schedule = () => {
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(load, { timeout: 1500 });
+        } else {
+            setTimeout(load, 500);
+        }
+    };
+
+    window.addEventListener('pointerdown', load, { once: true, passive: true });
+    window.addEventListener('touchstart', load, { once: true, passive: true });
+    window.addEventListener('keydown', load, { once: true });
+    if (document.readyState === 'complete') schedule();
+    else window.addEventListener('load', schedule, { once: true });
+})();
+</script>
+HTML;
+
+    $html = preg_replace(
+        '~<script\b[^>]*\bid=["\']facebook-capi-param-builder-js-after["\'][^>]*>.*?</script\s*>~is',
+        $meta_loader,
+        $html,
+        1
+    ) ?? $html;
 
     $html = preg_replace_callback(
         '~<script\b[^>]*\bsrc=["\'][^"\']*(?:facebook-for-woocommerce-signals\.js|/facebook-for-woocommerce/[^"\']*/pixel-events\.js)[^"\']*["\'][^>]*>~i',
