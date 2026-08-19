@@ -1,0 +1,102 @@
+name: Catalog result count 0.10.220 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-result-count-010220-production.yml'
+      - 'elmercadodeorigen-child/inc/catalog-result-total-010220.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate catalog result count module
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='elmercadodeorigen-child/inc/catalog-result-total-010220.php'
+          php -l "$FILE" >/dev/null
+          grep -Fq 'function elmercado_catalog_remove_legacy_result_count_010220' "$FILE"
+          grep -Fq "wp_normalize_path( ELMERCADO_THEME_PATH . '/inc/catalog-visibility-counts-010217.php' )" "$FILE"
+          grep -Fq 'emo-catalog-result-count-010220' "$FILE"
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy module to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          LOCAL_FILE='elmercadodeorigen-child/inc/catalog-result-total-010220.php'
+          REMOTE_TMP="/tmp/catalog-result-total-010220-${GITHUB_RUN_ID}.php"
+          REMOTE_TARGET="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/catalog-result-total-010220.php"
+          REMOTE_BACKUP="/tmp/catalog-result-total-010220-${GITHUB_RUN_ID}.backup.php"
+
+          sshpass -e scp $SCP_OPTIONS "$LOCAL_FILE" "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; target='$REMOTE_TARGET'; tmp='$REMOTE_TMP'; backup='$REMOTE_BACKUP'; test -f \"\$target\"; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l \"\$tmp\" >/dev/null; cp -p \"\$target\" \"\$backup\"; cp \"\$tmp\" \"\$target\"; rm -f \"\$tmp\"; \"\$php_bin\" -l \"\$target\" >/dev/null"
+
+      - name: Flush WordPress object cache
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac
+            done
+          ')"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify initial shop HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/tienda/?emdo_result_count_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO catalog verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/emdo-shop.html "$URL"
+          OLD_COUNT="$(grep -Fc '<p class="woocommerce-result-count emo-catalog-result-count-010218"' /tmp/emdo-shop.html || true)"
+          NEW_COUNT="$(grep -Fc '<p class="woocommerce-result-count emo-catalog-result-count-010220"' /tmp/emdo-shop.html || true)"
+          echo "CATALOG_RESULT_COUNTS old=$OLD_COUNT new=$NEW_COUNT"
+          test "$OLD_COUNT" -eq 0
+          test "$NEW_COUNT" -eq 1
