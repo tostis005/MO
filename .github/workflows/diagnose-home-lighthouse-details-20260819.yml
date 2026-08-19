@@ -1,0 +1,62 @@
+name: Diagnose Home Lighthouse details 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-lighthouse-details-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run detailed Lighthouse
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lhr-detail.json --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' > runtime/diagnose-home-lighthouse-details-20260819.txt
+          import json
+          a=json.load(open('/tmp/lhr-detail.json')); audits=a['audits']
+          print('score=',round(a['categories']['performance']['score']*100))
+          wanted=[]
+          for key,v in audits.items():
+              title=(v.get('title') or '').lower()
+              if any(t in key.lower() or t in title for t in ['forced-reflow','unused-css','unminified-css','legacy-javascript','image-delivery','optimized-images','modern-image','layout-shift','mainthread-work-breakdown']):
+                  wanted.append(key)
+          for key in sorted(set(wanted)):
+              v=audits[key]
+              print('\n###',key)
+              print('title=',v.get('title'))
+              print('score=',v.get('score'),'numeric=',v.get('numericValue'),'display=',v.get('displayValue'))
+              details=v.get('details') or {}
+              items=details.get('items') or []
+              print('items_count=',len(items))
+              for item in items[:30]:
+                  if isinstance(item,dict):
+                      slim={k:item.get(k) for k in ['url','source','totalBytes','wastedBytes','wastedPercent','duration','node','subItems','startTime','endTime'] if k in item}
+                      print(json.dumps(slim,ensure_ascii=False)[:5000])
+                  else: print(str(item)[:2000])
+          PY
+          cat runtime/diagnose-home-lighthouse-details-20260819.txt
+      - name: Record diagnostic
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/diagnose-home-lighthouse-details-20260819.txt
+          git commit -m 'Record detailed Home Lighthouse diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
