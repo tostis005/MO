@@ -1,0 +1,119 @@
+name: Diagnose WCFM shipping layout and quantity rates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-wcfm-shipping-layout-qty-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install helpers
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass python3-bs4 >/dev/null
+
+      - name: Inspect live DOM and shipping costs
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          OUT=.deploy-status/shipping-layout-qty-diagnostic.txt
+          : > "$OUT"
+
+          BASE='https://www.elmercadodeorigen.com/tienda/1957/'
+          BUST="emdo_diag=${GITHUB_RUN_ID}"
+          curl -fsSL -A 'Mozilla/5.0 EMDO diagnostic' -H 'Cache-Control: no-cache, no-store' -o /tmp/products.html "${BASE}?${BUST}"
+          curl -fsSL -A 'Mozilla/5.0 EMDO diagnostic' -H 'Cache-Control: no-cache, no-store' -o /tmp/shipping.html "${BASE}?mdo_shipping=1&${BUST}"
+
+          python3 - <<'PY' >> "$OUT"
+          from bs4 import BeautifulSoup
+          for label, path, selector in [
+              ('PRODUCTS','/tmp/products.html','.products'),
+              ('SHIPPING','/tmp/shipping.html','.mdo-store-shipping'),
+          ]:
+              html=open(path,encoding='utf-8',errors='ignore').read()
+              soup=BeautifulSoup(html,'html.parser')
+              node=soup.select_one(selector)
+              print(f'=== {label} ANCESTORS ===')
+              if not node:
+                  print('NOT_FOUND')
+                  continue
+              cur=node
+              for i in range(8):
+                  if not cur or not getattr(cur,'name',None): break
+                  attrs=[]
+                  if cur.get('id'): attrs.append('#'+cur.get('id'))
+                  if cur.get('class'): attrs.extend('.'+x for x in cur.get('class'))
+                  print(i, cur.name + ''.join(attrs))
+                  cur=cur.parent
+              tabs=soup.select_one('#tab_links_area')
+              if tabs:
+                  print('TAB_PARENT', tabs.parent.name, tabs.parent.get('id'), tabs.parent.get('class'))
+                  print('TAB_GRANDPARENT', tabs.parent.parent.name, tabs.parent.parent.get('id'), tabs.parent.parent.get('class'))
+          PY
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            global \$wpdb;
+            if (!class_exists(\"MDO_Database\") || !function_exists(\"wcfmmp_get_shipping_zone\")) { echo \"MISSING_RUNTIME\\n\"; return; }
+            \$table=MDO_Database::table(\"suppliers\");
+            \$vendors=\$wpdb->get_results(\"SELECT id,name,vendor_user_id FROM {\$table} WHERE vendor_user_id IS NOT NULL ORDER BY id ASC\", ARRAY_A);
+            foreach (\$vendors as \$vendor) {
+              \$vid=(int)\$vendor[\"vendor_user_id\"];
+              echo \"VENDOR \",\$vid,\" | \",\$vendor[\"name\"],\"\\n\";
+              \$zones=wcfmmp_get_shipping_zone(\"\",\$vid);
+              foreach ((array)\$zones as \$zone) {
+                \$z=(array)\$zone;
+                echo \"  ZONE \",(\$z[\"zone_name\"]??\$z[\"name\"]??\"?\"),\"\\n\";
+                foreach ((array)(\$z[\"shipping_methods\"]??array()) as \$method) {
+                  \$m=(array)\$method; \$s=\$m[\"settings\"]??array(); if (is_string(\$s)) \$s=maybe_unserialize(\$s); if (!is_array(\$s)) \$s=array();
+                  echo \"    METHOD \",(\$m[\"method_id\"]??\$m[\"id\"]??\"?\"),\" cost=\",(string)(\$s[\"cost\"]??\$m[\"cost\"]??\"\"),\" title=\",(string)(\$s[\"title\"]??\$m[\"title\"]??\"\"),\"\\n\";
+                }
+              }
+            }
+          ' --path='$PROD_PATH' --allow-root" >> "$OUT"
+
+          cat "$OUT"
+
+      - name: Record diagnostic
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/shipping-layout-qty-diagnostic.txt
+          git commit -m 'Record shipping layout and quantity diagnostic [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
