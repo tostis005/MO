@@ -1,0 +1,139 @@
+name: Home first-view CSS 0.10.255 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+      - '.github/workflows/home-first-view-css-010255-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-first-view-css-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate critical CSS
+        shell: bash
+        run: |
+          set -euo pipefail
+          bytes=$(wc -c < elmercadodeorigen-child/assets/css/critical-woostify-home.min.css)
+          echo "critical_source_bytes=$bytes"
+          test "$bytes" -ge 12000
+          test "$bytes" -le 22000
+          grep -q '.emo-hero__copy>p' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+          grep -q '.site-header-inner>.woostify-container' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+      - name: Deploy compact critical CSS
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          command -v sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/elmercado-critical-home-${GITHUB_RUN_ID}.css"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          timeout 120s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            TARGET='$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+            BACKUP=\"\$HOME/elmercado-critical-home-backup-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S).css\"
+            cp \"\$TARGET\" \"\$BACKUP\"
+            install -m 0644 '$REMOTE' \"\$TARGET\"
+            test \$(wc -c < \"\$TARGET\") -le 22000
+            wp_bin=\$(command -v wp)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f '$REMOTE'
+            echo \"backup=\$BACKUP\"
+          "
+      - name: Verify Lighthouse delivery
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Chrome-Lighthouse'
+          HTML="$(mktemp)"
+          curl -fsS --compressed --max-time 45 -A "$UA" 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          python3 - "$HTML" <<'PY' > /tmp/verify.txt
+          import pathlib,re,sys,gzip
+          html=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          m=re.search(r'<style id="elmercado-home-first-view-css">(.*?)</style>',html,re.S)
+          if not m: raise SystemExit('critical style missing')
+          css=m.group(1)
+          head=html.lower().find('</head>')+7
+          hero=html.find('En El Mercado de Origen buscamos productores')
+          print('critical_css_bytes=',len(css.encode()))
+          print('html_bytes=',len(html.encode()))
+          print('gzip_bytes=',len(gzip.compress(html.encode(),compresslevel=9)))
+          print('head_bytes=',head)
+          print('hero_pos=',hero)
+          print('hustle_source=',html.find('hustle_inline_styles_front-inline-css'))
+          print('jquery_first_party=', 'www.elmercadodeorigen.com/wp-includes/js/jquery/jquery.min.js' in html)
+          print('hero_markup=', '<div class="emo-hero__copy"' in html and hero>=0)
+          if len(css.encode())>22000 or head>65000 or hero<0 or hero>80000:
+              raise SystemExit(12)
+          if 'srcset=' not in html[html.find('Tolecarnes-fondo')-1000:html.find('Tolecarnes-fondo')+3000]:
+              raise SystemExit(13)
+          PY
+          cat /tmp/verify.txt
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            cat /tmp/verify.txt
+          } > runtime/home-first-view-css-010255.txt
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          if [ ! -f runtime/home-first-view-css-010255.txt ]; then
+            {
+              printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+              printf 'commit=%s\n' "$GITHUB_SHA"
+              printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+              printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            } > runtime/home-first-view-css-010255.txt
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-first-view-css-010255.txt
+          git commit -m 'Record compact Home critical CSS verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
