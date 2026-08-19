@@ -52,45 +52,77 @@ add_action(
 				return /^\d+$/.test(normalized) ? Number.parseInt(normalized, 10) : null;
 			};
 
+			const cartNodes = (header) => {
+				const selector = [
+					'.site-tools [class*="cart"]',
+					'.site-tools [class*="bag"]',
+					'.site-tools [data-count]',
+					'.site-tools [data-cart-count]',
+					'.site-tools [data-items]',
+					'.cart-contents',
+					'.mini-cart',
+					'[class*="cart-count"]'
+				].join(',');
+				const nodes = new Set();
+				header.querySelectorAll(selector).forEach((container) => {
+					nodes.add(container);
+					container.querySelectorAll('*').forEach((node) => nodes.add(node));
+				});
+				return [...nodes].filter((node) => node instanceof HTMLElement);
+			};
+
 			const sync = () => {
 				const header = document.querySelector('.site-header');
 				if (!header) return;
 
-				const nodes = [header, ...header.querySelectorAll('*')];
-				nodes.forEach((node) => {
-					if (!(node instanceof HTMLElement)) return;
-
+				/*
+				 * Fase de lectura: no modificamos clases ni atributos hasta terminar de
+				 * consultar todos los estilos. Así evitamos alternar write/read y forzar
+				 * un recálculo de layout por cada nodo del header.
+				 */
+				const snapshot = cartNodes(header).map((node) => {
 					const textCount = node.children.length === 0 ? numericText(node) : null;
+					const before = pseudoNumber(getComputedStyle(node, '::before').content);
+					const after = pseudoNumber(getComputedStyle(node, '::after').content);
+					return { node, textCount, before, after };
+				});
+
+				/* Fase de escritura: todas las mutaciones se agrupan después de leer. */
+				snapshot.forEach(({ node, textCount, before, after }) => {
 					const textEmpty = textCount === 0;
 					node.classList.toggle('emo-cart-count-empty', textEmpty);
 					if (textCount !== null) node.setAttribute('aria-hidden', textEmpty ? 'true' : 'false');
-
-					const before = pseudoNumber(getComputedStyle(node, '::before').content);
-					const after = pseudoNumber(getComputedStyle(node, '::after').content);
 					node.classList.toggle('emo-cart-pseudo-empty', before === 0 || after === 0);
 				});
 			};
 
 			const start = () => {
-				sync();
 				let scheduled = false;
-				const observer = new MutationObserver(() => {
+				const schedule = () => {
 					if (scheduled) return;
 					scheduled = true;
 					requestAnimationFrame(() => {
 						scheduled = false;
 						sync();
 					});
-				});
-				observer.observe(document.documentElement, {
+				};
+
+				const header = document.querySelector('.site-header');
+				if (!header) return;
+				schedule();
+
+				/* Sólo observamos el header; cambios del catálogo ya no relanzan sync(). */
+				const observer = new MutationObserver(schedule);
+				observer.observe(header, {
 					childList: true,
 					subtree: true,
 					characterData: true,
 					attributes: true,
 					attributeFilter: ['class', 'data-count', 'data-cart-count', 'data-items']
 				});
+
 				['wc_fragments_refreshed', 'added_to_cart', 'removed_from_cart', 'updated_wc_div'].forEach((eventName) => {
-					document.body.addEventListener(eventName, () => requestAnimationFrame(sync));
+					document.body.addEventListener(eventName, schedule);
 				});
 			};
 
