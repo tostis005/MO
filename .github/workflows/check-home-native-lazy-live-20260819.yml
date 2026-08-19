@@ -1,0 +1,54 @@
+name: Check live Home native lazy markup 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/check-home-native-lazy-live-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check live HTML
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html; done
+          python3 - <<'PY' > runtime/home-native-lazy-live-20260819.txt
+          from pathlib import Path
+          import re
+          s=Path('/tmp/home.html').read_text(errors='replace')
+          vals={
+            'bytes':len(s.encode()),
+            'smush_script':len(re.findall(r'smush-lazy-load-native\.min\.js',s,re.I)),
+            'img_data_src':len(re.findall(r'<img[^>]+\bdata-src=',s,re.I)),
+            'img_data_srcset':len(re.findall(r'<img[^>]+\bdata-srcset=',s,re.I)),
+            'placeholder':len(re.findall(r'<img[^>]+src=["\']data:image/gif;base64',s,re.I)),
+            'lazyload_class':len(re.findall(r'<img[^>]+class=["\'][^"\']*\blazyload\b',s,re.I)),
+            'native_lazy':len(re.findall(r'<img[^>]+loading=["\']lazy["\']',s,re.I)),
+            'product_card_images':len(re.findall(r'<img[^>]+elmercado-catalog-card-image-010241[^>]*>',s,re.I)),
+            'seller_logos':len(re.findall(r'<img[^>]+wcfmmp_sold_by_logo[^>]*>',s,re.I)),
+          }
+          print(vals)
+          for m in re.finditer(r'<img\b[^>]+elmercado-catalog-card-image-010241[^>]*>',s,re.I): print('product='+m.group(0)[:1600])
+          for m in re.finditer(r'<img\b[^>]+metodosPago[^>]*>',s,re.I): print('payment='+m.group(0)[:1600])
+          PY
+          cat runtime/home-native-lazy-live-20260819.txt
+      - name: Record
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-native-lazy-live-20260819.txt
+          git commit -m 'Record live Home native lazy markup' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
