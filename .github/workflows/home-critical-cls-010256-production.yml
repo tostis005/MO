@@ -1,4 +1,4 @@
-name: Home producer first-frame CLS production
+name: Restore proven Home CLS baseline
 
 on:
   push:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  patch-deploy-measure:
+  restore-deploy-measure:
     runs-on: ubuntu-24.04
     timeout-minutes: 18
     env:
@@ -27,43 +27,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Put exact producer mosaic in earliest critical CSS
+      - name: Restore files from the 0.006 CLS baseline
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
-          s=p.read_text()
-          marker='/*emo-vendor-first-frame-010285*/'
-          if marker in s:
-              s=s.split(marker,1)[0].rstrip()+'\n'
-          css=r'''/*emo-vendor-first-frame-010285*/
-          @media(min-width:992px){
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors{display:grid!important;position:relative!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;grid-template-rows:repeat(10,38px)!important;grid-auto-rows:0!important;gap:0!important;width:auto!important;height:380px!important;min-height:380px!important;max-height:380px!important;min-width:0!important;max-width:none!important;margin:0!important;padding:0!important;transform:translateY(-34px)!important;overflow:visible!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors>.emo-hero-card{position:relative!important;inset:auto!important;display:block!important;float:none!important;width:auto!important;max-width:none!important;min-width:0!important;height:auto!important;max-height:none!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;contain:layout paint!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors>.emo-hero-card--1{grid-column:1/7!important;grid-row:1/11!important;transform:rotate(-1.2deg)!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors>.emo-hero-card--2{grid-column:7/13!important;grid-row:1/6!important;transform:rotate(1.1deg)!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors>.emo-hero-card--3{grid-column:7/13!important;grid-row:6/11!important;transform:rotate(.45deg)!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-4>.emo-hero-card--1{grid-column:1/7!important;grid-row:1/7!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-4>.emo-hero-card--2{grid-column:7/13!important;grid-row:1/6!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-4>.emo-hero-card--3{grid-column:1/6!important;grid-row:7/11!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-4>.emo-hero-card--4{grid-column:6/13!important;grid-row:6/11!important;transform:rotate(-.55deg)!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-5>.emo-hero-card--1{grid-column:1/6!important;grid-row:1/7!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-5>.emo-hero-card--2{grid-column:6/13!important;grid-row:1/5!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-5>.emo-hero-card--3{grid-column:1/5!important;grid-row:7/11!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-5>.emo-hero-card--4{grid-column:5/9!important;grid-row:5/11!important;transform:rotate(-.55deg)!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors.emo-vendor-count-5>.emo-hero-card--5{grid-column:9/13!important;grid-row:5/11!important;transform:rotate(.65deg)!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors>.emo-hero-card>figure{position:relative!important;display:block!important;width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
-          body.home.elmercado-child-theme .emo-hero__grid>.emo-hero__visual.emo-hero__visual--vendors>.emo-hero-card>figure>img{position:absolute!important;inset:0!important;display:block!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important;object-fit:cover!important;object-position:center!important}
-          }
-          '''
-          p.write_text(s+'\n'+css+'\n')
-          print('critical_bytes=',p.stat().st_size)
-          PY
-          grep -q 'emo-vendor-first-frame-010285' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+          BASE='db7a6b87a28b70dea64506fb342403da9d5b771c'
+          CLS='elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php'
+          CRIT='elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+          HEADER='elmercadodeorigen-child/mu-plugins/elmercado-home-header-cls-010279.php'
+          git show "$BASE:$CLS" > "$CLS"
+          git show "$BASE:$CRIT" > "$CRIT"
+          rm -f "$HEADER"
+          php -l "$CLS"
+          grep -q "010256-2" "$CLS"
+          ! grep -q 'elmercado-home-first-view-lock-010256' "$CLS"
+          ! grep -q 'emo-vendor-first-frame-010285' "$CRIT"
+          test ! -e "$HEADER"
 
-      - name: Deploy critical CSS and purge Home caches
+      - name: Deploy baseline CLS files and purge Home caches
         id: deploy
         shell: bash
         env:
@@ -86,20 +67,25 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          REMOTE="/tmp/critical-home-${GITHUB_RUN_ID}.css"
-          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          REMOTE_CLS="/tmp/home-cls-${GITHUB_RUN_ID}.php"
+          REMOTE_CRIT="/tmp/home-critical-${GITHUB_RUN_ID}.css"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CLS"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:$REMOTE_CRIT"
           timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
-            install -m 0644 '$REMOTE' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+            install -m 0644 '$REMOTE_CLS' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php'
+            install -m 0644 '$REMOTE_CRIT' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+            rm -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-header-cls-010279.php'
             php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
-            rm -f '$REMOTE'
+            rm -f '$REMOTE_CLS' '$REMOTE_CRIT'
           "
 
-      - name: Trace first card and run Lighthouse 3x
+      - name: Warm Home and run Lighthouse desktop three times
         id: verify
         shell: bash
         run: |
@@ -108,43 +94,49 @@ jobs:
           URL='https://www.elmercadodeorigen.com/'
           for i in 1 2 3; do curl -fsS --compressed --max-time 45 "$URL" -o /dev/null; done
           curl -fsS --compressed --max-time 45 "$URL" -o /tmp/home.html
-          grep -q 'emo-vendor-first-frame-010285' /tmp/home.html
-          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
-          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
-          CHROME_PATH="$CHROME" node <<'JS' > /tmp/card-trace.txt
-          const {chromium}=require('playwright-core');
-          (async()=>{const b=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const p=await b.newPage({viewport:{width:1350,height:940}});await p.addInitScript(()=>{window.__s=[];const R=r=>r?{x:+r.x.toFixed(1),y:+r.y.toFixed(1),w:+r.width.toFixed(1),h:+r.height.toFixed(1)}:null;new PerformanceObserver(l=>l.getEntries().forEach(e=>{if(!e.hadRecentInput)window.__s.push({v:+e.value.toFixed(6),t:+e.startTime.toFixed(1),s:(e.sources||[]).map(x=>({cls:typeof x.node?.className==='string'?x.node.className:'',old:R(x.previousRect),now:R(x.currentRect)}))})})).observe({type:'layout-shift',buffered:true})});await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});await p.waitForTimeout(1800);const o=await p.evaluate(()=>({shifts:window.__s,card:(()=>{const e=document.querySelector('.emo-hero-card--1'),r=e.getBoundingClientRect(),c=getComputedStyle(e);return {rect:{x:r.x,y:r.y,w:r.width,h:r.height},css:{w:c.width,h:c.height,gridColumn:c.gridColumn,gridRow:c.gridRow}}})()}));console.log(JSON.stringify(o,null,2));await b.close()})().catch(e=>{console.error(e);process.exit(1)});
-          JS
-          cat /tmp/card-trace.txt
+          grep -q 'elmercado-home-cls-010256' /tmp/home.html
+          ! grep -q 'elmercado-home-first-view-lock-010256' /tmp/home.html
+          ! grep -q 'emo-vendor-first-frame-010285' /tmp/home.html
           for i in 1 2 3; do
-            npx --yes lighthouse@12.8.2 "$URL" --only-categories=performance --form-factor=desktop --screenEmulation.mobile=false --screenEmulation.width=1350 --screenEmulation.height=940 --screenEmulation.deviceScaleFactor=1 --throttling-method=simulate --output=json --output-path="/tmp/lhr-$i.json" --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+            npx --yes lighthouse@12.8.2 "$URL" \
+              --only-categories=performance \
+              --form-factor=desktop \
+              --screenEmulation.mobile=false \
+              --screenEmulation.width=1350 \
+              --screenEmulation.height=940 \
+              --screenEmulation.deviceScaleFactor=1 \
+              --throttling-method=simulate \
+              --output=json \
+              --output-path="/tmp/lhr-$i.json" \
+              --quiet \
+              --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
           done
-          python3 - <<'PY' | tee runtime/home-vendor-first-frame-010285.txt
+          python3 - <<'PY' | tee runtime/home-cls-restored-baseline-010286.txt
           import json,statistics
-          trace=json.load(open('/tmp/card-trace.txt'))
-          print('trace_shifts=')
-          for row in trace['shifts']:
-              cards=[x for x in row['s'] if 'emo-hero-card' in x.get('cls','')]
-              if cards: print(row['v'],cards)
-          print('final_card=',trace['card'])
           rows=[]
           for i in range(1,4):
-              r=json.load(open(f'/tmp/lhr-{i}.json'));a=r['audits'];row={'score':round(r['categories']['performance']['score']*100),'lcp':a['largest-contentful-paint']['numericValue'],'tbt':a['total-blocking-time']['numericValue'],'cls':a['cumulative-layout-shift']['numericValue']};rows.append(row);print('run',i,row)
-              for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:6]:
+              r=json.load(open(f'/tmp/lhr-{i}.json'));a=r['audits']
+              row={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue']}
+              rows.append(row);print('run',i,row)
+              for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:8]:
                   n=item.get('node') or {};print(' shift',item.get('score'),n.get('selector') or n.get('nodeLabel') or '')
-          print('median_score=',statistics.median(x['score'] for x in rows));print('median_lcp=',round(statistics.median(x['lcp'] for x in rows)));print('median_tbt=',round(statistics.median(x['tbt'] for x in rows)));print('median_cls=',statistics.median(x['cls'] for x in rows))
+          print('median_score=',statistics.median(x['score'] for x in rows))
+          print('median_fcp=',statistics.median(x['fcp'] for x in rows))
+          print('median_lcp=',statistics.median(x['lcp'] for x in rows))
+          print('median_tbt=',statistics.median(x['tbt'] for x in rows))
+          print('median_cls=',statistics.median(x['cls'] for x in rows))
           PY
 
-      - name: Persist source and result
+      - name: Persist restored source and measurement
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          [ -f runtime/home-vendor-first-frame-010285.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-vendor-first-frame-010285.txt
+          [ -f runtime/home-cls-restored-baseline-010286.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-cls-restored-baseline-010286.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-vendor-first-frame-010285.txt
-          git commit -m 'Lock Home producer mosaic in critical CSS and measure' || exit 0
+          git add -A elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php elmercadodeorigen-child/assets/css/critical-woostify-home.min.css elmercadodeorigen-child/mu-plugins/elmercado-home-header-cls-010279.php runtime/home-cls-restored-baseline-010286.txt
+          git commit -m 'Restore proven Home CLS baseline and measure' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
