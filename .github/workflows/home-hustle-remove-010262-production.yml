@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
 
+# Production deployment + Lighthouse verification.
 jobs:
   deploy-verify:
     runs-on: ubuntu-24.04
