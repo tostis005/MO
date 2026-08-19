@@ -1,0 +1,105 @@
+name: Home reflow deploy 0.10.261
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-reflow-deploy-010261.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare critical stars
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
+          s=p.read_text()
+          marker='mdo-native-stars-010261'
+          if marker not in s:
+              s += "/*"+marker+"*/body.elmercado-premium-home .star-rating,body.elmercado-premium-home .star-rating::before,body.elmercado-premium-home .star-rating span,body.elmercado-premium-home .star-rating span::before{font-family:Arial,Helvetica,sans-serif!important;letter-spacing:.04em!important}body.elmercado-premium-home .star-rating::before{content:'★★★★★'!important;color:#d8d7d0!important}body.elmercado-premium-home .star-rating span::before{content:'★★★★★'!important;color:#d7a84f!important}"
+          p.write_text(s)
+          PY
+          php -l elmercadodeorigen-child/inc/cart-counter-visibility-final.php
+          php -l mu-plugins/mdo-home-fibosearch-lazy-010261.php
+      - name: Deploy
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/cart-counter-visibility-final.php "$STAGING_USER@$STAGING_HOST:/tmp/cart-counter.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:/tmp/critical.css"
+          sshpass -e scp $SCP mu-plugins/mdo-home-fibosearch-lazy-010261.php "$STAGING_USER@$STAGING_HOST:/tmp/fibosearch.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            MU='$PROD_PATH/wp-content/mu-plugins'
+            mkdir -p \"\$MU\"
+            install -m 0644 /tmp/cart-counter.php \"\$THEME/inc/cart-counter-visibility-final.php\"
+            install -m 0644 /tmp/critical.css \"\$THEME/assets/css/critical-woostify-home.min.css\"
+            install -m 0644 /tmp/fibosearch.php \"\$MU/mdo-home-fibosearch-lazy-010261.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+          "
+      - name: Verify served HTML
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          {
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'lazy_marker=%s\n' "$(grep -c 'mdo-home-fibosearch-lazy-010261' /tmp/home.html || true)"
+            printf 'direct_fibosearch=%s\n' "$(grep -c 'id="jquery-dgwt-wcas-js" src=' /tmp/home.html || true)"
+            printf 'cart_pseudo_read=%s\n' "$(grep -c "getComputedStyle(node, '::before')" /tmp/home.html || true)"
+            printf 'native_star_critical=%s\n' "$(grep -c 'mdo-native-stars-010261' /tmp/home.html || true)"
+          } > runtime/home-reflow-deploy-010261.txt
+          cat runtime/home-reflow-deploy-010261.txt
+          grep -q 'lazy_marker=1' runtime/home-reflow-deploy-010261.txt
+          grep -q 'direct_fibosearch=0' runtime/home-reflow-deploy-010261.txt
+          grep -q 'cart_pseudo_read=0' runtime/home-reflow-deploy-010261.txt
+          grep -q 'native_star_critical=1' runtime/home-reflow-deploy-010261.txt
+      - name: Record
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-reflow-deploy-010261.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-reflow-deploy-010261.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-reflow-deploy-010261.txt
+          git commit -m 'Record Home reflow deployment 0.10.261' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
