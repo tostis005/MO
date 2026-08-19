@@ -41,7 +41,7 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
             align-items: center;
             justify-content: space-between;
             gap: 16px;
-            margin: 0 0 22px;
+            margin: 0 0 20px;
             padding: 15px 18px;
             border: 1px solid rgba(0,0,0,.1);
             border-radius: 10px;
@@ -66,14 +66,9 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
             background: #fff;
         }
         #wcfmmp-store .mdo-store-shipping__zone h3 {
-            margin: 0 0 5px;
+            margin: 0 0 13px;
             font-size: 1.08em;
             line-height: 1.35;
-        }
-        #wcfmmp-store .mdo-store-shipping__locations {
-            margin: 0 0 13px;
-            color: #707070;
-            font-size: .93em;
         }
         #wcfmmp-store .mdo-store-shipping__conditions {
             display: grid;
@@ -121,37 +116,31 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
 
     <h2 id="mdo-store-shipping-title"><?php echo esc_html( mdo_sst_text( 'Envíos', 'Shipping' ) ); ?></h2>
 
+    <?php if ( $minimum > 0 ) : ?>
+        <div class="mdo-store-shipping__minimum">
+            <span class="mdo-store-shipping__minimum-label">
+                <?php echo esc_html( mdo_sst_text( 'Pedido mínimo', 'Minimum order' ) ); ?>
+            </span>
+            <span class="mdo-store-shipping__minimum-price"><?php echo wp_kses_post( wc_price( $minimum ) ); ?></span>
+        </div>
+    <?php endif; ?>
+
     <p class="mdo-store-shipping__intro">
         <?php
         echo esc_html(
             mdo_sst_text(
-                'Consulta las zonas a las que envía este productor y las condiciones configuradas actualmente para cada destino.',
+                'Consulta los destinos a los que envía este productor y las condiciones configuradas actualmente para cada uno.',
                 'See where this producer ships and the current conditions configured for each destination.'
             )
         );
         ?>
     </p>
 
-    <?php if ( $minimum > 0 ) : ?>
-        <div class="mdo-store-shipping__minimum">
-            <span class="mdo-store-shipping__minimum-label">
-                <?php echo esc_html( mdo_sst_text( 'Pedido mínimo de esta tienda', 'Minimum order for this store' ) ); ?>
-            </span>
-            <span class="mdo-store-shipping__minimum-price"><?php echo wp_kses_post( wc_price( $minimum ) ); ?></span>
-        </div>
-    <?php endif; ?>
-
     <?php if ( ! empty( $rows ) ) : ?>
         <div class="mdo-store-shipping__zones">
             <?php foreach ( $rows as $row ) : ?>
                 <section class="mdo-store-shipping__zone">
-                    <h3><?php echo esc_html( $row['name'] ); ?></h3>
-
-                    <?php if ( ! empty( $row['locations'] ) ) : ?>
-                        <p class="mdo-store-shipping__locations">
-                            <?php echo esc_html( implode( ', ', $row['locations'] ) ); ?>
-                        </p>
-                    <?php endif; ?>
+                    <h3><?php echo esc_html( mdo_sst_row_display_name( $row ) ); ?></h3>
 
                     <dl class="mdo-store-shipping__conditions">
                         <?php if ( ! empty( $row['flat_costs'] ) ) : ?>
