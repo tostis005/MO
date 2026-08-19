@@ -8,6 +8,7 @@ final class MDO_Huerta_Defaults {
 	private const BASE_CATEGORY_SLUG      = 'hortalizas-verduras';
 	private const CONSERVAS_CATEGORY_SLUG = 'conservas';
 	private const CONSERVAS_URL_FRAGMENT  = '/conservas-3/';
+	private const SOURCE_HOSTS             = array( 'lahuertadeanamary.com', 'www.lahuertadeanamary.com' );
 
 	public static function init(): void {
 		add_action( 'save_post_product', array( __CLASS__, 'on_product_save' ), 30, 3 );
@@ -33,7 +34,7 @@ final class MDO_Huerta_Defaults {
 	public static function image_request_args( array $args, string $url ): array {
 		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
 		$path = (string) wp_parse_url( $url, PHP_URL_PATH );
-		if ( ! in_array( $host, array( 'lahuertadeanamary.com', 'www.lahuertadeanamary.com' ), true ) || ! str_starts_with( $path, '/data/productos/imagenes/' ) ) {
+		if ( ! in_array( $host, self::SOURCE_HOSTS, true ) || ! str_starts_with( $path, '/data/productos/imagenes/' ) ) {
 			return $args;
 		}
 
@@ -47,12 +48,8 @@ final class MDO_Huerta_Defaults {
 	}
 
 	private static function assign_categories_if_huerta( int $product_id ): void {
-		$supplier_id = absint( get_post_meta( $product_id, '_emdo_supplier_id', true ) );
-		if ( ! $supplier_id ) {
-			return;
-		}
-		$supplier = MDO_Supplier_Repository::find( $supplier_id );
-		if ( ! $supplier || 'la-huerta-ana-mary' !== (string) ( $supplier['connector'] ?? '' ) ) {
+		$source_url = trim( (string) get_post_meta( $product_id, '_emdo_source_url', true ) );
+		if ( ! self::is_huerta_product( $product_id, $source_url ) ) {
 			return;
 		}
 
@@ -61,7 +58,6 @@ final class MDO_Huerta_Defaults {
 			wp_set_object_terms( $product_id, array( (int) $base_term->term_id ), 'product_cat', true );
 		}
 
-		$source_url = (string) get_post_meta( $product_id, '_emdo_source_url', true );
 		if ( '' === $source_url ) {
 			return;
 		}
@@ -77,5 +73,21 @@ final class MDO_Huerta_Defaults {
 		}
 
 		wp_remove_object_terms( $product_id, (int) $conservas_term->term_id, 'product_cat' );
+	}
+
+	private static function is_huerta_product( int $product_id, string $source_url ): bool {
+		if ( '' !== $source_url ) {
+			$host = strtolower( (string) wp_parse_url( $source_url, PHP_URL_HOST ) );
+			if ( in_array( $host, self::SOURCE_HOSTS, true ) ) {
+				return true;
+			}
+		}
+
+		$supplier_id = absint( get_post_meta( $product_id, '_emdo_supplier_id', true ) );
+		if ( ! $supplier_id ) {
+			return false;
+		}
+		$supplier = MDO_Supplier_Repository::find( $supplier_id );
+		return $supplier && 'la-huerta-ana-mary' === (string) ( $supplier['connector'] ?? '' );
 	}
 }
