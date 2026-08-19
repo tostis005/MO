@@ -1,5 +1,6 @@
 name: Deploy Home performance pass 4 20260819
 
+# trigger-2
 on:
   push:
     branches: [main]
@@ -10,12 +11,8 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: deploy-home-performance-pass4-20260819
-  cancel-in-progress: true
-
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -28,121 +25,66 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate PHP
-        run: php -l mu-plugins/mdo-home-performance-20260819.php
-
-      - name: Deploy latest Home MU plugin
-        id: deploy
+      - name: Deploy Home MU plugin
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          php -l mu-plugins/mdo-home-performance-20260819.php
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
           PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
             [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            [ -n "$wp_bin" ] || exit 2
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
             done
           ')"
-          : "${PROD_PATH:?production path not found}"
-          REMOTE="/tmp/mdo-home-performance-pass4-${GITHUB_RUN_ID}.php"
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/mdo-home-perf-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP mu-plugins/mdo-home-performance-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            MU='$PROD_PATH/wp-content/mu-plugins'
-            STATIC='$PROD_PATH/wp-content/uploads/elmercado-home-static'
+            set -e; MU='$PROD_PATH/wp-content/mu-plugins'; STATIC='$PROD_PATH/wp-content/uploads/elmercado-home-static'
             install -m 0644 '$REMOTE' \"\$MU/mdo-home-performance-20260819.php\"
-            php_bin=\$(command -v php || true)
-            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            wp_bin=\$(command -v wp)
-            \"\$php_bin\" -l \"\$MU/mdo-home-performance-20260819.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp); \"\$php_bin\" -l \"\$MU/mdo-home-performance-20260819.php\"
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f \"\$STATIC/index.html\" \"\$STATIC\"/home-deferred-*.css '$REMOTE'
           "
 
-      - name: Verify browser image selection
-        id: verify
+      - name: Browser and Lighthouse verification
         run: |
           set -euo pipefail
           mkdir -p runtime
           for i in 1 2 3 4; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
-          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 lighthouse@13.4.1 >/dev/null 2>&1
           CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
-          CHROME="$CHROME" node <<'JS' > /tmp/image-selection.json
+          CHROME="$CHROME" node <<'JS' > /tmp/images.json
           const puppeteer=require('puppeteer-core');
-          (async()=>{
-            const browser=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const page=await browser.newPage();
-            await page.setViewport({width:412,height:915,deviceScaleFactor:1});
-            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});
-            const data=await page.evaluate(()=>[...document.querySelectorAll('img.elmercado-catalog-card-image-010241')].map(img=>{
-              const r=img.getBoundingClientRect();
-              return {alt:img.alt,sizes:img.getAttribute('sizes'),dataSizes:img.getAttribute('data-sizes'),src:img.src,currentSrc:img.currentSrc,naturalWidth:img.naturalWidth,naturalHeight:img.naturalHeight,displayWidth:Math.round(r.width),displayHeight:Math.round(r.height),srcset:img.getAttribute('srcset')};
-            }));
-            console.log(JSON.stringify(data,null,2));
-            await browser.close();
-          })().catch(e=>{console.error(e);process.exit(1)});
+          (async()=>{const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const p=await b.newPage();await p.setViewport({width:412,height:915,deviceScaleFactor:1});await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});console.log(JSON.stringify(await p.evaluate(()=>[...document.querySelectorAll('img.elmercado-catalog-card-image-010241')].map(i=>{const r=i.getBoundingClientRect();return {alt:i.alt,sizes:i.getAttribute('sizes'),srcset:i.getAttribute('srcset'),currentSrc:i.currentSrc,naturalWidth:i.naturalWidth,displayWidth:Math.round(r.width)}})),null,2));await b.close()})().catch(e=>{console.error(e);process.exit(1)});
           JS
+          for i in 1 2 3; do npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/lh-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet; done
           python3 - <<'PY' > runtime/home-performance-pass4-20260819.txt
-          import json,re
-          rows=json.load(open('/tmp/image-selection.json'))
-          target='(max-width: 767px) 78vw, (max-width: 1100px) calc(50vw - 32px), 280px'
-          print('deploy=success')
-          print('product_images=',len(rows))
-          print('sizes_all_correct=',all(x.get('sizes')==target for x in rows))
-          visible=[x for x in rows if x.get('displayWidth',0)>0]
-          print('visible_product_images=',len(visible))
-          for x in visible[:12]:
-              print(json.dumps(x,ensure_ascii=False))
-          assert rows and all(x.get('sizes')==target for x in rows)
-          # En viewport 412, las tarjetas visibles de ~315px deben usar como máximo 360px
-          # siempre que el srcset ofrezca una variante <=360 suficientemente cercana.
+          import json,re,statistics
+          imgs=json.load(open('/tmp/images.json')); target='(max-width: 767px) 78vw, (max-width: 1100px) calc(50vw - 32px), 280px'
+          visible=[x for x in imgs if x['displayWidth']>0]
           eligible=[]
           for x in visible:
-              candidates=[int(v) for v in re.findall(r'\s(\d+)w(?:,|$)',x.get('srcset') or '')]
-              if any(295 <= c <= 360 for c in candidates) and x.get('displayWidth',0) <= 330:
-                  eligible.append(x)
-          print('eligible_smaller_candidates=',len(eligible))
-          print('eligible_max_natural_width=',max((x['naturalWidth'] for x in eligible),default=0))
-          assert eligible
-          assert max(x['naturalWidth'] for x in eligible) <= 360
-          PY
-          cat runtime/home-performance-pass4-20260819.txt
-
-      - name: Lighthouse 3x image audit
-        id: lighthouse
-        run: |
-          set -euo pipefail
-          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
-          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
-          for i in 1 2 3; do
-            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/pass4-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
-          done
-          python3 - <<'PY' >> runtime/home-performance-pass4-20260819.txt
-          import json,statistics
+              cs=[int(n) for n in re.findall(r'\s(\d+)w(?:,|$)',x.get('srcset') or '')]
+              if any(295<=n<=360 for n in cs) and x['displayWidth']<=330: eligible.append(x)
+          print('product_images=',len(imgs)); print('sizes_all_correct=',all(x['sizes']==target for x in imgs)); print('eligible=',len(eligible)); print('eligible_max_natural_width=',max((x['naturalWidth'] for x in eligible),default=0))
+          for x in visible[:12]: print('image',json.dumps(x,ensure_ascii=False))
+          assert imgs and all(x['sizes']==target for x in imgs) and eligible and max(x['naturalWidth'] for x in eligible)<=360
           rows=[]
           for i in (1,2,3):
-              a=json.load(open(f'/tmp/pass4-{i}.json')); x=a['audits']
-              r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':x['cumulative-layout-shift']['numericValue'],'si':round(x['speed-index']['numericValue'])}
-              rows.append(r); print('run',i,r)
+              a=json.load(open(f'/tmp/lh-{i}.json')); x=a['audits']; r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':x['cumulative-layout-shift']['numericValue']};rows.append(r);print('run',i,r)
           for k in rows[0]: print('median_'+k+'=',statistics.median(r[k] for r in rows))
-          a=json.load(open('/tmp/pass4-2.json'))['audits']
-          for key in ['image-delivery-insight','unused-css-rules','unminified-css','forced-reflow-insight','network-dependency-tree-insight']:
-              v=a.get(key,{})
-              print('audit',key,'score=',v.get('score'),'numeric=',v.get('numericValue'),'display=',v.get('displayValue'))
-              details=v.get('details') or {}
-              if key=='image-delivery-insight':
-                  print('image_details=',json.dumps(details,ensure_ascii=False)[:20000])
+          a=json.load(open('/tmp/lh-2.json'))['audits']
+          for key in ('image-delivery-insight','forced-reflow-insight','network-dependency-tree-insight','unused-css-rules'):
+              v=a.get(key,{});print('audit',key,'score=',v.get('score'),'numeric=',v.get('numericValue'),'display=',v.get('displayValue'))
+              if key=='image-delivery-insight': print('image_details=',json.dumps(v.get('details') or {},ensure_ascii=False)[:16000])
           PY
           cat runtime/home-performance-pass4-20260819.txt
 
@@ -151,10 +93,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p runtime
-          [ -f runtime/home-performance-pass4-20260819.txt ] || printf 'deploy=%s\nverify=%s\nlighthouse=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' '${{ steps.lighthouse.outcome }}' > runtime/home-performance-pass4-20260819.txt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          [ -f runtime/home-performance-pass4-20260819.txt ] || echo 'verification_failed=true' > runtime/home-performance-pass4-20260819.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add runtime/home-performance-pass4-20260819.txt
           git commit -m 'Record Home performance pass 4 verification' || exit 0
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git pull --rebase origin main; git push origin HEAD:main
