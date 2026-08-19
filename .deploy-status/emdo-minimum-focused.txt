@@ -1,0 +1,58 @@
+7:final class MDO_Minimum_Order {
+8:	private const MANUAL_SOURCE_SENTINEL = ' ';
+12:		add_action( 'admin_footer', array( __CLASS__, 'admin_supplier_field' ) );
+13:		add_action( 'admin_post_mdo_save_supplier', array( __CLASS__, 'prepare_manual_supplier_save' ), 1 );
+28:			'mdo-supplier-sync-frontend',
+29:			MDO_SUPPLIER_SYNC_URL . 'assets/frontend.css',
+31:			MDO_SUPPLIER_SYNC_VERSION
+35:	public static function prepare_manual_supplier_save(): void {
+46:	public static function admin_supplier_field(): void {
+47:		if ( ! is_admin() || ! isset( $_GET['page'] ) || 'mdo-supplier-sync-suppliers' !== sanitize_key( wp_unslash( $_GET['page'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+54:		$supplier_id = isset( $_GET['supplier_id'] ) ? absint( $_GET['supplier_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+55:		$supplier    = $supplier_id ? MDO_Supplier_Repository::find( $supplier_id ) : null;
+56:		$minimum     = $supplier && null !== $supplier['minimum_order_amount'] ? (string) $supplier['minimum_order_amount'] : '';
+60:			const form = document.querySelector('form.mdo-form');
+63:			const commission = form.querySelector('input[name="commission_percent"]');
+64:			const commercialGrid = commission ? commission.closest('.mdo-grid') : null;
+65:			if (commercialGrid && !form.querySelector('input[name="minimum_order_amount"]')) {
+66:				const label = document.createElement('label');
+67:				label.innerHTML = '<span>Pedido mínimo (€)</span><input type="number" step="0.01" min="0" name="minimum_order_amount" value="<?php echo esc_js( $minimum ); ?>"><small>Subtotal mínimo de productos de este vendedor para permitir completar el pedido. Déjalo vacío o a 0 para no exigir mínimo.</small>';
+71:			const source = form.querySelector('input[name="source_url"]');
+72:			const connector = form.querySelector('select[name="connector"]');
+74:				const updateSourceRequirement = () => {
+75:					const manual = connector.value === 'none';
+77:					const small = source.closest('label') ? source.closest('label').querySelector('small.mdo-manual-source-note') : null;
+80:						const note = document.createElement('small');
+100:		foreach ( self::cart_minimums() as $entry ) {
+105:				? 'Minimum order for %1$s: you need %2$s more to reach the minimum of %3$s.'
+106:				: 'Pedido mínimo de %1$s: te faltan %2$s para alcanzar el mínimo de %3$s.';
+112:					self::plain_price( $entry['minimum'] )
+120:		if ( ! self::has_unmet_minimum() ) {
+137:				self::cart_minimums(),
+146:		<div class="emdo-minimum-order-notices" role="alert" aria-live="polite">
+148:				<div class="emdo-minimum-order-card">
+149:					<div class="emdo-minimum-order-card__title"><?php echo esc_html( ( $is_english ? 'Minimum order · ' : 'Pedido mínimo · ' ) . $entry['name'] ); ?></div>
+150:					<div class="emdo-minimum-order-card__message">
+152:							You need <strong><?php echo esc_html( self::plain_price( $entry['missing'] ) ); ?></strong> more to reach the minimum order of <strong><?php echo esc_html( self::plain_price( $entry['minimum'] ) ); ?></strong>.
+154:							Te faltan <strong><?php echo esc_html( self::plain_price( $entry['missing'] ) ); ?></strong> para alcanzar el pedido mínimo de <strong><?php echo esc_html( self::plain_price( $entry['minimum'] ) ); ?></strong>.
+157:					<div class="emdo-minimum-order-card__meta">
+199:	private static function has_unmet_minimum(): bool {
+200:		foreach ( self::cart_minimums() as $entry ) {
+212:	private static function cart_minimums(): array {
+216:		$rules = self::rules_by_vendor();
+228:			$vendor_id  = (int) get_post_field( 'post_author', $product_id );
+229:			if ( ! $vendor_id || ! isset( $rules[ $vendor_id ] ) ) {
+234:			$totals[ $vendor_id ] = ( $totals[ $vendor_id ] ?? 0.0 ) + $line;
+238:		foreach ( $totals as $vendor_id => $subtotal ) {
+239:			$rule = $rules[ $vendor_id ];
+240:			$minimum = (float) $rule['minimum_order_amount'];
+241:			if ( $minimum <= 0 ) {
+245:				'vendor_id' => (int) $vendor_id,
+248:				'minimum'   => $minimum,
+249:				'missing'   => max( 0.0, round( $minimum - $subtotal, wc_get_price_decimals() ) ),
+255:	private static function rules_by_vendor(): array {
+257:		$table = MDO_Database::table( 'suppliers' );
+259:			"SELECT id, name, vendor_user_id, minimum_order_amount FROM {$table} WHERE vendor_user_id IS NOT NULL AND minimum_order_amount IS NOT NULL AND minimum_order_amount > 0 ORDER BY id ASC",
+264:			$vendor_id = (int) $row['vendor_user_id'];
+265:			if ( $vendor_id > 0 ) {
+266:				$rules[ $vendor_id ] = $row;
