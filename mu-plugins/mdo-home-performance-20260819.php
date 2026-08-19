@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Home Performance Hardening 2026-08-19
  * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica, elimina CSS muerto y reduce JS/imagen en la portada.
- * Version: 1.4.0
+ * Version: 1.4.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -95,11 +95,17 @@ function mdo_home_perf_add_img_attributes( string $tag, string $attributes ): st
  * Sustituye o añade un atributo HTML simple en una etiqueta ya generada.
  */
 function mdo_home_perf_set_tag_attribute( string $tag, string $name, string $value ): string {
-    $pattern = '~\b' . preg_quote( $name, '~' ) . '\s*=\s*(["\']).*?\1~i';
+    /* El espacio inicial evita confundir src con data-src o sizes con data-sizes. */
+    $pattern = '~(\s)' . preg_quote( $name, '~' ) . '\s*=\s*(["\']).*?\2~i';
     $escaped = htmlspecialchars( $value, ENT_QUOTES, 'UTF-8' );
 
     if ( preg_match( $pattern, $tag ) ) {
-        $updated = preg_replace( $pattern, $name . '="' . $escaped . '"', $tag, 1 );
+        $updated = preg_replace_callback(
+            $pattern,
+            static fn ( array $matches ): string => $matches[1] . $name . '="' . $escaped . '"',
+            $tag,
+            1
+        );
         return is_string( $updated ) ? $updated : $tag;
     }
 
