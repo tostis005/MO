@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Deploy current CLS plugin and flush Home cache
+      - name: Deploy current CLS plugin and clear static layers
         id: deploy
         shell: bash
         env:
@@ -51,12 +51,11 @@ jobs:
             php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
             \"\$php_bin\" -l \"\$TARGET\"
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'if (function_exists("elmercado_flush_home_cache")) { elmercado_flush_home_cache(); echo "home-cache-flushed\\n"; } else { echo "home-cache-function-missing\\n"; }' --path='$PROD_PATH' --allow-root
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
             rm -f '$REMOTE'
           "
-      - name: Warm and verify first paint rules
+      - name: Warm and verify first-paint rules
         id: verify
         shell: bash
         run: |
@@ -100,3 +99,4 @@ jobs:
           git commit -m 'Record Home CLS cache-bust verification' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+# retry without fragile wp eval quoting
