@@ -1,6 +1,6 @@
 <?php
 /**
- * Home-only accessibility, motion and drawer stability 0.10.268.
+ * Home-only accessibility, motion and drawer stability 0.10.269.
  *
  * Keeps the review proof legible, limits custom Home card transitions to
  * compositor-friendly properties and prevents Woostify navigation/cart drawers
@@ -24,7 +24,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-home-a11y-motion-010268">
+		<style id="elmercado-home-a11y-motion-010269">
 			/* Lighthouse: review-count copy must pass normal-text contrast. */
 			body.home .emo-home .mdo-review-proof small {
 				color: #666 !important;
@@ -101,6 +101,26 @@ add_action(
 				pointer-events: auto !important;
 			}
 
+			/*
+			 * Desktop never uses Woostify's off-canvas mobile navigation. Its markup
+			 * still exists in the document and, while the parent CSS is deferred, can
+			 * briefly render in normal flow. That transient .site-navigation is the
+			 * secondary layout-shift element reported by Lighthouse and can also look
+			 * like a panel/curtain during a hard refresh.
+			 */
+			@media (min-width: 992px) {
+				body.home #mobile-navigation.sidebar-menu,
+				body.home .sidebar-menu {
+					display: none !important;
+					position: fixed !important;
+					visibility: hidden !important;
+					opacity: 0 !important;
+					pointer-events: none !important;
+					transform: translate3d(-105%, 0, 0) !important;
+					transition: none !important;
+				}
+			}
+
 			@media (max-width: 991px) {
 				body.home #mobile-navigation.sidebar-menu {
 					position: fixed !important;
@@ -128,7 +148,7 @@ add_action(
 				}
 			}
 		</style>
-		<script id="elmercado-home-drawer-intent-010268">
+		<script id="elmercado-home-drawer-intent-010269">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
