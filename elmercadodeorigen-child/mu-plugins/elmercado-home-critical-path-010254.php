@@ -1,6 +1,6 @@
 <?php
 /**
- * Final Home critical rendering path fixes 0.10.256.
+ * Final Home critical rendering path fixes 0.10.256 (CLS rollout).
  *
  * Home-only and deliberately isolated from WooCommerce, checkout and vendor
  * pages. It removes known render blockers that survived the theme optimisation
