@@ -1,12 +1,16 @@
 <?php
 /**
- * One-off production operation: assign the existing Conservas category to
- * La Huerta de Ana Mary products whose source URL belongs to /conservas-3/.
- * Other product categories are preserved.
+ * One-off production operation: assign Conservas to La Huerta de Ana Mary
+ * WooCommerce products using the synchronizer source table as canonical link.
+ * Existing categories are preserved.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit( 1 );
+}
+if ( ! class_exists( 'MDO_Database' ) ) {
+	fwrite( STDERR, "ERROR: MDO database layer is not loaded.\n" );
+	exit( 2 );
 }
 
 $source_hosts = array( 'lahuertadeanamary.com', 'www.lahuertadeanamary.com' );
@@ -16,108 +20,108 @@ if ( ! ( $conservas instanceof WP_Term ) ) {
 	$conservas = get_term_by( 'name', 'Conservas', 'product_cat' );
 }
 if ( ! ( $conservas instanceof WP_Term ) ) {
-	$created = wp_insert_term(
-		'Conservas',
-		'product_cat',
-		array(
-			'slug' => 'conservas',
-		)
-	);
+	$created = wp_insert_term( 'Conservas', 'product_cat', array( 'slug' => 'conservas' ) );
 	if ( is_wp_error( $created ) ) {
 		fwrite( STDERR, 'ERROR creating Conservas category: ' . $created->get_error_message() . "\n" );
-		exit( 2 );
+		exit( 3 );
 	}
 	$conservas = get_term( (int) $created['term_id'], 'product_cat' );
 }
-
 if ( ! ( $conservas instanceof WP_Term ) ) {
 	fwrite( STDERR, "ERROR: Conservas category could not be resolved.\n" );
-	exit( 3 );
+	exit( 4 );
 }
 
-$candidate_ids = get_posts(
-	array(
-		'post_type'      => 'product',
-		'post_status'    => array( 'publish', 'private', 'draft', 'pending', 'future', 'trash' ),
-		'posts_per_page' => -1,
-		'fields'         => 'ids',
-		'orderby'        => 'ID',
-		'order'          => 'ASC',
-		'meta_query'     => array(
-			array(
-				'key'     => '_emdo_source_url',
-				'value'   => 'lahuertadeanamary.com',
-				'compare' => 'LIKE',
-			),
-		),
-	)
+global $wpdb;
+$source_table = MDO_Database::table( 'source_products' );
+$rows         = $wpdb->get_results(
+	"SELECT id, supplier_id, source_url, wc_product_id, title, status
+	 FROM {$source_table}
+	 WHERE source_url LIKE '%lahuertadeanamary.com%'
+	 ORDER BY id ASC",
+	ARRAY_A
 );
 
-$product_ids = array();
-foreach ( array_values( array_unique( array_map( 'intval', $candidate_ids ) ) ) as $product_id ) {
-	$source_url = trim( (string) get_post_meta( $product_id, '_emdo_source_url', true ) );
+$huerta_rows = array();
+foreach ( (array) $rows as $row ) {
+	$source_url = trim( (string) ( $row['source_url'] ?? '' ) );
 	$host       = strtolower( (string) wp_parse_url( $source_url, PHP_URL_HOST ) );
 	if ( in_array( $host, $source_hosts, true ) ) {
-		$product_ids[] = $product_id;
+		$huerta_rows[] = $row;
 	}
 }
 
-if ( ! $product_ids ) {
-	global $wpdb;
-	$source_meta_count = (int) $wpdb->get_var(
-		"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key = '_emdo_source_url'"
+if ( ! $huerta_rows ) {
+	fwrite( STDERR, "ERROR: no La Huerta de Ana Mary source rows were found.\n" );
+	exit( 5 );
+}
+
+$source_conservas = 0;
+$status_counts     = array();
+$linked            = array();
+$broken_links      = array();
+
+foreach ( $huerta_rows as $row ) {
+	$status = (string) ( $row['status'] ?? 'unknown' );
+	$status_counts[ $status ] = ( $status_counts[ $status ] ?? 0 ) + 1;
+	$source_url = (string) $row['source_url'];
+	if ( str_contains( strtolower( $source_url ), '/conservas-3/' ) ) {
+		++$source_conservas;
+	}
+
+	$product_id = absint( $row['wc_product_id'] ?? 0 );
+	if ( ! $product_id ) {
+		continue;
+	}
+	if ( 'product' !== get_post_type( $product_id ) ) {
+		$broken_links[] = $product_id;
+		continue;
+	}
+	$linked[ $product_id ] = $row;
+}
+
+ksort( $status_counts );
+echo sprintf(
+	"HUERTA_SOURCE rows=%d source_conservas=%d linked_woo=%d broken_links=%d statuses=%s\n",
+	count( $huerta_rows ),
+	$source_conservas,
+	count( $linked ),
+	count( array_unique( $broken_links ) ),
+	wp_json_encode( $status_counts )
+);
+
+if ( ! $linked ) {
+	echo sprintf(
+		"huerta_conservas_pending_import source_products=%d source_conservas=%d linked_woo=0\n",
+		count( $huerta_rows ),
+		$source_conservas
 	);
-	fwrite(
-		STDERR,
-		sprintf(
-			"ERROR: no La Huerta de Ana Mary WooCommerce products were found by source URL. products_with_any_source_url=%d\n",
-			$source_meta_count
-		)
-	);
-	exit( 4 );
+	exit( 0 );
 }
 
 $expected = array();
 $other    = array();
 
-foreach ( $product_ids as $product_id ) {
-	$source_url = trim( (string) get_post_meta( $product_id, '_emdo_source_url', true ) );
+foreach ( $linked as $product_id => $row ) {
+	$source_url = trim( (string) $row['source_url'] );
+
+	// Repair legacy/missing EMDO metadata from the canonical source row.
+	update_post_meta( $product_id, '_emdo_source_product_id', (int) $row['id'] );
+	update_post_meta( $product_id, '_emdo_supplier_id', (int) $row['supplier_id'] );
+	update_post_meta( $product_id, '_emdo_source_url', esc_url_raw( $source_url ) );
+
 	if ( str_contains( strtolower( $source_url ), '/conservas-3/' ) ) {
-		$expected[] = $product_id;
+		$expected[ $product_id ] = $row;
 	} else {
-		$other[] = $product_id;
+		$other[ $product_id ] = $row;
 	}
 }
-
-if ( ! $expected ) {
-	fwrite( STDERR, "ERROR: no Huerta products matched /conservas-3/. No changes were made.\n" );
-	foreach ( $product_ids as $product_id ) {
-		fwrite(
-			STDERR,
-			sprintf(
-				"HUERTA_SOURCE %d | %s | %s\n",
-				$product_id,
-				get_the_title( $product_id ),
-				(string) get_post_meta( $product_id, '_emdo_source_url', true )
-			)
-		);
-	}
-	exit( 5 );
-}
-
-echo sprintf(
-	"HUERTA products=%d | expected_conservas=%d | other=%d | conservas_term_id=%d\n",
-	count( $product_ids ),
-	count( $expected ),
-	count( $other ),
-	(int) $conservas->term_id
-);
 
 $added   = 0;
 $removed = 0;
 $kept    = 0;
 
-foreach ( $expected as $product_id ) {
+foreach ( $expected as $product_id => $row ) {
 	if ( has_term( (int) $conservas->term_id, 'product_cat', $product_id ) ) {
 		++$kept;
 	} else {
@@ -133,11 +137,11 @@ foreach ( $expected as $product_id ) {
 		"CONSERVA %d | %s | %s\n",
 		$product_id,
 		get_the_title( $product_id ),
-		(string) get_post_meta( $product_id, '_emdo_source_url', true )
+		(string) $row['source_url']
 	);
 }
 
-foreach ( $other as $product_id ) {
+foreach ( $other as $product_id => $row ) {
 	if ( ! has_term( (int) $conservas->term_id, 'product_cat', $product_id ) ) {
 		continue;
 	}
@@ -151,13 +155,13 @@ foreach ( $other as $product_id ) {
 
 clean_term_cache( (int) $conservas->term_id, 'product_cat' );
 
-foreach ( $expected as $product_id ) {
+foreach ( $expected as $product_id => $row ) {
 	if ( ! has_term( (int) $conservas->term_id, 'product_cat', $product_id ) ) {
 		fwrite( STDERR, sprintf( "ERROR verification: product %d should have Conservas.\n", $product_id ) );
 		exit( 8 );
 	}
 }
-foreach ( $other as $product_id ) {
+foreach ( $other as $product_id => $row ) {
 	if ( has_term( (int) $conservas->term_id, 'product_cat', $product_id ) ) {
 		fwrite( STDERR, sprintf( "ERROR verification: product %d should not have Conservas.\n", $product_id ) );
 		exit( 9 );
@@ -165,10 +169,12 @@ foreach ( $other as $product_id ) {
 }
 
 echo sprintf(
-	"huerta_conservas_ok products=%d conservas=%d added=%d already_ok=%d removed_wrong=%d\n",
-	count( $product_ids ),
+	"huerta_conservas_ok products=%d conservas=%d added=%d already_ok=%d removed_wrong=%d source_rows=%d source_conservas=%d\n",
+	count( $linked ),
 	count( $expected ),
 	$added,
 	$kept,
-	$removed
+	$removed,
+	count( $huerta_rows ),
+	$source_conservas
 );
