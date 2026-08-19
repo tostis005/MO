@@ -1,0 +1,100 @@
+name: Debug Home WebP deploy 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/debug-home-webp-deploy-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: debug-home-webp-deploy-20260819
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Diagnose without early abort
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          mkdir -p runtime
+          LOG=runtime/home-webp-deploy-debug-20260819.txt
+          exec > >(tee "$LOG") 2>&1
+          echo '=== source syntax ==='
+          php -l mu-plugins/mdo-home-webp-delivery-20260819.php
+          php -l mu-plugins/mdo-home-translatepress-lite-20260819.php
+          php -l tools/generate-home-webp-20260819.php
+          echo '=== live before ==='
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/before.html
+          python3 - <<'PY'
+          import re
+          h=open('/tmp/before.html',encoding='utf-8',errors='ignore').read()
+          print({'webp':h.count('.webp'),'official_trp':h.count('trp-language-switcher-js-v2-js'),'lite_trp':h.count('mdo-trp-language-switcher-lite-js'),'fixed_width':h.count('--switcher-width:118px')})
+          PY
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          echo "prod_path=$PROD_PATH"
+          if [ -z "$PROD_PATH" ]; then exit 0; fi
+          for f in mdo-home-webp-delivery-20260819.php mdo-home-translatepress-lite-20260819.php; do
+            sshpass -e scp $SCP "mu-plugins/$f" "$STAGING_USER@$STAGING_HOST:/tmp/$f"
+          done
+          sshpass -e scp $SCP tools/generate-home-webp-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/generate-home-webp-20260819.php"
+          echo '=== remote ==='
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set +e
+            install -m 0644 /tmp/mdo-home-webp-delivery-20260819.php '$PROD_PATH/wp-content/mu-plugins/mdo-home-webp-delivery-20260819.php'; echo install_webp=\$?
+            install -m 0644 /tmp/mdo-home-translatepress-lite-20260819.php '$PROD_PATH/wp-content/mu-plugins/mdo-home-translatepress-lite-20260819.php'; echo install_trp=\$?
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            echo php=\$php_bin wp=\$wp_bin
+            \"\$php_bin\" \"\$wp_bin\" eval 'echo "webp_support=" . (wp_image_editor_supports(array("mime_type"=>"image/webp")) ? "yes" : "no") . PHP_EOL;' --path='$PROD_PATH' --allow-root; echo support_exit=\$?
+            \"\$php_bin\" \"\$wp_bin\" eval-file /tmp/generate-home-webp-20260819.php --path='$PROD_PATH' --allow-root; echo generator_exit=\$?
+            ls -lh '$PROD_PATH/wp-content/mu-plugins/mdo-home-'*20260819.php 2>/dev/null
+            find '$PROD_PATH/wp-content/uploads' -type f -name '*.webp' -mmin -60 -printf '%s %p\\n' 2>/dev/null | sort -nr | head -30
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root; echo flush_exit=\$?
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+          "
+          echo '=== live after ==='
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/after.html
+          python3 - <<'PY'
+          import re
+          h=open('/tmp/after.html',encoding='utf-8',errors='ignore').read()
+          refs=sorted(set(re.findall(r'/wp-content/uploads/[^\s"\'<>]+\.webp',h,re.I)))
+          print({'webp_refs':len(refs),'official_trp':h.count('trp-language-switcher-js-v2-js'),'lite_trp':h.count('mdo-trp-language-switcher-lite-js'),'fixed_width':h.count('--switcher-width:118px')})
+          for x in refs[:25]: print('WEBP',x)
+          PY
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-webp-deploy-debug-20260819.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Home WebP deploy debug [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
