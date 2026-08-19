@@ -178,8 +178,55 @@ function elmercado_catalog_exact_result_total_010220(): int {
 }
 
 /**
- * El contador anterior se conserva en DOM por compatibilidad, pero se oculta.
- * Éste es el único contador visible y no depende del found_posts global.
+ * Retira antes del render el contador histórico 0.10.218.
+ *
+ * El módulo catalog-visibility-counts-010217.php añade ese contador mediante una
+ * Closure durante wp (prioridad 999). Se identifica por el archivo de origen para
+ * no afectar otros callbacks legítimos que compartan la prioridad 20 del hook.
+ */
+function elmercado_catalog_remove_legacy_result_count_010220(): void {
+	global $wp_filter;
+
+	$hook_name = 'woocommerce_before_shop_loop';
+	if ( empty( $wp_filter[ $hook_name ] ) || ! $wp_filter[ $hook_name ] instanceof WP_Hook ) {
+		return;
+	}
+
+	$legacy_file = wp_normalize_path( ELMERCADO_THEME_PATH . '/inc/catalog-visibility-counts-010217.php' );
+	$callbacks   = $wp_filter[ $hook_name ]->callbacks[20] ?? array();
+
+	foreach ( $callbacks as $item ) {
+		$callback = $item['function'] ?? null;
+		if ( ! $callback instanceof Closure ) {
+			continue;
+		}
+
+		try {
+			$reflection = new ReflectionFunction( $callback );
+			$filename   = $reflection->getFileName();
+		} catch ( Throwable $throwable ) {
+			continue;
+		}
+
+		if ( is_string( $filename ) && wp_normalize_path( $filename ) === $legacy_file ) {
+			remove_action( $hook_name, $callback, 20 );
+		}
+	}
+}
+
+add_action(
+	'wp',
+	static function (): void {
+		if ( is_admin() || ! function_exists( 'elmercado_core_filters_is_catalog' ) || ! elmercado_core_filters_is_catalog() ) {
+			return;
+		}
+		elmercado_catalog_remove_legacy_result_count_010220();
+	},
+	1000
+);
+
+/**
+ * Único contador visible del catálogo; no depende del found_posts global.
  */
 add_action(
 	'woocommerce_before_shop_loop',
