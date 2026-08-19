@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Inspect WordPress production plugins
+      - name: Inspect WordPress production plugins and theme sources
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -41,13 +41,16 @@ jobs:
           ')"
           : "${PROD_PATH:?}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
             echo '=== ACTIVE PLUGINS RELEVANT ==='
-            \"\$php_bin\" \"\$wp_bin\" plugin list --path='$PROD_PATH' --status=active --fields=name,version --format=csv --allow-root 2>/dev/null | grep -Ei 'hustle|google|analytics|tag|site-kit|jetpack|woocommerce|smush|cache|redis' || true
+            if [ -n \"\$wp_bin\" ]; then \"\$php_bin\" \"\$wp_bin\" plugin list --path='$PROD_PATH' --status=active --fields=name,version --format=csv --allow-root 2>/dev/null | grep -Ei 'hustle|google|analytics|tag|site-kit|jetpack|woocommerce|smush|cache|redis|monster' || true; fi
             echo '=== HUSTLE TABLES ==='
-            \"\$php_bin\" \"\$wp_bin\" db tables --all-tables-with-prefix --path='$PROD_PATH' --allow-root 2>/dev/null | grep -i hustle || true
+            if [ -n \"\$wp_bin\" ]; then \"\$php_bin\" \"\$wp_bin\" db tables --all-tables-with-prefix --path='$PROD_PATH' --allow-root 2>/dev/null | grep -i hustle || true; fi
+            echo '=== THEME SOURCE MATCHES ==='
+            grep -RIn --include='*.php' -E 'visibleHeadingOne|window\.innerWidth|getClientRects\(\)|getBoundingClientRect\(\)|normaliseMobileToolbar|elmercado-mobile-header-hitareas-final' \"\$THEME/inc\" 2>/dev/null | head -n 180 || true
             echo '=== PLUGIN LIST FULL ==='
-            \"\$php_bin\" \"\$wp_bin\" plugin list --path='$PROD_PATH' --status=active --fields=name,version --format=csv --allow-root 2>/dev/null | head -n 120
+            if [ -n \"\$wp_bin\" ]; then \"\$php_bin\" \"\$wp_bin\" plugin list --path='$PROD_PATH' --status=active --fields=name,version --format=csv --allow-root 2>/dev/null | head -n 120 || true; fi
           " > /tmp/wp-audit.txt
           cat /tmp/wp-audit.txt
 
@@ -67,12 +70,12 @@ jobs:
             grep -n -B4 -A4 'googletagmanager.com/gtag/js' "$HTML" || true
             echo '=== HUSTLE CONTEXT ==='
             grep -n -B3 -A5 'hustle_inline_styles_front-inline-css' "$HTML" || true
-            echo '=== PAGE LINES 2090-2140 ==='
-            nl -ba "$HTML" | sed -n '2090,2140p' || true
-            echo '=== PAGE LINES 2768-2800 ==='
-            nl -ba "$HTML" | sed -n '2768,2800p' || true
-            echo '=== PAGE LINES 3595-3640 ==='
-            nl -ba "$HTML" | sed -n '3595,3640p' || true
+            echo '=== PAGE LINES 2040-2140 ==='
+            nl -ba "$HTML" | sed -n '2040,2140p' || true
+            echo '=== PAGE LINES 2755-2810 ==='
+            nl -ba "$HTML" | sed -n '2755,2810p' || true
+            echo '=== PAGE LINES 3585-3655 ==='
+            nl -ba "$HTML" | sed -n '3585,3655p' || true
             echo '=== WP AUDIT ==='
             cat /tmp/wp-audit.txt
           } > /tmp/static-audit.txt
