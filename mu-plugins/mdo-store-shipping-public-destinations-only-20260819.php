@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Store Shipping Public Destinations Only
  * Description: Removes ambiguous WCFM shipping rows that do not map to a public destination such as a country, province, postcode or other explicit location.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
