@@ -10,7 +10,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 function elmercado_home_cache_key(): string {
-	return 'elmercado_home_' . md5( ELMERCADO_THEME_VERSION . '|' . home_url( '/' ) );
+	$critical_file  = ELMERCADO_THEME_PATH . '/assets/css/critical-woostify-home.min.css';
+	$critical_stamp = is_file( $critical_file ) ? (string) filemtime( $critical_file ) : '0';
+
+	return 'elmercado_home_' . md5( ELMERCADO_THEME_VERSION . '|' . $critical_stamp . '|' . home_url( '/' ) );
 }
 
 function elmercado_home_static_cache_file(): string {
