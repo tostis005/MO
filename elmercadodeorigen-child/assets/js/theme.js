@@ -77,12 +77,13 @@
 		});
 	};
 
+	/* Read scroll geometry before invalidating styles/DOM. */
+	updateScrollState();
 	body.classList.add('emo-js-ready');
 	cleanLegacyHeaderArtifacts();
 	removeProductHoverArtifacts();
 	labelWishlistLinks();
 	repairHustleDialogs();
-	updateScrollState();
 	window.addEventListener('scroll', requestScrollUpdate, { passive: true });
 	window.addEventListener('load', cleanLegacyHeaderArtifacts, { once: true });
 
