@@ -1,0 +1,75 @@
+name: Diagnose Home performance opportunities 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-opportunities-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Warm production Home
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+
+      - name: Lighthouse detailed audit
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/home-opportunities.json --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' > runtime/home-opportunities-20260819.txt
+          import json
+          a=json.load(open('/tmp/home-opportunities.json'))
+          audits=a['audits']
+          print('score=',round(a['categories']['performance']['score']*100))
+          print('fcp_ms=',round(audits['first-contentful-paint']['numericValue']))
+          print('lcp_ms=',round(audits['largest-contentful-paint']['numericValue']))
+          print('tbt_ms=',round(audits['total-blocking-time']['numericValue']))
+          print('cls=',audits['cumulative-layout-shift']['numericValue'])
+          print('available_matching_keys=')
+          for k in sorted(audits):
+              lk=k.lower()
+              if any(x in lk for x in ('cache','image','legacy','mainthread','bootup','unused','unminified','third-part')):
+                  v=audits[k]
+                  print('KEY',k,'score=',v.get('score'),'display=',v.get('displayValue'),'numeric=',v.get('numericValue'))
+          wanted=[
+              'cache-insight','uses-long-cache-ttl',
+              'image-delivery-insight','uses-responsive-images','uses-optimized-images','modern-image-formats',
+              'legacy-javascript-insight','legacy-javascript',
+              'mainthread-work-breakdown','bootup-time','third-parties-insight','third-party-summary',
+              'unused-javascript','unused-css-rules','unminified-css','forced-reflow-insight'
+          ]
+          for k in wanted:
+              if k not in audits: continue
+              v=audits[k]
+              print('\n###',k)
+              print('score=',v.get('score'),'display=',v.get('displayValue'),'numeric=',v.get('numericValue'))
+              print(json.dumps(v.get('details') or {},ensure_ascii=False)[:50000])
+          PY
+          cat runtime/home-opportunities-20260819.txt
+
+      - name: Record diagnostic
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-opportunities-20260819.txt ] || echo 'diagnostic_failed=true' > runtime/home-opportunities-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-opportunities-20260819.txt
+          git commit -m 'Record Home performance opportunities' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
