@@ -23,7 +23,57 @@ hustle_inline_count=0
 320-			function gtag() { dataLayer.push(arguments); }
 321-			gtag( 'consent', 'default', {
 === HUSTLE CONTEXT ===
-=== PAGE LINES 2090-2140 ===
+=== PAGE LINES 2040-2140 ===
+  2040	          variation.querySelectorAll('dt,dd,p').forEach(function(el){
+  2041	            imp(el,'float','none'); imp(el,'display','block'); imp(el,'min-width','0'); imp(el,'max-width','100%');
+  2042	            imp(el,'margin','0'); imp(el,'padding','0'); imp(el,'white-space','normal'); imp(el,'overflow-wrap','anywhere');
+  2043	            imp(el,'word-break','normal'); imp(el,'box-sizing','border-box');
+  2044	          });
+  2045	        }
+  2046	        if(info){
+  2047	          imp(info,'display','flex'); imp(info,'flex-wrap','wrap'); imp(info,'align-items','center');
+  2048	          imp(info,'justify-content','space-between'); imp(info,'gap','8px 12px');
+  2049	          imp(info,'width','calc(100% - '+indent+'px)'); imp(info,'min-width','0');
+  2050	          imp(info,'max-width','calc(100% - '+indent+'px)'); imp(info,'margin','12px 0 0 '+indent+'px');
+  2051	          imp(info,'padding','0'); imp(info,'box-sizing','border-box');
+  2052	          var qty=info.querySelector('.mini-cart-quantity'), price=info.querySelector('.mini-cart-product-price');
+  2053	          if(qty){imp(qty,'flex','0 0 auto');imp(qty,'margin','0');}
+  2054	          if(price){imp(price,'flex','0 0 auto');imp(price,'margin','0 0 0 auto');imp(price,'white-space','nowrap');}
+  2055	        }
+  2056	      }
+  2057	      function fixAll(){ document.querySelectorAll('.cart-sidebar-content .woocommerce-mini-cart-item').forEach(fixItem); }
+  2058	      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',fixAll); else fixAll();
+  2059	      if(window.MutationObserver) new MutationObserver(function(ms){
+  2060	        var relevant=false; ms.forEach(function(m){if(m.addedNodes&&m.addedNodes.length) relevant=true;});
+  2061	        if(relevant) fixAll();
+  2062	      }).observe(document.body,{childList:true,subtree:true});
+  2063	      window.addEventListener('resize',fixAll,{passive:true});
+  2064	      if(window.jQuery){jQuery(document.body).on('wc_fragments_loaded wc_fragments_refreshed added_to_cart removed_from_cart',fixAll);}
+  2065	    })();
+  2066	    </script>
+  2067	    		<script id="elmercado-semantic-polish">
+  2068			(() => {
+  2069				/* Woostify duplica los mismos ID del menú de escritorio en el panel móvil. */
+  2070				const mobileNavigation = document.querySelector('#mobile-navigation, .sidebar-menu');
+  2071				if (mobileNavigation) {
+  2072					const counts = new Map();
+  2073					document.querySelectorAll('[id]').forEach((element) => counts.set(element.id, (counts.get(element.id) || 0) + 1));
+  2074					mobileNavigation.querySelectorAll('[id]').forEach((element) => {
+  2075						if (element !== mobileNavigation && (counts.get(element.id) || 0) > 1) {
+  2076							element.removeAttribute('id');
+  2077						}
+  2078					});
+  2079				}
+  2080	
+  2081				/* Los SVG repetidos del logotipo conservan referencias internas únicas. */
+  2082				const seenIds = new Set();
+  2083				let duplicateIndex = 0;
+  2084				document.querySelectorAll('[id]').forEach((element) => {
+  2085					const originalId = element.id;
+  2086					if (!seenIds.has(originalId)) {
+  2087						seenIds.add(originalId);
+  2088						return;
+  2089					}
   2090	
   2091					const svg = element.closest('svg');
   2092					if (!svg) {
@@ -75,7 +125,20 @@ hustle_inline_count=0
   2138					placeholder.setAttribute('aria-hidden', 'true');
   2139				});
   2140	
-=== PAGE LINES 2768-2800 ===
+=== PAGE LINES 2755-2810 ===
+  2755							item.classList.add('emo-empty-menu-artifact-hidden');
+  2756							item.setAttribute('aria-hidden', 'true');
+  2757						});
+  2758					}
+  2759				};
+  2760	
+  2761				let timers = [];
+  2762				const scheduleClean = () => {
+  2763					timers.forEach(clearTimeout);
+  2764					timers = [];
+  2765					cleanMenuArtifacts();
+  2766					if (!html.classList.contains('sidebar-menu-open')) return;
+  2767					timers.push(setTimeout(cleanMenuArtifacts, 60));
   2768					timers.push(setTimeout(cleanMenuArtifacts, 240));
   2769				};
   2770	
@@ -109,7 +172,27 @@ hustle_inline_count=0
   2798					[...tools.children].filter(visible).slice(0, 3).forEach((cell) => {
   2799						for (const node of [cell]) {
   2800							important(node, 'width', '30px');
-=== PAGE LINES 3595-3640 ===
+  2801							important(node, 'min-width', '30px');
+  2802							important(node, 'max-width', '30px');
+  2803							important(node, 'height', '30px');
+  2804							important(node, 'min-height', '30px');
+  2805							important(node, 'margin', '0');
+  2806							important(node, 'padding', '0');
+  2807							important(node, 'align-self', 'center');
+  2808							important(node, 'justify-self', 'center');
+  2809							important(node, 'transform', 'none');
+  2810						}
+=== PAGE LINES 3585-3655 ===
+  3585					});
+  3586	
+  3587					document.querySelectorAll('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select').forEach(select=>{
+  3588						select.classList.add('emo-order-select-parity-010236');
+  3589						setImportant(select,'box-sizing','border-box'); setImportant(select,'display','block'); setImportant(select,'width',orderWidth); setImportant(select,'min-width',orderWidth); setImportant(select,'max-width',orderWidth);
+  3590						[...select.options].forEach(option=>{
+  3591							if(labels[option.value]) option.textContent=labels[option.value];
+  3592							else option.textContent=(option.textContent||'').replace(/^Ordenar\s+por\s+/i,'').trim();
+  3593						});
+  3594					});
   3595				};
   3596	
   3597				const normaliseMobileToolbar=(toolbar,vendor)=>{
@@ -156,18 +239,67 @@ hustle_inline_count=0
   3638						normaliseMobileToolbar(shopToolbar,false);
   3639						normaliseMobileToolbar(vendorToolbar,true);
   3640						normaliseToggle(shopToggle,false);
+  3641						normaliseToggle(vendorToggle,true);
+  3642	
+  3643						const store=document.querySelector('#wcfmmp-store');
+  3644						if(store){
+  3645							store.querySelectorAll('.body_area,.right_side,.right_side_full,.products-wrapper,.wcfmmp-store-product,.product_area').forEach(node=>{
+  3646								setImportant(node,'box-sizing','border-box');setImportant(node,'width','100%');setImportant(node,'min-width','0');setImportant(node,'max-width','100%');setImportant(node,'float','none');setImportant(node,'clear','both');setImportant(node,'margin-left','0');setImportant(node,'margin-right','0');setImportant(node,'transform','none');
+  3647							});
+  3648							const products=store.querySelector('ul.products');
+  3649							products?.style.removeProperty('transform'); products?.style.removeProperty('margin-bottom');
+  3650						}
+  3651					}else{
+  3652						[shopToolbar,vendorToolbar].forEach(toolbar=>remove(toolbar,'left','display','height','min-height','max-height','align-items','justify-content','gap','margin','padding','border','border-radius','background','box-shadow','font-size','font-weight','line-height','width','min-width','max-width','transform'));
+  3653						[shopToggle,vendorToggle].forEach(toggle=>remove(toggle,'left','width','min-width','max-width','height','min-height','max-height','transform'));
+  3654					}
+  3655				};
 === WP AUDIT ===
 === ACTIVE PLUGINS RELEVANT ===
 === HUSTLE TABLES ===
+=== THEME SOURCE MATCHES ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/transaction-focus-final-01056.php:142:					const r = node.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/transaction-focus-final-01056.php:151:							const ar = a.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/transaction-focus-final-01056.php:152:							const br = b.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/transaction-focus-final-01056.php:163:						const r = parent.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-filter-stability-010228.php:222:			const docTop = node => node ? node.getBoundingClientRect().top + scrollY : 0;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-filter-unified-010229.php:449:					const offset = Math.max(0, Math.round(toolbar.getBoundingClientRect().top - rail.getBoundingClientRect().top));
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-continuous-loading-010176.php:463:				const rect = state.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/semantic-polish.php:63:			const visibleHeadingOne = [...document.querySelectorAll('h1')].filter((heading) => {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/semantic-polish.php:65:				return style.display !== 'none' && style.visibility !== 'hidden' && heading.getClientRects().length > 0;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/semantic-polish.php:69:			if (brandingHeading && visibleHeadingOne.length > 1) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/mobile-header-hitareas-final.php:19:		<script id="elmercado-mobile-header-hitareas-final">
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/mobile-header-hitareas-final.php:29:				const rect = node.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/visual-coherence-01066.php:106:				const rect = node.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php:624:				const rect = node.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php:685:					const toolbarTop = toolbar.getBoundingClientRect().top;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-store-visual-parity-010227.php:686:					const railTop = sidebar.getBoundingClientRect().top;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-home-final.php:357:				const rect = card.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php:235:			const normaliseMobileToolbar=(toolbar,vendor)=>{
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php:257:				const viewport=window.innerWidth;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php:276:					normaliseMobileToolbar(shopToolbar,false);
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-mobile-controls-parity-010236.php:277:					normaliseMobileToolbar(vendorToolbar,true);
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/cart-checkout-contact-cleanup-010185.php:157:				return element.getClientRects().length > 0;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/visual-coherence-01067.php:109:				const rect = node.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/product-card-carousel-finish.php:265:					return card.getBoundingClientRect().width + parseFloat(styles.columnGap || styles.gap || '0');
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-toolbar-mobile-final.php:289:						const tabRect = tabs.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-toolbar-mobile-final.php:290:						const toolbarRect = toolbar.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-toolbar-mobile-final.php:298:							const visualToolbar = toolbar.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-toolbar-mobile-final.php:299:							const productRect = firstProduct.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/filter-state-final-01083.php:119:				const rect = node.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/mobile-reading-checkout-01060.php:140:						const top = panel.getBoundingClientRect().top + scrollY - 110;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/checkout-status-card-01061.php:97:				const rect = node.getBoundingClientRect();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-filter-scroll-final-010234.php:322:					if(state.getBoundingClientRect().top<=window.innerHeight+2200) setTimeout(loadNext,80);
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-home-verification-two.php:122:				while (section && section.parentElement && section.getBoundingClientRect().width < 700) {
 === PLUGIN LIST FULL ===
 {
   "scripts": [
     {
       "id": "",
-      "src": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
+      "src": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68i0h2",
       "async": true,
       "defer": false,
-      "outer": "<script type=\"text/javascript\" async=\"\" src=\"https://www.googletagmanager.com/gtag/js?id=AW-18396600140&amp;cx=c&amp;gtm=4e68h1\"></script>"
+      "outer": "<script type=\"text/javascript\" async=\"\" src=\"https://www.googletagmanager.com/gtag/js?id=AW-18396600140&amp;cx=c&amp;gtm=4e68i0h2\"></script>"
     },
     {
       "id": "",
@@ -187,19 +319,19 @@ hustle_inline_count=0
   "resources": [
     {
       "name": "https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4",
-      "duration": 95,
+      "duration": 86,
       "transferSize": 0,
       "initiatorType": "script"
     },
     {
       "name": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140",
-      "duration": 91,
+      "duration": 41,
       "transferSize": 0,
       "initiatorType": "script"
     },
     {
-      "name": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
-      "duration": 54,
+      "name": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68i0h2",
+      "duration": 47,
       "transferSize": 0,
       "initiatorType": "script"
     }
