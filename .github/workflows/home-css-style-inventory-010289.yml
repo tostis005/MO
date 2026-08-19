@@ -1,0 +1,56 @@
+name: Home inline CSS inventory 010289
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-css-style-inventory-010289.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch uncached dynamic Home and inventory head styles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 60 'https://www.elmercadodeorigen.com/?mdo_style_inventory=1' -o /tmp/home-dynamic.html
+          python3 - <<'PY' | tee runtime/home-css-style-inventory-010289.txt
+          import re
+          html=open('/tmp/home-dynamic.html',encoding='utf-8',errors='ignore').read()
+          head=re.search(r'<head\b[^>]*>(.*?)</head\s*>',html,re.I|re.S)
+          src=head.group(1) if head else html
+          rows=[]
+          for i,m in enumerate(re.finditer(r'<style\b([^>]*)>(.*?)</style\s*>',src,re.I|re.S),1):
+              attrs,css=m.group(1),m.group(2)
+              mid=re.search(r'\bid=["\']([^"\']+)',attrs,re.I)
+              sid=mid.group(1) if mid else '(no-id)'
+              structural=[]
+              for token in ['emo-hero','emo-shell','site-header','site-navigation','primary-navigation','site-tools','topbar','emo-announcement','emo-hero-card','emo-hero__visual']:
+                  if token in css: structural.append(token)
+              print(f'{i:02d}\tbytes={len(css):6d}\tid={sid}\tstruct={",".join(structural)}')
+              if structural:
+                  snippets=[]
+                  for sel in re.findall(r'([^{}]{0,180})\{[^{}]*\}',css):
+                      if any(t in sel for t in structural):
+                          snippets.append(' '.join(sel.split())[-180:])
+                          if len(snippets)>=12: break
+                  for s in snippets: print('   selector:',s)
+          print('html_bytes=',len(html))
+          print('optimized_first_view=', 'elmercado-home-first-view-css' in html)
+          print('deferred_link=', 'elmercado-home-deferred-css' in html)
+          PY
+      - name: Record inventory
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-css-style-inventory-010289.txt
+          git commit -m 'Record Home inline CSS inventory' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
