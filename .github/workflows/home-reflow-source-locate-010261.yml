@@ -41,3 +41,5 @@ jobs:
           git commit -m 'Record Home reflow source locations' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+
+# trigger: 2
