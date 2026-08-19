@@ -47,9 +47,8 @@ jobs:
           set -euo pipefail
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
-          echo 'Installing SSH helper'
-          timeout 90s sudo apt-get update -qq
-          timeout 90s sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          echo 'Using preinstalled SSH helper'
+          command -v sshpass >/dev/null
 
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
