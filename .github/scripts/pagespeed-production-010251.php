@@ -91,3 +91,25 @@ foreach ( array_unique( $targets ) as $file ) {
 		WP_CLI::log( '  sub-tamaños: ' . ( $sizes ? implode( ', ', $sizes ) : 'ninguno' ) );
 	}
 }
+
+/* Comprueba exactamente la API responsive usada por la portada. */
+foreach ( array( 11052, 12667 ) as $attachment_id ) {
+	$image  = wp_get_attachment_image_src( $attachment_id, 'medium_large' );
+	$srcset = wp_get_attachment_image_srcset( $attachment_id, 'medium_large' );
+	WP_CLI::log(
+		sprintf(
+			'Responsive attachment=%d | src=%s | srcset=%s',
+			$attachment_id,
+			is_array( $image ) && ! empty( $image[0] ) ? $image[0] : 'false',
+			is_string( $srcset ) && '' !== $srcset ? substr( $srcset, 0, 500 ) : 'false'
+		)
+	);
+
+	if ( function_exists( 'elmercado_home_responsive_producer_cards_010252' ) ) {
+		$original = wp_get_attachment_url( $attachment_id );
+		$sample   = '<img src="' . esc_url( (string) $original ) . '" alt="diagnostic">';
+		WP_CLI::log( 'Rewrite sample ' . $attachment_id . ': ' . elmercado_home_responsive_producer_cards_010252( $sample ) );
+	} else {
+		WP_CLI::log( 'Rewrite function unavailable for attachment ' . $attachment_id );
+	}
+}
