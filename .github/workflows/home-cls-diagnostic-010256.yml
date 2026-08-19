@@ -1,0 +1,101 @@
+name: Home CLS diagnostic 0.10.256
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-cls-diagnostic-010256.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Capture layout shifts and deferred hero rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          : "${CHROME:?Chrome missing}"
+          CHROME_PATH="$CHROME" node <<'JS' > runtime/home-cls-diagnostic-010256.txt
+          const { chromium } = require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915},deviceScaleFactor:1});
+            await page.addInitScript(() => {
+              window.__cls=[];
+              new PerformanceObserver(list=>{
+                for(const e of list.getEntries()) {
+                  if(e.hadRecentInput) continue;
+                  window.__cls.push({
+                    value:e.value,
+                    startTime:e.startTime,
+                    sources:(e.sources||[]).map(s=>({
+                      node:s.node ? (s.node.outerHTML||s.node.nodeName).slice(0,500) : '',
+                      previousRect:s.previousRect,
+                      currentRect:s.currentRect
+                    }))
+                  });
+                }
+              }).observe({type:'layout-shift', buffered:true});
+              const snap=()=>{
+                const el=document.querySelector('.emo-hero__copy');
+                const grid=document.querySelector('.emo-hero__grid');
+                const hero=document.querySelector('.emo-hero');
+                if(!el||!grid||!hero) return null;
+                const c=getComputedStyle(el), g=getComputedStyle(grid), h=getComputedStyle(hero);
+                const r=el.getBoundingClientRect(), rg=grid.getBoundingClientRect(), rh=hero.getBoundingClientRect();
+                return {
+                  t:performance.now(),
+                  copyRect:{x:r.x,y:r.y,width:r.width,height:r.height},
+                  gridRect:{x:rg.x,y:rg.y,width:rg.width,height:rg.height},
+                  heroRect:{x:rh.x,y:rh.y,width:rh.width,height:rh.height},
+                  copy:{maxWidth:c.maxWidth,width:c.width,fontSize:c.fontSize,lineHeight:c.lineHeight,margin:c.margin,padding:c.padding,display:c.display,position:c.position},
+                  grid:{display:g.display,gridTemplateColumns:g.gridTemplateColumns,gap:g.gap,alignItems:g.alignItems},
+                  hero:{paddingTop:h.paddingTop,paddingBottom:h.paddingBottom,minHeight:h.minHeight},
+                  p:(()=>{const p=el.querySelector('p'); if(!p)return null; const s=getComputedStyle(p),q=p.getBoundingClientRect(); return {rect:{x:q.x,y:q.y,width:q.width,height:q.height},fontSize:s.fontSize,lineHeight:s.lineHeight,margin:s.margin,maxWidth:s.maxWidth}})(),
+                  h1:(()=>{const p=el.querySelector('h1'); if(!p)return null; const s=getComputedStyle(p),q=p.getBoundingClientRect(); return {rect:{x:q.x,y:q.y,width:q.width,height:q.height},fontSize:s.fontSize,lineHeight:s.lineHeight,margin:s.margin,maxWidth:s.maxWidth}})()
+                };
+              };
+              window.__snaps=[];
+              document.addEventListener('DOMContentLoaded',()=>window.__snaps.push({label:'domcontentloaded',...snap()}));
+              window.addEventListener('load',()=>window.__snaps.push({label:'load',...snap()}));
+              requestAnimationFrame(()=>window.__snaps.push({label:'first-raf',...snap()}));
+              setTimeout(()=>window.__snaps.push({label:'100ms',...snap()}),100);
+              setTimeout(()=>window.__snaps.push({label:'500ms',...snap()}),500);
+              setTimeout(()=>window.__snaps.push({label:'1500ms',...snap()}),1500);
+              setTimeout(()=>window.__snaps.push({label:'3000ms',...snap()}),3000);
+            });
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+            await page.waitForTimeout(3500);
+            const data=await page.evaluate(()=>({cls:window.__cls||[],snaps:window.__snaps||[],links:[...document.querySelectorAll('link[rel="stylesheet"]')].map(x=>x.href)}));
+            console.log('CLS='+JSON.stringify(data.cls,null,2));
+            console.log('SNAPS='+JSON.stringify(data.snaps,null,2));
+            console.log('STYLESHEETS='+JSON.stringify(data.links,null,2));
+            const deferred=data.links.find(x=>x.includes('home-deferred-'));
+            if(deferred){
+              const css=await (await fetch(deferred)).text();
+              const matches=css.match(/[^{}]*\.emo-hero[^{}]*\{[^{}]*\}/g)||[];
+              console.log('DEFERRED_HERO_RULES='+matches.slice(0,100).join('\n'));
+            }
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-cls-diagnostic-010256.txt
+          git commit -m 'Record Home CLS diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
