@@ -1,0 +1,140 @@
+name: Home runtime direct deploy 0.10.258 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-runtime-direct-deploy-010258-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate sources
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/semantic-polish.php
+          php -l elmercadodeorigen-child/inc/home-cache.php
+          php -l elmercadodeorigen-child/functions.php
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.258" elmercadodeorigen-child/functions.php
+          grep -q 'elmercado-delayed-google-ads-loader' elmercadodeorigen-child/inc/home-cache.php
+      - name: Deploy current sources
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          for file in inc/semantic-polish.php inc/home-cache.php functions.php; do
+            base=$(basename "$file")
+            sshpass -e scp $SCP "elmercadodeorigen-child/$file" "$STAGING_USER@$STAGING_HOST:/tmp/010258-$base"
+          done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            cp \"\$THEME/inc/semantic-polish.php\" \"\$THEME/inc/semantic-polish.php.bak-$GITHUB_RUN_ID\"
+            cp \"\$THEME/inc/home-cache.php\" \"\$THEME/inc/home-cache.php.bak-$GITHUB_RUN_ID\"
+            cp \"\$THEME/functions.php\" \"\$THEME/functions.php.bak-$GITHUB_RUN_ID\"
+            install -m 0644 /tmp/010258-semantic-polish.php \"\$THEME/inc/semantic-polish.php\"
+            install -m 0644 /tmp/010258-home-cache.php \"\$THEME/inc/home-cache.php\"
+            install -m 0644 /tmp/010258-functions.php \"\$THEME/functions.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$THEME/inc/semantic-polish.php\"
+            \"\$php_bin\" -l \"\$THEME/inc/home-cache.php\"
+            \"\$php_bin\" -l \"\$THEME/functions.php\"
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f /tmp/010258-semantic-polish.php /tmp/010258-home-cache.php /tmp/010258-functions.php
+          "
+      - name: Verify served Home and Ads queue
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          HTML=/tmp/home-live-010258.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          version=$(grep -c 'home-deferred-0.10.258.css' "$HTML" || true)
+          h1probe=$(grep -c 'visibleHeadingOne' "$HTML" || true)
+          hitareas=$(grep -c 'id="elmercado-mobile-header-hitareas-final"' "$HTML" || true)
+          catalog=$(grep -c 'id="elmercado-catalog-mobile-controls-parity-script-010236"' "$HTML" || true)
+          ads=$(grep -c 'googletagmanager.com/gtag/js?id=AW-' "$HTML" || true)
+          marker=$(grep -c 'id="elmercado-delayed-google-ads-source"' "$HTML" || true)
+          loader=$(grep -c 'id="elmercado-delayed-google-ads-loader"' "$HTML" || true)
+          ga4=$(grep -c 'googletagmanager.com/gtag/js?id=G-515YQ0XMS4' "$HTML" || true)
+          hustle=$(grep -c 'hustle_inline_styles_front-inline-css' "$HTML" || true)
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME_PATH="$CHROME" node <<'JS' > /tmp/browser-live-010258.json
+          const {chromium}=require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915}});
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+            const before=await page.evaluate(()=>({ads:[...document.scripts].filter(s=>s.src.includes('googletagmanager.com/gtag/js?id=AW-')).length,ga4:[...document.scripts].filter(s=>s.src.includes('googletagmanager.com/gtag/js?id=G-515YQ0XMS4')).length,dataLayer:Array.isArray(window.dataLayer),queued:Array.isArray(window.dataLayer)?window.dataLayer.length:0}));
+            await page.evaluate(()=>window.dispatchEvent(new Event('scroll')));
+            await page.waitForTimeout(1500);
+            const after=await page.evaluate(()=>({ads:[...document.scripts].filter(s=>s.src.includes('googletagmanager.com/gtag/js?id=AW-')).length,delayed:[...document.scripts].filter(s=>s.dataset.elmercadoDelayed==='google-ads').length,dataLayer:Array.isArray(window.dataLayer),queued:Array.isArray(window.dataLayer)?window.dataLayer.length:0}));
+            console.log(JSON.stringify({before,after},null,2));
+            await browser.close();
+            if(before.ads!==0||before.ga4<1||!before.dataLayer||after.ads<1||after.delayed<1||!after.dataLayer) process.exit(12);
+          })().catch(e=>{console.error(e);process.exit(13)});
+          JS
+          {
+            printf 'deploy=success\n'
+            printf 'version_010258=%s\n' "$version"
+            printf 'semantic_h1_probe=%s\n' "$h1probe"
+            printf 'mobile_hitareas_script=%s\n' "$hitareas"
+            printf 'catalog_parity_script=%s\n' "$catalog"
+            printf 'ads_external_initial=%s\n' "$ads"
+            printf 'ads_marker=%s\n' "$marker"
+            printf 'ads_loader=%s\n' "$loader"
+            printf 'ga4_initial=%s\n' "$ga4"
+            printf 'hustle_inline=%s\n' "$hustle"
+            cat /tmp/browser-live-010258.json
+          } > runtime/home-runtime-direct-deploy-010258.txt
+          cat runtime/home-runtime-direct-deploy-010258.txt
+          test "$version" -ge 1
+          test "$h1probe" -eq 0
+          test "$hitareas" -eq 0
+          test "$catalog" -eq 0
+          test "$ads" -eq 0
+          test "$marker" -ge 1
+          test "$loader" -ge 1
+          test "$ga4" -ge 1
+      - name: Record verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-runtime-direct-deploy-010258.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-runtime-direct-deploy-010258.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-runtime-direct-deploy-010258.txt
+          git commit -m 'Record Home runtime 0.10.258 deployment' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
