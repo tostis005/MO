@@ -1,0 +1,80 @@
+name: Home Lighthouse CLS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/**'
+      - '.github/workflows/home-lighthouse-cls.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check production and run Lighthouse desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://www.elmercadodeorigen.com/'
+          for n in 1 2 3 4 5 6; do
+            if curl -fsSIL --max-time 20 "$URL" >/dev/null; then
+              break
+            fi
+            sleep 10
+          done
+          google-chrome --version || chromium --version || true
+          for i in 1 2 3; do
+            npx --yes lighthouse@12.8.2 "$URL" \
+              --only-categories=performance \
+              --form-factor=desktop \
+              --screenEmulation.mobile=false \
+              --screenEmulation.width=1350 \
+              --screenEmulation.height=940 \
+              --screenEmulation.deviceScaleFactor=1 \
+              --throttling-method=simulate \
+              --output=json \
+              --output-path="lighthouse-${i}.json" \
+              --quiet \
+              --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          done
+
+          node <<'NODE' | tee lighthouse-summary.txt
+          const fs = require('fs');
+          const runs = [1,2,3].map(i => JSON.parse(fs.readFileSync(`lighthouse-${i}.json`, 'utf8')));
+          const vals = runs.map(r => r.audits['cumulative-layout-shift'].numericValue);
+          const scores = runs.map(r => r.categories.performance.score * 100);
+          const sorted = [...vals].sort((a,b)=>a-b);
+          console.log(`CLS runs: ${vals.map(v=>v.toFixed(4)).join(', ')}`);
+          console.log(`CLS median: ${sorted[1].toFixed(4)}`);
+          console.log(`Performance: ${scores.map(v=>Math.round(v)).join(', ')}`);
+          runs.forEach((r, idx) => {
+            console.log(`\nRun ${idx+1} layout shifts:`);
+            const audit = r.audits['layout-shifts'];
+            const items = audit?.details?.items || [];
+            items.slice(0, 10).forEach((item, j) => {
+              const score = item.score ?? item.value ?? 0;
+              const node = item.node?.selector || item.node?.snippet || item.node?.nodeLabel || '';
+              console.log(`${j+1}. ${Number(score).toFixed(4)} ${String(node).replace(/\s+/g,' ').slice(0,220)}`);
+            });
+          });
+          NODE
+
+      - name: Upload Lighthouse reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-lighthouse-cls
+          path: |
+            lighthouse-*.json
+            lighthouse-summary.txt
+          retention-days: 3
