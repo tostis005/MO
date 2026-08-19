@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.259' );
-/* 0.10.259 elimina el cargador Ads redundante y conserva el destino AW procesado por el Google tag de GA4. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.260' );
+/* 0.10.260 difiere la cadena wp-hooks -> gtag-events de Google for WooCommerce en Home. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -20,6 +20,7 @@ $elmercado_modules = array(
 	'inc/polish.php',
 	'inc/performance.php',
 	'inc/home-cache.php',
+	'inc/home-gla-defer-010260.php',
 	'inc/final-performance.php',
 	'inc/header-finish.php',
 	'inc/home-navigation.php',
