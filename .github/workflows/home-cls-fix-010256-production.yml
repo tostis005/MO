@@ -1,0 +1,135 @@
+name: Home CLS fix 0.10.256 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php'
+      - '.github/workflows/home-cls-fix-010256-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-cls-fix-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate PHP
+        run: php -l elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php
+      - name: Deploy Home CLS fix
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          command -v sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/elmercado-home-critical-cls-${GITHUB_RUN_ID}.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          timeout 120s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            TARGET='$PROD_PATH/wp-content/mu-plugins/elmercado-home-critical-path-010254.php'
+            BACKUP=\"\$HOME/elmercado-home-critical-cls-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S).php\"
+            [ ! -f \"\$TARGET\" ] || cp \"\$TARGET\" \"\$BACKUP\"
+            install -m 0644 '$REMOTE' \"\$TARGET\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$TARGET\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$REMOTE'
+            echo \"backup=\$BACKUP\"
+          "
+      - name: Warm Home cache
+        run: |
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+      - name: Verify mobile geometry and CLS
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          : "${CHROME:?Chrome missing}"
+          CHROME_PATH="$CHROME" node <<'JS' > /tmp/cls-verify.txt
+          const { chromium } = require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915},deviceScaleFactor:1});
+            await page.addInitScript(()=>{
+              window.__cls=0; window.__shifts=[];
+              new PerformanceObserver(list=>{for(const e of list.getEntries()){if(!e.hadRecentInput){window.__cls+=e.value; window.__shifts.push({value:e.value,startTime:e.startTime,sources:(e.sources||[]).map(s=>({node:s.node?.className||s.node?.id||s.node?.nodeName||'',previousRect:s.previousRect,currentRect:s.currentRect}))});}}}).observe({type:'layout-shift',buffered:true});
+            });
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+            await page.waitForTimeout(3500);
+            const data=await page.evaluate(()=>{
+              const copy=document.querySelector('.emo-hero__copy'); const hero=document.querySelector('.emo-hero'); const ann=document.querySelector('.emo-announcement'); const head=document.querySelector('.site-header');
+              const r=x=>x?(()=>{const q=x.getBoundingClientRect();return {x:q.x,y:q.y,width:q.width,height:q.height}})():null;
+              const h1=copy?.querySelector('h1'), p=copy?.querySelector('p');
+              return {cls:window.__cls,shifts:window.__shifts,rootFont:getComputedStyle(document.documentElement).fontSize,copy:r(copy),hero:r(hero),announcement:r(ann),header:r(head),h1:h1?{rect:r(h1),font:getComputedStyle(h1).fontSize,line:getComputedStyle(h1).lineHeight,margin:getComputedStyle(h1).margin}:null,p:p?{rect:r(p),font:getComputedStyle(p).fontSize,line:getComputedStyle(p).lineHeight,margin:getComputedStyle(p).margin}:null,pageErrors:window.__pageErrors||[]};
+            });
+            console.log(JSON.stringify(data,null,2));
+            await browser.close();
+            if(data.cls > 0.03) process.exit(12);
+            if(data.rootFont !== '14px' || !data.copy || Math.abs(data.copy.y-130)>2 || !data.hero || Math.abs(data.hero.y-95)>2) process.exit(13);
+          })().catch(e=>{console.error(e);process.exit(14)});
+          JS
+          cat /tmp/cls-verify.txt
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            cat /tmp/cls-verify.txt
+          } > runtime/home-cls-fix-010256.txt
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          if [ ! -f runtime/home-cls-fix-010256.txt ]; then
+            {
+              printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+              printf 'commit=%s\n' "$GITHUB_SHA"
+              printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+              printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+              [ ! -f /tmp/cls-verify.txt ] || cat /tmp/cls-verify.txt
+            } > runtime/home-cls-fix-010256.txt
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-cls-fix-010256.txt
+          git commit -m 'Record Home CLS fix verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
