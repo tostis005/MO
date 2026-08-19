@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'init',
 	static function (): void {
-		$revision = '010256-9';
+		$revision = '010256-10';
 		if ( get_option( 'elmercado_home_cls_cache_revision', '' ) === $revision ) {
 			return;
 		}
@@ -53,11 +53,11 @@ body.home.elmercado-child-theme .site-header .primary-navigation,body.home.elmer
 body.home.elmercado-child-theme .site-header .primary-navigation>li,body.home.elmercado-child-theme .site-header nav#site-navigation>ul>li{display:flex!important;align-items:center!important;height:44px!important;min-height:44px!important;max-height:44px!important;margin:0!important;padding:0!important;list-style:none!important}
 body.home.elmercado-child-theme .site-header .primary-navigation>li>a,body.home.elmercado-child-theme .site-header nav#site-navigation>ul>li>a{display:flex!important;align-items:center!important;height:44px!important;min-height:44px!important;margin:0!important;padding:.65rem .55rem!important;line-height:1.2!important;white-space:nowrap!important}
 body.home.elmercado-child-theme .site-header .site-tools{grid-column:3!important;grid-row:1!important;display:grid!important;grid-template-columns:repeat(3,44px)!important;grid-auto-flow:column!important;grid-auto-columns:44px!important;align-items:center!important;justify-content:end!important;gap:8px!important;width:148px!important;height:44px!important;min-height:44px!important;max-height:44px!important;margin:0!important;padding:0!important;overflow:visible!important}
-body.home.elmercado-child-theme .emo-home>.emo-hero{position:relative!important;isolation:isolate!important;min-height:min(600px,calc(100svh - 108px))!important;padding-top:clamp(1.75rem,2.35vw,2.35rem)!important;padding-bottom:clamp(2rem,3vw,3rem)!important}
+body.home.elmercado-child-theme .emo-home>.emo-hero{position:relative!important;isolation:isolate!important;min-height:min(600px,calc(100svh - 108px))!important;padding-top:clamp(2.75rem,4vw,4rem)!important;padding-bottom:clamp(2rem,3vw,3rem)!important}
 body.home.elmercado-child-theme .emo-home>.emo-hero>.emo-hero__grid{display:grid!important;grid-template-columns:minmax(0,.92fr) minmax(480px,.85fr)!important;align-items:center!important;gap:clamp(2rem,4vw,4rem)!important;width:min(calc(100% - 40px),1320px)!important;max-width:1320px!important;margin-inline:auto!important}
 body.home .emo-hero__copy{max-width:700px!important}
-body.home .emo-hero h1{max-width:760px!important;margin:0 0 1.5rem!important;font-size:clamp(3.75rem,5.45vw,4.9rem)!important;line-height:.94!important}
-body.home .emo-hero__copy>p{max-width:600px!important;margin:.75rem 0 1rem!important;font-size:clamp(1rem,1.25vw,1.12rem)!important;line-height:1.5!important}
+body.home .emo-hero h1{max-width:760px!important;margin:0!important;font-size:clamp(3.75rem,5.45vw,4.9rem)!important;line-height:.94!important}
+body.home .emo-hero__copy>p{max-width:600px!important;margin:1.25rem 0 1rem!important;font-size:clamp(1rem,1.25vw,1.12rem)!important;line-height:1.5!important}
 body.home .emo-hero__proof{margin-top:clamp(1.2rem,2vw,1.75rem)!important;padding-top:.8rem!important;gap:.65rem!important}
 body.home .emo-hero__visual--vendors{display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;grid-template-rows:repeat(10,38px)!important;height:380px!important;min-height:380px!important;min-width:0!important;transform:translateY(-34px)!important}
 body.home .emo-hero__visual--vendors .emo-hero-card{position:relative!important;display:block!important;min-width:0!important;min-height:0!important;overflow:hidden!important;contain:layout paint}
