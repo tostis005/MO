@@ -1,0 +1,62 @@
+name: Home Lighthouse performance 0.10.255
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-lighthouse-performance-010255.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Lighthouse mobile performance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          : "${CHROME:?Chrome missing}"
+          export CHROME_PATH="$CHROME"
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' \
+            --only-categories=performance \
+            --output=json \
+            --output-path=/tmp/lhr.json \
+            --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' \
+            --quiet
+          python3 - <<'PY' > runtime/home-lighthouse-performance-010255.txt
+          import json
+          r=json.load(open('/tmp/lhr.json'))
+          a=r['audits']
+          c=r['categories']['performance']
+          def val(k):
+              x=a.get(k,{})
+              return x.get('numericValue'),x.get('displayValue'),x.get('score')
+          print('performance_score=',round((c.get('score') or 0)*100))
+          for k in ['first-contentful-paint','largest-contentful-paint','speed-index','total-blocking-time','cumulative-layout-shift','interactive','server-response-time','render-blocking-resources','unused-css-rules','unused-javascript','uses-responsive-images','uses-optimized-images','modern-image-formats']:
+              n,d,s=val(k)
+              print(f'{k}: numeric={n} display={d} score={s}')
+          lcp=a.get('largest-contentful-paint-element',{})
+          print('lcp_element=',(lcp.get('details') or {}).get('items',[{}])[0].get('node',{}).get('snippet','') if (lcp.get('details') or {}).get('items') else '')
+          rb=a.get('render-blocking-resources',{})
+          print('render_blocking_savings_ms=',(rb.get('details') or {}).get('overallSavingsMs'))
+          for item in ((rb.get('details') or {}).get('items') or [])[:10]:
+              print('render_blocking_item=',item.get('url'),item.get('wastedMs'),item.get('totalBytes'))
+          PY
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-lighthouse-performance-010255.txt
+          git commit -m 'Record Home Lighthouse performance' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
