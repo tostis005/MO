@@ -1,0 +1,307 @@
+=== WCFM Marketplace version ===
+
+=== wcfmmp_get_shipping_zone definition ===
+FILE=wp-content/plugins/wc-multivendor-marketplace/helpers/wcfmmp-core-functions.php LINE=1023
+			$distance = '';
+		}
+	}
+	return apply_filters( 'wcfm_user_vendor_distance', $distance, $store_id );
+}
+
+
+
+
+
+
+
+
+
+if(!function_exists('wcfmmp_get_shipping_zone')) {
+	function wcfmmp_get_shipping_zone($zoneID = '', $user_id = 0 ) {
+	  if ( isset( $zoneID ) && $zoneID != '' ) {
+	      $zones = WCFMmp_Shipping_Zone::get_zone( $zoneID, $user_id );
+	  } else {
+	      $zones = WCFMmp_Shipping_Zone::get_zones( $user_id );
+	  }
+	  if ( is_wp_error( $zones ) ) {
+	    return array();
+	  }
+	  return $zones;
+	}
+}
+
+function wcfmmp_convert_to_array($a) {
+  return (array) $a;
+}
+
+if(!function_exists('wcfmmp_state_key_alter')) {
+  function wcfmmp_state_key_alter(&$value, $key) {
+    $value = array_combine(
+    array_map(function($k) use ($key){ return $key. ':' .$k; }, array_keys($value)),
+        $value
+    );
+  }
+}
+
+function wcfmmp_generate_social_url( $social_handle, $social ) {
+	switch( $social ) {
+		case 'fb':
+		case 'facebook':
+		  if( strpos( $social_handle, 'facebook' ) === false) {
+		  	$social_handle = 'https://facebook.com/' . $social_handle;
+		  }
+		break;
+		
+		case 'twitter' :
+		  if( strpos( $social_handle, 'twitter' ) === false) {
+		  	$social_handle = 'https://twitter.com/' . $social_handle;
+		  }
+		break;
+		
+		case 'instagram' :
+		  if( strpos( $social_handle, 'instagram' ) === false) {
+		  	$social_handle = 'https://instagram.com/' . $social_handle;
+		  }
+		break;
+		
+		case 'linkedin' :
+		  if( strpos( $social_handle, 'linkedin' ) === false) {
+		  	 
+		  }
+		break;
+		
+		case 'youtube' :
+		  if( strpos( $social_handle, 'youtube' ) === false) {
+		  	$social_handle = 'https://youtube.com/channel/' . $social_handle;
+		  }
+		break;
+		
+	}
+	return apply_filters( 'wcfm_social_url', $social_handle, $social );
+}
+
+if(!function_exists('wcfmmp_log')) {
+	function wcfmmp_log( $message, $level = 'debug' ) {
+		wcfm_create_log( $message, $level );
+	}
+}
+
+if(!function_exists('wcfm_stripe_log')) {
+	function wcfm_stripe_log( $message, $level = 'debug' ) {
+		wcfm_create_log( $message, $level, 'wcfm-stripe' );
+	}
+}
+
+if(!function_exists('wcfm_wirecard_log')) {
+	function wcfm_wirecard_log( $message, $level = 'debug' ) {
+		wcfm_create_log( $message, $level, 'wcfm-wirecard' );
+	}
+}
+
+if(!function_exists('wcfm_cleanup_log')) {
+	function wcfm_cleanup_log( $message, $level = 'debug' ) {
+		wcfm_create_log( $message, $level, 'wcfm-data-cleanup' );
+	}
+}
+
+if(!function_exists('wcfm_withdrawal_log')) {
+	function wcfm_withdrawal_log( $message, $level = 'debug' ) {
+		wcfm_create_log( $message, $level, 'wcfm-withdrawal' );
+	}
+}
+
+if(!function_exists('wcfmmp_get_pickup_address')) {
+	function wcfmmp_get_pickup_address( $vendor_id ) {
+		if( !wcfm_is_vendor($vendor_id) ) {
+			$pickup_address = '';
+		} else {
+			$store_user    = wcfmmp_get_store( $vendor_id );
+			$pickup_address = $store_user->get_address_string();	
+		}
+		if ($pickup_address && apply_filters('wcfm_is_pref_multi_store', true)) {
+			global $WCFMu;
+			$only_address = true;
+			$pickup_address = $WCFMu->wcfmu_multi_store->wcfmu_return_closest_pickup_address($pickup_address, $vendor_id, $only_address);
+		}
+		return apply_filters('wcfmmp_store_pickup_address', $pickup_address);
+	}
+}
+
+if (!function_exists('wcfmmp_generate_timestamp_for_period')) {
+	function wcfmmp_generate_timestamp_for_period($time_period) {
+		switch ($time_period) {
+			case 'week':
+				$days_in_period = 7;
+				$starting_timestamp = strtotime("next monday", time());
+				break;
+
+			case '2weeks':
+				$days_in_period = 14;
+				$starting_timestamp = strtotime("next monday", time());
+				break;
+
+			case 'month':
+				$days_in_period = 30;
+				$starting_timestamp = strtotime('first day of next month');
+				break;
+
+			case '2months':
+				$days_in_period = 60;
+				$starting_timestamp = strtotime('first day of next month');
+
+=== Shipping-related usermeta keys by EMDO supplier vendor ===
+vendor=4507
+  _emdo_wcfm_profile_backup_before_vendor_id_fix_20260817
+  _wcfm_billing_address_1
+  _wcfm_billing_address_2
+  _wcfm_billing_city
+  _wcfm_billing_country
+  _wcfm_billing_first_name
+  _wcfm_billing_last_name
+  _wcfm_billing_phone
+  _wcfm_billing_postcode
+  _wcfm_billing_state
+  _wcfm_city
+  _wcfm_country
+  _wcfm_email_verified
+  _wcfm_email_verified_for
+  _wcfm_state
+  _wcfm_store_lat
+  _wcfm_store_lng
+  _wcfm_store_location
+  _wcfm_street_1
+  _wcfm_street_2
+  _wcfm_vendor_author
+  _wcfm_zip
+  _wcfmmp_avg_review_rating
+  _wcfmmp_profile_id
+  _wcfmmp_shipping
+  _wcfmmp_unique_id
+  shipping_address_1
+  shipping_address_2
+  shipping_city
+  shipping_country
+  shipping_first_name
+  shipping_last_name
+  shipping_postcode
+  shipping_state
+  wcfm_register_member
+  wcfm_register_on
+  wcfmmp_profile_settings
+  wcfmmp_store_name
+vendor=4508
+  _wcfm_billing_address_1
+  _wcfm_billing_address_2
+  _wcfm_billing_city
+  _wcfm_billing_country
+  _wcfm_billing_first_name
+  _wcfm_billing_last_name
+  _wcfm_billing_phone
+  _wcfm_billing_postcode
+  _wcfm_billing_state
+  _wcfm_city
+  _wcfm_country
+  _wcfm_email_verified
+  _wcfm_email_verified_for
+  _wcfm_state
+  _wcfm_store_lat
+  _wcfm_store_lng
+  _wcfm_store_location
+  _wcfm_store_offline
+  _wcfm_street_1
+  _wcfm_street_2
+  _wcfm_vendor_author
+  _wcfm_zip
+  _wcfmmp_avg_review_rating
+  _wcfmmp_profile_id
+  _wcfmmp_shipping
+  _wcfmmp_unique_id
+  shipping_address_1
+  shipping_address_2
+  shipping_city
+  shipping_country
+  shipping_first_name
+  shipping_last_name
+  shipping_postcode
+  shipping_state
+  wcfm_register_member
+  wcfm_register_on
+  wcfmmp_profile_settings
+  wcfmmp_store_name
+vendor=4509
+  _wcfm_billing_address_1
+  _wcfm_billing_address_2
+  _wcfm_billing_city
+  _wcfm_billing_country
+  _wcfm_billing_first_name
+  _wcfm_billing_last_name
+  _wcfm_billing_phone
+  _wcfm_billing_postcode
+  _wcfm_billing_state
+  _wcfm_city
+  _wcfm_country
+  _wcfm_email_verified
+  _wcfm_email_verified_for
+  _wcfm_state
+  _wcfm_store_lat
+  _wcfm_store_lng
+  _wcfm_store_location
+  _wcfm_store_offline
+  _wcfm_street_1
+  _wcfm_street_2
+  _wcfm_vendor_author
+  _wcfm_zip
+  _wcfmmp_avg_review_rating
+  _wcfmmp_profile_id
+  _wcfmmp_shipping
+  _wcfmmp_unique_id
+  shipping_address_1
+  shipping_address_2
+  shipping_city
+  shipping_country
+  shipping_first_name
+  shipping_last_name
+  shipping_postcode
+  shipping_state
+  wcfm_register_member
+  wcfm_register_on
+  wcfmmp_profile_settings
+  wcfmmp_store_name
+vendor=4514
+  _wcfm_billing_address_1
+  _wcfm_billing_address_2
+  _wcfm_billing_city
+  _wcfm_billing_country
+  _wcfm_billing_first_name
+  _wcfm_billing_last_name
+  _wcfm_billing_phone
+  _wcfm_billing_postcode
+  _wcfm_billing_state
+  _wcfm_city
+  _wcfm_country
+  _wcfm_email_verified
+  _wcfm_email_verified_for
+  _wcfm_state
+  _wcfm_store_lat
+  _wcfm_store_lng
+  _wcfm_store_location
+  _wcfm_street_1
+  _wcfm_street_2
+  _wcfm_vendor_author
+  _wcfm_zip
+  _wcfmmp_avg_review_rating
+  _wcfmmp_profile_id
+  _wcfmmp_shipping
+  _wcfmmp_unique_id
+  shipping_address_1
+  shipping_address_2
+  shipping_city
+  shipping_country
+  shipping_first_name
+  shipping_last_name
+  shipping_postcode
+  shipping_state
+  wcfm_register_member
+  wcfm_register_on
+  wcfmmp_profile_settings
+  wcfmmp_store_name
