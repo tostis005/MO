@@ -1,0 +1,65 @@
+name: Diagnose 1957 zero-cost shipping
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-1957-shipping-zero-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH helper
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Diagnose live 1957 shipping
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            \$_SERVER[\"REQUEST_URI\"] = \"/tienda/1957/?mdo_shipping=1\";
+            \$u = get_user_by(\"slug\", \"1957\"); if (!\$u) { \$u = get_user_by(\"login\", \"1957\"); }
+            if (!\$u) { fwrite(STDERR, \"VENDOR_1957_NOT_FOUND\\n\"); exit(7); }
+            \$id = (int) \$u->ID;
+            echo \"VENDOR_ID=\" . \$id . \"\\n\";
+            echo \"ROWS=\" . wp_json_encode(mdo_sst_shipping_rows(\$id), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . \"\\n\";
+            \$zones = function_exists(\"wcfmmp_get_shipping_zone\") ? wcfmmp_get_shipping_zone(\"\", \$id) : array();
+            \$out = array();
+            foreach ((array) \$zones as \$z) {
+              \$row = array(\"zone_id\"=>mdo_sst_get(\$z,\"zone_id\",mdo_sst_get(\$z,\"id\",0)),\"zone_name\"=>mdo_sst_get(\$z,\"zone_name\",mdo_sst_get(\$z,\"name\",\"\")),\"methods\"=>array());
+              foreach ((array) mdo_sst_get(\$z,\"shipping_methods\",array()) as \$m) {
+                \$s=mdo_sst_get(\$m,\"settings\",array()); if (is_string(\$s)) \$s=maybe_unserialize(\$s); if (!is_array(\$s)) \$s=array();
+                \$row[\"methods\"][]=array(\"method_id\"=>mdo_sst_get(\$m,\"method_id\",mdo_sst_get(\$m,\"id\",\"\")),\"enabled\"=>mdo_sst_get(\$m,\"is_enabled\",mdo_sst_get(\$m,\"enabled\",1)),\"title\"=>(string)(\$s[\"title\"]??mdo_sst_get(\$m,\"title\",\"\")),\"cost\"=>\$s[\"cost\"]??mdo_sst_get(\$m,\"cost\",null),\"min_amount\"=>\$s[\"min_amount\"]??mdo_sst_get(\$m,\"min_amount\",null));
+              }
+              \$out[]=\$row;
+            }
+            echo \"ZONES=\" . wp_json_encode(\$out, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . \"\\n\";
+          ' --path=\"$PROD_PATH\" --allow-root"
