@@ -1,0 +1,57 @@
+name: Home CLS final measure 0.10.256
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-cls-final-measure-010256.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Measure live Home
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          HTML=$(mktemp)
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          HAS_CSS=$(grep -c 'id="elmercado-home-cls-010256"' "$HTML" || true)
+          HAS_TOPBAR_RULE=$(grep -c 'body.home .topbar{display:none!important;}' "$HTML" || true)
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          export CHROME_PATH="$CHROME"
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lhr.json --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          HAS_CSS="$HAS_CSS" HAS_TOPBAR_RULE="$HAS_TOPBAR_RULE" python3 - <<'PY' > runtime/home-cls-final-measure-010256.txt
+          import json,os
+          a=json.load(open('/tmp/lhr.json'))['audits']
+          print('initial_html_has_cls_css=',os.environ['HAS_CSS'])
+          print('initial_html_has_topbar_rule=',os.environ['HAS_TOPBAR_RULE'])
+          for k in ('first-contentful-paint','largest-contentful-paint','total-blocking-time','cumulative-layout-shift','render-blocking-resources'):
+              x=a.get(k,{})
+              print(f'{k}: numeric={x.get("numericValue")} display={x.get("displayValue")} score={x.get("score")}')
+          print('--- shifts ---')
+          for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or []):
+              n=item.get('node') or {}
+              print('shift=',item.get('score'),'selector=',n.get('selector'),'label=',n.get('nodeLabel'))
+          print('--- lcp ---')
+          for group in ((a.get('lcp-breakdown-insight',{}).get('details') or {}).get('items') or []):
+              print(json.dumps(group,ensure_ascii=False,separators=(',',':'))[:5000])
+          PY
+          cat runtime/home-cls-final-measure-010256.txt
+      - name: Record
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-cls-final-measure-010256.txt
+          git commit -m 'Record definitive Home CLS measurement' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
