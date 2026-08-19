@@ -1,0 +1,209 @@
+=== HTML META ===
+bytes=551662
+gtag_src_count=2
+hustle_inline_count=0
+=== GTAG CONTEXT ===
+36-<link rel="alternate" type="application/rss+xml" title="El Mercado de Origen &raquo; Feed de los comentarios" href="https://www.elmercadodeorigen.com/comments/feed/" />
+37-<link rel="alternate" title="oEmbed (JSON)" type="application/json+oembed" href="https://www.elmercadodeorigen.com/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fwww.elmercadodeorigen.com%2F" />
+38-<link rel="alternate" title="oEmbed (XML)" type="text/xml+oembed" href="https://www.elmercadodeorigen.com/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fwww.elmercadodeorigen.com%2F&#038;format=xml" />
+39-		<!-- This site uses the Google Analytics by MonsterInsights plugin v11.1.2 - Using Analytics tracking - https://www.monsterinsights.com/ -->
+40:							<script src="//www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4"  data-cfasync="false" data-wpfc-render="false" async></script>
+41-			<script data-cfasync="false" data-wpfc-render="false">
+42-				var mi_version = '11.1.2';
+43-				var mi_track_user = true;
+44-				var mi_no_track_reason = '';
+--
+313-		<meta name="viewport" content="width=device-width, initial-scale=1">
+314-				<link rel="profile" href="http://gmpg.org/xfn/11">
+315-		
+316-		<!-- Global site tag (gtag.js) - Google Ads: AW-18396600140 - Google for WooCommerce -->
+317:		<script async src="https://www.googletagmanager.com/gtag/js?id=AW-18396600140"></script>
+318-		<script>
+319-			window.dataLayer = window.dataLayer || [];
+320-			function gtag() { dataLayer.push(arguments); }
+321-			gtag( 'consent', 'default', {
+=== HUSTLE CONTEXT ===
+=== PAGE LINES 2090-2140 ===
+  2090	
+  2091					const svg = element.closest('svg');
+  2092					if (!svg) {
+  2093						return;
+  2094					}
+  2095	
+  2096					duplicateIndex += 1;
+  2097					const replacementId = `${originalId}-emo-${duplicateIndex}`;
+  2098					element.id = replacementId;
+  2099	
+  2100					svg.querySelectorAll('*').forEach((node) => {
+  2101						[...node.attributes].forEach((attribute) => {
+  2102							const updated = attribute.value
+  2103								.replaceAll(`#${originalId}`, `#${replacementId}`)
+  2104								.replaceAll(`url(${originalId})`, `url(${replacementId})`);
+  2105							if (updated !== attribute.value) node.setAttribute(attribute.name, updated);
+  2106						});
+  2107					});
+  2108				});
+  2109	
+  2110				/* En el archivo del blog el nombre del sitio no debe competir con el H1 editorial. */
+  2111				const visibleHeadingOne = [...document.querySelectorAll('h1')].filter((heading) => {
+  2112					const style = getComputedStyle(heading);
+  2113					return style.display !== 'none' && style.visibility !== 'hidden' && heading.getClientRects().length > 0;
+  2114				});
+  2115				const brandingHeading = document.querySelector('.site-branding h1.site-title');
+  2116	
+  2117				if (brandingHeading && visibleHeadingOne.length > 1) {
+  2118					const replacement = document.createElement('div');
+  2119					[...brandingHeading.attributes].forEach((attribute) => replacement.setAttribute(attribute.name, attribute.value));
+  2120					replacement.removeAttribute('id');
+  2121					replacement.classList.add('site-title');
+  2122					replacement.append(...brandingHeading.childNodes);
+  2123					brandingHeading.replaceWith(replacement);
+  2124				}
+  2125	
+  2126				/* Cualquier tarjeta editorial sin imagen recibe el acabado de marca. */
+  2127				document.querySelectorAll('.emo-article-card__media').forEach((media) => {
+  2128					if (media.querySelector('img')) {
+  2129						return;
+  2130					}
+  2131	
+  2132					let placeholder = media.querySelector('.emo-article-card__placeholder');
+  2133					if (!placeholder) {
+  2134						placeholder = media.querySelector(':scope > span') || document.createElement('span');
+  2135						if (!placeholder.isConnected) media.append(placeholder);
+  2136					}
+  2137					placeholder.classList.add('emo-article-card__placeholder');
+  2138					placeholder.setAttribute('aria-hidden', 'true');
+  2139				});
+  2140	
+=== PAGE LINES 2768-2800 ===
+  2768					timers.push(setTimeout(cleanMenuArtifacts, 240));
+  2769				};
+  2770	
+  2771				new MutationObserver(scheduleClean).observe(html, { attributes: true, attributeFilter: ['class'] });
+  2772				scheduleClean();
+  2773			})();
+  2774			</script>
+  2775					<script id="elmercado-mobile-header-hitareas-final">
+  2776			(() => {
+  2777				'use strict';
+  2778				const tools = document.querySelector('.site-header .site-tools');
+  2779				if (!tools) return;
+  2780	
+  2781				const mobile = () => window.matchMedia('(max-width: 991px)').matches;
+  2782				const important = (node, property, value) => node?.style?.setProperty(property, value, 'important');
+  2783				const visible = (node) => {
+  2784					if (!node) return false;
+  2785					const rect = node.getBoundingClientRect();
+  2786					const style = getComputedStyle(node);
+  2787					return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+  2788				};
+  2789	
+  2790				const sync = () => {
+  2791					if (!mobile()) return;
+  2792					important(tools, 'grid-template-columns', 'repeat(3, 30px)');
+  2793					important(tools, 'grid-auto-columns', '30px');
+  2794					important(tools, 'gap', '4px');
+  2795					important(tools, 'width', '98px');
+  2796					important(tools, 'min-width', '98px');
+  2797	
+  2798					[...tools.children].filter(visible).slice(0, 3).forEach((cell) => {
+  2799						for (const node of [cell]) {
+  2800							important(node, 'width', '30px');
+=== PAGE LINES 3595-3640 ===
+  3595				};
+  3596	
+  3597				const normaliseMobileToolbar=(toolbar,vendor)=>{
+  3598					if(!toolbar) return;
+  3599					[['position','relative'],['z-index','2'],['display','flex'],['box-sizing','border-box'],['height','68px'],['min-height','68px'],['max-height','68px'],['align-items','center'],['justify-content','flex-start'],['gap','10px'],['clear','both'],['float','none'],['margin','0 0 10px'],['padding','10px 12px'],['border','1px solid rgba(23,63,50,.12)'],['border-radius','16px'],['background','#fff'],['box-shadow','0 8px 24px rgba(17,42,34,.055)'],['font-size','15px'],['font-weight','430'],['line-height','1.65']].forEach(([n,v])=>setImportant(toolbar,n,v));
+  3600					if(vendor){setImportant(toolbar,'left','50%');setImportant(toolbar,'width','calc(100vw - 32px)');setImportant(toolbar,'min-width','calc(100vw - 32px)');setImportant(toolbar,'max-width','calc(100vw - 32px)');setImportant(toolbar,'transform','translateX(-50%)');}
+  3601					else {setImportant(toolbar,'left','auto');setImportant(toolbar,'width','100%');setImportant(toolbar,'min-width','0');setImportant(toolbar,'max-width','100%');setImportant(toolbar,'transform','none');}
+  3602	
+  3603					const count=toolbar.querySelector('.woocommerce-result-count,.emo-catalog-result-count-010220,.emo-vendor-result-count-010225');
+  3604					if(count){
+  3605						[['position','static'],['inset','auto'],['display','flex'],['flex','1 1 0'],['box-sizing','border-box'],['width','auto'],['min-width','0'],['max-width','none'],['height','44px'],['min-height','44px'],['max-height','44px'],['align-items','center'],['align-self','center'],['overflow','hidden'],['float','none'],['clear','none'],['margin','0'],['padding','0'],['color','#42564e'],['font-size','9.8px'],['font-weight','700'],['line-height','1.35'],['white-space','nowrap'],['word-break','normal'],['overflow-wrap','normal'],['writing-mode','horizontal-tb'],['text-orientation','mixed']].forEach(([n,v])=>setImportant(count,n,v));
+  3606						count.querySelectorAll('*').forEach(node=>{setImportant(node,'white-space','nowrap');setImportant(node,'word-break','normal');setImportant(node,'overflow-wrap','normal');setImportant(node,'writing-mode','horizontal-tb');});
+  3607					}
+  3608				};
+  3609	
+  3610				const normaliseToggle=(toggle,vendor)=>{
+  3611					if(!toggle) return;
+  3612					toggle.classList.add('emo-mobile-filter-control-parity-010236');
+  3613					[['position','relative'],['z-index','2'],['display','flex'],['box-sizing','border-box'],['height','48px'],['min-height','48px'],['max-height','48px'],['align-items','center'],['justify-content','flex-start'],['gap','10px'],['clear','both'],['float','none'],['margin','0 0 18px'],['padding','0 16px'],['border','1px solid rgba(23,63,50,.16)'],['border-radius','14px'],['background','rgba(255,253,248,.92)'],['box-shadow','0 7px 20px rgba(23,63,50,.045)'],['color','#173f32'],['font-size','13px'],['font-weight','820'],['line-height','1.2'],['text-align','left']].forEach(([n,v])=>setImportant(toggle,n,v));
+  3614					if(vendor){setImportant(toggle,'left','50%');setImportant(toggle,'width','calc(100vw - 32px)');setImportant(toggle,'min-width','calc(100vw - 32px)');setImportant(toggle,'max-width','calc(100vw - 32px)');setImportant(toggle,'transform','translateX(-50%)');}
+  3615					else {setImportant(toggle,'left','auto');setImportant(toggle,'width','100%');setImportant(toggle,'min-width','0');setImportant(toggle,'max-width','100%');setImportant(toggle,'transform','none');}
+  3616				};
+  3617	
+  3618				const normalise=()=>{
+  3619					const viewport=window.innerWidth;
+  3620					const compact=viewport<=991;
+  3621					const orderWidth=viewport<=360?'138px':(compact?'148px':'250px');
+  3622					normaliseOrdering(compact,orderWidth);
+  3623	
+  3624					const shopToolbar=document.querySelector('body:not(.wcfmmp-store-page) .emo-catalog-toolbar-shared-010229');
+  3625					const vendorToolbar=document.querySelector('#wcfmmp-store .emo-catalog-toolbar-shared-010229');
+  3626					const shopToggle=document.querySelector('#emo-premium-filter-toggle');
+  3627					const vendorToggle=document.querySelector('#wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229');
+  3628	
+  3629					if(vendorToggle){
+  3630						const vendorLabel=vendorToggle.querySelector('.emo-filter-label');
+  3631						if(vendorLabel) vendorLabel.textContent='Filtros';
+  3632						const vendorShell=document.querySelector('.emo-mobile-filter-shell.emo-filter-shell-shared-010229');
+  3633						const vendorTitle=vendorShell?.querySelector('.emo-mobile-filter-title');
+  3634						if(vendorTitle) vendorTitle.textContent='Filtros';
+  3635					}
+  3636	
+  3637					if(compact){
+  3638						normaliseMobileToolbar(shopToolbar,false);
+  3639						normaliseMobileToolbar(vendorToolbar,true);
+  3640						normaliseToggle(shopToggle,false);
+=== WP AUDIT ===
+=== ACTIVE PLUGINS RELEVANT ===
+=== HUSTLE TABLES ===
+=== PLUGIN LIST FULL ===
+{
+  "scripts": [
+    {
+      "id": "",
+      "src": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
+      "async": true,
+      "defer": false,
+      "outer": "<script type=\"text/javascript\" async=\"\" src=\"https://www.googletagmanager.com/gtag/js?id=AW-18396600140&amp;cx=c&amp;gtm=4e68h1\"></script>"
+    },
+    {
+      "id": "",
+      "src": "https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4",
+      "async": true,
+      "defer": false,
+      "outer": "<script src=\"//www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4\" data-cfasync=\"false\" data-wpfc-render=\"false\" async=\"\"></script>"
+    },
+    {
+      "id": "",
+      "src": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140",
+      "async": true,
+      "defer": false,
+      "outer": "<script async=\"\" src=\"https://www.googletagmanager.com/gtag/js?id=AW-18396600140\"></script>"
+    }
+  ],
+  "resources": [
+    {
+      "name": "https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4",
+      "duration": 95,
+      "transferSize": 0,
+      "initiatorType": "script"
+    },
+    {
+      "name": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140",
+      "duration": 91,
+      "transferSize": 0,
+      "initiatorType": "script"
+    },
+    {
+      "name": "https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1",
+      "duration": 54,
+      "transferSize": 0,
+      "initiatorType": "script"
+    }
+  ],
+  "hustleCount": 0,
+  "visibleHustle": []
+}
