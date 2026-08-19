@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'init',
 	static function (): void {
-		$revision = '010256-5';
+		$revision = '010256-6';
 		if ( get_option( 'elmercado_home_cls_cache_revision', '' ) === $revision ) {
 			return;
 		}
@@ -81,6 +81,86 @@ margin-top:clamp(1.2rem,2vw,1.75rem)!important;
 padding-top:.8rem!important;
 gap:.65rem!important;
 }
+
+/*
+ * Reserve the producer collage before banner images decode. Lighthouse reports
+ * the first producer card itself as a layout-shift source, so its final grid
+ * area must exist in the very first layout frame rather than being inferred
+ * later from image/content dimensions.
+ */
+body.home .emo-hero__visual--vendors{
+display:grid!important;
+grid-template-columns:repeat(12,minmax(0,1fr))!important;
+grid-template-rows:repeat(10,38px)!important;
+height:380px!important;
+min-height:380px!important;
+min-width:0!important;
+transform:translateY(-34px)!important;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card{
+position:relative!important;
+display:block!important;
+min-width:0!important;
+min-height:0!important;
+overflow:hidden!important;
+contain:layout paint;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card--1{
+grid-column:1/7!important;grid-row:1/11!important;transform:rotate(-1.2deg)!important;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card--2{
+grid-column:7/13!important;grid-row:1/6!important;transform:rotate(1.1deg)!important;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card--3{
+grid-column:7/13!important;grid-row:6/11!important;transform:rotate(.45deg)!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--1{
+grid-column:1/7!important;grid-row:1/7!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--2{
+grid-column:7/13!important;grid-row:1/6!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--3{
+grid-column:1/6!important;grid-row:7/11!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--4{
+grid-column:6/13!important;grid-row:6/11!important;transform:rotate(-.55deg)!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1{
+grid-column:1/6!important;grid-row:1/7!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2{
+grid-column:6/13!important;grid-row:1/5!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3{
+grid-column:1/5!important;grid-row:7/11!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4{
+grid-column:5/9!important;grid-row:5/11!important;transform:rotate(-.55deg)!important;
+}
+body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5{
+grid-column:9/13!important;grid-row:5/11!important;transform:rotate(.65deg)!important;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card figure{
+position:relative!important;
+display:block!important;
+width:100%!important;
+height:100%!important;
+margin:0!important;
+overflow:hidden!important;
+}
+body.home .emo-hero__visual--vendors .emo-hero-card figure>img{
+position:absolute!important;
+inset:0!important;
+display:block!important;
+width:100%!important;
+height:100%!important;
+max-width:none!important;
+max-height:none!important;
+object-fit:cover!important;
+object-position:center center!important;
+}
+
 /* Pure decoration: remove the moving 54vw circle responsible for ~0.15 CLS. */
 body.home.elmercado-child-theme .emo-home>.emo-hero::after{
 display:none!important;content:none!important;width:0!important;height:0!important;
