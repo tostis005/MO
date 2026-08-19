@@ -1,2 +1,27 @@
-deploy=failure
-verify=skipped
+run 1 {'score': 7, 'fcp': 2128.5206000000003, 'lcp': 6302.477400000001, 'tbt': 922.9999999999995, 'cls': 0.9017071204194166}
+ shift 0.6925202152319462 body.home > div#view > div#content
+ shift 0.2048313027445522 section.emo-hero > div.emo-shell > div.emo-hero__visual > a.emo-hero-card
+ shift 0.003903237958886558 div.site-header-inner > div.woostify-container > div.site-navigation > nav#site-navigation
+ shift 0.0003586508676251268 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+ shift 8.804296147864416e-05 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+ shift 5.670654927814056e-06 div.woostify-container > div.site-tools > a.tools-icon > span.woostify-svg-icon
+run 2 {'score': 7, 'fcp': 2118.1264, 'lcp': 5717.225600000001, 'tbt': 971, 'cls': 0.7953391563684589}
+ shift 0.6925202152319462 body.home > div#view > div#content
+ shift 0.05681174559770644 section.emo-hero > div.emo-shell > div.emo-hero__visual > a.emo-hero-card
+ shift 0.0413205356351417 div.woostify-container > div.site-navigation > nav#site-navigation > ul#menu-header-primary
+ shift 0.003903237958886558 div.site-header-inner > div.woostify-container > div.site-navigation > nav#site-navigation
+ shift 0.0003586508676251268 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+ shift 0.0003367281156741976 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+ shift 8.804296147864416e-05 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+run 3 {'score': 6, 'fcp': 2236.6526000000003, 'lcp': 5754.715400000001, 'tbt': 1010, 'cls': 0.9017302850074898}
+ shift 0.6925202152319462 body.home > div#view > div#content
+ shift 0.2048577545217504 section.emo-hero > div.emo-shell > div.emo-hero__visual > a.emo-hero-card
+ shift 0.003903237958886558 div.site-header-inner > div.woostify-container > div.site-navigation > nav#site-navigation
+ shift 0.0003586508676251268 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+ shift 8.804296147864416e-05 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+ shift 2.383465802817002e-06 div.site-navigation > nav#site-navigation > ul#menu-header-primary > li#menu-item-1726
+median_score= 7
+median_fcp= 2129
+median_lcp= 5755
+median_tbt= 971
+median_cls= 0.9017071204194166
