@@ -1,5 +1,6 @@
 name: Audit Home performance 20260819 post 3x
 
+# trigger-1
 on:
   push:
     branches: [main]
@@ -38,14 +39,7 @@ jobs:
           for i in (1,2,3):
               a=json.load(open(f'/tmp/post-{i}.json'))
               x=a['audits']
-              r={
-                'score':round(a['categories']['performance']['score']*100),
-                'fcp':round(x['first-contentful-paint']['numericValue']),
-                'lcp':round(x['largest-contentful-paint']['numericValue']),
-                'tbt':round(x['total-blocking-time']['numericValue']),
-                'cls':x['cumulative-layout-shift']['numericValue'],
-                'si':round(x['speed-index']['numericValue'])
-              }
+              r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':x['cumulative-layout-shift']['numericValue'],'si':round(x['speed-index']['numericValue'])}
               rows.append(r); print('run',i,r)
           med={k:statistics.median(r[k] for r in rows) for k in baseline}
           for k,v in med.items(): print('median_'+k+'=',v)
