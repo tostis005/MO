@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: home-critical-cls-production
+  cancel-in-progress: true
+
 jobs:
   patch-deploy-measure:
     runs-on: ubuntu-24.04
@@ -49,7 +53,6 @@ jobs:
           body.home.elmercado-child-theme .site-tools .header-search-icon,body.home.elmercado-child-theme .site-header .site-search,body.home.elmercado-child-theme .site-tools .my-account .subbox{display:none!important}
           body.home.elmercado-child-theme .site-tools{display:flex!important;min-width:94px!important;height:44px!important;min-height:44px!important;max-height:44px!important;flex:0 0 auto!important;align-items:center!important;justify-content:flex-end!important;gap:.35rem!important;margin:0!important;padding:0!important}
           body.home.elmercado-child-theme .site-tools>a.tools-icon,body.home.elmercado-child-theme .site-tools>.my-account>a.tools-icon{width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;margin:0!important;padding:0!important}
-
           body.home.elmercado-child-theme .emo-home>.emo-hero,body.home .emo-hero{position:relative!important;isolation:isolate!important;min-height:min(600px,calc(100svh - 108px))!important;padding-top:clamp(1.75rem,2.35vw,2.35rem)!important;padding-bottom:clamp(2rem,3vw,3rem)!important}
           body.home.elmercado-child-theme .emo-home>.emo-hero>.emo-hero__grid,body.home .emo-hero__grid{display:grid!important;grid-template-columns:minmax(0,.92fr) minmax(480px,.85fr)!important;align-items:center!important;gap:clamp(2rem,4vw,4rem)!important;width:min(calc(100% - 40px),1320px)!important;max-width:1320px!important;margin-inline:auto!important}
           body.home .emo-hero__copy{max-width:700px!important}
@@ -91,25 +94,38 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          command -v sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
-          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
           ')"
           : "${PROD_PATH:?production path not found}"
-          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:/tmp/critical-home-010280.css"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+          REMOTE_CRIT="/tmp/critical-home-${GITHUB_RUN_ID}.css"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:$REMOTE_CRIT"
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
-            install -m 0644 /tmp/critical-home-010280.css '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
-            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            install -m 0644 '$REMOTE_CRIT' \"\$THEME/assets/css/critical-woostify-home.min.css\"
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
-            \"\$php_bin\" \"\$wp_bin\" eval 'if (function_exists("elmercado_flush_home_cache")) { elmercado_flush_home_cache(); echo "home-cache-flushed\\n"; }' --path='$PROD_PATH' --allow-root
-            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
-            rm -f /tmp/critical-home-010280.css
+            rm -f '$REMOTE_CRIT'
           "
 
       - name: Verify served first frame and run Lighthouse desktop 3x
@@ -119,9 +135,9 @@ jobs:
           set -euo pipefail
           mkdir -p runtime
           URL='https://www.elmercadodeorigen.com/'
-          curl -fsS --compressed --max-time 45 -H 'Cache-Control: no-cache' "$URL" -o /dev/null
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 "$URL" -o /dev/null; done
           HTML=$(mktemp)
-          curl -fsS --compressed --max-time 45 -H 'Cache-Control: no-cache' "$URL" -o "$HTML"
+          curl -fsS --compressed --max-time 45 "$URL" -o "$HTML"
           grep -q 'emo-final-first-frame-010280' "$HTML"
           for i in 1 2 3; do
             npx --yes lighthouse@12.8.2 "$URL" \
@@ -143,13 +159,7 @@ jobs:
           for i in range(1,4):
               r=json.load(open(f'/tmp/lhr-{i}.json'))
               a=r['audits']
-              row={
-                'score': round(r['categories']['performance']['score']*100),
-                'fcp': a['first-contentful-paint']['numericValue'],
-                'lcp': a['largest-contentful-paint']['numericValue'],
-                'tbt': a['total-blocking-time']['numericValue'],
-                'cls': a['cumulative-layout-shift']['numericValue'],
-              }
+              row={'score':round(r['categories']['performance']['score']*100),'fcp':a['first-contentful-paint']['numericValue'],'lcp':a['largest-contentful-paint']['numericValue'],'tbt':a['total-blocking-time']['numericValue'],'cls':a['cumulative-layout-shift']['numericValue']}
               rows.append(row)
               print('run',i,row)
               for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:8]:
@@ -172,6 +182,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-critical-cls-010280.txt
-          git commit -m 'Align Home critical CSS with final hero geometry' || exit 0
+          git commit -m 'Measure aligned Home critical hero geometry' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
