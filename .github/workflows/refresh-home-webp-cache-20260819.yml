@@ -45,14 +45,23 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            prefix=\$(\"\$php_bin\" \"\$wp_bin\" db prefix --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root)
-            \"\$php_bin\" \"\$wp_bin\" db query \"DELETE FROM \\${prefix}options WHERE option_name LIKE '_transient_elmercado_home_%' OR option_name LIKE '_transient_timeout_elmercado_home_%'\" --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root
-            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root || true
-            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
-          "
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          WP=("$php_bin" -d memory_limit=256M "$wp_bin" --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root)
+          mapfile -t opts < <("${WP[@]}" option list --search='_transient_elmercado_home_%' --field=option_name --format=csv 2>/dev/null || true)
+          mapfile -t timeouts < <("${WP[@]}" option list --search='_transient_timeout_elmercado_home_%' --field=option_name --format=csv 2>/dev/null || true)
+          printf 'home_cache_options_before=%s\n' "$(( ${#opts[@]} + ${#timeouts[@]} ))"
+          for opt in "${opts[@]}" "${timeouts[@]}"; do
+            [ -n "$opt" ] || continue
+            "${WP[@]}" option delete "$opt" >/dev/null || true
+          done
+          "${WP[@]}" cache flush >/dev/null || true
+          rm -f "$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html"
+          echo 'home_cache_invalidated=yes'
+          REMOTE
           for i in 1 2 3; do curl -fsS --compressed --max-time 45 -D "/tmp/h-$i" 'https://www.elmercadodeorigen.com/' -o /dev/null; done
           curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
           python3 - <<'PY' | tee runtime/home-webp-cache-refresh-20260819.txt
