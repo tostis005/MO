@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Home WebP Delivery 2026-08-19
  * Description: Sirve en la Home variantes WebP ya generadas de imágenes locales sin alterar la biblioteca multimedia ni el resto de la tienda.
- * Version: 1.0.2
+ * Version: 1.0.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,10 +13,6 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
     return;
 }
 
-/**
- * Migra una sola vez la caché de portada previa a WebP. Debe ejecutarse antes
- * del lector de transient de home-cache.php; después queda inerte por versión.
- */
 add_action(
     'template_redirect',
     static function (): void {
@@ -29,7 +25,7 @@ add_action(
             return;
         }
 
-        $version = '1.0.2';
+        $version = '1.0.3';
         if ( get_option( 'mdo_home_webp_cache_version', '' ) === $version ) {
             return;
         }
@@ -50,9 +46,6 @@ add_action(
     -3100
 );
 
-/**
- * Devuelve la URL WebP vecina si existe en uploads y realmente pesa menos.
- */
 function mdo_home_webp_candidate_url( string $url ): ?string {
     static $cache = array();
 
@@ -122,6 +115,39 @@ function mdo_home_webp_rewrite_srcset( string $srcset ): string {
     return implode( ', ', $rewritten );
 }
 
+/**
+ * Lighthouse mobile usa DPR 1.75: una tarjeta de 315 px necesita ~551 px.
+ * La Home sólo tenía 360/600 para la garrafa y saltaba a 600. Si existe la
+ * variante 552x736 WebP, se añade como candidato exacto sin tocar WooCommerce.
+ */
+function mdo_home_webp_add_garrafa_552_candidate( string $tag ): string {
+    if ( false === strpos( $tag, 'Garrafa_5L' ) || false === strpos( $tag, 'srcset=' ) ) {
+        return $tag;
+    }
+
+    $uploads = wp_get_upload_dir();
+    $file    = trailingslashit( (string) $uploads['basedir'] ) . '2017/12/Garrafa_5L-552x736.webp';
+    if ( ! is_readable( $file ) || filesize( $file ) <= 0 ) {
+        return $tag;
+    }
+
+    $url = trailingslashit( (string) $uploads['baseurl'] ) . '2017/12/Garrafa_5L-552x736.webp';
+    $tag = preg_replace_callback(
+        '~(\ssrcset\s*=\s*)(["\'])(.*?)\2~i',
+        static function ( array $matches ) use ( $url ): string {
+            $srcset = html_entity_decode( $matches[3], ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+            if ( false === strpos( $srcset, 'Garrafa_5L-552x736.webp' ) ) {
+                $srcset = rtrim( $srcset, " \t\n\r\0\x0B," ) . ', ' . $url . ' 552w';
+            }
+            return $matches[1] . $matches[2] . htmlspecialchars( $srcset, ENT_QUOTES, 'UTF-8' ) . $matches[2];
+        },
+        $tag,
+        1
+    ) ?? $tag;
+
+    return $tag;
+}
+
 function mdo_home_webp_rewrite_img_tag( string $tag ): string {
     foreach ( array( 'src', 'data-src' ) as $attribute ) {
         $pattern = '~(\s' . preg_quote( $attribute, '~' ) . '\s*=\s*)(["\'])(.*?)\2~i';
@@ -149,7 +175,7 @@ function mdo_home_webp_rewrite_img_tag( string $tag ): string {
         ) ?? $tag;
     }
 
-    return $tag;
+    return mdo_home_webp_add_garrafa_552_candidate( $tag );
 }
 
 function mdo_home_webp_transform_html( string $html ): string {
@@ -178,12 +204,6 @@ function mdo_home_webp_transform_html( string $html ): string {
     return $html;
 }
 
-/**
- * Capa exterior: recibe el documento ya terminado por home-cache.php. De este
- * modo también ve las tarjetas de productores que esa caché construye al final.
- * Si la petición es cacheable, persistimos el mismo HTML WebP en transient y
- * en index.html para que los HIT siguientes no recuperen JPEG.
- */
 function mdo_home_webp_finalize_document( string $html ): string {
     $optimized = mdo_home_webp_transform_html( $html );
 
