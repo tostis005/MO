@@ -1,0 +1,59 @@
+name: Diagnose Home browser runtime 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-browser-runtime-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect live browser runtime
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > runtime/diagnose-home-browser-runtime-20260819.txt
+          const puppeteer = require('puppeteer-core');
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});
+            const snapshots=[];
+            for (const delay of [0,3000,8000]) {
+              if (delay) await new Promise(r=>setTimeout(r,delay));
+              const state=await page.evaluate(()=>{
+                const all=[...document.querySelectorAll('.hustle-ui')];
+                const visible=all.filter(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect(); return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;});
+                const styles=[...document.querySelectorAll('style')].filter(s=>(s.id||'').includes('hustle')||(s.textContent||'').includes('.hustle-ui')).map(s=>({id:s.id,bytes:(s.textContent||'').length}));
+                const scripts=[...document.scripts].map(s=>s.src).filter(src=>/hustle/i.test(src));
+                return {hustle_nodes:all.length,hustle_visible:visible.length,styles,scripts};
+              });
+              snapshots.push({delay,state});
+            }
+            console.log(JSON.stringify(snapshots,null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat runtime/diagnose-home-browser-runtime-20260819.txt
+      - name: Record diagnostic
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/diagnose-home-browser-runtime-20260819.txt
+          git commit -m 'Record Home browser runtime diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
