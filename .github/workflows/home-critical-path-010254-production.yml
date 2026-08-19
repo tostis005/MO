@@ -1,0 +1,174 @@
+name: Home critical path 0.10.254 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php'
+      - '.github/workflows/home-critical-path-010254-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-critical-path-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php
+
+      - name: Deploy MU plugin
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          command -v sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_FILE="/tmp/elmercado-home-critical-${GITHUB_RUN_ID}.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+
+          timeout 120s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            MU_DIR='$PROD_PATH/wp-content/mu-plugins'
+            TARGET=\"\$MU_DIR/elmercado-home-critical-path-010254.php\"
+            mkdir -p \"\$MU_DIR\"
+            BACKUP_DIR=\"\$HOME/elmercado-home-critical-backup-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S)\"
+            mkdir -p \"\$BACKUP_DIR\"
+            [ ! -f \"\$TARGET\" ] || cp \"\$TARGET\" \"\$BACKUP_DIR/\"
+            install -m 0644 '$REMOTE_FILE' \"\$TARGET\"
+
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$TARGET\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$REMOTE_FILE'
+            printf 'Backup: %s\n' \"\$BACKUP_DIR\"
+          "
+
+      - name: Verify live critical path
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/home-critical-verification.txt
+          : > "$OUT"
+          HOME_HTML="$(mktemp)"
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HOME_HTML"
+          printf 'html_bytes=%s\n' "$(wc -c < "$HOME_HTML")" | tee -a "$OUT"
+
+          python3 - "$HOME_HTML" <<'PY' | tee -a "$OUT"
+          import pathlib,re,sys,subprocess,tempfile,os
+          html=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          ok=True
+
+          vp=re.search(r'<meta\b[^>]*\bname=["\']viewport["\'][^>]*>',html,re.I)
+          print('viewport='+(vp.group(0) if vp else 'MISSING'))
+          if not vp or 'user-scalable=no' in vp.group(0).lower() or 'maximum-scale=1' in vp.group(0).lower(): ok=False
+
+          for needle in ('trp-frontend-compatibility.js','trp-frontend-language-switcher.js'):
+              pos=html.find(needle)
+              tag=''
+              if pos>=0:
+                  start=html.rfind('<script',0,pos); end=html.find('>',pos); tag=html[start:end+1]
+              print(f'{needle}={tag}')
+              if pos>=0 and not re.search(r'\bdefer\b',tag,re.I): ok=False
+
+          css_link=re.search(r'<link\b[^>]*trp-language-switcher-v2\.css[^>]*>',html,re.I)
+          print('trp_css_link='+(css_link.group(0) if css_link else 'ABSENT'))
+          print('trp_css_inline=' + ('yes' if 'trp-language-switcher-v2' in html and '-inline-010254' in html else 'no'))
+          if css_link: ok=False
+
+          print('hustle_inline=' + ('present' if 'hustle_inline_styles_front-inline-css' in html else 'absent'))
+          if 'hustle_inline_styles_front-inline-css' in html: ok=False
+          print('star_swap=' + ('yes' if 'elmercado-home-critical-010254' in html and 'font-display:swap' in html else 'no'))
+          if 'elmercado-home-critical-010254' not in html or 'font-display:swap' not in html: ok=False
+
+          hooks=html.find('id="wp-hooks-js"')
+          gtag=html.find('google-listings-and-ads/js/build/gtag-events.js')
+          print(f'wp_hooks_pos={hooks} gtag_events_pos={gtag}')
+          if gtag>=0 and (hooks<0 or hooks>gtag): ok=False
+
+          failures=[]
+          block=0
+          for m in re.finditer(r'<script\b([^>]*)>(.*?)</script\s*>',html,re.I|re.S):
+              attrs,body=m.group(1),m.group(2)
+              if re.search(r'\bsrc\s*=',attrs,re.I): continue
+              tm=re.search(r'\btype\s*=\s*(["\'])([^"\']+)\1',attrs,re.I)
+              typ=tm.group(2).strip().lower() if tm else ''
+              if typ and typ not in ('text/javascript','application/javascript'): continue
+              block+=1
+              with tempfile.NamedTemporaryFile('w',suffix='.js',delete=False) as f:
+                  f.write(body); path=f.name
+              p=subprocess.run(['node','--check',path],capture_output=True,text=True)
+              os.unlink(path)
+              if p.returncode:
+                  line=html.count('\n',0,m.start())+1
+                  failures.append((block,line,attrs[:160],(p.stderr or p.stdout)[:800].replace('\n',' | ')))
+          print(f'inline_js_failures={len(failures)}')
+          for item in failures[:8]: print('inline_js_failure block=%d html_line=%d attrs=%s error=%s'%item)
+          if failures: ok=False
+
+          if not ok: sys.exit(12)
+          PY
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            printf 'recorded_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            [ ! -f /tmp/home-critical-verification.txt ] || cat /tmp/home-critical-verification.txt
+          } > runtime/home-critical-path-010254.txt
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-critical-path-010254.txt
+          git commit -m 'Record Home critical path verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
