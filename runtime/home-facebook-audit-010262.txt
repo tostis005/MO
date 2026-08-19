@@ -1,0 +1,50 @@
+=== LIVE FACEBOOK TAGS ===
+315:					document,'script','https://connect.facebook.net/en_US/fbevents.js');
+518:		if (typeof clientParamBuilder !== 'undefined') {
+520:				clientParams = clientParamBuilder.processAndCollectParams(this._getAttributionUrl()) || {};
+524:		var fbp = this._getCookie('_fbp') || clientParams._fbp || (typeof clientParamBuilder !== 'undefined' ? clientParamBuilder.getFbp() : null);
+525:		var fbc = this._getCookie('_fbc') || clientParams._fbc || (typeof clientParamBuilder !== 'undefined' ? clientParamBuilder.getFbc() : null);
+2212:<script id="wc-facebook-signals-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/facebook-for-woocommerce/assets/js/facebook-for-woocommerce-signals.js?ver=3.7.6"></script>
+2226:<script id="wc-facebook-pixel-events-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/facebook-for-woocommerce/assets/js/frontend/pixel-events.js?ver=3.7.6"></script>
+2227:<script id="facebook-capi-param-builder-js" src="https://unpkg.com/meta-capi-param-builder-clientjs/dist/clientParamBuilder.bundle.js?ver=3.7.6"></script>
+2229:if (typeof clientParamBuilder !== "undefined" && !/(?:^|;\s*)wc_facebook_signals_state=held(?:;|$)/.test(document.cookie)) {
+2230:					clientParamBuilder.processAndCollectAllParams(window.location.href);
+2261:<script id="facebook-for-woocommerce-inline-js-after">
+2290://# sourceURL=facebook-for-woocommerce-inline-js-after
+=== COUNTS ===
+signals=1
+pixel_events=1
+client_builder=1
+=== SOURCE REFERENCES ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-events-tracker.php:40:		const CAPI_PARAM_BUILDER_JS_URL = 'https://unpkg.com/meta-capi-param-builder-clientjs/dist/clientParamBuilder.bundle.js';
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-events-tracker.php:1001:		 * so that pixel-events.js can read and fire the event for WooCommerce Blocks.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-events-tracker.php:1028:		 * The data is read and consumed by pixel-events.js.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-pixel-event.php:136:			plugins_url( 'assets/js/frontend/pixel-events.js', __FILE__ ),
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Signals.php:126:			plugins_url( 'assets/js/facebook-for-woocommerce-signals.js', __DIR__ ),
+=== ENQUEUE HANDLES ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-events-tracker.php:106:			// Initialize external JS hooks early so script is enqueued before wp_enqueue_scripts fires.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-events-tracker.php:261:			add_action( 'wp_enqueue_scripts', array( $this, 'param_builder_client_setup' ) );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-events-tracker.php:355:			wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce.php:763:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-pixel-event.php:112:		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_pixel_events_script' ) );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-pixel-event.php:134:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/facebook-commerce-admin-notice.php:31:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Signals.php:48:		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_script' ) );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Signals.php:124:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin/Product_Categories.php:60:			wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin/Settings_Screens/Product_Attributes.php:86:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin/Settings_Screens/Shops.php:72:			wp_enqueue_script( 'wp-api' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin/Settings_Screens/Shops.php:137:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin/Settings_Screens/Product_Sync.php:78:		wp_enqueue_script( 'wc-backbone-modal', null, array( 'backbone' ), \WC_Facebookcommerce::PLUGIN_VERSION, true );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin/Settings_Screens/Product_Sync.php:79:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin/Settings_Screens/Product_Sync.php:86:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/API/Plugin/InitializeRestAPI.php:62:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin.php:147:				wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin.php:156:				wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin.php:184:				wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Admin.php:217:				wp_enqueue_script( 'wc-enhanced-select' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Handlers/PluginRender.php:54:		wp_enqueue_script( 'wc-backbone-modal', null, array( 'backbone' ), \WC_Facebookcommerce::PLUGIN_VERSION, true );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Handlers/PluginRender.php:55:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/Handlers/PluginRender.php:62:		wp_enqueue_script(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/fbutils.php:201:						wp_register_script( $handle, '', array(), $version, true );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/facebook-for-woocommerce/includes/fbutils.php:203:					wp_enqueue_script( $handle );
