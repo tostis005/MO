@@ -1,0 +1,143 @@
+name: Home vendor responsive images 0.10.252 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-vendors-responsive-010252.php'
+      - '.github/workflows/home-vendor-responsive-010252-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-vendor-responsive-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l elmercadodeorigen-child/mu-plugins/elmercado-home-vendors-responsive-010252.php
+
+      - name: Deploy MU plugin
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          command -v sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_FILE="/tmp/elmercado-home-vendors-responsive-${GITHUB_RUN_ID}.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-vendors-responsive-010252.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+
+          timeout 150s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            MU_DIR='$PROD_PATH/wp-content/mu-plugins'
+            TARGET=\"\$MU_DIR/elmercado-home-vendors-responsive-010252.php\"
+            mkdir -p \"\$MU_DIR\"
+            BACKUP_DIR=\"\$HOME/elmercado-home-vendor-responsive-backup-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S)\"
+            mkdir -p \"\$BACKUP_DIR\"
+            [ ! -f \"\$TARGET\" ] || cp \"\$TARGET\" \"\$BACKUP_DIR/\"
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$REMOTE_FILE'
+            install -m 0644 '$REMOTE_FILE' \"\$TARGET\"
+            \"\$php_bin\" -l \"\$TARGET\"
+            wp_bin=\$(command -v wp)
+            timeout 90s \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'if ( function_exists("elmercado_flush_home_cache") ) { elmercado_flush_home_cache(); } wp_cache_flush();' --path='$PROD_PATH' --allow-root
+            rm -f '$REMOTE_FILE'
+            printf 'Installed: %s\nBackup: %s\n' \"\$TARGET\" \"\$BACKUP_DIR\"
+          "
+
+      - name: Verify live Home
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          HTML="$(mktemp)"
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+
+          python3 - "$HTML" <<'PY' | tee /tmp/home-vendor-responsive-verification.txt
+          import pathlib, sys
+          html = pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          ok = True
+          print(f'html_bytes={len(html.encode())}')
+          for needle in ('Tolecarnes-fondo', 'JAMON_ACTO_ECOLOGICO1'):
+              pos = html.find(needle)
+              if pos < 0:
+                  print(f'{needle}=missing')
+                  ok = False
+                  continue
+              start = html.rfind('<img', 0, pos)
+              end = html.find('>', pos)
+              tag = html[start:end+1]
+              print(tag[:2200])
+              if 'srcset=' not in tag or 'sizes=' not in tag or 'medium_large' in tag:
+                  ok = False
+          print('wp_hooks=' + ('ok' if 'wp-includes/js/dist/hooks.min.js' in html else 'missing'))
+          if 'wp-includes/js/dist/hooks.min.js' not in html:
+              ok = False
+          if not ok:
+              sys.exit(12)
+          PY
+
+          curl -fsSI --max-time 30 'https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo.jpg' \
+            | grep -Ei '^(HTTP/|cache-control:|expires:|age:)' \
+            | tee -a /tmp/home-vendor-responsive-verification.txt
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            printf 'recorded_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            [ ! -f /tmp/home-vendor-responsive-verification.txt ] || cat /tmp/home-vendor-responsive-verification.txt
+          } > runtime/home-vendor-responsive-010252.txt
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-vendor-responsive-010252.txt
+          git commit -m 'Record Home vendor responsive verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
