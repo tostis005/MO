@@ -1,0 +1,55 @@
+name: Diagnose Home Smush native lazy load 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-smush-native-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Inspect live lazy markup
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html; done
+          python3 - <<'PY' > runtime/home-smush-native-20260819.txt
+          from pathlib import Path
+          import re
+          s=Path('/tmp/home.html').read_text(errors='replace')
+          pats={
+            'smush_script':r'<script[^>]+smush-lazy-load-native[^>]*>.*?</script\s*>',
+            'img_data_src':r'<img\b[^>]*\bdata-src=',
+            'img_data_srcset':r'<img\b[^>]*\bdata-srcset=',
+            'source_data_srcset':r'<source\b[^>]*\bdata-srcset=',
+            'lazy_class':r'<(?:img|iframe|source)\b[^>]*class=["\'][^"\']*\blazy(?:load|loaded)?\b',
+            'iframe_data_src':r'<iframe\b[^>]*\bdata-src=',
+            'data_bg':r'<[^>]+\bdata-(?:bg|background|background-image)=',
+          }
+          for k,p in pats.items(): print(k,'=',len(re.findall(p,s,re.I|re.S)))
+          print('--- smush scripts ---')
+          for m in re.finditer(pats['smush_script'],s,re.I|re.S): print(m.group(0)[:3000])
+          print('--- lazy IMG tags ---')
+          for m in re.finditer(r'<img\b[^>]*(?:data-src|data-srcset|lazyload|lazyloaded)[^>]*>',s,re.I): print(m.group(0)[:5000])
+          print('--- lazy non-IMG excerpts ---')
+          for m in re.finditer(r'<(?:iframe|source|div|section|span)\b[^>]*(?:data-src|data-srcset|data-bg|lazyload)[^>]*>',s,re.I): print(m.group(0)[:3000])
+          PY
+          cat runtime/home-smush-native-20260819.txt
+      - name: Record diagnostic
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-smush-native-20260819.txt
+          git commit -m 'Record Home Smush lazy-load diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
