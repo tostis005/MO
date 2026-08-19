@@ -1,0 +1,47 @@
+name: Home runtime context 0.10.258 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-runtime-context-010258-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect live HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          HTML=/tmp/home-context.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          {
+            echo '=== visibleHeadingOne ==='
+            grep -n -B6 -A18 'visibleHeadingOne' "$HTML" || true
+            echo '=== delayed Ads marker ==='
+            grep -n -B3 -A5 'elmercado-delayed-google-ads-source' "$HTML" || true
+            echo '=== actual AW script tags ==='
+            grep -n 'script.*googletagmanager.com/gtag/js?id=AW-' "$HTML" || true
+            echo '=== GA4 script tags ==='
+            grep -n 'script.*googletagmanager.com/gtag/js?id=G-515YQ0XMS4' "$HTML" || true
+          } > runtime/home-runtime-context-010258.txt
+          cat runtime/home-runtime-context-010258.txt
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-runtime-context-010258.txt
+          git commit -m 'Record Home runtime context 0.10.258' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
