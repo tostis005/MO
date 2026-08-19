@@ -1,10 +1,11 @@
-name: Home PageSpeed 0.10.251 production
+name: Home PageSpeed 0.10.252 production
 
 on:
   push:
     branches: [main]
     paths:
       - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/home-final-copy-performance-010146.php'
       - 'elmercadodeorigen-child/inc/home-performance-second-pass-010147.php'
       - 'elmercadodeorigen-child/inc/home-inline-jquery-010148.php'
       - '.github/scripts/pagespeed-production-010251.php'
@@ -34,6 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/functions.php
+          php -l elmercadodeorigen-child/inc/home-final-copy-performance-010146.php
           php -l elmercadodeorigen-child/inc/home-performance-second-pass-010147.php
           php -l elmercadodeorigen-child/inc/home-inline-jquery-010148.php
           php -l .github/scripts/pagespeed-production-010251.php
@@ -47,9 +49,7 @@ jobs:
           set -euo pipefail
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
-          echo 'Using preinstalled SSH helper'
           command -v sshpass >/dev/null
-
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
@@ -69,11 +69,11 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          echo 'Production path found'
 
           REMOTE_DIR="/tmp/elmercado-pagespeed-${GITHUB_RUN_ID}"
           timeout 45s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/inc' '$REMOTE_DIR/scripts'"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/functions.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-final-copy-performance-010146.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-final-copy-performance-010146.php"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-performance-second-pass-010147.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-performance-second-pass-010147.php"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-inline-jquery-010148.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-inline-jquery-010148.php"
           timeout 45s sshpass -e scp $SCP_OPTIONS .github/scripts/pagespeed-production-010251.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/scripts/pagespeed-production-010251.php"
@@ -87,11 +87,13 @@ jobs:
             BACKUP_DIR=\"\$HOME/elmercado-pagespeed-backup-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S)\"
             mkdir -p \"\$BACKUP_DIR/inc\"
             cp \"\$THEME_PATH/functions.php\" \"\$BACKUP_DIR/functions.php\"
+            cp \"\$THEME_PATH/inc/home-final-copy-performance-010146.php\" \"\$BACKUP_DIR/inc/home-final-copy-performance-010146.php\"
             cp \"\$THEME_PATH/inc/home-performance-second-pass-010147.php\" \"\$BACKUP_DIR/inc/home-performance-second-pass-010147.php\"
             cp \"\$THEME_PATH/inc/home-inline-jquery-010148.php\" \"\$BACKUP_DIR/inc/home-inline-jquery-010148.php\"
             [ ! -f '$PROD_PATH/.htaccess' ] || cp '$PROD_PATH/.htaccess' \"\$BACKUP_DIR/.htaccess\"
 
             install -m 0644 '$REMOTE_DIR/functions.php' \"\$THEME_PATH/functions.php\"
+            install -m 0644 '$REMOTE_DIR/inc/home-final-copy-performance-010146.php' \"\$THEME_PATH/inc/home-final-copy-performance-010146.php\"
             install -m 0644 '$REMOTE_DIR/inc/home-performance-second-pass-010147.php' \"\$THEME_PATH/inc/home-performance-second-pass-010147.php\"
             install -m 0644 '$REMOTE_DIR/inc/home-inline-jquery-010148.php' \"\$THEME_PATH/inc/home-inline-jquery-010148.php\"
 
@@ -100,6 +102,7 @@ jobs:
             wp_bin=\$(command -v wp)
 
             \"\$php_bin\" -l \"\$THEME_PATH/functions.php\"
+            \"\$php_bin\" -l \"\$THEME_PATH/inc/home-final-copy-performance-010146.php\"
             \"\$php_bin\" -l \"\$THEME_PATH/inc/home-performance-second-pass-010147.php\"
             \"\$php_bin\" -l \"\$THEME_PATH/inc/home-inline-jquery-010148.php\"
             timeout 90s \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DIR/scripts/pagespeed-production-010251.php' --path='$PROD_PATH' --allow-root
@@ -117,29 +120,40 @@ jobs:
           echo '--- Static cache headers ---' | tee -a /tmp/pagespeed-verification.txt
           curl -fsSI --max-time 30 https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo.jpg | grep -Ei '^(HTTP/|cache-control:|expires:|age:)' | tee -a /tmp/pagespeed-verification.txt || true
 
-          echo '--- Fresh Home response ---' | tee -a /tmp/pagespeed-verification.txt
+          echo '--- Optimized Home response ---' | tee -a /tmp/pagespeed-verification.txt
           HOME_HTML="$(mktemp)"
-          curl -fsS --compressed --max-time 45 -D /tmp/home-headers.txt "https://www.elmercadodeorigen.com/?psverify=${GITHUB_RUN_ID}" -o "$HOME_HTML"
+          curl -fsS --compressed --max-time 45 -D /tmp/home-headers.txt 'https://www.elmercadodeorigen.com/' -o "$HOME_HTML"
           grep -Ei '^(HTTP/|x-el-mercado-cache:|cache-control:)' /tmp/home-headers.txt | tee -a /tmp/pagespeed-verification.txt || true
           printf 'HTML bytes: %s\n' "$(wc -c < "$HOME_HTML")" | tee -a /tmp/pagespeed-verification.txt
 
-          echo '--- jQuery tags ---' | tee -a /tmp/pagespeed-verification.txt
+          echo '--- Critical dependencies ---' | tee -a /tmp/pagespeed-verification.txt
+          grep -oE '<script[^>]+(hooks\.min\.js|id=.wp-hooks-js)[^>]*>' "$HOME_HTML" | head -n 5 | tee -a /tmp/pagespeed-verification.txt || true
           grep -oE '<script[^>]+src=[^>]+jquery[^>]*>' "$HOME_HTML" | head -n 5 | tee -a /tmp/pagespeed-verification.txt || true
 
-          echo '--- PageSpeed image snippets ---' | tee -a /tmp/pagespeed-verification.txt
+          echo '--- Producer images and inline payload ---' | tee -a /tmp/pagespeed-verification.txt
           python3 - "$HOME_HTML" <<'PY' | tee -a /tmp/pagespeed-verification.txt
-          import pathlib, sys
+          import pathlib, re, sys
           html = pathlib.Path(sys.argv[1]).read_text(errors='replace')
-          for needle in ('Tolecarnes-fondo.jpg', 'JAMON_ACT'):
+          for needle in ('Tolecarnes-fondo', 'JAMON_ACT'):
               pos = html.find(needle)
               if pos < 0:
                   print(f'{needle}: not found')
                   continue
-              start = max(0, html.rfind('<', 0, pos) - 250)
-              end = min(len(html), html.find('>', pos) + 350)
-              print(f'[{needle}]')
-              print(html[start:end].replace('\n', ' ')[:1200])
+              start = html.rfind('<img', 0, pos)
+              end = html.find('>', pos)
+              print(f'[{needle}] {html[start:end+1].replace(chr(10), " ")[:1800]}')
+
+          styles = [(len(m.group(1).encode()), m.group(0)[:120].replace('\n',' ')) for m in re.finditer(r'<style\\b[^>]*>(.*?)</style\\s*>', html, re.I|re.S)]
+          scripts = [(len(m.group(1).encode()), m.group(0)[:120].replace('\n',' ')) for m in re.finditer(r'<script\\b(?![^>]*\\bsrc=)[^>]*>(.*?)</script\\s*>', html, re.I|re.S)]
+          print(f'inline_style_bytes={sum(x[0] for x in styles)} blocks={len(styles)}')
+          print(f'inline_script_bytes={sum(x[0] for x in scripts)} blocks={len(scripts)}')
+          for kind, items in [('style', styles), ('script', scripts)]:
+              for size, opening in sorted(items, reverse=True)[:5]:
+                  print(f'top_{kind}_bytes={size} {opening}')
           PY
+
+          grep -q 'wp-includes/js/dist/hooks.min.js' "$HOME_HTML"
+          grep -q 'emo-hero-card__image[^>]*srcset=' "$HOME_HTML" || grep -q 'srcset=[^>]*emo-hero-card__image' "$HOME_HTML"
 
       - name: Record deployment result
         if: always()
@@ -156,11 +170,11 @@ jobs:
             if [ -f /tmp/pagespeed-verification.txt ]; then
               cat /tmp/pagespeed-verification.txt
             fi
-          } > runtime/home-pagespeed-010251.txt
+          } > runtime/home-pagespeed-010252.txt
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add runtime/home-pagespeed-010251.txt
-          git commit -m 'Record Home PageSpeed production verification' || exit 0
+          git add runtime/home-pagespeed-010252.txt
+          git commit -m 'Record Home PageSpeed 0.10.252 verification' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
