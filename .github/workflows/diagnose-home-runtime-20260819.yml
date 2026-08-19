@@ -1,5 +1,6 @@
 name: Diagnose Home runtime 20260819
 
+# pass2-live
 on:
   push:
     branches: [main]
@@ -23,14 +24,21 @@ jobs:
           set -euo pipefail
           mkdir -p runtime
           curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/js/theme.js' -o /tmp/theme.js
           python3 - <<'PY' > runtime/diagnose-home-runtime-20260819.txt
           from pathlib import Path
           import re
           html=Path('/tmp/home.html').read_text(encoding='utf-8',errors='replace')
+          theme=Path('/tmp/theme.js').read_text(encoding='utf-8',errors='replace')
           lines=html.splitlines()
           print('html_bytes=',len(html.encode()))
           for needle in ['hustle_inline_styles_front-inline-css','hustle-ui','facebook-for-woocommerce-signals.js','pixel-events.js','clientParamBuilder.bundle.js','theme.js','trp-frontend-language-switcher.js']:
               print(needle,'=',html.count(needle))
+          print('direct_unpkg_script=',len(re.findall(r'<script[^>]+src=["\'][^"\']*clientParamBuilder\.bundle\.js',html,re.I)))
+          print('capi_inert_placeholder=',int(bool(re.search(r'id=["\']facebook-capi-param-builder-js["\'][^>]+type=["\']application/x-mdo-deferred["\']',html,re.I))))
+          print('cart_two_phase=',int('Fase de lectura' in html and 'Sólo observamos el header' in html))
+          print('carousel_raf=',int('new ResizeObserver(update).observe(track);\n\t\t\t\trequestAnimationFrame(update);' in html))
+          print('theme_guarded_scroll=',int("classList.contains('is-scrolled') !== scrolled" in theme))
           m=re.search(r'<style[^>]*id=["\']hustle_inline_styles_front-inline-css["\'][^>]*>(.*?)</style>',html,re.I|re.S)
           print('hustle_inline_css_bytes=',len(m.group(1).encode()) if m else 0)
           for needle in ['facebook-for-woocommerce-signals.js','pixel-events.js','clientParamBuilder.bundle.js']:
@@ -38,9 +46,6 @@ jobs:
               for i,line in enumerate(lines,1):
                   if needle in line:
                       for j in range(max(1,i-4),min(len(lines),i+5)+1): print(f'{j}: {lines[j-1][:1000]}')
-          for a,b in [(680,710),(2690,2720)]:
-              print(f'\n### lines {a}-{b}')
-              for j in range(a,min(len(lines),b)+1): print(f'{j}: {lines[j-1][:1000]}')
           PY
           cat runtime/diagnose-home-runtime-20260819.txt
       - name: Record diagnostic
