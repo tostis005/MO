@@ -1,5 +1,5 @@
 <?php
-// Production verification trigger v1.0.1.
+// Production verification trigger v1.0.2.
 if ( $argc < 2 ) { fwrite( STDERR, "missing_wp_path\n" ); exit( 90 ); }
 
 define( 'DOING_AJAX', true );
@@ -11,18 +11,18 @@ $_SERVER['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
 require rtrim( $argv[1], '/\\' ) . '/wp-load.php';
 
 $out = array(
-    'ok'            => false,
-    'plugin_loaded' => function_exists( 'mdo_mentta_should_hide_publicly' ),
-    'version_1_2'   => false,
-    'ajax_hidden'   => false,
-    'term_absent'   => false,
-    'errors'        => array(),
+    'ok'              => false,
+    'plugin_loaded'   => function_exists( 'mdo_mentta_should_hide_publicly' ),
+    'version_1_2_1'   => false,
+    'ajax_hidden'     => false,
+    'term_absent'     => false,
+    'errors'          => array(),
 );
 
 $file = WPMU_PLUGIN_DIR . '/mdo-internal-mentta-category.php';
 if ( is_readable( $file ) ) {
     $source = (string) file_get_contents( $file );
-    $out['version_1_2'] = false !== strpos( $source, 'Version: 1.2.0' )
+    $out['version_1_2_1'] = false !== strpos( $source, 'Version: 1.2.1' )
         && false !== strpos( $source, 'HTTP_REFERER' );
 }
 
@@ -33,7 +33,7 @@ if ( ! $out['plugin_loaded'] ) {
     if ( ! $out['ajax_hidden'] ) { $out['errors'][] = 'ajax_not_hidden'; }
 }
 
-if ( ! $out['version_1_2'] ) { $out['errors'][] = 'version_not_1_2'; }
+if ( ! $out['version_1_2_1'] ) { $out['errors'][] = 'version_not_1_2_1'; }
 
 $slugs = get_terms( array(
     'taxonomy'   => 'product_cat',
@@ -49,7 +49,7 @@ if ( is_wp_error( $slugs ) ) {
 
 $out['ok'] = empty( $out['errors'] )
     && $out['plugin_loaded']
-    && $out['version_1_2']
+    && $out['version_1_2_1']
     && $out['ajax_hidden']
     && $out['term_absent'];
 
