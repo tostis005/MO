@@ -85,6 +85,17 @@ jobs:
           }
           for name, needle in checks.items():
               print(f'{name}={h.count(needle)}')
+          legacy = checks['legacy_google_block']
+          start = 0
+          n = 0
+          while n < 6:
+              pos = h.find(legacy, start)
+              if pos < 0:
+                  break
+              n += 1
+              snippet = h[max(0, pos-420):pos+780].replace('\n', ' ').replace('\r', ' ')
+              print(f'legacy_snippet_{n}={snippet}')
+              start = pos + len(legacy)
           rp = h.find('class="mdo-review-proof"')
           cp = h.find('class="emo-section emo-categories"')
           print(f'review_pos={rp}')
