@@ -1,0 +1,124 @@
+name: Home critical CLS 0.10.256 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-critical-cls-010256-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-deploy-measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Put CLS rules in critical CSS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
+          s=p.read_text()
+          marker='body.home .topbar{display:none!important}'
+          if marker not in s:
+              s += '\nbody.home .topbar{display:none!important}@media(max-width:767px){body.home:not(.emo-js-ready) #shop-cart-sidebar{position:fixed!important;top:0!important;right:0!important;left:auto!important;width:min(390px,calc(100vw - 22px))!important;height:100dvh!important;display:flex!important;transform:translateX(100%)!important;visibility:hidden!important;opacity:1!important;z-index:200!important;margin:0!important}body.home:not(.emo-js-ready) #shop-cart-sidebar .cart-sidebar-content{visibility:hidden!important}}\n'
+          p.write_text(s)
+          print('critical_bytes=',p.stat().st_size)
+          PY
+          grep -q 'body.home .topbar{display:none!important}' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+      - name: Deploy critical CSS and invalidate Home transient
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          cat > /tmp/flush-home.php <<'PHP'
+          <?php
+          if ( function_exists( 'elmercado_flush_home_cache' ) ) {
+              elmercado_flush_home_cache();
+              echo "home-cache-flushed\n";
+          } else {
+              echo "home-cache-function-missing\n";
+              exit(12);
+          }
+          PHP
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:/tmp/critical-home-010256.css"
+          sshpass -e scp $SCP /tmp/flush-home.php "$STAGING_USER@$STAGING_HOST:/tmp/flush-home-010256.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            install -m 0644 /tmp/critical-home-010256.css '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" \"\$wp_bin\" eval-file /tmp/flush-home-010256.php --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-0.10.256.css
+            rm -f /tmp/critical-home-010256.css /tmp/flush-home-010256.php
+          "
+      - name: Verify critical HTML and Lighthouse
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          HTML=$(mktemp)
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          topbar=$(grep -c 'body.home .topbar{display:none!important}' "$HTML" || true)
+          cart=$(grep -c 'body.home:not(.emo-js-ready) #shop-cart-sidebar' "$HTML" || true)
+          version=$(grep -c 'home-deferred-0.10.256.css' "$HTML" || true)
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          export CHROME_PATH="$CHROME"
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lhr.json --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          TOPBAR="$topbar" CART="$cart" VERSION="$version" python3 - <<'PY' > runtime/home-critical-cls-010256.txt
+          import json,os
+          a=json.load(open('/tmp/lhr.json'))['audits']
+          print('deploy=success')
+          print('initial_topbar_rule=',os.environ['TOPBAR'])
+          print('initial_cart_rule=',os.environ['CART'])
+          print('deferred_010256=',os.environ['VERSION'])
+          for k in ('first-contentful-paint','largest-contentful-paint','total-blocking-time','cumulative-layout-shift','render-blocking-resources'):
+              x=a.get(k,{})
+              print(f'{k}: numeric={x.get("numericValue")} display={x.get("displayValue")} score={x.get("score")}')
+          for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or []):
+              n=item.get('node') or {}
+              print('shift=',item.get('score'),'selector=',n.get('selector'),'label=',n.get('nodeLabel'))
+          for group in ((a.get('lcp-breakdown-insight',{}).get('details') or {}).get('items') or []):
+              if group.get('type')=='table': print('lcp_breakdown=',json.dumps(group,ensure_ascii=False,separators=(',',':')))
+          PY
+          cat runtime/home-critical-cls-010256.txt
+          test "$topbar" -ge 1
+          test "$cart" -ge 1
+      - name: Commit critical source and result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-critical-cls-010256.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-critical-cls-010256.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-critical-cls-010256.txt
+          git commit -m 'Put Home CLS guards in critical CSS and measure' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
