@@ -1,4 +1,4 @@
-name: Home CLS geometry trace production
+name: Home critical vs final geometry
 
 on:
   push:
@@ -14,123 +14,75 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  revert-trace:
+  compare:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Remove failed first-frame experiment
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
-          s=p.read_text()
-          marker='/*emo-final-first-frame-010280*/'
-          if marker in s:
-              s=s.split(marker,1)[0].rstrip()+'\n'
-          p.write_text(s)
-          print('critical_bytes=',p.stat().st_size)
-          PY
-          ! grep -q 'emo-final-first-frame-010280' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
-
-      - name: Deploy reverted critical CSS and clear Home cache
-        id: deploy
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
-          command -v sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
-          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            [ -n "$wp_bin" ] || exit 2
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-          REMOTE="/tmp/critical-home-${GITHUB_RUN_ID}.css"
-          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            install -m 0644 '$REMOTE' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
-            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            wp_bin=\$(command -v wp)
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
-            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
-            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
-            rm -f '$REMOTE'
-          "
-
-      - name: Trace desktop geometry through first 3 seconds
-        id: trace
+      - name: Compare critical-only and full geometry
+        id: compare
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          for i in 1 2; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
           npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
           CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
-          CHROME_PATH="$CHROME" node <<'JS' | tee runtime/home-cls-geometry-trace-010281.txt
-          const { chromium } = require('playwright-core');
+          CHROME_PATH="$CHROME" node <<'JS' | tee runtime/home-critical-vs-final-010282.txt
+          const {chromium}=require('playwright-core');
           (async()=>{
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const page=await browser.newPage({viewport:{width:1350,height:940}});
-            await page.addInitScript(()=>{
-              window.__emoShifts=[];
-              try{
-                new PerformanceObserver(list=>{
-                  for(const e of list.getEntries()){
-                    if(e.hadRecentInput) continue;
-                    window.__emoShifts.push({value:e.value,startTime:e.startTime,sources:(e.sources||[]).map(s=>({node:s.node?.className||s.node?.id||s.node?.nodeName||'',old:s.previousRect,new:s.currentRect}))});
-                  }
-                }).observe({type:'layout-shift',buffered:true});
-              }catch(e){}
-            });
-            const snap=async(label)=>page.evaluate((label)=>{
-              const one=(sel)=>{
-                const e=document.querySelector(sel); if(!e)return null;
-                const r=e.getBoundingClientRect(),c=getComputedStyle(e);
-                return {sel,x:+r.x.toFixed(2),y:+r.y.toFixed(2),w:+r.width.toFixed(2),h:+r.height.toFixed(2),display:c.display,position:c.position,marginTop:c.marginTop,paddingTop:c.paddingTop,paddingBottom:c.paddingBottom,minHeight:c.minHeight,height:c.height,fontSize:c.fontSize,lineHeight:c.lineHeight,transform:c.transform,gridRows:c.gridTemplateRows,gridCols:c.gridTemplateColumns};
-              };
-              return {label,t:Math.round(performance.now()),ready:document.readyState,deferred:[...document.querySelectorAll('link[rel="stylesheet"],link[rel="preload"][as="style"]')].map(x=>({id:x.id,rel:x.rel,href:x.href.slice(-100)})),nodes:{header:one('#masthead'),inner:one('.site-header-inner'),content:one('#content'),hero:one('.emo-hero'),grid:one('.emo-hero__grid'),copy:one('.emo-hero__copy'),h1:one('.emo-hero h1'),p:one('.emo-hero__copy>p'),visual:one('.emo-hero__visual--vendors'),card1:one('.emo-hero-card--1'),nav:one('#site-navigation')}};
-            },label);
-            const out=[];
-            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:90000});
-            out.push(await snap('domcontentloaded'));
-            for(const [label,ms] of [['50ms',50],['150ms',100],['350ms',200],['750ms',400],['1500ms',750],['3000ms',1500]]){await page.waitForTimeout(ms);out.push(await snap(label));}
-            console.log(JSON.stringify({snaps:out,shifts:await page.evaluate(()=>window.__emoShifts||[])},null,2));
+            const capture=async(blockDeferred)=>{
+              const page=await browser.newPage({viewport:{width:1350,height:940}});
+              if(blockDeferred){
+                await page.route('**/*',route=>{
+                  const u=route.request().url();
+                  if(/home-deferred-.*\.css/i.test(u)) return route.abort();
+                  return route.continue();
+                });
+              }
+              await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+              const data=await page.evaluate(()=>{
+                const q=(sel)=>{
+                  const e=document.querySelector(sel);if(!e)return null;
+                  const r=e.getBoundingClientRect(),c=getComputedStyle(e);
+                  const keep=['display','position','height','minHeight','paddingTop','paddingBottom','marginTop','marginBottom','fontSize','lineHeight','transform','gridTemplateRows','gridTemplateColumns','gap','width'];
+                  const style={};for(const k of keep)style[k]=c[k];
+                  return {rect:{x:+r.x.toFixed(3),y:+r.y.toFixed(3),w:+r.width.toFixed(3),h:+r.height.toFixed(3)},style};
+                };
+                return {
+                  deferred:[...document.querySelectorAll('link')].filter(x=>/home-deferred-.*\.css/i.test(x.href)).map(x=>({rel:x.rel,href:x.href})),
+                  header:q('#masthead'),inner:q('.site-header-inner'),content:q('#content'),hero:q('.emo-hero'),grid:q('.emo-hero__grid'),copy:q('.emo-hero__copy'),h1:q('.emo-hero h1'),p:q('.emo-hero__copy>p'),proof:q('.emo-hero__proof'),visual:q('.emo-hero__visual--vendors'),card1:q('.emo-hero-card--1'),card2:q('.emo-hero-card--2'),card3:q('.emo-hero-card--3'),nav:q('#site-navigation')
+                };
+              });
+              await page.close();return data;
+            };
+            const critical=await capture(true);
+            const full=await capture(false);
+            console.log(JSON.stringify({critical,full},null,2));
+            console.log('\nDIFF');
+            for(const key of Object.keys(full)){
+              if(!full[key]||!critical[key]||key==='deferred')continue;
+              const a=critical[key],b=full[key];
+              const changes={};
+              for(const k of Object.keys(b.style)) if(a.style[k]!==b.style[k]) changes[k]=[a.style[k],b.style[k]];
+              const rectChanged=['x','y','w','h'].some(k=>Math.abs(a.rect[k]-b.rect[k])>.25);
+              if(rectChanged||Object.keys(changes).length) console.log(key,JSON.stringify({critical:a.rect,full:b.rect,styles:changes}));
+            }
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
-
-      - name: Persist revert and trace
+      - name: Record comparison
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          [ -f runtime/home-cls-geometry-trace-010281.txt ] || printf 'deploy=%s\ntrace=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.trace.outcome }}' > runtime/home-cls-geometry-trace-010281.txt
+          [ -f runtime/home-critical-vs-final-010282.txt ] || printf 'compare=%s\n' '${{ steps.compare.outcome }}' > runtime/home-critical-vs-final-010282.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-cls-geometry-trace-010281.txt
-          git commit -m 'Revert Home CLS experiment and trace geometry' || exit 0
+          git add runtime/home-critical-vs-final-010282.txt
+          git commit -m 'Compare Home critical and final geometry' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
