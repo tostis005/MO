@@ -34,8 +34,12 @@
 
 	const updateScrollState = () => {
 		const scrolled = window.scrollY > 12;
-		body.classList.toggle('is-scrolled', scrolled);
-		header?.classList.toggle('is-scrolled', scrolled);
+		if (body.classList.contains('is-scrolled') !== scrolled) {
+			body.classList.toggle('is-scrolled', scrolled);
+		}
+		if (header && header.classList.contains('is-scrolled') !== scrolled) {
+			header.classList.toggle('is-scrolled', scrolled);
+		}
 		scrollFrame = 0;
 	};
 

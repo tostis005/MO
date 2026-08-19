@@ -278,7 +278,7 @@ add_action(
 				track.addEventListener('scroll', () => requestAnimationFrame(update), { passive: true });
 				window.addEventListener('resize', update, { passive: true });
 				new ResizeObserver(update).observe(track);
-				update();
+				requestAnimationFrame(update);
 			};
 
 			document.addEventListener('DOMContentLoaded', () => {
