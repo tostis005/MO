@@ -1,0 +1,66 @@
+name: Audit Home 0.10.260 baseline 3x
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-home-010260-baseline-3x.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Warm Home
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+      - name: Run Lighthouse three times
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do
+            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/lhr-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          done
+          python3 - <<'PY' > runtime/audit-home-010260-baseline-3x.txt
+          import json, statistics
+          rows=[]
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/lhr-{i}.json'))
+              x=a['audits']
+              r={
+                'score': round(a['categories']['performance']['score']*100),
+                'fcp': round(x['first-contentful-paint']['numericValue']),
+                'lcp': round(x['largest-contentful-paint']['numericValue']),
+                'tbt': round(x['total-blocking-time']['numericValue']),
+                'cls': x['cumulative-layout-shift']['numericValue'],
+                'si': round(x['speed-index']['numericValue'])
+              }
+              rows.append(r)
+              print('run',i,r)
+          for k in ('score','fcp','lcp','tbt','cls','si'):
+              print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          PY
+          cat runtime/audit-home-010260-baseline-3x.txt
+      - name: Record audit
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/audit-home-010260-baseline-3x.txt ] || echo 'audit_failed=true' > runtime/audit-home-010260-baseline-3x.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/audit-home-010260-baseline-3x.txt
+          git commit -m 'Record 3x Home 0.10.260 baseline audit' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
