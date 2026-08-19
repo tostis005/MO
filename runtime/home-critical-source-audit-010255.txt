@@ -1,0 +1,25 @@
+--- FIRST VIEW SOURCE ---
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php:80:	if ( '' === $html || false !== strpos( $html, 'id="elmercado-home-first-view-css"' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php:133:	$critical_tag = '<style id="elmercado-home-first-view-css">' . $critical . '</style>';
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php:201:			if ( false === strpos( $cached, 'id="elmercado-home-first-view-css"' ) ) {
+--- FIRST VIEW REFERENCES ---
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php:80:	if ( '' === $html || false !== strpos( $html, 'id="elmercado-home-first-view-css"' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php:133:	$critical_tag = '<style id="elmercado-home-first-view-css">' . $critical . '</style>';
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php:201:			if ( false === strpos( $cached, 'id="elmercado-home-first-view-css"' ) ) {
+--- HUSTLE REFERENCES IN HOME CODE ---
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/output-optimization.php:119:		'/plugins/wordpress-popup/assets/hustle-ui/css/',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/output-optimization.php:159:		'/plugins/wordpress-popup/assets/hustle-ui/js/',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/output-optimization.php:218:	$html = (string) preg_replace( '/<link\b[^>]*(?:hustle-icons-font|fonts\.gstatic\.com|fonts\.googleapis\.com|fonts\.bunny\.net)[^>]*>/i', '', $html );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/output-optimization.php:238:.hustle-ui { display: none !important; }
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/performance.php:190:			'hustle-fonts',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/performance.php:427:		if ( elmercado_is_optimized_home() && in_array( $handle, array( 'hustle_icons', 'hustle_global', 'hustle_optin', 'hustle_popup', 'ht_ctc_main_css' ), true ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/performance.php:458:			'hustle_front',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:220:			body.elmercado-premium-home .hustle-ui,
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:221:			body.elmercado-premium-home .hustle-popup,
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:222:			body.elmercado-premium-home .hustle-slidein,
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:223:			body.elmercado-premium-home [id^="hustle-"] {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:264:		$style_handles = array( 'hustle_icons', 'hustle-fonts', 'hustle_global', 'hustle_optin', 'hustle_popup' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:265:		$script_handles = array( 'hui_scripts', 'hustle_front' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:303:		if ( elmercado_is_optimized_home() && ( str_contains( $href, '/plugins/wordpress-popup/' ) || str_starts_with( $handle, 'hustle' ) ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-refresh.php:316:		if ( elmercado_is_optimized_home() && ( str_contains( $src, '/plugins/wordpress-popup/' ) || in_array( $handle, array( 'hui_scripts', 'hustle_front' ), true ) ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/elmercado-home-critical-path-010254.php:193:		'~<style\b[^>]*\bid=(["\'])hustle_inline_styles_front-inline-css\1[^>]*>.*?</style\s*>~is',
