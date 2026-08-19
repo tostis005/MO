@@ -1,0 +1,354 @@
+{
+    "plugin_version": "1.0.14",
+    "supplier": {
+        "id": 4,
+        "name": "La Huerta de Ana Mary",
+        "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas",
+        "exclusion_url_fragments": "[]",
+        "vendor_user_id": "4514",
+        "active": "1"
+    },
+    "latest_run": {
+        "id": "32",
+        "supplier_id": "4",
+        "trigger_type": "manual",
+        "status": "warning",
+        "started_at": "2026-08-19 16:51:19",
+        "finished_at": "2026-08-19 16:51:26",
+        "products_found": "14",
+        "products_new": "9",
+        "products_updated": "0",
+        "products_excluded": "0",
+        "errors_count": "5",
+        "message": "Análisis completado: 14 encontrados, 9 nuevos, 0 modificados, 0 excluidos, 0 retirados del origen y 5 errores."
+    },
+    "latest_events": [
+        {
+            "id": "2509",
+            "event_type": "product_error",
+            "severity": "error",
+            "message": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/llena-tu-despensa-hasta-el-28-de-febrero-10-de-descuento-en-todas-las-legubres-198.html",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/llena-tu-despensa-hasta-el-28-de-febrero-10-de-descuento-en-todas-las-legubres-198.html\"}",
+            "created_at": "2026-08-19 16:51:20"
+        },
+        {
+            "id": "2510",
+            "event_type": "product_error",
+            "severity": "error",
+            "message": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/verduras-frescas-cada-mes-quieres-suscribirte-139.html",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/verduras-frescas-cada-mes-quieres-suscribirte-139.html\"}",
+            "created_at": "2026-08-19 16:51:20"
+        },
+        {
+            "id": "2511",
+            "event_type": "product_error",
+            "severity": "error",
+            "message": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/feria-del-pimiento-morron-2024-197.html",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/feria-del-pimiento-morron-2024-197.html\"}",
+            "created_at": "2026-08-19 16:51:20"
+        },
+        {
+            "id": "2512",
+            "event_type": "product_error",
+            "severity": "error",
+            "message": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/patatas-gratinadas-rellenas-de-setas-y-jamon-180.html",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/patatas-gratinadas-rellenas-de-setas-y-jamon-180.html\"}",
+            "created_at": "2026-08-19 16:51:20"
+        },
+        {
+            "id": "2513",
+            "event_type": "product_error",
+            "severity": "error",
+            "message": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/espagueti-con-salsa-de-queso-crema-y-pimientos-asados-179.html",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/espagueti-con-salsa-de-queso-crema-y-pimientos-asados-179.html\"}",
+            "created_at": "2026-08-19 16:51:21"
+        },
+        {
+            "id": "2514",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Patatas blancas",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/patatas-blancas-32.html\",\"price\":1.83,\"stock_status\":\"instock\",\"image_count\":0,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:21"
+        },
+        {
+            "id": "2515",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Otras hortalizas 5/calabacin",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/calabacin-25.html\",\"price\":1.87,\"stock_status\":\"instock\",\"image_count\":0,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:22"
+        },
+        {
+            "id": "2516",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Coles 1/brocoli",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/coles-1/brocoli-1.html\",\"price\":3.58,\"stock_status\":\"instock\",\"image_count\":0,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:23"
+        },
+        {
+            "id": "2517",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: 20 Kg de patatas blancas variedad kennebec",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/20-kg-de-patatas-blancas-variedad-kennebec-134.html\",\"price\":34,\"stock_status\":\"instock\",\"image_count\":1,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:23"
+        },
+        {
+            "id": "2518",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Flores de calabacã­n 8 unidades",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/flores-de-calabaca-n-8-unidades-113.html\",\"price\":29.57,\"stock_status\":\"instock\",\"image_count\":1,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:24"
+        },
+        {
+            "id": "2519",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Pimiento italiano",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimiento-italiano-35.html\",\"price\":2.95,\"stock_status\":\"instock\",\"image_count\":0,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:25"
+        },
+        {
+            "id": "2520",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Kg cebollas secas",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/cebollas-7/kg-cebollas-secas-22.html\",\"price\":2.05,\"stock_status\":\"instock\",\"image_count\":0,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:25"
+        },
+        {
+            "id": "2521",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Pimientos lamuyos verdes",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimientos-lamuyos-verdes-27.html\",\"price\":3.79,\"stock_status\":\"instock\",\"image_count\":0,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:26"
+        },
+        {
+            "id": "2522",
+            "event_type": "product_new",
+            "severity": "success",
+            "message": "New: Bolsa 300 gr aprox pimientos de padron",
+            "payload": "{\"url\":\"https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/bolsa-300-gr-aprox-pimientos-de-padron-26.html\",\"price\":2.75,\"stock_status\":\"instock\",\"image_count\":1,\"variation_count\":0}",
+            "created_at": "2026-08-19 16:51:26"
+        }
+    ],
+    "status_counts": [
+        {
+            "status": "pending",
+            "total": "9"
+        }
+    ],
+    "source_rows": [
+        {
+            "id": "259",
+            "title": "Patatas blancas",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/patatas-blancas-32.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:21"
+        },
+        {
+            "id": "260",
+            "title": "Otras hortalizas 5/calabacin",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/calabacin-25.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:22"
+        },
+        {
+            "id": "261",
+            "title": "Coles 1/brocoli",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/coles-1/brocoli-1.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:23"
+        },
+        {
+            "id": "262",
+            "title": "20 Kg de patatas blancas variedad kennebec",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/20-kg-de-patatas-blancas-variedad-kennebec-134.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:23"
+        },
+        {
+            "id": "263",
+            "title": "Flores de calabacã­n 8 unidades",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/flores-de-calabaca-n-8-unidades-113.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:24"
+        },
+        {
+            "id": "264",
+            "title": "Pimiento italiano",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimiento-italiano-35.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:25"
+        },
+        {
+            "id": "265",
+            "title": "Kg cebollas secas",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/cebollas-7/kg-cebollas-secas-22.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:25"
+        },
+        {
+            "id": "266",
+            "title": "Pimientos lamuyos verdes",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimientos-lamuyos-verdes-27.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:26"
+        },
+        {
+            "id": "267",
+            "title": "Bolsa 300 gr aprox pimientos de padron",
+            "source_url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/bolsa-300-gr-aprox-pimientos-de-padron-26.html",
+            "status": "pending",
+            "wc_product_id": null,
+            "last_error": null,
+            "last_seen_at": "2026-08-19 16:51:26"
+        }
+    ],
+    "discovery": {
+        "products": [
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/llena-tu-despensa-hasta-el-28-de-febrero-10-de-descuento-en-todas-las-legubres-198.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/verduras-frescas-cada-mes-quieres-suscribirte-139.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/feria-del-pimiento-morron-2024-197.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/patatas-gratinadas-rellenas-de-setas-y-jamon-180.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/espagueti-con-salsa-de-queso-crema-y-pimientos-asados-179.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/patatas-blancas-32.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/calabacin-25.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/coles-1/brocoli-1.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/20-kg-de-patatas-blancas-variedad-kennebec-134.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/flores-de-calabaca-n-8-unidades-113.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimiento-italiano-35.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/cebollas-7/kg-cebollas-secas-22.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimientos-lamuyos-verdes-27.html",
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/bolsa-300-gr-aprox-pimientos-de-padron-26.html"
+        ],
+        "excluded": [],
+        "pages": [
+            "https://www.lahuertadeanamary.com/hortalizas-y-conservas"
+        ]
+    },
+    "discovery_counts": {
+        "products": 14,
+        "excluded": 0,
+        "pages": 1
+    },
+    "scrape": [
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/llena-tu-despensa-hasta-el-28-de-febrero-10-de-descuento-en-todas-las-legubres-198.html",
+            "ok": false,
+            "error": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/llena-tu-despensa-hasta-el-28-de-febrero-10-de-descuento-en-todas-las-legubres-198.html"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/verduras-frescas-cada-mes-quieres-suscribirte-139.html",
+            "ok": false,
+            "error": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/verduras-frescas-cada-mes-quieres-suscribirte-139.html"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/feria-del-pimiento-morron-2024-197.html",
+            "ok": false,
+            "error": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/noticias/feria-del-pimiento-morron-2024-197.html"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/patatas-gratinadas-rellenas-de-setas-y-jamon-180.html",
+            "ok": false,
+            "error": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/patatas-gratinadas-rellenas-de-setas-y-jamon-180.html"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/espagueti-con-salsa-de-queso-crema-y-pimientos-asados-179.html",
+            "ok": false,
+            "error": "HTTP 404 al consultar https://www.lahuertadeanamary.com/hortalizas-y-conservas/recetas/espagueti-con-salsa-de-queso-crema-y-pimientos-asados-179.html"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/patatas-blancas-32.html",
+            "ok": true,
+            "title": "patatas blancas",
+            "price": 1.83,
+            "image_count": 0,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/calabacin-25.html",
+            "ok": true,
+            "title": "otras hortalizas 5/calabacin",
+            "price": 1.87,
+            "image_count": 0,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/coles-1/brocoli-1.html",
+            "ok": true,
+            "title": "coles 1/brocoli",
+            "price": 3.58,
+            "image_count": 0,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/patatas-3/20-kg-de-patatas-blancas-variedad-kennebec-134.html",
+            "ok": true,
+            "title": "20 kg de patatas blancas variedad kennebec",
+            "price": 34,
+            "image_count": 1,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/otras-hortalizas-5/flores-de-calabaca-n-8-unidades-113.html",
+            "ok": true,
+            "title": "flores de calabacÃ­n 8 unidades",
+            "price": 29.57,
+            "image_count": 1,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimiento-italiano-35.html",
+            "ok": true,
+            "title": "pimiento italiano",
+            "price": 2.95,
+            "image_count": 0,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/cebollas-7/kg-cebollas-secas-22.html",
+            "ok": true,
+            "title": "kg cebollas secas",
+            "price": 2.05,
+            "image_count": 0,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/pimientos-lamuyos-verdes-27.html",
+            "ok": true,
+            "title": "pimientos lamuyos VERDES",
+            "price": 3.79,
+            "image_count": 0,
+            "stock_status": "instock"
+        },
+        {
+            "url": "https://www.lahuertadeanamary.com/hortalizas-y-conservas/hortalizas-y-conservas/hortalizas-2/pimientos-8/bolsa-300-gr-aprox-pimientos-de-padron-26.html",
+            "ok": true,
+            "title": "bolsa 300 gr aprox pimientos de Padron",
+            "price": 2.75,
+            "image_count": 1,
+            "stock_status": "instock"
+        }
+    ]
+}
