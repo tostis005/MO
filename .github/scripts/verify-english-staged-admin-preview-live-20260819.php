@@ -1,4 +1,5 @@
 <?php
+// Production verification trigger v1.0.1.
 if ( ! defined( 'ABSPATH' ) ) { exit( 90 ); }
 
 $out = array(
