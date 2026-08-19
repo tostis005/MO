@@ -13,6 +13,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Bust the Home's own transient/static cache once for this CLS revision.
+ * `wp cache flush` is not sufficient when a stale Home transient survives in
+ * another cache layer, so use the theme's canonical invalidation routine.
+ */
+add_action(
+	'init',
+	static function (): void {
+		$revision = '010256-2';
+		if ( get_option( 'elmercado_home_cls_cache_revision', '' ) === $revision ) {
+			return;
+		}
+
+		if ( function_exists( 'elmercado_flush_home_cache' ) ) {
+			elmercado_flush_home_cache();
+		}
+
+		update_option( 'elmercado_home_cls_cache_revision', $revision, false );
+	},
+	-100000
+);
+
 add_action(
 	'wp_head',
 	static function (): void {
