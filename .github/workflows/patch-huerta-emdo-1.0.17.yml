@@ -1,0 +1,40 @@
+name: Apply EMDO 1.0.17 Huerta edge-case fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/patch-huerta-emdo-1.0.17.py'
+      - '.github/workflows/patch-huerta-emdo-1.0.17.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply patch
+        run: python .github/scripts/patch-huerta-emdo-1.0.17.py
+      - name: Validate PHP
+        run: |
+          set -euo pipefail
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v3.php
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+      - name: Commit patch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v3.php \
+                  mdo-supplier-sync/mdo-supplier-sync.php \
+                  mdo-supplier-sync/deploy-version.txt \
+                  .github/workflows/deploy-mdo-supplier-sync-production-20260819.yml
+          git commit -m 'Fix Huerta legacy prices and flowers description in EMDO 1.0.17'
+          git pull --rebase origin main
+          git push origin HEAD:main
