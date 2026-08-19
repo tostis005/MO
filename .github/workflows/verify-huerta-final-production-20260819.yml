@@ -94,3 +94,5 @@ jobs:
         run: |
           test -f .deploy-status/huerta-final-verification.exit-code
           test "$(cat .deploy-status/huerta-final-verification.exit-code)" = "0"
+
+# Explicit production verification trigger: 2026-08-19
