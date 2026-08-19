@@ -18,6 +18,26 @@ function elmercado_home_critical_is_front_010254(): bool {
 }
 
 /**
+ * Ask WordPress itself to defer jQuery on the Home. Core evaluates the complete
+ * dependency tree and falls back to blocking when a delayed strategy is unsafe.
+ */
+add_action(
+	'wp_print_scripts',
+	static function (): void {
+		if ( ! elmercado_home_critical_is_front_010254() ) {
+			return;
+		}
+
+		foreach ( array( 'jquery-core', 'jquery-migrate' ) as $handle ) {
+			if ( wp_script_is( $handle, 'registered' ) ) {
+				wp_script_add_data( $handle, 'strategy', 'defer' );
+			}
+		}
+	},
+	-20000
+);
+
+/**
  * TranslatePress' two tiny front-end scripts do not need to block first paint.
  * `defer` preserves document order, unlike async.
  */
