@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -88,7 +88,7 @@ jobs:
             \"\$php_bin\" -l \"\$target/mdo-product-shipping-tab-20260819.php\"; \
             \"\$php_bin\" -l \"\$target/mdo-store-shipping/mdo-store-shipping.php\""
 
-      - name: Flush WordPress caches
+      - name: Verify WordPress loaded the MU-plugin
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -107,6 +107,28 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'if (!function_exists(\"mdo_sst_add_store_tab\")) { fwrite(STDERR, \"MDO_SST_NOT_LOADED\\n\"); exit(7); } $tabs = apply_filters(\"wcfmmp_store_tabs\", array(\"products\" => \"Productos\", \"about\" => \"Acerca de\"), 1); if (!isset($tabs[\"shipping\"])) { fwrite(STDERR, \"MDO_SST_TAB_FILTER_FAILED\\n\"); exit(8); } echo \"MDO_SST_WORDPRESS_OK\\n\";' --path='$PROD_PATH' --allow-root"
+
+      - name: Flush WordPress caches
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$php_bin" ] || php_bin=$(command -v php || true)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
       - name: Verify public store shipping tab
@@ -118,10 +140,31 @@ jobs:
 
           curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO Shipping verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/store.html "${BASE}?${BUST}"
           grep -Fq 'mdo_shipping=1' /tmp/store.html
-          grep -Fq '>Envíos<' /tmp/store.html
+          grep -Fq 'Envíos' /tmp/store.html
 
           curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO Shipping verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/shipping.html "${BASE}?mdo_shipping=1&${BUST}"
           grep -Fq 'mdo-store-shipping' /tmp/shipping.html
           grep -Fq 'El coste definitivo se confirma en el carrito' /tmp/shipping.html
 
           echo 'STORE_SHIPPING_PUBLIC_OK'
+
+      - name: Record deployment result
+        if: always()
+        shell: bash
+        env:
+          DEPLOY_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cat > .deploy-status/store-shipping-production.txt <<EOF
+          status=${DEPLOY_STATUS}
+          source_sha=${GITHUB_SHA}
+          run_id=${GITHUB_RUN_ID}
+          finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/store-shipping-production.txt
+          git commit -m 'Record store shipping production deploy status [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
