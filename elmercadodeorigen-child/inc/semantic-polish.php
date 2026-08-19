@@ -59,7 +59,8 @@ add_action(
 				});
 			});
 
-			/* En el archivo del blog el nombre del sitio no debe competir con el H1 editorial. */
+			<?php if ( is_home() || is_singular( 'post' ) || is_category() || is_tag() || is_author() || is_date() ) : ?>
+			/* Sólo el contexto editorial necesita comprobar si conviven varios H1 visibles. */
 			const visibleHeadingOne = [...document.querySelectorAll('h1')].filter((heading) => {
 				const style = getComputedStyle(heading);
 				return style.display !== 'none' && style.visibility !== 'hidden' && heading.getClientRects().length > 0;
@@ -74,6 +75,7 @@ add_action(
 				replacement.append(...brandingHeading.childNodes);
 				brandingHeading.replaceWith(replacement);
 			}
+			<?php endif; ?>
 
 			/* Cualquier tarjeta editorial sin imagen recibe el acabado de marca. */
 			document.querySelectorAll('.emo-article-card__media').forEach((media) => {
