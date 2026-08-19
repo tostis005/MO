@@ -1,0 +1,41 @@
+name: Home jQuery live check 0.10.254
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-jquery-live-check-010254.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check live tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          HTML="$(mktemp)"
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          {
+            printf 'checked_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            grep -oE '<script[^>]+src="[^"]*jquery/jquery(\.min|-migrate\.min)\.js[^"]*"[^>]*>' "$HTML" || true
+          } > runtime/home-jquery-live-010254.txt
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-jquery-live-010254.txt
+          git commit -m 'Record live Home jQuery strategy' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
