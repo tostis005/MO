@@ -286,6 +286,7 @@ final class MDO_Connector_Huerta_Ana_Mary {
 				if ( null !== ( $price = self::parse_price( (string) $candidate ) ) ) {
 					return $price;
 				}
+			}
 		}
 		return null;
 	}
