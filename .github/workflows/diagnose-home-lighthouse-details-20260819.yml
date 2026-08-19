@@ -1,5 +1,6 @@
 name: Diagnose Home Lighthouse details 20260819
 
+# reflow-detail
 on:
   push:
     branches: [main]
@@ -41,6 +42,8 @@ jobs:
               print('title=',v.get('title'))
               print('score=',v.get('score'),'numeric=',v.get('numericValue'),'display=',v.get('displayValue'))
               details=v.get('details') or {}
+              if key=='forced-reflow-insight':
+                  print('FULL_DETAILS=',json.dumps(details,ensure_ascii=False)[:30000])
               items=details.get('items') or []
               print('items_count=',len(items))
               for item in items[:30]:
