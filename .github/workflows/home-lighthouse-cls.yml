@@ -22,61 +22,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Trace layout shift rectangles
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install --no-save puppeteer-core@24.16.0 >/dev/null 2>&1
-          node <<'NODE' | tee layout-shift-trace.txt
-          const puppeteer = require('puppeteer-core');
-          const {execSync} = require('child_process');
-          const chrome = (() => {
-            for (const cmd of ['which google-chrome', 'which chromium', 'which chromium-browser']) {
-              try { return execSync(cmd).toString().trim(); } catch (_) {}
-            }
-            throw new Error('Chrome executable not found');
-          })();
-          const rect = r => r ? ({x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,right:r.right,bottom:r.bottom,left:r.left}) : null;
-          (async () => {
-            const browser = await puppeteer.launch({executablePath: chrome, headless: true, args:['--no-sandbox','--disable-dev-shm-usage']});
-            const page = await browser.newPage();
-            await page.setViewport({width:1350,height:940,deviceScaleFactor:1});
-            await page.evaluateOnNewDocument(() => {
-              window.__emoLayoutShifts = [];
-              const selector = node => {
-                if (!node || node.nodeType !== 1) return '';
-                if (node.id) return `${node.tagName.toLowerCase()}#${node.id}`;
-                const cls = [...node.classList].slice(0,4).join('.');
-                return `${node.tagName.toLowerCase()}${cls ? '.'+cls : ''}`;
-              };
-              new PerformanceObserver(list => {
-                for (const e of list.getEntries()) {
-                  if (e.hadRecentInput) continue;
-                  window.__emoLayoutShifts.push({
-                    value:e.value,
-                    startTime:e.startTime,
-                    sources:(e.sources || []).map(s => ({
-                      selector: selector(s.node),
-                      previousRect:s.previousRect ? {x:s.previousRect.x,y:s.previousRect.y,width:s.previousRect.width,height:s.previousRect.height,top:s.previousRect.top,right:s.previousRect.right,bottom:s.previousRect.bottom,left:s.previousRect.left} : null,
-                      currentRect:s.currentRect ? {x:s.currentRect.x,y:s.currentRect.y,width:s.currentRect.width,height:s.currentRect.height,top:s.currentRect.top,right:s.currentRect.right,bottom:s.currentRect.bottom,left:s.currentRect.left} : null,
-                    }))
-                  });
-                }
-              }).observe({type:'layout-shift', buffered:true});
-            });
-            await page.goto('https://www.elmercadodeorigen.com/', {waitUntil:'domcontentloaded', timeout:60000});
-            await new Promise(r => setTimeout(r, 8000));
-            const result = await page.evaluate(() => ({
-              shifts: window.__emoLayoutShifts || [],
-              hero: (() => { const e=document.querySelector('.emo-hero__grid'); if(!e) return null; const r=e.getBoundingClientRect(); const s=getComputedStyle(e); return {rect:{x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,right:r.right,bottom:r.bottom,left:r.left},display:s.display,gridTemplateColumns:s.gridTemplateColumns,gap:s.gap}; })(),
-              card: (() => { const e=document.querySelector('.emo-hero-card--1'); if(!e) return null; const r=e.getBoundingClientRect(); const s=getComputedStyle(e); return {rect:{x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,right:r.right,bottom:r.bottom,left:r.left},display:s.display,gridColumn:s.gridColumn,gridRow:s.gridRow,transform:s.transform}; })()
-            }));
-            console.log(JSON.stringify(result,null,2));
-            await browser.close();
-          })().catch(e => { console.error(e); process.exit(1); });
-          NODE
-
-      - name: Check production and run Lighthouse desktop
+      - name: Run Lighthouse desktop and keep first trace
         shell: bash
         run: |
           set -euo pipefail
@@ -88,7 +34,22 @@ jobs:
             sleep 10
           done
           google-chrome --version || chromium --version || true
-          for i in 1 2 3; do
+
+          npx --yes lighthouse@12.8.2 "$URL" \
+            --only-categories=performance \
+            --form-factor=desktop \
+            --screenEmulation.mobile=false \
+            --screenEmulation.width=1350 \
+            --screenEmulation.height=940 \
+            --screenEmulation.deviceScaleFactor=1 \
+            --throttling-method=simulate \
+            --output=json \
+            --output-path='lighthouse-1.json' \
+            --save-assets \
+            --quiet \
+            --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+
+          for i in 2 3; do
             npx --yes lighthouse@12.8.2 "$URL" \
               --only-categories=performance \
               --form-factor=desktop \
@@ -115,14 +76,33 @@ jobs:
           console.log(`Performance: ${scores.map(v=>Math.round(v)).join(', ')}`);
           runs.forEach((r, idx) => {
             console.log(`\nRun ${idx+1} layout shifts:`);
-            const audit = r.audits['layout-shifts'];
-            const items = audit?.details?.items || [];
-            items.slice(0, 10).forEach((item, j) => {
+            const items = r.audits['layout-shifts']?.details?.items || [];
+            items.slice(0, 8).forEach((item, j) => {
               const score = item.score ?? item.value ?? 0;
               const node = item.node?.selector || item.node?.snippet || item.node?.nodeLabel || '';
               console.log(`${j+1}. ${Number(score).toFixed(4)} ${String(node).replace(/\s+/g,' ').slice(0,220)}`);
             });
           });
+          NODE
+
+          node <<'NODE' | tee layout-shift-trace.txt
+          const fs = require('fs');
+          const files = fs.readdirSync('.').filter(f => /trace.*\.json$|\.trace\.json$/i.test(f));
+          console.log(`Trace files: ${files.join(', ')}`);
+          let found = 0;
+          for (const file of files) {
+            let json;
+            try { json = JSON.parse(fs.readFileSync(file,'utf8')); } catch (_) { continue; }
+            const events = Array.isArray(json) ? json : (json.traceEvents || []);
+            const shifts = events.filter(e => /layout.?shift/i.test(String(e.name || '')));
+            if (!shifts.length) continue;
+            console.log(`\n${file}: ${shifts.length} layout-shift events`);
+            for (const e of shifts.slice(0,30)) {
+              console.log(JSON.stringify({name:e.name,ts:e.ts,dur:e.dur,args:e.args}).slice(0,7000));
+              found++;
+            }
+          }
+          console.log(`\nLayout-shift events emitted: ${found}`);
           NODE
 
       - name: Persist latest diagnostics
@@ -149,4 +129,5 @@ jobs:
             lighthouse-*.json
             lighthouse-summary.txt
             layout-shift-trace.txt
+            *trace*.json
           retention-days: 3
