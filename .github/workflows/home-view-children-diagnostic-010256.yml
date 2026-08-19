@@ -1,0 +1,61 @@
+name: Home view children diagnostic 0.10.256
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-view-children-diagnostic-010256.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect view children before and after CSS init
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          : "${CHROME:?Chrome missing}"
+          CHROME_PATH="$CHROME" node <<'JS' > runtime/home-view-children-diagnostic-010256.txt
+          const { chromium }=require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915}});
+            await page.addInitScript(()=>{
+              window.__children=[];
+              const snap=label=>{
+                const v=document.querySelector('#view'); if(!v)return;
+                const rows=[...v.childNodes].map((n,i)=>{
+                  if(n.nodeType===3)return {i,type:'text',text:(n.textContent||'').replace(/\s+/g,' ').slice(0,120)};
+                  if(n.nodeType!==1)return {i,type:n.nodeType,name:n.nodeName};
+                  const s=getComputedStyle(n),r=n.getBoundingClientRect();
+                  return {i,type:'element',tag:n.tagName,id:n.id,class:n.className,text:(n.textContent||'').replace(/\s+/g,' ').trim().slice(0,120),rect:{x:r.x,y:r.y,width:r.width,height:r.height},display:s.display,position:s.position,visibility:s.visibility,margin:s.margin,padding:s.padding,lineHeight:s.lineHeight};
+                });
+                window.__children.push({label,t:performance.now(),rows});
+              };
+              setTimeout(()=>snap('50ms'),50);setTimeout(()=>snap('250ms'),250);document.addEventListener('DOMContentLoaded',()=>snap('domcontentloaded'));
+            });
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+            await page.waitForTimeout(1000);
+            console.log(JSON.stringify(await page.evaluate(()=>window.__children),null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+      - name: Record
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-view-children-diagnostic-010256.txt
+          git commit -m 'Record Home view children diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
