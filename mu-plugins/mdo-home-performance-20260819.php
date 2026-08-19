@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO - Home Performance Hardening 2026-08-19
- * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica y estabiliza los logos WCFM.
- * Version: 1.1.0
+ * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica, elimina CSS muerto de Hustle y estabiliza los logos WCFM.
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -95,6 +95,18 @@ function mdo_home_perf_transform_html( string $html ): string {
     if ( '' === $html ) {
         return $html;
     }
+
+    /*
+     * Hustle no monta ningún módulo ni script en la Home actual, pero su bloque
+     * inline de ~134 KiB seguía entrando en la hoja diferida. Se elimina sólo
+     * en la Home antes de que home-cache agregue los estilos.
+     */
+    $html = preg_replace(
+        '~<style\b[^>]*\bid=["\']hustle_inline_styles_front-inline-css["\'][^>]*>.*?</style\s*>~is',
+        '',
+        $html,
+        1
+    ) ?? $html;
 
     $html = preg_replace_callback(
         '~<script\b[^>]*\bid=["\']facebook-capi-param-builder-js["\'][^>]*\bsrc=["\']([^"\']+)["\'][^>]*>\s*</script\s*>~i',
