@@ -1,0 +1,51 @@
+name: Repair MENTTA plugin syntax 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-mentta-plugin-syntax-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove duplicated broken Home output block
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('mu-plugins/mdo-internal-mentta-category.php')
+          s = p.read_text()
+          start_marker = '/** Remove final custom Home category cards for MENTTA or its mirrored children. */'
+          end_marker = '/** Do not expose browsable public archives for MENTTA or any descendant. */'
+          start = s.index(start_marker)
+          end = s.index(end_marker, start)
+          replacement = """/** Home-card output hiding is handled by 000-mdo-mentta-home-final.php. */\n\n"""
+          s = s[:start] + replacement + s[end:]
+          p.write_text(s)
+          PY
+          php -l mu-plugins/mdo-internal-mentta-category.php
+          grep -Fq 'Version: 1.2.0' mu-plugins/mdo-internal-mentta-category.php
+          grep -Fq 'HTTP_REFERER' mu-plugins/mdo-internal-mentta-category.php
+          ! grep -Fq 'mdo_mentta_remove_final_home_card' mu-plugins/mdo-internal-mentta-category.php
+
+      - name: Commit repaired plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add mu-plugins/mdo-internal-mentta-category.php
+          git commit -m 'Fix MENTTA storefront filter syntax'
+          git pull --rebase origin main
+          git push origin HEAD:main
