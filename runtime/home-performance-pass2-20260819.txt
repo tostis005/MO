@@ -1,0 +1,20 @@
+deploy=success
+verify= {"capi_placeholder": {"id": "facebook-capi-param-builder-js", "type": "application/x-mdo-deferred", "data-mdo-src": "https://unpkg.com/meta-capi-param-builder-clientjs/dist/clientParamBuilder.bundle.js?ver=3.7.6"}, "direct_unpkg_scripts": [], "deferred_css": ["https://www.elmercadodeorigen.com/wp-content/uploads/elmercado-home-static/home-deferred-0.10.260.css", "https://www.elmercadodeorigen.com/wp-content/uploads/elmercado-home-static/home-deferred-0.10.260.css"], "cart_two_phase": true, "carousel_raf": true, "theme_guarded_scroll": true}
+run 1 {'score': 66, 'fcp': 1959, 'lcp': 3689, 'tbt': 766, 'cls': 0.016381247361495047, 'si': 5015}
+run 2 {'score': 66, 'fcp': 1936, 'lcp': 3652, 'tbt': 815, 'cls': 0.015482283596689548, 'si': 4933}
+run 3 {'score': 67, 'fcp': 1949, 'lcp': 3647, 'tbt': 733, 'cls': 0.017097885345424554, 'si': 4658}
+median_score= 66
+median_fcp= 1949
+median_lcp= 3652
+median_tbt= 766
+median_cls= 0.016381247361495047
+median_si= 4933
+previous_median_score=66
+previous_median_lcp=3139
+previous_median_tbt=914
+audit mainthread-work-breakdown score= 0 numeric= 4403.399999999972 display= 4.4 s
+audit unminified-css score= 0.5 numeric= 0 display= Est savings of 29 KiB
+audit unused-css-rules score= 0.5 numeric= 0 display= Est savings of 138 KiB
+audit forced-reflow-insight score= 0 numeric= None display= None
+audit legacy-javascript-insight score= 0.5 numeric= None display= Est savings of 19 KiB
+audit network-dependency-tree-insight score= 1 numeric= None display= None
