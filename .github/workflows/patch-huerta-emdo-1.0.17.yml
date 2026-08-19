@@ -38,3 +38,5 @@ jobs:
           git commit -m 'Fix Huerta legacy prices and flowers description in EMDO 1.0.17'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# Triggered after workflow creation so GitHub executes it on main.
