@@ -30,71 +30,126 @@ jobs:
           set -euo pipefail
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 
-      - name: Package plugin
-        shell: bash
-        run: tar -czf /tmp/mdo-supplier-sync.tar.gz mdo-supplier-sync
-
-      - name: Deploy plugin to production
+      - name: Deploy and verify production plugin
+        id: deploy
+        continue-on-error: true
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set -euo pipefail
-          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          set +e
+          RESULT="success"
+          VERSION="unknown"
+          NOTE=""
 
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          fail() {
+            RESULT="$1"
+            NOTE="$2"
+          }
+
+          if [ -z "${STAGING_HOST:-}" ] || [ -z "${STAGING_USER:-}" ] || [ -z "${STAGING_PASSWORD:-}" ]; then
+            fail "missing_credentials" "Required production SSH secrets are missing"
+          fi
+
+          if [ "$RESULT" = "success" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+            [ $? -eq 0 ] || fail "sshpass_install_failed" "Could not install sshpass on runner"
+          fi
 
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH=""
 
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
-              esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
+          if [ "$RESULT" = "success" ]; then
+            PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+              wp_bin=$(command -v wp || true)
+              php_bin=$(command -v php || true)
+              [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+              for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+                p=$(dirname "$cfg")
+                url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+                case "$url" in
+                  https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+                esac
+              done
+            ' 2>/dev/null)"
+            [ -n "$PROD_PATH" ] || fail "production_path_not_found" "Could not locate elmercadodeorigen.com WordPress root"
+          fi
 
           REMOTE_ARCHIVE="/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz"
-          sshpass -e scp $SCP_OPTIONS /tmp/mdo-supplier-sync.tar.gz "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
+          if [ "$RESULT" = "success" ]; then
+            tar -czf /tmp/mdo-supplier-sync.tar.gz mdo-supplier-sync
+            [ $? -eq 0 ] || fail "package_failed" "Could not package plugin"
+          fi
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            wp_bin=\$(command -v wp || true)
-            php_bin=\$(command -v php || true)
-            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            [ -n \"\$wp_bin\" ]
-            [ -n \"\$php_bin\" ]
-            mkdir -p '$PROD_PATH/wp-content/plugins'
-            tar -xzf '$REMOTE_ARCHIVE' -C '$PROD_PATH/wp-content/plugins'
-            rm -f '$REMOTE_ARCHIVE'
-            \"\$php_bin\" -l '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php'
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin status mdo-supplier-sync --path='$PROD_PATH' --allow-root
-            deployed_version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
-            echo \"DEPLOYED_VERSION=\$deployed_version\"
-            test \"\$deployed_version\" = '1.0.14'
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
-          "
+          if [ "$RESULT" = "success" ]; then
+            sshpass -e scp $SCP_OPTIONS /tmp/mdo-supplier-sync.tar.gz "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
+            [ $? -eq 0 ] || fail "upload_failed" "Could not upload plugin archive"
+          fi
 
-      - name: Record successful deployment
+          if [ "$RESULT" = "success" ]; then
+            REMOTE_RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              wp_bin=\$(command -v wp || true)
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              [ -n \"\$wp_bin\" ]
+              [ -n \"\$php_bin\" ]
+              mkdir -p '$PROD_PATH/wp-content/plugins'
+              tar -xzf '$REMOTE_ARCHIVE' -C '$PROD_PATH/wp-content/plugins'
+              rm -f '$REMOTE_ARCHIVE'
+              \"\$php_bin\" -l '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php' >/dev/null
+              deployed_version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
+              plugin_status=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=status --path='$PROD_PATH' --allow-root)
+              printf 'VERSION=%s\\nSTATUS=%s\\n' \"\$deployed_version\" \"\$plugin_status\"
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            " 2>&1)"
+            REMOTE_CODE=$?
+            if [ $REMOTE_CODE -ne 0 ]; then
+              fail "remote_deploy_failed" "Remote extraction or WordPress verification failed"
+            else
+              VERSION="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^VERSION=//p' | tail -n1)"
+              PLUGIN_STATUS="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^STATUS=//p' | tail -n1)"
+              [ -n "$VERSION" ] || VERSION="unknown"
+              if [ "$VERSION" != "1.0.14" ]; then
+                fail "version_mismatch" "Production reports a different EMDO version"
+              elif [ "$PLUGIN_STATUS" != "active" ]; then
+                fail "plugin_not_active" "EMDO is deployed but WordPress does not report it active"
+              else
+                NOTE="EMDO 1.0.14 deployed and active in production"
+              fi
+            fi
+          fi
+
+          mkdir -p .deploy-status
+          printf 'result=%s\nversion=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nnote=%s\n' \
+            "$RESULT" "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NOTE" \
+            > .deploy-status/mdo-supplier-sync.txt
+
+          if [ "$RESULT" = "success" ]; then
+            exit 0
+          fi
+          exit 1
+
+      - name: Record deployment result
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .deploy-status
-          printf 'version=1.0.14\nsource_commit=%s\nworkflow_run=%s\ndeployed_at=%s\n' \
-            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > .deploy-status/mdo-supplier-sync.txt
+          if [ ! -f .deploy-status/mdo-supplier-sync.txt ]; then
+            mkdir -p .deploy-status
+            printf 'result=runner_failed\nversion=unknown\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nnote=Deployment step did not produce a status file\n' \
+              "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              > .deploy-status/mdo-supplier-sync.txt
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/mdo-supplier-sync.txt
-          git commit -m 'Record successful EMDO production deployment [skip ci]'
+          git commit -m 'Record EMDO production deployment result [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+
+      - name: Fail workflow when deployment failed
+        if: steps.deploy.outcome != 'success'
+        run: exit 1
