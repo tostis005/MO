@@ -1,0 +1,359 @@
+{
+    "ok": true,
+    "plugin_version": "1.0.17",
+    "checks": {
+        "39_products": true,
+        "flowers_title": true,
+        "all_have_images": true,
+        "all_image_urls_valid": true,
+        "all_have_descriptions": true,
+        "descriptions_clean": true,
+        "encoding_clean": true,
+        "catalog_scrape_errors": true,
+        "smoke_product_same_id": true,
+        "smoke_has_image": true,
+        "smoke_category": true,
+        "smoke_description_clean": true
+    },
+    "catalog": {
+        "products_found": 39,
+        "pages_found": 6,
+        "errors": [],
+        "empty_images": [],
+        "bad_images": [],
+        "empty_descriptions": [],
+        "noisy_descriptions": [],
+        "encoding_issues": [],
+        "products": [
+            {
+                "id": "32",
+                "title": "patatas blancas",
+                "price": 1.83,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/60.jpg",
+                "description_length": 1290
+            },
+            {
+                "id": "25",
+                "title": "calabacin",
+                "price": 1.87,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/42.jpg",
+                "description_length": 582
+            },
+            {
+                "id": "1",
+                "title": "brocoli",
+                "price": 3.58,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/5.jpg",
+                "description_length": 896
+            },
+            {
+                "id": "134",
+                "title": "20 kg de patatas blancas variedad kennebec",
+                "price": 34,
+                "image_count": 1,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/301.jpg",
+                "description_length": 924
+            },
+            {
+                "id": "113",
+                "title": "Flores de calabacín 8 unidades",
+                "price": 29.57,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/266.jpg",
+                "description_length": 538
+            },
+            {
+                "id": "35",
+                "title": "pimiento italiano",
+                "price": 2.95,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/68.jpg",
+                "description_length": 502
+            },
+            {
+                "id": "22",
+                "title": "kg cebollas secas",
+                "price": 2.05,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/48.jpg",
+                "description_length": 966
+            },
+            {
+                "id": "27",
+                "title": "pimientos lamuyos VERDES",
+                "price": 3.79,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/55.jpg",
+                "description_length": 1162
+            },
+            {
+                "id": "26",
+                "title": "bolsa 300 gr aprox pimientos de Padron",
+                "price": 2.75,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/45.jpg",
+                "description_length": 1211
+            },
+            {
+                "id": "217",
+                "title": "salsa muy picate PICAGUIN HOT SAUCE",
+                "price": 6.4,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/555.jpg",
+                "description_length": 1845
+            },
+            {
+                "id": "73",
+                "title": "pimiento agridulce 720 ml, artesano",
+                "price": 5.15,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/372.jpg",
+                "description_length": 1649
+            },
+            {
+                "id": "66",
+                "title": "pimiento frito en aceite de oliva 314 ml",
+                "price": 5.99,
+                "image_count": 1,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/413.jpg",
+                "description_length": 1683
+            },
+            {
+                "id": "36",
+                "title": "berenjena",
+                "price": 2.61,
+                "image_count": 4,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/72.jpg",
+                "description_length": 1029
+            },
+            {
+                "id": "204",
+                "title": "ajetes al natural 314 ml",
+                "price": 5.99,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/494.jpg",
+                "description_length": 889
+            },
+            {
+                "id": "67",
+                "title": "pimiento verde picante en vinagre, 314 ml",
+                "price": 5.99,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/448.jpg",
+                "description_length": 1738
+            },
+            {
+                "id": "133",
+                "title": "20 kg de patatas rojas, red pontiac",
+                "price": 34,
+                "image_count": 1,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/300.jpg",
+                "description_length": 971
+            },
+            {
+                "id": "63",
+                "title": "puerros en conserva 720 ml, artesanos",
+                "price": 5.6,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/362.jpg",
+                "description_length": 1247
+            },
+            {
+                "id": "58",
+                "title": "pimiento artesano asado dulce, 314 ml",
+                "price": 5.99,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/339.jpg",
+                "description_length": 1539
+            },
+            {
+                "id": "33",
+                "title": "patatas rojas red pontiac",
+                "price": 1.83,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/62.jpg",
+                "description_length": 1123
+            },
+            {
+                "id": "28",
+                "title": "pimientos picantes",
+                "price": 4.3,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/64.jpg",
+                "description_length": 1037
+            },
+            {
+                "id": "11",
+                "title": "repollo",
+                "price": 2.1,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/21.jpg",
+                "description_length": 961
+            },
+            {
+                "id": "151",
+                "title": "mermelada artesana de puerro 250 ml",
+                "price": 4.3,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/325.jpg",
+                "description_length": 914
+            },
+            {
+                "id": "150",
+                "title": "mermelada artesana de pimiento 250 ml",
+                "price": 4.3,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/323.jpg",
+                "description_length": 1030
+            },
+            {
+                "id": "152",
+                "title": "mermelada artesana de tomate 250 ml",
+                "price": 4.3,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/327.jpg",
+                "description_length": 921
+            },
+            {
+                "id": "138",
+                "title": "guindillas en vinagre 720 ml",
+                "price": 5.95,
+                "image_count": 1,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/337.jpg",
+                "description_length": 1824
+            },
+            {
+                "id": "156",
+                "title": "12 tarros de confitura de puerro 250ml",
+                "price": 50.05,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/333.jpg",
+                "description_length": 819
+            },
+            {
+                "id": "155",
+                "title": "12 tarros de confitura de tomate 250 ml",
+                "price": 50.05,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/331.jpg",
+                "description_length": 781
+            },
+            {
+                "id": "79",
+                "title": "12 tarros de pimiento asado picante 314 ml",
+                "price": 69,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/355.jpg",
+                "description_length": 1565
+            },
+            {
+                "id": "91",
+                "title": "12 tarros de puerros al natural 720ml",
+                "price": 60,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/364.jpg",
+                "description_length": 1134
+            },
+            {
+                "id": "83",
+                "title": "12 tarros de pimiento verde picante en vinagre 314 ml",
+                "price": 69,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/383.jpg",
+                "description_length": 1344
+            },
+            {
+                "id": "154",
+                "title": "12 tarros de confitura de pimiento 250ml",
+                "price": 50.05,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/330.jpg",
+                "description_length": 926
+            },
+            {
+                "id": "61",
+                "title": "fritada de tomate artesana 314ml",
+                "price": 4.3,
+                "image_count": 1,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/446.jpg",
+                "description_length": 1494
+            },
+            {
+                "id": "114",
+                "title": "Kg pimientos de Padron",
+                "price": 8.5,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/268.jpg",
+                "description_length": 1128
+            },
+            {
+                "id": "64",
+                "title": "pimiento asado picante 314 ml, artesano",
+                "price": 5.99,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/351.jpg",
+                "description_length": 1651
+            },
+            {
+                "id": "34",
+                "title": "pepino",
+                "price": 1.75,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/558.jpg",
+                "description_length": 553
+            },
+            {
+                "id": "95",
+                "title": "12 tarros de fritada de tomate artesana 314ml",
+                "price": 50.05,
+                "image_count": 3,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/180.jpg",
+                "description_length": 1230
+            },
+            {
+                "id": "93",
+                "title": "12 tarros de pimiento agridulce 720ml",
+                "price": 60,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/373.jpg",
+                "description_length": 1319
+            },
+            {
+                "id": "76",
+                "title": "12 tarros de pimientos asados dulces",
+                "price": 69,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/342.jpg",
+                "description_length": 1406
+            },
+            {
+                "id": "81",
+                "title": "12 tarros de pimiento frito en aceite de oliva 314 ml",
+                "price": 69,
+                "image_count": 2,
+                "first_image": "https://www.lahuertadeanamary.com/data/productos/imagenes/418.jpg",
+                "description_length": 1294
+            }
+        ]
+    },
+    "smoke_import": {
+        "product_id": 12699,
+        "name": "Patatas blancas",
+        "image_id": 12700,
+        "gallery_count": 1,
+        "category_ids": [
+            15,
+            434
+        ],
+        "has_target_category": true,
+        "description": "kg de patatas blancas variedad kennebec.\nLa patata Kennebec se reconoce fácilmente porque tiene “pinta” de patata. Se vende sin lavar, lo que presenta un aspecto terroso, marrón y rugoso característico de las patatas “de pueblo”. Tiene la piel gruesa y la carne blanca, es un alimento rico en hidratos de carbono, de gran importancia en nuestra alimentación cotidiana, por lo que los expertos en nutrición recomiendan su consumo a diario, junto con verduras, ensaladas, legumbres, purés, etc., como primer plato o como guarnición de los segundos.\nContiene un alto porcentaje de agua (75%- 80%), su materia seca está constituida por almidones, azúcares y proteínas (aporte bajo) y, además, contiene sustancias minerales tales como el Potasio y el Magnesio.\nLa práctica totalidad de las calorías que aporta se debe a sus glúcidos y, entre éstos, al almidón, que resulta muy digestible. La patata resulta así un buen soporte para otros ingredientes, sobre todo para las grasas, aunque siempre dependiendo de su preparación culinaria.\nUna elección adecuada de la variedad de patata según su uso culinario, junto a una conservación adecuada en ambiente fresco y seco, le permitirán mantener todas sus cualidades nutritivas y organolépticas, convirtiéndola en un alimento excepcional y económico."
+    },
+    "category": {
+        "id": 434,
+        "name": "Hortalizas/Verduras",
+        "slug": "hortalizas-verduras"
+    }
+}
