@@ -1,0 +1,49 @@
+name: Home runtime fast check 0.10.258 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-runtime-fast-check-010258-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check live Home HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          HTML=/tmp/home-fast.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          {
+            printf 'bytes=%s\n' "$(wc -c < "$HTML")"
+            printf 'version_010258=%s\n' "$(grep -c 'home-deferred-0.10.258.css' "$HTML" || true)"
+            printf 'semantic_h1_probe=%s\n' "$(grep -c 'visibleHeadingOne' "$HTML" || true)"
+            printf 'mobile_hitareas_script=%s\n' "$(grep -c 'id="elmercado-mobile-header-hitareas-final"' "$HTML" || true)"
+            printf 'catalog_parity_script=%s\n' "$(grep -c 'id="elmercado-catalog-mobile-controls-parity-script-010236"' "$HTML" || true)"
+            printf 'ads_external_initial=%s\n' "$(grep -c 'googletagmanager.com/gtag/js?id=AW-' "$HTML" || true)"
+            printf 'ads_marker=%s\n' "$(grep -c 'id="elmercado-delayed-google-ads-source"' "$HTML" || true)"
+            printf 'ads_loader=%s\n' "$(grep -c 'id="elmercado-delayed-google-ads-loader"' "$HTML" || true)"
+            printf 'ga4_initial=%s\n' "$(grep -c 'googletagmanager.com/gtag/js?id=G-515YQ0XMS4' "$HTML" || true)"
+            printf 'hustle_inline=%s\n' "$(grep -c 'hustle_inline_styles_front-inline-css' "$HTML" || true)"
+          } > runtime/home-runtime-fast-check-010258.txt
+          cat runtime/home-runtime-fast-check-010258.txt
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-runtime-fast-check-010258.txt
+          git commit -m 'Record Home runtime fast check' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
