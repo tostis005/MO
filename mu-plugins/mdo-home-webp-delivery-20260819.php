@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Home WebP Delivery 2026-08-19
  * Description: Sirve en la Home variantes WebP ya generadas de imágenes locales sin alterar la biblioteca multimedia ni el resto de la tienda.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -29,7 +29,7 @@ add_action(
             return;
         }
 
-        $version = '1.0.1';
+        $version = '1.0.2';
         if ( get_option( 'mdo_home_webp_cache_version', '' ) === $version ) {
             return;
         }
@@ -163,7 +163,6 @@ function mdo_home_webp_transform_html( string $html ): string {
         $html
     ) ?? $html;
 
-    /* Fondos inline o reglas CSS embebidas de tarjetas de categoría/productor. */
     $html = preg_replace_callback(
         '~url\(\s*(["\']?)([^)"\']+/wp-content/uploads/[^)"\']+\.(?:jpe?g|png)(?:\?[^)"\']*)?)\1\s*\)~i',
         static function ( array $matches ): string {
@@ -179,13 +178,41 @@ function mdo_home_webp_transform_html( string $html ): string {
     return $html;
 }
 
+/**
+ * Capa exterior: recibe el documento ya terminado por home-cache.php. De este
+ * modo también ve las tarjetas de productores que esa caché construye al final.
+ * Si la petición es cacheable, persistimos el mismo HTML WebP en transient y
+ * en index.html para que los HIT siguientes no recuperen JPEG.
+ */
+function mdo_home_webp_finalize_document( string $html ): string {
+    $optimized = mdo_home_webp_transform_html( $html );
+
+    if (
+        $optimized !== $html
+        && function_exists( 'elmercado_can_cache_home_request' )
+        && function_exists( 'elmercado_home_cache_key' )
+        && function_exists( 'elmercado_home_static_cache_file' )
+        && elmercado_can_cache_home_request()
+        && false !== stripos( $optimized, '</html>' )
+        && false === stripos( $optimized, 'wp-die-message' )
+    ) {
+        set_transient( elmercado_home_cache_key(), $optimized, 10 * MINUTE_IN_SECONDS );
+        $file = elmercado_home_static_cache_file();
+        if ( function_exists( 'elmercado_write_atomic_home_file' ) ) {
+            elmercado_write_atomic_home_file( $file, $optimized );
+        }
+    }
+
+    return $optimized;
+}
+
 add_action(
     'template_redirect',
     static function (): void {
         if ( ! function_exists( 'elmercado_is_optimized_home' ) || ! elmercado_is_optimized_home() ) {
             return;
         }
-        ob_start( 'mdo_home_webp_transform_html' );
+        ob_start( 'mdo_home_webp_finalize_document' );
     },
-    -900
+    -3300
 );
