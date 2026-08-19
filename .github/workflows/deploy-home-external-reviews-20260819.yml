@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: deploy-home-external-reviews-20260819
@@ -26,11 +26,14 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
 
       - name: Validate PHP
+        id: validate
         run: php -l mu-plugins/mdo-home-external-reviews-20260819.php
 
       - name: Deploy to production and flush Home cache
+        id: deploy
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
@@ -61,6 +64,7 @@ jobs:
           "
 
       - name: Verify live Home
+        id: verify
         run: |
           set -euo pipefail
           for i in 1 2 3; do
@@ -79,3 +83,23 @@ jobs:
             exit 1
           fi
           echo 'Home review proof verified; legacy review widget absent.'
+
+      - name: Record verification
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cat > .deploy-status/home-external-reviews-20260819.txt <<EOF
+          validate=${{ steps.validate.outcome }}
+          deploy=${{ steps.deploy.outcome }}
+          verify=${{ steps.verify.outcome }}
+          commit=${GITHUB_SHA}
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/home-external-reviews-20260819.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Home review deployment verification [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
