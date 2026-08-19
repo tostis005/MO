@@ -1,0 +1,56 @@
+name: Diagnose live Home WebP transform 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-webp-transform-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Compare cached and cache-bypassed Home
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for mode in cached bypass; do
+            if [ "$mode" = cached ]; then url='https://www.elmercadodeorigen.com/'; else url='https://www.elmercadodeorigen.com/?mdo_webp_probe=1'; fi
+            curl -fsS --compressed --max-time 50 -D "/tmp/$mode.headers" "$url" -o "/tmp/$mode.html"
+          done
+          python3 - <<'PY' > runtime/home-webp-transform-diagnostic-20260819.txt
+          import re
+          for mode in ('cached','bypass'):
+              h=open(f'/tmp/{mode}.html',encoding='utf-8',errors='ignore').read()
+              refs=sorted(set(re.findall(r'/wp-content/uploads/[^\s"\'<>]+\.webp',h,re.I)))
+              imgs=re.findall(r'<img\b[^>]*>',h,re.I)
+              gar=[x for x in imgs if 'Garrafa_5L' in x]
+              print('===',mode,'===')
+              print('bytes=',len(h.encode()))
+              print('webp_refs=',len(refs))
+              print('trp_official=',h.count('trp-language-switcher-js-v2-js'),'trp_lite=',h.count('mdo-trp-language-switcher-lite-js'))
+              print('garrafa_tags=',len(gar))
+              for x in gar[:4]: print(x[:1300])
+              print('headers:')
+              print(open(f'/tmp/{mode}.headers',encoding='utf-8',errors='ignore').read().replace('\r',''))
+          PY
+          cat runtime/home-webp-transform-diagnostic-20260819.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-webp-transform-diagnostic-20260819.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record live Home WebP transform diagnostic [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
