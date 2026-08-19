@@ -1,0 +1,139 @@
+name: Home structural parent inline CLS test 010290
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-cls-critical-parent-inline-010290.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-current-stack-blocking-css-production
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Keep only parent inline CSS blocking
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp elmercadodeorigen-child/inc/home-cache.php /tmp/home-cache-before-010290.php
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/inc/home-cache.php')
+          s=p.read_text()
+          old='''\t$head_protected = preg_replace_callback(\n\t\t'~<style\\b[^>]*>(.*?)</style\\s*>~is',\n\t\tstatic function ( array $matches ) use ( &$css_parts ): string {\n\t\t\tif ( isset( $matches[1] ) && '' !== trim( $matches[1] ) ) {\n\t\t\t\t$css_parts[] = $matches[1];\n\t\t\t}\n\t\t\treturn '';\n\t\t},\n\t\t$head_protected\n\t);'''
+          new='''\t$head_protected = preg_replace_callback(\n\t\t'~<style\\b[^>]*>(.*?)</style\\s*>~is',\n\t\tstatic function ( array $matches ) use ( &$css_parts ): string {\n\t\t\t/* This 166 KiB block contains the final desktop Home geometry. Keep it\n\t\t\t * render-blocking while all non-structural inline CSS remains deferred. */\n\t\t\tif ( str_contains( $matches[0], 'id="woostify-parent-style-inline-css"' ) || str_contains( $matches[0], "id='woostify-parent-style-inline-css'" ) ) {\n\t\t\t\treturn $matches[0];\n\t\t\t}\n\t\t\tif ( isset( $matches[1] ) && '' !== trim( $matches[1] ) ) {\n\t\t\t\t$css_parts[] = $matches[1];\n\t\t\t}\n\t\t\treturn '';\n\t\t},\n\t\t$head_protected\n\t);'''
+          if old not in s:
+              raise SystemExit('style extraction callback not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          php -l elmercadodeorigen-child/inc/home-cache.php
+          grep -q 'woostify-parent-style-inline-css' elmercadodeorigen-child/inc/home-cache.php
+
+      - name: Deploy current stack with selective blocking CSS
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD:?production path not found}"
+          echo "$PROD" >/tmp/prod-010290
+          declare -A F=(
+            [home-cache]='elmercadodeorigen-child/inc/home-cache.php'
+            [critical]='elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+            [theme]='elmercadodeorigen-child/assets/js/theme.js'
+            [commerce]='elmercadodeorigen-child/assets/js/commerce.js'
+            [responsive]='elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php'
+            [cls]='elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php'
+            [a11y]='elmercadodeorigen-child/mu-plugins/elmercado-home-a11y-motion-010265.php'
+            [stars]='elmercadodeorigen-child/mu-plugins/elmercado-home-native-stars-010264.php'
+            [perf]='mu-plugins/mdo-home-performance-20260819.php'
+            [webp]='mu-plugins/mdo-home-webp-delivery-20260819.php'
+            [trp]='mu-plugins/mdo-home-translatepress-lite-20260819.php'
+          )
+          for k in "${!F[@]}"; do timeout 45s sshpass -e scp $SCP "${F[$k]}" "$STAGING_USER@$STAGING_HOST:/tmp/010290-$k-${GITHUB_RUN_ID}"; done
+          timeout 240s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e; THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; MU='$PROD/wp-content/mu-plugins'
+            install -m0644 /tmp/010290-home-cache-${GITHUB_RUN_ID} \"\$THEME/inc/home-cache.php\"
+            install -m0644 /tmp/010290-critical-${GITHUB_RUN_ID} \"\$THEME/assets/css/critical-woostify-home.min.css\"
+            install -m0644 /tmp/010290-theme-${GITHUB_RUN_ID} \"\$THEME/assets/js/theme.js\"
+            install -m0644 /tmp/010290-commerce-${GITHUB_RUN_ID} \"\$THEME/assets/js/commerce.js\"
+            install -m0644 /tmp/010290-responsive-${GITHUB_RUN_ID} \"\$MU/elmercado-home-responsive-vendors-010253.php\"
+            install -m0644 /tmp/010290-cls-${GITHUB_RUN_ID} \"\$MU/elmercado-home-cls-010256.php\"
+            install -m0644 /tmp/010290-a11y-${GITHUB_RUN_ID} \"\$MU/elmercado-home-a11y-motion-010265.php\"
+            install -m0644 /tmp/010290-stars-${GITHUB_RUN_ID} \"\$MU/elmercado-home-native-stars-010264.php\"
+            install -m0644 /tmp/010290-perf-${GITHUB_RUN_ID} \"\$MU/mdo-home-performance-20260819.php\"
+            install -m0644 /tmp/010290-webp-${GITHUB_RUN_ID} \"\$MU/mdo-home-webp-delivery-20260819.php\"
+            install -m0644 /tmp/010290-trp-${GITHUB_RUN_ID} \"\$MU/mdo-home-translatepress-lite-20260819.php\"
+            rm -f \"\$MU/elmercado-home-header-cls-010279.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true
+            rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css /tmp/010290-*-${GITHUB_RUN_ID}
+          "
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home-010290.html
+          grep -q 'id="woostify-parent-style-inline-css"' /tmp/home-010290.html
+          grep -q 'id="elmercado-home-deferred-css" rel="preload"' /tmp/home-010290.html
+
+      - name: Lighthouse desktop 3x
+        id: measure
+        shell: bash
+        run: |
+          set -euo pipefail; mkdir -p runtime
+          for i in 1 2 3; do
+            npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=desktop --screenEmulation.mobile=false --screenEmulation.width=1350 --screenEmulation.height=940 --screenEmulation.deviceScaleFactor=1 --throttling-method=simulate --output=json --output-path="/tmp/lhr-$i.json" --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          done
+          python3 - <<'PY' | tee runtime/home-cls-parent-inline-010290.txt
+          import json,statistics
+          rows=[]
+          for i in range(1,4):
+              r=json.load(open(f'/tmp/lhr-{i}.json')); a=r['audits']; row={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue']}; rows.append(row); print('run',i,row)
+              for x in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:7]: n=x.get('node') or {}; print(' shift',x.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          med={k:statistics.median(r[k] for r in rows) for k in rows[0]}
+          for k,v in med.items(): print('median_'+k+'=',v)
+          keep=med['cls']<0.1 and med['lcp']<6000 and med['fcp']<3500
+          print('keep=',str(keep).lower()); open('/tmp/keep-010290','w').write('1' if keep else '0')
+          PY
+
+      - name: Keep only on material improvement
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEEP=$(cat /tmp/keep-010290 2>/dev/null || echo 0)
+          if [ "$KEEP" != 1 ]; then
+            cp /tmp/home-cache-before-010290.php elmercadodeorigen-child/inc/home-cache.php
+            PROD=$(cat /tmp/prod-010290); PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+            sshpass -e scp $SCP /tmp/home-cache-before-010290.php "$STAGING_USER@$STAGING_HOST:/tmp/revert-010290-${GITHUB_RUN_ID}.php"
+            timeout 180s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "install -m0644 /tmp/revert-010290-${GITHUB_RUN_ID}.php '$PROD/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true; rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css /tmp/revert-010290-${GITHUB_RUN_ID}.php"
+          fi
+          mkdir -p runtime; [ -f runtime/home-cls-parent-inline-010290.txt ] || echo failed > runtime/home-cls-parent-inline-010290.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/inc/home-cache.php runtime/home-cls-parent-inline-010290.txt
+          git commit -m 'Measure selective blocking Home structural CSS' || exit 0
+          git pull --rebase origin main; git push origin HEAD:main
