@@ -77,8 +77,7 @@
 		});
 	};
 
-	/* Read scroll geometry before invalidating styles/DOM. */
-	updateScrollState();
+	/* No geometry reads during bootstrap; a real scroll event syncs the header state lazily. */
 	body.classList.add('emo-js-ready');
 	cleanLegacyHeaderArtifacts();
 	removeProductHoverArtifacts();
