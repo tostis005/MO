@@ -1,0 +1,91 @@
+name: Diagnose pruned Woostify Home CSS 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-pruned-woostify-css-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: diagnose-pruned-woostify-css-20260819
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Build conservative Home candidate
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY'
+          import re,html,urllib.request
+          h=open('/tmp/home.html',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'<link[^>]+id=["\']woostify-parent-style-css["\'][^>]+href=["\']([^"\']+)',h,re.I)
+          if not m: raise SystemExit('parent link not found')
+          u=html.unescape(m.group(1)); print('css_url',u)
+          urllib.request.urlretrieve(u,'/tmp/woostify.css')
+          m=re.search(r'<style[^>]+id=["\']woostify-parent-style-inline-css["\'][^>]*>(.*?)</style>',h,re.S|re.I)
+          open('/tmp/woostify-inline.css','w',encoding='utf-8').write(m.group(1) if m else '')
+          open('/tmp/woostify-combined.css','w',encoding='utf-8').write(open('/tmp/woostify.css',encoding='utf-8',errors='ignore').read()+'\n'+open('/tmp/woostify-inline.css',encoding='utf-8',errors='ignore').read())
+          PY
+          npm install --no-save --no-audit --no-fund purgecss@7 >/dev/null 2>&1
+          node <<'JS'
+          const fs=require('fs'); const {PurgeCSS}=require('purgecss');
+          (async()=>{
+            const html=fs.readFileSync('/tmp/home.html','utf8');
+            const js=['elmercadodeorigen-child/assets/js/theme.js','elmercadodeorigen-child/assets/js/commerce.js'].filter(fs.existsSync).map(f=>fs.readFileSync(f,'utf8')).join('\n');
+            const css=fs.readFileSync('/tmp/woostify-combined.css','utf8');
+            const [r]=await new PurgeCSS().purge({
+              content:[{raw:html,extension:'html'},{raw:js,extension:'js'}], css:[{raw:css}],
+              safelist:{greedy:[/woocommerce/,/product/,/cart/,/menu/,/sidebar/,/search/,/dgwt/,/trp-/,/wcfm/,/woostify/,/site-/,/header/,/footer/,/active/,/open/,/focus/,/hover/,/current/,/logged/,/mobile/,/tablet/,/desktop/,/has-/,/is-/,/wp-/,/wc-/]},
+              fontFace:false,keyframes:false,variables:false
+            });
+            fs.writeFileSync('/tmp/woostify-pruned.css',r.css);
+            console.log(JSON.stringify({before:Buffer.byteLength(css),external:fs.statSync('/tmp/woostify.css').size,inline:fs.statSync('/tmp/woostify-inline.css').size,after:Buffer.byteLength(r.css)}));
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+      - name: Compare same DOM before and after candidate
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > runtime/woostify-pruned-css-diagnostic-20260819.txt
+          const fs=require('fs'),puppeteer=require('puppeteer-core'),candidate=fs.readFileSync('/tmp/woostify-pruned.css','utf8');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage(); await p.setViewport({width:412,height:915,deviceScaleFactor:1});
+            await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});
+            await p.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important}'});
+            const props=['display','position','width','height','minWidth','maxWidth','marginTop','marginRight','marginBottom','marginLeft','paddingTop','paddingRight','paddingBottom','paddingLeft','fontSize','fontWeight','lineHeight','color','backgroundColor','borderTopWidth','borderRadius','flexDirection','justifyContent','alignItems','gridTemplateColumns','overflow','zIndex'];
+            const snap=()=>p.evaluate((props)=>[...document.querySelectorAll('body *')].map((el,i)=>{const r=el.getBoundingClientRect(),cs=getComputedStyle(el);if((r.width<=0||r.height<=0)&&cs.display==='none')return null;const o={i,tag:el.tagName,id:el.id,cls:el.className?.toString().slice(0,120)||'',rect:[+r.x.toFixed(1),+r.y.toFixed(1),+r.width.toFixed(1),+r.height.toFixed(1)]};for(const k of props)o[k]=cs[k];return o;}),props);
+            const compare=(a,c)=>{let d=[];for(let i=0;i<Math.max(a.length,c.length);i++){if(JSON.stringify(a[i])!==JSON.stringify(c[i]))d.push({i,base:a[i]||null,candidate:c[i]||null});}return d;};
+            const base=await snap(); await p.evaluate(()=>document.documentElement.classList.add('sidebar-menu-open')); await new Promise(r=>requestAnimationFrame(r)); const baseMenu=await snap(); await p.evaluate(()=>document.documentElement.classList.remove('sidebar-menu-open'));
+            await p.evaluate((css)=>{const link=document.getElementById('woostify-parent-style-css'),inline=document.getElementById('woostify-parent-style-inline-css');const s=document.createElement('style');s.id='mdo-candidate';s.textContent=css;(link||document.head.firstChild).parentNode.insertBefore(s,link||document.head.firstChild);if(link)link.disabled=true;if(inline)inline.disabled=true;},candidate);
+            await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); const cand=await snap(); await p.evaluate(()=>document.documentElement.classList.add('sidebar-menu-open')); await new Promise(r=>requestAnimationFrame(r)); const candMenu=await snap();
+            const d1=compare(base,cand),d2=compare(baseMenu,candMenu);
+            console.log(JSON.stringify({sizes:{before:fs.statSync('/tmp/woostify-combined.css').size,after:Buffer.byteLength(candidate)},defaultDiffs:d1.length,menuDiffs:d2.length,defaultExamples:d1.slice(0,15),menuExamples:d2.slice(0,15)},null,2));
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat runtime/woostify-pruned-css-diagnostic-20260819.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/woostify-pruned-css-diagnostic-20260819.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record pruned Woostify Home CSS diagnostic [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
