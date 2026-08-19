@@ -70,3 +70,4 @@ jobs:
           git commit -m 'Record Lighthouse Home variant audit' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+# rerun after compact CSS and Hustle cleanup
