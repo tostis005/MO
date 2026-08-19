@@ -1,0 +1,39 @@
+name: Fix Huerta v4 PHP syntax
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-huerta-v4-syntax-20260819.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Fix and validate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v4.php')
+          s=p.read_text(encoding='utf-8')
+          old="""\t\tif ( preg_match_all( '/(\\d{1,4}(?:[.,]\\d{1,2})?)\\s*€/u', $body, $matches ) ) {\n\t\t\tforeach ( $matches[1] as $candidate ) {\n\t\t\t\tif ( null !== ( $price = self::parse_price( (string) $candidate ) ) ) {\n\t\t\t\t\treturn $price;\n\t\t\t\t}\n\t\t}\n\t\treturn null;\n\t}\n"""
+          new="""\t\tif ( preg_match_all( '/(\\d{1,4}(?:[.,]\\d{1,2})?)\\s*€/u', $body, $matches ) ) {\n\t\t\tforeach ( $matches[1] as $candidate ) {\n\t\t\t\tif ( null !== ( $price = self::parse_price( (string) $candidate ) ) ) {\n\t\t\t\t\treturn $price;\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\treturn null;\n\t}\n"""
+          if old not in s:
+              raise SystemExit('target block not found')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v4.php
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+      - name: Record fixed source
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v4.php
+          git commit -m 'Fix Huerta v4 price parser syntax [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
