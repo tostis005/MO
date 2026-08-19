@@ -1,7 +1,7 @@
 <?php
 /**
  * Shipping summary for a WCFM producer store.
- * Refined destination labels, price ordering and EMDO minimum-order display.
+ * Refined destination labels, effective-price ordering and EMDO minimum-order display.
  *
  * Available variables are supplied by WCFM:
  * @var object $store_user
@@ -25,12 +25,55 @@ if ( is_object( $store_user ) ) {
 
 $minimum = $vendor_id ? mdo_sst_minimum_order( $vendor_id ) : 0;
 $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
+
+/*
+ * Sort by the cost the customer can actually pay. If the store minimum already
+ * reaches a free-shipping threshold, that destination is effectively free and
+ * belongs at the top of the table. Unconditional free-shipping rows also rank 0.
+ */
+$effective_cost = static function( array $row ) use ( $minimum ): float {
+    $free_from = ! empty( $row['free_from'] ) ? (float) $row['free_from'] : 0.0;
+
+    if ( $minimum > 0 && $free_from > 0 && ( $minimum + 0.0001 ) >= $free_from ) {
+        return 0.0;
+    }
+
+    if ( ! empty( $row['notes'] ) && is_array( $row['notes'] ) ) {
+        foreach ( $row['notes'] as $note ) {
+            $plain = remove_accents( strtolower( trim( wp_strip_all_tags( (string) $note ) ) ) );
+            if ( false !== strpos( $plain, 'envio gratuito' ) || false !== strpos( $plain, 'free shipping' ) ) {
+                return 0.0;
+            }
+        }
+    }
+
+    if ( isset( $row['sort_cost'] ) && is_numeric( $row['sort_cost'] ) ) {
+        return max( 0.0, (float) $row['sort_cost'] );
+    }
+
+    return PHP_FLOAT_MAX;
+};
+
+usort(
+    $rows,
+    static function( array $a, array $b ) use ( $effective_cost ): int {
+        $cost_compare = $effective_cost( $a ) <=> $effective_cost( $b );
+        if ( 0 !== $cost_compare ) {
+            return $cost_compare;
+        }
+
+        return strcasecmp(
+            remove_accents( mdo_sst_row_display_name( $a ) ),
+            remove_accents( mdo_sst_row_display_name( $b ) )
+        );
+    }
+);
 ?>
 
 <div class="mdo-store-shipping" aria-labelledby="mdo-store-shipping-title">
     <style>
         #wcfmmp-store .mdo-store-shipping {
-            margin: 4px 0 24px;
+            margin: 20px 0 24px;
             padding: 22px;
             border: 1px solid rgba(0,0,0,.08);
             border-radius: 12px;
@@ -59,11 +102,6 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
             font-size: 1.15em;
             font-weight: 750;
             white-space: nowrap;
-        }
-        #wcfmmp-store .mdo-store-shipping__intro {
-            margin: 0 0 18px;
-            color: #666;
-            line-height: 1.55;
         }
         #wcfmmp-store .mdo-store-shipping__table-wrap {
             overflow-x: auto;
@@ -134,6 +172,7 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
         }
         @media (max-width: 600px) {
             #wcfmmp-store .mdo-store-shipping {
+                margin-top: 16px;
                 padding: 16px;
             }
             #wcfmmp-store .mdo-store-shipping__minimum {
@@ -165,17 +204,6 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
         </div>
     <?php endif; ?>
 
-    <p class="mdo-store-shipping__intro">
-        <?php
-        echo esc_html(
-            mdo_sst_text(
-                'Consulta los destinos a los que envía este productor y el coste configurado actualmente para cada uno.',
-                'See where this producer ships and the current shipping cost for each destination.'
-            )
-        );
-        ?>
-    </p>
-
     <?php if ( ! empty( $rows ) ) : ?>
         <div class="mdo-store-shipping__table-wrap">
             <table class="mdo-store-shipping__table">
@@ -194,8 +222,19 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
                         // showing the threshold (and the lower flat rate) would be redundant.
                         $minimum_guarantees_free = $minimum > 0 && $free_from > 0 && ( $minimum + 0.0001 ) >= $free_from;
 
+                        $unconditional_free = false;
+                        if ( ! empty( $row['notes'] ) && is_array( $row['notes'] ) ) {
+                            foreach ( $row['notes'] as $note ) {
+                                $plain_note = remove_accents( strtolower( trim( wp_strip_all_tags( (string) $note ) ) ) );
+                                if ( false !== strpos( $plain_note, 'envio gratuito' ) || false !== strpos( $plain_note, 'free shipping' ) ) {
+                                    $unconditional_free = true;
+                                    break;
+                                }
+                            }
+                        }
+
                         $details = array();
-                        if ( ! $minimum_guarantees_free && $free_from > 0 ) {
+                        if ( ! $minimum_guarantees_free && ! $unconditional_free && $free_from > 0 ) {
                             $details[] = sprintf(
                                 '%s %s',
                                 mdo_sst_text( 'Envío gratuito a partir de', 'Free shipping from' ),
@@ -204,6 +243,10 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
                         }
                         if ( ! empty( $row['notes'] ) ) {
                             foreach ( $row['notes'] as $note ) {
+                                $plain_note = remove_accents( strtolower( trim( wp_strip_all_tags( (string) $note ) ) ) );
+                                if ( $unconditional_free && ( false !== strpos( $plain_note, 'envio gratuito' ) || false !== strpos( $plain_note, 'free shipping' ) ) ) {
+                                    continue;
+                                }
                                 $details[] = trim( (string) $note );
                             }
                         }
@@ -214,7 +257,7 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
                                 <?php echo esc_html( mdo_sst_row_display_name( $row ) ); ?>
                             </td>
                             <td class="mdo-store-shipping__cost">
-                                <?php if ( $minimum_guarantees_free ) : ?>
+                                <?php if ( $minimum_guarantees_free || $unconditional_free ) : ?>
                                     <span class="mdo-store-shipping__free">
                                         <?php echo esc_html( mdo_sst_text( 'Envío gratuito', 'Free shipping' ) ); ?>
                                     </span>
