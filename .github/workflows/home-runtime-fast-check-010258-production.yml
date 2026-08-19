@@ -47,3 +47,4 @@ jobs:
           git commit -m 'Record Home runtime fast check' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+# recheck after direct production deploy
