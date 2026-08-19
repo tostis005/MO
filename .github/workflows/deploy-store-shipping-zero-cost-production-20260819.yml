@@ -1,0 +1,136 @@
+name: Deploy zero-cost shipping normalizer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-store-shipping-zero-cost-production-20260819.yml'
+      - 'mu-plugins/mdo-store-shipping-zero-cost-free-20260819.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-store-shipping-zero-cost-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-store-shipping-zero-cost-free-20260819.php
+          grep -Fq "mdo_store_shipping_rows" mu-plugins/mdo-store-shipping-zero-cost-free-20260819.php
+          grep -Fq "sort_cost" mu-plugins/mdo-store-shipping-zero-cost-free-20260819.php
+      - name: Install helpers
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Find production WordPress path
+        id: prod
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "path=$PROD_PATH" >> "$GITHUB_OUTPUT"
+      - name: Deploy MU-plugin
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.prod.outputs.path }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          REMOTE="/tmp/mdo-store-shipping-zero-cost-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-store-shipping-zero-cost-free-20260819.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-store-shipping-zero-cost-free-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$TARGET.bak-$GITHUB_RUN_ID'; fi; mv '$REMOTE' '$TARGET'; chmod 0644 '$TARGET'; \"\$php_bin\" -l '$TARGET'"
+      - name: Verify zero normalizer in WordPress
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.prod.outputs.path }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            if(!function_exists(\"mdo_sst_zcf_normalize_rows\")){fwrite(STDERR,\"ZERO_NORMALIZER_NOT_LOADED\\n\");exit(7);}
+            \$rows=mdo_sst_zcf_normalize_rows(array(array(\"name\"=>\"España Península\",\"flat_costs\"=>array(),\"sort_cost\"=>0,\"free_from\"=>0,\"notes\"=>array())),3,\"by_zone\");
+            \$notes=(array)(\$rows[0][\"notes\"]??array()); if(!in_array(\"Envío gratuito\",\$notes,true)){fwrite(STDERR,\"ZERO_NORMALIZER_FAILED\\n\");exit(8);} echo \"ZERO_NORMALIZER_OK\\n\";
+          ' --path='$PROD_PATH' --allow-root"
+      - name: Flush WordPress caches
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.prod.outputs.path }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify 1957 public Shipping row
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/tienda/1957/?mdo_shipping=1&emdo_zero_shipping_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO zero shipping verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/shipping1957.html "$URL"
+          python3 - <<'PY'
+          import html,re
+          s=open('/tmp/shipping1957.html',encoding='utf-8',errors='ignore').read()
+          rows=re.findall(r'<tr\b[^>]*>(.*?)</tr>',s,flags=re.I|re.S)
+          target=None
+          for row in rows:
+              text=html.unescape(re.sub(r'<[^>]+>',' ',row))
+              text=re.sub(r'\s+',' ',text).strip()
+              if 'España Península' in text:
+                  target=text
+                  break
+          if target is None:
+              raise SystemExit('MAINLAND_SPAIN_ROW_NOT_FOUND')
+          print('MAINLAND_ROW=' + target)
+          if 'Envío gratuito' not in target:
+              raise SystemExit('MAINLAND_ZERO_NOT_RENDERED_AS_FREE')
+          if 'Consultar condiciones' in target:
+              raise SystemExit('MAINLAND_STILL_SHOWS_CONDITIONS')
+          print('1957_ZERO_SHIPPING_PUBLIC_OK')
+          PY
+      - name: Record deployment result
+        if: always()
+        env:
+          DEPLOY_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cat > .deploy-status/store-shipping-zero-cost-production.txt <<EOF
+          status=${DEPLOY_STATUS}
+          source_sha=${GITHUB_SHA}
+          run_id=${GITHUB_RUN_ID}
+          finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/store-shipping-zero-cost-production.txt
+          git commit -m 'Record zero-cost shipping deployment [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
