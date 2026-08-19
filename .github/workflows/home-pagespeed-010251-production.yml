@@ -17,7 +17,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -26,6 +26,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate PHP
         shell: bash
@@ -45,17 +47,20 @@ jobs:
           set -euo pipefail
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          echo 'Installing SSH helper'
+          timeout 90s sudo apt-get update -qq
+          timeout 90s sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
           PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
 
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+          echo 'Discovering production path'
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true)
             php_bin=$(command -v php || true)
             [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
               p=$(dirname "$cfg")
               url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
@@ -65,15 +70,17 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
+          echo 'Production path found'
 
           REMOTE_DIR="/tmp/elmercado-pagespeed-${GITHUB_RUN_ID}"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/inc' '$REMOTE_DIR/scripts'"
-          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/functions.php"
-          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-performance-second-pass-010147.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-performance-second-pass-010147.php"
-          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-inline-jquery-010148.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-inline-jquery-010148.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/pagespeed-production-010251.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/scripts/pagespeed-production-010251.php"
+          timeout 45s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/inc' '$REMOTE_DIR/scripts'"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/functions.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-performance-second-pass-010147.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-performance-second-pass-010147.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-inline-jquery-010148.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-inline-jquery-010148.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS .github/scripts/pagespeed-production-010251.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/scripts/pagespeed-production-010251.php"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+          echo 'Installing production files'
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             THEME_PATH='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
             test -d \"\$THEME_PATH/inc\"
@@ -96,7 +103,7 @@ jobs:
             \"\$php_bin\" -l \"\$THEME_PATH/functions.php\"
             \"\$php_bin\" -l \"\$THEME_PATH/inc/home-performance-second-pass-010147.php\"
             \"\$php_bin\" -l \"\$THEME_PATH/inc/home-inline-jquery-010148.php\"
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DIR/scripts/pagespeed-production-010251.php' --path='$PROD_PATH' --allow-root
+            timeout 90s \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DIR/scripts/pagespeed-production-010251.php' --path='$PROD_PATH' --allow-root
             rm -rf '$REMOTE_DIR'
             printf 'Backup: %s\n' \"\$BACKUP_DIR\"
           "
@@ -113,7 +120,7 @@ jobs:
 
           echo '--- Fresh Home response ---' | tee -a /tmp/pagespeed-verification.txt
           HOME_HTML="$(mktemp)"
-          curl -fsS --compressed --max-time 45 -D /tmp/home-headers.txt https://www.elmercadodeorigen.com/ -o "$HOME_HTML"
+          curl -fsS --compressed --max-time 45 -D /tmp/home-headers.txt "https://www.elmercadodeorigen.com/?psverify=${GITHUB_RUN_ID}" -o "$HOME_HTML"
           grep -Ei '^(HTTP/|x-el-mercado-cache:|cache-control:)' /tmp/home-headers.txt | tee -a /tmp/pagespeed-verification.txt || true
           printf 'HTML bytes: %s\n' "$(wc -c < "$HOME_HTML")" | tee -a /tmp/pagespeed-verification.txt
 
@@ -156,4 +163,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add runtime/home-pagespeed-010251.txt
           git commit -m 'Record Home PageSpeed production verification' || exit 0
+          git pull --rebase origin main
           git push origin HEAD:main
