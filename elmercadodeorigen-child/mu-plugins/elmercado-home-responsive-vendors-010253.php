@@ -1,12 +1,9 @@
 <?php
 /**
- * Final responsive-image pass for the Home producer collage.
+ * Responsive-image pass for the Home producer collage.
  *
- * The legacy Home MU plugin builds producer cards from raw WCFM banner URLs,
- * which bypasses WordPress responsive image markup. This outer output buffer
- * runs before that legacy buffer is opened, so its callback receives the final
- * producer collage and upgrades only its <img> tags to attachment-backed
- * medium_large markup with srcset/sizes.
+ * Adds small, card-specific crops for the two oversized producer images called
+ * out by Lighthouse, while keeping the original media untouched everywhere else.
  *
  * @package ElMercadoDeOrigen
  */
@@ -14,6 +11,15 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+add_action(
+	'after_setup_theme',
+	static function (): void {
+		add_image_size( 'elmercado_vendor_square_400', 400, 400, true );
+		add_image_size( 'elmercado_vendor_landscape_450', 450, 300, true );
+	},
+	PHP_INT_MAX
+);
 
 function elmercado_home_responsive_vendor_images_010253( string $html ): string {
 	if ( '' === $html || false === strpos( $html, 'emo-hero__visual--vendors' ) ) {
@@ -60,11 +66,19 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 				$loading = strtolower( $loading_match[2] );
 			}
 
+			$size = 'medium_large';
+			if ( 11052 === $attachment_id ) {
+				$size = 'elmercado_vendor_square_400';
+			} elseif ( 12667 === $attachment_id ) {
+				$size = 'elmercado_vendor_landscape_450';
+			}
+
 			$responsive = wp_get_attachment_image(
 				$attachment_id,
-				'medium_large',
+				$size,
 				false,
 				array(
+					'class'    => 'emo-home-vendor-responsive-image',
 					'alt'      => $alt,
 					'loading'  => $loading,
 					'decoding' => 'async',
