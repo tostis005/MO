@@ -14,26 +14,15 @@ jobs:
   diagnose:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install helpers
+      - name: Inspect live DOM and WCFM styles
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass python3-bs4 >/dev/null
-
-      - name: Inspect live DOM and shipping costs
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends python3-bs4 >/dev/null
           mkdir -p .deploy-status
           OUT=.deploy-status/shipping-layout-qty-diagnostic.txt
           : > "$OUT"
@@ -45,6 +34,8 @@ jobs:
 
           python3 - <<'PY' >> "$OUT"
           from bs4 import BeautifulSoup
+          import re, urllib.request
+
           for label, path, selector in [
               ('PRODUCTS','/tmp/products.html','.products'),
               ('SHIPPING','/tmp/shipping.html','.mdo-store-shipping'),
@@ -57,7 +48,7 @@ jobs:
                   print('NOT_FOUND')
                   continue
               cur=node
-              for i in range(8):
+              for i in range(10):
                   if not cur or not getattr(cur,'name',None): break
                   attrs=[]
                   if cur.get('id'): attrs.append('#'+cur.get('id'))
@@ -68,43 +59,26 @@ jobs:
               if tabs:
                   print('TAB_PARENT', tabs.parent.name, tabs.parent.get('id'), tabs.parent.get('class'))
                   print('TAB_GRANDPARENT', tabs.parent.parent.name, tabs.parent.parent.get('id'), tabs.parent.parent.get('class'))
+
+          soup=BeautifulSoup(open('/tmp/products.html',encoding='utf-8',errors='ignore').read(),'html.parser')
+          print('=== RELEVANT CSS RULES ===')
+          selectors=('tab_area','tab_links_area','product_area','products-wrapper','#products')
+          for link in soup.find_all('link', href=True):
+              href=link['href']
+              if '.css' not in href: continue
+              try:
+                  req=urllib.request.Request(href,headers={'User-Agent':'Mozilla/5.0'})
+                  css=urllib.request.urlopen(req,timeout=10).read().decode('utf-8','ignore')
+              except Exception:
+                  continue
+              if not any(s in css for s in selectors):
+                  continue
+              print('CSS', href)
+              for m in re.finditer(r'([^{}]+)\{([^{}]+)\}',css):
+                  sel=m.group(1).strip(); body=m.group(2).strip()
+                  if any(s in sel for s in selectors):
+                      print(sel+'{'+body+'}')
           PY
-
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
-            global \$wpdb;
-            if (!class_exists(\"MDO_Database\") || !function_exists(\"wcfmmp_get_shipping_zone\")) { echo \"MISSING_RUNTIME\\n\"; return; }
-            \$table=MDO_Database::table(\"suppliers\");
-            \$vendors=\$wpdb->get_results(\"SELECT id,name,vendor_user_id FROM {\$table} WHERE vendor_user_id IS NOT NULL ORDER BY id ASC\", ARRAY_A);
-            foreach (\$vendors as \$vendor) {
-              \$vid=(int)\$vendor[\"vendor_user_id\"];
-              echo \"VENDOR \",\$vid,\" | \",\$vendor[\"name\"],\"\\n\";
-              \$zones=wcfmmp_get_shipping_zone(\"\",\$vid);
-              foreach ((array)\$zones as \$zone) {
-                \$z=(array)\$zone;
-                echo \"  ZONE \",(\$z[\"zone_name\"]??\$z[\"name\"]??\"?\"),\"\\n\";
-                foreach ((array)(\$z[\"shipping_methods\"]??array()) as \$method) {
-                  \$m=(array)\$method; \$s=\$m[\"settings\"]??array(); if (is_string(\$s)) \$s=maybe_unserialize(\$s); if (!is_array(\$s)) \$s=array();
-                  echo \"    METHOD \",(\$m[\"method_id\"]??\$m[\"id\"]??\"?\"),\" cost=\",(string)(\$s[\"cost\"]??\$m[\"cost\"]??\"\"),\" title=\",(string)(\$s[\"title\"]??\$m[\"title\"]??\"\"),\"\\n\";
-                }
-              }
-            }
-          ' --path='$PROD_PATH' --allow-root" >> "$OUT"
 
           cat "$OUT"
 
@@ -114,6 +88,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/shipping-layout-qty-diagnostic.txt
-          git commit -m 'Record shipping layout and quantity diagnostic [skip ci]' || exit 0
+          git commit -m 'Record WCFM shipping shell style diagnostic [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
