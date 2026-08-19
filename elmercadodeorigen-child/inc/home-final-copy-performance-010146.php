@@ -109,7 +109,6 @@ add_filter(
 			if ( str_contains( $href, $needle ) ) {
 				return '';
 			}
-		}
 
 		return $html;
 	},
@@ -128,7 +127,6 @@ add_filter(
 			if ( str_contains( $src, $needle ) ) {
 				return '';
 			}
-		}
 
 		return $html;
 	},
@@ -156,11 +154,20 @@ add_action(
 
 /**
  * Convierte las imágenes de las tarjetas de productores de la portada en
- * imágenes responsive de WordPress. Evita descargar el JPG original de varios
- * megapíxeles cuando la tarjeta se muestra a unos 375 px.
+ * imágenes responsive de WordPress. Algunas capas históricas eliminan la clase
+ * de la tarjeta en el HTML final, por eso también se reconocen por su adjunto.
  */
 function elmercado_home_responsive_producer_cards_010252( string $html ): string {
-	if ( '' === $html || ! str_contains( $html, 'emo-hero-card__image' ) || ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+	if ( '' === $html || ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+		return $html;
+	}
+
+	if (
+		! str_contains( $html, 'emo-hero-card__image' )
+		&& ! str_contains( $html, 'Tolecarnes-fondo' )
+		&& ! str_contains( $html, 'JAMON_ACTO_ECOLOGICO1' )
+		&& ! str_contains( $html, 'Aceite-sin-filtrar' )
+	) {
 		return $html;
 	}
 
@@ -169,12 +176,16 @@ function elmercado_home_responsive_producer_cards_010252( string $html ): string
 
 	while ( $processor->next_tag( 'img' ) ) {
 		$class = (string) $processor->get_attribute( 'class' );
-		if ( ! str_contains( $class, 'emo-hero-card__image' ) ) {
+		$src   = (string) $processor->get_attribute( 'src' );
+		if ( '' === $src ) {
 			continue;
 		}
 
-		$src = (string) $processor->get_attribute( 'src' );
-		if ( '' === $src ) {
+		$is_producer_card = str_contains( $class, 'emo-hero-card__image' )
+			|| str_contains( $src, 'Tolecarnes-fondo' )
+			|| str_contains( $src, 'JAMON_ACTO_ECOLOGICO1' )
+			|| str_contains( $src, 'Aceite-sin-filtrar' );
+		if ( ! $is_producer_card ) {
 			continue;
 		}
 
