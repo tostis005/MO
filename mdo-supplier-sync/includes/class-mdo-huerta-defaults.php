@@ -5,7 +5,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class MDO_Huerta_Defaults {
-	private const CATEGORY_SLUG = 'hortalizas-verduras';
+	private const BASE_CATEGORY_SLUG      = 'hortalizas-verduras';
+	private const CONSERVAS_CATEGORY_SLUG = 'conservas';
+	private const CONSERVAS_URL_FRAGMENT  = '/conservas-3/';
 
 	public static function init(): void {
 		add_action( 'save_post_product', array( __CLASS__, 'on_product_save' ), 30, 3 );
@@ -18,14 +20,14 @@ final class MDO_Huerta_Defaults {
 		if ( wp_is_post_revision( $post_id ) || 'product' !== $post->post_type ) {
 			return;
 		}
-		self::assign_category_if_huerta( $post_id );
+		self::assign_categories_if_huerta( $post_id );
 	}
 
 	public static function on_post_meta( int $meta_id, int $object_id, string $meta_key, mixed $meta_value ): void {
-		if ( '_emdo_supplier_id' !== $meta_key || 'product' !== get_post_type( $object_id ) ) {
+		if ( ! in_array( $meta_key, array( '_emdo_supplier_id', '_emdo_source_url' ), true ) || 'product' !== get_post_type( $object_id ) ) {
 			return;
 		}
-		self::assign_category_if_huerta( $object_id );
+		self::assign_categories_if_huerta( $object_id );
 	}
 
 	public static function image_request_args( array $args, string $url ): array {
@@ -44,7 +46,7 @@ final class MDO_Huerta_Defaults {
 		return $args;
 	}
 
-	private static function assign_category_if_huerta( int $product_id ): void {
+	private static function assign_categories_if_huerta( int $product_id ): void {
 		$supplier_id = absint( get_post_meta( $product_id, '_emdo_supplier_id', true ) );
 		if ( ! $supplier_id ) {
 			return;
@@ -53,10 +55,27 @@ final class MDO_Huerta_Defaults {
 		if ( ! $supplier || 'la-huerta-ana-mary' !== (string) ( $supplier['connector'] ?? '' ) ) {
 			return;
 		}
-		$term = get_term_by( 'slug', self::CATEGORY_SLUG, 'product_cat' );
-		if ( ! $term || is_wp_error( $term ) ) {
+
+		$base_term = get_term_by( 'slug', self::BASE_CATEGORY_SLUG, 'product_cat' );
+		if ( $base_term && ! is_wp_error( $base_term ) ) {
+			wp_set_object_terms( $product_id, array( (int) $base_term->term_id ), 'product_cat', true );
+		}
+
+		$source_url = (string) get_post_meta( $product_id, '_emdo_source_url', true );
+		if ( '' === $source_url ) {
 			return;
 		}
-		wp_set_object_terms( $product_id, array( (int) $term->term_id ), 'product_cat', true );
+
+		$conservas_term = get_term_by( 'slug', self::CONSERVAS_CATEGORY_SLUG, 'product_cat' );
+		if ( ! $conservas_term || is_wp_error( $conservas_term ) ) {
+			return;
+		}
+
+		if ( str_contains( strtolower( $source_url ), self::CONSERVAS_URL_FRAGMENT ) ) {
+			wp_set_object_terms( $product_id, array( (int) $conservas_term->term_id ), 'product_cat', true );
+			return;
+		}
+
+		wp_remove_object_terms( $product_id, (int) $conservas_term->term_id, 'product_cat' );
 	}
 }
