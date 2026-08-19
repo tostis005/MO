@@ -53,7 +53,6 @@ function elmercado_home_unused_script_sources_010146(): array {
 		'/plugins/wc-frontend-manager/',
 		'cdn.trustindex.io/loader.js',
 		'/wp-includes/js/jquery/ui/core.min.js',
-		'/wp-includes/js/dist/hooks.min.js',
 		'/wp-includes/js/dist/i18n.min.js',
 		'/themes/woostify/assets/js/arrive.min.js',
 		'/themes/woostify/assets/js/woocommerce/quantity-button.min.js',
@@ -135,6 +134,86 @@ add_filter(
 	},
 	PHP_INT_MAX,
 	3
+);
+
+/**
+ * wp-hooks es dependencia real de Google Listings. La optimización histórica
+ * lo retiraba junto con recursos no usados; se recupera al final de la cola.
+ */
+add_action(
+	'wp_enqueue_scripts',
+	static function (): void {
+		if ( ! function_exists( 'elmercado_is_optimized_home' ) || ! elmercado_is_optimized_home() ) {
+			return;
+		}
+
+		if ( wp_script_is( 'wp-hooks', 'registered' ) ) {
+			wp_enqueue_script( 'wp-hooks' );
+		}
+	},
+	PHP_INT_MAX
+);
+
+/**
+ * Convierte las imágenes de las tarjetas de productores de la portada en
+ * imágenes responsive de WordPress. Evita descargar el JPG original de varios
+ * megapíxeles cuando la tarjeta se muestra a unos 375 px.
+ */
+function elmercado_home_responsive_producer_cards_010252( string $html ): string {
+	if ( '' === $html || ! str_contains( $html, 'emo-hero-card__image' ) || ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+		return $html;
+	}
+
+	$processor = new WP_HTML_Tag_Processor( $html );
+	$changed   = false;
+
+	while ( $processor->next_tag( 'img' ) ) {
+		$class = (string) $processor->get_attribute( 'class' );
+		if ( ! str_contains( $class, 'emo-hero-card__image' ) ) {
+			continue;
+		}
+
+		$src = (string) $processor->get_attribute( 'src' );
+		if ( '' === $src ) {
+			continue;
+		}
+
+		$attachment_id = attachment_url_to_postid( $src );
+		if ( ! $attachment_id ) {
+			continue;
+		}
+
+		$image  = wp_get_attachment_image_src( $attachment_id, 'medium_large' );
+		$srcset = wp_get_attachment_image_srcset( $attachment_id, 'medium_large' );
+		if ( ! is_array( $image ) || empty( $image[0] ) || ! is_string( $srcset ) || '' === $srcset ) {
+			continue;
+		}
+
+		$processor->set_attribute( 'src', $image[0] );
+		$processor->set_attribute( 'srcset', $srcset );
+		$processor->set_attribute( 'sizes', '(max-width: 767px) calc(100vw - 32px), 375px' );
+		$processor->set_attribute( 'loading', 'lazy' );
+		$processor->set_attribute( 'decoding', 'async' );
+		$changed = true;
+	}
+
+	return $changed ? $processor->get_updated_html() : $html;
+}
+
+/*
+ * El buffer de home-cache se abre antes (-2000). Este buffer interior procesa
+ * primero el documento y entrega la versión responsive a la caché de portada.
+ */
+add_action(
+	'template_redirect',
+	static function (): void {
+		if ( ! function_exists( 'elmercado_is_optimized_home' ) || ! elmercado_is_optimized_home() ) {
+			return;
+		}
+
+		ob_start( 'elmercado_home_responsive_producer_cards_010252' );
+	},
+	-1900
 );
 
 /**
