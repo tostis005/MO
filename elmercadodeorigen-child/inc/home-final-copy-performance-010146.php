@@ -109,7 +109,6 @@ add_filter(
 			if ( str_contains( $href, $needle ) ) {
 				return '';
 			}
-		}
 
 		return $html;
 	},
@@ -128,7 +127,6 @@ add_filter(
 			if ( str_contains( $src, $needle ) ) {
 				return '';
 			}
-		}
 
 		return $html;
 	},
@@ -156,8 +154,8 @@ add_action(
 
 /**
  * Convierte las imágenes grandes de productores de la portada en fuentes
- * responsive. Los IDs corresponden a los adjuntos reales de producción y el
- * fallback resuelve cualquier productor adicional por URL.
+ * responsive. Se inspecciona cada etiqueta img y solo se cambian los adjuntos
+ * conocidos de productores, evitando depender de clases que otras capas quitan.
  */
 function elmercado_home_responsive_producer_cards_010252( string $html ): string {
 	if (
@@ -172,34 +170,36 @@ function elmercado_home_responsive_producer_cards_010252( string $html ): string
 	}
 
 	$known_attachments = array(
-		'Tolecarnes-fondo'     => 11052,
+		'Tolecarnes-fondo'      => 11052,
 		'JAMON_ACTO_ECOLOGICO1' => 12667,
 	);
 
 	$rewritten = preg_replace_callback(
-		'~<img\b[^>]*\bsrc=(["\'])([^"\']*(?:Tolecarnes-fondo|JAMON_ACTO_ECOLOGICO1|Aceite-sin-filtrar)[^"\']*)\1[^>]*>~i',
+		'~<img\b[^>]*>~i',
 		static function ( array $matches ) use ( $known_attachments ): string {
 			$tag = $matches[0];
-			$src = $matches[2];
 			$id  = 0;
 
 			foreach ( $known_attachments as $needle => $attachment_id ) {
-				if ( str_contains( $src, $needle ) ) {
+				if ( str_contains( $tag, $needle ) ) {
 					$id = $attachment_id;
 					break;
 				}
 			}
 
-			if ( ! $id ) {
-				$id = attachment_url_to_postid( $src );
+			if ( ! $id && str_contains( $tag, 'Aceite-sin-filtrar' ) ) {
+				if ( preg_match( '~\bsrc=(["\'])(.*?)\1~i', $tag, $src_match ) ) {
+					$id = attachment_url_to_postid( html_entity_decode( $src_match[2], ENT_QUOTES ) );
+				}
 			}
+
 			if ( ! $id ) {
 				return $tag;
 			}
 
 			$image  = wp_get_attachment_image_src( $id, 'medium_large' );
 			$srcset = wp_get_attachment_image_srcset( $id, 'medium_large' );
-			if ( ! is_array( $image ) || empty( $image[0] ) || ! is_string( $srcset ) || '' === $srcset ) {
+			if ( ! is_array( $image ) || empty( $image[0] ) || ! is_string( $srcset ) || '' === trim( $srcset ) ) {
 				return $tag;
 			}
 
@@ -209,7 +209,7 @@ function elmercado_home_responsive_producer_cards_010252( string $html ): string
 
 			$self_closing = str_ends_with( rtrim( $tag ), '/>' );
 			$tag          = preg_replace( '~\s*/?>$~', '', $tag ) ?? $tag;
-			$tag         .= ' srcset="' . esc_attr( $srcset ) . '" sizes="(max-width: 767px) calc(100vw - 32px), 375px"';
+			$tag         .= ' srcset="' . esc_attr( $srcset ) . '" sizes="(max-width: 767px) calc(100vw - 32px), 375px" data-emo-responsive="1"';
 			$tag         .= $self_closing ? ' />' : '>';
 
 			return $tag;
@@ -221,8 +221,8 @@ function elmercado_home_responsive_producer_cards_010252( string $html ): string
 }
 
 /*
- * El buffer de home-cache se abre antes (-2000). Este buffer interior procesa
- * primero el documento y entrega la versión responsive a la caché de portada.
+ * Mantiene una segunda protección sobre la salida dinámica. La caché de Home
+ * también llama directamente a esta función antes de guardar su HTML.
  */
 add_action(
 	'template_redirect',
