@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           php -l mu-plugins/mdo-internal-mentta-category.php >/dev/null
           php -l .github/scripts/verify-mentta-storefront-ajax-live-20260819.php >/dev/null
-          grep -Fq 'Version: 1.2.0' mu-plugins/mdo-internal-mentta-category.php
+          grep -Fq 'Version: 1.2.1' mu-plugins/mdo-internal-mentta-category.php
           grep -Fq 'HTTP_REFERER' mu-plugins/mdo-internal-mentta-category.php
 
       - name: Deploy and verify production
@@ -77,6 +77,7 @@ jobs:
             cp '$REMOTE_PLUGIN' '$PROD_PATH/wp-content/mu-plugins/mdo-internal-mentta-category.php'
             rm -f '$REMOTE_PLUGIN'
             \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-internal-mentta-category.php' >/dev/null
+            grep -Fq 'Version: 1.2.1' '$PROD_PATH/wp-content/mu-plugins/mdo-internal-mentta-category.php'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
             rm -rf '$PROD_PATH/wp-content/cache/'* 2>/dev/null || true
             rm -rf '$PROD_PATH/wp-content/litespeed/'* 2>/dev/null || true
@@ -89,7 +90,7 @@ jobs:
           set -e
           cat runtime/mentta-storefront-ajax-live-20260819.json
           jq . runtime/mentta-storefront-ajax-live-20260819.json >/dev/null
-          jq -e '.ok==true and .plugin_loaded==true and .version_1_2==true and .ajax_hidden==true and .term_absent==true' runtime/mentta-storefront-ajax-live-20260819.json >/dev/null
+          jq -e '.ok==true and .plugin_loaded==true and .version_1_2_1==true and .ajax_hidden==true and .term_absent==true' runtime/mentta-storefront-ajax-live-20260819.json >/dev/null
           test "$RC" -eq 0
 
       - name: Commit deployment evidence
