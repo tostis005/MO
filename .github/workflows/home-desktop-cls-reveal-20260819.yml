@@ -1,0 +1,171 @@
+name: Home desktop CLS reveal experiment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-desktop-cls-reveal-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-desktop-cls-reveal-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-measure-keep-or-revert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch producer mosaic paint timing
+        shell: bash
+        run: |
+          set -euo pipefail
+          CRIT='elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+          JS='elmercadodeorigen-child/assets/js/theme.js'
+          cp "$CRIT" /tmp/critical-before.css
+          cp "$JS" /tmp/theme-before.js
+          python3 - <<'PY'
+          from pathlib import Path
+          crit=Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
+          s=crit.read_text()
+          marker='/*mdo-desktop-vendors-paint-stable-20260819*/'
+          if marker not in s:
+              s += '''\n/*mdo-desktop-vendors-paint-stable-20260819*/\n@media(min-width:992px){body.home:not(.emo-vendors-stable) .emo-hero__visual--vendors{visibility:hidden!important}}\n'''
+          crit.write_text(s)
+
+          js=Path('elmercadodeorigen-child/assets/js/theme.js')
+          t=js.read_text()
+          marker_js='// mdo-desktop-vendors-paint-stable-20260819'
+          needle="\tbody.classList.add('emo-js-ready');"
+          if marker_js not in t:
+              insert="""\n\t// mdo-desktop-vendors-paint-stable-20260819\n\tif (isHome) {\n\t\tconst revealStableVendors = () => window.requestAnimationFrame(() =>\n\t\t\twindow.requestAnimationFrame(() => body.classList.add('emo-vendors-stable'))\n\t\t);\n\t\tif (document.readyState === 'complete') revealStableVendors();\n\t\telse window.addEventListener('load', revealStableVendors, { once: true });\n\t}\n"""
+              if needle not in t:
+                  raise SystemExit('theme insertion point missing')
+              t=t.replace(needle,needle+insert,1)
+          js.write_text(t)
+          PY
+          grep -q 'mdo-desktop-vendors-paint-stable-20260819' "$CRIT"
+          grep -q 'mdo-desktop-vendors-paint-stable-20260819' "$JS"
+
+      - name: Deploy experiment and purge Home caches
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "$PROD_PATH" > /tmp/prod-path
+          REMOTE_CRIT="/tmp/cls-reveal-critical-${GITHUB_RUN_ID}.css"
+          REMOTE_JS="/tmp/cls-reveal-theme-${GITHUB_RUN_ID}.js"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:$REMOTE_CRIT"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/js/theme.js "$STAGING_USER@$STAGING_HOST:$REMOTE_JS"
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            install -m 0644 '$REMOTE_CRIT' \"\$THEME/assets/css/critical-woostify-home.min.css\"
+            install -m 0644 '$REMOTE_JS' \"\$THEME/assets/js/theme.js\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f '$REMOTE_CRIT' '$REMOTE_JS'
+          "
+
+      - name: Warm and measure desktop Lighthouse 3x
+        id: measure
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          URL='https://www.elmercadodeorigen.com/'
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 "$URL" -o /dev/null; done
+          curl -fsS --compressed --max-time 45 "$URL" -o /tmp/home.html
+          grep -q 'mdo-desktop-vendors-paint-stable-20260819' /tmp/home.html
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          export CHROME_PATH="$CHROME"
+          for i in 1 2 3; do
+            npx --yes lighthouse@12.8.2 "$URL" --only-categories=performance --form-factor=desktop --screenEmulation.mobile=false --screenEmulation.width=1350 --screenEmulation.height=940 --screenEmulation.deviceScaleFactor=1 --throttling-method=simulate --output=json --output-path="/tmp/lhr-$i.json" --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          done
+          python3 - <<'PY' | tee runtime/home-desktop-cls-reveal-20260819.txt
+          import json,statistics
+          rows=[]
+          for i in range(1,4):
+              r=json.load(open(f'/tmp/lhr-{i}.json')); a=r['audits']
+              row={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue']}
+              rows.append(row); print('run',i,row)
+              for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:8]:
+                  n=item.get('node') or {}; print(' shift',item.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          med={k:statistics.median(x[k] for x in rows) for k in rows[0]}
+          for k,v in med.items(): print('median_'+k+'=',v)
+          keep = med['cls'] < 0.15 and med['lcp'] < 6500
+          print('keep=',str(keep).lower())
+          open('/tmp/keep-experiment','w').write('1' if keep else '0')
+          PY
+          cat runtime/home-desktop-cls-reveal-20260819.txt
+
+      - name: Revert production automatically if not materially better
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEEP=$(cat /tmp/keep-experiment 2>/dev/null || echo 0)
+          if [ "$KEEP" = 1 ]; then
+            echo 'experiment kept'
+            exit 0
+          fi
+          cp /tmp/critical-before.css elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+          cp /tmp/theme-before.js elmercadodeorigen-child/assets/js/theme.js
+          PROD_PATH=$(cat /tmp/prod-path)
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          RC="/tmp/cls-revert-critical-${GITHUB_RUN_ID}.css"; RJ="/tmp/cls-revert-theme-${GITHUB_RUN_ID}.js"
+          timeout 45s sshpass -e scp $SCP_OPTIONS /tmp/critical-before.css "$STAGING_USER@$STAGING_HOST:$RC"
+          timeout 45s sshpass -e scp $SCP_OPTIONS /tmp/theme-before.js "$STAGING_USER@$STAGING_HOST:$RJ"
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e; THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'; install -m 0644 '$RC' \"\$THEME/assets/css/critical-woostify-home.min.css\"; install -m 0644 '$RJ' \"\$THEME/assets/js/theme.js\"; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true; rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html' '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css '$RC' '$RJ'
+          "
+          echo 'production reverted'
+
+      - name: Record result and keep source only on success
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-desktop-cls-reveal-20260819.txt ] || printf 'deploy=%s\nmeasure=%s\nkeep=false\n' '${{ steps.deploy.outcome }}' '${{ steps.measure.outcome }}' > runtime/home-desktop-cls-reveal-20260819.txt
+          KEEP=$(cat /tmp/keep-experiment 2>/dev/null || echo 0)
+          if [ "$KEEP" != 1 ]; then
+            cp /tmp/critical-before.css elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+            cp /tmp/theme-before.js elmercadodeorigen-child/assets/js/theme.js
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-desktop-cls-reveal-20260819.txt elmercadodeorigen-child/assets/css/critical-woostify-home.min.css elmercadodeorigen-child/assets/js/theme.js
+          git commit -m 'Measure desktop Home CLS paint-stability experiment' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
