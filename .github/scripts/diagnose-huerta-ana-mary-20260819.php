@@ -1,5 +1,6 @@
 <?php
 
+// Re-run after EMDO 1.0.15 catalog resolver changes.
 if ( ! defined( 'ABSPATH' ) ) {
 	exit( 1 );
 }
