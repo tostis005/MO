@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
 
+# Audit only: no production changes in this workflow.
 jobs:
   audit:
     runs-on: ubuntu-24.04
