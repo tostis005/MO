@@ -1,0 +1,202 @@
+name: Deploy Home performance pass 2 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-performance-pass2-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-home-performance-pass2-20260819
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch residual reflow sources
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          theme=Path('elmercadodeorigen-child/assets/js/theme.js')
+          s=theme.read_text()
+          old="""\tconst updateScrollState = () => {\n\t\tconst scrolled = window.scrollY > 12;\n\t\tbody.classList.toggle('is-scrolled', scrolled);\n\t\theader?.classList.toggle('is-scrolled', scrolled);\n\t\tscrollFrame = 0;\n\t};"""
+          new="""\tconst updateScrollState = () => {\n\t\tconst scrolled = window.scrollY > 12;\n\t\tif (body.classList.contains('is-scrolled') !== scrolled) {\n\t\t\tbody.classList.toggle('is-scrolled', scrolled);\n\t\t}\n\t\tif (header && header.classList.contains('is-scrolled') !== scrolled) {\n\t\t\theader.classList.toggle('is-scrolled', scrolled);\n\t\t}\n\t\tscrollFrame = 0;\n\t};"""
+          if old not in s and new not in s: raise SystemExit('theme patch target missing')
+          if old in s: theme.write_text(s.replace(old,new,1))
+
+          carousel=Path('elmercadodeorigen-child/inc/product-card-carousel-finish.php')
+          s=carousel.read_text()
+          old="\t\t\t\tnew ResizeObserver(update).observe(track);\n\t\t\t\tupdate();"
+          new="\t\t\t\tnew ResizeObserver(update).observe(track);\n\t\t\t\trequestAnimationFrame(update);"
+          if old not in s and new not in s: raise SystemExit('carousel patch target missing')
+          if old in s: carousel.write_text(s.replace(old,new,1))
+          PY
+          node --check elmercadodeorigen-child/assets/js/theme.js
+          php -l elmercadodeorigen-child/inc/cart-counter-visibility-final.php
+          php -l elmercadodeorigen-child/inc/product-card-carousel-finish.php
+          php -l mu-plugins/mdo-home-performance-20260819.php
+          git diff --check
+
+      - name: Record source patches
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/assets/js/theme.js elmercadodeorigen-child/inc/product-card-carousel-finish.php
+          git commit -m 'Reduce residual Home forced reflows' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Deploy pass 2 and purge Home cache
+        id: deploy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          for f in \
+            mu-plugins/mdo-home-performance-20260819.php \
+            elmercadodeorigen-child/inc/cart-counter-visibility-final.php \
+            elmercadodeorigen-child/inc/product-card-carousel-finish.php \
+            elmercadodeorigen-child/assets/js/theme.js; do
+            remote="/tmp/$(basename "$f")-${GITHUB_RUN_ID}"
+            sshpass -e scp $SCP "$f" "$STAGING_USER@$STAGING_HOST:$remote"
+          done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            MU='$PROD_PATH/wp-content/mu-plugins'
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            STATIC='$PROD_PATH/wp-content/uploads/elmercado-home-static'
+            install -m 0644 '/tmp/mdo-home-performance-20260819.php-${GITHUB_RUN_ID}' \"\$MU/mdo-home-performance-20260819.php\"
+            install -m 0644 '/tmp/cart-counter-visibility-final.php-${GITHUB_RUN_ID}' \"\$THEME/inc/cart-counter-visibility-final.php\"
+            install -m 0644 '/tmp/product-card-carousel-finish.php-${GITHUB_RUN_ID}' \"\$THEME/inc/product-card-carousel-finish.php\"
+            install -m 0644 '/tmp/theme.js-${GITHUB_RUN_ID}' \"\$THEME/assets/js/theme.js\"
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$MU/mdo-home-performance-20260819.php\"
+            \"\$php_bin\" -l \"\$THEME/inc/cart-counter-visibility-final.php\"
+            \"\$php_bin\" -l \"\$THEME/inc/product-card-carousel-finish.php\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f \"\$STATIC/index.html\" \"\$STATIC\"/home-deferred-*.css
+            rm -f /tmp/*-${GITHUB_RUN_ID}
+          "
+
+      - name: Warm and verify live behavior
+        id: verify
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3 4; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/js/theme.js' -o /tmp/theme.js
+          python3 - <<'PY' > runtime/home-performance-pass2-20260819.txt
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import json,re
+          html=Path('/tmp/home.html').read_text(encoding='utf-8',errors='replace')
+          theme=Path('/tmp/theme.js').read_text(encoding='utf-8',errors='replace')
+          class P(HTMLParser):
+              def __init__(self): super().__init__(); self.capi=None; self.direct_unpkg=[]; self.css=[]
+              def handle_starttag(self, tag, attrs):
+                  if tag!='script' and tag!='link': return
+                  d=dict(attrs)
+                  if tag=='script':
+                      if d.get('id')=='facebook-capi-param-builder-js': self.capi=d
+                      if 'clientParamBuilder.bundle.js' in (d.get('src') or ''): self.direct_unpkg.append(d.get('src'))
+                  elif 'home-deferred-' in (d.get('href') or ''): self.css.append(d.get('href'))
+          p=P(); p.feed(html)
+          out={
+            'capi_placeholder':p.capi,
+            'direct_unpkg_scripts':p.direct_unpkg,
+            'deferred_css':p.css,
+            'cart_two_phase':'Fase de lectura' in html and 'Sólo observamos el header' in html,
+            'carousel_raf':'requestAnimationFrame(update);' in html,
+            'theme_guarded_scroll':"classList.contains('is-scrolled') !== scrolled" in theme,
+          }
+          print('deploy=success')
+          print('verify=',json.dumps(out,ensure_ascii=False))
+          assert p.capi and p.capi.get('type')=='application/x-mdo-deferred'
+          assert p.capi.get('data-mdo-src') and 'clientParamBuilder.bundle.js' in p.capi['data-mdo-src']
+          assert not p.direct_unpkg
+          assert p.css
+          assert out['cart_two_phase']
+          assert out['carousel_raf']
+          assert out['theme_guarded_scroll']
+          PY
+          cat runtime/home-performance-pass2-20260819.txt
+
+      - name: Lighthouse three-run comparison
+        id: lighthouse
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do
+            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/pass2-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          done
+          python3 - <<'PY' >> runtime/home-performance-pass2-20260819.txt
+          import json,statistics
+          rows=[]
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/pass2-{i}.json')); x=a['audits']
+              r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':x['cumulative-layout-shift']['numericValue'],'si':round(x['speed-index']['numericValue'])}
+              rows.append(r); print('run',i,r)
+          for k in rows[0]: print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          print('previous_median_score=66')
+          print('previous_median_lcp=3139')
+          print('previous_median_tbt=914')
+          x=json.load(open('/tmp/pass2-2.json'))['audits']
+          for key,v in x.items():
+              title=(v.get('title') or '').lower()
+              if any(term in key.lower() or term in title for term in ('reflow','unused css','unused-css','unminified css','unminified-css','main thread','mainthread','legacy javascript','legacy-javascript','network dependency')):
+                  print('audit',key,'score=',v.get('score'),'numeric=',v.get('numericValue'),'display=',v.get('displayValue'))
+          PY
+          cat runtime/home-performance-pass2-20260819.txt
+
+      - name: Record result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-performance-pass2-20260819.txt ] || printf 'deploy=%s\nverify=%s\nlighthouse=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' '${{ steps.lighthouse.outcome }}' > runtime/home-performance-pass2-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-performance-pass2-20260819.txt
+          git commit -m 'Record Home performance pass 2 verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
