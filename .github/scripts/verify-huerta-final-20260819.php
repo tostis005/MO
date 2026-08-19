@@ -13,8 +13,8 @@ $out = array(
 );
 
 try {
-	if ( '1.0.16' !== (string) $out['plugin_version'] ) {
-		throw new RuntimeException( 'Producción no está ejecutando EMDO 1.0.16.' );
+	if ( '1.0.17' !== (string) $out['plugin_version'] ) {
+		throw new RuntimeException( 'Producción no está ejecutando EMDO 1.0.17.' );
 	}
 
 	$supplier = null;
@@ -114,7 +114,6 @@ try {
 	$out['checks']['encoding_clean'] = empty( $out['catalog']['encoding_issues'] );
 	$out['checks']['catalog_scrape_errors'] = empty( $out['catalog']['errors'] );
 
-	// Actualiza el payload del único producto de prueba ya importado y lo reimporta.
 	global $wpdb;
 	$table = MDO_Database::table( 'source_products' );
 	$source_row = $wpdb->get_row(
@@ -137,13 +136,13 @@ try {
 	$categories = is_wp_error( $categories ) ? array() : array_map( 'intval', $categories );
 
 	$out['smoke_import'] = array(
-		'product_id'        => $product_id,
-		'name'              => $product ? $product->get_name() : '',
-		'image_id'          => $product ? (int) $product->get_image_id() : 0,
-		'gallery_count'     => $product ? count( $product->get_gallery_image_ids() ) : 0,
-		'category_ids'      => $categories,
+		'product_id'          => $product_id,
+		'name'                => $product ? $product->get_name() : '',
+		'image_id'            => $product ? (int) $product->get_image_id() : 0,
+		'gallery_count'       => $product ? count( $product->get_gallery_image_ids() ) : 0,
+		'category_ids'        => $categories,
 		'has_target_category' => in_array( (int) $term->term_id, $categories, true ),
-		'description'       => $product ? wp_strip_all_tags( $product->get_description() ) : '',
+		'description'         => $product ? wp_strip_all_tags( $product->get_description() ) : '',
 	);
 	$out['checks']['smoke_product_same_id'] = 12699 === (int) $product_id;
 	$out['checks']['smoke_has_image']       = $product && (int) $product->get_image_id() > 0;
