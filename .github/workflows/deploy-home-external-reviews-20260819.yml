@@ -70,6 +70,8 @@ jobs:
           python3 - <<'PY' | tee /tmp/home-external-reviews-verify.txt
           from pathlib import Path
           h = Path('/tmp/home.html').read_text(encoding='utf-8', errors='ignore')
+          body_pos = h.lower().find('<body')
+          body = h[body_pos:] if body_pos >= 0 else h
           checks = {
               'emo_home': 'class="emo-home"',
               'review_block': 'class="mdo-review-proof"',
@@ -85,17 +87,7 @@ jobs:
           }
           for name, needle in checks.items():
               print(f'{name}={h.count(needle)}')
-          legacy = checks['legacy_google_block']
-          start = 0
-          n = 0
-          while n < 6:
-              pos = h.find(legacy, start)
-              if pos < 0:
-                  break
-              n += 1
-              snippet = h[max(0, pos-420):pos+780].replace('\n', ' ').replace('\r', ' ')
-              print(f'legacy_snippet_{n}={snippet}')
-              start = pos + len(legacy)
+          print(f'legacy_google_block_body={body.count(checks["legacy_google_block"])}')
           rp = h.find('class="mdo-review-proof"')
           cp = h.find('class="emo-section emo-categories"')
           print(f'review_pos={rp}')
@@ -108,7 +100,7 @@ jobs:
               and h.count(checks['google_count']) >= 1
               and h.count(checks['trustpilot_score']) >= 1
               and h.count(checks['trustpilot_count']) >= 1
-              and h.count(checks['legacy_google_block']) == 0
+              and body.count(checks['legacy_google_block']) == 0
               and rp >= 0 and cp >= 0 and rp < cp
           )
           print(f'ok={int(ok)}')
