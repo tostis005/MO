@@ -58,7 +58,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add runtime/home-lighthouse-performance-010255.txt
-          git commit -m 'Record warmed Home Lighthouse performance' || exit 0
+          git commit -m 'Record final deferred Home Lighthouse performance' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
-# warmed rerun
+# final rerun after jQuery defer
