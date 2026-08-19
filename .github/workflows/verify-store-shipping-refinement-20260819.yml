@@ -1,0 +1,97 @@
+name: Verify refined store shipping in production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-store-shipping-refinement-20260819.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH helper
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Verify production data logic
+        id: verify
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            if (!function_exists(\"mdo_sst_minimum_order\") || !function_exists(\"mdo_sst_shipping_rows\") || !class_exists(\"MDO_Database\")) { exit(20); }
+            global \$wpdb;
+            \$table = MDO_Database::table(\"suppliers\");
+            \$suppliers = \$wpdb->get_results(\"SELECT vendor_user_id, minimum_order_amount FROM {\$table} WHERE vendor_user_id IS NOT NULL ORDER BY id ASC\", ARRAY_A);
+            \$checked = 0; \$minimum_rules = 0; \$row_count = 0;
+            foreach (\$suppliers as \$supplier) {
+                \$vendor_id = (int) \$supplier[\"vendor_user_id\"];
+                if (\$vendor_id <= 0) { continue; }
+                \$checked++;
+                \$expected = is_numeric(\$supplier[\"minimum_order_amount\"]) ? (float) \$supplier[\"minimum_order_amount\"] : 0.0;
+                \$actual = mdo_sst_minimum_order(\$vendor_id);
+                if (\$expected > 0) { \$minimum_rules++; }
+                if (abs(\$expected - \$actual) > 0.001) { fwrite(STDERR, \"MINIMUM_MISMATCH\\n\"); exit(21); }
+
+                \$rows = mdo_sst_shipping_rows(\$vendor_id);
+                \$last = null; \$seen_unknown = false;
+                foreach (\$rows as \$row) {
+                    \$row_count++;
+                    \$known = isset(\$row[\"sort_cost\"]) && is_numeric(\$row[\"sort_cost\"]);
+                    if (\$known) {
+                        if (\$seen_unknown) { fwrite(STDERR, \"KNOWN_COST_AFTER_UNKNOWN\\n\"); exit(22); }
+                        \$cost = (float) \$row[\"sort_cost\"];
+                        if (null !== \$last && \$cost < \$last - 0.0001) { fwrite(STDERR, \"COST_ORDER_INVALID\\n\"); exit(23); }
+                        \$last = \$cost;
+                    } else {
+                        \$seen_unknown = true;
+                    }
+                    \$label = mdo_sst_row_display_name(\$row);
+                    if (\"\" === trim(\$label)) { fwrite(STDERR, \"EMPTY_PUBLIC_LABEL\\n\"); exit(24); }
+                    if (!mdo_sst_is_mainland_spain_row(\$row) && !empty(\$row[\"locations\"])) {
+                        \$expected_label = implode(\", \", array_values(array_unique(array_filter(array_map(\"trim\", \$row[\"locations\"])))));
+                        if (\$label !== \$expected_label) { fwrite(STDERR, \"PUBLIC_LABEL_INVALID\\n\"); exit(25); }
+                    }
+                }
+            }
+            if (\$minimum_rules < 1) { fwrite(STDERR, \"NO_MINIMUM_RULES_FOUND\\n\"); exit(26); }
+            echo \"STORE_SHIPPING_REFINEMENT_OK suppliers=\$checked minimum_rules=\$minimum_rules rows=\$row_count\\n\";
+          ' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          echo "$RESULT"
+          grep -Fq 'STORE_SHIPPING_REFINEMENT_OK' <<< "$RESULT"
+          mkdir -p .deploy-status
+          printf '%s\n' "$RESULT" > .deploy-status/store-shipping-refinement-verification.txt
+      - name: Record verification
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/store-shipping-refinement-verification.txt
+          git commit -m 'Record store shipping refinement verification [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
