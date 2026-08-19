@@ -1,0 +1,55 @@
+name: Home top offset diagnostic 0.10.256
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-top-offset-diagnostic-010256.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect top layout states
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          : "${CHROME:?Chrome missing}"
+          CHROME_PATH="$CHROME" node <<'JS' > runtime/home-top-offset-diagnostic-010256.txt
+          const { chromium } = require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915},deviceScaleFactor:1});
+            await page.addInitScript(()=>{
+              window.__top=[];
+              const snap=(label)=>{
+                const read=(sel)=>{const e=document.querySelector(sel);if(!e)return null;const s=getComputedStyle(e),r=e.getBoundingClientRect();return {sel,class:e.className,rect:{x:r.x,y:r.y,width:r.width,height:r.height},margin:s.margin,padding:s.padding,display:s.display,position:s.position,top:s.top,height:s.height,lineHeight:s.lineHeight,fontSize:s.fontSize};};
+                window.__top.push({label,t:performance.now(),body:document.body?.className||'',view:read('#view'),content:read('#content'),announcement:read('.emo-announcement'),announcementInner:read('.emo-announcement__inner'),header:read('.site-header'),headerInner:read('.site-header-inner'),hero:read('.emo-hero')});
+              };
+              setTimeout(()=>snap('50ms'),50);setTimeout(()=>snap('250ms'),250);document.addEventListener('DOMContentLoaded',()=>snap('domcontentloaded'));window.addEventListener('load',()=>snap('load'));setTimeout(()=>snap('1000ms'),1000);
+            });
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+            await page.waitForTimeout(1500);
+            console.log(JSON.stringify(await page.evaluate(()=>window.__top),null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+      - name: Record
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-top-offset-diagnostic-010256.txt
+          git commit -m 'Record Home top offset diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
