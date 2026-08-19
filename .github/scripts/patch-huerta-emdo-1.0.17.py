@@ -71,3 +71,5 @@ plugin.write_text(p, encoding='utf-8')
 d = deploy.read_text(encoding='utf-8').replace('1.0.16', '1.0.17')
 deploy.write_text(d, encoding='utf-8')
 marker.write_text('MDO Supplier Sync 1.0.17\nProduction deployment trigger: 2026-08-19\nConnector: La Huerta de Ana Mary\n', encoding='utf-8')
+
+# Final production verification trigger after v4 syntax validation.
