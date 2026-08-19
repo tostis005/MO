@@ -1,0 +1,59 @@
+name: Diagnose Home Google tags 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-google-tags-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Inspect live Home tag markup
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html; done
+          python3 - <<'PY' > runtime/home-google-tags-20260819.txt
+          from pathlib import Path
+          import re, html
+          s=Path('/tmp/home.html').read_text(errors='replace')
+          print('gtag_script_count=',len(re.findall(r'<script[^>]+googletagmanager\.com/gtag/js[^>]*>',s,re.I)))
+          print('G_config_count=',len(re.findall(r"gtag\s*\(\s*['\"]config['\"]\s*,\s*['\"]G-515YQ0XMS4['\"]",s,re.I)))
+          print('AW_config_count=',len(re.findall(r"gtag\s*\(\s*['\"]config['\"]\s*,\s*['\"]AW-18396600140['\"]",s,re.I)))
+          print('--- external gtag scripts ---')
+          for m in re.finditer(r'<script[^>]+googletagmanager\.com/gtag/js[^>]*>(?:\s*</script>)?',s,re.I):
+              print(m.group(0)[:1500])
+          print('--- inline blocks containing measurement IDs ---')
+          for m in re.finditer(r'<script\b[^>]*>.*?</script\s*>',s,re.I|re.S):
+              block=m.group(0)
+              if 'G-515YQ0XMS4' in block or 'AW-18396600140' in block:
+                  # Preserve code but cap each block to keep diagnostic compact.
+                  print(block[:6000].replace('\x00',''))
+                  print('---')
+          print('--- script handles/ids around gtag ---')
+          for m in re.finditer(r'<script[^>]+googletagmanager\.com/gtag/js[^>]*>',s,re.I):
+              start=max(0,m.start()-1200); end=min(len(s),m.end()+1800)
+              print(s[start:end].replace('\x00','')[:5000])
+              print('===')
+          PY
+          cat runtime/home-google-tags-20260819.txt
+
+      - name: Record diagnostic
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-google-tags-20260819.txt
+          git commit -m 'Record Home Google tag diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
