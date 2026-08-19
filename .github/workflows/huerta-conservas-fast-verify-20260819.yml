@@ -1,0 +1,71 @@
+name: Huerta conservas fast verify 20260819
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/ops/huerta-conservas-pr-trigger-20260819.txt']
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.head_ref == 'ops/huerta-conservas-verify-20260819'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate
+        run: |
+          php -l .github/scripts/assign-huerta-conservas-20260819.php
+          php -l mdo-supplier-sync/includes/class-mdo-huerta-defaults.php
+      - name: Assign and verify production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o ConnectTimeout=15 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            if [ -f /var/www/vhosts/elmercadodeorigen.com/httpdocs/wp-config.php ]; then
+              printf /var/www/vhosts/elmercadodeorigen.com/httpdocs
+              exit 0
+            fi
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            timeout 20s find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null | while read -r cfg; do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf %s "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH"
+          REMOTE_SCRIPT="/tmp/assign-huerta-conservas-fast-${GITHUB_RUN_ID}.php"
+          REMOTE_DEFAULTS="/tmp/class-mdo-huerta-defaults-fast-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/assign-huerta-conservas-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-huerta-defaults.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DEFAULTS"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            plugin_file='$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-defaults.php'
+            test -f \"\$plugin_file\"
+            echo STAGE=deploy_rule
+            cp '$REMOTE_DEFAULTS' \"\$plugin_file\"
+            rm -f '$REMOTE_DEFAULTS'
+            \"\$php_bin\" -l \"\$plugin_file\" >/dev/null
+            echo STAGE=assign_start
+            timeout 120s \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root
+            echo STAGE=assign_done
+            rm -f '$REMOTE_SCRIPT'
+          "
