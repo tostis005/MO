@@ -1,0 +1,59 @@
+name: Home source locate 0.10.258 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-source-locate-010258-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Locate production sources
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            echo '=== H1 REFLOW SOURCE ==='
+            grep -RIn --include='*.php' --include='*.js' 'visibleHeadingOne' '$PROD_PATH/wp-content/themes/elmercadodeorigen-child' 2>/dev/null | head -n 30 || true
+            echo '=== GOOGLE ADS GTAG SOURCE ==='
+            grep -RIn --include='*.php' --include='*.js' 'Global site tag (gtag.js) - Google Ads' '$PROD_PATH/wp-content/plugins' 2>/dev/null | head -n 30 || true
+            echo '=== GOOGLE ADS ID SOURCE ==='
+            grep -RIn --include='*.php' --include='*.js' '18396600140' '$PROD_PATH/wp-content/plugins' 2>/dev/null | head -n 30 || true
+            echo '=== HUSTLE STYLE HANDLE SOURCE ==='
+            grep -RIn --include='*.php' --include='*.js' 'hustle_inline_styles_front' '$PROD_PATH/wp-content/plugins' 2>/dev/null | head -n 30 || true
+          " > runtime/home-source-locate-010258.txt
+          cat runtime/home-source-locate-010258.txt
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-source-locate-010258.txt
+          git commit -m 'Record Home source locations' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
