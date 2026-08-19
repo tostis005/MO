@@ -1,0 +1,107 @@
+name: Deploy Home reflow pass 5 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-reflow-pass5-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reflow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move scroll read before initial DOM writes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/assets/js/theme.js')
+          s=p.read_text()
+          old="""\tbody.classList.add('emo-js-ready');\n\tcleanLegacyHeaderArtifacts();\n\tremoveProductHoverArtifacts();\n\tlabelWishlistLinks();\n\trepairHustleDialogs();\n\tupdateScrollState();"""
+          new="""\t/* Read scroll geometry before invalidating styles/DOM. */\n\tupdateScrollState();\n\tbody.classList.add('emo-js-ready');\n\tcleanLegacyHeaderArtifacts();\n\tremoveProductHoverArtifacts();\n\tlabelWishlistLinks();\n\trepairHustleDialogs();"""
+          if old in s:
+              p.write_text(s.replace(old,new,1))
+          elif new not in s:
+              raise SystemExit('theme init target not found')
+          PY
+          node --check elmercadodeorigen-child/assets/js/theme.js
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/assets/js/theme.js
+          git commit -m 'Read Home scroll geometry before DOM writes' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Deploy theme script and purge Home cache
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?}"
+          REMOTE="/tmp/theme-reflow-${GITHUB_RUN_ID}.js"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/js/theme.js "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e; THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'; STATIC='$PROD_PATH/wp-content/uploads/elmercado-home-static'
+            install -m 0644 '$REMOTE' \"\$THEME/assets/js/theme.js\"
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f \"\$STATIC/index.html\" '$REMOTE'
+          "
+
+      - name: Verify live source and forced reflow
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/js/theme.js' -o /tmp/theme.js
+          grep -q 'Read scroll geometry before invalidating styles/DOM' /tmp/theme.js
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lh.json --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' > runtime/home-reflow-pass5-20260819.txt
+          import json
+          a=json.load(open('/tmp/lh.json')); v=a['audits'].get('forced-reflow-insight',{})
+          print('deploy=success')
+          print('score=',round(a['categories']['performance']['score']*100))
+          print('forced_reflow_score=',v.get('score'))
+          print('forced_reflow_display=',v.get('displayValue'))
+          print('forced_reflow_details=',json.dumps(v.get('details') or {},ensure_ascii=False)[:25000])
+          PY
+          cat runtime/home-reflow-pass5-20260819.txt
+
+      - name: Record result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-reflow-pass5-20260819.txt ] || echo 'verification_failed=true' > runtime/home-reflow-pass5-20260819.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-reflow-pass5-20260819.txt
+          git commit -m 'Record Home reflow pass 5 verification' || exit 0
+          git pull --rebase origin main; git push origin HEAD:main
