@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Home WebP Delivery 2026-08-19
  * Description: Sirve en la Home variantes WebP ya generadas de imágenes locales sin alterar la biblioteca multimedia ni el resto de la tienda.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -12,6 +12,43 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
     return;
 }
+
+/**
+ * Migra una sola vez la caché de portada previa a WebP. Debe ejecutarse antes
+ * del lector de transient de home-cache.php; después queda inerte por versión.
+ */
+add_action(
+    'template_redirect',
+    static function (): void {
+        if (
+            ! function_exists( 'elmercado_is_optimized_home' )
+            || ! function_exists( 'elmercado_home_cache_key' )
+            || ! function_exists( 'elmercado_home_static_cache_file' )
+            || ! elmercado_is_optimized_home()
+        ) {
+            return;
+        }
+
+        $version = '1.0.1';
+        if ( get_option( 'mdo_home_webp_cache_version', '' ) === $version ) {
+            return;
+        }
+
+        $uploads = wp_get_upload_dir();
+        $probe   = trailingslashit( (string) $uploads['basedir'] ) . '2017/12/Garrafa_5L-600x800.webp';
+        if ( ! is_readable( $probe ) ) {
+            return;
+        }
+
+        delete_transient( elmercado_home_cache_key() );
+        $static = elmercado_home_static_cache_file();
+        if ( is_file( $static ) ) {
+            @unlink( $static );
+        }
+        update_option( 'mdo_home_webp_cache_version', $version, false );
+    },
+    -3100
+);
 
 /**
  * Devuelve la URL WebP vecina si existe en uploads y realmente pesa menos.
