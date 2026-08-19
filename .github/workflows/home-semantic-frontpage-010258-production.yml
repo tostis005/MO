@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/semantic-polish.php
+          php -l .github/scripts/flush-home-cache-010258.php
           grep -q '! is_front_page()' elmercadodeorigen-child/inc/semantic-polish.php
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
@@ -40,6 +41,7 @@ jobs:
           ')"
           : "${PROD_PATH:?}"
           sshpass -e scp $SCP elmercadodeorigen-child/inc/semantic-polish.php "$STAGING_USER@$STAGING_HOST:/tmp/semantic-frontpage-010258.php"
+          sshpass -e scp $SCP .github/scripts/flush-home-cache-010258.php "$STAGING_USER@$STAGING_HOST:/tmp/flush-home-cache-010258.php"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -e
             TARGET='$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/semantic-polish.php'
@@ -48,9 +50,10 @@ jobs:
             php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
             \"\$php_bin\" -l \"\$TARGET\"
+            \"\$php_bin\" \"\$wp_bin\" eval-file /tmp/flush-home-cache-010258.php --path='$PROD_PATH' --allow-root
             \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
-            rm -f /tmp/semantic-frontpage-010258.php
+            rm -f /tmp/semantic-frontpage-010258.php /tmp/flush-home-cache-010258.php
           "
       - name: Verify H1 probe absent on live front page
         id: verify
