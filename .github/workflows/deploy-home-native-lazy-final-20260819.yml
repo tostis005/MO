@@ -1,0 +1,191 @@
+name: Verify final Home native lazy loading 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-native-lazy-final-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-home-native-lazy-final-20260819
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-home-performance-20260819.php
+          grep -q 'Version: 1.4.1' mu-plugins/mdo-home-performance-20260819.php
+
+      - name: Deploy current MU plugin
+        id: deploy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/mdo-home-native-final-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/mdo-home-performance-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            MU='$PROD_PATH/wp-content/mu-plugins'; STATIC='$PROD_PATH/wp-content/uploads/elmercado-home-static'
+            install -m 0644 '$REMOTE' \"\$MU/mdo-home-performance-20260819.php\"
+            php_bin=\$(command -v php || true); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$MU/mdo-home-performance-20260819.php\"
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f \"\$STATIC/index.html\" \"\$STATIC\"/home-deferred-*.css '$REMOTE'
+          "
+
+      - name: Warm and capture HTML
+        id: html
+        if: always()
+        run: |
+          set +e
+          mkdir -p runtime
+          : > runtime/home-native-lazy-final-20260819.txt
+          echo "deploy_outcome=${{ steps.deploy.outcome }}" >> runtime/home-native-lazy-final-20260819.txt
+          for i in 1 2 3 4; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html; done
+          echo "curl_exit=$?" >> runtime/home-native-lazy-final-20260819.txt
+          python3 - <<'PY' >> runtime/home-native-lazy-final-20260819.txt
+          from pathlib import Path
+          import re
+          s=Path('/tmp/home.html').read_text(errors='replace') if Path('/tmp/home.html').exists() else ''
+          vals={
+            'html_bytes':len(s.encode()),
+            'smush_script':len(re.findall(r'smush-lazy-load-native\.min\.js',s,re.I)),
+            'img_data_src':len(re.findall(r'<img[^>]+\bdata-src=',s,re.I)),
+            'img_data_srcset':len(re.findall(r'<img[^>]+\bdata-srcset=',s,re.I)),
+            'placeholder':len(re.findall(r'<img[^>]+src=["\']data:image/gif;base64',s,re.I)),
+            'lazyload_class':len(re.findall(r'<img[^>]+class=["\'][^"\']*\blazyload\b',s,re.I)),
+            'native_lazy':len(re.findall(r'<img[^>]+loading=["\']lazy["\']',s,re.I)),
+          }
+          print('html='+repr(vals))
+          for m in re.finditer(r'<img\b[^>]*(?:data-src|data:image/gif|lazyload)[^>]*>',s,re.I):
+              print('remaining_tag='+m.group(0)[:2500])
+          PY
+
+      - name: Browser full-scroll check
+        id: browser
+        if: always()
+        run: |
+          set +e
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > /tmp/browser.json 2>/tmp/browser.err
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();
+            await page.setViewport({width:412,height:915,deviceScaleFactor:1});
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});
+            await page.evaluate(async()=>{for(let y=0;y<document.documentElement.scrollHeight;y+=550){scrollTo(0,y);await new Promise(r=>setTimeout(r,90));}scrollTo(0,document.documentElement.scrollHeight)});
+            await new Promise(r=>setTimeout(r,1200));
+            const d=await page.evaluate(()=>{
+              const imgs=[...document.images];
+              const visible=imgs.filter(i=>{const r=i.getBoundingClientRect(),s=getComputedStyle(i);return r.width>1&&r.height>1&&s.display!=='none'&&s.visibility!=='hidden'});
+              return {
+                count:imgs.length,
+                visible:visible.length,
+                broken:visible.filter(i=>i.complete&&i.naturalWidth===0).map(i=>({src:i.src,alt:i.alt,className:i.className})),
+                placeholders:imgs.filter(i=>i.src.startsWith('data:image/gif;base64')).length,
+                dataSrc:document.querySelectorAll('img[data-src]').length,
+                lazyClasses:document.querySelectorAll('img.lazyload,img.lazyloading').length,
+                smush:[...document.scripts].some(s=>(s.src||'').includes('smush-lazy-load-native')),
+                products:[...document.querySelectorAll('img.elmercado-catalog-card-image-010241')].map(i=>({src:i.src,currentSrc:i.currentSrc,naturalWidth:i.naturalWidth,naturalHeight:i.naturalHeight,sizes:i.sizes,loading:i.loading})),
+                logos:[...document.querySelectorAll('img.wcfmmp_sold_by_logo')].slice(0,8).map(i=>({src:i.src,naturalWidth:i.naturalWidth,naturalHeight:i.naturalHeight})),
+                payment:[...document.querySelectorAll('img.metodosPago')].map(i=>({src:i.src,naturalWidth:i.naturalWidth,naturalHeight:i.naturalHeight}))
+              };
+            });
+            console.log(JSON.stringify(d)); await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          rc=$?
+          echo "browser_exit=$rc" >> runtime/home-native-lazy-final-20260819.txt
+          [ -s /tmp/browser.json ] && { echo -n 'browser=' >> runtime/home-native-lazy-final-20260819.txt; cat /tmp/browser.json >> runtime/home-native-lazy-final-20260819.txt; echo >> runtime/home-native-lazy-final-20260819.txt; }
+          [ -s /tmp/browser.err ] && { echo 'browser_stderr=' >> runtime/home-native-lazy-final-20260819.txt; cat /tmp/browser.err >> runtime/home-native-lazy-final-20260819.txt; }
+          exit 0
+
+      - name: Lighthouse 3x normal Home
+        id: lighthouse
+        if: always()
+        run: |
+          set +e
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          ok=0
+          for i in 1 2 3; do
+            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/lh-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet && ok=$((ok+1))
+          done
+          echo "lighthouse_success_runs=$ok" >> runtime/home-native-lazy-final-20260819.txt
+          python3 - <<'PY' >> runtime/home-native-lazy-final-20260819.txt
+          import json,statistics,os
+          rows=[]
+          for i in (1,2,3):
+              p=f'/tmp/lh-{i}.json'
+              if not os.path.exists(p): continue
+              a=json.load(open(p)); x=a['audits']; boot=x.get('bootup-time',{}); smush=0
+              for z in (boot.get('details') or {}).get('items',[]):
+                  if 'smush-lazy-load-native' in z.get('url',''): smush += z.get('total',0) or 0
+              rf=x.get('forced-reflow-insight',{}); theme=0; jq=0; unat=0
+              for g in (rf.get('details') or {}).get('items',[]):
+                  for z in g.get('items',[]):
+                      q=z.get('source') or {}; u=(q.get('url') or q.get('value') or '') if isinstance(q,dict) else ''
+                      t=z.get('reflowTime',0) or 0
+                      if '/assets/js/theme.js' in u: theme += t
+                      if '/jquery/jquery.min.js' in u: jq += t
+                      if 'unattributed' in u.lower(): unat += t
+              r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':round(x['cumulative-layout-shift']['numericValue'],5),'smush_cpu':round(smush,1),'theme_reflow':round(theme,3),'jquery_reflow':round(jq,3),'unattributed_reflow':round(unat,3)}
+              rows.append(r); print('run',i,r)
+          if rows:
+              for k in rows[0]: print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          if os.path.exists('/tmp/lh-2.json'):
+              m=json.load(open('/tmp/lh-2.json'))['audits']
+              for key in ('image-delivery-insight','cache-insight','legacy-javascript-insight','unused-javascript','unused-css-rules','mainthread-work-breakdown','bootup-time'):
+                  v=m.get(key,{})
+                  print('audit',key,'display=',v.get('displayValue'),'numeric=',v.get('numericValue'),'score=',v.get('score'))
+          PY
+          exit 0
+
+      - name: Record diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-native-lazy-final-20260819.txt ] || echo 'no_diagnostics=true' > runtime/home-native-lazy-final-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-native-lazy-final-20260819.txt
+          git commit -m 'Record final Home native lazy verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
