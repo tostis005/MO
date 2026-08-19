@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.258' );
-/* 0.10.258 reduce trabajo JS/reflows de Home y difiere Google Ads sin perder su cola de eventos. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.259' );
+/* 0.10.259 elimina el cargador Ads redundante y conserva el destino AW procesado por el Google tag de GA4. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
