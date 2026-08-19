@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Store Shipping Zero-Cost Normalizer
- * Description: Keeps the public producer Shipping tab aligned with WCFM vendor-zone data and treats an explicit zero rate as free shipping.
- * Version: 1.1.0
+ * Description: Keeps the public producer Shipping tab aligned with WCFM vendor-zone data and treats explicit free/zero rates as free shipping.
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -234,6 +234,15 @@ function mdo_sst_zcf_merge_rows( $rows, int $vendor_id = 0, string $type = '' ) 
 }
 add_filter( 'mdo_store_shipping_rows', 'mdo_sst_zcf_merge_rows', 20, 3 );
 
+/** Return true for all public labels that mean unconditional free shipping. */
+function mdo_sst_zcf_note_is_free( $note ): bool {
+    $plain = remove_accents( strtolower( trim( wp_strip_all_tags( (string) $note ) ) ) );
+
+    return false !== strpos( $plain, 'envio gratuito' )
+        || false !== strpos( $plain, 'envio gratis' )
+        || false !== strpos( $plain, 'free shipping' );
+}
+
 /** Return true when a public shipping row explicitly represents a zero cost. */
 function mdo_sst_zcf_row_is_zero_cost( array $row ): bool {
     if ( array_key_exists( 'sort_cost', $row ) && is_numeric( $row['sort_cost'] ) ) {
@@ -260,14 +269,39 @@ function mdo_sst_zcf_normalize_rows( $rows, int $vendor_id = 0, string $type = '
     }
 
     foreach ( $rows as &$row ) {
-        if ( ! is_array( $row ) || ! mdo_sst_zcf_row_is_zero_cost( $row ) ) {
+        if ( ! is_array( $row ) ) {
             continue;
         }
 
+        $zero_cost = mdo_sst_zcf_row_is_zero_cost( $row );
+        $notes     = isset( $row['notes'] ) && is_array( $row['notes'] ) ? $row['notes'] : array();
+        $free_note = false;
+
+        foreach ( $notes as $note ) {
+            if ( mdo_sst_zcf_note_is_free( $note ) ) {
+                $free_note = true;
+                break;
+            }
+        }
+
+        if ( ! $zero_cost && ! $free_note ) {
+            continue;
+        }
+
+        // An unconditional-free method sorts with the free rates even when WCFM
+        // represents it as a titled free-shipping method rather than cost=0.
         $row['sort_cost'] = 0.0;
-        $notes            = isset( $row['notes'] ) && is_array( $row['notes'] ) ? $row['notes'] : array();
-        $notes[]          = function_exists( 'mdo_sst_text' ) ? mdo_sst_text( 'Envío gratuito', 'Free shipping' ) : 'Envío gratuito';
-        $row['notes']     = array_values( array_unique( array_filter( array_map( 'trim', $notes ) ) ) );
+
+        $notes = array_values(
+            array_filter(
+                array_map( 'trim', $notes ),
+                static function( string $note ): bool {
+                    return '' !== $note && ! mdo_sst_zcf_note_is_free( $note );
+                }
+            )
+        );
+        $notes[]      = function_exists( 'mdo_sst_text' ) ? mdo_sst_text( 'Envío gratuito', 'Free shipping' ) : 'Envío gratuito';
+        $row['notes'] = array_values( array_unique( $notes ) );
     }
     unset( $row );
 
