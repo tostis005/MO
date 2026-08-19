@@ -22,12 +22,14 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Deploy Home CLS MU plugin to production
+      - name: Deploy Home first-frame patch
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -61,43 +63,43 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             mkdir -p '$PROD_PATH/wp-content/mu-plugins'
-            cp '$REMOTE_TMP' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php'
+            install -m 0644 '$REMOTE_TMP' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php'
             rm -f '$REMOTE_TMP'
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
-            \"\$php_bin\" \"\$wp_bin\" eval 'echo is_file(WPMU_PLUGIN_DIR . \"/elmercado-home-cls-010256.php\") ? \"MU_OK\\n\" : \"MU_MISSING\\n\"; if (function_exists(\"elmercado_flush_home_cache\")) { elmercado_flush_home_cache(); }' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php' >/dev/null
+            \"\$php_bin\" \"\$wp_bin\" eval 'if (function_exists(\"elmercado_flush_home_cache\")) { elmercado_flush_home_cache(); } echo \"CACHE_FLUSHED\\n\";' --path='$PROD_PATH' --allow-root
             \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
           "
 
-      - name: Run Lighthouse desktop and keep first trace
+      - name: Warm and verify real cached Home
         shell: bash
         run: |
           set -euo pipefail
-          URL='https://www.elmercadodeorigen.com/?emo_cls_verify='"${GITHUB_RUN_ID}"
+          URL='https://www.elmercadodeorigen.com/'
           for n in 1 2 3 4 5 6; do
-            if curl -fsSIL --max-time 20 -H 'Cache-Control: no-cache, no-store' "$URL" >/dev/null; then
+            if curl -fsS --compressed --max-time 30 "$URL" -o home-warm-1.html; then
               break
             fi
             sleep 5
           done
+          curl -fsS --compressed --max-time 30 "$URL" -o home-warm-2.html
+          grep -q 'elmercado-home-first-view-lock-010256' home-warm-1.html
+          grep -q 'elmercado-home-first-view-lock-010256' home-warm-2.html
+          printf 'first=%s second=%s\n' "$(wc -c < home-warm-1.html)" "$(wc -c < home-warm-2.html)"
+
+      - name: Run Lighthouse against cached Home
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://www.elmercadodeorigen.com/'
           google-chrome --version || chromium --version || true
 
-          npx --yes lighthouse@12.8.2 "$URL" \
-            --only-categories=performance \
-            --form-factor=desktop \
-            --screenEmulation.mobile=false \
-            --screenEmulation.width=1350 \
-            --screenEmulation.height=940 \
-            --screenEmulation.deviceScaleFactor=1 \
-            --throttling-method=simulate \
-            --output=json \
-            --output-path='lighthouse-1.json' \
-            --save-assets \
-            --quiet \
-            --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
-
-          for i in 2 3; do
+          for i in 1 2 3; do
+            EXTRA=''
+            if [ "$i" = '1' ]; then EXTRA='--save-assets'; fi
             npx --yes lighthouse@12.8.2 "$URL" \
               --only-categories=performance \
               --form-factor=desktop \
@@ -108,6 +110,7 @@ jobs:
               --throttling-method=simulate \
               --output=json \
               --output-path="lighthouse-${i}.json" \
+              $EXTRA \
               --quiet \
               --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
           done
@@ -115,13 +118,24 @@ jobs:
           node <<'NODE' | tee lighthouse-summary.txt
           const fs = require('fs');
           const runs = [1,2,3].map(i => JSON.parse(fs.readFileSync(`lighthouse-${i}.json`, 'utf8')));
-          const vals = runs.map(r => r.audits['cumulative-layout-shift'].numericValue);
-          const scores = runs.map(r => r.categories.performance.score * 100);
-          const sorted = [...vals].sort((a,b)=>a-b);
+          const values = (key) => runs.map(r => Number(r.audits[key]?.numericValue || 0));
+          const median = (arr) => [...arr].sort((a,b)=>a-b)[1];
+          const cls = values('cumulative-layout-shift');
+          const fcp = values('first-contentful-paint');
+          const lcp = values('largest-contentful-paint');
+          const tbt = values('total-blocking-time');
+          const scores = runs.map(r => Math.round((r.categories.performance.score || 0) * 100));
           console.log(`Commit: ${process.env.GITHUB_SHA}`);
-          console.log(`CLS runs: ${vals.map(v=>v.toFixed(4)).join(', ')}`);
-          console.log(`CLS median: ${sorted[1].toFixed(4)}`);
-          console.log(`Performance: ${scores.map(v=>Math.round(v)).join(', ')}`);
+          console.log(`Performance: ${scores.join(', ')}`);
+          console.log(`CLS: ${cls.map(v=>v.toFixed(4)).join(', ')} | median ${median(cls).toFixed(4)}`);
+          console.log(`FCP ms: ${fcp.map(v=>Math.round(v)).join(', ')} | median ${Math.round(median(fcp))}`);
+          console.log(`LCP ms: ${lcp.map(v=>Math.round(v)).join(', ')} | median ${Math.round(median(lcp))}`);
+          console.log(`TBT ms: ${tbt.map(v=>Math.round(v)).join(', ')} | median ${Math.round(median(tbt))}`);
+          for (const key of ['unused-css-rules','unused-javascript','render-blocking-resources','uses-long-cache-ttl','modern-image-formats','uses-optimized-images']) {
+            const a = runs[0].audits[key];
+            if (!a) continue;
+            console.log(`${key}: ${a.displayValue || ''} numeric=${a.numericValue ?? ''}`);
+          }
           runs.forEach((r, idx) => {
             console.log(`\nRun ${idx+1} layout shifts:`);
             const items = r.audits['layout-shifts']?.details?.items || [];
@@ -163,11 +177,10 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add reports/home-lighthouse-latest.txt reports/home-layout-shift-trace-latest.txt
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m 'Update Home Lighthouse CLS diagnostics'
-          git push
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Update cached Home Lighthouse diagnostics'
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - name: Upload Lighthouse reports
         uses: actions/upload-artifact@v4
@@ -177,5 +190,6 @@ jobs:
             lighthouse-*.json
             lighthouse-summary.txt
             layout-shift-trace.txt
+            home-warm-*.html
             *trace*.json
           retention-days: 3
