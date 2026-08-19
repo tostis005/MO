@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lighthouse:
@@ -55,6 +55,7 @@ jobs:
           const vals = runs.map(r => r.audits['cumulative-layout-shift'].numericValue);
           const scores = runs.map(r => r.categories.performance.score * 100);
           const sorted = [...vals].sort((a,b)=>a-b);
+          console.log(`Commit: ${process.env.GITHUB_SHA}`);
           console.log(`CLS runs: ${vals.map(v=>v.toFixed(4)).join(', ')}`);
           console.log(`CLS median: ${sorted[1].toFixed(4)}`);
           console.log(`Performance: ${scores.map(v=>Math.round(v)).join(', ')}`);
@@ -69,6 +70,21 @@ jobs:
             });
           });
           NODE
+
+      - name: Persist latest summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          cp lighthouse-summary.txt reports/home-lighthouse-latest.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/home-lighthouse-latest.txt
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Update Home Lighthouse CLS report'
+          git push
 
       - name: Upload Lighthouse reports
         uses: actions/upload-artifact@v4
