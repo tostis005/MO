@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/verify-huerta-final-20260819.php'
+      - '.github/scripts/patch-huerta-emdo-1.0.17.py'
       - '.github/workflows/verify-huerta-final-production-20260819.yml'
   workflow_dispatch:
 
@@ -22,12 +23,21 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply EMDO 1.0.17 patch
+        run: |
+          set -euo pipefail
+          python .github/scripts/patch-huerta-emdo-1.0.17.py
+
       - name: Validate PHP
         run: |
           set -euo pipefail
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
           php -l .github/scripts/verify-huerta-final-20260819.php
-      - name: Deploy 1.0.16 and verify production
+
+      - name: Deploy 1.0.17 and verify production
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
@@ -69,7 +79,7 @@ jobs:
             rm -f '$REMOTE_ARCHIVE'
             version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
             status=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=status --path='$PROD_PATH' --allow-root)
-            test \"\$version\" = '1.0.16'
+            test \"\$version\" = '1.0.17'
             test \"\$status\" = 'active'
             \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE_VERIFY' --path='$PROD_PATH' --allow-root
             code=\$?
@@ -79,20 +89,26 @@ jobs:
           CODE=$?
           set -e
           echo "$CODE" > .deploy-status/huerta-final-verification.exit-code
-      - name: Record verification
+
+      - name: Record deployed source and verification
         if: always()
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/huerta-final-verification.json .deploy-status/huerta-final-verification.exit-code || true
-          git commit -m 'Record final Huerta integration verification [skip ci]' || exit 0
+          git add mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v3.php \
+                  mdo-supplier-sync/mdo-supplier-sync.php \
+                  mdo-supplier-sync/deploy-version.txt \
+                  .github/workflows/deploy-mdo-supplier-sync-production-20260819.yml || true
+          git commit -m 'Record Huerta EMDO 1.0.17 production verification [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+
       - name: Fail if verification failed
         if: always()
         run: |
           test -f .deploy-status/huerta-final-verification.exit-code
           test "$(cat .deploy-status/huerta-final-verification.exit-code)" = "0"
 
-# Explicit production verification trigger: 2026-08-19
+# EMDO 1.0.17 production verification trigger: 2026-08-19
