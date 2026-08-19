@@ -112,12 +112,12 @@ jobs:
               VERSION="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^VERSION=//p' | tail -n1)"
               PLUGIN_STATUS="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^STATUS=//p' | tail -n1)"
               [ -n "$VERSION" ] || VERSION="unknown"
-              if [ "$VERSION" != "1.0.15" ]; then
+              if [ "$VERSION" != "1.0.16" ]; then
                 fail "version_mismatch" "Production reports a different EMDO version"
               elif [ "$PLUGIN_STATUS" != "active" ]; then
                 fail "plugin_not_active" "EMDO is deployed but WordPress does not report it active"
               else
-                NOTE="EMDO 1.0.15 deployed and active in production"
+                NOTE="EMDO 1.0.16 deployed and active in production"
               fi
             fi
           fi
