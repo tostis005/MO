@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php'
       - '.github/workflows/home-jquery-live-check-010254.yml'
   workflow_dispatch:
 
