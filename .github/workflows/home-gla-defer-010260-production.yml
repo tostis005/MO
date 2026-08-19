@@ -1,0 +1,167 @@
+name: Home GLA defer 0.10.260 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-gla-defer-010260-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare release 0.10.260
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/functions.php')
+          s=p.read_text()
+          s=s.replace("define( 'ELMERCADO_THEME_VERSION', '0.10.259' );", "define( 'ELMERCADO_THEME_VERSION', '0.10.260' );")
+          s=s.replace('/* 0.10.259 elimina el cargador Ads redundante y conserva el destino AW procesado por el Google tag de GA4. */', '/* 0.10.260 difiere la cadena wp-hooks -> gtag-events de Google for WooCommerce en Home. */')
+          module="\t'inc/home-gla-defer-010260.php',\n"
+          if module not in s:
+              anchor="\t'inc/home-cache.php',\n"
+              if anchor not in s:
+                  raise SystemExit('home-cache anchor not found')
+              s=s.replace(anchor, anchor+module, 1)
+          p.write_text(s)
+          PY
+          php -l elmercadodeorigen-child/functions.php
+          php -l elmercadodeorigen-child/inc/home-gla-defer-010260.php
+          grep -q "ELMERCADO_THEME_VERSION', '0.10.260" elmercadodeorigen-child/functions.php
+          grep -q "home-gla-defer-010260.php" elmercadodeorigen-child/functions.php
+
+      - name: Deploy release
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e scp $SCP elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:/tmp/functions-010260.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/home-gla-defer-010260.php "$STAGING_USER@$STAGING_HOST:/tmp/home-gla-defer-010260.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            install -m 0644 /tmp/functions-010260.php \"\$THEME/functions.php\"
+            install -m 0644 /tmp/home-gla-defer-010260.php \"\$THEME/inc/home-gla-defer-010260.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$THEME/functions.php\"
+            \"\$php_bin\" -l \"\$THEME/inc/home-gla-defer-010260.php\"
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-0.10.259.css
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-0.10.260.css
+            rm -f /tmp/functions-010260.php /tmp/home-gla-defer-010260.php
+          "
+
+      - name: Verify live HTML and browser
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          HTML=/tmp/home-010260.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+
+          python3 - <<'PY' > /tmp/html-check.txt
+          import re
+          s=open('/tmp/home-010260.html',errors='replace').read()
+          tags=re.findall(r'<script\b[^>]*\bsrc=["\'][^"\']+["\'][^>]*>',s,re.I)
+          hooks=[t for t in tags if '/wp-includes/js/dist/hooks.min.js' in t]
+          gla=[t for t in tags if '/google-listings-and-ads/js/build/gtag-events.js' in t]
+          print('hooks_count=',len(hooks))
+          print('gla_count=',len(gla))
+          print('hooks_defer=',int(bool(hooks) and all(re.search(r'\bdefer\b',t,re.I) for t in hooks)))
+          print('gla_defer=',int(bool(gla) and all(re.search(r'\bdefer\b',t,re.I) for t in gla)))
+          for t in hooks+gla: print(t)
+          if not hooks or not gla: raise SystemExit('critical scripts not found')
+          if not all(re.search(r'\bdefer\b',t,re.I) for t in hooks+gla): raise SystemExit('defer missing')
+          PY
+
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME_PATH="$CHROME" node <<'JS' > /tmp/browser-check.txt
+          const { chromium } = require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915}});
+            const errors=[];
+            page.on('pageerror',e=>errors.push(String(e)));
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+            await page.waitForTimeout(1000);
+            const state=await page.evaluate(()=>({
+              hooks: !!(window.wp && window.wp.hooks && typeof window.wp.hooks.addAction==='function'),
+              hero: !!document.querySelector('.emo-hero__copy'),
+              glaLoaded: performance.getEntriesByType('resource').some(r=>r.name.includes('/google-listings-and-ads/js/build/gtag-events.js')),
+              hookLoaded: performance.getEntriesByType('resource').some(r=>r.name.includes('/wp-includes/js/dist/hooks.min.js'))
+            }));
+            console.log(JSON.stringify({errors,state},null,2));
+            if(errors.length || !state.hooks || !state.hero || !state.glaLoaded || !state.hookLoaded) process.exitCode=2;
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+
+          export CHROME_PATH="$CHROME"
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lhr-010260.json --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' > /tmp/lighthouse-check.txt
+          import json
+          a=json.load(open('/tmp/lhr-010260.json'))['audits']
+          for k in ('render-blocking-resources','largest-contentful-paint','total-blocking-time','cumulative-layout-shift'):
+              x=a.get(k,{})
+              print(f'{k}: numeric={x.get("numericValue")} display={x.get("displayValue")} score={x.get("score")}')
+          nd=a.get('network-dependency-tree-insight',{})
+          print('network_dependency_display=',nd.get('displayValue'))
+          print('network_dependency_score=',nd.get('score'))
+          PY
+
+          {
+            echo 'deploy=success'
+            cat /tmp/html-check.txt
+            cat /tmp/browser-check.txt
+            cat /tmp/lighthouse-check.txt
+          } > runtime/home-gla-defer-010260.txt
+          cat runtime/home-gla-defer-010260.txt
+
+      - name: Commit release and verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-gla-defer-010260.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-gla-defer-010260.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/functions.php elmercadodeorigen-child/inc/home-gla-defer-010260.php runtime/home-gla-defer-010260.txt
+          git commit -m 'Deploy and verify Home GLA defer 0.10.260' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
