@@ -1,0 +1,149 @@
+name: Finalize Home WebP 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-home-webp-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-home-webp-20260819
+  cancel-in-progress: true
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Generate WebP without loading plugins
+        id: generate
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e scp $SCP mu-plugins/mdo-home-webp-delivery-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-home-webp-delivery-20260819.php"
+          sshpass -e scp $SCP tools/generate-home-webp-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/generate-home-webp-20260819.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            install -m 0644 /tmp/mdo-home-webp-delivery-20260819.php '$PROD_PATH/wp-content/mu-plugins/mdo-home-webp-delivery-20260819.php'
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval-file /tmp/generate-home-webp-20260819.php --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f /tmp/mdo-home-webp-delivery-20260819.php /tmp/generate-home-webp-20260819.php
+          " | tee /tmp/generation.txt
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY' | tee runtime/home-webp-final-20260819.txt
+          import re
+          h=open('/tmp/home.html',encoding='utf-8',errors='ignore').read()
+          refs=sorted(set(re.findall(r'/wp-content/uploads/[^\s"\'<>]+\.webp',h,re.I)))
+          print(open('/tmp/generation.txt',encoding='utf-8',errors='ignore').read())
+          print('webp_refs=',len(refs))
+          print('garrafa_webp=',sum('Garrafa_5L' in x for x in refs))
+          print('aceite_webp=',sum('Aceite-sin-filtrar' in x for x in refs))
+          print('jamon_webp=',sum('JAMON_ACT' in x for x in refs))
+          print('tolecarnes_webp=',sum('Tolecarnes-fondo' in x for x in refs))
+          print('official_trp=',h.count('trp-language-switcher-js-v2-js'))
+          print('lite_trp=',h.count('mdo-trp-language-switcher-lite-js'))
+          for x in refs[:40]: print('WEBP',x)
+          assert len(refs)>=5, refs
+          assert h.count('trp-language-switcher-js-v2-js')==0 and h.count('mdo-trp-language-switcher-lite-js')>=1
+          PY
+
+      - name: Browser regression
+        id: browser
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > /tmp/browser.json
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage(); await p.setViewport({width:412,height:915,deviceScaleFactor:1});
+            await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});
+            const h=await p.evaluate(()=>document.documentElement.scrollHeight);
+            for(let y=0;y<h;y+=650){await p.evaluate(v=>scrollTo(0,v),y);await new Promise(r=>setTimeout(r,80));}
+            await p.evaluate(()=>scrollTo(0,0)); await new Promise(r=>setTimeout(r,250));
+            const d=await p.evaluate(async()=>{
+              const all=[...document.images]; const webp=all.filter(i=>(i.currentSrc||i.src).includes('.webp'));
+              const visible=webp.filter(i=>{const r=i.getBoundingClientRect(),s=getComputedStyle(i);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'});
+              const root=document.querySelector('.trp-language-switcher'),trigger=root?.querySelector('.trp-language-item__current[role="button"]'),list=root?.querySelector('.trp-switcher-dropdown-list');
+              let switcher={present:!!root}; if(root&&trigger&&list){trigger.click();await new Promise(r=>requestAnimationFrame(r));switcher.open=!list.hidden&&trigger.getAttribute('aria-expanded')==='true';document.body.click();await new Promise(r=>requestAnimationFrame(r));switcher.closed=list.hidden&&trigger.getAttribute('aria-expanded')==='false';}
+              return {webp:webp.length,visibleWebp:visible.length,broken:visible.filter(i=>!i.complete||i.naturalWidth===0).map(i=>i.currentSrc||i.src),switcher};
+            });
+            console.log(JSON.stringify(d)); await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat /tmp/browser.json | tee -a runtime/home-webp-final-20260819.txt
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/browser.json'))
+          assert d['webp']>=5 and not d['broken'],d
+          assert d['switcher'].get('open') and d['switcher'].get('closed'),d
+          PY
+
+      - name: Lighthouse 3x
+        id: lighthouse
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/lh-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet; done
+          python3 - <<'PY' >> runtime/home-webp-final-20260819.txt
+          import json,statistics
+          rows=[]
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/lh-{i}.json')); x=a['audits']; trp=jq=unat=0
+              for group in (x.get('forced-reflow-insight',{}).get('details') or {}).get('items',[]):
+                  for z in group.get('items',[]):
+                      src=z.get('source') or {}; u=(src.get('url') or src.get('value') or '') if isinstance(src,dict) else ''; t=z.get('reflowTime',0) or 0
+                      if 'trp-frontend-language-switcher' in u: trp+=t
+                      if '/jquery/jquery.min.js' in u: jq+=t
+                      if 'unattributed' in u.lower(): unat+=t
+              r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':round(x['cumulative-layout-shift']['numericValue'],5),'trp_reflow':round(trp,3),'jquery_reflow':round(jq,3),'unattributed_reflow':round(unat,3),'mainthread':round(x['mainthread-work-breakdown']['numericValue']),'image_delivery':x.get('image-delivery-insight',{}).get('displayValue') or '', 'unused_css':x.get('unused-css-rules',{}).get('displayValue') or ''}
+              rows.append(r); print('run',i,r)
+          for k in ['score','fcp','lcp','tbt','cls','trp_reflow','jquery_reflow','unattributed_reflow','mainthread']:
+              print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          PY
+          cat runtime/home-webp-final-20260819.txt
+
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-webp-final-20260819.txt ] || printf 'generate=%s\nbrowser=%s\nlighthouse=%s\n' '${{ steps.generate.outcome }}' '${{ steps.browser.outcome }}' '${{ steps.lighthouse.outcome }}' > runtime/home-webp-final-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-webp-final-20260819.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record final Home WebP verification [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
