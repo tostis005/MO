@@ -3,11 +3,15 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/verify-huerta-v4-production-20260819.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/ops/huerta-conservas-pr-trigger-20260819.txt']
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
   verify:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.head_ref == 'ops/huerta-conservas-verify-20260819'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -74,7 +78,7 @@ jobs:
           echo "$CODE" > .deploy-status/huerta-conservas-20260819.exit-code
           cat .deploy-status/huerta-conservas-20260819.txt
       - name: Record result
-        if: always()
+        if: always() && github.event_name == 'push'
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
