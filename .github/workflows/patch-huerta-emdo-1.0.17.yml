@@ -19,24 +19,50 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply patch
-        run: python .github/scripts/patch-huerta-emdo-1.0.17.py
-      - name: Validate PHP
+
+      - name: Apply and validate patch
+        id: patch
+        shell: bash
         run: |
-          set -euo pipefail
-          php -l mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v3.php
-          php -l mdo-supplier-sync/mdo-supplier-sync.php
-      - name: Commit patch
+          set +e
+          mkdir -p .deploy-status
+          LOG=.deploy-status/huerta-patch-1.0.17.txt
+          : > "$LOG"
+          echo "commit=$GITHUB_SHA" >> "$LOG"
+          python .github/scripts/patch-huerta-emdo-1.0.17.py >> "$LOG" 2>&1
+          CODE=$?
+          if [ "$CODE" -eq 0 ]; then
+            php -l mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v3.php >> "$LOG" 2>&1
+            CODE=$?
+          fi
+          if [ "$CODE" -eq 0 ]; then
+            php -l mdo-supplier-sync/mdo-supplier-sync.php >> "$LOG" 2>&1
+            CODE=$?
+          fi
+          echo "code=$CODE" >> "$LOG"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit patch or diagnostic
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v3.php \
-                  mdo-supplier-sync/mdo-supplier-sync.php \
-                  mdo-supplier-sync/deploy-version.txt \
-                  .github/workflows/deploy-mdo-supplier-sync-production-20260819.yml
-          git commit -m 'Fix Huerta legacy prices and flowers description in EMDO 1.0.17'
+          git add .deploy-status/huerta-patch-1.0.17.txt
+          if [ "${{ steps.patch.outputs.code }}" = "0" ]; then
+            git add mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v3.php \
+                    mdo-supplier-sync/mdo-supplier-sync.php \
+                    mdo-supplier-sync/deploy-version.txt \
+                    .github/workflows/deploy-mdo-supplier-sync-production-20260819.yml
+            MSG='Fix Huerta legacy prices and images in EMDO 1.0.17'
+          else
+            MSG='Record Huerta 1.0.17 patch failure [skip ci]'
+          fi
+          git commit -m "$MSG" || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
 
-# Triggered after workflow creation so GitHub executes it on main.
+      - name: Fail if patch failed
+        if: steps.patch.outputs.code != '0'
+        run: exit 1
