@@ -1,0 +1,55 @@
+name: Home body jQuery dependents check 0.10.254
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-body-jquery-deps-check-010254.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect body scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          HTML="$(mktemp)"
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          python3 - "$HTML" > runtime/home-body-jquery-deps-010254.txt <<'PY'
+          import pathlib,re,sys
+          html=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          p=html.lower().find('</head>')
+          body=html[p+7:] if p>=0 else html
+          print('body_bytes=',len(body.encode()))
+          print('--- external scripts in body ---')
+          for m in re.finditer(r'<script\b([^>]*)\bsrc=(["\'])(.*?)\2([^>]*)>',body,re.I|re.S):
+              print(m.group(0).replace('\n',' ')[:1200])
+          print('--- inline scripts in body mentioning jquery/$ ---')
+          for m in re.finditer(r'<script\b([^>]*)>(.*?)</script\s*>',body,re.I|re.S):
+              attrs,code=m.group(1),m.group(2)
+              if re.search(r'\bsrc\s*=',attrs,re.I): continue
+              if re.search(r'\bjQuery\b|\$\s*\(',code):
+                  line=html.count('\n',0,p+7+m.start())+1
+                  ident=re.search(r'\bid=(["\'])(.*?)\1',attrs,re.I)
+                  print(f'line={line} id={ident.group(2) if ident else ""} bytes={len(code.encode())} start={code[:700].replace(chr(10)," ")}')
+          PY
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-body-jquery-deps-010254.txt
+          git commit -m 'Record Home jQuery body dependents' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
