@@ -1,0 +1,62 @@
+name: Hustle handle audit 0.10.255
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hustle-handle-audit-010255.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect Hustle plugin source
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          command -v sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          timeout 120s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            PLUGIN='$PROD_PATH/wp-content/plugins/wordpress-popup'
+            echo '--- exact inline handle ---'
+            grep -RIn --include='*.php' 'hustle_inline_styles_front' \"\$PLUGIN\" 2>/dev/null | head -n 120 || true
+            echo '--- wp_add_inline_style calls ---'
+            grep -RIn --include='*.php' 'wp_add_inline_style' \"\$PLUGIN\" 2>/dev/null | head -n 120 || true
+            echo '--- frontend style handles ---'
+            grep -RIn --include='*.php' "wp_enqueue_style.*hustle\|wp_register_style.*hustle" \"\$PLUGIN\" 2>/dev/null | head -n 160 || true
+          " > runtime/hustle-handle-audit-010255.txt
+      - name: Record
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/hustle-handle-audit-010255.txt
+          git commit -m 'Record Hustle handle audit' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
