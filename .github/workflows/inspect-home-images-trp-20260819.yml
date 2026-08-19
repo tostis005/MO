@@ -1,0 +1,69 @@
+name: Inspect Home images and TranslatePress 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-home-images-trp-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inspect-home-images-trp-20260819
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Inspect live assets
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/js/trp-frontend-language-switcher.js?ver=3.3.2' -o /tmp/trp.js
+          {
+            echo '=== TRP lines 55-85 ==='
+            nl -ba /tmp/trp.js | sed -n '55,85p'
+            echo '=== TRP lines 220-245 ==='
+            nl -ba /tmp/trp.js | sed -n '220,245p'
+            echo '=== language switcher markup ==='
+            python3 - <<'PY'
+          import re
+          h=open('/tmp/home.html',encoding='utf-8',errors='ignore').read()
+          for pat in [r'<[^>]+class=["\'][^"\']*trp[^"\']*["\'][^>]*>', r'<[^>]+id=["\'][^"\']*trp[^"\']*["\'][^>]*>']:
+              for m in re.finditer(pat,h,re.I):
+                  a=max(0,m.start()-300); b=min(len(h),m.end()+900)
+                  print(h[a:b].replace('\n',' ')[:1400])
+                  print('---')
+          PY
+            echo '=== image candidates ==='
+            python3 - <<'PY'
+          import re, html
+          h=open('/tmp/home.html',encoding='utf-8',errors='ignore').read()
+          urls=[]
+          for m in re.finditer(r'https?://[^\s"\'<>]+/wp-content/uploads/[^\s"\'<>),]+\.(?:jpe?g|png)(?:\?[^\s"\'<>)]*)?',h,re.I):
+              u=html.unescape(m.group(0)); u=u.split('?')[0]
+              if u not in urls: urls.append(u)
+          for u in urls: print(u)
+          print('count=',len(urls))
+          PY
+          } > runtime/home-images-trp-inspect-20260819.txt
+          cat runtime/home-images-trp-inspect-20260819.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-images-trp-inspect-20260819.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Home image and TranslatePress inspection [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
