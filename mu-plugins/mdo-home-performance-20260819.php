@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO - Home Performance Hardening 2026-08-19
- * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica, elimina CSS muerto de Hustle y estabiliza los logos WCFM.
- * Version: 1.2.0
+ * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica, elimina CSS muerto y ajusta imágenes/ logos WCFM.
+ * Version: 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -91,6 +91,21 @@ function mdo_home_perf_add_img_attributes( string $tag, string $attributes ): st
     return is_string( $updated ) ? $updated : $tag;
 }
 
+/**
+ * Sustituye o añade un atributo HTML simple en una etiqueta ya generada.
+ */
+function mdo_home_perf_set_tag_attribute( string $tag, string $name, string $value ): string {
+    $pattern = '~\b' . preg_quote( $name, '~' ) . '\s*=\s*(["\']).*?\1~i';
+    $escaped = htmlspecialchars( $value, ENT_QUOTES, 'UTF-8' );
+
+    if ( preg_match( $pattern, $tag ) ) {
+        $updated = preg_replace( $pattern, $name . '="' . $escaped . '"', $tag, 1 );
+        return is_string( $updated ) ? $updated : $tag;
+    }
+
+    return mdo_home_perf_add_img_attributes( $tag, $name . '="' . $escaped . '"' );
+}
+
 function mdo_home_perf_transform_html( string $html ): string {
     if ( '' === $html ) {
         return $html;
@@ -98,8 +113,7 @@ function mdo_home_perf_transform_html( string $html ): string {
 
     /*
      * Hustle no monta ningún módulo ni script en la Home actual, pero su bloque
-     * inline de ~134 KiB seguía entrando en la hoja diferida. Se elimina sólo
-     * en la Home antes de que home-cache agregue los estilos.
+     * inline seguía entrando en la hoja diferida. Se elimina sólo en la Home.
      */
     $html = preg_replace(
         '~<style\b[^>]*\bid=["\']hustle_inline_styles_front-inline-css["\'][^>]*>.*?</style\s*>~is',
@@ -108,6 +122,7 @@ function mdo_home_perf_transform_html( string $html ): string {
         1
     ) ?? $html;
 
+    /* Meta CAPI deja de formar una cadena crítica HTML -> unpkg. */
     $html = preg_replace_callback(
         '~<script\b[^>]*\bid=["\']facebook-capi-param-builder-js["\'][^>]*\bsrc=["\']([^"\']+)["\'][^>]*>\s*</script\s*>~i',
         static function ( array $matches ): string {
@@ -184,6 +199,20 @@ HTML;
         '~<img\b[^>]*>~i',
         static function ( array $matches ): string {
             $tag = $matches[0];
+
+            /*
+             * En móvil estas tarjetas ocupan ~78vw (315 px en viewport 412), no
+             * calc(100vw - 32px). La medida anterior hacía elegir 492/600 px
+             * cuando ya existe una variante de 295/320/360 px.
+             */
+            if ( preg_match( '~\bclass=["\'][^"\']*\belmercado-catalog-card-image-010241\b[^"\']*["\']~i', $tag ) ) {
+                $sizes = '(max-width: 767px) 78vw, (max-width: 1100px) calc(50vw - 32px), 280px';
+                $tag   = mdo_home_perf_set_tag_attribute( $tag, 'sizes', $sizes );
+                if ( preg_match( '~\bdata-sizes\s*=~i', $tag ) ) {
+                    $tag = mdo_home_perf_set_tag_attribute( $tag, 'data-sizes', $sizes );
+                }
+            }
+
             if ( ! preg_match( '~\bclass=["\'][^"\']*\bwcfmmp_sold_by_logo\b[^"\']*["\']~i', $tag ) ) {
                 return $tag;
             }
