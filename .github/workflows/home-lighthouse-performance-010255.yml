@@ -26,30 +26,40 @@ jobs:
           : "${CHROME:?Chrome missing}"
           export CHROME_PATH="$CHROME"
           curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
-          WARM_TTFB=$(curl -fsS --compressed --max-time 45 -o /dev/null -w '%{time_starttransfer}' 'https://www.elmercadodeorigen.com/')
           npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' \
             --only-categories=performance \
             --output=json \
             --output-path=/tmp/lhr.json \
             --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' \
             --quiet
-          WARM_TTFB="$WARM_TTFB" python3 - <<'PY' > runtime/home-lighthouse-performance-010255.txt
-          import json,os
+          python3 - <<'PY' > runtime/home-lighthouse-performance-010255.txt
+          import json
           r=json.load(open('/tmp/lhr.json'))
-          a=r['audits']
-          c=r['categories']['performance']
-          def val(k):
-              x=a.get(k,{})
-              return x.get('numericValue'),x.get('displayValue'),x.get('score')
-          print('curl_warm_ttfb_s=',os.environ.get('WARM_TTFB'))
+          a=r['audits']; c=r['categories']['performance']
           print('performance_score=',round((c.get('score') or 0)*100))
-          for k in ['first-contentful-paint','largest-contentful-paint','speed-index','total-blocking-time','cumulative-layout-shift','interactive','server-response-time','render-blocking-resources','unused-css-rules','unused-javascript','uses-responsive-images','uses-optimized-images','modern-image-formats']:
-              n,d,s=val(k)
-              print(f'{k}: numeric={n} display={d} score={s}')
-          rb=a.get('render-blocking-resources',{})
-          print('render_blocking_savings_ms=',(rb.get('details') or {}).get('overallSavingsMs'))
-          for item in ((rb.get('details') or {}).get('items') or [])[:10]:
-              print('render_blocking_item=',item.get('url'),item.get('wastedMs'),item.get('totalBytes'))
+          for k in ['first-contentful-paint','largest-contentful-paint','total-blocking-time','cumulative-layout-shift','render-blocking-resources','unused-css-rules','unused-javascript','uses-responsive-images','modern-image-formats']:
+              x=a.get(k,{})
+              print(f"{k}: numeric={x.get('numericValue')} display={x.get('displayValue')} score={x.get('score')}")
+          print('--- bootup-time ---')
+          items=((a.get('bootup-time',{}).get('details') or {}).get('items') or [])
+          for x in sorted(items,key=lambda y:y.get('total',0),reverse=True)[:20]:
+              print('bootup=',x.get('url'), 'total=',x.get('total'),'scripting=',x.get('scripting'),'parse=',x.get('scriptParseCompile'))
+          print('--- long-tasks ---')
+          items=((a.get('long-tasks',{}).get('details') or {}).get('items') or [])
+          for x in sorted(items,key=lambda y:y.get('duration',0),reverse=True)[:25]:
+              print('longtask=',x.get('url'),'duration=',x.get('duration'),'start=',x.get('startTime'))
+          print('--- third-party-summary ---')
+          items=((a.get('third-party-summary',{}).get('details') or {}).get('items') or [])
+          for x in sorted(items,key=lambda y:y.get('mainThreadTime',0),reverse=True)[:20]:
+              print('thirdparty=',x.get('entity'),'mainThread=',x.get('mainThreadTime'),'transfer=',x.get('transferSize'),'blocking=',x.get('blockingTime'))
+          print('--- unused-javascript ---')
+          items=((a.get('unused-javascript',{}).get('details') or {}).get('items') or [])
+          for x in sorted(items,key=lambda y:y.get('wastedBytes',0),reverse=True)[:20]:
+              print('unusedjs=',x.get('url'),'wasted=',x.get('wastedBytes'),'total=',x.get('totalBytes'),'wastedPercent=',x.get('wastedPercent'))
+          print('--- mainthread ---')
+          items=((a.get('mainthread-work-breakdown',{}).get('details') or {}).get('items') or [])
+          for x in sorted(items,key=lambda y:y.get('duration',0),reverse=True):
+              print('mainthread=',x.get('groupLabel') or x.get('group'),'duration=',x.get('duration'))
           PY
       - name: Record
         shell: bash
@@ -58,7 +68,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add runtime/home-lighthouse-performance-010255.txt
-          git commit -m 'Record final deferred Home Lighthouse performance' || exit 0
+          git commit -m 'Record Home JavaScript main-thread profile' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
-# final rerun after jQuery defer
+# profile main thread
