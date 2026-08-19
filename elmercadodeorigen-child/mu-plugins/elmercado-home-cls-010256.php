@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'init',
 	static function (): void {
-		$revision = '010256-6';
+		$revision = '010256-7';
 		if ( get_option( 'elmercado_home_cls_cache_revision', '' ) === $revision ) {
 			return;
 		}
@@ -32,6 +32,34 @@ add_action(
 	-100000
 );
 
+/**
+ * The repository already contains a compact Home critical stylesheet. It was
+ * not being emitted on production, so the desktop navigation could briefly
+ * render as a tall block before the normal cascade arrived. Emit it before the
+ * rest of wp_head; the smaller geometry lock below remains the final authority.
+ */
+add_action(
+	'wp_head',
+	static function (): void {
+		if ( is_admin() || ! is_front_page() || is_feed() || is_trackback() || wp_doing_ajax() ) {
+			return;
+		}
+
+		$critical_path = get_stylesheet_directory() . '/assets/css/critical-woostify-home.min.css';
+		if ( ! is_readable( $critical_path ) ) {
+			return;
+		}
+
+		$critical_css = file_get_contents( $critical_path );
+		if ( false === $critical_css || '' === trim( $critical_css ) ) {
+			return;
+		}
+
+		echo '<style id="elmercado-home-critical-base">' . $critical_css . '</style>' . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	},
+	-100001
+);
+
 add_action(
 	'wp_head',
 	static function (): void {
@@ -43,11 +71,59 @@ add_action(
 body.home .topbar{display:none!important;}
 
 /*
+ * Lock the exact desktop header geometry before Woostify's normal stylesheet
+ * can arrive. Lighthouse traced .site-navigation at ~618px high before it
+ * collapsed to 44px; that single transition displaced the entire Hero.
+ */
+@media(min-width:992px){
+body.home.elmercado-child-theme .site-header{
+position:sticky!important;top:0!important;height:64px!important;min-height:64px!important;max-height:64px!important;
+}
+body.home.elmercado-child-theme .site-header-inner{
+height:64px!important;min-height:64px!important;max-height:64px!important;padding:0!important;
+}
+body.home.elmercado-child-theme .site-header-inner>.woostify-container{
+display:grid!important;grid-template-columns:minmax(190px,auto) minmax(0,1fr) 148px!important;
+align-items:center!important;column-gap:clamp(28px,3.2vw,54px)!important;
+width:min(calc(100% - 40px),1320px)!important;height:64px!important;min-height:64px!important;max-height:64px!important;
+margin-inline:auto!important;padding-block:0!important;
+}
+body.home.elmercado-child-theme .site-header .main-navigation{
+display:flex!important;align-items:center!important;justify-content:center!important;
+width:100%!important;height:44px!important;min-height:44px!important;max-height:44px!important;margin:0!important;padding:0!important;
+}
+body.home.elmercado-child-theme .site-header .site-navigation{
+display:flex!important;align-items:center!important;justify-content:center!important;
+width:100%!important;height:44px!important;min-height:44px!important;max-height:44px!important;
+margin:0!important;padding:0!important;overflow:visible!important;
+}
+body.home.elmercado-child-theme .site-header .primary-navigation,
+body.home.elmercado-child-theme .site-header .site-navigation>.primary-navigation{
+display:flex!important;align-items:center!important;justify-content:center!important;
+width:auto!important;height:44px!important;min-height:44px!important;max-height:44px!important;
+gap:clamp(.35rem,1vw,1rem)!important;margin:0!important;padding:0!important;list-style:none!important;
+}
+body.home.elmercado-child-theme .site-header .primary-navigation>li{
+display:flex!important;align-items:center!important;height:44px!important;min-height:44px!important;margin:0!important;padding:0!important;
+}
+body.home.elmercado-child-theme .site-header .primary-navigation>li>a{
+display:flex!important;align-items:center!important;height:44px!important;min-height:44px!important;
+margin:0!important;padding:.65rem .55rem!important;line-height:1.2!important;white-space:nowrap!important;
+}
+body.home.elmercado-child-theme .site-header .site-branding{
+display:block!important;align-self:center!important;justify-self:start!important;margin:0!important;min-width:0!important;
+}
+body.home.elmercado-child-theme .site-header .site-tools{
+display:grid!important;grid-template-columns:repeat(3,44px)!important;grid-auto-flow:column!important;grid-auto-columns:44px!important;
+align-items:center!important;justify-content:end!important;gap:8px!important;width:148px!important;height:44px!important;min-height:44px!important;
+margin:0!important;padding:0!important;overflow:visible!important;
+}
+
+/*
  * Final desktop Hero geometry, emitted before the large child-theme cascade.
  * This mirrors the Home vendor/copy layer that currently wins after all CSS is
  * loaded, so Lighthouse never sees an intermediate taller/wider Hero.
  */
-@media(min-width:992px){
 body.home.elmercado-child-theme .emo-home>.emo-hero{
 position:relative!important;isolation:isolate!important;
 min-height:min(600px,calc(100svh - 108px))!important;
