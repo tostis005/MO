@@ -1,4 +1,5 @@
 <?php
+// Production verification trigger v1.0.1.
 if ( $argc < 2 ) { fwrite( STDERR, "missing_wp_path\n" ); exit( 90 ); }
 
 define( 'DOING_AJAX', true );
