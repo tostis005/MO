@@ -1,0 +1,149 @@
+name: Deploy Home performance pass 3 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-performance-pass3-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-home-performance-pass3-20260819
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l mu-plugins/mdo-home-performance-20260819.php
+
+      - name: Deploy latest Home MU plugin
+        id: deploy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/mdo-home-performance-pass3-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/mdo-home-performance-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            MU='$PROD_PATH/wp-content/mu-plugins'
+            STATIC='$PROD_PATH/wp-content/uploads/elmercado-home-static'
+            install -m 0644 '$REMOTE' \"\$MU/mdo-home-performance-20260819.php\"
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$MU/mdo-home-performance-20260819.php\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f \"\$STATIC/index.html\" \"\$STATIC\"/home-deferred-*.css '$REMOTE'
+          "
+
+      - name: Warm and inspect regenerated Home
+        id: verify
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3 4; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY' > /tmp/pass3-verify.json
+          from html.parser import HTMLParser
+          import json,re
+          html=open('/tmp/home.html',encoding='utf-8').read()
+          class P(HTMLParser):
+              def __init__(self): super().__init__(); self.css=[]; self.capi=[]
+              def handle_starttag(self,tag,attrs):
+                  d=dict(attrs)
+                  if tag=='link' and 'home-deferred-' in (d.get('href') or ''): self.css.append(d.get('href'))
+                  if tag=='script' and d.get('id')=='facebook-capi-param-builder-js': self.capi.append(d)
+          p=P(); p.feed(html)
+          out={'deferred_css':p.css,'hustle_style_tag':bool(re.search(r'id=["\']hustle_inline_styles_front-inline-css',html,re.I)),'capi':p.capi}
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          assert p.css
+          assert not out['hustle_style_tag']
+          assert p.capi and p.capi[0].get('type')=='application/x-mdo-deferred'
+          PY
+          CSS_URL=$(python3 -c "import json; print(json.load(open('/tmp/pass3-verify.json'))['deferred_css'][0])")
+          curl -fsS --compressed --max-time 45 "$CSS_URL" -o /tmp/home-deferred.css
+          CSS_BYTES=$(wc -c < /tmp/home-deferred.css)
+          HUSTLE_BYTES=$(python3 - <<'PY'
+          from pathlib import Path
+          css=Path('/tmp/home-deferred.css').read_text(errors='ignore')
+          print(css.lower().count('.hustle-'))
+          PY
+          )
+          echo "css_bytes=$CSS_BYTES" > runtime/home-performance-pass3-20260819.txt
+          echo "hustle_selector_mentions=$HUSTLE_BYTES" >> runtime/home-performance-pass3-20260819.txt
+          cat /tmp/pass3-verify.json >> runtime/home-performance-pass3-20260819.txt
+
+      - name: Lighthouse 3x and audit CSS
+        id: lighthouse
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do
+            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/pass3-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          done
+          python3 - <<'PY' >> runtime/home-performance-pass3-20260819.txt
+          import json,statistics
+          rows=[]
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/pass3-{i}.json')); x=a['audits']
+              r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':x['cumulative-layout-shift']['numericValue'],'si':round(x['speed-index']['numericValue'])}
+              rows.append(r); print('run',i,r)
+          for k in rows[0]: print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          a=json.load(open('/tmp/pass3-2.json'))['audits']
+          for key in ['unused-css-rules','unminified-css','forced-reflow-insight','image-delivery-insight','legacy-javascript-insight','network-dependency-tree-insight','mainthread-work-breakdown']:
+              v=a.get(key,{})
+              print('audit',key,'score=',v.get('score'),'numeric=',v.get('numericValue'),'display=',v.get('displayValue'))
+              for item in (v.get('details') or {}).get('items',[])[:8]:
+                  if isinstance(item,dict):
+                      slim={k:item.get(k) for k in ['url','totalBytes','wastedBytes','wastedPercent','source','reflowTime'] if k in item}
+                      print(' item',json.dumps(slim,ensure_ascii=False))
+          PY
+          cat runtime/home-performance-pass3-20260819.txt
+
+      - name: Record result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-performance-pass3-20260819.txt ] || printf 'deploy=%s\nverify=%s\nlighthouse=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' '${{ steps.lighthouse.outcome }}' > runtime/home-performance-pass3-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-performance-pass3-20260819.txt
+          git commit -m 'Record Home performance pass 3 verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
