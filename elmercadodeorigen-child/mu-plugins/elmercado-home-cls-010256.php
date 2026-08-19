@@ -2,9 +2,9 @@
 /**
  * CLS stabilization for transient pre-initialisation states on the Home.
  *
- * Woostify renders the cart sidebar in normal document flow before its front-end
- * CSS/JS turns it into a closed off-canvas panel. Reserve the closed state from
- * the first paint, but stop intervening as soon as the theme marks JS ready.
+ * Woostify renders some legacy/off-canvas elements in document flow before its
+ * final front-end CSS/JS state is applied. Match the final closed/hidden state
+ * from the first paint without changing the post-initialisation behaviour.
  *
  * @package ElMercadoDeOrigen
  */
@@ -21,6 +21,7 @@ add_action(
 		}
 		?>
 <style id="elmercado-home-cls-010256">
+body.home .topbar{display:none!important;}
 @media(max-width:767px){
 body.home:not(.emo-js-ready) #shop-cart-sidebar{
 position:fixed!important;top:0!important;right:0!important;left:auto!important;
