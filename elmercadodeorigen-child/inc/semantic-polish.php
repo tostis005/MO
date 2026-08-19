@@ -59,7 +59,7 @@ add_action(
 				});
 			});
 
-			<?php if ( is_home() || is_singular( 'post' ) || is_category() || is_tag() || is_author() || is_date() ) : ?>
+			<?php if ( ! is_front_page() && ( is_home() || is_singular( 'post' ) || is_category() || is_tag() || is_author() || is_date() ) ) : ?>
 			/* Sólo el contexto editorial necesita comprobar si conviven varios H1 visibles. */
 			const visibleHeadingOne = [...document.querySelectorAll('h1')].filter((heading) => {
 				const style = getComputedStyle(heading);
