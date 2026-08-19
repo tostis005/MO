@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'elmercadodeorigen-child/functions.php'
+      - 'elmercadodeorigen-child/inc/home-cache.php'
       - 'elmercadodeorigen-child/inc/home-final-copy-performance-010146.php'
       - 'elmercadodeorigen-child/inc/home-performance-second-pass-010147.php'
       - 'elmercadodeorigen-child/inc/home-inline-jquery-010148.php'
@@ -39,6 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/functions.php
+          php -l elmercadodeorigen-child/inc/home-cache.php
           php -l elmercadodeorigen-child/inc/home-final-copy-performance-010146.php
           php -l elmercadodeorigen-child/inc/home-performance-second-pass-010147.php
           php -l elmercadodeorigen-child/inc/home-inline-jquery-010148.php
@@ -77,6 +79,7 @@ jobs:
           REMOTE_DIR="/tmp/elmercado-pagespeed-${GITHUB_RUN_ID}"
           timeout 45s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/inc' '$REMOTE_DIR/scripts'"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/functions.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-cache.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-cache.php"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-final-copy-performance-010146.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-final-copy-performance-010146.php"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-performance-second-pass-010147.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-performance-second-pass-010147.php"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/home-inline-jquery-010148.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/inc/home-inline-jquery-010148.php"
@@ -91,12 +94,14 @@ jobs:
             BACKUP_DIR=\"\$HOME/elmercado-pagespeed-backup-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S)\"
             mkdir -p \"\$BACKUP_DIR/inc\"
             cp \"\$THEME_PATH/functions.php\" \"\$BACKUP_DIR/functions.php\"
+            cp \"\$THEME_PATH/inc/home-cache.php\" \"\$BACKUP_DIR/inc/home-cache.php\"
             cp \"\$THEME_PATH/inc/home-final-copy-performance-010146.php\" \"\$BACKUP_DIR/inc/home-final-copy-performance-010146.php\"
             cp \"\$THEME_PATH/inc/home-performance-second-pass-010147.php\" \"\$BACKUP_DIR/inc/home-performance-second-pass-010147.php\"
             cp \"\$THEME_PATH/inc/home-inline-jquery-010148.php\" \"\$BACKUP_DIR/inc/home-inline-jquery-010148.php\"
             [ ! -f '$PROD_PATH/.htaccess' ] || cp '$PROD_PATH/.htaccess' \"\$BACKUP_DIR/.htaccess\"
 
             install -m 0644 '$REMOTE_DIR/functions.php' \"\$THEME_PATH/functions.php\"
+            install -m 0644 '$REMOTE_DIR/inc/home-cache.php' \"\$THEME_PATH/inc/home-cache.php\"
             install -m 0644 '$REMOTE_DIR/inc/home-final-copy-performance-010146.php' \"\$THEME_PATH/inc/home-final-copy-performance-010146.php\"
             install -m 0644 '$REMOTE_DIR/inc/home-performance-second-pass-010147.php' \"\$THEME_PATH/inc/home-performance-second-pass-010147.php\"
             install -m 0644 '$REMOTE_DIR/inc/home-inline-jquery-010148.php' \"\$THEME_PATH/inc/home-inline-jquery-010148.php\"
@@ -106,6 +111,7 @@ jobs:
             wp_bin=\$(command -v wp)
 
             \"\$php_bin\" -l \"\$THEME_PATH/functions.php\"
+            \"\$php_bin\" -l \"\$THEME_PATH/inc/home-cache.php\"
             \"\$php_bin\" -l \"\$THEME_PATH/inc/home-final-copy-performance-010146.php\"
             \"\$php_bin\" -l \"\$THEME_PATH/inc/home-performance-second-pass-010147.php\"
             \"\$php_bin\" -l \"\$THEME_PATH/inc/home-inline-jquery-010148.php\"
@@ -159,6 +165,17 @@ jobs:
           for kind, items in [('style', styles), ('script', scripts)]:
               for size, opening in sorted(items, reverse=True)[:5]:
                   print(f'top_{kind}_bytes={size} {opening}')
+
+          head_end = html.lower().find('</head>')
+          for marker in ('woostify-general-js-extra', 'woostify-general-js', 'jquery-core-js'):
+              pos = html.find(marker)
+              where = 'head' if 0 <= pos < head_end else ('body' if pos >= 0 else 'missing')
+              print(f'{marker}: position={pos} location={where}')
+              if pos >= 0:
+                  start = html.rfind('<script', 0, pos)
+                  end = html.find('</script>', pos)
+                  print(html[start:min(end+9, start+700)].replace('\n', ' '))
+
           if not producer_ok:
               sys.exit(12)
           PY
