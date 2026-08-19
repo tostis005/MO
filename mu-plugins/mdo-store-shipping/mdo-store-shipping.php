@@ -26,6 +26,38 @@ if ( is_object( $store_user ) ) {
 $minimum = $vendor_id ? mdo_sst_minimum_order( $vendor_id ) : 0;
 $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
 
+/*
+ * Zone-based rows must identify a real public destination. WCFM can expose
+ * configured methods whose zone/location data is missing in the public
+ * context; rendering those as "Zona de envío" is not useful to customers.
+ * Country-based shipping stores the destination in the row name, so it is
+ * intentionally left untouched here.
+ */
+$shipping_meta = $vendor_id ? get_user_meta( $vendor_id, '_wcfmmp_shipping', true ) : array();
+$shipping_type = is_array( $shipping_meta ) ? (string) ( $shipping_meta['_wcfmmp_user_shipping_type'] ?? '' ) : '';
+if ( 'by_country' !== $shipping_type && ! empty( $rows ) ) {
+    $rows = array_values(
+        array_filter(
+            $rows,
+            static function( $row ): bool {
+                if ( ! is_array( $row ) ) {
+                    return false;
+                }
+
+                $locations = isset( $row['locations'] ) && is_array( $row['locations'] )
+                    ? array_values( array_filter( array_map( 'trim', $row['locations'] ) ) )
+                    : array();
+
+                if ( ! empty( $locations ) ) {
+                    return true;
+                }
+
+                return function_exists( 'mdo_sst_is_mainland_spain_row' ) && mdo_sst_is_mainland_spain_row( $row );
+            }
+        )
+    );
+}
+
 /** Detect a WooCommerce flat-rate formula such as "8 * [qty]". */
 $qty_formula = static function( $value ): ?array {
     $raw = trim( wp_strip_all_tags( (string) $value ) );
@@ -78,7 +110,7 @@ $row_unconditional_free = static function( array $row ): bool {
 
     foreach ( $row['notes'] as $note ) {
         $plain = remove_accents( strtolower( trim( wp_strip_all_tags( (string) $note ) ) ) );
-        if ( false !== strpos( $plain, 'envio gratuito' ) || false !== strpos( $plain, 'free shipping' ) ) {
+        if ( false !== strpos( $plain, 'envio gratuito' ) || false !== strpos( $plain, 'envio gratis' ) || false !== strpos( $plain, 'free shipping' ) ) {
             return true;
         }
     }
@@ -315,10 +347,10 @@ foreach ( $rows as $row ) {
                             <tbody>
                                 <?php foreach ( $rows as $row ) : ?>
                                     <?php
-                                    $free_from              = ! empty( $row['free_from'] ) ? (float) $row['free_from'] : 0.0;
+                                    $free_from               = ! empty( $row['free_from'] ) ? (float) $row['free_from'] : 0.0;
                                     $minimum_guarantees_free = $row_minimum_guarantees_free( $row );
                                     $unconditional_free      = $row_unconditional_free( $row );
-                                    $qty                      = $row_qty_formula( $row );
+                                    $qty                     = $row_qty_formula( $row );
 
                                     $details = array();
                                     if ( ! $minimum_guarantees_free && ! $unconditional_free && $free_from > 0 ) {
@@ -331,7 +363,7 @@ foreach ( $rows as $row ) {
                                     if ( ! empty( $row['notes'] ) && is_array( $row['notes'] ) ) {
                                         foreach ( $row['notes'] as $note ) {
                                             $plain_note = remove_accents( strtolower( trim( wp_strip_all_tags( (string) $note ) ) ) );
-                                            if ( $unconditional_free && ( false !== strpos( $plain_note, 'envio gratuito' ) || false !== strpos( $plain_note, 'free shipping' ) ) ) {
+                                            if ( $unconditional_free && ( false !== strpos( $plain_note, 'envio gratuito' ) || false !== strpos( $plain_note, 'envio gratis' ) || false !== strpos( $plain_note, 'free shipping' ) ) ) {
                                                 continue;
                                             }
                                             $details[] = trim( (string) $note );
