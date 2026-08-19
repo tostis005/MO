@@ -1,0 +1,43 @@
+name: Home reflow source locate 0.10.261
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-reflow-source-locate-010261.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Locate source strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          {
+            echo '=== CART ==='
+            grep -RIn --include='*.php' 'emo-cart-pseudo-empty\|pseudoNumber' elmercadodeorigen-child || true
+            echo '=== CAROUSEL ==='
+            grep -RIn --include='*.php' 'track.scrollWidth - track.clientWidth\|scrollLeft >= max' elmercadodeorigen-child || true
+            echo '=== SEARCH HANDLE ==='
+            grep -RIn --include='*.php' 'jquery-dgwt-wcas\|dgwt-wcas' elmercadodeorigen-child | head -n 80 || true
+          } > runtime/home-reflow-source-locate-010261.txt
+          cat runtime/home-reflow-source-locate-010261.txt
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-reflow-source-locate-010261.txt
+          git commit -m 'Record Home reflow source locations' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
