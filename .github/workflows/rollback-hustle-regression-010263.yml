@@ -1,0 +1,125 @@
+name: Rollback Hustle regression 0.10.263
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rollback-hustle-regression-010263.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rollback-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore pre-Hustle performance.php
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 64c13d96576deb1c690362466f1f31b552b4b99f:elmercadodeorigen-child/inc/performance.php > elmercadodeorigen-child/inc/performance.php
+          php -l elmercadodeorigen-child/inc/performance.php
+          ! grep -q "'/plugins/hustle/'" elmercadodeorigen-child/inc/performance.php
+          ! grep -q "'hustle_inline_styles_front'" elmercadodeorigen-child/inc/performance.php
+
+      - name: Deploy rollback
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/performance.php "$STAGING_USER@$STAGING_HOST:/tmp/performance-rollback-010263.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            cp \"\$THEME/inc/performance.php\" \"\$THEME/inc/performance.php.bak-010263\" || true
+            install -m 0644 /tmp/performance-rollback-010263.php \"\$THEME/inc/performance.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$THEME/inc/performance.php\"
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f /tmp/performance-rollback-010263.php
+          "
+
+      - name: Warm Home
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+
+      - name: Measure three Lighthouse runs
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do
+            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/lhr-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          done
+          python3 - <<'PY' > runtime/rollback-hustle-regression-010263.txt
+          import json, statistics
+          rows=[]
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/lhr-{i}.json'))
+              audits=a['audits']
+              row={
+                  'score': round(a['categories']['performance']['score']*100),
+                  'fcp': audits['first-contentful-paint']['numericValue'],
+                  'lcp': audits['largest-contentful-paint']['numericValue'],
+                  'tbt': audits['total-blocking-time']['numericValue'],
+                  'cls': audits['cumulative-layout-shift']['numericValue'],
+                  'si': audits['speed-index']['numericValue'],
+              }
+              rows.append(row)
+              print('run',i,row)
+          print('median_score=',statistics.median(r['score'] for r in rows))
+          print('median_fcp_ms=',round(statistics.median(r['fcp'] for r in rows)))
+          print('median_lcp_ms=',round(statistics.median(r['lcp'] for r in rows)))
+          print('median_tbt_ms=',round(statistics.median(r['tbt'] for r in rows)))
+          print('median_cls=',statistics.median(r['cls'] for r in rows))
+          print('median_si_ms=',round(statistics.median(r['si'] for r in rows)))
+          PY
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          printf 'hustle_inline_present=%s\n' "$(grep -c 'hustle_inline_styles_front-inline-css' /tmp/home.html || true)" >> runtime/rollback-hustle-regression-010263.txt
+          cat runtime/rollback-hustle-regression-010263.txt
+
+      - name: Commit restored file and verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/rollback-hustle-regression-010263.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/rollback-hustle-regression-010263.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/inc/performance.php runtime/rollback-hustle-regression-010263.txt
+          git commit -m 'Rollback Hustle Home regression' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
