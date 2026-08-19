@@ -1,0 +1,135 @@
+name: Restore Home 0.10.260 robust production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-home-010260-robust-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: restore-home-010260-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate restored files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/cart-counter-visibility-final.php
+          php -l elmercadodeorigen-child/inc/performance.php
+          grep -q "getComputedStyle(node, '::before')" elmercadodeorigen-child/inc/cart-counter-visibility-final.php
+          ! grep -q '★★★★★' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+          test ! -e mu-plugins/mdo-home-fibosearch-lazy-010261.php
+
+      - name: Deploy baseline files
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          command -v sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_CART="/tmp/cart-counter-${GITHUB_RUN_ID}.php"
+          REMOTE_PERF="/tmp/performance-${GITHUB_RUN_ID}.php"
+          REMOTE_CRIT="/tmp/critical-home-${GITHUB_RUN_ID}.css"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/cart-counter-visibility-final.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CART"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/performance.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PERF"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:$REMOTE_CRIT"
+
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            MU_DIR='$PROD_PATH/wp-content/mu-plugins'
+            install -m 0644 '$REMOTE_CART' \"\$THEME/inc/cart-counter-visibility-final.php\"
+            install -m 0644 '$REMOTE_PERF' \"\$THEME/inc/performance.php\"
+            install -m 0644 '$REMOTE_CRIT' \"\$THEME/assets/css/critical-woostify-home.min.css\"
+            rm -f \"\$MU_DIR/mdo-home-fibosearch-lazy-010261.php\"
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$THEME/inc/cart-counter-visibility-final.php\"
+            \"\$php_bin\" -l \"\$THEME/inc/performance.php\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f '$REMOTE_CART' '$REMOTE_PERF' '$REMOTE_CRIT'
+          "
+
+      - name: Verify live baseline
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          direct=$(grep -c 'id="jquery-dgwt-wcas-js" src=' /tmp/home.html || true)
+          lazy=$(grep -c 'mdo-home-fibosearch-lazy-010261' /tmp/home.html || true)
+          star=$(grep -c 'font-family:star;src:' /tmp/home.html || true)
+          native=$(grep -c '★★★★★' /tmp/home.html || true)
+          cart=$(grep -c "getComputedStyle(node, '::before')" /tmp/home.html || true)
+          test "$direct" -ge 1
+          test "$lazy" -eq 0
+          test "$star" -ge 1
+          test "$native" -eq 0
+          test "$cart" -ge 1
+          {
+            echo 'deploy=success'
+            echo 'verify=success'
+            echo "fibosearch_direct=$direct"
+            echo "fibosearch_lazy_marker=$lazy"
+            echo "star_font_face=$star"
+            echo "native_star_marker=$native"
+            echo "cart_pseudo_read=$cart"
+          } > runtime/restore-home-010260-robust.txt
+          cat runtime/restore-home-010260-robust.txt
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/restore-home-010260-robust.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/restore-home-010260-robust.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/restore-home-010260-robust.txt
+          git commit -m 'Record restored Home 0.10.260 baseline' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
