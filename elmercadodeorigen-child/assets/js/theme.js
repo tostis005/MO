@@ -3,6 +3,7 @@
 
 	const body = document.body;
 	const html = document.documentElement;
+	const isHome = body.classList.contains('home');
 	const header = document.querySelector('.site-header');
 	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -63,11 +64,19 @@
 	};
 
 	body.classList.add('emo-js-ready');
-	cleanLegacyHeaderArtifacts();
+	/*
+	 * On the Home, legacy sticky-header cleanup used to remove classes, inline
+	 * offsets and bumper DOM after the first frame. Even when those artefacts are
+	 * harmless, changing them post-paint can move the entire hero and create a
+	 * large CLS. Interior pages retain the historical cleanup unchanged.
+	 */
+	if (!isHome) {
+		cleanLegacyHeaderArtifacts();
+		window.addEventListener('load', cleanLegacyHeaderArtifacts, { once: true });
+	}
 	removeProductHoverArtifacts();
 	labelWishlistLinks();
 	repairHustleDialogs();
-	window.addEventListener('load', cleanLegacyHeaderArtifacts, { once: true });
 
 	const brandingLink = document.querySelector('.site-branding > .site-title > a');
 	brandingLink?.querySelectorAll(':scope > .site-title').forEach((duplicate) => duplicate.remove());
