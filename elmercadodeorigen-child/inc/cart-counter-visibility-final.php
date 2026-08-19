@@ -24,8 +24,6 @@ add_action(
 				pointer-events: none !important;
 			}
 
-			body.elmercado-child-theme .site-header .emo-cart-pseudo-empty::before,
-			body.elmercado-child-theme .site-header .emo-cart-pseudo-empty::after,
 			body.elmercado-child-theme .site-header [data-count="0"]::before,
 			body.elmercado-child-theme .site-header [data-count="0"]::after,
 			body.elmercado-child-theme .site-header [data-cart-count="0"]::before,
@@ -40,57 +38,59 @@ add_action(
 		(() => {
 			'use strict';
 
-			const numericText = (node) => {
-				const value = (node.textContent || '').trim();
-				return /^\d+$/.test(value) ? Number.parseInt(value, 10) : null;
+			const numeric = (value) => {
+				const normalized = String(value ?? '').trim();
+				return /^\d+$/.test(normalized) ? Number.parseInt(normalized, 10) : null;
 			};
 
-			const pseudoNumber = (value) => {
-				const normalized = String(value || '')
-					.replace(/^['"]|['"]$/g, '')
-					.trim();
-				return /^\d+$/.test(normalized) ? Number.parseInt(normalized, 10) : null;
+			const countFor = (node) => {
+				for (const name of ['data-count', 'data-cart-count', 'data-items']) {
+					if (node.hasAttribute(name)) return numeric(node.getAttribute(name));
+				}
+				return node.children.length === 0 ? numeric(node.textContent) : null;
 			};
 
 			const sync = () => {
 				const header = document.querySelector('.site-header');
 				if (!header) return;
 
-				const nodes = [header, ...header.querySelectorAll('*')];
+				const nodes = header.querySelectorAll(
+					'[data-count],[data-cart-count],[data-items],.cart-count,.mini-cart-count,.cart-contents-count,.shopping-cart .count,.shopping-bag-button .count'
+				);
 				nodes.forEach((node) => {
-					if (!(node instanceof HTMLElement)) return;
-
-					const textCount = node.children.length === 0 ? numericText(node) : null;
-					const textEmpty = textCount === 0;
-					node.classList.toggle('emo-cart-count-empty', textEmpty);
-					if (textCount !== null) node.setAttribute('aria-hidden', textEmpty ? 'true' : 'false');
-
-					const before = pseudoNumber(getComputedStyle(node, '::before').content);
-					const after = pseudoNumber(getComputedStyle(node, '::after').content);
-					node.classList.toggle('emo-cart-pseudo-empty', before === 0 || after === 0);
+					const count = countFor(node);
+					if (count === null) return;
+					const empty = count === 0;
+					node.classList.toggle('emo-cart-count-empty', empty);
+					node.setAttribute('aria-hidden', empty ? 'true' : 'false');
 				});
 			};
 
 			const start = () => {
+				const header = document.querySelector('.site-header');
+				if (!header) return;
+
 				sync();
 				let scheduled = false;
-				const observer = new MutationObserver(() => {
+				const schedule = () => {
 					if (scheduled) return;
 					scheduled = true;
 					requestAnimationFrame(() => {
 						scheduled = false;
 						sync();
 					});
-				});
-				observer.observe(document.documentElement, {
+				};
+
+				new MutationObserver(schedule).observe(header, {
 					childList: true,
 					subtree: true,
 					characterData: true,
 					attributes: true,
-					attributeFilter: ['class', 'data-count', 'data-cart-count', 'data-items']
+					attributeFilter: ['data-count', 'data-cart-count', 'data-items']
 				});
+
 				['wc_fragments_refreshed', 'added_to_cart', 'removed_from_cart', 'updated_wc_div'].forEach((eventName) => {
-					document.body.addEventListener(eventName, () => requestAnimationFrame(sync));
+					document.body.addEventListener(eventName, schedule);
 				});
 			};
 
