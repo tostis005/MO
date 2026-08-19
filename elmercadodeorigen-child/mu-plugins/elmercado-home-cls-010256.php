@@ -110,7 +110,8 @@ opacity:0!important;pointer-events:none!important;
 }
 
 @media(max-width:991px){
-body.home #mobile-navigation.sidebar-menu{
+body.home #mobile-navigation.sidebar-menu[aria-hidden="true"],
+html:not([data-emo-menu-intent="1"]) body.home #mobile-navigation.sidebar-menu{
 position:fixed!important;top:0!important;bottom:0!important;left:0!important;
 margin:0!important;visibility:hidden!important;opacity:0!important;
 pointer-events:none!important;transform:translate3d(-105%,0,0)!important;
