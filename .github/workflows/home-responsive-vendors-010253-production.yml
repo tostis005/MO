@@ -72,7 +72,7 @@ jobs:
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php "$STAGING_USER@$STAGING_HOST:$REMOTE_RESP"
           timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CRIT"
 
-          timeout 120s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             MU_DIR='$PROD_PATH/wp-content/mu-plugins'
             TARGET_RESP=\"\$MU_DIR/elmercado-home-responsive-vendors-010253.php\"
@@ -90,6 +90,7 @@ jobs:
             wp_bin=\$(command -v wp)
             \"\$php_bin\" -l \"\$TARGET_RESP\"
             \"\$php_bin\" -l \"\$TARGET_CRIT\"
+            timeout 120s \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" media regenerate 11052 12667 --yes --path='$PROD_PATH' --allow-root
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
             rm -f '$REMOTE_RESP' '$REMOTE_CRIT'
@@ -109,8 +110,11 @@ jobs:
           import pathlib, re, sys
           html = pathlib.Path(sys.argv[1]).read_text(errors='replace')
           ok = True
-
-          for needle in ('Tolecarnes-fondo', 'JAMON_ACT'):
+          expected = {
+              'Tolecarnes-fondo': ('400', '400'),
+              'JAMON_ACT': ('450', '300'),
+          }
+          for needle, dims in expected.items():
               pos = html.find(needle)
               if pos < 0:
                   print(f'{needle}: not found')
@@ -119,8 +123,10 @@ jobs:
               start = html.rfind('<img', 0, pos)
               end = html.find('>', pos)
               tag = html[start:end+1]
-              print(f'[{needle}] {tag[:2200]}')
+              print(f'[{needle}] {tag[:2600]}')
               if 'srcset=' not in tag or 'sizes=' not in tag:
+                  ok = False
+              if f'width="{dims[0]}"' not in tag or f'height="{dims[1]}"' not in tag:
                   ok = False
 
           vp = re.search(r'<meta\b[^>]*name=["\']viewport["\'][^>]*>', html, re.I)
@@ -143,13 +149,14 @@ jobs:
           print('trp_css_link=' + ('present' if css_link else 'absent'))
           print('critical_css=' + ('present' if 'elmercado-home-critical-010254' in html else 'absent'))
           print('hustle_inline=' + ('present' if 'hustle_inline_styles_front-inline-css' in html else 'absent'))
+          print('hustle_popup=' + ('present' if 'hustle-popup-id-' in html else 'absent'))
           print('star_swap=' + ('yes' if 'font-display:swap' in html else 'no'))
           hooks = html.find('id="wp-hooks-js"')
           gtag = html.find('google-listings-and-ads/js/build/gtag-events.js')
           print(f'wp_hooks_pos={hooks} gtag_events_pos={gtag}')
           print(f'html_bytes={len(html.encode())}')
 
-          if css_link or 'elmercado-home-critical-010254' not in html or 'hustle_inline_styles_front-inline-css' in html or 'font-display:swap' not in html:
+          if css_link or 'elmercado-home-critical-010254' not in html or 'hustle_inline_styles_front-inline-css' in html or 'hustle-popup-id-' in html or 'font-display:swap' not in html:
               ok = False
           if gtag >= 0 and (hooks < 0 or hooks > gtag):
               ok = False
