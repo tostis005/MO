@@ -1,0 +1,128 @@
+name: Home pruned critical no decoration 010293
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-cls-pruned-no-decoration-010293.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-selective-structural-css-production
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build 50 KiB structural critical subset and disable hero decoration
+        run: |
+          set -euo pipefail
+          cp elmercadodeorigen-child/inc/home-cache.php /tmp/cache-before-010293.php
+          cp elmercadodeorigen-child/assets/css/critical-woostify-home.min.css /tmp/critical-before-010293.css
+          curl -fsS --compressed --max-time 60 'https://www.elmercadodeorigen.com/?mdo_extract_010293=1' -o /tmp/raw-home-010293.html
+          python3 -m pip install --quiet tinycss2
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,tinycss2
+          html=Path('/tmp/raw-home-010293.html').read_text(errors='ignore')
+          m=re.search(r'<style\b[^>]*\bid=["\']woostify-parent-style-inline-css["\'][^>]*>(.*?)</style\s*>',html,re.I|re.S)
+          if not m: raise SystemExit('parent CSS missing')
+          parent=m.group(1)
+          markers=(
+            ':root','html','body.elmercado-child-theme','body.home','#view','#content','.site-content','.site-main','.entry-content',
+            '.site-header','.site-header-inner','.woostify-container','.site-branding','.site-title','.custom-logo','.site-navigation','.main-navigation','.primary-navigation','.site-tools',
+            '.header-search','.search-icon','.shopping-cart','.shopping-bag-button','.my-account','.toggle-sidebar-menu-btn','.topbar','.emo-announcement','.emo-home','.emo-shell',
+            '.emo-hero','.emo-kicker','.emo-button','.emo-trust','.emo-hero-card','.emo-hero__visual','.emo-hero__grid','.emo-hero__copy','.emo-hero__proof',
+            '#mobile-navigation','.sidebar-menu','#shop-cart-sidebar','#woostify-overlay','.cart-sidebar-content'
+          )
+          def ser(t): return tinycss2.serialize(t).strip()
+          def keep(rules):
+            out=[]
+            for r in rules:
+              if r.type=='qualified-rule':
+                sel=ser(r.prelude)
+                if any(x in sel for x in markers): out.append(sel+'{'+tinycss2.serialize(r.content)+'}')
+              elif r.type=='at-rule' and r.content is not None and r.lower_at_keyword in ('media','supports','layer','container'):
+                inner=keep(tinycss2.parse_rule_list(r.content,skip_comments=True,skip_whitespace=True))
+                if inner: out.append('@'+r.lower_at_keyword+(' '+ser(r.prelude) if ser(r.prelude) else '')+'{'+''.join(inner)+'}')
+            return out
+          subset=''.join(keep(tinycss2.parse_stylesheet(parent,skip_comments=True,skip_whitespace=True)))
+          if not (30000 < len(subset) < 80000): raise SystemExit(f'bad subset size {len(subset)}')
+          Path('/tmp/subset-010293.css').write_text(subset)
+          crit=Path('elmercadodeorigen-child/assets/css/critical-woostify-home.min.css')
+          base=crit.read_text().split('/*mdo-parent-structural-critical-010291*/',1)[0].rstrip()
+          guard='body.home.elmercado-child-theme .emo-home>.emo-hero::after{display:none!important;content:none!important;width:0!important;height:0!important}'
+          crit.write_text(base+'\n/*mdo-pruned-structural-no-decoration-010293*/\n'+subset+'\n'+guard+'\n')
+          print('subset_bytes=',len(subset))
+          print('critical_bytes=',crit.stat().st_size)
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/inc/home-cache.php'); s=p.read_text()
+          block='''\t\t\t/* This 166 KiB block contains the final desktop Home geometry. Keep it\n\t\t\t * render-blocking while all non-structural inline CSS remains deferred. */\n\t\t\tif ( str_contains( $matches[0], 'id="woostify-parent-style-inline-css"' ) || str_contains( $matches[0], "id='woostify-parent-style-inline-css'" ) ) {\n\t\t\t\treturn $matches[0];\n\t\t\t}\n'''
+          if block not in s: raise SystemExit('parent-only good block missing')
+          p.write_text(s.replace(block,'',1))
+          PY
+          php -l elmercadodeorigen-child/inc/home-cache.php
+          grep -q 'mdo-pruned-structural-no-decoration-010293' elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+      - name: Deploy isolated cache and critical files
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done')"
+          : "${PROD:?}"; echo "$PROD" >/tmp/prod-010293
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/home-cache.php "$STAGING_USER@$STAGING_HOST:/tmp/cache-010293-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/critical-woostify-home.min.css "$STAGING_USER@$STAGING_HOST:/tmp/critical-010293-${GITHUB_RUN_ID}.css"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; install -m0644 /tmp/cache-010293-${GITHUB_RUN_ID}.php \"\$THEME/inc/home-cache.php\"; install -m0644 /tmp/critical-010293-${GITHUB_RUN_ID}.css \"\$THEME/assets/css/critical-woostify-home.min.css\"; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true; rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css /tmp/cache-010293-${GITHUB_RUN_ID}.php /tmp/critical-010293-${GITHUB_RUN_ID}.css"
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home-010293.html
+          grep -q 'mdo-pruned-structural-no-decoration-010293' /tmp/home-010293.html
+          ! grep -q 'id="woostify-parent-style-inline-css"' /tmp/home-010293.html
+      - name: Lighthouse desktop 3x
+        id: measure
+        run: |
+          set -euo pipefail; mkdir -p runtime
+          for i in 1 2 3; do npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=desktop --screenEmulation.mobile=false --screenEmulation.width=1350 --screenEmulation.height=940 --screenEmulation.deviceScaleFactor=1 --throttling-method=simulate --output=json --output-path="/tmp/lhr293-$i.json" --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'; done
+          SUBSET=$(wc -c </tmp/subset-010293.css) python3 - <<'PY' | tee runtime/home-cls-pruned-no-decoration-010293.txt
+          import json,statistics,os
+          print('structural_subset_bytes=',os.environ['SUBSET']); rows=[]
+          for i in range(1,4):
+            r=json.load(open(f'/tmp/lhr293-{i}.json')); a=r['audits']; x={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue'],'si':round(a['speed-index']['numericValue'])}; rows.append(x); print('run',i,x)
+            for q in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:6]: n=q.get('node') or {}; print(' shift',q.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          med={k:statistics.median(z[k] for z in rows) for k in rows[0]}
+          for k,v in med.items(): print('median_'+k+'=',v)
+          keep=med['cls']<0.02 and med['lcp']<5300 and med['fcp']<2800 and med['tbt']<1300
+          print('keep=',str(keep).lower()); open('/tmp/keep293','w').write('1' if keep else '0')
+          PY
+      - name: Keep only if balanced
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEEP=$(cat /tmp/keep293 2>/dev/null || echo 0)
+          if [ "$KEEP" != 1 ]; then
+            cp /tmp/cache-before-010293.php elmercadodeorigen-child/inc/home-cache.php; cp /tmp/critical-before-010293.css elmercadodeorigen-child/assets/css/critical-woostify-home.min.css
+            PROD=$(cat /tmp/prod-010293); PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+            sshpass -e scp $SCP /tmp/cache-before-010293.php "$STAGING_USER@$STAGING_HOST:/tmp/revert-cache-010293-${GITHUB_RUN_ID}.php"; sshpass -e scp $SCP /tmp/critical-before-010293.css "$STAGING_USER@$STAGING_HOST:/tmp/revert-critical-010293-${GITHUB_RUN_ID}.css"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; install -m0644 /tmp/revert-cache-010293-${GITHUB_RUN_ID}.php \"\$THEME/inc/home-cache.php\"; install -m0644 /tmp/revert-critical-010293-${GITHUB_RUN_ID}.css \"\$THEME/assets/css/critical-woostify-home.min.css\"; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true; rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css /tmp/revert-cache-010293-${GITHUB_RUN_ID}.php /tmp/revert-critical-010293-${GITHUB_RUN_ID}.css"
+          fi
+          mkdir -p runtime; [ -f runtime/home-cls-pruned-no-decoration-010293.txt ] || echo failed > runtime/home-cls-pruned-no-decoration-010293.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; git add elmercadodeorigen-child/inc/home-cache.php elmercadodeorigen-child/assets/css/critical-woostify-home.min.css runtime/home-cls-pruned-no-decoration-010293.txt; git commit -m 'Measure pruned Home critical CSS without decoration shift' || exit 0; git pull --rebase origin main; git push origin HEAD:main
