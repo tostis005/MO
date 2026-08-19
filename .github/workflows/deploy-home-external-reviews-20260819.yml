@@ -1,0 +1,81 @@
+name: Deploy Home external reviews 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-home-external-reviews-20260819.php'
+      - '.github/workflows/deploy-home-external-reviews-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-home-external-reviews-20260819
+  cancel-in-progress: true
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PHP
+        run: php -l mu-plugins/mdo-home-external-reviews-20260819.php
+
+      - name: Deploy to production and flush Home cache
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e scp $SCP mu-plugins/mdo-home-external-reviews-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-home-external-reviews-20260819.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            install -m 0644 /tmp/mdo-home-external-reviews-20260819.php '$PROD_PATH/wp-content/mu-plugins/mdo-home-external-reviews-20260819.php'
+            php_bin=/opt/plesk/php/8.3/bin/php
+            [ -x \"\$php_bin\" ] || php_bin=\$(command -v php)
+            wp_bin=\$(command -v wp)
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists( \"elmercado_flush_home_cache\" ) ) { elmercado_flush_home_cache(); }' --path='$PROD_PATH' --allow-root
+            rm -f /tmp/mdo-home-external-reviews-20260819.php
+          "
+
+      - name: Verify live Home
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            curl -fsS --compressed --max-time 50 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/?mdo_review_check=$i" -o "/tmp/home-$i.html"
+          done
+          cp /tmp/home-3.html /tmp/home.html
+          grep -q 'class="mdo-review-proof"' /tmp/home.html
+          grep -q '>Google<' /tmp/home.html
+          grep -q '>Trustpilot<' /tmp/home.html
+          grep -q '<strong>4,9</strong>' /tmp/home.html
+          grep -q '303 reseñas' /tmp/home.html
+          grep -q '<strong>4,6</strong>' /tmp/home.html
+          grep -q '169 opiniones' /tmp/home.html
+          if grep -q 'Opiniones de nuestros clientes en Google' /tmp/home.html; then
+            echo 'Legacy Google review block is still present' >&2
+            exit 1
+          fi
+          echo 'Home review proof verified; legacy review widget absent.'
