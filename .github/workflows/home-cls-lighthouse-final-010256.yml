@@ -1,0 +1,61 @@
+name: Home final CLS Lighthouse 0.10.256
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-cls-lighthouse-final-010256.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Measure live mobile CLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          : "${CHROME:?Chrome missing}"
+          export CHROME_PATH="$CHROME"
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lhr.json --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' > runtime/home-cls-lighthouse-final-010256.txt
+          import json
+          a=json.load(open('/tmp/lhr.json'))['audits']
+          for k in ('first-contentful-paint','largest-contentful-paint','total-blocking-time','cumulative-layout-shift','render-blocking-resources'):
+              x=a.get(k,{})
+              print(f'{k}: numeric={x.get("numericValue")} display={x.get("displayValue")} score={x.get("score")}')
+          print('--- shifts ---')
+          for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or []):
+              node=item.get('node') or {}
+              print('shift=',item.get('score'),'selector=',node.get('selector'),'label=',node.get('nodeLabel'))
+          print('--- culprits ---')
+          for group in ((a.get('cls-culprits-insight',{}).get('details') or {}).get('items') or []):
+              if isinstance(group,dict) and group.get('items'):
+                  for item in group['items']:
+                      node=item.get('node') or {}
+                      print('culprit=',item.get('score'),'selector=',node.get('selector'),'label=',node.get('nodeLabel'))
+          print('--- lcp breakdown ---')
+          for group in ((a.get('lcp-breakdown-insight',{}).get('details') or {}).get('items') or []):
+              print(json.dumps(group,ensure_ascii=False,separators=(',',':'))[:5000])
+          PY
+          cat runtime/home-cls-lighthouse-final-010256.txt
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-cls-lighthouse-final-010256.txt
+          git commit -m 'Record final Home CLS Lighthouse' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
