@@ -1,0 +1,150 @@
+name: Deploy Home image targets 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-image-targets-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-home-image-targets-20260819
+  cancel-in-progress: true
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-home-webp-delivery-20260819.php
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php
+          php -l tools/recompress-home-image-targets-20260819.php
+
+      - name: Deploy and recompress target images
+        id: deploy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e scp $SCP mu-plugins/mdo-home-webp-delivery-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-home-webp-delivery-20260819.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php "$STAGING_USER@$STAGING_HOST:/tmp/elmercado-home-responsive-vendors-010253.php"
+          sshpass -e scp $SCP tools/recompress-home-image-targets-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/recompress-home-image-targets-20260819.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            install -m 0644 /tmp/mdo-home-webp-delivery-20260819.php '$PROD_PATH/wp-content/mu-plugins/mdo-home-webp-delivery-20260819.php'
+            install -m 0644 /tmp/elmercado-home-responsive-vendors-010253.php '$PROD_PATH/wp-content/mu-plugins/elmercado-home-responsive-vendors-010253.php'
+            php_bin=/opt/plesk/php/8.3/bin/php
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval-file /tmp/recompress-home-image-targets-20260819.php --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f /tmp/mdo-home-webp-delivery-20260819.php /tmp/elmercado-home-responsive-vendors-010253.php /tmp/recompress-home-image-targets-20260819.php
+          " | tee /tmp/recompress.txt
+          cat /tmp/recompress.txt
+          for i in 1 2 3; do curl -fsS --compressed --max-time 50 'https://www.elmercadodeorigen.com/' -o "/tmp/home-$i.html"; done
+          cp /tmp/home-3.html /tmp/home.html
+
+      - name: Verify final HTML and image decoding
+        id: verify
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/refs.txt
+          import re
+          h=open('/tmp/home.html',encoding='utf-8',errors='ignore').read()
+          refs=sorted(set(re.findall(r'https://www\.elmercadodeorigen\.com/wp-content/uploads/[^\s"\'<>]+\.webp',h,re.I)))
+          for x in refs: print(x)
+          PY
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          REFS=/tmp/refs.txt CHROME="$CHROME" node <<'JS' > /tmp/decode.json
+          const fs=require('fs'),puppeteer=require('puppeteer-core');
+          (async()=>{const urls=fs.readFileSync(process.env.REFS,'utf8').trim().split(/\n+/).filter(Boolean);const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const p=await b.newPage();await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:60000});const r=await p.evaluate(async urls=>Promise.all(urls.map(url=>new Promise(resolve=>{const i=new Image();i.onload=()=>resolve({url,ok:true,w:i.naturalWidth,h:i.naturalHeight});i.onerror=()=>resolve({url,ok:false});i.src=url;}))),urls);console.log(JSON.stringify(r));await b.close();})().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          python3 - <<'PY' > runtime/home-image-targets-20260819.txt
+          import re,json
+          h=open('/tmp/home.html',encoding='utf-8',errors='ignore').read(); refs=open('/tmp/refs.txt').read().splitlines(); d=json.load(open('/tmp/decode.json')); bad=[x for x in d if not x.get('ok')]
+          targets={
+            'garrafa552':'Garrafa_5L-552x736.webp',
+            'aceite':'Aceite-sin-filtrar',
+            'hidalgo':'JAMON_ACTO_ECOLOGICO1',
+            'tolecarnes':'Tolecarnes-fondo',
+          }
+          print(open('/tmp/recompress.txt',encoding='utf-8',errors='ignore').read())
+          print('webp_refs=',len(refs))
+          for k,n in targets.items(): print(k,'=',sum(n in x for x in refs))
+          print('trp_official=',h.count('trp-language-switcher-js-v2-js'),'trp_lite=',h.count('mdo-trp-language-switcher-lite-js'))
+          print('decode_bad=',bad)
+          for needle in ('Aceite-sin-filtrar','JAMON_ACTO_ECOLOGICO1','Tolecarnes-fondo','Garrafa_5L'):
+              pos=h.find(needle); start=h.rfind('<img',0,pos); end=h.find('>',pos); print('TAG',needle,h[start:end+1][:2800])
+          assert not bad,bad
+          assert any('Garrafa_5L-552x736.webp' in x for x in refs),refs
+          assert any('Aceite-sin-filtrar' in x for x in refs),refs
+          assert any('JAMON_ACTO_ECOLOGICO1' in x for x in refs),refs
+          assert any('Tolecarnes-fondo' in x for x in refs),refs
+          PY
+          cat runtime/home-image-targets-20260819.txt
+
+      - name: Lighthouse 3x
+        id: lighthouse
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/lh-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet; done
+          python3 - <<'PY' >> runtime/home-image-targets-20260819.txt
+          import json,statistics
+          rows=[]
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/lh-{i}.json')); x=a['audits']; trp=jq=unat=0
+              for g in (x.get('forced-reflow-insight',{}).get('details') or {}).get('items',[]):
+                  for z in g.get('items',[]):
+                      s=z.get('source') or {}; u=(s.get('url') or s.get('value') or '') if isinstance(s,dict) else ''; t=z.get('reflowTime',0) or 0
+                      if 'trp-frontend-language-switcher' in u: trp+=t
+                      if '/jquery/jquery.min.js' in u: jq+=t
+                      if 'unattributed' in u.lower(): unat+=t
+              r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':round(x['cumulative-layout-shift']['numericValue'],5),'trp':round(trp,2),'jquery':round(jq,2),'unattributed':round(unat,2),'mainthread':round(x['mainthread-work-breakdown']['numericValue']),'image':x.get('image-delivery-insight',{}).get('displayValue') or '', 'css':x.get('unused-css-rules',{}).get('displayValue') or ''}
+              rows.append(r); print('run',i,r)
+          for k in ['score','fcp','lcp','tbt','cls','trp','jquery','unattributed','mainthread']: print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          best=min(range(3),key=lambda j: rows[j]['image'] or 'zzz')
+          aud=json.load(open(f'/tmp/lh-{best+1}.json'))['audits'].get('image-delivery-insight',{})
+          print('image_details=',json.dumps(aud.get('details'),ensure_ascii=False)[:40000])
+          PY
+          cat runtime/home-image-targets-20260819.txt
+
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-image-targets-20260819.txt ] || printf 'deploy=%s\nverify=%s\nlighthouse=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' '${{ steps.lighthouse.outcome }}' > runtime/home-image-targets-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-image-targets-20260819.txt
+          if ! git diff --cached --quiet; then git commit -m 'Record Home image target optimization [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main; fi
