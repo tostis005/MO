@@ -1,6 +1,6 @@
 <?php
 /**
- * Final Home critical rendering path fixes 0.10.255.
+ * Final Home critical rendering path fixes 0.10.256.
  *
  * Home-only and deliberately isolated from WooCommerce, checkout and vendor
  * pages. It removes known render blockers that survived the theme optimisation
@@ -248,6 +248,7 @@ function elmercado_home_critical_output_010254( string $html ): string {
 <style id="elmercado-home-critical-010254">
 @font-face{font-family:star;src:url('/wp-content/plugins/woocommerce/assets/fonts/star.woff') format('woff');font-weight:400;font-style:normal;font-display:swap}
 body.home .emo-hero__copy,body.home .emo-hero__copy>p,body.home .emo-hero__copy h1,body.home .emo-hero__copy .emo-kicker{opacity:1!important;visibility:visible!important;transform:none!important;animation:none!important;transition:none!important}
+@media(max-width:767px){html{font-size:14px!important}body.home .emo-announcement,body.home .emo-announcement__inner{height:35px!important;min-height:35px!important;max-height:35px!important}body.home .emo-announcement__inner{overflow:hidden!important}body.home .emo-announcement__inner>span{height:35px!important;min-height:35px!important;padding-block:0!important;box-sizing:border-box!important}body.home .site-header,body.home .site-header-inner{height:60px!important;min-height:60px!important}body.home .emo-hero{min-height:0!important;padding-top:2.5rem!important;padding-bottom:2rem!important}body.home .emo-hero__grid{gap:1.2rem!important}body.home .emo-hero h1{font-size:2.55rem!important;line-height:.96!important;margin:0!important}body.home .emo-hero__copy>p{font-size:.91rem!important;line-height:1.48!important;margin:1rem 0 .75rem!important}}
 </style>
 CSS;
 		$head_end = stripos( $html, '</head>' );
