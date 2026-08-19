@@ -1,0 +1,60 @@
+name: Home runtime DOM audit 0.10.255
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-runtime-dom-audit-010255.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Dump executed DOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)
+          if [ -z "$CHROME" ]; then
+            echo 'chrome=missing' > runtime/home-runtime-dom-010255.txt
+            exit 0
+          fi
+          DOM=$(mktemp)
+          LOG=$(mktemp)
+          timeout 90s "$CHROME" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --virtual-time-budget=7000 --dump-dom 'https://www.elmercadodeorigen.com/' > "$DOM" 2> "$LOG" || true
+          python3 - "$DOM" "$LOG" <<'PY' > runtime/home-runtime-dom-010255.txt
+          import pathlib,re,sys
+          dom=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          log=pathlib.Path(sys.argv[2]).read_text(errors='replace')
+          print('dom_bytes=',len(dom.encode()))
+          print('hustle_inline_id=',dom.find('hustle_inline_styles_front-inline-css'))
+          print('wordpress_popup=',dom.find('/plugins/wordpress-popup/'))
+          print('hustle_ui=',dom.find('hustle-ui'))
+          print('hustle_front=',dom.find('hustle_front'))
+          for needle in ['hustle_inline_styles_front-inline-css','wordpress-popup','hustle-ui']:
+              p=dom.find(needle)
+              if p>=0:
+                  print('snippet_'+needle.replace('/','_')+'=',dom[max(0,p-500):p+1200].replace('\n',' ')[:1700])
+          errors=[line for line in log.splitlines() if 'ERROR' in line or 'CONSOLE' in line or 'Uncaught' in line]
+          print('chrome_error_lines=',len(errors))
+          for line in errors[:20]: print(line[:1200])
+          PY
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-runtime-dom-010255.txt
+          git commit -m 'Record Home runtime DOM audit' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
