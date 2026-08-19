@@ -119,6 +119,15 @@ add_action(
 		if ( is_admin() ) {
 			return;
 		}
+
+		/* Este runtime solo tiene trabajo en carrito y páginas de contacto. */
+		$uri        = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path       = strtolower( (string) wp_parse_url( $uri, PHP_URL_PATH ) );
+		$is_cart    = function_exists( 'is_cart' ) && is_cart();
+		$is_contact = str_contains( $path, 'contact' );
+		if ( ! $is_cart && ! $is_contact ) {
+			return;
+		}
 		?>
 		<script id="elmercado-cart-contact-runtime-guard-010186">
 		(() => {
@@ -195,6 +204,7 @@ add_action(
 						mutation.addedNodes.forEach((node) => {
 							if (node instanceof Element) scan(node);
 						});
+					});
 				});
 				observer.observe(document.body, { childList: true, subtree: true });
 			};
