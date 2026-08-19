@@ -1,0 +1,90 @@
+name: Diagnose WCFM shipping zones in production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-wcfm-shipping-zones-20260819.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH helper
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect WCFM shipping implementation
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          mkdir -p .deploy-status
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" bash -s -- "$PROD_PATH" <<'REMOTE' > .deploy-status/wcfm-shipping-zone-diagnostic.txt
+          set -euo pipefail
+          WP_ROOT="$1"
+          WP_BIN=$(command -v wp || true)
+          PHP_BIN=$(command -v php || true)
+          [ -n "$PHP_BIN" ] || PHP_BIN=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          echo '=== WCFM Marketplace version ==='
+          "$PHP_BIN" "$WP_BIN" plugin get wc-multivendor-marketplace --field=version --path="$WP_ROOT" --allow-root 2>/dev/null || true
+
+          echo
+          echo '=== wcfmmp_get_shipping_zone definition ==='
+          HIT=$(grep -Rnl --include='*.php' 'function wcfmmp_get_shipping_zone' "$WP_ROOT/wp-content/plugins" 2>/dev/null | head -n1 || true)
+          if [ -n "$HIT" ]; then
+            LINE=$(grep -n 'function wcfmmp_get_shipping_zone' "$HIT" | head -n1 | cut -d: -f1)
+            START=$(( LINE > 15 ? LINE - 15 : 1 )); END=$(( LINE + 130 ))
+            echo "FILE=${HIT#$WP_ROOT/} LINE=$LINE"
+            sed -n "${START},${END}p" "$HIT"
+          else
+            echo 'FUNCTION_NOT_FOUND'
+          fi
+
+          echo
+          echo '=== Shipping-related usermeta keys by EMDO supplier vendor ==='
+          "$PHP_BIN" -d memory_limit=512M "$WP_BIN" eval '
+            global $wpdb;
+            $table = class_exists("MDO_Database") ? MDO_Database::table("suppliers") : "";
+            if (!$table) { exit; }
+            $vendors = $wpdb->get_col("SELECT DISTINCT vendor_user_id FROM {$table} WHERE vendor_user_id IS NOT NULL AND vendor_user_id > 0 ORDER BY vendor_user_id");
+            foreach ($vendors as $vendor_id) {
+                echo "vendor=", (int) $vendor_id, "\n";
+                $keys = $wpdb->get_col($wpdb->prepare("SELECT DISTINCT meta_key FROM {$wpdb->usermeta} WHERE user_id=%d AND (meta_key LIKE %s OR meta_key LIKE %s) ORDER BY meta_key", $vendor_id, "%shipping%", "%wcfm%"));
+                foreach ($keys as $key) { echo "  ", $key, "\n"; }
+            }
+          ' --path="$WP_ROOT" --allow-root 2>/dev/null || true
+          REMOTE
+          cat .deploy-status/wcfm-shipping-zone-diagnostic.txt
+      - name: Record diagnostic
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/wcfm-shipping-zone-diagnostic.txt
+          git commit -m 'Record WCFM shipping zone diagnostic [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
