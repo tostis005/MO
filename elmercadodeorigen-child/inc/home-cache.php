@@ -68,6 +68,15 @@ function elmercado_write_home_static_cache( string $html ): void {
  * - omite en Home la sonda de título del blog que fuerza layout global.
  */
 function elmercado_optimize_home_document_for_first_paint( string $html ): string {
+	/*
+	 * La misma tubería que genera la caché debe guardar ya las imágenes de
+	 * productores responsive; así el HTML servido desde HIT nunca recupera los
+	 * JPG originales de gran tamaño.
+	 */
+	if ( function_exists( 'elmercado_home_responsive_producer_cards_010252' ) ) {
+		$html = elmercado_home_responsive_producer_cards_010252( $html );
+	}
+
 	if ( '' === $html || false !== strpos( $html, 'id="elmercado-home-first-view-css"' ) ) {
 		return $html;
 	}
