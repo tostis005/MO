@@ -3,15 +3,11 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/verify-huerta-v4-production-20260819.yml']
-  pull_request:
-    branches: [main]
-    paths: ['.github/ops/huerta-conservas-pr-trigger-20260819.txt']
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
   verify:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.head_ref == 'ops/huerta-conservas-verify-20260819'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -22,12 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
-      - name: Validate Huerta conservas change
+      - name: Validate current plugin
         run: |
           set -euo pipefail
-          php -l mdo-supplier-sync/includes/class-mdo-huerta-defaults.php
-          php -l .github/scripts/assign-huerta-conservas-20260819.php
-      - name: Deploy Huerta category rule and assign production products
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          php -l .github/scripts/verify-huerta-final-20260819.php
+      - name: Deploy current EMDO and verify Huerta
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
@@ -50,10 +46,11 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          REMOTE_SCRIPT="/tmp/assign-huerta-conservas-${GITHUB_RUN_ID}.php"
-          REMOTE_DEFAULTS="/tmp/class-mdo-huerta-defaults-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/assign-huerta-conservas-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
-          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-huerta-defaults.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DEFAULTS"
+          tar -czf /tmp/emdo-huerta-v4.tar.gz mdo-supplier-sync
+          REMOTE_ARCHIVE="/tmp/emdo-huerta-v4-${GITHUB_RUN_ID}.tar.gz"
+          REMOTE_VERIFY="/tmp/verify-huerta-v4-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS /tmp/emdo-huerta-v4.tar.gz "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/verify-huerta-final-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE_VERIFY"
           mkdir -p .deploy-status
           set +e
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
@@ -61,37 +58,34 @@ jobs:
             wp_bin=\$(command -v wp || true)
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            plugin_file='$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-defaults.php'
-            test -f \"\$plugin_file\"
-            cp \"\$plugin_file\" \"/tmp/class-mdo-huerta-defaults-${GITHUB_RUN_ID}.bak.php\"
-            cp '$REMOTE_DEFAULTS' \"\$plugin_file\"
-            rm -f '$REMOTE_DEFAULTS'
-            \"\$php_bin\" -l \"\$plugin_file\" >/dev/null
-            \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root
+            tar -xzf '$REMOTE_ARCHIVE' -C '$PROD_PATH/wp-content/plugins'
+            rm -f '$REMOTE_ARCHIVE'
+            version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
+            status=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=status --path='$PROD_PATH' --allow-root)
+            test \"\$version\" = '1.0.17'
+            test \"\$status\" = 'active'
+            \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE_VERIFY' --path='$PROD_PATH' --allow-root
             code=\$?
-            rm -f '$REMOTE_SCRIPT'
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            rm -f '$REMOTE_VERIFY'
             exit \$code
-          " > .deploy-status/huerta-conservas-20260819.txt 2>&1
+          " > .deploy-status/huerta-v4-verification.json
           CODE=$?
           set -e
-          echo "$CODE" > .deploy-status/huerta-conservas-20260819.exit-code
-          cat .deploy-status/huerta-conservas-20260819.txt
+          echo "$CODE" > .deploy-status/huerta-v4-verification.exit-code
       - name: Record result
-        if: always() && github.event_name == 'push'
+        if: always()
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/huerta-conservas-20260819.txt .deploy-status/huerta-conservas-20260819.exit-code || true
+          git add .deploy-status/huerta-v4-verification.json .deploy-status/huerta-v4-verification.exit-code || true
           if ! git diff --cached --quiet; then
-            git commit -m 'Record Huerta conservas production result [skip ci]'
+            git commit -m 'Record Huerta v4 production verification [skip ci]'
             git pull --rebase origin main || true
             git push origin HEAD:main
           fi
-      - name: Fail if assignment failed
+      - name: Fail if verification failed
         if: always()
         run: |
-          test -f .deploy-status/huerta-conservas-20260819.exit-code
-          test "$(cat .deploy-status/huerta-conservas-20260819.exit-code)" = "0"
-          grep -q '^huerta_conservas_ok ' .deploy-status/huerta-conservas-20260819.txt
+          test -f .deploy-status/huerta-v4-verification.exit-code
+          test "$(cat .deploy-status/huerta-v4-verification.exit-code)" = "0"
