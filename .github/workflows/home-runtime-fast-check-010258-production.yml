@@ -12,12 +12,12 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Check live Home HTML
+      - name: Check live Home HTML and browser state
         shell: bash
         run: |
           set -euo pipefail
@@ -30,12 +30,36 @@ jobs:
             printf 'semantic_h1_probe=%s\n' "$(grep -c 'visibleHeadingOne' "$HTML" || true)"
             printf 'mobile_hitareas_script=%s\n' "$(grep -c 'id="elmercado-mobile-header-hitareas-final"' "$HTML" || true)"
             printf 'catalog_parity_script=%s\n' "$(grep -c 'id="elmercado-catalog-mobile-controls-parity-script-010236"' "$HTML" || true)"
-            printf 'ads_external_initial=%s\n' "$(grep -c 'googletagmanager.com/gtag/js?id=AW-' "$HTML" || true)"
+            printf 'ads_external_script_tag=%s\n' "$(grep -Ec '<script[^>]+src=["'"']https://www\.googletagmanager\.com/gtag/js\?id=AW-' "$HTML" || true)"
+            printf 'ads_url_anywhere=%s\n' "$(grep -c 'googletagmanager.com/gtag/js?id=AW-' "$HTML" || true)"
             printf 'ads_marker=%s\n' "$(grep -c 'id="elmercado-delayed-google-ads-source"' "$HTML" || true)"
             printf 'ads_loader=%s\n' "$(grep -c 'id="elmercado-delayed-google-ads-loader"' "$HTML" || true)"
             printf 'ga4_initial=%s\n' "$(grep -c 'googletagmanager.com/gtag/js?id=G-515YQ0XMS4' "$HTML" || true)"
             printf 'hustle_inline=%s\n' "$(grep -c 'hustle_inline_styles_front-inline-css' "$HTML" || true)"
-          } > runtime/home-runtime-fast-check-010258.txt
+            echo '--- visibleHeadingOne context ---'
+            grep -n -B8 -A18 'visibleHeadingOne' "$HTML" || true
+            echo '--- AW script/marker context ---'
+            grep -n -B3 -A4 'googletagmanager.com/gtag/js?id=AW-' "$HTML" || true
+          } > /tmp/static-fast.txt
+
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME_PATH="$CHROME" node <<'JS' > /tmp/browser-fast.json
+          const {chromium}=require('playwright-core');
+          (async()=>{
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage({viewport:{width:412,height:915}});
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:90000});
+            await page.waitForTimeout(1000);
+            const before=await page.evaluate(()=>({ads:[...document.scripts].filter(s=>s.src.includes('googletagmanager.com/gtag/js?id=AW-')).map(s=>s.src),ga4:[...document.scripts].filter(s=>s.src.includes('googletagmanager.com/gtag/js?id=G-515YQ0XMS4')).map(s=>s.src),marker:!!document.getElementById('elmercado-delayed-google-ads-source'),loader:!!document.getElementById('elmercado-delayed-google-ads-loader'),dataLayer:Array.isArray(window.dataLayer),queued:Array.isArray(window.dataLayer)?window.dataLayer.length:0}));
+            await page.mouse.wheel(0,300);
+            await page.waitForTimeout(1800);
+            const after=await page.evaluate(()=>({ads:[...document.scripts].filter(s=>s.src.includes('googletagmanager.com/gtag/js?id=AW-')).map(s=>s.src),delayed:[...document.scripts].filter(s=>s.dataset.elmercadoDelayed==='google-ads').map(s=>s.src),dataLayer:Array.isArray(window.dataLayer),queued:Array.isArray(window.dataLayer)?window.dataLayer.length:0}));
+            console.log(JSON.stringify({before,after},null,2));
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat /tmp/static-fast.txt /tmp/browser-fast.json > runtime/home-runtime-fast-check-010258.txt
           cat runtime/home-runtime-fast-check-010258.txt
       - name: Record
         shell: bash
@@ -47,4 +71,3 @@ jobs:
           git commit -m 'Record Home runtime fast check' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
-# recheck after direct production deploy
