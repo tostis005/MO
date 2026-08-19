@@ -67,18 +67,42 @@ jobs:
             curl -fsS --compressed --max-time 50 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/?mdo_review_check=$i" -o "/tmp/home-$i.html"
           done
           cp /tmp/home-3.html /tmp/home.html
-          grep -q 'class="mdo-review-proof"' /tmp/home.html
-          grep -q '>Google<' /tmp/home.html
-          grep -q '>Trustpilot<' /tmp/home.html
-          grep -q '<strong>4,9</strong>' /tmp/home.html
-          grep -q '303 reseñas' /tmp/home.html
-          grep -q '<strong>4,6</strong>' /tmp/home.html
-          grep -q '169 opiniones' /tmp/home.html
-          if grep -q 'Opiniones de nuestros clientes en Google' /tmp/home.html; then
-            echo 'Legacy Google review block is still present' >&2
-            exit 1
-          fi
-          echo 'Home review proof verified; legacy review widget absent.'
+          python3 - <<'PY' | tee /tmp/home-external-reviews-verify.txt
+          from pathlib import Path
+          h = Path('/tmp/home.html').read_text(encoding='utf-8', errors='ignore')
+          checks = {
+              'emo_home': 'class="emo-home"',
+              'review_block': 'class="mdo-review-proof"',
+              'review_style': 'id="mdo-home-external-reviews-20260819"',
+              'google': '>Google<',
+              'trustpilot': '>Trustpilot<',
+              'google_score': '<strong>4,9</strong>',
+              'google_count': '303 reseñas',
+              'trustpilot_score': '<strong>4,6</strong>',
+              'trustpilot_count': '169 opiniones',
+              'legacy_google_block': 'Opiniones de nuestros clientes en Google',
+              'categories': 'class="emo-section emo-categories"',
+          }
+          for name, needle in checks.items():
+              print(f'{name}={h.count(needle)}')
+          rp = h.find('class="mdo-review-proof"')
+          cp = h.find('class="emo-section emo-categories"')
+          print(f'review_pos={rp}')
+          print(f'categories_pos={cp}')
+          ok = (
+              h.count(checks['review_block']) == 1
+              and h.count(checks['google']) >= 1
+              and h.count(checks['trustpilot']) >= 1
+              and h.count(checks['google_score']) >= 1
+              and h.count(checks['google_count']) >= 1
+              and h.count(checks['trustpilot_score']) >= 1
+              and h.count(checks['trustpilot_count']) >= 1
+              and h.count(checks['legacy_google_block']) == 0
+              and rp >= 0 and cp >= 0 and rp < cp
+          )
+          print(f'ok={int(ok)}')
+          raise SystemExit(0 if ok else 1)
+          PY
 
       - name: Record verification
         if: always()
@@ -91,6 +115,9 @@ jobs:
           verify=${{ steps.verify.outcome }}
           commit=${GITHUB_SHA}
           EOF
+          if [ -f /tmp/home-external-reviews-verify.txt ]; then
+            cat /tmp/home-external-reviews-verify.txt >> .deploy-status/home-external-reviews-20260819.txt
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/home-external-reviews-20260819.txt
