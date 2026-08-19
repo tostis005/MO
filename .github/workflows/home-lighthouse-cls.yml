@@ -67,7 +67,12 @@ jobs:
               const score = item.score ?? item.value ?? 0;
               const node = item.node?.selector || item.node?.snippet || item.node?.nodeLabel || '';
               console.log(`${j+1}. ${Number(score).toFixed(4)} ${String(node).replace(/\s+/g,' ').slice(0,220)}`);
+              if (j < 3) console.log(`   detail: ${JSON.stringify(item).slice(0,2200)}`);
             });
+            const culprit = r.audits['cls-culprits-insight'];
+            if (culprit?.details) {
+              console.log(`CLS culprit insight: ${JSON.stringify(culprit.details).slice(0,7000)}`);
+            }
           });
           NODE
 
