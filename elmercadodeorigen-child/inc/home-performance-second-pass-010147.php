@@ -2,9 +2,9 @@
 /**
  * Segunda pasada de rendimiento de la portada 0.10.147.
  *
- * Elimina los últimos bundles sin interfaz en Home, saca jQuery de la ruta
- * crítica conservando su orden de ejecución y ajusta la selección de imágenes
- * al tamaño que realmente ocupan en la portada.
+ * Elimina bundles sin interfaz en Home y ajusta la selección de imágenes al
+ * tamaño que realmente ocupan en la portada. jQuery se mantiene síncrono como
+ * archivo externo para preservar compatibilidad sin inflar el HTML inicial.
  *
  * @package ElMercadoDeOrigen
  */
@@ -28,18 +28,11 @@ add_filter(
 		}
 
 		/*
-		 * Tras retirar los inicializadores de plugins que no pertenecen a Home,
-		 * jQuery y migrate pueden esperar al fin del parseo. Ambos conservan el
-		 * orden del documento al compartir defer.
+		 * No diferimos jquery-core ni jquery-migrate. Algunos plugins históricos
+		 * conservan inicializadores inline que esperan jQuery durante el parseo.
+		 * Se sirven como archivos externos para que puedan comprimirse y cachearse
+		 * independientemente del documento HTML.
 		 */
-		if (
-			( str_contains( $src, '/wp-includes/js/jquery/jquery.min.js' )
-				|| str_contains( $src, '/wp-includes/js/jquery/jquery-migrate.min.js' ) )
-			&& ! str_contains( $html, ' defer' )
-		) {
-			return str_replace( '<script ', '<script defer ', $html );
-		}
-
 		return $html;
 	},
 	PHP_INT_MAX,
@@ -47,10 +40,11 @@ add_filter(
 );
 
 /**
- * Ajusta las imágenes al tamaño real del carrusel/productos de la portada.
+ * Ajusta las imágenes al tamaño real del carrusel/productos de la portada sin
+ * eliminar los candidatos responsive que genera WordPress.
  *
- * @param array<string,string>           $attributes Atributos de imagen.
- * @param WP_Post                        $attachment Adjunto.
+ * @param array<string,string>            $attributes Atributos de imagen.
+ * @param WP_Post                         $attachment Adjunto.
  * @param string|array{0:int,1:int}|int[] $size Tamaño solicitado.
  * @return array<string,string>
  */
@@ -84,8 +78,17 @@ add_filter(
 		$attributes['src']    = (string) $image[0];
 		$attributes['width']  = (string) $image[1];
 		$attributes['height'] = (string) $image[2];
-		unset( $attributes['srcset'], $attributes['sizes'], $attributes['data-srcset'], $attributes['data-sizes'] );
 
+		$sizes = '(max-width: 767px) calc(100vw - 32px), (max-width: 1100px) calc(50vw - 32px), 360px';
+		$attributes['sizes'] = $sizes;
+		if ( isset( $attributes['data-sizes'] ) ) {
+			$attributes['data-sizes'] = $sizes;
+		}
+
+		/*
+		 * `srcset` y `data-srcset` se conservan. WordPress/Smush pueden así elegir
+		 * la variante más pequeña disponible en vez de descargar siempre 600x800.
+		 */
 		if ( isset( $attributes['data-src'] ) ) {
 			$attributes['data-src'] = (string) $image[0];
 		}
