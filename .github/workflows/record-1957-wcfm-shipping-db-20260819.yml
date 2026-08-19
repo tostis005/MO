@@ -1,0 +1,70 @@
+name: Record 1957 WCFM shipping database diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/record-1957-wcfm-shipping-db-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Capture WCFM shipping DB for 1957
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          mkdir -p .deploy-status
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            global \$wpdb;
+            \$u=get_user_by(\"slug\",\"1957\"); if(!\$u){\$u=get_user_by(\"login\",\"1957\");} if(!\$u){echo \"vendor_not_found\\n\";exit;}
+            \$id=(int)\$u->ID; echo \"vendor_id=\$id\\n\";
+            \$shipping=get_user_meta(\$id,\"_wcfmmp_shipping\",true); echo \"shipping_meta=\" . wp_json_encode(\$shipping,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . \"\\n\";
+            \$tables=\$wpdb->get_col(\"SHOW TABLES LIKE '\" . \$wpdb->esc_like(\$wpdb->prefix . \"%shipping%\") . \"'\");
+            foreach((array)\$tables as \$table){
+              echo \"table=\$table\\n\";
+              \$cols=\$wpdb->get_results(\"DESCRIBE `\" . str_replace(\"`\",\"\",\$table) . \"`\",ARRAY_A); echo \"columns=\" . wp_json_encode(array_column((array)\$cols,\"Field\")) . \"\\n\";
+              \$names=array_column((array)\$cols,\"Field\");
+              if(in_array(\"vendor_id\",\$names,true)){
+                \$rows=\$wpdb->get_results(\$wpdb->prepare(\"SELECT * FROM `\" . str_replace(\"`\",\"\",\$table) . \"` WHERE vendor_id=%d LIMIT 50\",\$id),ARRAY_A);
+                echo \"vendor_rows=\" . wp_json_encode(\$rows,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . \"\\n\";
+              }
+            }
+          ' --path=\"$PROD_PATH\" --allow-root 2>/dev/null" > .deploy-status/1957-wcfm-shipping-db.txt
+          cat .deploy-status/1957-wcfm-shipping-db.txt
+      - name: Record diagnostic
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/1957-wcfm-shipping-db.txt
+          git commit -m 'Record 1957 WCFM shipping DB [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
