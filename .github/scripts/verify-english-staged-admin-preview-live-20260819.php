@@ -1,21 +1,43 @@
 <?php
-// Production verification trigger v1.0.1.
+// Production verification trigger v1.0.2.
 if ( ! defined( 'ABSPATH' ) ) { exit( 90 ); }
+if ( ! defined( 'DOING_AJAX' ) ) { define( 'DOING_AJAX', true ); }
 
 $out = array(
     'ok'       => false,
+    'mentta'   => array(),
     'products' => array(),
     'errors'   => array(),
 );
+
+$_SERVER['REQUEST_URI'] = '/wp-admin/admin-ajax.php';
+$_SERVER['HTTP_REFERER'] = 'https://www.elmercadodeorigen.com/en/shop/';
+
+if ( ! function_exists( 'mdo_mentta_should_hide_publicly' ) ) {
+    $out['mentta'] = array( 'plugin_loaded' => false, 'ajax_hidden' => false, 'term_absent' => false );
+    $out['errors'][] = 'mentta_plugin_not_loaded';
+} else {
+    $ajax_hidden = (bool) mdo_mentta_should_hide_publicly();
+    $slugs = get_terms( array(
+        'taxonomy'   => 'product_cat',
+        'hide_empty' => false,
+        'fields'     => 'slugs',
+    ) );
+    $term_absent = ! is_wp_error( $slugs ) && ! in_array( 'mentta', array_map( 'strtolower', (array) $slugs ), true );
+    $out['mentta'] = array(
+        'plugin_loaded' => true,
+        'ajax_hidden'   => $ajax_hidden,
+        'term_absent'   => $term_absent,
+    );
+    if ( ! $ajax_hidden ) { $out['errors'][] = 'mentta_ajax_not_hidden'; }
+    if ( ! $term_absent ) { $out['errors'][] = 'mentta_term_still_visible'; }
+}
 
 if ( ! function_exists( 'mdo_en_preview_allowed_20260819' ) ) {
     $out['errors'][] = 'preview_plugin_not_loaded';
     echo wp_json_encode( $out );
     exit( 1 );
 }
-
-$_SERVER['REQUEST_URI'] = '/wp-admin/admin-ajax.php';
-$_SERVER['HTTP_REFERER'] = 'https://www.elmercadodeorigen.com/en/shop/';
 
 $admins = get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) );
 if ( ! $admins ) {
@@ -97,6 +119,9 @@ foreach ( array( 4508 => 'Puente Robles', 4509 => 'El Catedrático' ) as $author
     }
 }
 
-$out['ok'] = empty( $out['errors'] ) && 2 === count( $out['products'] );
+$out['ok'] = empty( $out['errors'] )
+    && ! empty( $out['mentta']['ajax_hidden'] )
+    && ! empty( $out['mentta']['term_absent'] )
+    && 2 === count( $out['products'] );
 echo wp_json_encode( $out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 exit( $out['ok'] ? 0 : 3 );
