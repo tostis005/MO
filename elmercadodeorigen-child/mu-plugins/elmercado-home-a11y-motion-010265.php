@@ -1,10 +1,10 @@
 <?php
 /**
- * Home-only accessibility, motion and initial mobile drawer stability 0.10.267.
+ * Home-only accessibility, motion and drawer stability 0.10.268.
  *
  * Keeps the review proof legible, limits custom Home card transitions to
- * compositor-friendly properties and guarantees that the mobile navigation
- * drawer/backdrop can only become visible after a real menu interaction.
+ * compositor-friendly properties and prevents Woostify navigation/cart drawers
+ * and their dark overlays from flashing during a hard refresh.
  *
  * @package ElMercadoDeOrigen
  */
@@ -24,7 +24,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-home-a11y-motion-010267">
+		<style id="elmercado-home-a11y-motion-010268">
 			/* Lighthouse: review-count copy must pass normal-text contrast. */
 			body.home .emo-home .mdo-review-proof small {
 				color: #666 !important;
@@ -38,10 +38,7 @@ add_action(
 				content-visibility: visible !important;
 			}
 
-			/*
-			 * Avoid broad transition:all behaviour on the custom Home cards.
-			 * Hover movement/fades remain smooth without animating layout/paint props.
-			 */
+			/* Avoid broad transition:all behaviour on the custom Home cards. */
 			body.home .emo-home .emo-hero-card,
 			body.home .emo-home .emo-category-card,
 			body.home .emo-home .products .product,
@@ -49,20 +46,59 @@ add_action(
 				transition-property: transform, opacity !important;
 			}
 
-			/*
-			 * The editorial mobile backdrop is created by theme.js. refinement.css
-			 * intentionally reveals it whenever html.sidebar-menu-open is present.
-			 * On a cold load a legacy/native menu class can exist for a brief frame,
-			 * which produces the dark curtain reported on hard refresh and delays the
-			 * apparent hero paint. Until a user actually activates the menu, neither
-			 * the backdrop nor the drawer may be visible.
-			 */
+			/* Editorial mobile menu backdrop: hidden until an actual menu click. */
 			body.home .emo-mobile-menu-overlay[aria-hidden="true"],
 			html:not([data-emo-menu-intent="1"]) body.home .emo-mobile-menu-overlay {
 				visibility: hidden !important;
 				opacity: 0 !important;
 				pointer-events: none !important;
 				transition: none !important;
+			}
+
+			/*
+			 * Woostify cart drawer and shared #woostify-overlay.
+			 * The parent stylesheet is deferred on Home, so both elements need a
+			 * closed critical state before that stylesheet arrives. The open state is
+			 * only allowed after a real cart/add-to-cart interaction.
+			 */
+			body.home #shop-cart-sidebar {
+				position: fixed !important;
+				top: 0 !important;
+				right: 0 !important;
+				bottom: 0 !important;
+				left: auto !important;
+				width: min(400px, 100vw) !important;
+				max-width: 100vw !important;
+				visibility: hidden !important;
+				opacity: 0 !important;
+				pointer-events: none !important;
+				transform: translate3d(105%, 0, 0) !important;
+				transition: none !important;
+				z-index: 200 !important;
+			}
+
+			body.home #woostify-overlay,
+			html:not([data-emo-cart-intent="1"]) body.home #woostify-overlay {
+				position: fixed !important;
+				inset: 0 !important;
+				visibility: hidden !important;
+				opacity: 0 !important;
+				pointer-events: none !important;
+				transition: none !important;
+				z-index: 199 !important;
+			}
+
+			html[data-emo-cart-intent="1"].cart-sidebar-open body.home #shop-cart-sidebar {
+				visibility: visible !important;
+				opacity: 1 !important;
+				pointer-events: auto !important;
+				transform: translate3d(0, 0, 0) !important;
+			}
+
+			html[data-emo-cart-intent="1"].cart-sidebar-open body.home #woostify-overlay {
+				visibility: visible !important;
+				opacity: 1 !important;
+				pointer-events: auto !important;
 			}
 
 			@media (max-width: 991px) {
@@ -92,24 +128,26 @@ add_action(
 				}
 			}
 		</style>
-		<script id="elmercado-home-menu-intent-010267">
+		<script id="elmercado-home-drawer-intent-010268">
 		(() => {
 			'use strict';
 			const root = document.documentElement;
 
-			/* A fresh navigation must always begin with the drawer closed. */
-			root.classList.remove('sidebar-menu-open');
+			/* A fresh navigation must always begin with both drawers closed. */
+			root.classList.remove('sidebar-menu-open', 'cart-sidebar-open');
 			root.removeAttribute('data-emo-menu-intent');
+			root.removeAttribute('data-emo-cart-intent');
 
-			/*
-			 * Capture runs before the existing Home click handler toggles the class,
-			 * so the normal menu continues to open on the very first interaction.
-			 */
 			document.addEventListener('click', (event) => {
-				const target = event.target instanceof Element
-					? event.target.closest('.toggle-sidebar-menu-btn')
-					: null;
-				if (target) root.setAttribute('data-emo-menu-intent', '1');
+				if (!(event.target instanceof Element)) return;
+
+				if (event.target.closest('.toggle-sidebar-menu-btn')) {
+					root.setAttribute('data-emo-menu-intent', '1');
+				}
+
+				if (event.target.closest('.shopping-cart, .shopping-bag-button, a.shopping-cart, a.shopping-bag-button, .add_to_cart_button, .single_add_to_cart_button')) {
+					root.setAttribute('data-emo-cart-intent', '1');
+				}
 			}, true);
 		})();
 		</script>
