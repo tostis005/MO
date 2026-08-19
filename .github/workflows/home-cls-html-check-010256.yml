@@ -1,0 +1,41 @@
+name: Home CLS HTML check 0.10.256
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-cls-html-check-010256.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check served HTML
+        id: verify
+        shell: bash
+        run: |
+          set -u
+          mkdir -p runtime
+          HTML=$(mktemp)
+          if curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"; then curl_ok=yes; else curl_ok=no; fi
+          css_count=$(grep -c 'id="elmercado-home-cls-010256"' "$HTML" 2>/dev/null || true)
+          rule_count=$(grep -c 'body.home .topbar{display:none!important;}' "$HTML" 2>/dev/null || true)
+          hero_count=$(grep -c 'emo-hero__copy' "$HTML" 2>/dev/null || true)
+          printf 'curl_ok=%s\ncls_css_count=%s\ntopbar_rule_count=%s\nhero_count=%s\nhtml_bytes=%s\n' "$curl_ok" "$css_count" "$rule_count" "$hero_count" "$(wc -c < "$HTML" 2>/dev/null || echo 0)" > runtime/home-cls-html-check-010256.txt
+          cat runtime/home-cls-html-check-010256.txt
+      - name: Record
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-cls-html-check-010256.txt
+          git commit -m 'Record Home CLS served-HTML check' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
