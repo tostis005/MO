@@ -1,0 +1,55 @@
+name: Home reflow static audit 0.10.261
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-reflow-static-audit-010261.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Capture live Home snippets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          {
+            echo '=== META ==='
+            wc -c /tmp/home.html
+            echo '=== BODY ==='
+            grep -o '<body[^>]*>' /tmp/home.html | head -n 1 || true
+            echo '=== LINES 385-405 ==='
+            nl -ba /tmp/home.html | sed -n '385,405p'
+            echo '=== LINES 2345-2360 ==='
+            nl -ba /tmp/home.html | sed -n '2345,2360p'
+            echo '=== SEARCH SCRIPT ==='
+            grep -n 'search.min.js' /tmp/home.html || true
+            echo '=== GENERAL SCRIPT ==='
+            grep -n 'general.min.js' /tmp/home.html || true
+            echo '=== STAR RATING ==='
+            grep -n 'star-rating' /tmp/home.html | head -n 40 || true
+            echo '=== STAR WOFF ==='
+            grep -n 'star.woff' /tmp/home.html | head -n 20 || true
+          } > runtime/home-reflow-static-audit-010261.txt
+          cat runtime/home-reflow-static-audit-010261.txt
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-reflow-static-audit-010261.txt
+          git commit -m 'Record focused Home reflow static audit' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
