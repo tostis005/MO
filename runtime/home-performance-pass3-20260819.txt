@@ -1,0 +1,59 @@
+css_bytes=632505
+hustle_selector_mentions=17
+{
+  "deferred_css": [
+    "https://www.elmercadodeorigen.com/wp-content/uploads/elmercado-home-static/home-deferred-0.10.260.css",
+    "https://www.elmercadodeorigen.com/wp-content/uploads/elmercado-home-static/home-deferred-0.10.260.css"
+  ],
+  "hustle_style_tag": false,
+  "capi": [
+    {
+      "id": "facebook-capi-param-builder-js",
+      "type": "application/x-mdo-deferred",
+      "data-mdo-src": "https://unpkg.com/meta-capi-param-builder-clientjs/dist/clientParamBuilder.bundle.js?ver=3.7.6"
+    }
+  ]
+}
+run 1 {'score': 55, 'fcp': 1817, 'lcp': 3770, 'tbt': 2978, 'cls': 0.0005754148214989583, 'si': 5367}
+run 2 {'score': 63, 'fcp': 1965, 'lcp': 3662, 'tbt': 1060, 'cls': 0.012194191703485447, 'si': 4588}
+run 3 {'score': 62, 'fcp': 1985, 'lcp': 3713, 'tbt': 1071, 'cls': 0.016700732320042315, 'si': 4731}
+median_score= 62
+median_fcp= 1965
+median_lcp= 3713
+median_tbt= 1071
+median_cls= 0.012194191703485447
+median_si= 4731
+audit unused-css-rules score= 0.5 numeric= 0 display= Est savings of 130 KiB
+ item {"url": "woostify-parent-style-inline-css", "totalBytes": 126439, "wastedBytes": 93844, "wastedPercent": 74.22037750890941}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/themes/woostify/style.css?ver=2.0.6", "totalBytes": 43153, "wastedBytes": 39448, "wastedPercent": 91.41441106829473}
+audit unminified-css score= 0.5 numeric= 0 display= Est savings of 28 KiB
+ item {"url": "woostify-parent-style-inline-css", "totalBytes": 126439, "wastedBytes": 21574, "wastedPercent": 17.063035730950947}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/themes/woostify/style.css?ver=2.0.6", "totalBytes": 43309, "wastedBytes": 7549, "wastedPercent": 17.429623783214943}
+audit forced-reflow-insight score= 0 numeric= None display= None
+ item {}
+ item {}
+audit image-delivery-insight score= 0.5 numeric= None display= Est savings of 349 KiB
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-600x800.jpg", "totalBytes": 114752, "wastedBytes": 92720}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2023/12/Aceite-sin-filtrar.jpg", "totalBytes": 67509, "wastedBytes": 43459}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2021/04/1.2-Jamon-de-bellota-100-iberico-con-DOP-492x800.jpeg", "totalBytes": 58702, "wastedBytes": 34659}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2021/05/Paleta-de-bellota-100-iberica-con-DOP-Los-Pedroches-1-492x800.jpg", "totalBytes": 55718, "wastedBytes": 32897}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-450x300.jpg", "totalBytes": 37408, "wastedBytes": 32296}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-400x400.jpg", "totalBytes": 35201, "wastedBytes": 29512}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Salchich%C3%B3n-100-ib%C3%A9rico-533x800.jpg", "totalBytes": 45236, "wastedBytes": 29449}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/uploads/2021/10/metodos-de-pago.png", "totalBytes": 25562, "wastedBytes": 23652}
+audit legacy-javascript-insight score= 0.5 numeric= None display= Est savings of 19 KiB
+ item {"url": "https://unpkg.com/meta-capi-param-builder-clientjs/dist/clientParamBuilder.bundle.js?ver=3.7.6", "wastedBytes": 35222}
+ item {"url": "https://connect.facebook.net/en_US/fbevents.js", "wastedBytes": 12232}
+ item {"url": "https://www.elmercadodeorigen.com/wp-content/plugins/google-analytics-for-wordpress/assets/js/frontend-gtag.js?ver=11.1.2", "wastedBytes": 6964}
+audit network-dependency-tree-insight score= 1 numeric= None display= None
+ item {}
+ item {}
+ item {}
+audit mainthread-work-breakdown score= 0 numeric= 5140.675999999971 display= 5.1 s
+ item {}
+ item {}
+ item {}
+ item {}
+ item {}
+ item {}
+ item {}
