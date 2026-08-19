@@ -1,0 +1,148 @@
+name: Deploy Home performance hardening 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-performance-20260819.yml'
+      - 'mu-plugins/mdo-home-performance-20260819.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-home-performance-20260819
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l mu-plugins/mdo-home-performance-20260819.php
+
+      - name: Deploy and purge Home cache
+        id: deploy
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/mdo-home-performance-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP mu-plugins/mdo-home-performance-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            MU='$PROD_PATH/wp-content/mu-plugins'
+            STATIC='$PROD_PATH/wp-content/uploads/elmercado-home-static'
+            install -m 0644 '$REMOTE' \"\$MU/mdo-home-performance-20260819.php\"
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$MU/mdo-home-performance-20260819.php\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f \"\$STATIC/index.html\" \"\$STATIC\"/home-deferred-*.css '$REMOTE'
+          "
+
+      - name: Warm and verify live Home
+        id: verify
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          for i in 1 2 3 4; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY' > /tmp/verify.json
+          from html.parser import HTMLParser
+          import json
+          class A(HTMLParser):
+              def __init__(self):
+                  super().__init__(); self.fb=[]; self.logos=[]; self.css=[]; self.ads=[]
+              def handle_starttag(self, tag, attrs):
+                  d=dict(attrs)
+                  if tag=='script':
+                      src=d.get('src') or ''
+                      if 'facebook-for-woocommerce-signals.js' in src or ('facebook-for-woocommerce/' in src and 'pixel-events.js' in src):
+                          self.fb.append({'src':src,'defer':any(k=='defer' for k,_ in attrs)})
+                      if src.startswith('https://www.googletagmanager.com/gtag/js?id=AW-'): self.ads.append(src)
+                  if tag=='img' and 'wcfmmp_sold_by_logo' in (d.get('class') or '').split():
+                      self.logos.append({'alt':'alt' in d,'width':d.get('width'),'height':d.get('height')})
+                  if tag=='link' and 'home-deferred-' in (d.get('href') or ''): self.css.append(d.get('href'))
+          a=A(); a.feed(open('/tmp/home.html',encoding='utf-8').read())
+          out={'facebook_scripts':a.fb,'seller_logos':a.logos,'deferred_css':a.css,'direct_ads_loaders':a.ads}
+          out['facebook_all_deferred']=bool(a.fb) and all(x['defer'] for x in a.fb)
+          out['logos_ok']=bool(a.logos) and all(x['alt'] and x['width'] and x['height'] for x in a.logos)
+          out['direct_ads_suppressed']=not a.ads
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          assert out['facebook_all_deferred']
+          assert out['logos_ok']
+          assert out['deferred_css']
+          assert out['direct_ads_suppressed']
+          PY
+          cat /tmp/verify.json
+          CSS_URL=$(python3 -c "import json; print(json.load(open('/tmp/verify.json'))['deferred_css'][0])")
+          case "$CSS_URL" in http://*|https://*) ;; /*) CSS_URL="https://www.elmercadodeorigen.com$CSS_URL" ;; *) CSS_URL="https://www.elmercadodeorigen.com/$CSS_URL" ;; esac
+          curl -fsS --compressed --max-time 45 "$CSS_URL" -o /tmp/home-deferred.css
+          test "$(wc -c < /tmp/home-deferred.css)" -gt 100000
+          {
+            echo 'deploy=success'
+            echo 'verify=success'
+            echo "css_url=$CSS_URL"
+            cat /tmp/verify.json
+          } > runtime/home-performance-20260819.txt
+
+      - name: Lighthouse smoke
+        id: lighthouse
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path=/tmp/lhr.json --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          python3 - <<'PY' >> runtime/home-performance-20260819.txt
+          import json
+          a=json.load(open('/tmp/lhr.json')); x=a['audits']
+          print('lighthouse_score=',round(a['categories']['performance']['score']*100))
+          print('lcp_ms=',round(x['largest-contentful-paint']['numericValue']))
+          print('tbt_ms=',round(x['total-blocking-time']['numericValue']))
+          print('cls=',x['cumulative-layout-shift']['numericValue'])
+          PY
+
+      - name: Record result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-performance-20260819.txt ] || printf 'deploy=%s\nverify=%s\nlighthouse=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' '${{ steps.lighthouse.outcome }}' > runtime/home-performance-20260819.txt
+          cat runtime/home-performance-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '418982005+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-performance-20260819.txt
+          git commit -m 'Record Home performance hardening verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
