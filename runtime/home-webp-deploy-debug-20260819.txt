@@ -1,0 +1,32 @@
+=== source syntax ===
+No syntax errors detected in mu-plugins/mdo-home-webp-delivery-20260819.php
+No syntax errors detected in mu-plugins/mdo-home-translatepress-lite-20260819.php
+No syntax errors detected in tools/generate-home-webp-20260819.php
+=== live before ===
+{'webp': 0, 'official_trp': 0, 'lite_trp': 1, 'fixed_width': 1}
+Warning: Permanently added '82.223.25.247' (ED25519) to the list of known hosts.
+prod_path=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+=== remote ===
+install_webp=0
+install_trp=0
+php=/opt/plesk/php/8.3/bin/php wp=/usr/local/bin/wp
+Warning: Constant WOOCCM_PLUGIN_NAME already defined in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php on line 27
+Notice: Function _load_textdomain_just_in_time was called <strong>incorrectly</strong>. Translation loading for the <code>woosidebars</code> domain was triggered too early. This is usually an indicator for some code in the plugin or theme running too early. Translations should be loaded at the <code>init</code> action or later. Please see <a href="https://developer.wordpress.org/advanced-administration/debug/debug-wordpress/">Debugging in WordPress</a> for more information. (This message was added in version 6.7.0.) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-includes/functions.php on line 6170
+Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 32768 bytes) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/translatepress-multilingual/includes/compatibility-functions.php on line 2860
+Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 417792 bytes) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-includes/l10n/class-wp-translation-file-php.php on line 24
+support_exit=255
+Warning: Constant WOOCCM_PLUGIN_NAME already defined in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php on line 27
+Notice: Function _load_textdomain_just_in_time was called <strong>incorrectly</strong>. Translation loading for the <code>woosidebars</code> domain was triggered too early. This is usually an indicator for some code in the plugin or theme running too early. Translations should be loaded at the <code>init</code> action or later. Please see <a href="https://developer.wordpress.org/advanced-administration/debug/debug-wordpress/">Debugging in WordPress</a> for more information. (This message was added in version 6.7.0.) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-includes/functions.php on line 6170
+Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 32768 bytes) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/translatepress-multilingual/includes/compatibility-functions.php on line 2860
+Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 417792 bytes) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-includes/l10n/class-wp-translation-file-php.php on line 24
+generator_exit=255
+-rw-r--r-- 1 root root  12K Aug 19 14:40 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-home-performance-20260819.php
+-rw-r--r-- 1 root root 3.1K Aug 19 15:05 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-home-translatepress-lite-20260819.php
+-rw-r--r-- 1 root root 5.2K Aug 19 15:05 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-home-webp-delivery-20260819.php
+Warning: Constant WOOCCM_PLUGIN_NAME already defined in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/woocommerce-checkout-manager/woocommerce-checkout-manager.php on line 27
+Notice: Function _load_textdomain_just_in_time was called <strong>incorrectly</strong>. Translation loading for the <code>woosidebars</code> domain was triggered too early. This is usually an indicator for some code in the plugin or theme running too early. Translations should be loaded at the <code>init</code> action or later. Please see <a href="https://developer.wordpress.org/advanced-administration/debug/debug-wordpress/">Debugging in WordPress</a> for more information. (This message was added in version 6.7.0.) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-includes/functions.php on line 6170
+Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 12288 bytes) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/translatepress-multilingual/includes/compatibility-functions.php on line 2073
+Fatal error: Allowed memory size of 134217728 bytes exhausted (tried to allocate 417792 bytes) in /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-includes/l10n/class-wp-translation-file-php.php on line 24
+flush_exit=255
+=== live after ===
+{'webp_refs': 0, 'official_trp': 0, 'lite_trp': 1, 'fixed_width': 1}
