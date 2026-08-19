@@ -4,15 +4,24 @@
  * Genera WebP únicamente para JPEG/PNG locales realmente referenciados por la Home.
  */
 
-$home = wp_remote_get( home_url( '/' ), array( 'timeout' => 40, 'redirection' => 3 ) );
-if ( is_wp_error( $home ) ) {
-    fwrite( STDERR, 'home_fetch_error=' . $home->get_error_message() . "\n" );
-    exit( 2 );
-}
-
-$body    = (string) wp_remote_retrieve_body( $home );
 $uploads = wp_get_upload_dir();
 $base    = rtrim( (string) wp_parse_url( (string) $uploads['baseurl'], PHP_URL_PATH ), '/' );
+$body    = '';
+
+/* Preferimos la caché estática local para no depender de una petición loopback. */
+$static_home = trailingslashit( (string) $uploads['basedir'] ) . 'elmercado-home-static/index.html';
+if ( is_readable( $static_home ) ) {
+    $body = (string) file_get_contents( $static_home );
+}
+
+if ( '' === $body ) {
+    $home = wp_remote_get( home_url( '/' ), array( 'timeout' => 20, 'redirection' => 3 ) );
+    if ( ! is_wp_error( $home ) ) {
+        $body = (string) wp_remote_retrieve_body( $home );
+    } else {
+        printf( "home_fetch_warning=%s\n", $home->get_error_message() );
+    }
+}
 
 foreach ( glob( trailingslashit( (string) $uploads['basedir'] ) . 'elmercado-home-static/home-deferred-*.css' ) ?: array() as $css ) {
     if ( is_readable( $css ) ) {
@@ -27,10 +36,28 @@ preg_match_all(
 );
 
 $paths = array_values( array_unique( $matches[1] ?? array() ) );
+
+/* Salvaguarda: cubre explícitamente los recursos señalados por Lighthouse. */
+$fallback_globs = array(
+    '2017/12/Garrafa_5L*.jpg',
+    '2023/12/Aceite-sin-filtrar*.jpg',
+    '2026/08/JAMON_ACT*.jpg',
+    '2026/08/Tolecarnes-fondo*.jpg',
+    '2020/06/Cerdo-ibérico*.jpg',
+    '2026/08/Packs-lotes*.jpg',
+);
+foreach ( $fallback_globs as $pattern ) {
+    foreach ( glob( trailingslashit( (string) $uploads['basedir'] ) . $pattern ) ?: array() as $file ) {
+        $relative = ltrim( substr( $file, strlen( trailingslashit( (string) $uploads['basedir'] ) ) ), '/' );
+        $paths[]  = $base . '/' . str_replace( DIRECTORY_SEPARATOR, '/', $relative );
+    }
+}
+$paths = array_values( array_unique( $paths ) );
+
 $made = $reused = $skipped = $failed = 0;
 $total_before = $total_after = 0;
 
-foreach ( array_slice( $paths, 0, 120 ) as $url_path ) {
+foreach ( array_slice( $paths, 0, 160 ) as $url_path ) {
     $relative = ltrim( rawurldecode( substr( $url_path, strlen( $base ) ) ), '/' );
     if ( '' === $relative || str_contains( $relative, '..' ) ) {
         continue;
