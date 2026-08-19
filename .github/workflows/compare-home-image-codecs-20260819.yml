@@ -1,0 +1,41 @@
+name: Compare Home image codecs 20260819
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/compare-home-image-codecs-20260819.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Compare target encodes
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE' > runtime/home-image-codec-comparison-20260819.txt
+          set -euo pipefail
+          php_bin=/opt/plesk/php/8.3/bin/php
+          root=$(find /var/www/vhosts "$HOME" -maxdepth 7 -type d -path '*/httpdocs/wp-content/uploads' 2>/dev/null | head -n1)
+          "$php_bin" -d memory_limit=512M -r '
+          $root=$argv[1];
+          $patterns=["2017/12/Garrafa_5L-600x800.jpg","2023/12/Aceite-sin-filtrar.jpg","2026/08/JAMON_ACT*.jpg","2026/08/Tolecarnes-fondo-400x400.jpg","2020/06/Cerdo-ibérico-300x400.jpg","2026/08/Packs-lotes-300x400-1.jpg"];
+          foreach($patterns as $p){foreach(glob($root."/".$p)?:[] as $f){$ext=strtolower(pathinfo($f,PATHINFO_EXTENSION));$im=$ext==="png"?@imagecreatefrompng($f):@imagecreatefromjpeg($f);if(!$im){continue;}$w=imagesx($im);$h=imagesy($im);$base=filesize($f);$w68=tempnam(sys_get_temp_dir(),"w68");$a55=tempnam(sys_get_temp_dir(),"a55");$a62=tempnam(sys_get_temp_dir(),"a62");imagewebp($im,$w68,68);imageavif($im,$a55,55,6);imageavif($im,$a62,62,6);printf("%s\t%dx%d\tjpeg=%d\twebp68=%d\tavif55=%d\tavif62=%d\n",substr($f,strlen($root)+1),$w,$h,$base,filesize($w68),filesize($a55),filesize($a62));@unlink($w68);@unlink($a55);@unlink($a62);imagedestroy($im);}}
+          ' "$root"
+          REMOTE
+          cat runtime/home-image-codec-comparison-20260819.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail; git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; git add runtime/home-image-codec-comparison-20260819.txt || true; if ! git diff --cached --quiet; then git commit -m 'Record Home image codec comparison [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main; fi
