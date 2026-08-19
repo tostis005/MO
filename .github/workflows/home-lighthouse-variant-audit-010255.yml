@@ -1,0 +1,72 @@
+name: Home Lighthouse variant audit 0.10.255
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-lighthouse-variant-audit-010255.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit live Home variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          NORMAL="$(mktemp)"
+          LIGHTHOUSE="$(mktemp)"
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Chrome-Lighthouse'
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$NORMAL"
+          curl -fsS --compressed --max-time 45 -A "$UA" 'https://www.elmercadodeorigen.com/' -o "$LIGHTHOUSE"
+          python3 - "$NORMAL" "$LIGHTHOUSE" <<'PY' > runtime/home-lighthouse-variant-010255.txt
+          import pathlib,re,sys,gzip
+          for label,path in [('normal',sys.argv[1]),('lighthouse',sys.argv[2])]:
+              html=pathlib.Path(path).read_text(errors='replace')
+              b=html.encode()
+              head_end=html.lower().find('</head>')
+              hero_phrase='En El Mercado de Origen buscamos productores'
+              hero=html.find(hero_phrase)
+              hustle=html.find('hustle_inline_styles_front-inline-css')
+              woostify=html.find('/themes/woostify/style.css')
+              jq=html.find('/wp-includes/js/jquery/jquery.min.js')
+              print(f'[{label}] bytes={len(b)} gzip_bytes={len(gzip.compress(b,compresslevel=9))} head_bytes={head_end+7 if head_end>=0 else -1} hero_pos={hero} hustle_pos={hustle} woostify_pos={woostify} jquery_pos={jq}')
+              for marker in ['hustle_inline_styles_front-inline-css','woostify/style.css','jquery-core-js','elmercado-home-critical-010254']:
+                  p=html.find(marker)
+                  print(f'{label}:{marker}={p}')
+              if head_end>=0:
+                  head=html[:head_end+7]
+                  styles=[]
+                  for m in re.finditer(r'<style\b([^>]*)>(.*?)</style\s*>',head,re.I|re.S):
+                      attrs=m.group(1)
+                      body=m.group(2)
+                      idm=re.search(r'\bid=["\']([^"\']+)',attrs,re.I)
+                      styles.append((len(body.encode()),idm.group(1) if idm else '(no-id)'))
+                  print(f'{label}:inline_style_total={sum(s for s,_ in styles)} blocks={len(styles)} top={sorted(styles,reverse=True)[:8]}')
+                  scripts=[]
+                  for m in re.finditer(r'<script\b(?![^>]*\bsrc=)([^>]*)>(.*?)</script\s*>',head,re.I|re.S):
+                      attrs=m.group(1)
+                      body=m.group(2)
+                      idm=re.search(r'\bid=["\']([^"\']+)',attrs,re.I)
+                      scripts.append((len(body.encode()),idm.group(1) if idm else '(no-id)'))
+                  print(f'{label}:inline_script_total={sum(s for s,_ in scripts)} blocks={len(scripts)} top={sorted(scripts,reverse=True)[:8]}')
+          PY
+      - name: Record
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-lighthouse-variant-010255.txt
+          git commit -m 'Record Lighthouse Home variant audit' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
