@@ -1,0 +1,70 @@
+name: Audit Home performance 20260819 post 3x
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-home-performance-20260819-post-3x.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Warm Home
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+      - name: Run Lighthouse three times
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do
+            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/post-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          done
+          python3 - <<'PY' > runtime/home-performance-20260819-post-3x.txt
+          import json, statistics
+          baseline={'score':56,'fcp':2128,'lcp':4542,'tbt':1196,'cls':0.006560857868407356,'si':4386}
+          rows=[]
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/post-{i}.json'))
+              x=a['audits']
+              r={
+                'score':round(a['categories']['performance']['score']*100),
+                'fcp':round(x['first-contentful-paint']['numericValue']),
+                'lcp':round(x['largest-contentful-paint']['numericValue']),
+                'tbt':round(x['total-blocking-time']['numericValue']),
+                'cls':x['cumulative-layout-shift']['numericValue'],
+                'si':round(x['speed-index']['numericValue'])
+              }
+              rows.append(r); print('run',i,r)
+          med={k:statistics.median(r[k] for r in rows) for k in baseline}
+          for k,v in med.items(): print('median_'+k+'=',v)
+          print('baseline=',baseline)
+          print('delta_score=',med['score']-baseline['score'])
+          print('delta_lcp_ms=',med['lcp']-baseline['lcp'])
+          print('delta_tbt_ms=',med['tbt']-baseline['tbt'])
+          print('delta_cls=',med['cls']-baseline['cls'])
+          PY
+          cat runtime/home-performance-20260819-post-3x.txt
+      - name: Record audit
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-performance-20260819-post-3x.txt ] || echo 'audit_failed=true' > runtime/home-performance-20260819-post-3x.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-performance-20260819-post-3x.txt
+          git commit -m 'Record 3x post-change Home performance audit' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
