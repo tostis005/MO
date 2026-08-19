@@ -188,6 +188,11 @@ function elmercado_optimize_home_assets(): void {
 			'lightgallery_css',
 			'lightgallery_bundle_css',
 			'hustle-fonts',
+			'hustle_icons',
+			'hustle_global',
+			'hustle_optin',
+			'hustle_popup',
+			'hustle_inline_styles_front',
 		)
 	);
 
@@ -249,6 +254,7 @@ function elmercado_optimize_home_assets(): void {
 			'elementor-webpack-runtime',
 			'elementor-frontend-modules',
 			'elementor-frontend',
+			'hustle_front',
 		)
 	);
 
@@ -268,6 +274,7 @@ function elmercado_optimize_home_assets(): void {
 				'/plugins/product-categories-designs-for-woocommerce/',
 				'/plugins/slide-anything/',
 				'/plugins/wc-frontend-manager/',
+				'/plugins/hustle/',
 			),
 			'wp_dequeue_style'
 		);
@@ -288,6 +295,7 @@ function elmercado_optimize_home_assets(): void {
 				'/plugins/product-categories-designs-for-woocommerce/',
 				'/plugins/slide-anything/',
 				'/plugins/wc-frontend-manager/',
+				'/plugins/hustle/',
 			),
 			'wp_dequeue_script'
 		);
@@ -339,7 +347,7 @@ function elmercado_optimize_home_assets(): void {
 				if ( false !== $content ) {
 					$inline_css .= "\n" . preg_replace( '!/\*.*?\*/!s', '', $content );
 				}
-			}
+		}
 		}
 
 		if ( '' !== trim( $inline_css ) ) {
