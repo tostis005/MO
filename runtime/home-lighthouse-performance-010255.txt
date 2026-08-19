@@ -1,16 +1,79 @@
-curl_warm_ttfb_s= 2.358068
-performance_score= 59
-first-contentful-paint: numeric=1761.37384 display=1.8 s score=0.9
-largest-contentful-paint: numeric=2700.9539699999996 display=2.7 s score=0.85
-speed-index: numeric=6259.992274288882 display=6.3 s score=0.42
-total-blocking-time: numeric=1641.5000000000002 display=1,640 ms score=0.12
-cumulative-layout-shift: numeric=0.12054113452382215 display=0.121 score=0.84
-interactive: numeric=7042.051212000001 display=7.0 s score=0.52
-server-response-time: numeric=2401.247 display=Root document took 2,400 ms score=0
+performance_score= 41
+first-contentful-paint: numeric=2291.5332 display=2.3 s score=0.75
+largest-contentful-paint: numeric=4904.2534 display=4.9 s score=0.28
+total-blocking-time: numeric=1448.5 display=1,450 ms score=0.15
+cumulative-layout-shift: numeric=0.159423867336641 display=0.159 score=0.73
 render-blocking-resources: numeric=0 display=None score=1
 unused-css-rules: numeric=0 display=Est savings of 138 KiB score=0.5
-unused-javascript: numeric=0 display=Est savings of 122 KiB score=0.5
+unused-javascript: numeric=310 display=Est savings of 229 KiB score=0
 uses-responsive-images: numeric=0 display=Est savings of 103 KiB score=0.5
-uses-optimized-images: numeric=0 display=Est savings of 55 KiB score=0.5
 modern-image-formats: numeric=0 display=Est savings of 267 KiB score=0.5
-render_blocking_savings_ms= 0
+--- layout audits ---
+audit= cumulative-layout-shift title= Cumulative Layout Shift display= 0.159 score= 0.73
+layout_item= {"cumulativeLayoutShiftMainFrame":0.159423867336641,"newEngineResultDiffered":false}
+audit= layout-shifts title= Avoid large layout shifts display= 5 layout shifts found score= 0
+layout_item= {"node":{"type":"node","lhId":"page-1-DIV","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV","selector":"div.emo-home > section.emo-hero > div.emo-shell > div.emo-hero__copy","boundingRect":{"top":130,"bottom":733,"left":14,"right":398,"width":384,"height":603},"snippet":"<div class=\"emo-hero__copy\">","nodeLabel":"NUESTRA SELECCIÓN\nUna forma distinta\nde elegir.\n\nEn El Mercado de Origen buscam…"},"score":0.1205095283664152}
+layout_item= {"node":{"type":"node","lhId":"page-1-DIV","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV","selector":"div.emo-home > section.emo-hero > div.emo-shell > div.emo-hero__copy","boundingRect":{"top":130,"bottom":733,"left":14,"right":398,"width":384,"height":603},"snippet":"<div class=\"emo-hero__copy\">","nodeLabel":"NUESTRA SELECCIÓN\nUna forma distinta\nde elegir.\n\nEn El Mercado de Origen buscam…"},"score":0.02590904003040956}
+layout_item= {"node":{"type":"node","lhId":"page-6-DIV","path":"1,HTML,1,BODY,7,DIV,1,DIV","selector":"body.home > div#shop-cart-sidebar > div.cart-sidebar-content","boundingRect":{"top":74,"bottom":808,"left":427,"right":787,"width":360,"height":734},"snippet":"<div class=\"cart-sidebar-content\">","nodeLabel":"body.home > div#shop-cart-sidebar > div.cart-sidebar-content"},"score":0.01289266661734147}
+layout_item= {"node":{"type":"node","lhId":"page-8-DIV","path":"1,HTML,1,BODY,3,DIV,3,DIV","selector":"body.home > div#mobile-navigation > div.sidebar-menu-bottom","boundingRect":{"top":717,"bottom":799,"left":-345,"right":-19,"width":326,"height":82},"snippet":"<div class=\"sidebar-menu-bottom\">","nodeLabel":"Acceder / Registro"},"score":8.102616506782273e-05}
+layout_item= {"node":{"type":"node","lhId":"page-14-DIV","path":"1,HTML,1,BODY,2,DIV,1,HEADER,0,DIV,0,DIV,5,DIV,1,DIV","selector":"div.site-header-inner > div.woostify-container > div.site-tools > div.tools-icon","boundingRect":{"top":49,"bottom":79,"left":338,"right":368,"width":30,"height":30},"snippet":"<div class=\"tools-icon my-account\" style=\"width: 30px !important; min-width: 30px !important;\">","nodeLabel":"Mi cuenta"},"score":3.160615740694886e-05,"subItems":{"type":"subitems","items":[{"extra":{"type":"node","lhId":"page-20-IMG","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,3,SECTION,0,DIV,1,DIV,0,UL,0,LI,0,DIV,1,DIV,0,A,0,IMG","selector":"div.product-loop-wrapper > div.product-loop-image-wrapper > a.woocommerce-LoopProduct-link > img.attachment-woocommerce_thumbnail","boundingRect":{"top":3305,"bottom":3725,"left":14,"right":329,"width":315,"height":420},"snippet":"<img width=\"360\" height=\"480\" alt=\"Imagen del producto\" data-srcset=\"https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-36…\" decoding=\"async\" data-src=\"https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-36…\" data-sizes=\"(max-width: 767px) calc(100vw - 32px), (max-width: 1100px) calc(50vw - 32p…\" class=\"attachment-woocommerce_thumbnail size-woocommerce_thumbnail product-loop-i…\" src=\"https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-60…\" loading=\"lazy\" sizes=\"(max-width: 767px) calc(100vw - 32px), (max-width: 1100px) calc(50vw - 32p…\" …>","nodeLabel":"Imagen del producto"},"cause":"Media element lacking an explicit size"}]}}
+audit= cls-culprits-insight title= Layout shift culprits display= None score= 0
+layout_item= {"type":"table","headings":[{"key":"node","valueType":"node","subItemsHeading":{"key":"extra"},"label":"Element"},{"key":"score","valueType":"numeric","subItemsHeading":{"key":"cause","valueType":"text"},"granularity":0.001,"label":"Layout shift score"}],"items":[{"node":{"type":"text","value":"Total"},"score":0.159423867336641},{"node":{"type":"node","lhId":"page-1-DIV","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV","selector":"div.emo-home > section.emo-hero > div.emo-shell > div.emo-hero__copy","boundingRect":{"top":130,"bottom":733,"left":14,"right":398,"width":384,"height":603},"snippet":"<div class=\"emo-hero__copy\">","nodeLabel":"NUESTRA SELECCIÓN\nUna forma distinta\nde elegir.\n\nEn El Mercado de Origen buscam…"},"score":0.1205095283664152},{"node":{"type":"node","lhId":"page-1-DIV","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV","selector":"div.emo-home > section.emo-hero > div.emo-shell > div.emo-hero__copy","boundingRect":{"top":130,"bottom":733,"left":14,"right":398,"width":384,"height":603},"snippet":"<div class=\"emo-hero__copy\">","nodeLabel":"NUESTRA SELECCIÓN\nUna forma distinta\nde elegir.\n\nEn El Mercado de Origen buscam…"},"score":0.02590904003040956},{"node":{"type":"node","lhId":"page-6-DIV","path":"1,HTML,1,BODY,7,DIV,1,DIV","selector":"body.home > div#shop-cart-sidebar > div.cart-sidebar-content","boundingRect":{"top":74,"bottom":808,"left":427,"right":787,"width":360,"height":734},"snippet":"<div class=\"cart-sidebar-content\">","nodeLabel":"body.home > div#shop-cart-sidebar > div.cart-sidebar-content"},"score":0.01289266661734147},{"node":{"type":"node","lhId":"page-8-DIV","path":"1,HTML,1,BODY,3,DIV,3,DIV","selector":"body.home > div#mobile-navigation > div.sidebar-menu-bottom","boundingRect":{"top":717,"bottom":799,"left":-345,"right":-19,"width":326,"height":82},"snippet":"<div class=\"sidebar-menu-bottom\">","nodeLabel":"Acceder / Registro"},"score":8.102616506782273e-05},{"node":{"type":"node","lhId":"page-14-DIV","path":"1,HTML,1,BODY,2,DIV,1,HEADER,0,DIV,0,DIV,5,DIV,1,DIV","selector":"div.site-header-inner > div.woostify-container > div.site-tools > div.tools-icon","boundingRect":{"top":49,"bottom":79,"left":338,"right":368,"width":30,"height":30},"snippet":"<div class=\"tools-icon my-account\" style=\"width: 30px !important; min-width: 30px !important;\">","nodeLabel":"Mi cuenta"},"score":3.160615740694886e-05,"subItems":{"type":"subitems","items":[{"extra":{"type":"node","lhId":"page-20-IMG","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,3,SECTION,0,DIV,1,DIV,0,UL,0,LI,0,DIV,1,DIV,0,A,0,IMG","selector":"div.product-loop-wrapper > div.product-loop-image-wrapper > a.woocommerce-LoopProduct-link > img.attachment-woocommerce_thumbnail","boundingRect":{"top":3305,"bottom":3725,"left":14,"right":329,"width":315,"height":420},"snippet":"<img width=\"360\" height=\"480\" alt=\"Imagen del producto\" data-srcset=\"https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-36…\" decoding=\"async\" data-src=\"https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-36…\" data-sizes=\"(max-width: 767px) calc(100vw - 32px), (max-width: 1100px) calc(50vw - 32p…\" class=\"attachment-woocommerce_thumbnail size-woocommerce_thumbnail product-loop-i…\" src=\"https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-60…\" loading=\"lazy\" sizes=\"(max-width: 767px) calc(100vw - 32px), (max-width: 1100px) calc(50vw - 32p…\" …>","nodeLabel":"Imagen del producto"},"cause":"Unsized image element"}]}}]}
+--- lcp audits ---
+audit= largest-contentful-paint title= Largest Contentful Paint display= 4.9 s score= 0.28
+audit= largest-contentful-paint-element title= Largest Contentful Paint element display= 4,900 ms score= 0
+lcp_item= {"type":"table","headings":[{"key":"node","valueType":"node","label":"Element"}],"items":[{"node":{"type":"node","lhId":"page-0-P","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV,2,P","selector":"section.emo-hero > div.emo-shell > div.emo-hero__copy > p","boundingRect":{"top":254,"bottom":405,"left":14,"right":398,"width":384,"height":151},"snippet":"<p>","nodeLabel":"En El Mercado de Origen buscamos productores que han conseguido hacer de sus pr…"}}]}
+lcp_item= {"type":"table","headings":[{"key":"phase","valueType":"text","label":"Phase"},{"key":"percent","valueType":"text","label":"% of LCP"},{"key":"timing","valueType":"ms","label":"Timing"}],"items":[{"phase":"TTFB","timing":2704.9119999999925,"percent":"55%"},{"phase":"Load Delay","timing":0,"percent":"0%"},{"phase":"Load Time","timing":0,"percent":"0%"},{"phase":"Render Delay","timing":2199.341400000007,"percent":"45%"}]}
+audit= lcp-lazy-loaded title= Largest Contentful Paint image was not lazily loaded display= None score= None
+audit= prioritize-lcp-image title= Preload Largest Contentful Paint image display= None score= None
+audit= lcp-breakdown-insight title= LCP breakdown display= None score= 1
+lcp_item= {"type":"table","headings":[{"key":"label","valueType":"text","label":"Subpart"},{"key":"duration","valueType":"ms","label":"Duration"}],"items":[{"subpart":"timeToFirstByte","label":"Time to first byte","duration":2704.9119999999925},{"subpart":"elementRenderDelay","label":"Element render delay","duration":338.37500000000745}]}
+lcp_item= {"type":"node","lhId":"page-0-P","path":"1,HTML,1,BODY,2,DIV,2,DIV,0,DIV,0,DIV,0,MAIN,0,ARTICLE,0,DIV,0,SECTION,0,DIV,0,DIV,2,P","selector":"section.emo-hero > div.emo-shell > div.emo-hero__copy > p","boundingRect":{"top":254,"bottom":405,"left":14,"right":398,"width":384,"height":151},"snippet":"<p>","nodeLabel":"En El Mercado de Origen buscamos productores que han conseguido hacer de sus pr…"}
+audit= lcp-discovery-insight title= LCP request discovery display= None score= None
+--- bootup-time ---
+bootup= https://www.elmercadodeorigen.com/ total= 4115.027999999999 scripting= 201.04400000000032 parse= 95.21200000000002
+bootup= Unattributable total= 523.3360000000004 scripting= 9.379999999999994 parse= 0
+bootup= https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1 total= 362.67200000000037 scripting= 308.9240000000003 parse= 51.412000000000006
+bootup= https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4 total= 309.9760000000004 scripting= 271.9640000000004 parse= 36.064
+bootup= https://www.elmercadodeorigen.com/wp-includes/js/jquery/jquery.min.js?ver=7.0.4 total= 199.77200000000005 scripting= 125.22400000000007 parse= 7.052
+bootup= https://www.elmercadodeorigen.com/wp-content/plugins/wp-smush-pro/app/assets/js/smush-lazy-load-native.min.js?ver=3.9.0 total= 127.20800000000006 scripting= 77.73600000000006 parse= 1.28
+bootup= https://www.googletagmanager.com/gtag/js?id=AW-18396600140 total= 99.69600000000003 scripting= 36.05200000000002 parse= 62.348
+bootup= https://www.elmercadodeorigen.com/wp-content/plugins/click-to-chat-for-whatsapp/new/inc/assets/js/app.js?ver=4.43 total= 86.50000000000001 scripting= 16.436 parse= 1.4440000000000002
+bootup= https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/js/theme.js?ver=1786944433 total= 51.89999999999999 scripting= 12.431999999999993 parse= 1.4120000000000001
+--- long-tasks ---
+longtask= https://www.elmercadodeorigen.com/ duration= 620 start= 3336.5332
+longtask= https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1 duration= 359 start= 9009.117999999999
+longtask= https://www.elmercadodeorigen.com/ duration= 181 start= 3115.5332
+longtask= https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4 duration= 179 start= 5351.241599999999
+longtask= https://www.elmercadodeorigen.com/ duration= 136 start= 2464.5332
+longtask= https://www.elmercadodeorigen.com/ duration= 134 start= 2939.5332
+longtask= https://www.elmercadodeorigen.com/ duration= 122 start= 2681.5332
+longtask= https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4 duration= 115 start= 5236.241599999999
+longtask= https://www.googletagmanager.com/gtag/js?id=AW-18396600140 duration= 100 start= 7462.355999999999
+longtask= https://www.elmercadodeorigen.com/ duration= 81 start= 2600.5332
+longtask= https://www.elmercadodeorigen.com/ duration= 76 start= 5530.241599999999
+longtask= https://www.elmercadodeorigen.com/ duration= 73 start= 3956.5332
+longtask= Unattributable duration= 69 start= 2226.5332
+longtask= https://www.elmercadodeorigen.com/wp-content/plugins/wp-smush-pro/app/assets/js/smush-lazy-load-native.min.js?ver=3.9.0 duration= 62 start= 8698.429599999998
+longtask= https://www.elmercadodeorigen.com/wp-content/plugins/ajax-search-for-woocommerce/assets/js/search.min.js?ver=1.34.0 duration= 60 start= 9401.117999999999
+longtask= https://www.elmercadodeorigen.com/ duration= 57 start= 2407.5332
+longtask= https://www.elmercadodeorigen.com/ duration= 56 start= 2883.5332
+longtask= https://www.elmercadodeorigen.com/ duration= 53 start= 2307.5332
+--- third-party-summary ---
+thirdparty= Google Tag Manager mainThread= 772.3440000000002 transfer= 447550 blocking= 553.0155680688961
+thirdparty= WordPress mainThread= 51.56399999999999 transfer= 17775 blocking= 0.05531632991096558
+thirdparty= WordPress Site Stats mainThread= 16.104 transfer= 6246 blocking= 0
+thirdparty= Google/Doubleclick Ads mainThread= 7.424000000000001 transfer= 2702 blocking= 0
+thirdparty= Google Analytics mainThread= 0 transfer= 556 blocking= 0
+thirdparty= Other Google APIs/SDKs mainThread= 0 transfer= 105 blocking= 0
+--- unused-javascript ---
+unusedjs= https://www.googletagmanager.com/gtag/js?id=AW-18396600140 wasted= 109174 total= 146957 wastedPercent= 74.28961933045356
+unusedjs= https://www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4 wasted= 66121 total= 153179 wastedPercent= 43.16604273455048
+unusedjs= https://www.googletagmanager.com/gtag/js?id=AW-18396600140&cx=c&gtm=4e68h1 wasted= 59175 total= 146972 wastedPercent= 40.262836288956
+--- mainthread ---
+mainthread= Other duration= 2265.5079999999984
+mainthread= Style & Layout duration= 1728.6080000000002
+mainthread= Script Evaluation duration= 1194.111999999985
+mainthread= Parse HTML & CSS duration= 330.5280000000001
+mainthread= Script Parsing & Compilation duration= 305.5919999999999
+mainthread= Rendering duration= 258.7040000000005
