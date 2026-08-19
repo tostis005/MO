@@ -148,6 +148,11 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 	$head_protected = preg_replace_callback(
 		'~<style\b[^>]*>(.*?)</style\s*>~is',
 		static function ( array $matches ) use ( &$css_parts ): string {
+			/* This 166 KiB block contains the final desktop Home geometry. Keep it
+			 * render-blocking while all non-structural inline CSS remains deferred. */
+			if ( str_contains( $matches[0], 'id="woostify-parent-style-inline-css"' ) || str_contains( $matches[0], "id='woostify-parent-style-inline-css'" ) ) {
+				return $matches[0];
+			}
 			if ( isset( $matches[1] ) && '' !== trim( $matches[1] ) ) {
 				$css_parts[] = $matches[1];
 			}
