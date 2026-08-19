@@ -30,12 +30,15 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
 <div class="mdo-store-shipping" aria-labelledby="mdo-store-shipping-title">
     <style>
         #wcfmmp-store .mdo-store-shipping {
-            padding: 4px 0 24px;
+            margin: 4px 0 24px;
+            padding: 22px;
+            border: 1px solid rgba(0,0,0,.08);
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,.035);
         }
-        #wcfmmp-store .mdo-store-shipping__intro {
-            margin: 0 0 20px;
-            color: #555;
-            line-height: 1.6;
+        #wcfmmp-store .mdo-store-shipping h2 {
+            margin: 0 0 18px;
         }
         #wcfmmp-store .mdo-store-shipping__minimum {
             display: flex;
@@ -43,74 +46,110 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
             justify-content: space-between;
             gap: 16px;
             margin: 0 0 20px;
-            padding: 15px 18px;
-            border: 1px solid rgba(0,0,0,.1);
+            padding: 16px 18px;
+            border: 1px solid rgba(0,0,0,.09);
             border-radius: 10px;
-            background: rgba(0,0,0,.025);
+            background: #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,.04);
         }
         #wcfmmp-store .mdo-store-shipping__minimum-label {
-            font-weight: 600;
+            font-weight: 650;
         }
         #wcfmmp-store .mdo-store-shipping__minimum-price {
             font-size: 1.15em;
-            font-weight: 700;
+            font-weight: 750;
             white-space: nowrap;
         }
-        #wcfmmp-store .mdo-store-shipping__zones {
-            display: grid;
-            gap: 14px;
+        #wcfmmp-store .mdo-store-shipping__intro {
+            margin: 0 0 18px;
+            color: #666;
+            line-height: 1.55;
         }
-        #wcfmmp-store .mdo-store-shipping__zone {
-            padding: 17px 18px;
-            border: 1px solid rgba(0,0,0,.1);
+        #wcfmmp-store .mdo-store-shipping__table-wrap {
+            overflow-x: auto;
+            border: 1px solid rgba(0,0,0,.09);
             border-radius: 10px;
             background: #fff;
         }
-        #wcfmmp-store .mdo-store-shipping__zone h3 {
-            margin: 0 0 13px;
-            font-size: 1.08em;
-            line-height: 1.35;
-        }
-        #wcfmmp-store .mdo-store-shipping__conditions {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px 18px;
+        #wcfmmp-store .mdo-store-shipping__table {
+            width: 100%;
             margin: 0;
+            border: 0;
+            border-collapse: collapse;
+            table-layout: fixed;
+            background: #fff;
         }
-        #wcfmmp-store .mdo-store-shipping__condition {
-            min-width: 0;
+        #wcfmmp-store .mdo-store-shipping__table th,
+        #wcfmmp-store .mdo-store-shipping__table td {
+            padding: 15px 17px;
+            border: 0;
+            border-bottom: 1px solid rgba(0,0,0,.075);
+            text-align: left;
+            vertical-align: top;
         }
-        #wcfmmp-store .mdo-store-shipping__condition dt {
-            margin: 0 0 2px;
-            color: #777;
-            font-size: .85em;
-            font-weight: 500;
+        #wcfmmp-store .mdo-store-shipping__table th {
+            background: rgba(0,0,0,.025);
+            color: #555;
+            font-size: .88em;
+            font-weight: 700;
         }
-        #wcfmmp-store .mdo-store-shipping__condition dd {
-            margin: 0;
-            font-weight: 600;
+        #wcfmmp-store .mdo-store-shipping__table tbody tr:last-child td {
+            border-bottom: 0;
+        }
+        #wcfmmp-store .mdo-store-shipping__destination {
+            width: 58%;
+            color: #222;
+            font-weight: 650;
+            line-height: 1.45;
+        }
+        #wcfmmp-store .mdo-store-shipping__cost {
+            width: 42%;
+            color: #222;
+            font-weight: 700;
+            line-height: 1.45;
+        }
+        #wcfmmp-store .mdo-store-shipping__detail {
+            display: block;
+            margin-top: 4px;
+            color: #737373;
+            font-size: .88em;
+            font-weight: 400;
+            line-height: 1.4;
+        }
+        #wcfmmp-store .mdo-store-shipping__free {
+            font-weight: 700;
         }
         #wcfmmp-store .mdo-store-shipping__empty {
             margin: 0;
             padding: 18px;
-            border: 1px solid rgba(0,0,0,.1);
+            border: 1px solid rgba(0,0,0,.09);
             border-radius: 10px;
-            background: rgba(0,0,0,.025);
+            background: #fff;
         }
         #wcfmmp-store .mdo-store-shipping__note {
-            margin: 18px 0 0;
+            margin: 16px 0 0;
             color: #777;
-            font-size: .9em;
+            font-size: .88em;
             line-height: 1.5;
         }
         @media (max-width: 600px) {
+            #wcfmmp-store .mdo-store-shipping {
+                padding: 16px;
+            }
             #wcfmmp-store .mdo-store-shipping__minimum {
                 align-items: flex-start;
                 flex-direction: column;
                 gap: 4px;
             }
-            #wcfmmp-store .mdo-store-shipping__conditions {
-                grid-template-columns: 1fr;
+            #wcfmmp-store .mdo-store-shipping__table th,
+            #wcfmmp-store .mdo-store-shipping__table td {
+                padding: 13px 12px;
+            }
+            #wcfmmp-store .mdo-store-shipping__destination {
+                width: 56%;
+            }
+            #wcfmmp-store .mdo-store-shipping__cost {
+                width: 44%;
             }
         }
     </style>
@@ -130,46 +169,71 @@ $rows    = $vendor_id ? mdo_sst_shipping_rows( $vendor_id ) : array();
         <?php
         echo esc_html(
             mdo_sst_text(
-                'Consulta los destinos a los que envía este productor y las condiciones configuradas actualmente para cada uno.',
-                'See where this producer ships and the current conditions configured for each destination.'
+                'Consulta los destinos a los que envía este productor y el coste configurado actualmente para cada uno.',
+                'See where this producer ships and the current shipping cost for each destination.'
             )
         );
         ?>
     </p>
 
     <?php if ( ! empty( $rows ) ) : ?>
-        <div class="mdo-store-shipping__zones">
-            <?php foreach ( $rows as $row ) : ?>
-                <section class="mdo-store-shipping__zone">
-                    <h3><?php echo esc_html( mdo_sst_row_display_name( $row ) ); ?></h3>
+        <div class="mdo-store-shipping__table-wrap">
+            <table class="mdo-store-shipping__table">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php echo esc_html( mdo_sst_text( 'Destino', 'Destination' ) ); ?></th>
+                        <th scope="col"><?php echo esc_html( mdo_sst_text( 'Coste de envío', 'Shipping cost' ) ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $rows as $row ) : ?>
+                        <?php
+                        $free_from = ! empty( $row['free_from'] ) ? (float) $row['free_from'] : 0.0;
 
-                    <dl class="mdo-store-shipping__conditions">
-                        <?php if ( ! empty( $row['flat_costs'] ) ) : ?>
-                            <div class="mdo-store-shipping__condition">
-                                <dt><?php echo esc_html( mdo_sst_text( 'Coste de envío', 'Shipping cost' ) ); ?></dt>
-                                <dd><?php echo esc_html( implode( ' / ', $row['flat_costs'] ) ); ?></dd>
-                            </div>
-                        <?php endif; ?>
+                        // If every valid order already reaches the free-shipping threshold,
+                        // showing the threshold (and the lower flat rate) would be redundant.
+                        $minimum_guarantees_free = $minimum > 0 && $free_from > 0 && ( $minimum + 0.0001 ) >= $free_from;
 
-                        <?php if ( ! empty( $row['free_from'] ) ) : ?>
-                            <div class="mdo-store-shipping__condition">
-                                <dt><?php echo esc_html( mdo_sst_text( 'Envío gratuito', 'Free shipping' ) ); ?></dt>
-                                <dd>
-                                    <?php echo esc_html( mdo_sst_text( 'A partir de', 'From' ) ); ?>
-                                    <?php echo wp_kses_post( wc_price( (float) $row['free_from'] ) ); ?>
-                                </dd>
-                            </div>
-                        <?php endif; ?>
+                        $details = array();
+                        if ( ! $minimum_guarantees_free && $free_from > 0 ) {
+                            $details[] = sprintf(
+                                '%s %s',
+                                mdo_sst_text( 'Envío gratuito a partir de', 'Free shipping from' ),
+                                wp_strip_all_tags( wc_price( $free_from ) )
+                            );
+                        }
+                        if ( ! empty( $row['notes'] ) ) {
+                            foreach ( $row['notes'] as $note ) {
+                                $details[] = trim( (string) $note );
+                            }
+                        }
+                        $details = array_values( array_unique( array_filter( $details ) ) );
+                        ?>
+                        <tr>
+                            <td class="mdo-store-shipping__destination">
+                                <?php echo esc_html( mdo_sst_row_display_name( $row ) ); ?>
+                            </td>
+                            <td class="mdo-store-shipping__cost">
+                                <?php if ( $minimum_guarantees_free ) : ?>
+                                    <span class="mdo-store-shipping__free">
+                                        <?php echo esc_html( mdo_sst_text( 'Envío gratuito', 'Free shipping' ) ); ?>
+                                    </span>
+                                <?php elseif ( ! empty( $row['flat_costs'] ) ) : ?>
+                                    <?php echo esc_html( implode( ' / ', $row['flat_costs'] ) ); ?>
+                                <?php elseif ( $free_from > 0 ) : ?>
+                                    <?php echo esc_html( mdo_sst_text( 'Según condiciones', 'According to conditions' ) ); ?>
+                                <?php else : ?>
+                                    <?php echo esc_html( mdo_sst_text( 'Consultar condiciones', 'See conditions' ) ); ?>
+                                <?php endif; ?>
 
-                        <?php foreach ( $row['notes'] as $note ) : ?>
-                            <div class="mdo-store-shipping__condition">
-                                <dt><?php echo esc_html( mdo_sst_text( 'Condición', 'Condition' ) ); ?></dt>
-                                <dd><?php echo esc_html( $note ); ?></dd>
-                            </div>
-                        <?php endforeach; ?>
-                    </dl>
-                </section>
-            <?php endforeach; ?>
+                                <?php foreach ( $details as $detail ) : ?>
+                                    <span class="mdo-store-shipping__detail"><?php echo esc_html( $detail ); ?></span>
+                                <?php endforeach; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     <?php else : ?>
         <p class="mdo-store-shipping__empty">
