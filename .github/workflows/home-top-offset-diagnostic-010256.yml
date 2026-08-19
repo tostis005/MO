@@ -31,16 +31,17 @@ jobs:
             const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
             const page=await browser.newPage({viewport:{width:412,height:915},deviceScaleFactor:1});
             await page.addInitScript(()=>{
-              window.__top=[];
+              window.__top=[]; window.__shifts=[];
+              new PerformanceObserver(list=>{for(const e of list.getEntries()){if(e.hadRecentInput)continue;window.__shifts.push({value:e.value,startTime:e.startTime,sources:(e.sources||[]).map(s=>({node:s.node?.id||s.node?.className||s.node?.nodeName||'',previousRect:s.previousRect,currentRect:s.currentRect}))});}}).observe({type:'layout-shift',buffered:true});
               const snap=(label)=>{
                 const read=(sel)=>{const e=document.querySelector(sel);if(!e)return null;const s=getComputedStyle(e),r=e.getBoundingClientRect();return {sel,class:e.className,rect:{x:r.x,y:r.y,width:r.width,height:r.height},margin:s.margin,padding:s.padding,display:s.display,position:s.position,top:s.top,height:s.height,lineHeight:s.lineHeight,fontSize:s.fontSize};};
-                window.__top.push({label,t:performance.now(),body:document.body?.className||'',view:read('#view'),content:read('#content'),announcement:read('.emo-announcement'),announcementInner:read('.emo-announcement__inner'),header:read('.site-header'),headerInner:read('.site-header-inner'),hero:read('.emo-hero')});
+                window.__top.push({label,t:performance.now(),body:document.body?.className||'',view:read('#view'),topbar:read('.topbar'),content:read('#content'),announcement:read('.emo-announcement'),header:read('.site-header'),hero:read('.emo-hero'),copy:read('.emo-hero__copy'),grid:read('.emo-hero__grid'),visual:read('.emo-hero__visual'),h1:read('.emo-hero h1'),p:read('.emo-hero__copy>p')});
               };
               setTimeout(()=>snap('50ms'),50);setTimeout(()=>snap('250ms'),250);document.addEventListener('DOMContentLoaded',()=>snap('domcontentloaded'));window.addEventListener('load',()=>snap('load'));setTimeout(()=>snap('1000ms'),1000);
             });
             await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
             await page.waitForTimeout(1500);
-            console.log(JSON.stringify(await page.evaluate(()=>window.__top),null,2));
+            console.log(JSON.stringify(await page.evaluate(()=>({snaps:window.__top,shifts:window.__shifts})),null,2));
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
@@ -53,3 +54,4 @@ jobs:
           git commit -m 'Record Home top offset diagnostic' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+# rerun after topbar and cart stabilization
