@@ -1,0 +1,143 @@
+name: Deploy Home reflow pass 6 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-reflow-pass6-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reflow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Remove bootstrap layout read
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/assets/js/theme.js')
+          s=p.read_text()
+          old="""\t/* Read scroll geometry before invalidating styles/DOM. */\n\tupdateScrollState();\n\tbody.classList.add('emo-js-ready');"""
+          new="""\t/* No geometry reads during bootstrap; a real scroll event syncs the header state lazily. */\n\tbody.classList.add('emo-js-ready');"""
+          if old in s:
+              p.write_text(s.replace(old,new,1))
+          elif new not in s:
+              raise SystemExit('bootstrap target missing')
+          PY
+          node --check elmercadodeorigen-child/assets/js/theme.js
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('elmercadodeorigen-child/assets/js/theme.js').read_text()
+          bootstrap=s.split("window.addEventListener('scroll', requestScrollUpdate",1)[0]
+          assert 'updateScrollState();' not in bootstrap
+          assert 'window.scrollY' in s
+          print('bootstrap_geometry_read=false')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/assets/js/theme.js
+          git commit -m 'Avoid Home bootstrap scroll geometry read' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Deploy theme.js
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/theme-pass6-${GITHUB_RUN_ID}.js"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/js/theme.js "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD_PATH/wp-content/themes/elmercadodeorigen-child'
+            install -m 0644 '$REMOTE' \"\$THEME/assets/js/theme.js\"
+            wp_bin=\$(command -v wp)
+            php_bin=\$(command -v php || true)
+            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html' '$REMOTE'
+          "
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/js/theme.js' -o /tmp/theme.js
+          grep -q 'No geometry reads during bootstrap' /tmp/theme.js
+
+      - name: Lighthouse 3x reflow audit
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do
+            npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/reflow6-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet
+          done
+          python3 - <<'PY' > runtime/home-reflow-pass6-20260819.txt
+          import json, statistics
+          rows=[]
+          print('deploy=success')
+          for i in (1,2,3):
+              a=json.load(open(f'/tmp/reflow6-{i}.json'))
+              v=a['audits'].get('forced-reflow-insight',{})
+              sources=[]
+              for group in (v.get('details') or {}).get('items',[]):
+                  for item in group.get('items',[]):
+                      src=item.get('source') or {}
+                      url=src.get('url','') if isinstance(src,dict) else ''
+                      label=src.get('value','') if isinstance(src,dict) else ''
+                      sources.append((url or label,float(item.get('reflowTime') or 0)))
+              theme=sum(t for s,t in sources if '/assets/js/theme.js' in s)
+              jquery=sum(t for s,t in sources if '/jquery/jquery.min.js' in s)
+              unattributed=sum(t for s,t in sources if 'unattributed' in s.lower())
+              total=sum(t for _,t in sources)
+              score=round(a['categories']['performance']['score']*100)
+              row={'score':score,'theme_ms':round(theme,3),'jquery_ms':round(jquery,3),'unattributed_ms':round(unattributed,3),'listed_total_ms':round(total,3)}
+              rows.append(row)
+              print('run',i,row)
+              print('details',i,json.dumps(v.get('details') or {},ensure_ascii=False)[:14000])
+          for k in rows[0]:
+              print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          assert max(r['theme_ms'] for r in rows) < 5, rows
+          PY
+          cat runtime/home-reflow-pass6-20260819.txt
+
+      - name: Record result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          [ -f runtime/home-reflow-pass6-20260819.txt ] || echo 'verification_failed=true' > runtime/home-reflow-pass6-20260819.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-reflow-pass6-20260819.txt
+          git commit -m 'Record Home reflow pass 6 verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
