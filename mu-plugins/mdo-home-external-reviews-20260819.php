@@ -2,14 +2,14 @@
 /**
  * Plugin Name: MDO - Home External Reviews 2026-08-19
  * Description: Añade una franja ligera de prueba social con las valoraciones verificadas de Google y Trustpilot en la Home renovada.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.0';
+const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.1';
 
 /**
  * Invalida la caché de Home una sola vez cuando cambia esta pieza.
@@ -162,7 +162,7 @@ add_action(
 			}
 			body.elmercado-premium-home .mdo-review-proof__source small {
 				font-size: .72rem;
-				color: rgba(34, 41, 34, .58);
+				color: #666;
 			}
 			body.elmercado-premium-home .mdo-review-proof__divider {
 				width: 1px;
