@@ -1,0 +1,76 @@
+name: Verify Home WebP HTTP 20260819
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-webp-http-20260819.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Verify WebP responses and decoding
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 50 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY' > /tmp/refs.txt
+          import re
+          h=open('/tmp/home.html',encoding='utf-8',errors='ignore').read()
+          for x in sorted(set(re.findall(r'/wp-content/uploads/[^\s"\'<>]+\.webp',h,re.I))): print('https://www.elmercadodeorigen.com'+x)
+          PY
+          : > /tmp/http.txt
+          while IFS= read -r url; do
+            code=$(curl -L -sS -o /tmp/img -w '%{http_code}' --max-time 30 "$url" || true)
+            bytes=$(wc -c < /tmp/img || echo 0)
+            printf '%s\t%s\t%s\n' "$code" "$bytes" "$url" >> /tmp/http.txt
+          done < /tmp/refs.txt
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          REFS=/tmp/refs.txt CHROME="$CHROME" node <<'JS' > /tmp/decode.json
+          const fs=require('fs'),puppeteer=require('puppeteer-core');
+          (async()=>{const urls=fs.readFileSync(process.env.REFS,'utf8').trim().split(/\n+/).filter(Boolean);const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox']});const p=await b.newPage();await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:60000});const r=await p.evaluate(async urls=>Promise.all(urls.map(url=>new Promise(resolve=>{const i=new Image();i.onload=()=>resolve({url,ok:true,w:i.naturalWidth,h:i.naturalHeight});i.onerror=()=>resolve({url,ok:false,w:0,h:0});i.src=url;}))),urls);console.log(JSON.stringify(r));await b.close();})().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          {
+            echo '=== HTTP ==='; cat /tmp/http.txt
+            echo '=== DECODE ==='; cat /tmp/decode.json
+          } > runtime/home-webp-http-20260819.txt
+          python3 - <<'PY'
+          import json
+          rows=json.load(open('/tmp/decode.json'))
+          bad=[r for r in rows if not r['ok'] or r['w']<=0]
+          print('refs=',len(rows),'bad=',bad)
+          assert rows and not bad,bad
+          PY
+      - name: Lighthouse 3x
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund lighthouse@13.4.1 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          for i in 1 2 3; do npx lighthouse@13.4.1 'https://www.elmercadodeorigen.com/' --only-categories=performance --output=json --output-path="/tmp/lh-$i.json" --chrome-path="$CHROME" --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage' --quiet; done
+          python3 - <<'PY' >> runtime/home-webp-http-20260819.txt
+          import json,statistics
+          rows=[]
+          for i in (1,2,3):
+            a=json.load(open(f'/tmp/lh-{i}.json'));x=a['audits'];trp=jq=unat=0
+            for g in (x.get('forced-reflow-insight',{}).get('details') or {}).get('items',[]):
+              for z in g.get('items',[]):
+                s=z.get('source') or {};u=(s.get('url') or s.get('value') or '') if isinstance(s,dict) else '';t=z.get('reflowTime',0) or 0
+                if 'trp-frontend-language-switcher' in u:trp+=t
+                if '/jquery/jquery.min.js' in u:jq+=t
+                if 'unattributed' in u.lower():unat+=t
+            r={'score':round(a['categories']['performance']['score']*100),'fcp':round(x['first-contentful-paint']['numericValue']),'lcp':round(x['largest-contentful-paint']['numericValue']),'tbt':round(x['total-blocking-time']['numericValue']),'cls':round(x['cumulative-layout-shift']['numericValue'],5),'trp':round(trp,2),'jquery':round(jq,2),'unattributed':round(unat,2),'mainthread':round(x['mainthread-work-breakdown']['numericValue']),'image':x.get('image-delivery-insight',{}).get('displayValue') or '', 'css':x.get('unused-css-rules',{}).get('displayValue') or ''};rows.append(r);print('run',i,r)
+          for k in ['score','fcp','lcp','tbt','cls','trp','jquery','unattributed','mainthread']:print('median_'+k+'=',statistics.median(r[k] for r in rows))
+          PY
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-webp-http-20260819.txt || true
+          if ! git diff --cached --quiet; then git commit -m 'Record Home WebP HTTP verification [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main; fi
