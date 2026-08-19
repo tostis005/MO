@@ -1,5 +1,6 @@
 name: Diagnose Home browser runtime 20260819
 
+# image-runtime
 on:
   push:
     branches: [main]
@@ -29,20 +30,19 @@ jobs:
           (async()=>{
             const browser=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
             const page=await browser.newPage();
+            await page.setViewport({width:412,height:915,deviceScaleFactor:1});
             await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});
-            const snapshots=[];
-            for (const delay of [0,3000,8000]) {
-              if (delay) await new Promise(r=>setTimeout(r,delay));
-              const state=await page.evaluate(()=>{
-                const all=[...document.querySelectorAll('.hustle-ui')];
-                const visible=all.filter(el=>{const s=getComputedStyle(el),r=el.getBoundingClientRect(); return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;});
-                const styles=[...document.querySelectorAll('style')].filter(s=>(s.id||'').includes('hustle')||(s.textContent||'').includes('.hustle-ui')).map(s=>({id:s.id,bytes:(s.textContent||'').length}));
-                const scripts=[...document.scripts].map(s=>s.src).filter(src=>/hustle/i.test(src));
-                return {hustle_nodes:all.length,hustle_visible:visible.length,styles,scripts};
+            const state=await page.evaluate(()=>{
+              const all=[...document.querySelectorAll('.hustle-ui')];
+              const styles=[...document.querySelectorAll('style')].filter(s=>(s.id||'').includes('hustle')||(s.textContent||'').includes('.hustle-ui')).map(s=>({id:s.id,bytes:(s.textContent||'').length}));
+              const scripts=[...document.scripts].map(s=>s.src).filter(src=>/hustle/i.test(src));
+              const images=[...document.images].filter(img=>img.matches('.attachment-woocommerce_thumbnail,.emo-home-vendor-responsive-image,.metodosPago')).map(img=>{
+                const r=img.getBoundingClientRect();
+                return {class:img.className,alt:img.alt,src:img.src,currentSrc:img.currentSrc,srcset:img.getAttribute('srcset'),dataSrc:img.getAttribute('data-src'),dataSrcset:img.getAttribute('data-srcset'),sizes:img.getAttribute('sizes'),widthAttr:img.getAttribute('width'),heightAttr:img.getAttribute('height'),naturalWidth:img.naturalWidth,naturalHeight:img.naturalHeight,displayWidth:Math.round(r.width),displayHeight:Math.round(r.height),loading:img.loading};
               });
-              snapshots.push({delay,state});
-            }
-            console.log(JSON.stringify(snapshots,null,2));
+              return {hustle_nodes:all.length,styles,scripts,images};
+            });
+            console.log(JSON.stringify(state,null,2));
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
