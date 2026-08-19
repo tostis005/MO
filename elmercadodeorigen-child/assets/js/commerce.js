@@ -107,21 +107,33 @@
 	};
 
 	polishMiniCart();
+	/*
+	 * El observador anterior vigilaba todo document.body. En la Home eso lo
+	 * despertaba por cada slider, widget o fragmento añadido aunque no tuviera
+	 * relación con el carrito. WooCommerce ya emite eventos cuando reemplaza
+	 * fragments, por lo que basta con observar el panel del mini-carrito.
+	 */
+	const miniCartPanel = document.querySelector('#shop-cart-sidebar');
 	let miniCartFrame = 0;
-	const miniCartObserver = new MutationObserver((mutations) => {
-		if (!mutations.some((mutation) => [...mutation.addedNodes].some((node) => node.nodeType === Node.ELEMENT_NODE))) return;
-		if (miniCartFrame) return;
-		miniCartFrame = window.requestAnimationFrame(() => {
-			polishMiniCart();
-			updateCartAccessibleName();
-			miniCartFrame = 0;
+	if (miniCartPanel) {
+		const miniCartObserver = new MutationObserver((mutations) => {
+			if (!mutations.some((mutation) => [...mutation.addedNodes].some((node) => node.nodeType === Node.ELEMENT_NODE))) return;
+			if (miniCartFrame) return;
+			miniCartFrame = window.requestAnimationFrame(() => {
+				polishMiniCart(miniCartPanel);
+				updateCartAccessibleName();
+				miniCartFrame = 0;
+			});
 		});
-	});
-	miniCartObserver.observe(document.body, { childList: true, subtree: true });
+		miniCartObserver.observe(miniCartPanel, { childList: true, subtree: true });
+	}
 
 	if (window.jQuery) {
 		window.jQuery(document.body).on('wc_fragments_loaded wc_fragments_refreshed added_to_cart removed_from_cart', () => {
-			window.requestAnimationFrame(() => polishMiniCart());
+			window.requestAnimationFrame(() => {
+				polishMiniCart();
+				updateCartAccessibleName();
+			});
 		});
 	}
 
