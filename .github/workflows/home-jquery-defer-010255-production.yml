@@ -1,0 +1,152 @@
+name: Home jQuery defer 0.10.255 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-jquery-defer-010255.php'
+      - '.github/workflows/home-jquery-defer-010255-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-jquery-defer-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate PHP
+        run: php -l elmercadodeorigen-child/mu-plugins/elmercado-home-jquery-defer-010255.php
+      - name: Discover production path
+        id: path
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          command -v sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "prod_path=$PROD_PATH" >> "$GITHUB_OUTPUT"
+      - name: Deploy guarded jQuery defer
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.path.outputs.prod_path }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          REMOTE="/tmp/elmercado-home-jquery-defer-${GITHUB_RUN_ID}.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-jquery-defer-010255.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          timeout 120s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            TARGET='$PROD_PATH/wp-content/mu-plugins/elmercado-home-jquery-defer-010255.php'
+            install -m 0644 '$REMOTE' \"\$TARGET\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$TARGET\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$REMOTE'
+          "
+      - name: Verify live defer and runtime
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/jquery-defer-verify.txt
+          : > "$OUT"
+          HTML=$(mktemp)
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HTML"
+          python3 - "$HTML" <<'PY' | tee -a "$OUT"
+          import pathlib,re,sys
+          html=pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          ok=True
+          for handle in ('jquery-core-js','jquery-migrate-js'):
+              m=re.search(r'<script\b[^>]*id=["\']'+re.escape(handle)+r'["\'][^>]*>',html,re.I)
+              tag=m.group(0) if m else ''
+              print(handle+'='+tag)
+              if not tag or not re.search(r'\bdefer\b',tag,re.I): ok=False
+          if not ok: raise SystemExit(12)
+          PY
+          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          : "${CHROME:?Chrome missing}"
+          CHROME_PATH="$CHROME" node <<'JS' | tee -a "$OUT"
+          const { chromium } = require('playwright-core');
+          (async()=>{
+            const errors=[];
+            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();
+            page.on('pageerror',e=>errors.push(String(e)));
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
+            const state=await page.evaluate(()=>({jquery:!!window.jQuery,version:window.jQuery?.fn?.jquery||'',body:!!document.body,hero:!!document.querySelector('.emo-hero__copy')}));
+            console.log('runtime='+JSON.stringify(state));
+            console.log('page_errors='+JSON.stringify(errors));
+            const jqErrors=errors.filter(e=>/jQuery is not defined|\$ is not defined|jQuery.*undefined|Cannot read properties of undefined.*jquery/i.test(e));
+            console.log('jquery_errors='+JSON.stringify(jqErrors));
+            await browser.close();
+            if(!state.jquery || !state.body || !state.hero || jqErrors.length) process.exit(13);
+          })().catch(e=>{console.error(e);process.exit(14)});
+          JS
+      - name: Roll back on verification failure
+        if: failure() && steps.deploy.outcome == 'success'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.path.outputs.prod_path }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            rm -f '$PROD_PATH/wp-content/mu-plugins/elmercado-home-jquery-defer-010255.php'
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+          "
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            [ ! -f /tmp/jquery-defer-verify.txt ] || cat /tmp/jquery-defer-verify.txt
+          } > runtime/home-jquery-defer-010255.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-jquery-defer-010255.txt
+          git commit -m 'Record Home jQuery defer verification' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
