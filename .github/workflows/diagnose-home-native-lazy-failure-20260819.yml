@@ -1,0 +1,59 @@
+name: Diagnose Home native lazy failure 20260819
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-native-lazy-failure-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Collect diagnostics without assertions
+        run: |
+          set +e
+          mkdir -p runtime
+          {
+            echo '--- php lint ---'
+            php -l mu-plugins/mdo-home-performance-20260819.php 2>&1
+            echo "php_lint_exit=$?"
+            echo '--- live html ---'
+            curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+            echo "curl_exit=$?"
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('/tmp/home.html').read_text(errors='replace') if Path('/tmp/home.html').exists() else ''
+          checks={
+            'smush_script':r'smush-lazy-load-native\.min\.js',
+            'img_data_src':r'<img[^>]+\bdata-src=',
+            'img_data_srcset':r'<img[^>]+\bdata-srcset=',
+            'placeholder':r'<img[^>]+src=["\']data:image/gif;base64',
+            'native_lazy':r'<img[^>]+loading=["\']lazy["\']',
+            'lazyload_class':r'<img[^>]+class=["\'][^"\']*\blazyload\b',
+          }
+          for k,p in checks.items(): print(k,'=',len(re.findall(p,s,re.I)))
+          for m in re.finditer(r'<img\b[^>]*(?:data-src|lazyload|data:image/gif)[^>]*>',s,re.I):
+              print('remaining_lazy_tag=',m.group(0)[:3000])
+          PY
+            echo '--- source markers ---'
+            grep -n 'Version:' mu-plugins/mdo-home-performance-20260819.php || true
+            grep -n 'mdo_home_perf_native_lazy_image' mu-plugins/mdo-home-performance-20260819.php || true
+          } > runtime/home-native-lazy-failure-diagnostic-20260819.txt 2>&1
+          cat runtime/home-native-lazy-failure-diagnostic-20260819.txt
+      - name: Record
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-native-lazy-failure-diagnostic-20260819.txt
+          git commit -m 'Record native lazy-load failure diagnostic' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
