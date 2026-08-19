@@ -1,0 +1,62 @@
+name: Test Home CLS without a11y motion 010287
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-cls-test-no-a11y-010287.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Disable only a11y motion layer in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD:?}"
+          timeout 150s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            rm -f '$PROD/wp-content/mu-plugins/elmercado-home-a11y-motion-010265.php'
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true
+            rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+          "
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+      - name: Lighthouse desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=desktop --screenEmulation.mobile=false --screenEmulation.width=1350 --screenEmulation.height=940 --screenEmulation.deviceScaleFactor=1 --throttling-method=simulate --output=json --output-path=/tmp/lhr.json --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          python3 - <<'PY' | tee runtime/home-cls-no-a11y-010287.txt
+          import json
+          r=json.load(open('/tmp/lhr.json')); a=r['audits']
+          print('score=',round(r['categories']['performance']['score']*100)); print('lcp=',round(a['largest-contentful-paint']['numericValue'])); print('tbt=',round(a['total-blocking-time']['numericValue'])); print('cls=',a['cumulative-layout-shift']['numericValue'])
+          for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:8]:
+              n=item.get('node') or {}; print('shift=',item.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          PY
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p runtime; [ -f runtime/home-cls-no-a11y-010287.txt ] || echo failed > runtime/home-cls-no-a11y-010287.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-cls-no-a11y-010287.txt; git commit -m 'Record Home CLS without a11y motion layer' || exit 0; git pull --rebase origin main; git push origin HEAD:main
