@@ -32,7 +32,7 @@ jobs:
         id: validate
         run: php -l mu-plugins/mdo-home-external-reviews-20260819.php
 
-      - name: Deploy to production and flush Home cache
+      - name: Deploy to production and invalidate static Home
         id: deploy
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -55,11 +55,7 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -e
             install -m 0644 /tmp/mdo-home-external-reviews-20260819.php '$PROD_PATH/wp-content/mu-plugins/mdo-home-external-reviews-20260819.php'
-            php_bin=/opt/plesk/php/8.3/bin/php
-            [ -x \"\$php_bin\" ] || php_bin=\$(command -v php)
-            wp_bin=\$(command -v wp)
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
-            \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists( \"elmercado_flush_home_cache\" ) ) { elmercado_flush_home_cache(); }' --path='$PROD_PATH' --allow-root
             rm -f /tmp/mdo-home-external-reviews-20260819.php
           "
 
