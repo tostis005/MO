@@ -1,6 +1,6 @@
 <?php
 /**
- * Final Home critical rendering path fixes 0.10.254.
+ * Final Home critical rendering path fixes 0.10.255.
  *
  * Home-only and deliberately isolated from WooCommerce, checkout and vendor
  * pages. It removes known render blockers that survived the theme optimisation
@@ -96,7 +96,7 @@ add_filter(
 );
 
 /**
- * Inline the 2–3 KiB TranslatePress language-switcher stylesheet so it stops
+ * Inline the tiny TranslatePress language-switcher stylesheet so it stops
  * creating a render-blocking network round trip. Relative url() references are
  * expanded to absolute stylesheet-directory URLs if the plugin ever adds one.
  */
@@ -172,6 +172,52 @@ add_action(
 );
 
 /**
+ * Remove complete Hustle module roots from the Home after their assets have
+ * already been intentionally disabled by the theme. This avoids shipping dead
+ * popup DOM while preserving Hustle everywhere else.
+ */
+function elmercado_home_strip_hustle_modules_010255( string $html ): string {
+	$offset  = 0;
+	$pattern = '~<div\b(?=[^>]*(?:\bid=["\']hustle-(?:popup|slidein|embedded)-id-\d+["\']|\bclass=["\'][^"\']*\bhustle-ui\b[^"\']*["\']))[^>]*>~i';
+
+	while ( preg_match( $pattern, $html, $root, PREG_OFFSET_CAPTURE, $offset ) ) {
+		$start    = (int) $root[0][1];
+		$root_end = $start + strlen( $root[0][0] );
+		$depth    = 1;
+		$end      = null;
+
+		if ( ! preg_match_all( '~</?div\b[^>]*>~i', $html, $tags, PREG_OFFSET_CAPTURE, $root_end ) ) {
+			break;
+		}
+
+		foreach ( $tags[0] as $tag ) {
+			$text = (string) $tag[0];
+			$pos  = (int) $tag[1];
+
+			if ( str_starts_with( strtolower( ltrim( $text ) ), '</div' ) ) {
+				--$depth;
+			} else {
+				++$depth;
+			}
+
+			if ( 0 === $depth ) {
+				$end = $pos + strlen( $text );
+				break;
+			}
+		}
+
+		if ( null === $end || $end <= $start ) {
+			break;
+		}
+
+		$html   = substr_replace( $html, '', $start, $end - $start );
+		$offset = $start;
+	}
+
+	return $html;
+}
+
+/**
  * Final HTML pass. This buffer starts before the legacy Home buffers, therefore
  * its callback receives their final output and can safely normalise it once.
  */
@@ -188,12 +234,13 @@ function elmercado_home_critical_output_010254( string $html ): string {
 		1
 	) ?? $html;
 
-	/* Hustle has no visible module on the custom Home; remove its huge inline CSS. */
+	/* Hustle is intentionally disabled on this custom Home. */
 	$html = preg_replace(
 		'~<style\b[^>]*\bid=(["\'])hustle_inline_styles_front-inline-css\1[^>]*>.*?</style\s*>~is',
 		'',
 		$html
 	) ?? $html;
+	$html = elmercado_home_strip_hustle_modules_010255( $html );
 
 	/* Avoid duplicating the final critical CSS across nested buffers/caches. */
 	if ( ! str_contains( $html, 'id="elmercado-home-critical-010254"' ) ) {
