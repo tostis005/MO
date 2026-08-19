@@ -113,3 +113,39 @@ foreach ( array( 11052, 12667 ) as $attachment_id ) {
 		WP_CLI::log( 'Rewrite function unavailable for attachment ' . $attachment_id );
 	}
 }
+
+/* Localiza el origen real de las tarjetas de productores. */
+$front_id      = (int) get_option( 'page_on_front' );
+$front_content = $front_id ? (string) get_post_field( 'post_content', $front_id ) : '';
+WP_CLI::log( sprintf( 'Home source: front_id=%d content_bytes=%d', $front_id, strlen( $front_content ) ) );
+
+foreach ( array( 'Tolecarnes', 'Tolecarnes-fondo', 'JAMON_ACT', 'Hidalgo de la Jara', 'emo-hero-card' ) as $needle ) {
+	$pos = strpos( $front_content, $needle );
+	WP_CLI::log( sprintf( 'Home post_content needle=%s pos=%s', $needle, false === $pos ? 'false' : (string) $pos ) );
+	if ( false !== $pos ) {
+		$start = max( 0, $pos - 700 );
+		WP_CLI::log( 'Home post_content snippet: ' . substr( $front_content, $start, 1800 ) );
+	}
+}
+
+/* Revisa opciones/transients del propio tema que puedan contener el markup. */
+global $wpdb;
+$option_rows = $wpdb->get_results(
+	"SELECT option_name, LENGTH(option_value) AS bytes FROM {$wpdb->options} WHERE option_value LIKE '%Tolecarnes-fondo%' OR option_value LIKE '%JAMON_ACTO_ECOLOGICO1%' ORDER BY bytes DESC LIMIT 20",
+	ARRAY_A
+);
+if ( is_array( $option_rows ) ) {
+	foreach ( $option_rows as $row ) {
+		WP_CLI::log( sprintf( 'Home source option=%s bytes=%d', (string) $row['option_name'], (int) $row['bytes'] ) );
+	}
+}
+
+$post_rows = $wpdb->get_results(
+	"SELECT ID, post_type, post_status, post_title, LENGTH(post_content) AS bytes FROM {$wpdb->posts} WHERE post_content LIKE '%Tolecarnes-fondo%' OR post_content LIKE '%JAMON_ACTO_ECOLOGICO1%' ORDER BY ID DESC LIMIT 20",
+	ARRAY_A
+);
+if ( is_array( $post_rows ) ) {
+	foreach ( $post_rows as $row ) {
+		WP_CLI::log( sprintf( 'Home source post ID=%d type=%s status=%s title=%s bytes=%d', (int) $row['ID'], (string) $row['post_type'], (string) $row['post_status'], (string) $row['post_title'], (int) $row['bytes'] ) );
+	}
+}
