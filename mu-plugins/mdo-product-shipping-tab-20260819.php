@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Store Shipping Tab
  * Description: Adds a bilingual Shipping tab to each WCFM store using the vendor's live shipping and minimum-order configuration.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -44,12 +44,40 @@ function mdo_sst_get( $source, string $key, $default = null ) {
 }
 
 /**
- * The producer minimum configured in the marketplace/minimum-order plugin.
- * Keep the legacy filter so any existing customization keeps working.
+ * Read the same supplier minimum used by the EMDO minimum-order plugin.
+ * The legacy WCFM user-meta key remains only as a fallback for vendors that
+ * do not yet have an EMDO supplier row.
  */
 function mdo_sst_minimum_order( int $vendor_id ): float {
-    $amount = get_user_meta( $vendor_id, '_wcfm_min_order_amt', true );
-    $amount = is_numeric( $amount ) ? (float) $amount : 0.0;
+    $amount     = 0.0;
+    $emdo_found = false;
+
+    if ( class_exists( 'MDO_Database' ) ) {
+        global $wpdb;
+
+        $table = MDO_Database::table( 'suppliers' );
+        if ( $table ) {
+            $row = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT minimum_order_amount FROM {$table} WHERE vendor_user_id = %d ORDER BY id DESC LIMIT 1",
+                    $vendor_id
+                ),
+                ARRAY_A
+            );
+
+            if ( is_array( $row ) ) {
+                $emdo_found = true;
+                $raw        = $row['minimum_order_amount'] ?? null;
+                $amount     = is_numeric( $raw ) ? (float) $raw : 0.0;
+            }
+        }
+    }
+
+    if ( ! $emdo_found ) {
+        $legacy = get_user_meta( $vendor_id, '_wcfm_min_order_amt', true );
+        $amount = is_numeric( $legacy ) ? (float) $legacy : 0.0;
+    }
+
     $amount = (float) apply_filters( 'mdo_product_shipping_minimum_order', $amount, $vendor_id );
 
     return max( 0, (float) apply_filters( 'mdo_store_shipping_minimum_order', $amount, $vendor_id ) );
@@ -88,6 +116,40 @@ function mdo_sst_state_name( string $country, string $state ): string {
     return $state;
 }
 
+function mdo_sst_continent_name( string $code ): string {
+    $code = strtoupper( trim( $code ) );
+    if ( function_exists( 'WC' ) && WC()->countries && is_callable( array( WC()->countries, 'get_continents' ) ) ) {
+        $continents = WC()->countries->get_continents();
+        if ( isset( $continents[ $code ]['name'] ) ) {
+            return (string) $continents[ $code ]['name'];
+        }
+    }
+    return $code;
+}
+
+function mdo_sst_is_mainland_spain_row( array $row ): bool {
+    $name = remove_accents( strtolower( (string) ( $row['name'] ?? '' ) ) );
+
+    return false !== strpos( $name, 'peninsula' ) || false !== strpos( $name, 'mainland spain' );
+}
+
+/** Public-facing destination label: keep Mainland Spain, hide other internal zone names. */
+function mdo_sst_row_display_name( array $row ): string {
+    if ( mdo_sst_is_mainland_spain_row( $row ) ) {
+        return mdo_sst_text( 'España Península', 'Mainland Spain' );
+    }
+
+    $locations = isset( $row['locations'] ) && is_array( $row['locations'] )
+        ? array_values( array_unique( array_filter( array_map( 'trim', $row['locations'] ) ) ) )
+        : array();
+
+    if ( ! empty( $locations ) ) {
+        return implode( ', ', $locations );
+    }
+
+    return trim( (string) ( $row['name'] ?? mdo_sst_text( 'Zona de envío', 'Shipping zone' ) ) );
+}
+
 /** Normalise WCFM zone shipping into rows that are safe to render. */
 function mdo_sst_zone_rows( int $vendor_id ): array {
     if ( ! function_exists( 'wcfmmp_get_shipping_zone' ) ) {
@@ -120,9 +182,10 @@ function mdo_sst_zone_rows( int $vendor_id ): array {
             $methods = array();
         }
 
-        $flat_costs   = array();
-        $free_from    = array();
-        $method_notes = array();
+        $flat_costs         = array();
+        $numeric_flat_costs = array();
+        $free_from          = array();
+        $method_notes       = array();
 
         foreach ( $methods as $method ) {
             $enabled = mdo_sst_get( $method, 'is_enabled', mdo_sst_get( $method, 'enabled', 1 ) );
@@ -145,6 +208,9 @@ function mdo_sst_zone_rows( int $vendor_id ): array {
                 $cost = $settings['cost'] ?? mdo_sst_get( $method, 'cost', '' );
                 if ( '' !== (string) $cost ) {
                     $flat_costs[] = mdo_sst_money_or_text( $cost );
+                    if ( is_numeric( $cost ) ) {
+                        $numeric_flat_costs[] = (float) $cost;
+                    }
                 }
                 if ( $title && ! in_array( $title, array( 'Flat rate', 'Tarifa plana' ), true ) ) {
                     $method_notes[] = $title;
@@ -177,12 +243,16 @@ function mdo_sst_zone_rows( int $vendor_id ): array {
         if ( is_array( $zone_locations ) ) {
             foreach ( $zone_locations as $location ) {
                 $type = strtolower( (string) mdo_sst_get( $location, 'location_type', mdo_sst_get( $location, 'type', '' ) ) );
-                $code = (string) mdo_sst_get( $location, 'location_code', mdo_sst_get( $location, 'code', '' ) );
+                $code = trim( (string) mdo_sst_get( $location, 'location_code', mdo_sst_get( $location, 'code', '' ) ) );
                 if ( 'country' === $type && $code ) {
                     $locations[] = mdo_sst_country_name( $code );
                 } elseif ( 'state' === $type && false !== strpos( $code, ':' ) ) {
                     list( $country, $state ) = array_pad( explode( ':', $code, 2 ), 2, '' );
                     $locations[] = mdo_sst_state_name( $country, $state );
+                } elseif ( 'continent' === $type && $code ) {
+                    $locations[] = mdo_sst_continent_name( $code );
+                } elseif ( 'postcode' === $type && $code ) {
+                    $locations[] = $code;
                 }
             }
         }
@@ -191,6 +261,7 @@ function mdo_sst_zone_rows( int $vendor_id ): array {
             'name'       => $zone_name,
             'locations'  => array_values( array_unique( array_filter( $locations ) ) ),
             'flat_costs' => array_values( array_unique( array_filter( $flat_costs ) ) ),
+            'sort_cost'  => empty( $numeric_flat_costs ) ? null : min( $numeric_flat_costs ),
             'free_from'  => empty( $free_from ) ? 0 : min( $free_from ),
             'notes'      => array_values( array_unique( array_filter( $method_notes ) ) ),
         );
@@ -239,6 +310,7 @@ function mdo_sst_country_rows( int $vendor_id ): array {
             'name'       => mdo_sst_country_name( $country ),
             'locations'  => array(),
             'flat_costs' => '' !== (string) $price ? array( mdo_sst_money_or_text( $price ) ) : array(),
+            'sort_cost'  => is_numeric( $price ) ? (float) $price : null,
             'free_from'  => $free_from,
             'notes'      => array(),
         );
@@ -252,34 +324,40 @@ function mdo_sst_shipping_rows( int $vendor_id ): array {
     $type     = is_array( $shipping ) ? (string) ( $shipping['_wcfmmp_user_shipping_type'] ?? '' ) : '';
 
     $rows = 'by_country' === $type ? mdo_sst_country_rows( $vendor_id ) : mdo_sst_zone_rows( $vendor_id );
+    $rows = apply_filters( 'mdo_product_shipping_rows', $rows, $vendor_id, $type );
+    $rows = apply_filters( 'mdo_store_shipping_rows', $rows, $vendor_id, $type );
 
     usort(
         $rows,
         static function( array $a, array $b ): int {
-            $rank = static function( array $row ): int {
-                $haystack = remove_accents( strtolower( $row['name'] . ' ' . implode( ' ', $row['locations'] ) ) );
-                if ( false !== strpos( $haystack, 'peninsula' ) || false !== strpos( $haystack, 'mainland spain' ) ) {
-                    return 0;
-                }
-                if ( false !== strpos( $haystack, 'espana' ) || false !== strpos( $haystack, 'spain' ) ) {
-                    return 1;
-                }
-                return 2;
-            };
+            $a_has_cost = isset( $a['sort_cost'] ) && is_numeric( $a['sort_cost'] );
+            $b_has_cost = isset( $b['sort_cost'] ) && is_numeric( $b['sort_cost'] );
 
-            $rank_a = $rank( $a );
-            $rank_b = $rank( $b );
-            if ( $rank_a !== $rank_b ) {
-                return $rank_a <=> $rank_b;
+            if ( $a_has_cost !== $b_has_cost ) {
+                return $a_has_cost ? -1 : 1;
             }
 
-            return strcasecmp( remove_accents( $a['name'] ), remove_accents( $b['name'] ) );
+            if ( $a_has_cost && $b_has_cost ) {
+                $cost_compare = (float) $a['sort_cost'] <=> (float) $b['sort_cost'];
+                if ( 0 !== $cost_compare ) {
+                    return $cost_compare;
+                }
+            }
+
+            $a_peninsula = mdo_sst_is_mainland_spain_row( $a );
+            $b_peninsula = mdo_sst_is_mainland_spain_row( $b );
+            if ( $a_peninsula !== $b_peninsula ) {
+                return $a_peninsula ? -1 : 1;
+            }
+
+            return strcasecmp(
+                remove_accents( mdo_sst_row_display_name( $a ) ),
+                remove_accents( mdo_sst_row_display_name( $b ) )
+            );
         }
     );
 
-    $rows = apply_filters( 'mdo_product_shipping_rows', $rows, $vendor_id, $type );
-
-    return apply_filters( 'mdo_store_shipping_rows', $rows, $vendor_id, $type );
+    return $rows;
 }
 
 /**
