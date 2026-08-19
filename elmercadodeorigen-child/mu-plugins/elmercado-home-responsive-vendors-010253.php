@@ -86,7 +86,20 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 				)
 			);
 
-			return is_string( $responsive ) && '' !== $responsive ? $responsive : $tag;
+			if ( ! is_string( $responsive ) || '' === $responsive ) {
+				return $tag;
+			}
+
+			/*
+			 * Este callback es el buffer más exterior de la Home. Por eso las
+			 * imágenes responsive que genera aquí deben pasar por WebP después de
+			 * crearse; si no, vuelven a insertar JPEG tras el pase global WebP.
+			 */
+			if ( function_exists( 'mdo_home_webp_transform_html' ) ) {
+				$responsive = mdo_home_webp_transform_html( $responsive );
+			}
+
+			return $responsive;
 		},
 		$visual
 	);
