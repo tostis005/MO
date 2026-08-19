@@ -1,0 +1,53 @@
+=== visibleHeadingOne ===
+2105-						if (updated !== attribute.value) node.setAttribute(attribute.name, updated);
+2106-					});
+2107-				});
+2108-			});
+2109-
+2110-			/* En el archivo del blog el nombre del sitio no debe competir con el H1 editorial. */
+2111:			const visibleHeadingOne = [...document.querySelectorAll('h1')].filter((heading) => {
+2112-				const style = getComputedStyle(heading);
+2113-				return style.display !== 'none' && style.visibility !== 'hidden' && heading.getClientRects().length > 0;
+2114-			});
+2115-			const brandingHeading = document.querySelector('.site-branding h1.site-title');
+2116-
+2117:			if (brandingHeading && visibleHeadingOne.length > 1) {
+2118-				const replacement = document.createElement('div');
+2119-				[...brandingHeading.attributes].forEach((attribute) => replacement.setAttribute(attribute.name, attribute.value));
+2120-				replacement.removeAttribute('id');
+2121-				replacement.classList.add('site-title');
+2122-				replacement.append(...brandingHeading.childNodes);
+2123-				brandingHeading.replaceWith(replacement);
+2124-			}
+2125-
+2126-			/* Cualquier tarjeta editorial sin imagen recibe el acabado de marca. */
+2127-			document.querySelectorAll('.emo-article-card__media').forEach((media) => {
+2128-				if (media.querySelector('img')) {
+2129-					return;
+2130-				}
+2131-
+2132-				let placeholder = media.querySelector('.emo-article-card__placeholder');
+2133-				if (!placeholder) {
+2134-					placeholder = media.querySelector(':scope > span') || document.createElement('span');
+2135-					if (!placeholder.isConnected) media.append(placeholder);
+=== delayed Ads marker ===
+314-				<link rel="profile" href="http://gmpg.org/xfn/11">
+315-		
+316-		<!-- Global site tag (gtag.js) - Google Ads: AW-18396600140 - Google for WooCommerce -->
+317:		<script type="application/json" id="elmercado-delayed-google-ads-source" data-src="https://www.googletagmanager.com/gtag/js?id=AW-18396600140"></script>
+318-		<script>
+319-			window.dataLayer = window.dataLayer || [];
+320-			function gtag() { dataLayer.push(arguments); }
+321-			gtag( 'consent', 'default', {
+322-				analytics_storage: 'denied',
+--
+3502-				
+3503-		
+3504-<script id="elmercado-delayed-google-ads-loader">
+3505:(()=>{'use strict';const marker=document.getElementById('elmercado-delayed-google-ads-source');if(!marker)return;let loaded=false;const events=['pointerdown','touchstart','keydown','scroll'];const cleanup=()=>events.forEach((name)=>window.removeEventListener(name,load,true));const load=()=>{if(loaded)return;loaded=true;cleanup();const src=marker.dataset.src;if(!src)return;const script=document.createElement('script');script.async=true;script.src=src;script.dataset.elmercadoDelayed='google-ads';document.head.appendChild(script);};events.forEach((name)=>window.addEventListener(name,load,{once:true,capture:true,passive:name!=='keydown'}));window.setTimeout(load,30000);})();
+3506-</script></body>
+3507-</html>
+=== actual AW script tags ===
+317:		<script type="application/json" id="elmercado-delayed-google-ads-source" data-src="https://www.googletagmanager.com/gtag/js?id=AW-18396600140"></script>
+=== GA4 script tags ===
+40:							<script src="//www.googletagmanager.com/gtag/js?id=G-515YQ0XMS4"  data-cfasync="false" data-wpfc-render="false" async></script>
