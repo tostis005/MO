@@ -1,0 +1,144 @@
+=== TRP lines 55-85 ===
+    55	
+    56	    collapse() {
+    57	        this.list.hidden = true;
+    58	        this.list.setAttribute('inert', '');
+    59	        this.setExpanded(false);
+    60	        this.root.classList.remove('is-transitioning');
+    61	    }
+    62	
+    63	    /**
+    64	     * If width is set to auto, fix it to the calculated width + 20px
+    65	     * We do this in order to avoid width shift on hover
+    66	     * */
+    67	    setAutoWidth() {
+    68	        const bonusWidth = 10;
+    69	
+    70	        const cs = getComputedStyle(this.root);
+    71	        const declaredWidth = cs.getPropertyValue('--switcher-width').trim();
+    72	
+    73	        if (declaredWidth === 'auto' && this.root.querySelector('.trp-language-item-name')) { // In case trp-language-item-name is not present, we are in flags only mode - so no auto width sizing is needed
+    74	            const initialWidth = this.root.getBoundingClientRect().width;
+    75	
+    76	            this.root.style.setProperty('--switcher-width', (initialWidth + bonusWidth) + 'px');
+    77	        }
+    78	    }
+    79	
+    80	    setExpanded(open) {
+    81	        const trigger = this.root.querySelector('.trp-language-item__current[role="button"]');
+    82	        const val = String( !!open );
+    83	        trigger?.setAttribute('aria-expanded', val);
+    84	        this.root.classList.toggle('is-open', !!open);
+    85	    }
+=== TRP lines 220-245 ===
+   220	}
+   221	
+   222	class FloaterSwitcher extends BaseSwitcher {
+   223	    constructor(el) {
+   224	        super(el);
+   225	
+   226	        el.addEventListener('mouseenter', (e) => this.setOpen(true,  { source: e }));
+   227	        el.addEventListener('mouseleave', (e) => this.setOpen(false, { source: e }));
+   228	
+   229	        this.onDocClick = (evt) => { if (!el.contains(evt.target)) this.setOpen(false, { source: evt }); };
+   230	        document.addEventListener('click', this.onDocClick, true);
+   231	    }
+   232	}
+   233	
+   234	document.addEventListener('DOMContentLoaded', () => {
+   235	    // Front-end or classic admin
+   236	    initLanguageSwitchers(document);
+   237	
+   238	    // If no wrapper and we are in Gutenberg, watch for async SSR insert
+   239	    if (
+   240	        inGutenberg() &&
+   241	        !getEditorDoc().querySelector(WRAPPER)
+   242	    ) {
+   243	        observeWrapperUntilFound();
+   244	    }
+   245	
+=== language switcher markup ===
+{"name":"Salchich\u00f3n de bellota 100% Ib\u00e9rico","price":13}}}; //# sourceURL=gla-gtag-events-js-extra </script> <script defer id="gla-gtag-events-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/google-listings-and-ads/js/build/gtag-events.js?ver=6972d3af2e3be67de9f1"></script>  <nav     class="trp-language-switcher trp-floating-switcher trp-ls-dropdown trp-switcher-position-bottom"     style="--bg:#ffffff;--bg-hover:#0000000d;--text:#143852;--text-hover:#1d2327;--border:1px solid #1438521a;--border-radius:8px 8px 0px 0px;--flag-radius:2px;--flag-size:18px;--aspect-ratio:4/3;--font-size:14px;--switcher-width:auto;--switcher-padding:10px 0;--transition-duration:0.2s;--bottom:0px;--right:10vw"     role="navigation"     aria-label="Website language selector"     data-no-translation >                  <div class="trp-language-switcher-inner">             <div class="trp-language-item trp-language-item__current" title="Spanish" role="button" tabindex="0" aria-expanded="false" aria-label="Change language" aria-controls="trp-switcher-dropdown-list" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/t
+---
+us:8px 8px 0px 0px;--flag-radius:2px;--flag-size:18px;--aspect-ratio:4/3;--font-size:14px;--switcher-width:auto;--switcher-padding:10px 0;--transition-duration:0.2s;--bottom:0px;--right:10vw"     role="navigation"     aria-label="Website language selector"     data-no-translation >                  <div class="trp-language-switcher-inner">             <div class="trp-language-item trp-language-item__current" title="Spanish" role="button" tabindex="0" aria-expanded="false" aria-label="Change language" aria-controls="trp-switcher-dropdown-list" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">Spanish</span></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="g
+---
+--aspect-ratio:4/3;--font-size:14px;--switcher-width:auto;--switcher-padding:10px 0;--transition-duration:0.2s;--bottom:0px;--right:10vw"     role="navigation"     aria-label="Website language selector"     data-no-translation >                  <div class="trp-language-switcher-inner">             <div class="trp-language-item trp-language-item__current" title="Spanish" role="button" tabindex="0" aria-expanded="false" aria-label="Change language" aria-controls="trp-switcher-dropdown-list" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">Spanish</span></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-lang
+---
+translation >                  <div class="trp-language-switcher-inner">             <div class="trp-language-item trp-language-item__current" title="Spanish" role="button" tabindex="0" aria-expanded="false" aria-label="Change language" aria-controls="trp-switcher-dropdown-list" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">Spanish</span></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugin
+---
+ria-controls="trp-switcher-dropdown-list" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">Spanish</span></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation"
+---
+latepress-multilingual/assets/flags/4x3/es_ES.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">Spanish</span></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span
+---
+c="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">Spanish</span></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">English</span></a>                            </div>         </div>      </nav> 		<script type="text/javascript"> 			(function() { 				window.wcAnalytics = window.wcAnalytics || {}; 				const wcAnalyti
+---
+pan></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">English</span></a>                            </div>         </div>      </nav> 		<script type="text/javascript"> 			(function() { 				window.wcAnalytics = window.wcAnalytics || {}; 				const wcAnalytics = window.wcAnalytics;  				// Set the assets URL for webpack to find the split assets. 				wcAnalytics.assets_url = 'https://www.elmercadodeorigen.com/wp-content/plugins/jetpack/jetpac
+---
+r-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">English</span></a>                            </div>         </div>      </nav> 		<script type="text/javascript"> 			(function() { 				window.wcAnalytics = window.wcAnalytics || {}; 				const wcAnalytics = window.wcAnalytics;  				// Set the assets URL for webpack to find the split assets. 				wcAnalytics.assets_url = 'https://www.elmercadodeorigen.com/wp-content/plugins/jetpack/jetpack_vendor/automattic/woocommerce-analytics/src/../build/';  				// Set the REST API tracking endpoint URL. 								wcAnalytics.trackEndpoint = "https://www.elmercadodeorigen.com/wp-json/woocommerce-ana
+---
+class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">English</span></a>                            </div>         </div>      </nav> 		<script type="text/javascript"> 			(function() { 				window.wcAnalytics = window.wcAnalytics || {}; 				const wcAnalytics = window.wcAnalytics;  				// Set the assets URL for webpack to find the split assets. 				wcAnalytics.assets_url = 'https://www.elmercadodeorigen.com/wp-content/plugins/jetpack/jetpack_vendor/automattic/woocommerce-analytics/src/../build/';  				// Set the REST API tracking endpoint URL. 								wcAnalytics.trackEndpoint = "https://www.elmercadodeorigen.com/wp-json/woocommerce-analytics/v1/track";  				// Set common properties for all events. 				wcAnalytics.commonProps = {"ui":0,"blog_id":180024396,"store_id":"bc1a1679-7184-4c12-89e8-e4b8cc7abb1f","url":"https://www.elmercadodeorigen.com","woo_version":"11.0.1","
+---
+latepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">English</span></a>                            </div>         </div>      </nav> 		<script type="text/javascript"> 			(function() { 				window.wcAnalytics = window.wcAnalytics || {}; 				const wcAnalytics = window.wcAnalytics;  				// Set the assets URL for webpack to find the split assets. 				wcAnalytics.assets_url = 'https://www.elmercadodeorigen.com/wp-content/plugins/jetpack/jetpack_vendor/automattic/woocommerce-analytics/src/../build/';  				// Set the REST API tracking endpoint URL. 								wcAnalytics.trackEndpoint = "https://www.elmercadodeorigen.com/wp-json/woocommerce-analytics/v1/track";  				// Set common properties for all events. 				wcAnalytics.commonProps = {"ui":0,"blog_id":180024396,"store_id":"bc1a1679-7184-4c12-89e8-e4b8cc7abb1f","url":"https://www.elmercadodeorigen.com","woo_version":"11.0.1","wp_version":"7.0.4","store_admin":0,"device":"mobile","store_currency":"EU
+---
+int%%","i18n_password_show":"Mostrar contrase\u00f1a","i18n_password_hide":"Ocultar contrase\u00f1a"}; //# sourceURL=woocommerce-js-extra </script> <script data-wp-strategy="defer" defer id="woocommerce-js" src="https://c0.wp.com/p/woocommerce/11.0.1/assets/js/frontend/woocommerce.min.js"></script> <script defer id="trp-frontend-compatibility-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/js/trp-frontend-compatibility.js?ver=3.3.2"></script> <script data-wp-strategy="defer" defer id="woocommerce-analytics-js" src="https://stats.wp.com/s-202634.js"></script> <script defer id="trp-language-switcher-js-v2-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/js/trp-frontend-language-switcher.js?ver=3.3.2"></script> <link rel="https://api.w.org/" href="https://www.elmercadodeorigen.com/wp-json/" /><link rel="alternate" title="JSON" type="application/json" href="https://www.elmercadodeorigen.com/wp-json/wp/v2/pages/3699" /><link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://www.elmercadodeorigen.com/xmlrpc.php?rsd" /> <meta name="generator" content="WordPress 7.0.4" /> <meta name="generator" content="WooCommerce 11.0.1" /> <link rel='shortlink' href='https://www.elmercadodeorigen.com/' /> <meta name="generator" content="Advanced Coupons for WooCommerce Free
+---
+id="trp-frontend-compatibility-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/js/trp-frontend-compatibility.js?ver=3.3.2"></script> <script data-wp-strategy="defer" defer id="woocommerce-analytics-js" src="https://stats.wp.com/s-202634.js"></script> <script defer id="trp-language-switcher-js-v2-js" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/js/trp-frontend-language-switcher.js?ver=3.3.2"></script> <link rel="https://api.w.org/" href="https://www.elmercadodeorigen.com/wp-json/" /><link rel="alternate" title="JSON" type="application/json" href="https://www.elmercadodeorigen.com/wp-json/wp/v2/pages/3699" /><link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://www.elmercadodeorigen.com/xmlrpc.php?rsd" /> <meta name="generator" content="WordPress 7.0.4" /> <meta name="generator" content="WooCommerce 11.0.1" /> <link rel='shortlink' href='https://www.elmercadodeorigen.com/' /> <meta name="generator" content="Advanced Coupons for WooCommerce Free v4.7.5" /><meta name="ti-site-data" content="eyJyIjoiMToyITc6OSEzMDoxNyIsIm8iOiJodHRwczpcL1wvd3d3LmVsbWVyY2Fkb2Rlb3JpZ2VuLmNvbT90aS1vbmxpbmUtdXNlcnMtZ29vZ2xlPTEmYW1wO3A9JTJGJmFtcDtfd3Bub25jZT1jYjQyY2U1NDYwIn0=" /><!-- This site is powered by WooCommerce Redsys Gateway Light v.7.0.2 - https://es.wordpress.org/plugins/
+---
+c="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/es_ES.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">Spanish</span></div>             <div                 class="trp-switcher-dropdown-list"                 id="trp-switcher-dropdown-list"                 role="group"                 aria-label="Available languages"                 hidden                 inert             >                                     <a href="https://www.elmercadodeorigen.com/en/" class="trp-language-item" title="English" data-no-translation><img   alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" class="trp-flag-image" src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" /><noscript><img src="https://www.elmercadodeorigen.com/wp-content/plugins/translatepress-multilingual/assets/flags/4x3/en_US.svg" class="trp-flag-image" alt="" role="presentation" loading="lazy" decoding="async" width="18" height="14" /></noscript><span class="trp-language-item-name">English</span></a>                            </div>         </div>      </nav> 		<script type="text/javascript"> 			(function() { 				window.wcAnalytics = window.wcAnalytics || {}; 				const wcAnalyti
+---
+=== image candidates ===
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/El-Mercado-de-Origen-Logo-small-100x100.png
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/El-Mercado-de-Origen-Logo-small.png
+https://www.elmercadodeorigen.com/wp-content/uploads/2023/12/Aceite-sin-filtrar.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2023/12/Aceite-sin-filtrar-300x297.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2023/12/Aceite-sin-filtrar-600x593.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2023/12/Aceite-sin-filtrar-100x100.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2023/12/Aceite-sin-filtrar-64x63.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-768x512.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-300x200.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-1024x683.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-1536x1024.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-2048x1366.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-18x12.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-480x320.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-800x533.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-450x300.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-600x400.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-64x43.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-768x768.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-300x300.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-1024x1024.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-150x150.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-12x12.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-480x480.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-800x800.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-400x400.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-600x600.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-100x100.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo-64x64.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Carnes-300x400-1.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Jamones-paletas-300x400-1.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Embutidos-curados-300x400-1.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Packs-lotes-300x400-1.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Aceites-300x400-1.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/4-Variedades-300x400.jpeg
+https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-360x480.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2017/12/Garrafa_5L-600x800.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/1957-logo-mini.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Paleta_HidalgodelaJara_funda-1-2-300x400.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Paleta_bellota_100ib-scaled-320x480.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Paleta_bellota_100ib-scaled-533x800.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Hidalgo-de-la-Jara-logo.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Jamon_Hidalgo-300x400.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Jamon_Bellota_100ib-scaled-305x480.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Jamon_Bellota_100ib-scaled-508x800.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2021/05/1.5-Jamon-de-bellota-100-iberico-con-DOP-Los-Pedroches-300x400.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2021/05/Paleta-de-bellota-100-iberica-con-DOP-Los-Pedroches-1-295x480.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2021/05/Paleta-de-bellota-100-iberica-con-DOP-Los-Pedroches-1-492x800.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Cerdo-ibérico-300x400.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Salchichón-100-ibérico-320x480.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2020/06/Salchichón-100-ibérico-533x800.jpg
+https://www.elmercadodeorigen.com/wp-content/uploads/2021/04/1.2-Jamon-de-bellota-100-iberico-con-DOP-295x480.jpeg
+https://www.elmercadodeorigen.com/wp-content/uploads/2021/04/1.2-Jamon-de-bellota-100-iberico-con-DOP-492x800.jpeg
+count= 54
