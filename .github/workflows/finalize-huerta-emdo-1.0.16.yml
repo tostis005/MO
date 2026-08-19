@@ -1,0 +1,42 @@
+name: Finalize EMDO 1.0.16 Huerta fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/finalize-huerta-emdo-1.0.16.py'
+      - '.github/workflows/finalize-huerta-emdo-1.0.16.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply final connector patch
+        run: python .github/scripts/finalize-huerta-emdo-1.0.16.py
+      - name: Validate PHP
+        run: |
+          set -euo pipefail
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v2.php
+          php -l mdo-supplier-sync/includes/class-mdo-huerta-defaults.php
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+      - name: Commit final connector
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/connectors/class-mdo-connector-huerta-ana-mary-v2.php \
+                  mdo-supplier-sync/includes/class-mdo-huerta-defaults.php \
+                  mdo-supplier-sync/mdo-supplier-sync.php \
+                  mdo-supplier-sync/deploy-version.txt \
+                  .github/workflows/deploy-mdo-supplier-sync-production-20260819.yml
+          git commit -m 'Finalize Huerta images descriptions category and calabacin in EMDO 1.0.16'
+          git pull --rebase origin main
+          git push origin HEAD:main
