@@ -155,62 +155,69 @@ add_action(
 );
 
 /**
- * Convierte las imágenes de las tarjetas de productores de la portada en
- * imágenes responsive de WordPress. Algunas capas históricas eliminan la clase
- * de la tarjeta en el HTML final, por eso también se reconocen por su adjunto.
+ * Convierte las imágenes grandes de productores de la portada en fuentes
+ * responsive. Los IDs corresponden a los adjuntos reales de producción y el
+ * fallback resuelve cualquier productor adicional por URL.
  */
 function elmercado_home_responsive_producer_cards_010252( string $html ): string {
-	if ( '' === $html || ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
-		return $html;
-	}
-
 	if (
-		! str_contains( $html, 'emo-hero-card__image' )
-		&& ! str_contains( $html, 'Tolecarnes-fondo' )
-		&& ! str_contains( $html, 'JAMON_ACTO_ECOLOGICO1' )
-		&& ! str_contains( $html, 'Aceite-sin-filtrar' )
+		'' === $html
+		|| (
+			! str_contains( $html, 'Tolecarnes-fondo' )
+			&& ! str_contains( $html, 'JAMON_ACTO_ECOLOGICO1' )
+			&& ! str_contains( $html, 'Aceite-sin-filtrar' )
+		)
 	) {
 		return $html;
 	}
 
-	$processor = new WP_HTML_Tag_Processor( $html );
-	$changed   = false;
+	$known_attachments = array(
+		'Tolecarnes-fondo'     => 11052,
+		'JAMON_ACTO_ECOLOGICO1' => 12667,
+	);
 
-	while ( $processor->next_tag( 'img' ) ) {
-		$class = (string) $processor->get_attribute( 'class' );
-		$src   = (string) $processor->get_attribute( 'src' );
-		if ( '' === $src ) {
-			continue;
-		}
+	$rewritten = preg_replace_callback(
+		'~<img\b[^>]*\bsrc=(["\'])([^"\']*(?:Tolecarnes-fondo|JAMON_ACTO_ECOLOGICO1|Aceite-sin-filtrar)[^"\']*)\1[^>]*>~i',
+		static function ( array $matches ) use ( $known_attachments ): string {
+			$tag = $matches[0];
+			$src = $matches[2];
+			$id  = 0;
 
-		$is_producer_card = str_contains( $class, 'emo-hero-card__image' )
-			|| str_contains( $src, 'Tolecarnes-fondo' )
-			|| str_contains( $src, 'JAMON_ACTO_ECOLOGICO1' )
-			|| str_contains( $src, 'Aceite-sin-filtrar' );
-		if ( ! $is_producer_card ) {
-			continue;
-		}
+			foreach ( $known_attachments as $needle => $attachment_id ) {
+				if ( str_contains( $src, $needle ) ) {
+					$id = $attachment_id;
+					break;
+				}
+			}
 
-		$attachment_id = attachment_url_to_postid( $src );
-		if ( ! $attachment_id ) {
-			continue;
-		}
+			if ( ! $id ) {
+				$id = attachment_url_to_postid( $src );
+			}
+			if ( ! $id ) {
+				return $tag;
+			}
 
-		$image  = wp_get_attachment_image_src( $attachment_id, 'medium_large' );
-		$srcset = wp_get_attachment_image_srcset( $attachment_id, 'medium_large' );
-		if ( ! is_array( $image ) || empty( $image[0] ) || ! is_string( $srcset ) || '' === $srcset ) {
-			continue;
-		}
+			$image  = wp_get_attachment_image_src( $id, 'medium_large' );
+			$srcset = wp_get_attachment_image_srcset( $id, 'medium_large' );
+			if ( ! is_array( $image ) || empty( $image[0] ) || ! is_string( $srcset ) || '' === $srcset ) {
+				return $tag;
+			}
 
-		$processor->set_attribute( 'src', $image[0] );
-		$processor->set_attribute( 'srcset', $srcset );
-		$processor->set_attribute( 'sizes', '(max-width: 767px) calc(100vw - 32px), 375px' );
-		$processor->set_attribute( 'loading', 'lazy' );
-		$processor->set_attribute( 'decoding', 'async' );
-		$changed = true;
-	}
+			$tag = preg_replace( '~\s+srcset=(["\']).*?\1~i', '', $tag ) ?? $tag;
+			$tag = preg_replace( '~\s+sizes=(["\']).*?\1~i', '', $tag ) ?? $tag;
+			$tag = preg_replace( '~\bsrc=(["\']).*?\1~i', 'src="' . esc_url( $image[0] ) . '"', $tag, 1 ) ?? $tag;
 
-	return $changed ? $processor->get_updated_html() : $html;
+			$self_closing = str_ends_with( rtrim( $tag ), '/>' );
+			$tag          = preg_replace( '~\s*/?>$~', '', $tag ) ?? $tag;
+			$tag         .= ' srcset="' . esc_attr( $srcset ) . '" sizes="(max-width: 767px) calc(100vw - 32px), 375px"';
+			$tag         .= $self_closing ? ' />' : '>';
+
+			return $tag;
+		},
+		$html
+	);
+
+	return is_string( $rewritten ) ? $rewritten : $html;
 }
 
 /*
