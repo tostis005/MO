@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Internal MENTTA category
  * Description: Keeps the MENTTA WooCommerce category tree available to integrations/admins but hidden from the public storefront.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -126,10 +126,23 @@ function mdo_mentta_internal_term_map() {
 }
 
 /**
- * Only hide the category tree on normal public storefront requests.
- * Admin, WP-CLI and REST requests remain untouched so MENTTA can read it.
+ * Hide the internal category on storefront requests, including frontend AJAX.
+ * Keep wp-admin, WP-CLI and REST management requests untouched.
  */
 function mdo_mentta_should_hide_publicly() {
+	$doing_ajax = function_exists( 'wp_doing_ajax' ) && wp_doing_ajax();
+
+	if ( $doing_ajax ) {
+		// admin-ajax.php reports is_admin()=true even when called by the public shop.
+		// Only preserve MENTTA for AJAX calls that genuinely originate in wp-admin.
+		$referer = isset( $_SERVER['HTTP_REFERER'] ) ? (string) wp_unslash( $_SERVER['HTTP_REFERER'] ) : '';
+		$path    = strtolower( (string) wp_parse_url( $referer, PHP_URL_PATH ) );
+		if ( '' !== $path && false !== strpos( $path, '/wp-admin/' ) ) {
+			return false;
+		}
+		return true;
+	}
+
 	if ( is_admin() ) {
 		return false;
 	}
@@ -261,7 +274,6 @@ function mdo_mentta_hide_public_menu_items( $items ) {
 							return false;
 						}
 					}
-				}
 
 				return true;
 			}
@@ -276,7 +288,7 @@ function mdo_mentta_remove_final_home_card( $html ) {
 		return $html;
 	}
 
-	$pattern = '~<a\b[^>]*\bclass=(?:"[^"]*\bemo-category-card\b[^"]*"|\'[^\']*\bemo-category-card\b[^\']*\')[^>]*\bhref=(?:"[^"]*/mentta(?:-|/)[^\"]*"|\'[^\']*/mentta(?:-|/)[^\']*\')[^>]*>.*?</a>~is';
+	$pattern = '~<a\\b[^>]*\\bclass=(?:"[^"]*\\bemo-category-card\\b[^"]*"|\\'[^\\']*\\bemo-category-card\\b[^\\']*\\')[^>]*\\bhref=(?:"[^"]*/mentta(?:-|/)[^\\"]*"|\\'[^\\']*/mentta(?:-|/)[^\\']*\\')[^>]*>.*?</a>~is';
 	$filtered = preg_replace( $pattern, '', $html );
 
 	return is_string( $filtered ) ? $filtered : $html;
