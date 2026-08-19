@@ -1,0 +1,130 @@
+name: Deploy final shipping layout and quantity formatting
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-store-shipping-qty-layout-final-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-store-shipping/mdo-store-shipping.php
+          grep -Fq 'mdo-shipping-products' mu-plugins/mdo-store-shipping/mdo-store-shipping.php
+          grep -Fq '[cantidad]' mu-plugins/mdo-store-shipping/mdo-store-shipping.php
+          grep -Fq '4 unidades = 4 × la tarifa indicada' mu-plugins/mdo-store-shipping/mdo-store-shipping.php
+
+      - name: Install helpers
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass python3-bs4 >/dev/null
+
+      - name: Find production WordPress path
+        id: prod
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "path=$PROD_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy template
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.prod.outputs.path }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          REMOTE="/tmp/mdo-store-shipping-final-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-store-shipping/mdo-store-shipping.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); target='$PROD_PATH/wp-content/mu-plugins/mdo-store-shipping/mdo-store-shipping.php'; \"\$php_bin\" -l '$REMOTE'; cp -p \"\$target\" \"\$target.bak-$GITHUB_RUN_ID\" 2>/dev/null || true; mv '$REMOTE' \"\$target\"; chmod 0644 \"\$target\"; \"\$php_bin\" -l \"\$target\"; grep -Fq 'mdo-shipping-products' \"\$target\"; grep -Fq '[cantidad]' \"\$target\""
+
+      - name: Flush caches
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.prod.outputs.path }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify live structure
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/tienda/1957/?mdo_shipping=1&emdo_shipping_final=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO final shipping verifier' -H 'Cache-Control: no-cache, no-store' -o /tmp/shipping.html "$URL"
+          grep -Fq 'id="mdo-shipping-products"' /tmp/shipping.html
+          grep -Fq 'class="product_area"' /tmp/shipping.html
+          grep -Fq 'class="products-wrapper"' /tmp/shipping.html
+          grep -Fq 'mdo-store-shipping' /tmp/shipping.html
+          python3 - <<'PY'
+          from bs4 import BeautifulSoup
+          soup=BeautifulSoup(open('/tmp/shipping.html',encoding='utf-8',errors='ignore').read(),'html.parser')
+          node=soup.select_one('.mdo-store-shipping')
+          assert node is not None
+          chain=[]
+          cur=node.parent
+          for _ in range(4):
+              chain.append((cur.get('id'),cur.get('class')))
+              cur=cur.parent
+          assert chain[0][1] and 'products-wrapper' in chain[0][1], chain
+          assert chain[1][1] and 'product_area' in chain[1][1], chain
+          assert chain[2][0]=='mdo-shipping-products', chain
+          assert chain[3][0]=='tabsWithStyle', chain
+          print('STORE_SHIPPING_LAYOUT_FINAL_OK', chain)
+          PY
+
+      - name: Record result
+        if: always()
+        env:
+          DEPLOY_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cat > .deploy-status/store-shipping-qty-layout-production.txt <<EOF
+          status=${DEPLOY_STATUS}
+          source_sha=${GITHUB_SHA}
+          run_id=${GITHUB_RUN_ID}
+          finished_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/store-shipping-qty-layout-production.txt
+          git commit -m 'Record final shipping layout deploy status [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
