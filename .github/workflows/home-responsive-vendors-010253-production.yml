@@ -1,10 +1,11 @@
-name: Home responsive vendors 0.10.253 production
+name: Home responsive vendors and critical path production
 
 on:
   push:
     branches: [main]
     paths:
       - 'elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php'
       - '.github/workflows/home-responsive-vendors-010253-production.yml'
   workflow_dispatch:
 
@@ -31,9 +32,13 @@ jobs:
           fetch-depth: 0
 
       - name: Validate PHP
-        run: php -l elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php
 
-      - name: Deploy MU plugin
+      - name: Deploy MU plugins
         id: deploy
         shell: bash
         env:
@@ -62,30 +67,36 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          REMOTE_FILE="/tmp/elmercado-home-responsive-vendors-${GITHUB_RUN_ID}.php"
-          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+          REMOTE_RESP="/tmp/elmercado-home-responsive-${GITHUB_RUN_ID}.php"
+          REMOTE_CRIT="/tmp/elmercado-home-critical-${GITHUB_RUN_ID}.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php "$STAGING_USER@$STAGING_HOST:$REMOTE_RESP"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-critical-path-010254.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CRIT"
 
           timeout 120s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             MU_DIR='$PROD_PATH/wp-content/mu-plugins'
-            TARGET=\"\$MU_DIR/elmercado-home-responsive-vendors-010253.php\"
+            TARGET_RESP=\"\$MU_DIR/elmercado-home-responsive-vendors-010253.php\"
+            TARGET_CRIT=\"\$MU_DIR/elmercado-home-critical-path-010254.php\"
             mkdir -p \"\$MU_DIR\"
-            BACKUP_DIR=\"\$HOME/elmercado-home-responsive-backup-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S)\"
+            BACKUP_DIR=\"\$HOME/elmercado-home-critical-backup-${GITHUB_RUN_ID}-\$(date +%Y%m%d%H%M%S)\"
             mkdir -p \"\$BACKUP_DIR\"
-            [ ! -f \"\$TARGET\" ] || cp \"\$TARGET\" \"\$BACKUP_DIR/\"
-            install -m 0644 '$REMOTE_FILE' \"\$TARGET\"
+            [ ! -f \"\$TARGET_RESP\" ] || cp \"\$TARGET_RESP\" \"\$BACKUP_DIR/\"
+            [ ! -f \"\$TARGET_CRIT\" ] || cp \"\$TARGET_CRIT\" \"\$BACKUP_DIR/\"
+            install -m 0644 '$REMOTE_RESP' \"\$TARGET_RESP\"
+            install -m 0644 '$REMOTE_CRIT' \"\$TARGET_CRIT\"
 
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             wp_bin=\$(command -v wp)
-            \"\$php_bin\" -l \"\$TARGET\"
+            \"\$php_bin\" -l \"\$TARGET_RESP\"
+            \"\$php_bin\" -l \"\$TARGET_CRIT\"
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
-            rm -f '$REMOTE_FILE'
+            rm -f '$REMOTE_RESP' '$REMOTE_CRIT'
             printf 'Backup: %s\n' \"\$BACKUP_DIR\"
           "
 
-      - name: Verify live responsive producer images
+      - name: Verify live Home
         id: verify
         shell: bash
         run: |
@@ -95,9 +106,10 @@ jobs:
           curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HOME_HTML"
 
           python3 - "$HOME_HTML" <<'PY' | tee -a /tmp/home-responsive-verification.txt
-          import pathlib, sys
+          import pathlib, re, sys
           html = pathlib.Path(sys.argv[1]).read_text(errors='replace')
           ok = True
+
           for needle in ('Tolecarnes-fondo', 'JAMON_ACT'):
               pos = html.find(needle)
               if pos < 0:
@@ -110,7 +122,37 @@ jobs:
               print(f'[{needle}] {tag[:2200]}')
               if 'srcset=' not in tag or 'sizes=' not in tag:
                   ok = False
+
+          vp = re.search(r'<meta\b[^>]*name=["\']viewport["\'][^>]*>', html, re.I)
+          print('viewport=' + (vp.group(0) if vp else 'missing'))
+          if not vp or 'user-scalable=no' in vp.group(0).lower() or 'maximum-scale=1' in vp.group(0).lower():
+              ok = False
+
+          for needle in ('trp-frontend-compatibility.js', 'trp-frontend-language-switcher.js'):
+              pos = html.find(needle)
+              tag = ''
+              if pos >= 0:
+                  start = html.rfind('<script', 0, pos)
+                  end = html.find('>', pos)
+                  tag = html[start:end+1]
+              print(f'{needle}={tag}')
+              if pos >= 0 and 'defer' not in tag.lower():
+                  ok = False
+
+          css_link = re.search(r'<link\b[^>]*trp-language-switcher-v2\.css[^>]*>', html, re.I)
+          print('trp_css_link=' + ('present' if css_link else 'absent'))
+          print('critical_css=' + ('present' if 'elmercado-home-critical-010254' in html else 'absent'))
+          print('hustle_inline=' + ('present' if 'hustle_inline_styles_front-inline-css' in html else 'absent'))
+          print('star_swap=' + ('yes' if 'font-display:swap' in html else 'no'))
+          hooks = html.find('id="wp-hooks-js"')
+          gtag = html.find('google-listings-and-ads/js/build/gtag-events.js')
+          print(f'wp_hooks_pos={hooks} gtag_events_pos={gtag}')
           print(f'html_bytes={len(html.encode())}')
+
+          if css_link or 'elmercado-home-critical-010254' not in html or 'hustle_inline_styles_front-inline-css' in html or 'font-display:swap' not in html:
+              ok = False
+          if gtag >= 0 and (hooks < 0 or hooks > gtag):
+              ok = False
           if not ok:
               sys.exit(12)
           PY
