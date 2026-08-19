@@ -1,6 +1,7 @@
 <?php
 /**
  * Shipping summary for a WCFM producer store.
+ * Refined destination labels, price ordering and EMDO minimum-order display.
  *
  * Available variables are supplied by WCFM:
  * @var object $store_user
