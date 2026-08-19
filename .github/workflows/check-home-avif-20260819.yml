@@ -1,0 +1,40 @@
+name: Check Home AVIF support 20260819
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/check-home-avif-20260819.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Check server encoders
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1)
+            echo "php=$php_bin"
+            "$php_bin" -r "echo \"imageavif=\".(function_exists(\"imageavif\")?\"yes\":\"no\").PHP_EOL; echo \"imagewebp=\".(function_exists(\"imagewebp\")?\"yes\":\"no\").PHP_EOL; if(function_exists(\"gd_info\")){var_export(gd_info());}"
+            command -v cwebp || true
+            command -v avifenc || true
+            command -v convert || true
+            command -v magick || true
+          ' > runtime/home-avif-support-20260819.txt 2>&1
+          cat runtime/home-avif-support-20260819.txt
+      - name: Record
+        if: always()
+        run: |
+          set -euo pipefail; git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; git add runtime/home-avif-support-20260819.txt || true; if ! git diff --cached --quiet; then git commit -m 'Record Home AVIF support [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main; fi
