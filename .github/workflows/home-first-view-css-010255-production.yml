@@ -110,30 +110,23 @@ jobs:
               raise SystemExit(13)
           PY
           cat /tmp/verify.txt
-          {
-            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
-            printf 'commit=%s\n' "$GITHUB_SHA"
-            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
-            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
-            cat /tmp/verify.txt
-          } > runtime/home-first-view-css-010255.txt
       - name: Record result
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          if [ ! -f runtime/home-first-view-css-010255.txt ]; then
-            {
-              printf 'run_id=%s\n' "$GITHUB_RUN_ID"
-              printf 'commit=%s\n' "$GITHUB_SHA"
-              printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
-              printf 'verify=%s\n' '${{ steps.verify.outcome }}'
-            } > runtime/home-first-view-css-010255.txt
-          fi
+          {
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'deploy=%s\n' '${{ steps.deploy.outcome }}'
+            printf 'verify=%s\n' '${{ steps.verify.outcome }}'
+            [ ! -f /tmp/verify.txt ] || cat /tmp/verify.txt
+          } > runtime/home-first-view-css-010255.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add runtime/home-first-view-css-010255.txt
           git commit -m 'Record compact Home critical CSS verification' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+# triggered 2026-08-19
