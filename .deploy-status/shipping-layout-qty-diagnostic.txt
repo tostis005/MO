@@ -7,20 +7,72 @@
 5 div.rgt.right_side
 6 div.body_area
 7 div#wcfmmp-store-content.wcfmmp-store-page-wrap.woocommerce
+8 div#wcfmmp-store.wcfmmp-single-store-holder
+9 main#main.site-main
 TAB_PARENT div tabsWithStyle ['tab_area']
 TAB_GRANDPARENT div None ['rgt', 'right_side']
 === SHIPPING ANCESTORS ===
 0 div.mdo-store-shipping
-1 div#tabsWithStyle.tab_area
-2 div.rgt.right_side
-3 div.body_area
-4 div#wcfmmp-store-content.wcfmmp-store-page-wrap.woocommerce
-5 div#wcfmmp-store.wcfmmp-single-store-holder
-6 main#main.site-main
-7 div#primary.content-area
+1 div.products-wrapper
+2 div.product_area
+3 div#mdo-shipping-products
+4 div#tabsWithStyle.tab_area
+5 div.rgt.right_side
+6 div.body_area
+7 div#wcfmmp-store-content.wcfmmp-store-page-wrap.woocommerce
+8 div#wcfmmp-store.wcfmmp-single-store-holder
+9 main#main.site-main
 TAB_PARENT div tabsWithStyle ['tab_area']
 TAB_GRANDPARENT div None ['rgt', 'right_side']
-VENDOR 4507 | Tolecarnes
-VENDOR 4508 | Puente Robles
-VENDOR 4509 | El Catedrático
-VENDOR 4514 | La Huerta de Ana Mary
+=== RELEVANT CSS RULES ===
+CSS https://www.elmercadodeorigen.com/wp-content/themes/elmercadodeorigen-child/assets/css/integrations.css?ver=1786944433
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links{margin-bottom: 20px !important;
+	padding-bottom: 1px !important;
+	border-bottom-color: var(--emo-green-800) !important;}
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li{min-width: 150px;
+	margin-top: -1px !important;
+	margin-right: 4px !important;
+	border-color: var(--emo-green-800) !important;
+	border-bottom-width: 0 !important;}
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li.active{border-top-color: var(--emo-green-800) !important;}
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li::after{background: var(--emo-green-800) !important;}
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li a{display: block;
+	width: 100% !important;
+	padding: 10px 0 !important;
+	color: var(--emo-green-950) !important;
+	text-align: center;}
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li:hover a,
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li.active a,
+.elmercado-child-theme .wcfm_dashboard_item_title,
+.elmercado-child-theme .wcfmmp_sold_by_wrapper a,
+.elmercado-child-theme .wcfmmp_store_hours .wcfmmp-store-hours-day{color: var(--emo-green-800) !important;}
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links{display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 4px;}
+.elmercado-child-theme #wcfmmp-store .tab_area .tab_links li{width: auto !important;
+		min-width: 0 !important;
+		margin: 0 !important;}
+CSS https://www.elmercadodeorigen.com/wp-content/plugins/wc-multivendor-marketplace/assets/css/min/store/wcfmmp-style-store.css?ver=3.8.1
+#wcfmmp-store .tab_area .tab_links{padding:0;background:#fff;border-bottom:1px solid #93a8b3;float:left;width:100%;margin-bottom:50px}
+#wcfmmp-store .tab_area .tab_links li{padding:0;float:left;border:1px solid #93a8b3;border-bottom:1px solid transparent;position:relative;margin:0;margin-right:2px;margin-bottom:-2px}
+#wcfmmp-store .tab_area .tab_links li:after{position:absolute;content:" ";width:100%;height:2px;background:#17a2b8;opacity:0;top:0;left:0;transition:all .2s linear;-moz-transition:all .2s linear;-ms-transition:all .2s linear;-o-transition:all .2s linear;-webkit-transition:all .2s linear}
+#wcfmmp-store .tab_area .tab_links li:hover:after{bottom:100%;opacity:1}
+#wcfmmp-store .tab_area .tab_links li.active{border-top:2px solid #17a2b8!important;border-bottom:1px solid transparent!important;background-color:#fff}
+#wcfmmp-store .tab_area .tab_links li a{font-size:12px;line-height:18px;letter-spacing:.3px;color:#93a8b3;padding:10px 19px 10px 19px;display:inline-block;text-transform:uppercase}
+#wcfmmp-store .tab_area .tab_links li.active a,#wcfmmp-store .tab_area .tab_links li:hover a{color:#17a2b8}
+#wcfmmp-store .product_area{margin:0}
+#wcfmmp-store .product_area ul li{padding:0}
+#wcfmmp-store .product_area .products-wrapper ul li.product{padding:0 15px;margin-bottom:15px}
+#wcfmmp-store .product_area .products-wrapper ul li.product img{margin-bottom:0}
+#wcfmmp-store .products-wrapper .products-nav .catalog-ordering .orderby-order-container .order>li.asc,#wcfmmp-store .products-wrapper .products-nav .catalog-ordering .orderby-order-container .order>li.desc{padding:8px 10px 6px}
+CSS https://www.elmercadodeorigen.com/wp-content/plugins/wc-multivendor-marketplace/assets/css/min/store/wcfmmp-style-store-responsive.css?ver=3.8.1
+#wcfmmp-store .tab_area .tab_links{margin-bottom:20px}
+#wcfmmp-store .tab_area .tab_links li{width:100%;border-bottom:1px solid #93a8b3;margin-right:0;margin-bottom:0}
+#wcfmmp-store .tab_area .tab_links li:hover,.tab_area .tab_links li.active{border-bottom:1px solid #fff}
+#wcfmmp-store .tab_area .tab_links li.active{border-top:1px solid #93a8b3!important;border-bottom:0!important;border-left:4px solid #17a2b8!important}
+#wcfmmp-store .tab_area .tab_links li a{display:block}
+CSS https://www.elmercadodeorigen.com/wp-content/uploads/wcfm/wcfmmp-style-custom-1632402343.css?ver=3.8.1
+#wcfmmp-store .tab_area .tab_links li a{color: #999999!important;}
+#wcfmmp-store .tab_area .tab_links li:hover a, #wcfmmp-store .tab_area .tab_links li.active a, .wcfmmp_store_hours .wcfmmp-store-hours-day{color: #17a2b8!important;}
+#wcfmmp-store .tab_area .tab_links li:after{background: #17a2b8!important;}
+#wcfmmp-store .tab_area .tab_links li.active{border-top-color: #17a2b8!important;}
