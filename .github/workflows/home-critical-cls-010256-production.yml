@@ -1,4 +1,4 @@
-name: Home critical vs final geometry
+name: Home measured hero CLS production
 
 on:
   push:
@@ -14,75 +14,132 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compare:
+  patch-deploy-measure:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Compare critical-only and full geometry
-        id: compare
+
+      - name: Patch first-frame lock from measured final geometry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php')
+          s=p.read_text()
+          repl={
+            "$revision = '010256-9';":"$revision = '010256-10';",
+            'padding-top:clamp(1.75rem,2.35vw,2.35rem)!important;':'padding-top:clamp(2.75rem,4vw,4rem)!important;',
+            'margin:0 0 1.5rem!important;':'margin:0!important;',
+            'margin:.75rem 0 1rem!important;':'margin:1.25rem 0 1rem!important;',
+          }
+          for old,new in repl.items():
+              if old not in s:
+                  raise SystemExit(f'missing expected source: {old}')
+              s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php
+          grep -q "010256-10" elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php
+          grep -q 'padding-top:clamp(2.75rem,4vw,4rem)!important' elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php
+          grep -q 'margin:1.25rem 0 1rem!important' elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php
+
+      - name: Deploy MU lock and clear every Home cache layer
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          command -v sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(timeout 90s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/elmercado-home-cls-${GITHUB_RUN_ID}.php"
+          timeout 45s sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            install -m 0644 '$REMOTE' '$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php'
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/elmercado-home-cls-010256.php'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html'
+            rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f '$REMOTE'
+          "
+
+      - name: Verify new first frame and Lighthouse desktop 3x
+        id: verify
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          npm install --no-save --no-audit --no-fund playwright-core@1.55.0 >/dev/null 2>&1
-          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
-          CHROME_PATH="$CHROME" node <<'JS' | tee runtime/home-critical-vs-final-010282.txt
-          const {chromium}=require('playwright-core');
-          (async()=>{
-            const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const capture=async(blockDeferred)=>{
-              const page=await browser.newPage({viewport:{width:1350,height:940}});
-              if(blockDeferred){
-                await page.route('**/*',route=>{
-                  const u=route.request().url();
-                  if(/home-deferred-.*\.css/i.test(u)) return route.abort();
-                  return route.continue();
-                });
-              }
-              await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle',timeout:90000});
-              const data=await page.evaluate(()=>{
-                const q=(sel)=>{
-                  const e=document.querySelector(sel);if(!e)return null;
-                  const r=e.getBoundingClientRect(),c=getComputedStyle(e);
-                  const keep=['display','position','height','minHeight','paddingTop','paddingBottom','marginTop','marginBottom','fontSize','lineHeight','transform','gridTemplateRows','gridTemplateColumns','gap','width'];
-                  const style={};for(const k of keep)style[k]=c[k];
-                  return {rect:{x:+r.x.toFixed(3),y:+r.y.toFixed(3),w:+r.width.toFixed(3),h:+r.height.toFixed(3)},style};
-                };
-                return {
-                  deferred:[...document.querySelectorAll('link')].filter(x=>/home-deferred-.*\.css/i.test(x.href)).map(x=>({rel:x.rel,href:x.href})),
-                  header:q('#masthead'),inner:q('.site-header-inner'),content:q('#content'),hero:q('.emo-hero'),grid:q('.emo-hero__grid'),copy:q('.emo-hero__copy'),h1:q('.emo-hero h1'),p:q('.emo-hero__copy>p'),proof:q('.emo-hero__proof'),visual:q('.emo-hero__visual--vendors'),card1:q('.emo-hero-card--1'),card2:q('.emo-hero-card--2'),card3:q('.emo-hero-card--3'),nav:q('#site-navigation')
-                };
-              });
-              await page.close();return data;
-            };
-            const critical=await capture(true);
-            const full=await capture(false);
-            console.log(JSON.stringify({critical,full},null,2));
-            console.log('\nDIFF');
-            for(const key of Object.keys(full)){
-              if(!full[key]||!critical[key]||key==='deferred')continue;
-              const a=critical[key],b=full[key];
-              const changes={};
-              for(const k of Object.keys(b.style)) if(a.style[k]!==b.style[k]) changes[k]=[a.style[k],b.style[k]];
-              const rectChanged=['x','y','w','h'].some(k=>Math.abs(a.rect[k]-b.rect[k])>.25);
-              if(rectChanged||Object.keys(changes).length) console.log(key,JSON.stringify({critical:a.rect,full:b.rect,styles:changes}));
-            }
-            await browser.close();
-          })().catch(e=>{console.error(e);process.exit(1)});
-          JS
-      - name: Record comparison
+          URL='https://www.elmercadodeorigen.com/'
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 "$URL" -o /dev/null; done
+          curl -fsS --compressed --max-time 45 "$URL" -o /tmp/home.html
+          grep -q 'padding-top:clamp(2.75rem,4vw,4rem)!important' /tmp/home.html
+          grep -q 'margin:1.25rem 0 1rem!important' /tmp/home.html
+          for i in 1 2 3; do
+            npx --yes lighthouse@12.8.2 "$URL" \
+              --only-categories=performance \
+              --form-factor=desktop \
+              --screenEmulation.mobile=false \
+              --screenEmulation.width=1350 \
+              --screenEmulation.height=940 \
+              --screenEmulation.deviceScaleFactor=1 \
+              --throttling-method=simulate \
+              --output=json \
+              --output-path="/tmp/lhr-$i.json" \
+              --quiet \
+              --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          done
+          python3 - <<'PY' | tee runtime/home-measured-hero-cls-010283.txt
+          import json,statistics
+          rows=[]
+          for i in range(1,4):
+              r=json.load(open(f'/tmp/lhr-{i}.json'));a=r['audits']
+              row={'score':round(r['categories']['performance']['score']*100),'fcp':a['first-contentful-paint']['numericValue'],'lcp':a['largest-contentful-paint']['numericValue'],'tbt':a['total-blocking-time']['numericValue'],'cls':a['cumulative-layout-shift']['numericValue']}
+              rows.append(row);print('run',i,row)
+              for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:8]:
+                  n=item.get('node') or {};print(' shift',item.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          print('median_score=',statistics.median(x['score'] for x in rows))
+          print('median_fcp=',round(statistics.median(x['fcp'] for x in rows)))
+          print('median_lcp=',round(statistics.median(x['lcp'] for x in rows)))
+          print('median_tbt=',round(statistics.median(x['tbt'] for x in rows)))
+          print('median_cls=',statistics.median(x['cls'] for x in rows))
+          PY
+
+      - name: Persist source and result
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          [ -f runtime/home-critical-vs-final-010282.txt ] || printf 'compare=%s\n' '${{ steps.compare.outcome }}' > runtime/home-critical-vs-final-010282.txt
+          [ -f runtime/home-measured-hero-cls-010283.txt ] || printf 'deploy=%s\nverify=%s\n' '${{ steps.deploy.outcome }}' '${{ steps.verify.outcome }}' > runtime/home-measured-hero-cls-010283.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add runtime/home-critical-vs-final-010282.txt
-          git commit -m 'Compare Home critical and final geometry' || exit 0
+          git add elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php runtime/home-measured-hero-cls-010283.txt
+          git commit -m 'Match Home first-frame hero to measured final geometry' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
