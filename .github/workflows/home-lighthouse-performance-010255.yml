@@ -40,6 +40,21 @@ jobs:
           for k in ['first-contentful-paint','largest-contentful-paint','total-blocking-time','cumulative-layout-shift','render-blocking-resources','unused-css-rules','unused-javascript','uses-responsive-images','modern-image-formats']:
               x=a.get(k,{})
               print(f"{k}: numeric={x.get('numericValue')} display={x.get('displayValue')} score={x.get('score')}")
+          print('--- layout audits ---')
+          for k,v in a.items():
+              if 'layout' not in k.lower() and 'shift' not in k.lower() and 'cls' not in k.lower():
+                  continue
+              print('audit=',k,'title=',v.get('title'),'display=',v.get('displayValue'),'score=',v.get('score'))
+              details=v.get('details') or {}
+              for item in (details.get('items') or [])[:30]:
+                  print('layout_item=',json.dumps(item,ensure_ascii=False,separators=(',',':'))[:7000])
+          print('--- lcp audits ---')
+          for k,v in a.items():
+              if 'lcp' in k.lower() or 'largest-contentful' in k.lower():
+                  print('audit=',k,'title=',v.get('title'),'display=',v.get('displayValue'),'score=',v.get('score'))
+                  details=v.get('details') or {}
+                  for item in (details.get('items') or [])[:20]:
+                      print('lcp_item=',json.dumps(item,ensure_ascii=False,separators=(',',':'))[:7000])
           print('--- bootup-time ---')
           items=((a.get('bootup-time',{}).get('details') or {}).get('items') or [])
           for x in sorted(items,key=lambda y:y.get('total',0),reverse=True)[:20]:
@@ -68,7 +83,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add runtime/home-lighthouse-performance-010255.txt
-          git commit -m 'Record Home JavaScript main-thread profile' || exit 0
+          git commit -m 'Record Home CLS and LCP profile' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
-# profile main thread
+# profile cls and lcp
