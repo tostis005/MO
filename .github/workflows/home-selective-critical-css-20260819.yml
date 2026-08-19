@@ -1,0 +1,188 @@
+name: Home selective structural CSS experiment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-selective-critical-css-20260819.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-selective-structural-css-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-measure-keep-or-revert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Keep structural Home style blocks in the first render
+        shell: bash
+        run: |
+          set -euo pipefail
+          CACHE='elmercadodeorigen-child/inc/home-cache.php'
+          cp "$CACHE" /tmp/home-cache-before-selective.php
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('elmercadodeorigen-child/inc/home-cache.php')
+          s=p.read_text()
+          old='''\t$css_parts = array();\n\t$head_protected = preg_replace_callback(\n\t\t'~<style\\b[^>]*>(.*?)</style\\s*>~is',\n\t\tstatic function ( array $matches ) use ( &$css_parts ): string {\n\t\t\tif ( isset( $matches[1] ) && '' !== trim( $matches[1] ) ) {\n\t\t\t\t$css_parts[] = $matches[1];\n\t\t\t}\n\t\t\treturn '';\n\t\t},\n\t\t$head_protected\n\t);'''
+          new='''\t/*\n\t * Desktop stability contract 2026-08-19. Lighthouse proved that moving every\n\t * inline style to an onload stylesheet creates ~0.8 CLS: the browser first\n\t * lays out the Home with the compact critical file and then receives dozens\n\t * of structural header/hero rules. Keep only layout-affecting blocks in their\n\t * original cascade position; defer the rest exactly as before.\n\t */\n\t$structural_markers = array(\n\t\t'emo-home', 'emo-hero', 'emo-shell', 'emo-announcement',\n\t\t'emo-hero-card', 'emo-hero__visual', 'emo-hero__grid',\n\t\t'site-header', 'site-navigation', 'main-navigation', 'primary-navigation',\n\t\t'site-branding', 'site-tools', 'topbar', 'toggle-sidebar-menu-btn',\n\t\t'#content', '.site-content', '.site-main', '.entry-content',\n\t\t'shop-cart-sidebar', 'woostify-overlay', 'sidebar-menu',\n\t);\n\t$structural_style_ids = array(\n\t\t'global-styles-inline-css',\n\t\t'woocommerce-inline-inline-css',\n\t\t'elmercado-woostify-critical',\n\t\t'woostify-parent-style-inline-css',\n\t);\n\n\t$css_parts = array();\n\t$head_protected = preg_replace_callback(\n\t\t'~<style\\b([^>]*)>(.*?)</style\\s*>~is',\n\t\tstatic function ( array $matches ) use ( &$css_parts, $structural_markers, $structural_style_ids ): string {\n\t\t\t$attributes = isset( $matches[1] ) ? (string) $matches[1] : '';\n\t\t\t$css        = isset( $matches[2] ) ? (string) $matches[2] : '';\n\t\t\tif ( '' === trim( $css ) ) {\n\t\t\t\treturn '';\n\t\t\t}\n\n\t\t\t$style_id = '';\n\t\t\tif ( preg_match( '~\\bid=["\\']([^"\\']+)["\\']~i', $attributes, $id_match ) ) {\n\t\t\t\t$style_id = (string) $id_match[1];\n\t\t\t}\n\t\t\t$keep_inline = in_array( $style_id, $structural_style_ids, true );\n\t\t\tif ( ! $keep_inline ) {\n\t\t\t\tforeach ( $structural_markers as $marker ) {\n\t\t\t\t\tif ( false !== strpos( $css, $marker ) ) {\n\t\t\t\t\t\t$keep_inline = true;\n\t\t\t\t\t\tbreak;\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tif ( $keep_inline ) {\n\t\t\t\treturn $matches[0];\n\t\t\t}\n\n\t\t\t$css_parts[] = $css;\n\t\t\treturn '';\n\t\t},\n\t\t$head_protected\n\t);'''
+          if old not in s:
+              raise SystemExit('style extraction block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          php -l "$CACHE"
+          grep -q 'Desktop stability contract 2026-08-19' "$CACHE"
+
+      - name: Deploy current stack with selective CSS pipeline
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD="$(timeout 90s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD:?production path not found}"
+          echo "$PROD" > /tmp/selective-prod-path
+
+          declare -A FILES=(
+            [home-cache.php]='elmercadodeorigen-child/inc/home-cache.php'
+            [critical.css]='elmercadodeorigen-child/assets/css/critical-woostify-home.min.css'
+            [theme.js]='elmercadodeorigen-child/assets/js/theme.js'
+            [commerce.js]='elmercadodeorigen-child/assets/js/commerce.js'
+            [responsive-vendors.php]='elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php'
+            [home-cls.php]='elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php'
+            [a11y.php]='elmercadodeorigen-child/mu-plugins/elmercado-home-a11y-motion-010265.php'
+            [stars.php]='elmercadodeorigen-child/mu-plugins/elmercado-home-native-stars-010264.php'
+            [home-performance.php]='mu-plugins/mdo-home-performance-20260819.php'
+            [webp.php]='mu-plugins/mdo-home-webp-delivery-20260819.php'
+            [trp.php]='mu-plugins/mdo-home-translatepress-lite-20260819.php'
+          )
+          for key in "${!FILES[@]}"; do
+            timeout 45s sshpass -e scp $SCP "${FILES[$key]}" "$STAGING_USER@$STAGING_HOST:/tmp/selective-$key-${GITHUB_RUN_ID}"
+          done
+
+          timeout 240s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; MU='$PROD/wp-content/mu-plugins'
+            install -m 0644 /tmp/selective-home-cache.php-${GITHUB_RUN_ID} \"\$THEME/inc/home-cache.php\"
+            install -m 0644 /tmp/selective-critical.css-${GITHUB_RUN_ID} \"\$THEME/assets/css/critical-woostify-home.min.css\"
+            install -m 0644 /tmp/selective-theme.js-${GITHUB_RUN_ID} \"\$THEME/assets/js/theme.js\"
+            install -m 0644 /tmp/selective-commerce.js-${GITHUB_RUN_ID} \"\$THEME/assets/js/commerce.js\"
+            install -m 0644 /tmp/selective-responsive-vendors.php-${GITHUB_RUN_ID} \"\$MU/elmercado-home-responsive-vendors-010253.php\"
+            install -m 0644 /tmp/selective-home-cls.php-${GITHUB_RUN_ID} \"\$MU/elmercado-home-cls-010256.php\"
+            install -m 0644 /tmp/selective-a11y.php-${GITHUB_RUN_ID} \"\$MU/elmercado-home-a11y-motion-010265.php\"
+            install -m 0644 /tmp/selective-stars.php-${GITHUB_RUN_ID} \"\$MU/elmercado-home-native-stars-010264.php\"
+            install -m 0644 /tmp/selective-home-performance.php-${GITHUB_RUN_ID} \"\$MU/mdo-home-performance-20260819.php\"
+            install -m 0644 /tmp/selective-webp.php-${GITHUB_RUN_ID} \"\$MU/mdo-home-webp-delivery-20260819.php\"
+            install -m 0644 /tmp/selective-trp.php-${GITHUB_RUN_ID} \"\$MU/mdo-home-translatepress-lite-20260819.php\"
+            rm -f \"\$MU/elmercado-home-header-cls-010279.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l \"\$THEME/inc/home-cache.php\"
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true
+            rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            rm -f /tmp/selective-*-${GITHUB_RUN_ID}
+          "
+
+      - name: Warm Home and inspect CSS split
+        id: inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          URL='https://www.elmercadodeorigen.com/'
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 "$URL" -o /dev/null; done
+          curl -fsS --compressed --max-time 45 "$URL" -o /tmp/selective-home.html
+          python3 - <<'PY' | tee /tmp/selective-split.txt
+          import re
+          h=open('/tmp/selective-home.html',encoding='utf-8',errors='ignore').read()
+          head=(re.search(r'<head\b[^>]*>(.*?)</head\s*>',h,re.I|re.S) or [None,h])[1]
+          styles=re.findall(r'<style\b([^>]*)>(.*?)</style\s*>',head,re.I|re.S)
+          print('inline_style_count=',len(styles))
+          print('inline_style_bytes=',sum(len(css) for _,css in styles))
+          ids=[]
+          for attrs,css in styles:
+              m=re.search(r'\bid=["\']([^"\']+)',attrs,re.I)
+              if m: ids.append(m.group(1))
+          print('kept_vendor_css=',int('elmercado-home-vendors-010244' in ids))
+          print('kept_visibility_css=',int('elmercado-home-visibility-polish-010245' in ids))
+          print('kept_parent_inline=',int('woostify-parent-style-inline-css' in ids))
+          print('deferred_async=',int('id="elmercado-home-deferred-css" rel="preload"' in h))
+          print('deferred_url_present=',int('home-deferred-0.10.260.css' in h))
+          PY
+          grep -q 'kept_vendor_css= 1' /tmp/selective-split.txt
+          grep -q 'kept_visibility_css= 1' /tmp/selective-split.txt
+          grep -q 'kept_parent_inline= 1' /tmp/selective-split.txt
+
+      - name: Lighthouse desktop 3x
+        id: measure
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://www.elmercadodeorigen.com/'
+          for i in 1 2 3; do
+            npx --yes lighthouse@12.8.2 "$URL" --only-categories=performance --form-factor=desktop --screenEmulation.mobile=false --screenEmulation.width=1350 --screenEmulation.height=940 --screenEmulation.deviceScaleFactor=1 --throttling-method=simulate --output=json --output-path="/tmp/selective-lhr-$i.json" --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          done
+          python3 - <<'PY' | tee runtime/home-selective-structural-css-20260819.txt
+          import json,statistics
+          rows=[]
+          print(open('/tmp/selective-split.txt').read().strip())
+          for i in range(1,4):
+              r=json.load(open(f'/tmp/selective-lhr-{i}.json'));a=r['audits']
+              row={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue'],'si':round(a['speed-index']['numericValue'])}
+              rows.append(row); print('run',i,row)
+              for item in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:8]:
+                  n=item.get('node') or {}; print(' shift',item.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          med={k:statistics.median(x[k] for x in rows) for k in rows[0]}
+          for k,v in med.items(): print('median_'+k+'=',v)
+          keep=med['cls'] < 0.08 and med['lcp'] < 5500 and med['fcp'] < 3200
+          print('keep=',str(keep).lower())
+          open('/tmp/selective-keep','w').write('1' if keep else '0')
+          PY
+
+      - name: Keep or revert source and production
+        if: always()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEEP=$(cat /tmp/selective-keep 2>/dev/null || echo 0)
+          if [ "$KEEP" != 1 ]; then
+            cp /tmp/home-cache-before-selective.php elmercadodeorigen-child/inc/home-cache.php
+            PROD=$(cat /tmp/selective-prod-path)
+            PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+            REMOTE="/tmp/selective-home-cache-revert-${GITHUB_RUN_ID}.php"
+            timeout 45s sshpass -e scp $SCP /tmp/home-cache-before-selective.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+            timeout 180s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; install -m 0644 '$REMOTE' \"\$THEME/inc/home-cache.php\"; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true; rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css '$REMOTE'"
+            echo 'selective experiment reverted'
+          else
+            echo 'selective experiment accepted'
+          fi
+          mkdir -p runtime
+          [ -f runtime/home-selective-structural-css-20260819.txt ] || printf 'deploy=%s\ninspect=%s\nmeasure=%s\nkeep=false\n' '${{ steps.deploy.outcome }}' '${{ steps.inspect.outcome }}' '${{ steps.measure.outcome }}' > runtime/home-selective-structural-css-20260819.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/inc/home-cache.php runtime/home-selective-structural-css-20260819.txt
+          git commit -m 'Measure selective structural CSS delivery on Home' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
