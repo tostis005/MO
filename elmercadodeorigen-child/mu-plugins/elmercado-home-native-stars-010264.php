@@ -41,3 +41,5 @@ add_action(
 	},
 	PHP_INT_MIN
 );
+
+// 0.10.264 deployment trigger: isolated star-font optimization only.
