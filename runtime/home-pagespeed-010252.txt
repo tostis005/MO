@@ -1,5 +1,23 @@
-run_id=32228976541
-commit=ace2c99cfbe43e2f72b153c12cdfec0b5e13eb58
-deploy=skipped
-verify=skipped
-recorded_at=2026-08-19T07:41:21Z
+run_id=32229093172
+commit=c58d56ff7eabc8b0ba8e59512ac5a8964a5a6d7c
+deploy=success
+verify=failure
+recorded_at=2026-08-19T07:43:11Z
+--- Static cache headers ---
+HTTP/2 200 
+cache-control: public, max-age=31536000
+--- Optimized Home response ---
+HTTP/2 200 
+cache-control: no-store, no-cache, must-revalidate, max-age=0, private
+x-el-mercado-cache: MISS
+HTML bytes: 614927
+--- Critical dependencies ---
+<script id="wp-hooks-js" src="https://c0.wp.com/c/7.0.4/wp-includes/js/dist/hooks.min.js">
+<script id="jquery-core-js" src="https://c0.wp.com/c/7.0.4/wp-includes/js/jquery/jquery.min.js">
+<script id="jquery-migrate-js" src="https://c0.wp.com/c/7.0.4/wp-includes/js/jquery/jquery-migrate.min.js">
+<script data-wp-strategy="defer" defer id="wc-jquery-blockui-js" src="https://c0.wp.com/p/woocommerce/11.0.1/assets/js/jquery-blockui/jquery.blockUI.min.js">
+--- Producer images and inline payload ---
+[Tolecarnes-fondo] <img src="https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/Tolecarnes-fondo.jpg" alt="Tolecarnes" loading="lazy" decoding="async">
+[JAMON_ACT] <img src="https://www.elmercadodeorigen.com/wp-content/uploads/2026/08/JAMON_ACTO_ECOLOGICO1-scaled.jpg" alt="Hidalgo de la Jara" loading="lazy" decoding="async">
+inline_style_bytes=0 blocks=0
+inline_script_bytes=0 blocks=0
