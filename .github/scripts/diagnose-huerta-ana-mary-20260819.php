@@ -45,6 +45,19 @@ $source_rows = $wpdb->get_results(
 	ARRAY_A
 ) ?: array();
 
+$vendor = ! empty( $supplier['vendor_user_id'] ) ? get_user_by( 'id', (int) $supplier['vendor_user_id'] ) : false;
+$actions_table = $wpdb->prefix . 'actionscheduler_actions';
+$action_rows = array();
+if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $actions_table ) ) === $actions_table ) {
+	$action_rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT action_id,hook,status,args,scheduled_date_gmt,last_attempt_gmt,claim_id FROM {$actions_table} WHERE hook = %s ORDER BY action_id DESC LIMIT 100",
+			'mdo_supplier_sync_import_product'
+		),
+		ARRAY_A
+	) ?: array();
+}
+
 $out = array(
 	'plugin_version' => defined( 'MDO_SUPPLIER_SYNC_VERSION' ) ? MDO_SUPPLIER_SYNC_VERSION : 'unknown',
 	'supplier'       => array(
@@ -55,10 +68,17 @@ $out = array(
 		'vendor_user_id' => $supplier['vendor_user_id'] ?? null,
 		'active' => $supplier['active'] ?? null,
 	),
+	'vendor' => $vendor ? array(
+		'id' => $vendor->ID,
+		'user_login' => $vendor->user_login,
+		'display_name' => $vendor->display_name,
+		'roles' => array_values( (array) $vendor->roles ),
+	) : null,
 	'latest_run'     => $latest_run,
 	'latest_events'  => $events,
 	'status_counts'  => $status_counts,
 	'source_rows'    => $source_rows,
+	'import_actions' => $action_rows,
 );
 
 try {
