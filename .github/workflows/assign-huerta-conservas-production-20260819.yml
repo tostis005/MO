@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   assign:
@@ -24,11 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate assignment script
+      - name: Validate PHP files
         shell: bash
-        run: php -l .github/scripts/assign-huerta-conservas-20260819.php
+        run: |
+          php -l .github/scripts/assign-huerta-conservas-20260819.php
+          php -l mdo-supplier-sync/includes/class-mdo-huerta-defaults.php
 
-      - name: Assign Huerta conservas in production
+      - name: Deploy rule and assign Huerta conservas in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -57,17 +59,41 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          REMOTE_TMP="/tmp/assign-huerta-conservas-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/assign-huerta-conservas-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP"
+          REMOTE_SCRIPT="/tmp/assign-huerta-conservas-${GITHUB_RUN_ID}.php"
+          REMOTE_DEFAULTS="/tmp/class-mdo-huerta-defaults-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/assign-huerta-conservas-20260819.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-huerta-defaults.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DEFAULTS"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+          OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
+            PLUGIN_FILE='$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-defaults.php'
+            [ -f \"\$PLUGIN_FILE\" ] || { echo 'ERROR: production Huerta defaults file not found' >&2; exit 20; }
+            cp \"\$PLUGIN_FILE\" \"/tmp/class-mdo-huerta-defaults-${GITHUB_RUN_ID}.bak.php\"
+            cp '$REMOTE_DEFAULTS' \"\$PLUGIN_FILE\"
+            rm -f '$REMOTE_DEFAULTS'
+
             wp_bin=\$(command -v wp)
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_TMP' --path='$PROD_PATH' --allow-root
-            rm -f '$REMOTE_TMP'
+            \"\$php_bin\" -l \"\$PLUGIN_FILE\" >/dev/null
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root
+            rm -f '$REMOTE_SCRIPT'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
-          "
+          ")"
 
-# Production trigger: 2026-08-19
+          printf '%s\n' "$OUTPUT"
+          SUMMARY="$(printf '%s\n' "$OUTPUT" | grep '^huerta_conservas_ok ' | tail -n1)"
+          : "${SUMMARY:?verification summary not found}"
+
+          mkdir -p .github/results
+          {
+            printf 'verified_at_utc=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf '%s\n' "$SUMMARY"
+          } > .github/results/huerta-conservas-20260819.txt
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/results/huerta-conservas-20260819.txt
+          git commit -m 'Registra resultado de conservas de Ana Mary'
+          git push origin HEAD:main
