@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.251' );
-/* 0.10.251 reduce HTML crítico, recupera imágenes responsive y renueva cachés estáticas. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.256' );
+/* 0.10.256 estabiliza el primer render de Home, CLS y renueva sus cachés estáticas. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
