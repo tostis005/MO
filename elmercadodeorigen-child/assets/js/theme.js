@@ -5,7 +5,6 @@
 	const html = document.documentElement;
 	const header = document.querySelector('.site-header');
 	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-	let scrollFrame = 0;
 
 	const makeKeyboardButton = (element, label) => {
 		if (!element) return;
@@ -32,20 +31,6 @@
 		document.querySelectorAll('.site-header-inner + .bumper').forEach((bumper) => bumper.remove());
 	};
 
-	const updateScrollState = () => {
-		const scrolled = window.scrollY > 12;
-		if (body.classList.contains('is-scrolled') !== scrolled) {
-			body.classList.toggle('is-scrolled', scrolled);
-		}
-		if (header && header.classList.contains('is-scrolled') !== scrolled) {
-			header.classList.toggle('is-scrolled', scrolled);
-		}
-		scrollFrame = 0;
-	};
-
-	const requestScrollUpdate = () => {
-		if (!scrollFrame) scrollFrame = window.requestAnimationFrame(updateScrollState);
-	};
 
 	const removeProductHoverArtifacts = (root = document) => {
 		const selector = '.product-loop-hover-image,.product-loop-action,.loop-add-to-cart-on-image';
@@ -77,13 +62,11 @@
 		});
 	};
 
-	/* No geometry reads during bootstrap; a real scroll event syncs the header state lazily. */
 	body.classList.add('emo-js-ready');
 	cleanLegacyHeaderArtifacts();
 	removeProductHoverArtifacts();
 	labelWishlistLinks();
 	repairHustleDialogs();
-	window.addEventListener('scroll', requestScrollUpdate, { passive: true });
 	window.addEventListener('load', cleanLegacyHeaderArtifacts, { once: true });
 
 	const brandingLink = document.querySelector('.site-branding > .site-title > a');
