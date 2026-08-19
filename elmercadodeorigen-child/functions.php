@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.245' );
-/* 0.10.245 desacopla la capa multidioma de TranslatePress y la prepara para Falang. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.251' );
+/* 0.10.251 reduce HTML crítico, recupera imágenes responsive y renueva cachés estáticas. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
