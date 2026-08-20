@@ -177,7 +177,7 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 	 * antes de que el manejador de Woostify procese el mismo click, permitiendo
 	 * que el menú vuelva a su display normal justo cuando realmente se abre.
 	 */
-	$mobile_nav_guard  = '@media(min-width:992px){body.home #mobile-navigation.sidebar-menu,body.home .sidebar-menu{display:none!important}}@media(max-width:991px){html:not([data-emo-menu-intent="1"]) body.home #mobile-navigation.sidebar-menu{display:none!important}}';
+	$mobile_nav_guard  = '@media(min-width:992px){body.home #mobile-navigation.sidebar-menu,body.home .sidebar-menu{display:none!important}}@media(max-width:991px){html:not([data-emo-menu-intent="1"]) body.home .sidebar-menu{display:none!important}}';
 	$mobile_nav_intent = '<script id="elmercado-home-mobile-nav-intent-critical">document.addEventListener("click",function(e){var t=e.target&&e.target.closest?e.target.closest(".toggle-sidebar-menu-btn"):null;if(t){document.documentElement.setAttribute("data-emo-menu-intent","1");}},true);</script>';
 	$critical_tag      = '<style id="elmercado-home-first-view-css">' . $mobile_nav_guard . $critical . '</style>' . $mobile_nav_intent;
 	$css_url           = esc_url( elmercado_home_deferred_css_url() );
