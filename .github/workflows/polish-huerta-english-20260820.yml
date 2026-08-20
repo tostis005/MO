@@ -1,0 +1,66 @@
+name: Polish Huerta English copy 20260820
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/polish-huerta-english-20260820.php'
+      - '.github/workflows/polish-huerta-english-20260820.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  polish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Validate PHP
+        run: php -l .github/scripts/polish-huerta-english-20260820.php
+      - name: Apply to production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done')"
+          sshpass -e scp $SCP .github/scripts/polish-huerta-english-20260820.php "$STAGING_USER@$STAGING_HOST:/tmp/polish-huerta-en.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/polish-huerta-en.php --path='$PROD_PATH' --allow-root; rc=\$?; rm -f /tmp/polish-huerta-en.php; exit \$rc" | tee /tmp/polish-huerta-en.txt
+          grep -q '^OK ' /tmp/polish-huerta-en.txt
+      - name: Re-audit translation fields
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done')"
+          sshpass -e scp $SCP .github/scripts/audit-current-product-english-20260820.php "$STAGING_USER@$STAGING_HOST:/tmp/audit-en.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/audit-en.php --path='$PROD_PATH' --allow-root; rm -f /tmp/audit-en.php" > /tmp/after-polish.json
+          python3 - <<'PY' | tee /tmp/after-polish.txt
+          import json
+          d=json.load(open('/tmp/after-polish.json',encoding='utf-8')); s=d['summary']; h=d['huerta']
+          print('catalog_products='+str(s['catalog_products']))
+          print('complete_english_fields='+str(s['complete_english_fields']))
+          print('incomplete_english_fields='+str(s['incomplete_english_fields']))
+          print('huerta_catalog_products='+str(h['catalog_products']))
+          print('huerta_complete_english_fields='+str(h['complete_english_fields']))
+          print('huerta_incomplete_english_fields='+str(h['incomplete_english_fields']))
+          print('huerta_spanish_residue_products='+str(h['spanish_residue_products']))
+          if s['incomplete_english_fields'] or h['incomplete_english_fields'] or h['complete_english_fields'] != 46: raise SystemExit(1)
+          PY
+      - name: Record verification
+        if: always()
+        run: |
+          mkdir -p .deploy-status
+          { echo "commit=$GITHUB_SHA"; echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; [ -f /tmp/after-polish.txt ] && cat /tmp/after-polish.txt || true; } > .deploy-status/huerta-english-polish-20260820.txt
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/huerta-english-polish-20260820.txt
+          git commit -m 'Record Huerta English polish verification [skip ci]' || exit 0
+          git pull --rebase origin main || true
+          git push origin HEAD:main
