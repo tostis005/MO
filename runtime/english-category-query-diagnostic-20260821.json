@@ -1,0 +1,90 @@
+{
+  "home_status": 200,
+  "home_bytes": 735963,
+  "category_status": 200,
+  "cards": 0,
+  "empty": true,
+  "diag": {
+    "request_in": {
+      "product_cat": "meat"
+    },
+    "requested": "meat",
+    "resolved_term": {
+      "id": 382,
+      "slug": "carnes",
+      "name": "Meat"
+    },
+    "request_out": {
+      "product_cat": "carnes",
+      "mdo_en_category_normalized_20260821": 1
+    },
+    "main_query": {
+      "is_tax": true,
+      "is_product_cat": true,
+      "product_cat": "carnes",
+      "taxonomy": "",
+      "term": "",
+      "post__in": [
+        12825,
+        12829,
+        12746,
+        12724,
+        12841,
+        12799,
+        12809,
+        12797,
+        12793,
+        12751,
+        12711,
+        12702,
+        12706,
+        12783,
+        12779,
+        12789,
+        12757,
+        12715,
+        12718,
+        12735,
+        12740,
+        12802,
+        12709,
+        12748,
+        12770,
+        12733,
+        12775,
+        12816,
+        12727,
+        12767,
+        12837,
+        12813,
+        12773,
+        12721,
+        12819,
+        12743,
+        12699,
+        12730,
+        12806,
+        12849,
+        12832,
+        12786,
+        12845,
+        12764,
+        12761,
+        12754
+      ],
+      "tax_query": {
+        "relation": "AND",
+        "0": {
+          "taxonomy": "product_visibility",
+          "field": "term_taxonomy_id",
+          "terms": [
+            7,
+            9
+          ],
+          "operator": "NOT IN"
+        }
+      }
+    },
+    "sql": "SELECT SQL_CALC_FOUND_ROWS  wp_posts.*\n\t\t\t\t\t FROM wp_posts  LEFT JOIN wp_term_relationships ON (wp_posts.ID = wp_term_relationships.object_id) LEFT JOIN wp_posts AS p2 ON (wp_posts.post_parent = p2.ID) \n\t\t\t\t\t WHERE 1=1  AND wp_posts.ID IN (12699,12702,12706,12709,12711,12715,12718,12721,12724,12727,12730,12733,12735,12740,12743,12746,12748,12751,12754,12757,12761,12764,12767,12770,12773,12775,12779,12783,12786,12789,12793,12797,12799,12802,12806,12809,12813,12816,12819,12825,12829,12832,12837,12841,12845,12849) AND ( \n  wp_posts.ID NOT IN (\n\t\t\t\tSELECT object_id\n\t\t\t\tFROM wp_term_relationships\n\t\t\t\tWHERE term_taxonomy_id IN (7,9)\n\t\t\t) \n  AND \n  wp_term_relationships.term_taxonomy_id IN (382)\n) AND wp_posts.post_author NOT IN (4508,4509)  AND wp_posts.post_type = 'product' AND (((wp_posts.post_status = 'publish') OR (wp_posts.post_status = 'inherit' AND (p2.post_status = 'publish')))) AND wp_posts.post_status = 'publish' AND NOT EXISTS (SELECT 1 FROM wp_term_relationships emo_vis_tr INNER JOIN wp_term_taxonomy emo_vis_tt ON emo_vis_tt.term_taxonomy_id = emo_vis_tr.term_taxonomy_id WHERE emo_vis_tr.object_id = wp_posts.ID AND emo_vis_tt.taxonomy = 'product_visibility' AND emo_vis_tt.term_id IN (7,9)) AND wp_posts.post_author NOT IN (4508,4509)\n\t\t\t\t\t GROUP BY wp_posts.ID\n\t\t\t\t\t ORDER BY FIELD(wp_posts.ID,12825,12829,12746,12724,12841,12799,12809,12797,12793,12751,12711,12702,12706,12783,12779,12789,12757,12715,12718,12735,12740,12802,12709,12748,12770,12733,12775,12816,12727,12767,12837,12813,12773,12721,12819,12743,12699,12730,12806,12849,12832,12786,12845,12764,12761,12754)\n\t\t\t\t\t LIMIT 0, 15"
+  }
+}
