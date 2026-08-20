@@ -1,0 +1,138 @@
+name: Home target WebP 20260820
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-target-webp-20260820.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-target-webp-production
+  cancel-in-progress: true
+
+jobs:
+  optimize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Deploy WebP delivery and run targeted generator
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD:?production path not found}"
+          echo "$PROD" >/tmp/prod-target-webp
+
+          sshpass -e scp $SCP mu-plugins/mdo-home-webp-delivery-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/webp-delivery-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php "$STAGING_USER@$STAGING_HOST:/tmp/vendors-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP tools/generate-home-target-webp-20260820.php "$STAGING_USER@$STAGING_HOST:/tmp/generate-target-webp-${GITHUB_RUN_ID}.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            MU='$PROD/wp-content/mu-plugins'
+            install -m0644 /tmp/webp-delivery-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-webp-delivery-20260819.php\"
+            install -m0644 /tmp/vendors-${GITHUB_RUN_ID}.php \"\$MU/elmercado-home-responsive-vendors-010253.php\"
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file /tmp/generate-target-webp-${GITHUB_RUN_ID}.php --path='$PROD' --allow-root | tee /tmp/target-webp-result-${GITHUB_RUN_ID}.txt
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true
+            rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+          "
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+
+      - name: Verify target delivery and Lighthouse
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home-target-webp.html
+          for i in 1 2; do
+            npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=mobile --output=json --output-path="/tmp/lh-$i.json" --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          done
+          python3 - <<'PY' | tee runtime/home-target-webp-20260820.txt
+          import json,re,statistics
+          from pathlib import Path
+          html=Path('/tmp/home-target-webp.html').read_text(errors='ignore')
+          targets=('JAMON_ACTO_ECOLOGICO1-scaled-450x300.webp','Tolecarnes-fondo-400x400.webp','Packs-lotes-300x400-1.webp')
+          for t in targets:
+              print(t,'=',html.count(t))
+          rows=[]
+          for i in (1,2):
+              r=json.load(open(f'/tmp/lh-{i}.json'));a=r['audits']
+              row={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue']}
+              rows.append(row);print('run',i,row)
+              for x in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:6]:
+                  n=x.get('node') or {};print(' shift',x.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          med={k:statistics.median(x[k] for x in rows) for k in rows[0]};print('median',med)
+          delivered=sum(html.count(t)>0 for t in targets)
+          keep=delivered>=2 and med['cls']<0.02 and med['lcp']<5500
+          print('delivered_targets=',delivered);print('keep=',str(keep).lower())
+          Path('/tmp/keep-target-webp').write_text('1' if keep else '0')
+          PY
+
+      - name: Capture generator result
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          sshpass -e scp $SCP "$STAGING_USER@$STAGING_HOST:/tmp/target-webp-result-${GITHUB_RUN_ID}.txt" /tmp/generator.txt || true
+          {
+            echo '--- generator ---'
+            cat /tmp/generator.txt 2>/dev/null || true
+            echo '--- verification ---'
+            cat runtime/home-target-webp-20260820.txt
+          } > /tmp/combined.txt
+          mv /tmp/combined.txt runtime/home-target-webp-20260820.txt
+
+      - name: Roll back generated WebPs on regression and record
+        if: always()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEEP=$(cat /tmp/keep-target-webp 2>/dev/null || echo 0)
+          PROD=$(cat /tmp/prod-target-webp 2>/dev/null || true)
+          if [ "$KEEP" != 1 ] && [ -n "$PROD" ]; then
+            PORT="${STAGING_PORT:-22}"
+            SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+            timeout 180s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              U='$PROD/wp-content/uploads/2026/08'
+              for f in 'JAMON_ACTO_ECOLOGICO1-scaled-450x300.webp' 'Tolecarnes-fondo-400x400.webp' 'Packs-lotes-300x400-1.webp'; do
+                if [ -f \"\$U/\$f.pre-20260820\" ]; then cp -f \"\$U/\$f.pre-20260820\" \"\$U/\$f\"; fi
+              done
+              php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
+              \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root || true
+              rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css
+            "
+          fi
+          mkdir -p runtime
+          [ -f runtime/home-target-webp-20260820.txt ] || echo failed > runtime/home-target-webp-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/home-target-webp-20260820.txt
+          git commit -m 'Record targeted Home WebP optimization' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
