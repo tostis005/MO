@@ -1,0 +1,198 @@
+name: Enable supplier auto categorization
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/enable-auto-categorization-20260820.py'
+      - '.github/workflows/enable-auto-categorization-production-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply auto categorization integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/enable-auto-categorization-20260820.py
+
+      - name: Validate synchronizer PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          php -l mdo-supplier-sync/includes/class-mdo-auto-categorizer.php
+          php -l mdo-supplier-sync/includes/class-mdo-woo-importer.php
+          php -l mdo-supplier-sync/includes/class-mdo-admin.php
+          php -l mdo-supplier-sync/includes/class-mdo-supplier-repository.php
+          php -l mdo-supplier-sync/includes/class-mdo-scheduler.php
+          php -l mdo-supplier-sync/connectors/class-mdo-connector-iberico-family.php
+          git diff --check
+          grep -q "Version: 1.0.19" mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q "class-mdo-auto-categorizer.php" mdo-supplier-sync/mdo-supplier-sync.php
+          grep -q "MDO_Auto_Categorizer::maybe_assign" mdo-supplier-sync/includes/class-mdo-woo-importer.php
+          grep -q "URLs de la tienda / catálogo (una por línea)" mdo-supplier-sync/includes/class-mdo-admin.php
+          grep -q "function source_urls" mdo-supplier-sync/includes/class-mdo-supplier-repository.php
+          grep -q "_mdo_catalog_source_only" mdo-supplier-sync/includes/class-mdo-scheduler.php
+
+      - name: Commit synchronizer changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            mdo-supplier-sync/mdo-supplier-sync.php \
+            mdo-supplier-sync/includes/class-mdo-auto-categorizer.php \
+            mdo-supplier-sync/includes/class-mdo-woo-importer.php
+          if ! git diff --cached --quiet; then
+            git commit -m 'Enable automatic import categorization [skip ci]'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Deploy and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_DIR="/tmp/mdo-auto-category-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR/includes' '$REMOTE_DIR/connectors'"
+
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/mdo-supplier-sync.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-auto-categorizer.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/includes/class-mdo-auto-categorizer.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-woo-importer.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/includes/class-mdo-woo-importer.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-admin.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/includes/class-mdo-admin.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-supplier-repository.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/includes/class-mdo-supplier-repository.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-scheduler.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/includes/class-mdo-scheduler.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/connectors/class-mdo-connector-iberico-family.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/connectors/class-mdo-connector-iberico-family.php"
+
+          mkdir -p .deploy-status
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -euo pipefail
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp || true)
+            PLUGIN_DIR='$PROD_PATH/wp-content/plugins/mdo-supplier-sync'
+            [ -d \"\$PLUGIN_DIR\" ] || { echo 'ERROR: production plugin directory not found' >&2; exit 20; }
+
+            for f in \
+              '$REMOTE_DIR/mdo-supplier-sync.php' \
+              '$REMOTE_DIR/includes/class-mdo-auto-categorizer.php' \
+              '$REMOTE_DIR/includes/class-mdo-woo-importer.php' \
+              '$REMOTE_DIR/includes/class-mdo-admin.php' \
+              '$REMOTE_DIR/includes/class-mdo-supplier-repository.php' \
+              '$REMOTE_DIR/includes/class-mdo-scheduler.php' \
+              '$REMOTE_DIR/connectors/class-mdo-connector-iberico-family.php'; do
+              \"\$php_bin\" -l \"\$f\" >/dev/null
+            done
+
+            cp \"\$PLUGIN_DIR/mdo-supplier-sync.php\" '/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.bak.php'
+            cp \"\$PLUGIN_DIR/includes/class-mdo-woo-importer.php\" '/tmp/class-mdo-woo-importer-${GITHUB_RUN_ID}.bak.php'
+            cp \"\$PLUGIN_DIR/includes/class-mdo-admin.php\" '/tmp/class-mdo-admin-${GITHUB_RUN_ID}.bak.php'
+            cp \"\$PLUGIN_DIR/includes/class-mdo-supplier-repository.php\" '/tmp/class-mdo-supplier-repository-${GITHUB_RUN_ID}.bak.php'
+            cp \"\$PLUGIN_DIR/includes/class-mdo-scheduler.php\" '/tmp/class-mdo-scheduler-${GITHUB_RUN_ID}.bak.php'
+            cp \"\$PLUGIN_DIR/connectors/class-mdo-connector-iberico-family.php\" '/tmp/class-mdo-connector-iberico-family-${GITHUB_RUN_ID}.bak.php'
+            if [ -f \"\$PLUGIN_DIR/includes/class-mdo-auto-categorizer.php\" ]; then
+              cp \"\$PLUGIN_DIR/includes/class-mdo-auto-categorizer.php\" '/tmp/class-mdo-auto-categorizer-${GITHUB_RUN_ID}.bak.php'
+            fi
+
+            cp '$REMOTE_DIR/mdo-supplier-sync.php' \"\$PLUGIN_DIR/mdo-supplier-sync.php\"
+            cp '$REMOTE_DIR/includes/class-mdo-auto-categorizer.php' \"\$PLUGIN_DIR/includes/class-mdo-auto-categorizer.php\"
+            cp '$REMOTE_DIR/includes/class-mdo-woo-importer.php' \"\$PLUGIN_DIR/includes/class-mdo-woo-importer.php\"
+            cp '$REMOTE_DIR/includes/class-mdo-admin.php' \"\$PLUGIN_DIR/includes/class-mdo-admin.php\"
+            cp '$REMOTE_DIR/includes/class-mdo-supplier-repository.php' \"\$PLUGIN_DIR/includes/class-mdo-supplier-repository.php\"
+            cp '$REMOTE_DIR/includes/class-mdo-scheduler.php' \"\$PLUGIN_DIR/includes/class-mdo-scheduler.php\"
+            cp '$REMOTE_DIR/connectors/class-mdo-connector-iberico-family.php' \"\$PLUGIN_DIR/connectors/class-mdo-connector-iberico-family.php\"
+
+            grep -q 'Version: 1.0.19' \"\$PLUGIN_DIR/mdo-supplier-sync.php\"
+            grep -q 'class-mdo-auto-categorizer.php' \"\$PLUGIN_DIR/mdo-supplier-sync.php\"
+            grep -q 'MDO_Auto_Categorizer::maybe_assign' \"\$PLUGIN_DIR/includes/class-mdo-woo-importer.php\"
+            grep -q 'URLs de la tienda / catálogo (una por línea)' \"\$PLUGIN_DIR/includes/class-mdo-admin.php\"
+            grep -q 'function source_urls' \"\$PLUGIN_DIR/includes/class-mdo-supplier-repository.php\"
+            grep -q '_mdo_catalog_source_only' \"\$PLUGIN_DIR/includes/class-mdo-scheduler.php\"
+            grep -q '_mdo_catalog_source_only' \"\$PLUGIN_DIR/connectors/class-mdo-connector-iberico-family.php\"
+
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+              if ( ! class_exists( "MDO_Auto_Categorizer" ) ) { fwrite( STDERR, "auto categorizer class missing\\n" ); exit( 31 ); }
+              $urls = MDO_Supplier_Repository::source_urls( "https://example.com/a\\nhttps://example.com/b" );
+              if ( 2 !== count( $urls ) ) { fwrite( STDERR, "multi source parser failed\\n" ); exit( 32 ); }
+              $probe = new WC_Product_Simple();
+              $result = MDO_Auto_Categorizer::maybe_assign( $probe, array( "title" => "EMDO category probe qzxw", "description" => "" ), array( "source_url" => "https://example.invalid/qzxw" ) );
+              if ( ! is_array( $result ) ) { fwrite( STDERR, "auto category probe failed\\n" ); exit( 33 ); }
+              $terms = get_terms( array( "taxonomy" => "product_cat", "hide_empty" => false ) );
+              if ( is_wp_error( $terms ) ) { fwrite( STDERR, "product categories unavailable\\n" ); exit( 34 ); }
+              echo "mdo_import_features_production_ok categories=" . count( $terms ) . " probe_reason=" . ( $result["reason"] ?? "unknown" ) . PHP_EOL;
+            ' --path='$PROD_PATH' --allow-root
+
+            rm -rf '$REMOTE_DIR'
+          " > .deploy-status/auto-categorization-20260820.txt 2>&1
+          CODE=$?
+          set -e
+          echo "$CODE" > .deploy-status/auto-categorization-20260820.exit-code
+          cat .deploy-status/auto-categorization-20260820.txt
+
+      - name: Record deployment result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/auto-categorization-20260820.txt .deploy-status/auto-categorization-20260820.exit-code || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record supplier import feature deployment [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Fail if deployment failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .deploy-status/auto-categorization-20260820.exit-code
+          test "$(cat .deploy-status/auto-categorization-20260820.exit-code)" = "0"
+          grep -q '^mdo_import_features_production_ok ' .deploy-status/auto-categorization-20260820.txt
