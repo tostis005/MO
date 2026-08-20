@@ -1,0 +1,9 @@
+<?php
+if ( ! defined( 'ABSPATH' ) ) { exit(1); }
+global $wpdb;
+$ids=[];
+if(class_exists('MDO_Database')){$table=MDO_Database::table('source_products');foreach((array)$wpdb->get_col("SELECT DISTINCT wc_product_id FROM {$table} WHERE wc_product_id>0 AND source_url LIKE '%lahuertadeanamary.com%' ORDER BY wc_product_id") as $id){$ids[]=(int)$id;}}
+function mdo_ctx($text,$needle){$plain=trim(preg_replace('/\s+/u',' ',html_entity_decode(wp_strip_all_tags((string)$text),ENT_QUOTES|ENT_HTML5,'UTF-8')));$pos=mb_stripos($plain,$needle,0,'UTF-8');if($pos===false)return '';return mb_substr($plain,max(0,$pos-100),mb_strlen($needle)+220,'UTF-8');}
+$out=['count'=>count($ids),'products'=>[]];
+foreach($ids as $id){$p=get_post($id);if(!$p)continue;$title=(string)get_post_meta($id,'_en_US_post_title',true);$slug=(string)get_post_meta($id,'_en_US_post_name',true);$content=(string)get_post_meta($id,'_en_US_post_content',true);$plain=trim(preg_replace('/\s+/u',' ',html_entity_decode(wp_strip_all_tags($content),ENT_QUOTES|ENT_HTML5,'UTF-8')));$contexts=[];foreach(['conservas','huerta','precio','price','correo','email','contact','whatsapp','teléfono','telefono','€','eur','euro','lahuertadeanamary.com','lahuertadeanamari.com'] as $needle){$ctx=mdo_ctx($plain,$needle);if($ctx!=='')$contexts[$needle]=$ctx;}$emails=[];preg_match_all('/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/iu',$plain,$m);$emails=array_values(array_unique($m[0]??[]));$urls=[];preg_match_all('#https?://[^\s<]+|www\.[^\s<]+#iu',$plain,$m2);$urls=array_values(array_unique($m2[0]??[]));$out['products'][]=['id'=>$id,'native_title'=>(string)$p->post_title,'english_title'=>$title,'english_slug'=>$slug,'contexts'=>$contexts,'emails'=>$emails,'urls'=>$urls,'content_plain'=>$plain];}
+echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT),"\n";
