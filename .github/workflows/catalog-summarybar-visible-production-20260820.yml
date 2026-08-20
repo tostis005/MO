@@ -6,6 +6,7 @@ on:
     paths:
       - 'mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
       - 'mu-plugins/mdo-catalog-destination-modal-footer-20260820.php'
+      - 'mu-plugins/mdo-catalog-toolbar-final-polish-20260820.php'
       - '.github/workflows/catalog-summarybar-visible-production-20260820.yml'
   workflow_dispatch:
 
@@ -30,19 +31,24 @@ jobs:
           set -euo pipefail
           TOOLBAR='mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
           FOOTER='mu-plugins/mdo-catalog-destination-modal-footer-20260820.php'
+          POLISH='mu-plugins/mdo-catalog-toolbar-final-polish-20260820.php'
           php -l "$TOOLBAR" >/dev/null
           php -l "$FOOTER" >/dev/null
+          php -l "$POLISH" >/dev/null
           grep -q 'mdo-catalog-toolbar-layout-20260820' "$TOOLBAR"
+          grep -q 'mdo-catalog-toolbar-final-polish-20260820' "$POLISH"
           grep -q 'Intentionally no hooks' "$FOOTER"
-          if grep -q 'MutationObserver' "$TOOLBAR"; then
-            echo 'MutationObserver is forbidden in the toolbar integration' >&2; exit 1
-          fi
-          if grep -Eq 'insertBefore|appendChild|insertAdjacentElement|replaceWith' "$TOOLBAR"; then
-            echo 'Client-side DOM relocation is forbidden in the toolbar integration' >&2; exit 1
-          fi
-          if grep -q '<script' "$TOOLBAR"; then
-            echo 'Toolbar layout must not need JavaScript' >&2; exit 1
-          fi
+          for file in "$TOOLBAR" "$POLISH"; do
+            if grep -q 'MutationObserver' "$file"; then
+              echo 'MutationObserver is forbidden in the toolbar integration' >&2; exit 1
+            fi
+            if grep -Eq 'insertBefore|appendChild|insertAdjacentElement|replaceWith' "$file"; then
+              echo 'Client-side DOM relocation is forbidden in the toolbar integration' >&2; exit 1
+            fi
+            if grep -q '<script' "$file"; then
+              echo 'Toolbar layout must not need JavaScript' >&2; exit 1
+            fi
+          done
           if grep -q "add_action" "$FOOTER"; then
             echo 'Retired footer relocation plugin must not register actions' >&2; exit 1
           fi
@@ -68,7 +74,7 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          for name in mdo-catalog-summarybar-visible-20260820.php mdo-catalog-destination-modal-footer-20260820.php; do
+          for name in mdo-catalog-summarybar-visible-20260820.php mdo-catalog-destination-modal-footer-20260820.php mdo-catalog-toolbar-final-polish-20260820.php; do
             local="mu-plugins/$name"
             tmp="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
             target="$PROD_PATH/wp-content/mu-plugins/$name"
@@ -114,6 +120,7 @@ jobs:
                 snaps[name]=await page.evaluate(()=>{
                   const visible=e=>{if(!e)return false;const c=getComputedStyle(e),r=e.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&Number(c.opacity||1)>0&&r.width>0&&r.height>0};
                   const toolbar=document.querySelector('.woostify-sorting.emo-catalog-toolbar-shared-010229');
+                  const left=toolbar?.querySelector(':scope > .woostify-toolbar-left');
                   const count=toolbar?.querySelector('.emo-catalog-result-count-010220');
                   const destination=toolbar?.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]');
                   const ordering=toolbar?.querySelector('.woocommerce-ordering');
@@ -121,9 +128,9 @@ jobs:
                   const pin=toolbar?.querySelector('.mdo-catalog-destination__pin,.mdo-catalog-summarybar__pin');
                   const candidates=[...new Set([...document.querySelectorAll('.woocommerce-result-count,.emo-catalog-result-count-010220,[data-mdo-summary-count],[data-mdo-toolbar-count]')])];
                   const visibleCounts=candidates.filter(visible);
-                  const tr=toolbar?.getBoundingClientRect(),dr=destination?.getBoundingClientRect(),or=ordering?.getBoundingClientRect(),cr=count?.getBoundingClientRect(),chr=chevron?.getBoundingClientRect();
+                  const tr=toolbar?.getBoundingClientRect(),lr=left?.getBoundingClientRect(),dr=destination?.getBoundingClientRect(),or=ordering?.getBoundingClientRect(),cr=count?.getBoundingClientRect(),chr=chevron?.getBoundingClientRect();
                   const inside=r=>!!(tr&&r&&r.left>=tr.left-1.5&&r.right<=tr.right+1.5&&r.top>=tr.top-1.5&&r.bottom<=tr.bottom+1.5);
-                  return {visible:visible(toolbar)&&visible(count)&&visible(destination)&&visible(ordering),inside:inside(cr)&&inside(dr)&&inside(or),visibleCountTotal:visibleCounts.length,pinExists:!!pin,chevronDelta:(dr&&chr)?Math.abs((chr.top+chr.height/2)-(dr.top+dr.height/2)):999,pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2,toolbarOverflow:toolbar?toolbar.scrollWidth>toolbar.clientWidth+2:true,products:document.querySelectorAll('li.product').length};
+                  return {visible:visible(toolbar)&&visible(count)&&visible(destination)&&visible(ordering),inside:inside(cr)&&inside(dr)&&inside(or),visibleCountTotal:visibleCounts.length,pinExists:!!pin,chevronDelta:(dr&&chr)?Math.abs((chr.top+chr.height/2)-(dr.top+dr.height/2)):999,pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2,toolbarOverflow:toolbar?toolbar.scrollWidth>toolbar.clientWidth+2:true,products:document.querySelectorAll('li.product').length,toolbarHeight:tr?.height||0,leftHeight:lr?.height||0,countHeight:cr?.height||0,destinationHeight:dr?.height||0,orderingHeight:or?.height||0,mobileStack:innerWidth>640?true:!!(lr&&or&&or.top>=lr.bottom+6)};
                 });
                 await button.hover();
                 const hover=await button.evaluate(el=>({color:getComputedStyle(el).color,children:[...el.querySelectorAll('*')].map(x=>getComputedStyle(x).color)}));
@@ -134,7 +141,7 @@ jobs:
               }
 
               status.default_products=snaps.desktop?.products||0;
-              status.viewports_ok=Object.values(snaps).every(s=>s.visible)?1:0;
+              status.viewports_ok=Object.values(snaps).every(s=>s.visible&&s.mobileStack&&Math.abs(s.destinationHeight-s.orderingHeight)<=1.5)?1:0;
               status.inside_toolbar=Object.values(snaps).every(s=>s.inside)?1:0;
               status.single_visible_count=Object.values(snaps).every(s=>s.visibleCountTotal===1)?1:0;
               status.no_horizontal_overflow=Object.values(snaps).every(s=>!s.pageOverflow&&!s.toolbarOverflow)?1:0;
@@ -160,7 +167,7 @@ jobs:
                 const y=Math.max(0,Math.min(innerHeight-1,pr.top+Math.min(110,pr.height/2)));
                 const top=document.elementFromPoint(x,y);
                 const before=getComputedStyle(close,'::before'),after=getComputedStyle(close,'::after');
-                return {root:modal.parentElement===document.body,above:Number(mc.zIndex)>=1000000&&!!top&&modal.contains(top),close:cr.width>=39&&cr.height>=39&&before.content!=='none'&&after.content!=='none'};
+                return {root:modal.parentElement===document.body,above:Number(mc.zIndex)>=1000000&&!!top&&modal.contains(top),close:cr.width>=41&&cr.height>=41&&before.content!=='none'&&after.content!=='none'};
               });
               status.modal_root=modalCheck.root?1:0;
               status.modal_above_catalog=modalCheck.above?1:0;
@@ -186,7 +193,7 @@ jobs:
               await context.close();
 
               const keys=['viewports_ok','inside_toolbar','single_visible_count','no_horizontal_overflow','no_leading_pin','chevron_centered','hover_readable','modal_root','modal_above_catalog','close_control_ok','click_opens_modal','other_destination_option','destination_change'];
-              if(keys.every(k=>status[k]===1)&&status.default_products>0){status.result='success';status.note='Polished toolbar verified at seven resolutions; no overflow/duplicates, centered chevron, readable hover and root modal above catalogue layers.'}
+              if(keys.every(k=>status[k]===1)&&status.default_products>0){status.result='success';status.note='Final toolbar verified at seven resolutions: mobile controls stack cleanly, desktop heights align, no overflow/duplicates, centered chevron, readable hover and root modal above catalogue layers.'}
               else status.note='Failed checks: '+keys.filter(k=>status[k]!==1).join(', ')+' snapshots='+JSON.stringify(snaps);
             }catch(e){status.note=(e&&e.stack?e.stack:String(e)).replace(/\n/g,' | ')}
             finally{await browser.close();fs.writeFileSync('/tmp/mdo-toolbar-browser.json',JSON.stringify(status,null,2));console.log(JSON.stringify(status,null,2))}
@@ -213,7 +220,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/catalog-toolbar-live.txt
-          git commit -m 'Record polished catalog toolbar check [skip ci]' || exit 0
+          git commit -m 'Record final catalog toolbar polish check [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
 
