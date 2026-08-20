@@ -1,0 +1,52 @@
+name: Catalog default Spain live audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.audit-triggers/catalog-default-spain.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit live shop
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/tienda/?mdo_final_audit=${GITHUB_RUN_ID}"
+          HTML=/tmp/mdo-final-shop.html
+          curl -fsSL --retry 3 --retry-delay 1 -A 'Mozilla/5.0 EMDO final catalog audit' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "$URL"
+          python3 - <<'PY'
+          import re, html, pathlib, os
+          s=pathlib.Path('/tmp/mdo-final-shop.html').read_text(encoding='utf-8',errors='ignore')
+          products=len(re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>',s,re.I))
+          selectors=re.findall(r'<div\b[^>]*data-mdo-destination-control[^>]*>(.*?)</div>',s,re.I|re.S)
+          selector_count=len(selectors)
+          selector_text=''
+          if selectors:
+              selector_text=html.unescape(re.sub(r'<[^>]+>',' ',selectors[0]))
+              selector_text=re.sub(r'\s+',' ',selector_text).strip()
+          result='success' if products>0 and selector_count==1 and 'España' in selector_text else 'failed'
+          note='Default shop has products and one Spain selector' if result=='success' else 'Default shop audit did not match expected state'
+          out=(f"result={result}\nsource_commit={os.environ['GITHUB_SHA']}\nworkflow_run={os.environ['GITHUB_RUN_ID']}\n"
+               f"product_cards={products}\nselector_count={selector_count}\nselector_text={selector_text}\nnote={note}\n")
+          pathlib.Path('.deploy-status').mkdir(exist_ok=True)
+          pathlib.Path('.deploy-status/catalog-default-spain-live-final.txt').write_text(out,encoding='utf-8')
+          print(out)
+          PY
+      - name: Record live audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-default-spain-live-final.txt
+          git commit -m 'Record final default Spain live audit [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
