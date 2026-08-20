@@ -1,0 +1,43 @@
+name: Patch catalog destination deploy status
+
+on:
+  push:
+    branches: [fix/catalog-destination-deploy-status]
+    paths: ['.github/workflows/patch-catalog-destination-status-20260820.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/catalog-destination-deploy-status
+          fetch-depth: 0
+      - name: Add self-reporting status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/catalog-destination-frontend-production-20260820.yml')
+          s=p.read_text()
+          s=s.replace('permissions:\n  contents: read\n', 'permissions:\n  contents: write\n', 1)
+          marker="          grep -Fq 'data-mdo-destination-control' \"$AFTER\"\n"
+          if marker not in s:
+              raise SystemExit('verification marker not found')
+          addition='''\n\n      - name: Record production verification status\n        if: always()\n        shell: bash\n        env:\n          MDO_JOB_STATUS: ${{ job.status }}\n        run: |\n          set -euo pipefail\n          mkdir -p .deploy-status\n          printf 'result=%s\\nsource_commit=%s\\nworkflow_run=%s\\nchecked_at=%s\\n' \\\n            \"$MDO_JOB_STATUS\" \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \\\n            > .deploy-status/catalog-destination-frontend.txt\n          git config user.name 'github-actions[bot]'\n          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'\n          git add .deploy-status/catalog-destination-frontend.txt\n          git commit -m 'Record catalog destination production status [skip ci]' || exit 0\n          git pull --rebase origin main\n          git push origin HEAD:main\n'''
+          p.write_text(s.replace(marker, marker+addition, 1))
+          PY
+      - name: Remove one-shot workflow and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/patch-catalog-destination-status-20260820.yml
+          git add .github/workflows/catalog-destination-frontend-production-20260820.yml
+          git commit -m 'Make catalog destination deploy self-reporting'
+          git push origin HEAD:fix/catalog-destination-deploy-status
