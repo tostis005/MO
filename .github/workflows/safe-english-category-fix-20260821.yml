@@ -66,53 +66,59 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE'"
 
           python3 - <<'PY'
-          import re,subprocess,time,json
+          import re,subprocess,time,json,pathlib
           base='https://www.elmercadodeorigen.com'
-          report={'phase':'test','checks':[]}
+          target=pathlib.Path('runtime/safe-english-category-fix-20260821.json')
+          report={'phase':'test','result':'running','checks':[]}
+          def save(): target.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           def get(url):
             p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','5','--max-time','22','-A','Mozilla/5.0 EMDO-safe-category/1.0','-w','\n__STATUS__:%{http_code}',url],capture_output=True,text=True)
             raw=p.stdout; m=re.search(r'\n__STATUS__:(\d{3})\s*$',raw); status=int(m.group(1)) if m else 0; body=raw[:m.start()] if m else raw
             return status,body
           status,body=get(base+'/')
-          report['checks'].append({'url':base+'/','status':status,'bytes':len(body.encode())})
-          if status!=200 or len(body)<100000: raise SystemExit('Spanish homepage unhealthy before enable')
+          report['checks'].append({'url':base+'/','status':status,'bytes':len(body.encode())}); save()
+          if status!=200 or len(body)<100000:
+            report['result']='failed'; report['failure']='Spanish homepage unhealthy before enable'; save(); raise SystemExit(report['failure'])
           for path in ['/en/product-category/meat/?mdo_cat_fix_test=1','/en/product-category/hams-and-shoulders/?mdo_cat_fix_test=1']:
             time.sleep(1)
             status,body=get(base+path)
             cards=len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',body,re.I)); empty=bool(re.search(r'no products were found|no se han encontrado productos',body,re.I))
-            report['checks'].append({'url':base+path,'status':status,'cards':cards,'empty':empty})
-            if status!=200 or cards<1 or empty: raise SystemExit('Test-mode category normalization failed')
-          open('runtime/safe-english-category-fix-20260821.json','w').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+            report['checks'].append({'url':base+path,'status':status,'cards':cards,'empty':empty}); save()
+            if status!=200 or cards<1 or empty:
+              report['result']='failed'; report['failure']='Test-mode category normalization failed'; save(); raise SystemExit(report['failure'])
+          report['result']='test_passed'; save()
           PY
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" option update mdo_en_category_query_normalizer_enabled_20260821 1 --path='$PROD_PATH' --allow-root >/dev/null; \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$wp_bin\" eval 'if (function_exists(\"rocket_clean_files\")) { rocket_clean_files(array(\"https://www.elmercadodeorigen.com/en/product-category/meat/\",\"https://www.elmercadodeorigen.com/en/product-category/hams-and-shoulders/\",\"https://www.elmercadodeorigen.com/en/product-category/cured-meats/\",\"https://www.elmercadodeorigen.com/en/product-category/packs-and-bundles/\",\"https://www.elmercadodeorigen.com/en/product-category/oils/\")); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
           python3 - <<'PY'
-          import re,subprocess,time,json,html
-          base='https://www.elmercadodeorigen.com'
-          report=json.load(open('runtime/safe-english-category-fix-20260821.json'))
-          report['phase']='enabled'
+          import re,subprocess,time,json,html,pathlib
+          base='https://www.elmercadodeorigen.com'; target=pathlib.Path('runtime/safe-english-category-fix-20260821.json')
+          report=json.loads(target.read_text()); report['phase']='enabled'; report['result']='validating_enabled'
+          def save(): target.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          def fail(msg): report['result']='failed'; report['failure']=msg; save(); raise SystemExit(msg)
           def get(url):
             p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','5','--max-time','22','-A','Mozilla/5.0 EMDO-safe-category/1.0','-H','Cache-Control: no-cache','-w','\n__STATUS__:%{http_code}',url],capture_output=True,text=True)
             raw=p.stdout; m=re.search(r'\n__STATUS__:(\d{3})\s*$',raw); status=int(m.group(1)) if m else 0; body=raw[:m.start()] if m else raw
             return status,body
           for path in ['/','/en/']:
-            status,body=get(base+path); report['checks'].append({'url':base+path,'status':status,'bytes':len(body.encode())})
-            if status!=200 or len(body)<100000: raise SystemExit('Homepage unhealthy after enable')
+            status,body=get(base+path); report['checks'].append({'url':base+path,'status':status,'bytes':len(body.encode())}); save()
+            if status!=200 or len(body)<100000: fail('Homepage unhealthy after enable')
             time.sleep(1)
           status,en=get(base+'/en/')
           links=[]
           for m in re.finditer(r'<a[^>]+class=["\'][^"\']*emo-category-card[^"\']*["\'][^>]+href=["\']([^"\']+)',en,re.I):
             u=html.unescape(m.group(1))
             if u not in links: links.append(u)
-          if not links: raise SystemExit('No English category links found')
+          report['english_category_links']=links; save()
+          if not links: fail('No English category links found')
           for u in links:
             time.sleep(1)
             status,body=get(u)
             cards=len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',body,re.I)); empty=bool(re.search(r'no products were found|no se han encontrado productos',body,re.I))
-            report['checks'].append({'url':u,'status':status,'cards':cards,'empty':empty})
-            if status!=200 or cards<1 or empty: raise SystemExit('Enabled category check failed: '+u)
-          open('runtime/safe-english-category-fix-20260821.json','w').write(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+            report['checks'].append({'url':u,'status':status,'cards':cards,'empty':empty}); save()
+            if status!=200 or cards<1 or empty: fail('Enabled category check failed: '+u)
+          report['result']='success'; save()
           PY
 
           trap - ERR
