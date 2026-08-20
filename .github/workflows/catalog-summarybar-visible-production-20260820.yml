@@ -1,0 +1,125 @@
+name: Catalog summary bar production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
+      - '.github/workflows/catalog-summarybar-visible-production-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy summary bar MU plugin
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          LOCAL='mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
+          php -l "$LOCAL" >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          TMP="/tmp/mdo-catalog-summarybar-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-catalog-summarybar-visible-20260820.php"
+          sshpass -e scp $SCP_OPTIONS "$LOCAL" "$STAGING_USER@$STAGING_HOST:$TMP"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$TMP' >/dev/null
+            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
+            cp '$TMP' '$TARGET'
+            rm -f '$TMP'
+            \"\$php_bin\" -l '$TARGET' >/dev/null
+            wp_bin=\$(command -v wp || true)
+            [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+      - name: Verify live summary bar markup
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          URL="https://www.elmercadodeorigen.com/tienda/?mdo_summarybar_verify=${GITHUB_RUN_ID}"
+          HTML=/tmp/mdo-summarybar.html
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO summarybar verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "$URL"
+          CURL_CODE=$?
+          RESULT=success
+          NOTE='Summary bar present'
+          PRODUCT_COUNT=0
+          BAR_COUNT=0
+          HAS_RESULTS=0
+          HAS_SPAIN=0
+          if [ $CURL_CODE -eq 0 ]; then
+            read -r PRODUCT_COUNT BAR_COUNT HAS_RESULTS HAS_SPAIN <<EOF
+          $(python3 - <<'PY'
+          import re,html
+          s=open('/tmp/mdo-summarybar.html',encoding='utf-8',errors='ignore').read()
+          products=len(re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>',s,re.I))
+          bars=len(re.findall(r'data-mdo-catalog-summarybar(?:\s|>|=)',s,re.I))
+          plain=re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>',' ',s)))
+          has_results=1 if re.search(r'\b\d+[\.,]?\d*\s+resultados?\b',plain,re.I) else 0
+          has_spain=1 if 'Envío a España' in plain else 0
+          print(products,bars,has_results,has_spain)
+          PY
+          )
+          EOF
+          fi
+          if [ $CURL_CODE -ne 0 ]; then RESULT=http_error; NOTE='Could not fetch live shop'; fi
+          if [ "$PRODUCT_COUNT" -lt 1 ]; then RESULT=no_products; NOTE='Shop has no product cards'; fi
+          if [ "$BAR_COUNT" -ne 1 ]; then RESULT=bar_count_wrong; NOTE='Expected exactly one summary bar'; fi
+          if [ "$HAS_RESULTS" -ne 1 ]; then RESULT=results_missing; NOTE='Results label missing from summary bar page'; fi
+          if [ "$HAS_SPAIN" -ne 1 ]; then RESULT=spain_missing; NOTE='Spain destination text missing'; fi
+          mkdir -p .deploy-status
+          printf 'result=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nproduct_cards=%s\nsummarybar_count=%s\nhas_results=%s\nhas_spain=%s\nnote=%s\n' "$RESULT" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PRODUCT_COUNT" "$BAR_COUNT" "$HAS_RESULTS" "$HAS_SPAIN" "$NOTE" > .deploy-status/catalog-summarybar-live.txt
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-summarybar-live.txt
+          git commit -m 'Record catalog summary bar live check [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Fail if live summary bar is wrong
+        if: steps.verify.outputs.result != 'success'
+        run: exit 1
