@@ -1,0 +1,61 @@
+name: Home target WebP final pass 20260820
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-target-webp-final-pass-20260820.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-target-webp-final-production
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Deploy final target WebP pass
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')"; : "${PROD:?no prod}"; echo "$PROD">/tmp/prod
+          sshpass -e scp $SCP mu-plugins/mdo-home-target-webp-delivery-20260820.php "$STAGING_USER@$STAGING_HOST:/tmp/target-webp-final-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';install -m0644 /tmp/target-webp-final-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-target-webp-delivery-20260820.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          for i in 1 2 3;do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null;done
+      - name: Verify exact URLs and Lighthouse
+        run: |
+          set -euo pipefail;mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=mobile --output=json --output-path=/tmp/lh.json --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          python3 - <<'PY' | tee runtime/home-target-webp-final-pass-20260820.txt
+          import json,re
+          s=open('/tmp/home.html',encoding='utf-8',errors='ignore').read();r=json.load(open('/tmp/lh.json'));a=r['audits']
+          targets=['JAMON_ACTO_ECOLOGICO1-scaled-450x300.webp','Tolecarnes-fondo-400x400.webp','Packs-lotes-300x400-1.webp']
+          for t in targets: print(t,'=',s.count(t))
+          # Deferred stylesheet is linked; report its URL so a later audit can verify Packs there if not inline.
+          m=re.search(r'id="elmercado-home-deferred-css"[^>]*href="([^"]+)',s);print('deferred=',m.group(1) if m else 'missing')
+          print('score=',round(r['categories']['performance']['score']*100),'fcp=',round(a['first-contentful-paint']['numericValue']),'lcp=',round(a['largest-contentful-paint']['numericValue']),'tbt=',round(a['total-blocking-time']['numericValue']),'cls=',a['cumulative-layout-shift']['numericValue'])
+          delivered=sum(s.count(t)>0 for t in targets[:2]);keep=delivered>=2 and a['cumulative-layout-shift']['numericValue']<0.02 and a['largest-contentful-paint']['numericValue']<5500
+          print('delivered_vendor_targets=',delivered);print('keep=',str(keep).lower());open('/tmp/keep','w').write('1' if keep else '0')
+          PY
+      - name: Roll back plugin on failure and record
+        if: always()
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;K=$(cat /tmp/keep 2>/dev/null||echo 0);PROD=$(cat /tmp/prod 2>/dev/null||true);PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "$K" != 1 ] && [ -n "$PROD" ];then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD/wp-content/mu-plugins/mdo-home-target-webp-delivery-20260820.php';php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css";fi
+          mkdir -p runtime;[ -f runtime/home-target-webp-final-pass-20260820.txt ]||echo failed>runtime/home-target-webp-final-pass-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-target-webp-final-pass-20260820.txt;git commit -m 'Record final targeted Home WebP delivery' || exit 0;git pull --rebase origin main;git push origin HEAD:main
