@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'init',
 	static function (): void {
-		$revision = '010256-12';
+		$revision = '010256-11';
 		if ( get_option( 'elmercado_home_cls_cache_revision', '' ) === $revision ) {
 			return;
 		}

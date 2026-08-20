@@ -1,0 +1,24 @@
+MOBILE
+run 1 {'score': 40, 'fcp': 1957, 'lcp': 2949, 'tbt': 1520, 'cls': 1.0029811737529224}
+ shift 1 body.home > div#mobile-navigation
+ shift 0.002981173752922441 article#post-3699 > div.emo-home > section.emo-hero > ::after
+run 2 {'score': 35, 'fcp': 2227, 'lcp': 4724, 'tbt': 752, 'cls': 1.0000093618011594}
+ shift 1 body.home > div#mobile-navigation
+ shift 9.361801159371189e-06 div.site-tools > a.tools-icon > span.woostify-svg-icon > svg#svg50
+run 3 {'score': 36, 'fcp': 2233, 'lcp': 4734, 'tbt': 711, 'cls': 1.0000093618011594}
+ shift 1 body.home > div#mobile-navigation
+ shift 9.361801159371189e-06 div.site-tools > a.tools-icon > span.woostify-svg-icon > svg#svg50
+median {'score': 36, 'fcp': 2227, 'lcp': 4724, 'tbt': 752, 'cls': 1.0000093618011594}
+DESKTOP
+run 1 {'score': 34, 'fcp': 2799, 'lcp': 5361, 'tbt': 600, 'cls': 0.03929280275626661}
+ shift 0.03439999135971263 article#post-3699 > div.emo-home > section.emo-hero > div.emo-shell
+ shift 0.004892811396553973 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+run 2 {'score': 32, 'fcp': 2822, 'lcp': 5392, 'tbt': 693, 'cls': 0.03929280275626661}
+ shift 0.03439999135971263 article#post-3699 > div.emo-home > section.emo-hero > div.emo-shell
+ shift 0.004892811396553973 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+run 3 {'score': 31, 'fcp': 2812, 'lcp': 5368, 'tbt': 700, 'cls': 0.07524067184725762}
+ shift 0.04550082649795573 article#post-3699 > div.emo-home > section.emo-hero > ::after
+ shift 0.02484703395274792 article#post-3699 > div.emo-home > section.emo-hero > ::after
+ shift 0.004892811396553973 header#masthead > div.site-header-inner > div.woostify-container > div.site-navigation
+median {'score': 32, 'fcp': 2812, 'lcp': 5368, 'tbt': 693, 'cls': 0.03929280275626661}
+keep= false
