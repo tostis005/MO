@@ -128,7 +128,7 @@ jobs:
           test_blocked() {
             local postcode="$1"
             local out="/tmp/mdo-blocked-${postcode}.json"
-            curl -fsSL -A 'Mozilla/5.0 EMDO destination verifier' -b "$JAR" -c "$JAR" -X POST \
+            curl -sSL -A 'Mozilla/5.0 EMDO destination verifier' -b "$JAR" -c "$JAR" -X POST \
               --data-urlencode 'action=mdo_set_shipping_destination' \
               --data-urlencode "nonce=$NONCE" \
               --data-urlencode 'country=ES' \
