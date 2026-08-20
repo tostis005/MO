@@ -1,0 +1,132 @@
+name: Safe English storefront audit 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/safe-english-huerta-audit-20260821.yml'
+      - 'runtime/triggers/safe-english-huerta-audit-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Read-only production audit
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+
+          cat > /tmp/mdo-safe-audit.php <<'PHP'
+          <?php
+          global $wpdb;
+          $terms = get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0));
+          $cats = array();
+          if (!is_wp_error($terms)) {
+            foreach ($terms as $t) {
+              $cats[] = array(
+                'id'=>(int)$t->term_id,
+                'name'=>(string)$t->name,
+                'slug'=>(string)$t->slug,
+                'count'=>(int)$t->count,
+                'en_published'=>(string)get_term_meta($t->term_id,'_en_US_published',true),
+                'en_name'=>(string)get_term_meta($t->term_id,'_en_US_name',true),
+                'en_slug'=>(string)get_term_meta($t->term_id,'_en_US_slug',true),
+              );
+            }
+          }
+          $ids = $wpdb->get_col("SELECT DISTINCT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID WHERE p.post_type='product' AND pm.meta_key='_emdo_source_url' AND pm.meta_value LIKE '%lahuertadeanamary.com%' ORDER BY p.ID ASC") ?: array();
+          $huerta = array('count'=>count($ids),'english_complete'=>0,'incomplete'=>array());
+          foreach ($ids as $raw_id) {
+            $id=(int)$raw_id;
+            $title=trim((string)get_post_meta($id,'_en_US_post_title',true));
+            $slug=trim((string)get_post_meta($id,'_en_US_post_name',true));
+            $content=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_content',true)));
+            $published=(string)get_post_meta($id,'_en_US_published',true);
+            if ($title!=='' && $slug!=='' && $content!=='' && $published==='1') $huerta['english_complete']++;
+            else $huerta['incomplete'][]=array('id'=>$id,'title'=>$title!==''?1:0,'slug'=>$slug!==''?1:0,'content'=>$content!==''?1:0,'published'=>$published);
+          }
+          echo wp_json_encode(array('categories'=>$cats,'huerta'=>$huerta),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT),"\n";
+          PHP
+          REMOTE="/tmp/mdo-safe-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/mdo-safe-audit.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rm -f '$REMOTE'" > runtime/safe-english-huerta-db-20260821.json
+
+          python3 - <<'PY'
+          import json,re,subprocess,time,html as htmllib
+          base='https://www.elmercadodeorigen.com'
+          out={'pages':[],'english_category_links':[],'producer_cta_samples':[]}
+          def get(url):
+            p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','5','--max-time','18','-A','Mozilla/5.0 EMDO-safe-audit/1.0','-w','\n__STATUS__:%{http_code}',url],capture_output=True,text=True)
+            raw=p.stdout
+            m=re.search(r'\n__STATUS__:(\d{3})\s*$',raw)
+            status=int(m.group(1)) if m else 0
+            body=raw[:m.start()] if m else raw
+            out['pages'].append({'url':url,'status':status,'bytes':len(body.encode())})
+            return status,body
+          st_es,es=get(base+'/')
+          time.sleep(1)
+          st_en,en=get(base+'/en/')
+          links=[]
+          for m in re.finditer(r'<a[^>]+class=["\'][^"\']*emo-category-card[^"\']*["\'][^>]+href=["\']([^"\']+)',en,re.I):
+            u=htmllib.unescape(m.group(1))
+            if u not in links: links.append(u)
+          out['english_category_links']=links
+          for u in links[:2]:
+            time.sleep(1)
+            st,body=get(u)
+            cards=len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',body,re.I))
+            empty=bool(re.search(r'no products were found|no se han encontrado productos',body,re.I))
+            out.setdefault('category_checks',[]).append({'url':u,'status':st,'product_cards':cards,'empty_message':empty})
+          time.sleep(1)
+          st_prod,prod=get(base+'/en/producers/')
+          for label in ['Visitar Tienda','Visitar tienda','Visit Store','Visit']:
+            if re.search(r'>\s*'+re.escape(label)+r'\s*<',prod,re.I): out['producer_cta_samples'].append(label)
+          open('runtime/safe-english-huerta-live-20260821.json','w').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          if st_es < 200 or st_es >= 400 or st_en < 200 or st_en >= 400:
+            raise SystemExit('Homepage health check failed')
+          PY
+
+      - name: Commit audit report
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add runtime/safe-english-huerta-db-20260821.json runtime/safe-english-huerta-live-20260821.json || true
+          git commit -m 'Record safe English storefront audit' || true
+          git push origin HEAD:main
