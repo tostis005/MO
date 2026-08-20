@@ -1,0 +1,62 @@
+name: EMDO runtime audit v2 20260820
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/emdo-runtime-audit-v2-20260820.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect EMDO with safe bootstrap
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?}"
+          REMOTE="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            echo '---FILES---'
+            ls -la '$PROD_PATH/wp-content/plugins/mdo-supplier-sync' 2>&1 | head -n 30
+            echo '---HEADER SAFE---'
+            \"\$php_bin\" \"\$wp_bin\" plugin get mdo-supplier-sync --fields=name,status,version --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>&1 || true
+            echo '---ACTIVE SAFE---'
+            \"\$php_bin\" \"\$wp_bin\" option get active_plugins --format=json --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>&1 || true
+            echo '---PLUGIN LIST SAFE---'
+            \"\$php_bin\" \"\$wp_bin\" plugin list --fields=name,status,version --format=csv --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>&1 | grep -E '(^name,|mdo|supplier)' || true
+            echo '---RUNTIME ERROR---'
+            \"\$php_bin\" \"\$wp_bin\" eval 'echo defined(\"MDO_SUPPLIER_SYNC_VERSION\") ? MDO_SUPPLIER_SYNC_VERSION : \"missing\";' --path='$PROD_PATH' --allow-root 2>&1 | tail -n 30 || true
+          ")"
+          mkdir -p .deploy-status
+          printf '%s\n' "$REMOTE" > .deploy-status/emdo-runtime-audit-v2.txt
+      - name: Record diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/emdo-runtime-audit-v2.txt
+          git commit -m 'Record EMDO runtime audit v2 [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
