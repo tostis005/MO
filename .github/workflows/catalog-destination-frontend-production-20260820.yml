@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-and-verify:
+  closeout:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -30,8 +30,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate badge PHP
+      - name: Deploy and verify badge
+        id: deploy
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           php -l mu-plugins/mdo-emdo-selection-badge-20260820.php >/dev/null
@@ -40,12 +43,6 @@ jobs:
           grep -Fq 'EMDO Selection' mu-plugins/mdo-emdo-selection-badge-20260820.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
-      - name: Deploy badge to production
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -71,7 +68,7 @@ jobs:
           TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-emdo-selection-badge-20260820.php"
           sshpass -e scp $SCP_OPTIONS "$LOCAL" "$STAGING_USER@$STAGING_HOST:$TMP"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+          VERIFY="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
@@ -83,47 +80,43 @@ jobs:
             cp '$TMP' '$TARGET'
             rm -f '$TMP'
             \"\$php_bin\" -l '$TARGET' >/dev/null
-            VERIFY=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
-              printf("RANKING=%s\\n", class_exists("MDO_Catalog_Ranking") ? "yes" : "no");
-              printf("BADGE_CLASS=%s\\n", class_exists("MDO_EMDO_Selection_Badge") ? "yes" : "no");
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+              if (!class_exists("MDO_Catalog_Ranking") || !class_exists("MDO_EMDO_Selection_Badge")) { exit(11); }
+              echo "RANKING=yes\\nBADGE_CLASS=yes\\n";
               $ids = get_posts(array("post_type"=>"product","post_status"=>"publish","numberposts"=>1,"fields"=>"ids","meta_key"=>MDO_Catalog_Ranking::PRIORITY_META,"meta_value"=>"100"));
-              printf("PRIORITY100_VISIBLE_CANDIDATE=%d\\n", count($ids));
+              printf("PRIORITY100_CANDIDATE=%d\\n", count($ids));
               if ($ids) {
                 global $product;
                 $product = wc_get_product((int) $ids[0]);
-                printf("PRODUCT_ID=%d\\n", (int) $ids[0]);
-                printf("PRIORITY=%d\\n", MDO_Catalog_Ranking::get_priority((int) $ids[0]));
+                printf("PRODUCT_ID=%d\\nPRIORITY=%d\\n", (int) $ids[0], MDO_Catalog_Ranking::get_priority((int) $ids[0]));
                 $_SERVER["REQUEST_URI"] = "/tienda/";
                 ob_start(); MDO_EMDO_Selection_Badge::render_badge(); $es = ob_get_clean();
                 $_SERVER["REQUEST_URI"] = "/en/shop/";
                 ob_start(); MDO_EMDO_Selection_Badge::render_badge(); $en = ob_get_clean();
                 printf("BADGE_ES=%s\\n", false !== strpos($es, "Selección EMDO") ? "yes" : "no");
                 printf("BADGE_EN=%s\\n", false !== strpos($en, "EMDO Selection") ? "yes" : "no");
+                if (100 !== MDO_Catalog_Ranking::get_priority((int) $ids[0]) || false === strpos($es, "Selección EMDO") || false === strpos($en, "EMDO Selection")) { exit(12); }
               }
-            ' --path='$PROD_PATH' --allow-root)
-            printf '%s\\n' \"\$VERIFY\" | tee /tmp/emdo-selection-cli-${GITHUB_RUN_ID}.txt
-            printf '%s\\n' \"\$VERIFY\" | grep -Fq 'RANKING=yes'
-            printf '%s\\n' \"\$VERIFY\" | grep -Fq 'BADGE_CLASS=yes'
-            if printf '%s\\n' \"\$VERIFY\" | grep -Fq 'PRIORITY100_VISIBLE_CANDIDATE=1'; then
-              printf '%s\\n' \"\$VERIFY\" | grep -Fq 'PRIORITY=100'
-              printf '%s\\n' \"\$VERIFY\" | grep -Fq 'BADGE_ES=yes'
-              printf '%s\\n' \"\$VERIFY\" | grep -Fq 'BADGE_EN=yes'
-            fi
+            ' --path='$PROD_PATH' --allow-root
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
-          "
+          ")"
+          printf '%s\n' "$VERIFY" | tee /tmp/emdo-selection-cli.txt
+          printf '%s\n' "$VERIFY" | grep -Fq 'RANKING=yes'
+          printf '%s\n' "$VERIFY" | grep -Fq 'BADGE_CLASS=yes'
 
-      - name: Verify live storefront asset
-        shell: bash
-        run: |
-          set -euo pipefail
           HTML=/tmp/emdo-selection-shop.html
           curl -fsSL --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO selection verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "https://www.elmercadodeorigen.com/tienda/?emdo_selection_verify=${GITHUB_RUN_ID}"
           grep -Fq 'mdo-emdo-selection-badge-css' "$HTML"
-          printf 'live_css=yes\n' > /tmp/emdo-selection-live.txt
-          if grep -Fq 'mdo-emdo-selection-badge' "$HTML"; then printf 'live_badge_on_first_page=yes\n' >> /tmp/emdo-selection-live.txt; else printf 'live_badge_on_first_page=no\n' >> /tmp/emdo-selection-live.txt; fi
+          {
+            echo 'live_css=yes'
+            if grep -Fq 'mdo-emdo-selection-badge' "$HTML"; then echo 'live_badge_on_first_page=yes'; else echo 'live_badge_on_first_page=no'; fi
+          } | tee /tmp/emdo-selection-live.txt
 
-      - name: Record successful closeout
+      - name: Record closeout status
+        if: always()
         shell: bash
+        env:
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
         run: |
           set -euo pipefail
           mkdir -p .deploy-status
@@ -131,20 +124,21 @@ jobs:
             echo "source_commit=${GITHUB_SHA}"
             echo "workflow_run=${GITHUB_RUN_ID}"
             echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "stage=live_verified"
+            echo "stage=${DEPLOY_OUTCOME}"
             echo "feature=emdo_selection_badge"
             echo "priority_required=100"
             echo "spanish_label=Selección EMDO"
             echo "english_label=EMDO Selection"
-            cat /tmp/emdo-selection-live.txt
+            test -f /tmp/emdo-selection-cli.txt && cat /tmp/emdo-selection-cli.txt || true
+            test -f /tmp/emdo-selection-live.txt && cat /tmp/emdo-selection-live.txt || true
           } > .deploy-status/emdo-selection-badge-20260820.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/emdo-selection-badge-20260820.txt
-          git commit -m 'Record EMDO Selection badge production verification [skip ci]'
+          git commit -m 'Record EMDO Selection badge closeout [skip ci]' || true
           for attempt in 1 2 3 4; do
-            git push origin HEAD:main && exit 0
+            git push origin HEAD:main && break
             git pull --rebase origin main
             sleep 2
           done
-          exit 1
+          test "$DEPLOY_OUTCOME" = 'success'
