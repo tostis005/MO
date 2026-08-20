@@ -1,0 +1,96 @@
+name: Home Meta CAPI delay 20260820
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-meta-capi-delay-20260820.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-meta-capi-delay-production
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Delay only the automatic CAPI helper fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp mu-plugins/mdo-home-performance-20260819.php /tmp/home-performance-before-meta.php
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('mu-plugins/mdo-home-performance-20260819.php')
+          s=p.read_text()
+          s=s.replace('Version: 1.4.1','Version: 1.4.2',1)
+          old="""    const schedule = () => {
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(load, { timeout: 1500 });
+        } else {
+            setTimeout(load, 500);
+        }
+    };"""
+          new="""    const schedule = () => {
+        // CAPI param enrichment is non-critical. Real interaction still loads it
+        // immediately; passive sessions get it well after the first viewport.
+        setTimeout(load, 12000);
+    };"""
+          if old not in s:
+              raise SystemExit('Meta schedule block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          php -l mu-plugins/mdo-home-performance-20260819.php
+          grep -q 'setTimeout(load, 12000)' mu-plugins/mdo-home-performance-20260819.php
+
+      - name: Deploy patched Home performance MU and clear cache
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')";: "${PROD:?no prod}";echo "$PROD">/tmp/prod-meta
+          sshpass -e scp $SCP mu-plugins/mdo-home-performance-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/home-performance-meta-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';cp \"\$MU/mdo-home-performance-20260819.php\" /tmp/home-performance-server-before-meta-${GITHUB_RUN_ID}.php;install -m0644 /tmp/home-performance-meta-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-performance-20260819.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          for i in 1 2 3;do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null;done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home-meta.html
+          grep -q 'setTimeout(load, 12000)' /tmp/home-meta.html
+
+      - name: Lighthouse mobile 2x and inspect Meta requests
+        shell: bash
+        run: |
+          set -euo pipefail;mkdir -p runtime
+          for i in 1 2;do npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=mobile --output=json --output-path="/tmp/lh-$i.json" --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage';done
+          python3 - <<'PY' | tee runtime/home-meta-capi-delay-20260820.txt
+          import json,statistics
+          rows=[];capi=[]
+          for i in (1,2):
+              r=json.load(open(f'/tmp/lh-{i}.json'));a=r['audits'];row={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue']};rows.append(row);print('run',i,row)
+              urls=[x.get('url','') for x in ((a.get('network-requests',{}).get('details') or {}).get('items') or [])]
+              hits=[u for u in urls if 'clientParamBuilder' in u or 'unpkg.com' in u];capi.append(len(hits));print(' capi_requests=',hits)
+              legacy=((a.get('legacy-javascript',{}).get('details') or {}).get('items') or []);print(' legacy_urls=',[(x.get('url'),x.get('wastedBytes')) for x in legacy])
+          med={k:statistics.median(x[k] for x in rows) for k in rows[0]};print('median',med);print('capi_request_counts=',capi)
+          keep=max(capi)==0 and med['cls']<0.02 and med['lcp']<5500
+          print('keep=',str(keep).lower());open('/tmp/keep-meta','w').write('1' if keep else '0')
+          PY
+
+      - name: Keep or restore and record
+        if: always()
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;K=$(cat /tmp/keep-meta 2>/dev/null||echo 0);PROD=$(cat /tmp/prod-meta 2>/dev/null||true);PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "$K" != 1 ];then cp /tmp/home-performance-before-meta.php mu-plugins/mdo-home-performance-20260819.php;[ -z "$PROD" ]||sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';install -m0644 /tmp/home-performance-server-before-meta-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-performance-20260819.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css";fi
+          mkdir -p runtime;[ -f runtime/home-meta-capi-delay-20260820.txt ]||echo failed>runtime/home-meta-capi-delay-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add mu-plugins/mdo-home-performance-20260819.php runtime/home-meta-capi-delay-20260820.txt;git commit -m 'Measure delayed Home Meta CAPI helper' || exit 0;git pull --rebase origin main;git push origin HEAD:main
