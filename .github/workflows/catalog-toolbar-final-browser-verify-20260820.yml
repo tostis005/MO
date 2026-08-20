@@ -1,0 +1,160 @@
+name: Catalog toolbar final browser verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-toolbar-final-browser-verify-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Chromium verifier
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save --no-audit --no-fund playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Verify toolbar and destination end to end
+        id: browser
+        env:
+          SHOP_URL: https://www.elmercadodeorigen.com/tienda/
+        run: |
+          set +e
+          node <<'NODE'
+          const fs = require('fs');
+          const { chromium } = require('playwright');
+          const status = {
+            result:'failed', desktop_visible:0, mobile_portrait_visible:0, mobile_landscape_visible:0,
+            inside_toolbar:0, click_opens_modal:0, other_destination_option:0, destination_change:0,
+            default_products:0, selected_destination:'', note:''
+          };
+          const visible = el => {
+            if (!el) return false;
+            const cs=getComputedStyle(el), r=el.getBoundingClientRect();
+            return cs.display!=='none' && cs.visibility!=='hidden' && Number(cs.opacity||1)>0 && r.width>0 && r.height>0;
+          };
+          const dismissMarketingPopup = async page => {
+            await page.evaluate(() => {
+              document.querySelectorAll('.hustle-ui.hustle-popup, .hustle-popup.hustle-show').forEach(el => el.remove());
+              document.documentElement.classList.remove('hustle-scroll-forbidden');
+              document.body.classList.remove('hustle-scroll-forbidden');
+              document.body.style.removeProperty('overflow');
+            });
+            await page.waitForTimeout(100);
+          };
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            try {
+              const open=async(name,viewport)=>{
+                const context=await browser.newContext({viewport});
+                const page=await context.newPage();
+                await page.goto(`${process.env.SHOP_URL}?mdo_toolbar_final=${process.env.GITHUB_RUN_ID||Date.now()}&vp=${name}`,{waitUntil:'domcontentloaded',timeout:45000});
+                await page.waitForSelector('.woocommerce-ordering',{state:'attached',timeout:20000});
+                await page.waitForSelector('[data-mdo-toolbar-destination]',{state:'visible',timeout:20000});
+                await page.waitForTimeout(400);
+                const snap=await page.evaluate(v => {
+                  const isVisible=eval(`(${v})`);
+                  const ordering=document.querySelector('.woocommerce-ordering');
+                  const toolbar=document.querySelector('.woostify-sorting.emo-catalog-toolbar-shared-010229')||ordering?.closest('.woostify-sorting')||ordering?.parentElement;
+                  const count=document.querySelector('[data-mdo-toolbar-count]');
+                  const dest=document.querySelector('[data-mdo-toolbar-destination]');
+                  return {
+                    inside:!!(toolbar&&count&&dest&&toolbar.contains(count)&&toolbar.contains(dest)&&toolbar.contains(ordering)),
+                    countVisible:isVisible(count), destinationVisible:isVisible(dest), orderingVisible:isVisible(ordering),
+                    destinationText:dest?.textContent?.replace(/\s+/g,' ').trim()||'', products:document.querySelectorAll('li.product').length
+                  };
+                },visible.toString());
+                return {context,page,snap};
+              };
+              const desktop=await open('desktop',{width:1440,height:900});
+              const portrait=await open('portrait',{width:390,height:844});
+              const landscape=await open('landscape',{width:844,height:390});
+              const good=s=>s.inside&&s.countVisible&&s.destinationVisible&&s.orderingVisible&&/Envío a\s+España/i.test(s.destinationText);
+              status.desktop_visible=good(desktop.snap)?1:0;
+              status.mobile_portrait_visible=good(portrait.snap)?1:0;
+              status.mobile_landscape_visible=good(landscape.snap)?1:0;
+              status.inside_toolbar=[desktop.snap,portrait.snap,landscape.snap].every(s=>s.inside)?1:0;
+              status.default_products=desktop.snap.products;
+              await portrait.context.close();
+              await landscape.context.close();
+
+              const {page,context}=desktop;
+              await dismissMarketingPopup(page);
+              await page.locator('[data-mdo-toolbar-destination]').click({timeout:7000});
+              await page.waitForFunction(()=>{
+                const m=document.querySelector('[data-mdo-destination-modal]');
+                if(!m||m.hidden)return false;
+                const cs=getComputedStyle(m),r=m.getBoundingClientRect();
+                return cs.display!=='none'&&cs.visibility!=='hidden'&&r.width>0&&r.height>0;
+              },null,{timeout:7000});
+              status.click_opens_modal=1;
+
+              const select=page.locator('[data-mdo-destination-country]');
+              const options=await select.locator('option').evaluateAll(opts=>opts.map(o=>({value:o.value,label:o.textContent.trim()})).filter(o=>o.value));
+              const target=options.find(o=>o.value!=='ES');
+              if(!target)throw new Error('No supported destination other than Spain in selector');
+              status.other_destination_option=1;
+              status.selected_destination=`${target.value}:${target.label}`;
+              await select.selectOption(target.value);
+              if(await select.inputValue()!==target.value)throw new Error('Alternate destination could not be selected');
+
+              const responsePromise=page.waitForResponse(r=>r.url().includes('admin-ajax.php')&&(r.request().postData()||'').includes('mdo_set_shipping_destination'),{timeout:15000});
+              const navPromise=page.waitForNavigation({waitUntil:'domcontentloaded',timeout:20000}).catch(()=>null);
+              await page.locator('[data-mdo-destination-save]').click({timeout:7000});
+              const response=await responsePromise;
+              let payload=null; try{payload=await response.json();}catch(_){ }
+              if(!response.ok()||!payload?.success)throw new Error(`Destination AJAX failed: ${response.status()} ${JSON.stringify(payload)}`);
+              await navPromise;
+              const cookies=await context.cookies();
+              const countryCookie=cookies.find(c=>c.name==='mdo_shipping_country');
+              if(countryCookie?.value!==target.value)throw new Error(`Destination cookie expected ${target.value}, got ${countryCookie?.value||'missing'}`);
+              status.destination_change=1;
+              await context.close();
+
+              if(status.desktop_visible&&status.mobile_portrait_visible&&status.mobile_landscape_visible&&status.inside_toolbar&&status.click_opens_modal&&status.other_destination_option&&status.destination_change&&status.default_products>0){
+                status.result='success';
+                status.note='Visible in real toolbar on all viewports; Spain opens selector and alternate country persists.';
+              } else status.note='One or more assertions failed.';
+            } catch(e){ status.note=(e?.stack||String(e)).replace(/\n/g,' | '); }
+            finally { await browser.close(); fs.writeFileSync('/tmp/mdo-toolbar-final.json',JSON.stringify(status,null,2)); console.log(JSON.stringify(status,null,2)); }
+          })();
+          NODE
+          [ -s /tmp/mdo-toolbar-final.json ] || printf '{"result":"failed","note":"no browser status"}\n' >/tmp/mdo-toolbar-final.json
+          RESULT="$(python3 -c "import json;print(json.load(open('/tmp/mdo-toolbar-final.json')).get('result','failed'))")"
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record final live check
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os,datetime
+          try:d=json.load(open('/tmp/mdo-toolbar-final.json'))
+          except Exception as e:d={'result':'failed','note':str(e)}
+          keys=['result','desktop_visible','mobile_portrait_visible','mobile_landscape_visible','inside_toolbar','click_opens_modal','other_destination_option','destination_change','default_products','selected_destination','note']
+          out=[f'source_commit={os.environ.get("GITHUB_SHA","")}',f'workflow_run={os.environ.get("GITHUB_RUN_ID","")}',f'checked_at={datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}']
+          out += [f'{k}={str(d.get(k,"" )).replace(chr(10)," ")}' for k in keys]
+          open('.deploy-status/catalog-toolbar-final-live.txt','w').write('\n'.join(out)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-toolbar-final-live.txt
+          git commit -m 'Record final catalog toolbar check [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Fail if end-to-end check failed
+        if: steps.browser.outputs.result != 'success'
+        run: exit 1
