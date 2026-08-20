@@ -1,0 +1,36 @@
+name: Home CSS minify cancel recover 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-css-minify-cancel-recover-20260820.yml']
+permissions:
+  contents: write
+concurrency:
+  group: home-css-whitespace-minify-production
+  cancel-in-progress: true
+jobs:
+  restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore committed stable Home cache
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')";: "${PROD:?no prod}"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/home-cache.php "$STAGING_USER@$STAGING_HOST:/tmp/home-cache-stable-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "THEME='$PROD/wp-content/themes/elmercadodeorigen-child';install -m0644 /tmp/home-cache-stable-${GITHUB_RUN_ID}.php \"\$THEME/inc/home-cache.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          for i in 1 2;do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null;done
+      - name: Verify stable markers
+        run: |
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          grep -q 'data-emo-menu-intent' /tmp/home.html
+          grep -q 'html:not(\[data-emo-menu-intent="1"\]) body.home .sidebar-menu' /tmp/home.html
+          ! grep -q 'elmercado_minify_home_css_whitespace' /tmp/home.html
