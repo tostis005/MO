@@ -1,0 +1,96 @@
+name: Catalog destination click diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-destination-click-diagnostic-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Chromium
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save --no-audit --no-fund playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Diagnose live click
+        run: |
+          set +e
+          node <<'NODE'
+          const fs=require('fs');
+          const {chromium}=require('playwright');
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            const context=await browser.newContext({viewport:{width:1440,height:900}});
+            const page=await context.newPage();
+            const out={};
+            try{
+              await page.goto('https://www.elmercadodeorigen.com/tienda/?mdo_click_diag='+Date.now(),{waitUntil:'domcontentloaded',timeout:45000});
+              await page.waitForSelector('[data-mdo-toolbar-destination]',{state:'visible',timeout:20000});
+              await page.evaluate(()=>document.querySelectorAll('.hustle-ui.hustle-popup,.hustle-popup.hustle-show').forEach(el=>el.remove()));
+              out.script=await page.evaluate(()=>document.querySelector('#mdo-catalog-toolbar-destination-js-20260820')?.textContent||'');
+              out.script_has_pointerup=out.script.includes("window.addEventListener('pointerup'");
+              out.script_has_openModal=out.script.includes('const openModal=');
+              out.initial=await page.evaluate(()=>{
+                const b=document.querySelector('[data-mdo-toolbar-destination]');
+                const m=document.querySelector('[data-mdo-destination-modal]');
+                const cs=m?getComputedStyle(m):null,r=m?m.getBoundingClientRect():null;
+                return {button:!!b,modal:!!m,modalCount:document.querySelectorAll('[data-mdo-destination-modal]').length,hidden:m?.hidden,hiddenAttr:m?.hasAttribute('hidden'),aria:m?.getAttribute('aria-hidden'),display:cs?.display,visibility:cs?.visibility,width:r?.width,height:r?.height,modalClass:m?.className};
+              });
+              await page.evaluate(()=>{
+                window.__mdoDiagEvents=[];
+                const log=e=>{const path=e.composedPath?.()||[];window.__mdoDiagEvents.push({type:e.type,target:e.target?.tagName,buttonInPath:path.some(n=>n?.matches?.('[data-mdo-toolbar-destination]'))});};
+                window.addEventListener('pointerup',log,true);window.addEventListener('click',log,true);
+              });
+              await page.locator('[data-mdo-toolbar-destination]').click({timeout:7000});
+              await page.waitForTimeout(250);
+              out.after_real_click=await page.evaluate(()=>{
+                const m=document.querySelector('[data-mdo-destination-modal]'),cs=m?getComputedStyle(m):null,r=m?m.getBoundingClientRect():null;
+                return {events:window.__mdoDiagEvents,hidden:m?.hidden,hiddenAttr:m?.hasAttribute('hidden'),aria:m?.getAttribute('aria-hidden'),display:cs?.display,visibility:cs?.visibility,width:r?.width,height:r?.height,bodyClass:document.body.className.includes('mdo-destination-modal-open')};
+              });
+              await page.evaluate(()=>{
+                const m=document.querySelector('[data-mdo-destination-modal]');
+                if(m){m.hidden=false;m.removeAttribute('hidden');m.setAttribute('aria-hidden','false');document.body.classList.add('mdo-destination-modal-open');}
+              });
+              await page.waitForTimeout(250);
+              out.after_manual_open=await page.evaluate(()=>{
+                const m=document.querySelector('[data-mdo-destination-modal]'),cs=m?getComputedStyle(m):null,r=m?m.getBoundingClientRect():null;
+                return {hidden:m?.hidden,hiddenAttr:m?.hasAttribute('hidden'),aria:m?.getAttribute('aria-hidden'),display:cs?.display,visibility:cs?.visibility,width:r?.width,height:r?.height,bodyClass:document.body.className.includes('mdo-destination-modal-open')};
+              });
+              out.canonical=await page.evaluate(()=>{
+                const c=document.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]');
+                return {exists:!!c,onclick:typeof c?.onclick};
+              });
+              await page.evaluate(()=>{
+                const m=document.querySelector('[data-mdo-destination-modal]');if(m){m.hidden=true;m.setAttribute('aria-hidden','true')}
+                document.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]')?.click();
+              });
+              await page.waitForTimeout(250);
+              out.after_canonical_click=await page.evaluate(()=>{
+                const m=document.querySelector('[data-mdo-destination-modal]'),cs=m?getComputedStyle(m):null,r=m?m.getBoundingClientRect():null;
+                return {hidden:m?.hidden,hiddenAttr:m?.hasAttribute('hidden'),aria:m?.getAttribute('aria-hidden'),display:cs?.display,width:r?.width,height:r?.height};
+              });
+            }catch(e){out.error=(e?.stack||String(e)).replace(/\n/g,' | ')}
+            await browser.close();
+            fs.writeFileSync('/tmp/mdo-click-diag.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2));
+          })();
+          NODE
+      - name: Record diagnostic
+        if: always()
+        run: |
+          mkdir -p .deploy-status
+          cp /tmp/mdo-click-diag.json .deploy-status/catalog-destination-click-diagnostic.json || printf '{"error":"missing diagnostic"}' > .deploy-status/catalog-destination-click-diagnostic.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-destination-click-diagnostic.json
+          git commit -m 'Record catalog destination click diagnostic [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
