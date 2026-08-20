@@ -1,0 +1,143 @@
+name: Description unit labels without amounts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/description-unit-labels-production-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make Huerta unit notes label-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('mdo-supplier-sync/includes/class-mdo-huerta-catalog-quality.php')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              "if ( is_array( $unit_info ) && ! empty( $unit_info['display'] ) ) {": "if ( is_array( $unit_info ) && ! empty( $unit_info['label'] ) ) {",
+              "\t\t\t\t$line = '<p class=\"' . esc_attr( self::UNIT_PRICE_CLASS ) . '\"><strong>' . esc_html( (string) $unit_info['label'] ) . ':</strong> ' . esc_html( (string) $unit_info['display'] ) . '</p>';": "\t\t\t\t$line = '<p class=\"' . esc_attr( self::UNIT_PRICE_CLASS ) . '\"><strong>' . esc_html( (string) $unit_info['label'] ) . '</strong></p>';",
+              "\t\t\t\t$result['unit_price'] = (string) $unit_info['display'];": "\t\t\t\t$result['unit_price'] = (string) $unit_info['label'];",
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one occurrence, found {count}: {old[:80]}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          php -l mdo-supplier-sync/includes/class-mdo-huerta-catalog-quality.php
+          php -l .github/scripts/cleanup-description-unit-prices-20260820.php
+
+      - name: Persist permanent importer change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add mdo-supplier-sync/includes/class-mdo-huerta-catalog-quality.php
+          if ! git diff --cached --quiet; then
+            git commit -m 'Keep unit labels without description prices [skip ci]'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Deploy and clean production descriptions
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_CLASS="/tmp/class-mdo-huerta-catalog-quality-${GITHUB_RUN_ID}.php"
+          REMOTE_SCRIPT="/tmp/cleanup-description-unit-prices-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-huerta-catalog-quality.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CLASS"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/cleanup-description-unit-prices-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+
+          mkdir -p .deploy-status
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            PLUGIN_CLASS='$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-catalog-quality.php'
+            [ -f \"\$PLUGIN_CLASS\" ] || { echo 'ERROR: production Huerta quality class not found' >&2; exit 20; }
+            cp \"\$PLUGIN_CLASS\" \"/tmp/class-mdo-huerta-catalog-quality-${GITHUB_RUN_ID}.bak.php\"
+            cp '$REMOTE_CLASS' \"\$PLUGIN_CLASS\"
+            rm -f '$REMOTE_CLASS'
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l \"\$PLUGIN_CLASS\" >/dev/null
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root
+            code=\$?
+            rm -f '$REMOTE_SCRIPT'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            exit \$code
+          " > .deploy-status/description-unit-labels-20260820.txt 2>&1
+          CODE=$?
+          set -e
+          echo "$CODE" > .deploy-status/description-unit-labels-20260820.exit-code
+          cat .deploy-status/description-unit-labels-20260820.txt
+
+      - name: Record production result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main || true
+          git add .deploy-status/description-unit-labels-20260820.txt .deploy-status/description-unit-labels-20260820.exit-code || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record description unit-label cleanup [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Verify cleanup succeeded
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .deploy-status/description-unit-labels-20260820.exit-code
+          test "$(cat .deploy-status/description-unit-labels-20260820.exit-code)" = "0"
+          grep -q '^description_unit_labels_ok$' .deploy-status/description-unit-labels-20260820.txt
