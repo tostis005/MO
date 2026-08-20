@@ -1,0 +1,160 @@
+name: Huerta and category audit 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/huerta-category-audit-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Audit production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+
+          cat > /tmp/mdo-huerta-audit.php <<'PHP'
+          <?php
+          global $wpdb;
+          $ids = $wpdb->get_col("SELECT DISTINCT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID WHERE p.post_type='product' AND pm.meta_key='_emdo_source_url' AND pm.meta_value LIKE '%lahuertadeanamary.com%' ORDER BY p.ID ASC") ?: array();
+          $products = array();
+          foreach ($ids as $id) {
+              $id = (int) $id;
+              $post = get_post($id);
+              if (!$post) { continue; }
+              $meta = get_post_meta($id);
+              $en_meta = array();
+              foreach ($meta as $key => $values) {
+                  if (stripos((string)$key, 'en_US') !== false || stripos((string)$key, '_en_') !== false || stripos((string)$key, 'falang') !== false) {
+                      $en_meta[$key] = count($values) === 1 ? maybe_unserialize($values[0]) : array_map('maybe_unserialize',$values);
+                  }
+              }
+              $products[] = array(
+                  'id' => $id,
+                  'status' => $post->post_status,
+                  'title' => html_entity_decode((string)$post->post_title, ENT_QUOTES|ENT_HTML5, 'UTF-8'),
+                  'slug' => (string)$post->post_name,
+                  'content' => (string)$post->post_content,
+                  'source_url' => (string)get_post_meta($id,'_emdo_source_url',true),
+                  'source_product_id' => (string)get_post_meta($id,'_emdo_source_product_id',true),
+                  'locked' => (string)get_post_meta($id,'_emdo_huerta_description_locked',true),
+                  'en_meta' => $en_meta,
+              );
+          }
+
+          $categories = array();
+          $terms = get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0));
+          if (!is_wp_error($terms)) {
+              foreach ($terms as $term) {
+                  if (!$term instanceof WP_Term || in_array($term->slug,array('mentta','menta'),true)) { continue; }
+                  $count = function_exists('elmercado_catalog_visible_category_count_010217') ? (int)elmercado_catalog_visible_category_count_010217((int)$term->term_id) : (int)$term->count;
+                  if ($count <= 0) { continue; }
+                  $link = get_term_link($term);
+                  $categories[] = array('id'=>(int)$term->term_id,'name'=>$term->name,'slug'=>$term->slug,'count'=>$count,'url'=>is_wp_error($link)?'':(string)$link,'en_name'=>(string)get_term_meta($term->term_id,'_en_US_name',true));
+              }
+          }
+
+          echo wp_json_encode(array('products'=>$products,'categories'=>$categories), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT);
+          PHP
+
+          REMOTE_AUDIT="/tmp/mdo-huerta-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/mdo-huerta-audit.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root; rm -f '$REMOTE_AUDIT'" > runtime/huerta-category-db-20260821.json
+
+          python3 - <<'PY'
+          import json, re, subprocess, pathlib, time, html as htmlmod
+          data=json.load(open('runtime/huerta-category-db-20260821.json'))
+          product_out=[]
+          for row in data.get('products',[]):
+              url=row.get('source_url','')
+              p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','8','--max-time','30',url],capture_output=True,text=True)
+              raw=p.stdout
+              text=htmlmod.unescape(re.sub(r'<[^>]+>',' ',raw))
+              text=re.sub(r'\s+',' ',text)
+              kg_patterns=[r'€\s*/\s*kg\b',r'\b(?:euros?|eur)\s*(?:/|por)\s*(?:kg|kilo)\b',r'\bprecio\s+por\s+(?:kg|kilo)\b',r'\bpor\s+kilo\b',r'\b(?:kg|kilo)\s*[:\-]?\s*\d+[\.,]?\d*\s*€',r'\d+[\.,]?\d*\s*€\s*(?:/|por)\s*(?:kg|kilo)\b']
+              matches=[]
+              for pat in kg_patterns:
+                  m=re.search(pat,text,re.I)
+                  if m:
+                      matches.append(text[max(0,m.start()-90):min(len(text),m.end()+90)])
+              row['source_http_ok']=p.returncode==0 and bool(raw)
+              row['source_price_per_kg']=bool(matches)
+              row['source_kg_evidence']=matches[:3]
+              product_out.append(row)
+
+          cat_out=[]
+          stamp=str(int(time.time()))
+          for row in data.get('categories',[]):
+              url=row.get('url','')
+              sep='&' if '?' in url else '?'
+              p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','8','--max-time','35','-H','Cache-Control: no-cache',url+sep+'mdo_cat_audit='+stamp],capture_output=True,text=True)
+              page=p.stdout
+              cards=len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',page,re.I))
+              empty=bool(re.search(r'no se han encontrado productos|no products were found',page,re.I))
+              row['rendered_product_cards']=cards
+              row['empty_message']=empty
+              row['http_bytes']=len(page.encode())
+              cat_out.append(row)
+
+          producers={}
+          for url,label in [('https://www.elmercadodeorigen.com/productores/','es'),('https://www.elmercadodeorigen.com/en/producers/','en')]:
+              p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','8','--max-time','35','-H','Cache-Control: no-cache',url+'?mdo_producer_audit='+stamp],capture_output=True,text=True)
+              page=p.stdout
+              producers[label]={
+                  'http_bytes':len(page.encode()),
+                  'visit':len(re.findall(r'>\s*Visit\s*<',page,re.I)),
+                  'visit_store':len(re.findall(r'>\s*Visit Store\s*<',page,re.I)),
+                  'visitar_tienda':len(re.findall(r'>\s*Visitar\s+Tienda\s*<',page,re.I)),
+              }
+
+          pathlib.Path('runtime/huerta-source-audit-20260821.json').write_text(json.dumps(product_out,ensure_ascii=False,indent=2)+'\n')
+          pathlib.Path('runtime/category-live-audit-20260821.json').write_text(json.dumps(cat_out,ensure_ascii=False,indent=2)+'\n')
+          pathlib.Path('runtime/producers-cta-audit-20260821.json').write_text(json.dumps(producers,ensure_ascii=False,indent=2)+'\n')
+          PY
+
+      - name: Commit audit results
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add runtime/huerta-category-db-20260821.json runtime/huerta-source-audit-20260821.json runtime/category-live-audit-20260821.json runtime/producers-cta-audit-20260821.json
+          git commit -m 'Record Huerta and category production audit' || true
+          git push origin HEAD:main
