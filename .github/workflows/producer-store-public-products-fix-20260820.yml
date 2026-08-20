@@ -1,25 +1,19 @@
-name: EMDO production catalogue verification 20260821
+name: EMDO emergency rollback 20260821
 
 on:
   push:
     branches: [main]
     paths:
-      - 'mu-plugins/mdo-producer-store-public-products-20260820.php'
       - 'mu-plugins/mdo-product-category-public-products-20260821.php'
       - 'mu-plugins/mdo-english-home-categories-producers-20260820.php'
       - 'mdo-supplier-sync/mdo-supplier-sync.php'
-      - 'mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php'
-      - '.github/scripts/apply-huerta-en-unit-price-20260821.php'
       - '.github/workflows/producer-store-public-products-fix-20260820.yml'
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  deploy-audit:
+  rollback:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -27,27 +21,11 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Validate PHP
-        run: |
-          mkdir -p runtime
-          {
-            php -l mu-plugins/mdo-producer-store-public-products-20260820.php
-            php -l mu-plugins/mdo-product-category-public-products-20260821.php
-            php -l mu-plugins/mdo-english-home-categories-producers-20260820.php
-            php -l mdo-supplier-sync/mdo-supplier-sync.php
-            php -l mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php
-            php -l .github/scripts/apply-huerta-en-unit-price-20260821.php
-          } 2>&1 | tee runtime/english-category-huerta-php-lint-20260821.txt
-
       - name: Install sshpass
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-
-      - name: Deploy and inspect source pricing
+      - name: Restore stable production files
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -56,7 +34,6 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
@@ -66,105 +43,7 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?Production path not found}"
-          printf '%s' "$PROD_PATH" > /tmp/prod_path
-
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins' '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes'"
-          sshpass -e scp $SCP mu-plugins/mdo-producer-store-public-products-20260820.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/"
-          sshpass -e scp $SCP mu-plugins/mdo-product-category-public-products-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/"
-          sshpass -e scp $SCP mu-plugins/mdo-english-home-categories-producers-20260820.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/"
           sshpass -e scp $SCP mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php"
-          sshpass -e scp $SCP mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php"
-
-          cat > /tmp/export-huerta-source.php <<'PHP'
-          <?php
-          global $wpdb;
-          $ids=$wpdb->get_col("SELECT DISTINCT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID WHERE p.post_type='product' AND pm.meta_key='_emdo_source_url' AND pm.meta_value LIKE '%lahuertadeanamary.com%' ORDER BY p.ID ASC")?:array();
-          $out=array();
-          foreach($ids as $id){$id=(int)$id;$p=get_post($id);if(!$p)continue;$out[]=array('id'=>$id,'native_title'=>html_entity_decode((string)$p->post_title,ENT_QUOTES|ENT_HTML5,'UTF-8'),'source_url'=>(string)get_post_meta($id,'_emdo_source_url',true),'english_title'=>(string)get_post_meta($id,'_en_US_post_title',true),'english_slug'=>(string)get_post_meta($id,'_en_US_post_name',true));}
-          echo wp_json_encode($out,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT),"\n";
-          PHP
-          REMOTE_EXPORT="/tmp/export-huerta-source-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP /tmp/export-huerta-source.php "$STAGING_USER@$STAGING_HOST:$REMOTE_EXPORT"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_EXPORT' --path='$PROD_PATH' --allow-root; rm -f '$REMOTE_EXPORT'" > runtime/huerta-source-urls-20260821.json
-
-          python3 - <<'PY'
-          import concurrent.futures, html, json, pathlib, re, subprocess
-          rows=json.load(open('runtime/huerta-source-urls-20260821.json',encoding='utf-8'))
-          patterns=[
-            re.compile(r'€\s*(?:/|por)\s*(?:kg|kilo(?:gramo)?s?)\b',re.I),
-            re.compile(r'\b(?:eur|euros?)\s*(?:/|por)\s*(?:kg|kilo(?:gramo)?s?)\b',re.I),
-            re.compile(r'\bprecio\s+(?:por|/)?\s*(?:kg|kilo(?:gramo)?s?)\b',re.I),
-            re.compile(r'\b\d{1,4}(?:[.,]\d{1,2})?\s*€\s*(?:/|por)\s*(?:kg|kilo(?:gramo)?s?)\b',re.I),
-            re.compile(r'€\s*/\s*kg\b',re.I),
-          ]
-          def inspect(row):
-            p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','6','--max-time','16','-A','Mozilla/5.0 (compatible; EMDO source audit)',row['source_url']],capture_output=True,text=True)
-            raw=p.stdout
-            text=html.unescape(re.sub(r'<[^>]+>',' ',raw)); text=re.sub(r'\s+',' ',text)
-            matches=[]
-            for pat in patterns:
-              m=pat.search(text)
-              if m: matches.append(text[max(0,m.start()-100):min(len(text),m.end()+100)])
-            return {**row,'http_ok':p.returncode==0 and bool(raw),'per_kg':bool(matches),'evidence':matches[:2]}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-            audited=list(ex.map(inspect,rows))
-          pathlib.Path('runtime/huerta-source-perkg-audit-20260821.json').write_text(json.dumps(audited,ensure_ascii=False,indent=2)+'\n')
-          ids=[r['id'] for r in audited if r['per_kg']]
-          pathlib.Path('/tmp/mdo-huerta-perkg-ids.json').write_text(json.dumps(ids))
-          if len(rows)!=46 or any(not r['http_ok'] for r in audited):
-            raise SystemExit('Huerta source audit incomplete')
-          PY
-
-          sshpass -e scp $SCP /tmp/mdo-huerta-perkg-ids.json "$STAGING_USER@$STAGING_HOST:/tmp/mdo-huerta-perkg-ids.json"
-          sshpass -e scp $SCP .github/scripts/apply-huerta-en-unit-price-20260821.php "$STAGING_USER@$STAGING_HOST:/tmp/apply-huerta-en-unit.php"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/apply-huerta-en-unit.php --path='$PROD_PATH' --allow-root; rc=\$?; rm -f /tmp/apply-huerta-en-unit.php /tmp/mdo-huerta-perkg-ids.json; exit \$rc" > runtime/huerta-english-unit-price-apply-20260821.json
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-
-      - name: Audit live English catalogue
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import concurrent.futures, html, json, pathlib, re, subprocess, time
-          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
-          products=json.load(open('runtime/huerta-english-unit-price-apply-20260821.json',encoding='utf-8'))['products']
-          source_audit=json.load(open('runtime/huerta-source-perkg-audit-20260821.json',encoding='utf-8'))
-          source_map={r['id']:r for r in source_audit}
-          def curl(url,timeout='30'):
-            return subprocess.run(['curl','-k','-L','-sS','--connect-timeout','7','--max-time',timeout,'-H','Cache-Control: no-cache',url],capture_output=True,text=True).stdout
-          es_home=curl(base+'/?mdo_verify='+stamp); en_home=curl(base+'/en/?mdo_verify='+stamp)
-          card_link=re.compile(r'<a\b(?=[^>]*\bemo-category-card\b)[^>]*href=["\']([^"\']+)["\']',re.I)
-          alt_link=re.compile(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*class=["\'][^"\']*emo-category-card',re.I)
-          es_links=card_link.findall(es_home) or alt_link.findall(es_home)
-          en_links=card_link.findall(en_home) or alt_link.findall(en_home)
-          def cat_audit(url):
-            page=curl(url+('&' if '?' in url else '?')+'mdo_verify='+stamp)
-            return {'url':url,'cards':len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',page,re.I)),'empty':bool(re.search(r'no se han encontrado productos|no products were found',page,re.I)),'bytes':len(page.encode())}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex: cats=list(ex.map(cat_audit,en_links))
-
-          producers=curl(base+'/en/producers/?mdo_verify='+stamp)
-          cta={'visit':len(re.findall(r'>\s*Visit\s*<',producers,re.I)),'visit_store':len(re.findall(r'>\s*Visit Store\s*<',producers,re.I)),'visitar':len(re.findall(r'>\s*Visitar(?:\s+Tienda)?\s*<',producers,re.I))}
-          def product_audit(row):
-            url=f"{base}/en/product/{row['english_slug']}/?mdo_verify={stamp}"
-            page=curl(url,'35')
-            plain=html.unescape(re.sub(r'<[^>]+>',' ',page)); plain=re.sub(r'\s+',' ',plain)
-            src=source_map.get(row['id'],{})
-            return {**row,'url':url,'bytes':len(page.encode()),'title_ok':row['english_title'].lower() in plain.lower(),'price_label_ok':('Price per kg' in page)==bool(row['per_kg']),'spanish_price_label':('Precio por kilo' in page),'english_route':('/en/product/' in page or len(page)>10000),'source_per_kg':bool(src.get('per_kg'))}
-          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex: product_results=list(ex.map(product_audit,products))
-          result={'spanish_home_category_cards':len(es_links),'english_home_category_cards':len(en_links),'english_categories':cats,'producer_cta':cta,'huerta_products':product_results}
-          pathlib.Path('runtime/english-category-huerta-live-20260821.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
-          badcats=[r for r in cats if r['cards']<=0 or r['empty']]
-          badprod=[r for r in product_results if r['bytes']<10000 or not r['title_ok'] or not r['price_label_ok'] or r['spanish_price_label']]
-          if len(es_links)!=len(en_links) or not en_links or badcats or cta['visit']<=0 or cta['visit_store'] or cta['visitar'] or badprod:
-            print(json.dumps({'es':len(es_links),'en':len(en_links),'badcats':badcats,'cta':cta,'badprod':badprod},ensure_ascii=False,indent=2))
-            raise SystemExit(2)
-          PY
-
-      - name: Commit audit results
-        if: always()
-        run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git pull --rebase origin main || true
-          git add runtime/english-category-huerta-php-lint-20260821.txt runtime/huerta-source-urls-20260821.json runtime/huerta-source-perkg-audit-20260821.json runtime/huerta-english-unit-price-apply-20260821.json runtime/english-category-huerta-live-20260821.json 2>/dev/null || true
-          git commit -m 'Record English category and Huerta production verification [skip ci]' || true
-          git push origin HEAD:main || true
+          sshpass -e scp $SCP mu-plugins/mdo-product-category-public-products-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-product-category-public-products-20260821.php"
+          sshpass -e scp $SCP mu-plugins/mdo-english-home-categories-producers-20260820.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-home-categories-producers-20260820.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php'; wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
