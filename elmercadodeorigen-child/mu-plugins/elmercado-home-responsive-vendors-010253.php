@@ -42,10 +42,12 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 		return $html;
 	}
 
+	$image_index = 0;
 	$visual = preg_replace_callback(
 		'~<img\b[^>]*>~i',
-		static function ( array $match ): string {
+		static function ( array $match ) use ( &$image_index ): string {
 			$tag = $match[0];
+			$image_index++;
 			if ( ! preg_match( '~\bsrc=([' . "\"'" . '])([^' . "\"'" . ']+)\1~i', $tag, $src_match ) ) {
 				return $tag;
 			}
@@ -73,6 +75,17 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 				$size = 'elmercado_vendor_landscape_450';
 			}
 
+			/*
+			 * Mobile vendor collage is a two-column grid. Only the first card can
+			 * span both columns (1/3/5-card layouts); every later card is half-width.
+			 * The previous 100vw hint made DPR screens fetch 768px assets for cards
+			 * that are ~180px CSS wide. Keep card 1 conservative and accurately size
+			 * the remaining cards without changing rendered geometry.
+			 */
+			$sizes = 1 === $image_index
+				? '(max-width: 767px) calc(100vw - 32px), 375px'
+				: '(max-width: 767px) calc(50vw - 22px), 375px';
+
 			$responsive = wp_get_attachment_image(
 				$attachment_id,
 				$size,
@@ -82,7 +95,7 @@ function elmercado_home_responsive_vendor_images_010253( string $html ): string 
 					'alt'      => $alt,
 					'loading'  => $loading,
 					'decoding' => 'async',
-					'sizes'    => '(max-width: 767px) calc(100vw - 32px), 375px',
+					'sizes'    => $sizes,
 				)
 			);
 
