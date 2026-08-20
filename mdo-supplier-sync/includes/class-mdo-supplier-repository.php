@@ -32,7 +32,7 @@ final class MDO_Supplier_Repository {
 		$record = array(
 			'code'                    => sanitize_key( (string) ( $data['code'] ?? '' ) ),
 			'name'                    => sanitize_text_field( (string) ( $data['name'] ?? '' ) ),
-			'source_url'              => esc_url_raw( trim( (string) ( $data['source_url'] ?? '' ) ) ),
+			'source_url'              => self::normalize_source_urls( (string) ( $data['source_url'] ?? '' ) ),
 			'vendor_user_id'          => ! empty( $data['vendor_user_id'] ) ? absint( $data['vendor_user_id'] ) : null,
 			'connector'               => sanitize_key( (string) ( $data['connector'] ?? 'none' ) ),
 			'commercial_rule'         => sanitize_key( (string) ( $data['commercial_rule'] ?? 'percentage' ) ),
@@ -65,6 +65,22 @@ final class MDO_Supplier_Repository {
 			return '';
 		}
 		return implode( "\n", array_map( 'strval', $items ) );
+	}
+
+	public static function source_urls( ?string $raw ): array {
+		$lines = preg_split( '/\R+/', (string) $raw ) ?: array();
+		$urls  = array();
+		foreach ( $lines as $line ) {
+			$url = esc_url_raw( trim( (string) $line ) );
+			if ( $url ) {
+				$urls[ $url ] = $url;
+			}
+		}
+		return array_values( $urls );
+	}
+
+	private static function normalize_source_urls( string $raw ): string {
+		return implode( "\n", self::source_urls( $raw ) );
 	}
 
 	private static function normalize_fragments( string $raw ): string {

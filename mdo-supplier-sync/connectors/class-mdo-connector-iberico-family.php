@@ -9,6 +9,9 @@ final class MDO_Connector_Iberico_Family {
 
 	public static function discover( array $supplier ): array {
 		$config    = self::config( (string) $supplier['connector'], (string) $supplier['source_url'] );
+		if ( ! empty( $supplier['_mdo_catalog_source_only'] ) ) {
+			$config['catalog_urls'] = array( (string) $supplier['source_url'] );
+		}
 		$products  = array();
 		$excluded  = array();
 		$visited   = array();

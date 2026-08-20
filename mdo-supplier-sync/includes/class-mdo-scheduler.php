@@ -75,10 +75,40 @@ final class MDO_Scheduler {
 				return;
 			}
 
-			$discovery = $connector::discover( $supplier );
-			$products  = $discovery['products'] ?? array();
-			$excluded  = $discovery['excluded'] ?? array();
-			$total     = count( $products ) + count( $excluded );
+			$source_urls = MDO_Supplier_Repository::source_urls( (string) $supplier['source_url'] );
+			if ( ! $source_urls ) {
+				throw new RuntimeException( 'El proveedor no tiene ninguna URL de catálogo válida.' );
+			}
+
+			$products_by_url      = array();
+			$excluded_by_url      = array();
+			$explicit_source_urls = count( $source_urls ) > 1;
+
+			foreach ( $source_urls as $source_url ) {
+				$source_supplier               = $supplier;
+				$source_supplier['source_url'] = $source_url;
+				if ( $explicit_source_urls ) {
+					$source_supplier['_mdo_catalog_source_only'] = 1;
+				}
+
+				$source_discovery = $connector::discover( $source_supplier );
+				foreach ( (array) ( $source_discovery['products'] ?? array() ) as $url ) {
+					$url = esc_url_raw( (string) $url );
+					if ( $url ) {
+						$products_by_url[ $url ] = $url;
+					}
+				}
+				foreach ( (array) ( $source_discovery['excluded'] ?? array() ) as $url ) {
+					$url = esc_url_raw( (string) $url );
+					if ( $url ) {
+						$excluded_by_url[ $url ] = $url;
+					}
+				}
+			}
+
+			$products = array_values( $products_by_url );
+			$excluded = array_values( $excluded_by_url );
+			$total    = count( $products ) + count( $excluded );
 
 			global $wpdb;
 			$wpdb->update(
@@ -113,6 +143,10 @@ final class MDO_Scheduler {
 		$supplier = MDO_Supplier_Repository::find( $supplier_id );
 		if ( ! $supplier ) {
 			return;
+		}
+		$source_urls = MDO_Supplier_Repository::source_urls( (string) $supplier['source_url'] );
+		if ( $source_urls ) {
+			$supplier['source_url'] = $source_urls[0];
 		}
 		try {
 			$connector = self::connector_class( $supplier );

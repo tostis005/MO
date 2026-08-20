@@ -84,7 +84,8 @@ final class MDO_Admin {
 				<?php foreach ( $suppliers as $supplier ) : ?><tr>
 					<td><strong><?php echo esc_html( $supplier['name'] ); ?></strong></td>
 					<td><code><?php echo esc_html( $supplier['code'] ); ?></code></td>
-					<td><a href="<?php echo esc_url( $supplier['source_url'] ); ?>" target="_blank" rel="noopener">Abrir web</a></td>
+					<?php $source_urls = MDO_Supplier_Repository::source_urls( (string) $supplier['source_url'] ); ?>
+					<td><?php if ( $source_urls ) : ?><a href="<?php echo esc_url( $source_urls[0] ); ?>" target="_blank" rel="noopener">Abrir web</a><?php else : ?>—<?php endif; ?><?php if ( count( $source_urls ) > 1 ) : ?><br><small><?php echo esc_html( sprintf( '%d URLs configuradas', count( $source_urls ) ) ); ?></small><?php endif; ?></td>
 					<td><?php echo esc_html( self::vendor_label( (int) $supplier['vendor_user_id'] ) ); ?></td>
 					<td><?php echo esc_html( $supplier['connector'] ); ?></td>
 					<td><?php echo esc_html( self::commercial_label( $supplier ) ); ?></td>
@@ -247,7 +248,7 @@ final class MDO_Admin {
 			<div class="mdo-grid">
 				<label><span>Nombre</span><input class="regular-text" name="name" required value="<?php echo esc_attr( $supplier['name'] ); ?>"></label>
 				<label><span>Código interno</span><input class="regular-text" name="code" required placeholder="tolecarnes" value="<?php echo esc_attr( $supplier['code'] ); ?>"><small>Identificador estable para BI e integraciones.</small></label>
-				<label class="mdo-span-2"><span>URL de la tienda / catálogo</span><input class="large-text" type="url" name="source_url" required value="<?php echo esc_attr( $supplier['source_url'] ); ?>"></label>
+				<label class="mdo-span-2"><span>URLs de la tienda / catálogo (una por línea)</span><textarea class="large-text code" name="source_url" rows="5" required><?php echo esc_textarea( $supplier['source_url'] ); ?></textarea><small>El sincronizador recorrerá todas las URLs indicadas y unificará los productos encontrados. Si solo indicas una, funcionará como hasta ahora.</small></label>
 				<label><span>Vendedor WordPress / WCFM</span><select name="vendor_user_id"><option value="">— Sin asignar —</option><?php foreach ( $users as $user ) : ?><option value="<?php echo (int) $user->ID; ?>" <?php selected( (int) $supplier['vendor_user_id'], (int) $user->ID ); ?>><?php echo esc_html( $user->display_name . ' (#' . $user->ID . ')' ); ?></option><?php endforeach; ?></select><small>Los productos importados se asignarán a este vendedor.</small></label>
 				<label><span>Conector</span><select name="connector"><option value="none" <?php selected( $supplier['connector'], 'none' ); ?>>Sin conector</option><option value="tolecarnes" <?php selected( $supplier['connector'], 'tolecarnes' ); ?>>Tolecarnes</option><option value="el-catedratico" <?php selected( $supplier['connector'], 'el-catedratico' ); ?>>El Catedrático</option><option value="puente-robles" <?php selected( $supplier['connector'], 'puente-robles' ); ?>>Puente Robles</option><option value="la-huerta-ana-mary" <?php selected( $supplier['connector'], 'la-huerta-ana-mary' ); ?>>La Huerta de Ana Mary</option></select><small>El análisis usa el scraper específico seleccionado.</small></label>
 			</div>
