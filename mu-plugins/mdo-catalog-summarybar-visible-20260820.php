@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO Catalog Summary Bar Visible
- * Description: One stable server-rendered results + shipping destination row for desktop and mobile catalog views.
- * Version: 1.4.2
+ * Plugin Name: MDO Catalog Toolbar Layout
+ * Description: Integrates the exact result count and canonical shipping destination into the native Woostify ordering toolbar without client-side relocation.
+ * Version: 1.5.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -25,14 +25,9 @@ function mdo_catalog_summarybar_is_surface_20260820(): bool {
 	return is_search() && 'product' === get_query_var( 'post_type' );
 }
 
-function mdo_catalog_summarybar_text_20260820( string $es, string $en ): string {
-	$path = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH ) : '';
-	return ( '/en' === $path || 0 === strpos( $path, '/en/' ) ) ? $en : $es;
-}
-
 /*
- * Remove the old count at hook level after the child theme has registered it.
- * This avoids a second result node entirely instead of fighting later !important CSS.
+ * Keep the child theme's exact count (priority 21) as the single catalogue count.
+ * Only WooCommerce's generic count is removed defensively.
  */
 add_action(
 	'wp',
@@ -41,106 +36,18 @@ add_action(
 			return;
 		}
 		remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 20 );
-		remove_action( 'woocommerce_before_shop_loop', 'elmercado_catalog_render_exact_result_count_010220', 21 );
 	},
-	1
+	1100
 );
 
-function mdo_catalog_summarybar_render_20260820(): void {
-	static $rendered = false;
-	if ( $rendered || ! mdo_catalog_summarybar_is_surface_20260820() ) {
-		return;
-	}
-	$rendered = true;
-
-	$total = function_exists( 'elmercado_catalog_exact_result_total_010220' )
-		? max( 0, (int) elmercado_catalog_exact_result_total_010220() )
-		: max( 0, (int) ( $GLOBALS['wp_query']->found_posts ?? 0 ) );
-
-	$destination = class_exists( 'MDO_Catalog_Destination_Frontend' )
-		? MDO_Catalog_Destination_Frontend::current_destination()
-		: array( 'country' => 'ES', 'postcode' => '' );
-	$countries = class_exists( 'MDO_Catalog_Destination_Frontend' )
-		? (array) MDO_Catalog_Destination_Frontend::supported_countries()
-		: array( 'ES' => mdo_catalog_summarybar_text_20260820( 'España', 'Spain' ) );
-
-	$country  = (string) ( $destination['country'] ?? 'ES' );
-	$postcode = trim( (string) ( $destination['postcode'] ?? '' ) );
-	$label    = (string) ( $countries[ $country ] ?? $country );
-	if ( 'ES' === $country && '' !== $postcode ) {
-		$label .= ' · ' . $postcode;
-	}
-
-	$result_label = sprintf(
-		esc_html( _n( '%s resultado', '%s resultados', $total, 'elmercadodeorigen' ) ),
-		number_format_i18n( $total )
-	);
-	?>
-	<div class="mdo-catalog-summarybar" data-mdo-catalog-summarybar>
-		<span class="mdo-catalog-summarybar__count" data-mdo-summary-count aria-live="polite"><?php echo esc_html( $result_label ); ?></span>
-		<button type="button" class="mdo-catalog-summarybar__destination" data-mdo-summary-destination-open aria-haspopup="dialog" aria-controls="mdo-catalog-destination-dialog">
-			<svg class="mdo-catalog-summarybar__pin" aria-hidden="true" viewBox="0 0 24 24" width="15" height="15"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Zm0-8.5A2.5 2.5 0 1 1 12 7a2.5 2.5 0 0 1 0 5.5Z" fill="currentColor"/></svg>
-			<span><?php echo esc_html( mdo_catalog_summarybar_text_20260820( 'Envío a', 'Shipping to' ) ); ?> <strong><?php echo esc_html( $label ); ?></strong></span>
-			<svg class="mdo-catalog-summarybar__chevron" aria-hidden="true" viewBox="0 0 20 20" width="13" height="13"><path d="m5 7.5 5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-		</button>
-	</div>
-	<?php
-}
-
-/* Render once, outside Woostify's mobile-hidden left toolbar. */
-add_action( 'woocommerce_shop_loop_header', 'mdo_catalog_summarybar_render_20260820', 99 );
-add_action( 'woocommerce_before_shop_loop', 'mdo_catalog_summarybar_render_20260820', 1 );
-
-add_action(
-	'wp_head',
-	static function (): void {
-		if ( ! mdo_catalog_summarybar_is_surface_20260820() ) {
-			return;
-		}
-		?>
-		<style id="mdo-catalog-summarybar-visible-20260820">
-			/* CSS fallback; the historical result callback is also removed in PHP above. */
-			body .woocommerce-result-count,
-			body .emo-catalog-result-count-010220,
-			body .mdo-catalog-destination--canonical,
-			body .mdo-catalog-toolbar__count,
-			body .mdo-catalog-toolbar__destination{display:none!important}
-
-			body .mdo-catalog-summarybar{
-				display:flex!important;visibility:visible!important;opacity:1!important;
-				align-items:center;justify-content:space-between;gap:12px;
-				width:100%;min-height:34px;margin:0 0 14px;padding:0;
-				clear:both;float:none;box-sizing:border-box;
-			}
-			body .mdo-catalog-summarybar__count{
-				display:block!important;visibility:visible!important;opacity:1!important;
-				margin:0;color:#5b6964;font-size:13px;font-weight:500;line-height:1.4;white-space:nowrap;
-			}
-			body .mdo-catalog-summarybar__destination{
-				display:inline-flex!important;visibility:visible!important;opacity:1!important;
-				align-items:center;gap:6px;min-height:34px;margin:0;padding:0 11px;
-				border:1px solid rgba(23,63,50,.18);border-radius:999px;background:#fff;box-shadow:none;
-				color:#173f32;font:inherit;font-size:13px;line-height:1;white-space:nowrap;cursor:pointer;
-			}
-			body .mdo-catalog-summarybar__destination:hover,
-			body .mdo-catalog-summarybar__destination:focus-visible{border-color:rgba(23,63,50,.35);background:#fbfdfc;outline:none}
-			body .mdo-catalog-summarybar__destination strong{font-weight:700}
-			body .mdo-catalog-summarybar__pin,body .mdo-catalog-summarybar__chevron{flex:0 0 auto}
-			body .mdo-catalog-summarybar__chevron{opacity:.65}
-
-			@media(max-width:767px){
-				body .mdo-catalog-summarybar{gap:8px;margin:0 0 12px;padding:0}
-				body .mdo-catalog-summarybar__count{font-size:12px}
-				body .mdo-catalog-summarybar__destination{min-height:32px;padding:0 9px;font-size:12px}
-			}
-			@media(max-width:360px){body .mdo-catalog-summarybar{flex-wrap:wrap;justify-content:flex-start}}
-		</style>
-		<?php
-	},
-	PHP_INT_MAX
-);
-
-/** Simple click bridge only. No MutationObserver, DOM movement, cloning or resize listeners. */
+/*
+ * The exact result count and canonical destination control are already emitted by
+ * PHP at priorities 21 and 22 inside Woostify's .woostify-toolbar-left. We only
+ * define their final responsive geometry here. No controls are cloned or moved.
+ *
+ * This style is printed in the footer so it is the final layout contract after
+ * the historical 0.10.229 / 0.10.236 catalogue CSS loaded by the child theme.
+ */
 add_action(
 	'wp_footer',
 	static function (): void {
@@ -148,17 +55,281 @@ add_action(
 			return;
 		}
 		?>
-		<script id="mdo-catalog-summarybar-visible-js-20260820">
-		(() => {
-			'use strict';
-			const button=document.querySelector('[data-mdo-summary-destination-open]');
-			if(!button)return;
-			button.addEventListener('click',()=>{
-				const canonical=document.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]');
-				if(canonical)canonical.click();
-			});
-		})();
-		</script>
+		<style id="mdo-catalog-toolbar-layout-20260820">
+			/* Retired experimental surfaces must never create a second count/control. */
+			body .mdo-catalog-summarybar,
+			body .mdo-catalog-toolbar__count,
+			body .mdo-catalog-toolbar__destination {
+				display:none !important;
+			}
+
+			/* One white toolbar, shared by results, destination and ordering. */
+			html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229 {
+				display:flex !important;
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
+				height:auto !important;
+				min-height:62px !important;
+				max-height:none !important;
+				align-items:center !important;
+				justify-content:space-between !important;
+				gap:12px !important;
+				overflow:visible !important;
+				margin:0 0 14px !important;
+				padding:10px 14px !important;
+				border:1px solid rgba(23,63,50,.11) !important;
+				border-radius:14px !important;
+				background:#fff !important;
+				box-shadow:0 10px 28px rgba(17,42,34,.06) !important;
+			}
+
+			/* Woostify hides this left rail on phones when it thinks no filter belongs there. */
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left,
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left.elmercado-vendor-filter-hidden {
+				display:flex !important;
+				visibility:visible !important;
+				opacity:1 !important;
+				position:static !important;
+				box-sizing:border-box !important;
+				flex:1 1 auto !important;
+				width:auto !important;
+				min-width:0 !important;
+				max-width:none !important;
+				height:auto !important;
+				align-items:center !important;
+				gap:10px !important;
+				margin:0 !important;
+				padding:0 !important;
+				float:none !important;
+				transform:none !important;
+			}
+
+			/* Defensive duplicate suppression: preserve only EMDO's exact count. */
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-result-count:not(.emo-catalog-result-count-010220):not(.emo-vendor-result-count-010225) {
+				display:none !important;
+			}
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .emo-catalog-result-count-010220 {
+				display:inline-flex !important;
+				visibility:visible !important;
+				opacity:1 !important;
+				position:static !important;
+				box-sizing:border-box !important;
+				flex:0 0 auto !important;
+				width:auto !important;
+				min-width:0 !important;
+				height:auto !important;
+				min-height:36px !important;
+				align-items:center !important;
+				overflow:visible !important;
+				margin:0 !important;
+				padding:0 !important;
+				float:none !important;
+				color:#42564e !important;
+				font-size:12px !important;
+				font-weight:700 !important;
+				line-height:1.3 !important;
+				white-space:nowrap !important;
+			}
+
+			/* Canonical shipping control: no proxy button, no duplicate surface. */
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical {
+				display:inline-flex !important;
+				visibility:visible !important;
+				opacity:1 !important;
+				position:static !important;
+				box-sizing:border-box !important;
+				flex:0 1 auto !important;
+				width:auto !important;
+				min-width:0 !important;
+				max-width:100% !important;
+				margin:0 !important;
+				padding:0 !important;
+				float:none !important;
+				transform:none !important;
+			}
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger {
+				display:inline-flex !important;
+				box-sizing:border-box !important;
+				max-width:100% !important;
+				min-width:0 !important;
+				min-height:38px !important;
+				align-items:center !important;
+				gap:6px !important;
+				margin:0 !important;
+				padding:0 11px !important;
+				border:1px solid rgba(23,63,50,.16) !important;
+				border-radius:999px !important;
+				background:#f9fbf9 !important;
+				box-shadow:none !important;
+				color:#173f32 !important;
+				font-family:inherit !important;
+				font-size:12px !important;
+				font-weight:600 !important;
+				line-height:1 !important;
+				white-space:nowrap !important;
+				cursor:pointer !important;
+			}
+			html body.elmercadodeorigen-child .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger,
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger:hover,
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger:focus,
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger:focus-visible {
+				background:#f4f8f5 !important;
+				border-color:rgba(23,63,50,.32) !important;
+				color:#173f32 !important;
+				outline:none !important;
+			}
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger:hover *,
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger:focus *,
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger:focus-visible * {
+				color:#173f32 !important;
+			}
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger > span:nth-child(2) {
+				min-width:0 !important;
+				overflow:hidden !important;
+				text-overflow:ellipsis !important;
+				white-space:nowrap !important;
+			}
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger strong {
+				color:inherit !important;
+				font-weight:750 !important;
+			}
+
+			/* Ordering stays at the right and is always allowed to shrink safely. */
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-right {
+				display:flex !important;
+				box-sizing:border-box !important;
+				flex:0 1 auto !important;
+				min-width:0 !important;
+				margin:0 0 0 auto !important;
+				padding:0 !important;
+			}
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
+				display:flex !important;
+				visibility:visible !important;
+				box-sizing:border-box !important;
+				position:static !important;
+				flex:0 1 250px !important;
+				width:250px !important;
+				min-width:0 !important;
+				max-width:250px !important;
+				height:auto !important;
+				min-height:40px !important;
+				align-items:center !important;
+				margin:0 !important;
+				padding:0 !important;
+				float:none !important;
+				transform:none !important;
+			}
+			html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
+				display:block !important;
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
+				height:40px !important;
+				min-height:40px !important;
+				margin:0 !important;
+				padding:0 30px 0 12px !important;
+				border:1px solid rgba(23,63,50,.14) !important;
+				border-radius:999px !important;
+				background-color:#f7f9f6 !important;
+				color:#173f32 !important;
+				font-family:inherit !important;
+				font-size:12px !important;
+				font-weight:700 !important;
+				line-height:1 !important;
+			}
+
+			/* Tablet / phone landscape: compact single row, still fluid. */
+			@media (min-width:641px) and (max-width:991px) {
+				html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229 {
+					min-height:64px !important;
+					gap:10px !important;
+					padding:10px 12px !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left {
+					gap:8px !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger {
+					min-height:38px !important;
+					padding:0 9px !important;
+					font-size:11.5px !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
+					flex:0 1 190px !important;
+					width:190px !important;
+					max-width:190px !important;
+					min-width:130px !important;
+				}
+			}
+
+			/* Phone portrait: summary on row one, ordering on row two. */
+			@media (max-width:640px) {
+				html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229 {
+					display:grid !important;
+					grid-template-columns:minmax(0,1fr) !important;
+					grid-auto-rows:auto !important;
+					align-items:center !important;
+					gap:8px !important;
+					height:auto !important;
+					min-height:0 !important;
+					max-height:none !important;
+					padding:10px 11px !important;
+					overflow:hidden !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left,
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left.elmercado-vendor-filter-hidden {
+					dis:grid !important;
+					display:grid !important;
+					grid-template-columns:auto minmax(0,1fr) !important;
+					width:100% !important;
+					max-width:100% !important;
+					gap:8px !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .emo-catalog-result-count-010220 {
+					min-height:36px !important;
+					font-size:11px !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical {
+					width:100% !important;
+					min-width:0 !important;
+					justify-self:stretch !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger {
+					width:100% !important;
+					min-width:0 !important;
+					max-width:100% !important;
+					min-height:38px !important;
+					justify-content:flex-start !important;
+					padding:0 9px !important;
+					font-size:11.5px !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-right {
+					width:100% !important;
+					max-width:100% !important;
+					margin:0 !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
+					display:flex !important;
+					flex:1 1 100% !important;
+					width:100% !important;
+					min-width:0 !important;
+					max-width:100% !important;
+					height:40px !important;
+					min-height:40px !important;
+				}
+				html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
+					width:100% !important;
+					min-width:0 !important;
+					max-width:100% !important;
+					height:40px !important;
+					min-height:40px !important;
+					font-size:11.5px !important;
+				}
+			}
+		</style>
 		<?php
 	},
 	PHP_INT_MAX
