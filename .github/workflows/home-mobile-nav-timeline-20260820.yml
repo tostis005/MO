@@ -1,0 +1,57 @@
+name: Home mobile nav startup timeline 20260820
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-mobile-nav-timeline-20260820.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Trace drawer startup
+        run: |
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' | tee runtime/home-mobile-nav-timeline-20260820.txt
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage(); await p.setViewport({width:412,height:915,deviceScaleFactor:1});
+            await p.evaluateOnNewDocument(()=>{
+              window.__mdo=[];
+              const log=(kind,data={})=>window.__mdo.push({t:performance.now(),kind,...data});
+              for(const type of ['click','pointerdown','touchstart','keydown']) document.addEventListener(type,e=>{
+                const el=e.target&&e.target.closest?e.target.closest('.toggle-sidebar-menu-btn,#mobile-navigation'):null;
+                if(el) log('event',{type,isTrusted:e.isTrusted,target:el.id||el.className});
+              },true);
+              new MutationObserver(ms=>{
+                for(const m of ms){
+                  const t=m.target;
+                  if(t===document.documentElement||t===document.body||(t.id==='mobile-navigation')) log('mutation',{node:t.id||t.tagName,attr:m.attributeName,val:m.attributeName?t.getAttribute(m.attributeName):''});
+                }
+              }).observe(document,{subtree:true,attributes:true,attributeFilter:['class','style','aria-hidden','inert','data-emo-menu-intent']});
+              new PerformanceObserver(list=>{for(const e of list.getEntries()){if(!e.hadRecentInput)log('layout-shift',{value:e.value,sources:e.sources.map(s=>({node:s.node?.id||s.node?.className||s.node?.tagName,prev:s.previousRect,cur:s.currentRect}))});}}).observe({type:'layout-shift',buffered:true});
+              document.addEventListener('DOMContentLoaded',()=>log('domcontentloaded'));
+              addEventListener('load',()=>log('load'));
+            });
+            await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:60000});
+            const snap=async(label)=>p.evaluate(label=>{const n=document.querySelector('#mobile-navigation');const cs=n?getComputedStyle(n):null;const r=n?n.getBoundingClientRect():null;window.__mdo.push({t:performance.now(),kind:'snapshot',label,intent:document.documentElement.getAttribute('data-emo-menu-intent'),htmlClass:document.documentElement.className,bodyClass:document.body.className,exists:!!n,display:cs?.display,visibility:cs?.visibility,position:cs?.position,transform:cs?.transform,opacity:cs?.opacity,aria:n?.getAttribute('aria-hidden'),inert:n?.hasAttribute('inert'),rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null});},label);
+            await snap('dom');
+            for(const [label,ms] of [['50',50],['150',100],['350',200],['750',400],['1500',750],['3000',1500]]){await new Promise(r=>setTimeout(r,ms));await snap(label)}
+            const out=await p.evaluate(()=>window.__mdo); console.log(JSON.stringify(out,null,2)); await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+      - name: Record
+        if: always()
+        run: |
+          [ -f runtime/home-mobile-nav-timeline-20260820.txt ] || echo failed > runtime/home-mobile-nav-timeline-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-mobile-nav-timeline-20260820.txt;git commit -m 'Record Home mobile navigation startup timeline' || exit 0;git pull --rebase origin main;git push origin HEAD:main
