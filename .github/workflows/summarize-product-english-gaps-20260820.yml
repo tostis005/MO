@@ -1,0 +1,49 @@
+name: Summarize product English gaps 20260820
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/summarize-product-english-gaps-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  summarize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build compact gap report
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('.deploy-status/product-english-audit-20260820.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          rows=[]
+          for r in d.get('issues',[]):
+              if r.get('missing'):
+                  rows.append(r)
+          out=[]
+          for r in rows:
+              out.append('id={id}\tvendor={vendor}\tstatus={status}\thuerta={huerta}\tnative={native}\ten={en}\tslug={slug}\tmissing={missing}\tpublished={pub}\tready={ready}'.format(
+                  id=r.get('id'), vendor=r.get('vendor',''), status=r.get('status',''), huerta=int(bool(r.get('huerta'))),
+                  native=r.get('native_title','').replace('\t',' '), en=r.get('english_title','').replace('\t',' '),
+                  slug=r.get('english_slug',''), missing=','.join(r.get('missing') or []), pub=r.get('en_US_published',''), ready=r.get('en_US_ready','')
+              ))
+          Path('.deploy-status/product-english-incomplete-20260820.txt').write_text('\n'.join(out)+'\n',encoding='utf-8')
+          print('incomplete',len(rows))
+          print('non_huerta',sum(1 for r in rows if not r.get('huerta')))
+          PY
+      - name: Record compact gap report
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/product-english-incomplete-20260820.txt
+          git commit -m 'Record compact English product gaps [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
