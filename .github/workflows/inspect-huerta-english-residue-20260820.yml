@@ -1,0 +1,43 @@
+name: Inspect Huerta English residue 20260820
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/inspect-huerta-english-residue-20260820.php'
+      - '.github/workflows/inspect-huerta-english-residue-20260820.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: php -l .github/scripts/inspect-huerta-english-residue-20260820.php
+      - name: Inspect production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done')"
+          sshpass -e scp $SCP .github/scripts/inspect-huerta-english-residue-20260820.php "$STAGING_USER@$STAGING_HOST:/tmp/inspect-huerta-en.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/inspect-huerta-en.php --path='$PROD_PATH' --allow-root; rm -f /tmp/inspect-huerta-en.php" > /tmp/huerta-en-quality.json
+          python3 -m json.tool /tmp/huerta-en-quality.json >/dev/null
+      - name: Record inspection
+        run: |
+          mkdir -p .deploy-status
+          cp /tmp/huerta-en-quality.json .deploy-status/huerta-english-quality-20260820.json
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/huerta-english-quality-20260820.json
+          git commit -m 'Record Huerta English quality inspection [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
