@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/catalog-destination-frontend-production-20260820.yml'
       - 'mu-plugins/mdo-catalog-destination-frontend-20260820.php'
+      - 'mu-plugins/mdo-emdo-selection-badge-20260820.php'
       - 'elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php'
   workflow_dispatch:
 
@@ -30,9 +31,13 @@ jobs:
         run: |
           set -euo pipefail
           php -l mu-plugins/mdo-catalog-destination-frontend-20260820.php >/dev/null
+          php -l mu-plugins/mdo-emdo-selection-badge-20260820.php >/dev/null
           php -l elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php >/dev/null
           grep -Fq "'recent_interest' => 0.00" mu-plugins/mdo-catalog-destination-frontend-20260820.php
           grep -Fq "array( '51', '52' )" mu-plugins/mdo-catalog-destination-frontend-20260820.php
+          grep -Fq "MDO_Catalog_Ranking::get_priority" mu-plugins/mdo-emdo-selection-badge-20260820.php
+          grep -Fq "Selección EMDO" mu-plugins/mdo-emdo-selection-badge-20260820.php
+          grep -Fq "EMDO Selection" mu-plugins/mdo-emdo-selection-badge-20260820.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
       - name: Deploy destination frontend to production
@@ -62,13 +67,17 @@ jobs:
           : "${PROD_PATH:?production path not found}"
 
           MU_LOCAL='mu-plugins/mdo-catalog-destination-frontend-20260820.php'
+          BADGE_LOCAL='mu-plugins/mdo-emdo-selection-badge-20260820.php'
           COUNT_LOCAL='elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php'
           MU_TMP="/tmp/mdo-catalog-destination-frontend-${GITHUB_RUN_ID}.php"
+          BADGE_TMP="/tmp/mdo-emdo-selection-badge-${GITHUB_RUN_ID}.php"
           COUNT_TMP="/tmp/catalog-visibility-counts-${GITHUB_RUN_ID}.php"
           MU_TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-catalog-destination-frontend-20260820.php"
+          BADGE_TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-emdo-selection-badge-20260820.php"
           COUNT_TARGET="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php"
 
           sshpass -e scp $SCP_OPTIONS "$MU_LOCAL" "$STAGING_USER@$STAGING_HOST:$MU_TMP"
+          sshpass -e scp $SCP_OPTIONS "$BADGE_LOCAL" "$STAGING_USER@$STAGING_HOST:$BADGE_TMP"
           sshpass -e scp $SCP_OPTIONS "$COUNT_LOCAL" "$STAGING_USER@$STAGING_HOST:$COUNT_TMP"
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
@@ -78,31 +87,53 @@ jobs:
             wp_bin=\$(command -v wp || true)
             [ -n \"\$php_bin\" ] && [ -n \"\$wp_bin\" ]
             \"\$php_bin\" -l '$MU_TMP' >/dev/null
+            \"\$php_bin\" -l '$BADGE_TMP' >/dev/null
             \"\$php_bin\" -l '$COUNT_TMP' >/dev/null
             mkdir -p '$PROD_PATH/wp-content/mu-plugins'
             test -d '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc'
             if [ -f '$MU_TARGET' ]; then cp -p '$MU_TARGET' '/tmp/mdo-catalog-destination-frontend-${GITHUB_RUN_ID}.backup.php'; fi
+            if [ -f '$BADGE_TARGET' ]; then cp -p '$BADGE_TARGET' '/tmp/mdo-emdo-selection-badge-${GITHUB_RUN_ID}.backup.php'; fi
             cp -p '$COUNT_TARGET' '/tmp/catalog-visibility-counts-${GITHUB_RUN_ID}.backup.php'
             cp '$MU_TMP' '$MU_TARGET'
+            cp '$BADGE_TMP' '$BADGE_TARGET'
             cp '$COUNT_TMP' '$COUNT_TARGET'
-            rm -f '$MU_TMP' '$COUNT_TMP'
+            rm -f '$MU_TMP' '$BADGE_TMP' '$COUNT_TMP'
             \"\$php_bin\" -l '$MU_TARGET' >/dev/null
+            \"\$php_bin\" -l '$BADGE_TARGET' >/dev/null
             \"\$php_bin\" -l '$COUNT_TARGET' >/dev/null
             VERIFY=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
               printf("EMDO=%s\\n", defined("MDO_SUPPLIER_SYNC_VERSION") ? MDO_SUPPLIER_SYNC_VERSION : "missing");
               printf("SHIPPING=%s\\n", class_exists("MDO_Shipping_Destinations") ? "yes" : "no");
               printf("RANKING=%s\\n", class_exists("MDO_Catalog_Ranking") ? "yes" : "no");
               printf("FRONTEND=%s\\n", class_exists("MDO_Catalog_Destination_Frontend") ? "yes" : "no");
+              printf("BADGE=%s\\n", class_exists("MDO_EMDO_Selection_Badge") ? "yes" : "no");
+              $ids = get_posts(array("post_type"=>"product","post_status"=>"publish","numberposts"=>1,"fields"=>"ids","meta_key"=>MDO_Catalog_Ranking::PRIORITY_META,"meta_value"=>"100"));
+              printf("PRIORITY100=%d\\n", count($ids));
+              if ($ids) {
+                global $product;
+                $product = wc_get_product((int) $ids[0]);
+                $_SERVER["REQUEST_URI"] = "/tienda/";
+                ob_start(); MDO_EMDO_Selection_Badge::render_badge(); $es = ob_get_clean();
+                $_SERVER["REQUEST_URI"] = "/en/shop/";
+                ob_start(); MDO_EMDO_Selection_Badge::render_badge(); $en = ob_get_clean();
+                printf("BADGE_ES=%s\\n", false !== strpos($es, "Selección EMDO") ? "yes" : "no");
+                printf("BADGE_EN=%s\\n", false !== strpos($en, "EMDO Selection") ? "yes" : "no");
+              }
             ' --path='$PROD_PATH' --allow-root)
             printf '%s\\n' \"\$VERIFY\"
             printf '%s\\n' \"\$VERIFY\" | grep -Fq 'EMDO=1.0.18'
             printf '%s\\n' \"\$VERIFY\" | grep -Fq 'SHIPPING=yes'
             printf '%s\\n' \"\$VERIFY\" | grep -Fq 'RANKING=yes'
             printf '%s\\n' \"\$VERIFY\" | grep -Fq 'FRONTEND=yes'
+            printf '%s\\n' \"\$VERIFY\" | grep -Fq 'BADGE=yes'
+            if printf '%s\\n' \"\$VERIFY\" | grep -Fq 'PRIORITY100=1'; then
+              printf '%s\\n' \"\$VERIFY\" | grep -Fq 'BADGE_ES=yes'
+              printf '%s\\n' \"\$VERIFY\" | grep -Fq 'BADGE_EN=yes'
+            fi
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
           "
 
-      - name: Verify live selector and postcode rules
+      - name: Verify live selector and badge assets
         shell: bash
         run: |
           set -euo pipefail
@@ -115,6 +146,7 @@ jobs:
           grep -Fq 'data-mdo-destination-modal' "$HTML"
           grep -Fq 'Envío a' "$HTML"
           grep -Fq '>España<' "$HTML"
+          grep -Fq 'mdo-emdo-selection-badge-css' "$HTML"
 
           NONCE="$(python3 - <<'PY'
           import re
