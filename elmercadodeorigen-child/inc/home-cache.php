@@ -169,9 +169,19 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 		return $html;
 	}
 
-	$critical_tag = '<style id="elmercado-home-first-view-css">' . $critical . '</style>';
-	$css_url      = esc_url( elmercado_home_deferred_css_url() );
-	$deferred_tag = '<link id="elmercado-home-deferred-css" rel="preload" as="style" href="' . $css_url . '" onload="this.onload=null;this.rel=\'stylesheet\'">'
+	/*
+	 * Woostify imprime #mobile-navigation aunque el drawer esté cerrado. En
+	 * móvil esa caja llegó a participar en el primer layout y Lighthouse le
+	 * atribuyó un CLS de 1.000. Antes de cualquier paint la retiramos por
+	 * completo del layout. El listener de captura marca la intención del usuario
+	 * antes de que el manejador de Woostify procese el mismo click, permitiendo
+	 * que el menú vuelva a su display normal justo cuando realmente se abre.
+	 */
+	$mobile_nav_guard  = '@media(min-width:992px){body.home #mobile-navigation.sidebar-menu,body.home .sidebar-menu{display:none!important}}@media(max-width:991px){html:not([data-emo-menu-intent="1"]) body.home #mobile-navigation.sidebar-menu{display:none!important}}';
+	$mobile_nav_intent = '<script id="elmercado-home-mobile-nav-intent-critical">document.addEventListener("click",function(e){var t=e.target&&e.target.closest?e.target.closest(".toggle-sidebar-menu-btn"):null;if(t){document.documentElement.setAttribute("data-emo-menu-intent","1");}},true);</script>';
+	$critical_tag      = '<style id="elmercado-home-first-view-css">' . $mobile_nav_guard . $critical . '</style>' . $mobile_nav_intent;
+	$css_url           = esc_url( elmercado_home_deferred_css_url() );
+	$deferred_tag      = '<link id="elmercado-home-deferred-css" rel="preload" as="style" href="' . $css_url . '" onload="this.onload=null;this.rel=\'stylesheet\'">'
 		. '<noscript><link rel="stylesheet" href="' . $css_url . '"></noscript>';
 
 	$head_protected = preg_replace_callback(
