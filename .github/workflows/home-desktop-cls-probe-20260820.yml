@@ -1,5 +1,5 @@
 name: Home desktop CLS probe 20260820
-# Re-run after user desktop agent reported CLS 0.12.
+# Detailed re-run after user desktop agent reported CLS 0.12.
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
-      - name: Trace desktop layout shifts
+      - name: Trace desktop layout shifts and geometry
         shell: bash
         run: |
           set -euo pipefail
@@ -27,29 +27,30 @@ jobs:
           const puppeteer=require('puppeteer-core');
           (async()=>{
             const browser=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            for(let run=1;run<=3;run++){
-              const page=await browser.newPage();
-              await page.setViewport({width:1350,height:940,deviceScaleFactor:1});
-              await page.evaluateOnNewDocument(()=>{
-                window.__cls=0;window.__shifts=[];
-                new PerformanceObserver(list=>{
-                  for(const e of list.getEntries()){
-                    if(e.hadRecentInput)continue;
-                    window.__cls+=e.value;
-                    window.__shifts.push({value:e.value,time:e.startTime,sources:(e.sources||[]).map(s=>({node:s.node,previousRect:s.previousRect,currentRect:s.currentRect}))});
-                  }
-                }).observe({type:'layout-shift',buffered:true});
+            const page=await browser.newPage();
+            await page.setViewport({width:1350,height:940,deviceScaleFactor:1});
+            await page.evaluateOnNewDocument(()=>{
+              const rect=r=>r?{x:r.x,y:r.y,width:r.width,height:r.height,top:r.top,right:r.right,bottom:r.bottom,left:r.left}:null;
+              const selector=el=>{if(!el||!el.tagName)return '';let x=el.tagName.toLowerCase();if(el.id)x+='#'+el.id;if(el.classList&&el.classList.length)x+='.'+[...el.classList].slice(0,5).join('.');return x;};
+              window.__cls=0;window.__shifts=[];
+              new PerformanceObserver(list=>{for(const e of list.getEntries()){if(e.hadRecentInput)continue;window.__cls+=e.value;window.__shifts.push({value:e.value,time:e.startTime,sources:(e.sources||[]).map(s=>({selector:selector(s.node),previousRect:rect(s.previousRect),currentRect:rect(s.currentRect)}))});}}).observe({type:'layout-shift',buffered:true});
+            });
+            const started=Date.now();
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'domcontentloaded',timeout:60000});
+            for(const delay of [0,250,500,750,1000,1500,2000,2500,3000,4000]){
+              const elapsed=Date.now()-started;if(delay>elapsed)await new Promise(r=>setTimeout(r,delay-elapsed));
+              const snap=await page.evaluate(()=>{
+                const q=s=>document.querySelector(s);const R=e=>e?(()=>{const r=e.getBoundingClientRect();return [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)]})():null;const C=e=>e?getComputedStyle(e):null;
+                const hero=q('.emo-hero'),grid=q('.emo-hero__grid'),visual=q('.emo-hero__visual--vendors'),card=q('.emo-hero-card--1'),trust=q('.emo-trust'),nav=q('.site-navigation');
+                const hc=C(hero),gc=C(grid),vc=C(visual),cc=C(card);
+                return {hero:R(hero),grid:R(grid),visual:R(visual),card:R(card),trust:R(trust),nav:R(nav),heroCSS:hc&&[hc.minHeight,hc.paddingTop,hc.paddingBottom],gridCSS:gc&&[gc.gridTemplateColumns,gc.gap],visualCSS:vc&&[vc.gridTemplateRows,vc.transform,vc.height],cardCSS:cc&&[cc.gridColumnStart,cc.gridColumnEnd,cc.gridRowStart,cc.gridRowEnd]};
               });
-              await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'load',timeout:60000});
-              await new Promise(r=>setTimeout(r,7000));
-              const data=await page.evaluate(()=>({cls:window.__cls,shifts:window.__shifts.map(e=>({value:e.value,time:e.time,sources:e.sources.map(s=>({selector:(()=>{const el=s.node;if(!el||!el.tagName)return '';let x=el.tagName.toLowerCase();if(el.id)x+='#'+el.id;if(el.classList&&el.classList.length)x+='.'+[...el.classList].slice(0,5).join('.');return x;})(),previousRect:s.previousRect,currentRect:s.currentRect}))}))}));
-              console.log('RUN',run,'CLS',data.cls.toFixed(6));
-              for(const e of data.shifts.sort((a,b)=>b.value-a.value).slice(0,10)){
-                console.log(' shift',e.value.toFixed(6),'t=',Math.round(e.time));
-                for(const s of e.sources.slice(0,6)) console.log('  ',s.selector,JSON.stringify(s.previousRect),'->',JSON.stringify(s.currentRect));
-              }
-              await page.close();
+              console.log('SNAP',delay,JSON.stringify(snap));
             }
+            await new Promise(r=>setTimeout(r,3000));
+            const data=await page.evaluate(()=>({cls:window.__cls,shifts:window.__shifts}));
+            console.log('CLS',data.cls.toFixed(6));
+            for(const e of data.shifts.sort((a,b)=>b.value-a.value).slice(0,12)){console.log('SHIFT',e.value.toFixed(6),'t',Math.round(e.time),JSON.stringify(e.sources));}
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
@@ -62,6 +63,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add runtime/home-desktop-cls-probe-20260820.txt
-          git commit -m 'Record remaining desktop Home CLS sources' || exit 0
+          git commit -m 'Record detailed desktop Home CLS geometry' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
