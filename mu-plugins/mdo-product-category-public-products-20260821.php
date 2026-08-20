@@ -1,12 +1,18 @@
 <?php
 /**
- * Plugin Name: MDO Product Category Public Products
- * Description: Prevents false-empty WooCommerce product-category archives while preserving EMDO catalogue visibility rules.
- * Version: 1.0.0
+ * Plugin Name: MDO English Product Category Public Products
+ * Description: Prevents false-empty WooCommerce product-category archives on the English storefront only, preserving EMDO visibility rules.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
+}
+
+function mdo_category_public_is_english_20260821(): bool {
+	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( (string) $_SERVER['REQUEST_URI'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+	$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+	return 1 === preg_match( '#^/en(?:/|$)#i', $path );
 }
 
 /** @return int[] */
@@ -28,10 +34,6 @@ function mdo_category_public_valid_ids_20260821( int $term_id ): array {
 	if ( ! is_wp_error( $children ) ) {
 		$term_ids = array_values( array_unique( array_merge( $term_ids, array_filter( array_map( 'absint', (array) $children ) ) ) ) );
 	}
-	if ( ! $term_ids ) {
-		$cache[ $key ] = array();
-		return array();
-	}
 
 	global $wpdb;
 	$sql = "SELECT DISTINCT p.ID
@@ -46,7 +48,6 @@ function mdo_category_public_valid_ids_20260821( int $term_id ): array {
 	if ( function_exists( 'elmercado_catalog_visibility_sql_clause_010218' ) ) {
 		$sql .= elmercado_catalog_visibility_sql_clause_010218( 'p' );
 	}
-
 	if ( function_exists( 'elmercado_catalog_counts_excluded_authors_010217' ) ) {
 		$excluded = array_values( array_filter( array_map( 'absint', elmercado_catalog_counts_excluded_authors_010217() ) ) );
 		if ( $excluded ) {
@@ -55,17 +56,14 @@ function mdo_category_public_valid_ids_20260821( int $term_id ): array {
 	}
 
 	$sql .= ' ORDER BY p.ID DESC';
-	$ids = $wpdb->get_col( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
-	$cache[ $key ] = array_values( array_unique( array_filter( array_map( 'absint', (array) $ids ) ) ) );
+	$cache[ $key ] = array_values( array_unique( array_filter( array_map( 'absint', (array) $wpdb->get_col( $sql ) ) ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 	return $cache[ $key ];
 }
 
 function mdo_category_public_has_narrowing_filters_20260821(): bool {
 	foreach ( array_keys( $_GET ) as $raw_key ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$key = sanitize_key( (string) $raw_key );
-		if ( in_array( $key, array( 'min_price', 'max_price', 'vendor_id', 's', 'product_tag' ), true )
-			|| 0 === strpos( $key, 'filter_' )
-			|| 0 === strpos( $key, 'query_type_' ) ) {
+		if ( in_array( $key, array( 'min_price', 'max_price', 'vendor_id', 's', 'product_tag' ), true ) || 0 === strpos( $key, 'filter_' ) || 0 === strpos( $key, 'query_type_' ) ) {
 			return true;
 		}
 	}
@@ -73,15 +71,14 @@ function mdo_category_public_has_narrowing_filters_20260821(): bool {
 }
 
 function mdo_category_public_context_20260821( WP_Query $query ): array {
-	if ( is_admin() || ! $query->is_main_query() || ! $query->is_tax( 'product_cat' ) ) {
+	if ( is_admin() || ! mdo_category_public_is_english_20260821() || ! $query->is_main_query() || ! $query->is_tax( 'product_cat' ) ) {
 		return array();
 	}
 	$term = get_queried_object();
 	if ( ! $term instanceof WP_Term || 'product_cat' !== $term->taxonomy ) {
 		return array();
 	}
-	$ids = mdo_category_public_valid_ids_20260821( (int) $term->term_id );
-	return array( 'term_id' => (int) $term->term_id, 'ids' => $ids );
+	return array( 'term_id' => (int) $term->term_id, 'ids' => mdo_category_public_valid_ids_20260821( (int) $term->term_id ) );
 }
 
 add_action(
@@ -96,31 +93,21 @@ add_action(
 				}
 
 				$valid_ids = (array) $context['ids'];
-				$current   = array_values( array_filter( array_map( 'absint', (array) $query->get( 'post__in' ) ) ) );
-				$current   = array_values( array_diff( $current, array( 0 ) ) );
-
+				$current   = array_values( array_diff( array_filter( array_map( 'absint', (array) $query->get( 'post__in' ) ) ), array( 0 ) ) );
 				if ( $current ) {
-					$valid_lookup = array_fill_keys( $valid_ids, true );
-					$intersection = array_values( array_filter( $current, static fn( int $id ): bool => isset( $valid_lookup[ $id ] ) ) );
-					/* Ranking is ordering, not a second visibility universe. If it accidentally
-					 * excludes the whole category, restore the category truth set. */
+					$lookup       = array_fill_keys( $valid_ids, true );
+					$intersection = array_values( array_filter( $current, static fn( int $id ): bool => isset( $lookup[ $id ] ) ) );
 					$query->set( 'post__in', $intersection ?: ( $valid_ids ?: array( 0 ) ) );
 				} else {
 					$query->set( 'post__in', $valid_ids ?: array( 0 ) );
 				}
 
-				if ( 'post__in' !== (string) $query->get( 'orderby' ) && $valid_ids ) {
-					/* Leave WooCommerce's requested/default ordering untouched. */
-				}
 				$query->set( 'mdo_category_public_loop_20260821', 1 );
 				$query->set( 'mdo_category_public_recovery_20260821', mdo_category_public_has_narrowing_filters_20260821() ? 0 : 1 );
 			},
 			PHP_INT_MAX
 		);
 
-		/* A final consistency guard protects the initial category click from a
-		 * later plugin rebuilding the query into an empty result. It is deliberately
-		 * disabled when the visitor applies a genuine narrowing filter. */
 		add_filter(
 			'the_posts',
 			static function ( array $posts, WP_Query $query ): array {
