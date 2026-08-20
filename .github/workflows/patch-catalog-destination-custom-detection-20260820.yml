@@ -1,0 +1,100 @@
+name: Patch catalog destination custom detection
+
+on:
+  push:
+    branches: [fix/catalog-destination-custom-detection]
+    paths: ['.github/workflows/patch-catalog-destination-custom-detection-20260820.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/catalog-destination-custom-detection
+          fetch-depth: 0
+      - name: Use the site's real catalogue detectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('mu-plugins/mdo-catalog-destination-frontend-20260820.php')
+          s=p.read_text()
+          old_query='''\tprivate static function is_catalog_query( WP_Query $query ): bool {
+\t\tif ( ! $query->is_main_query() || $query->is_singular() ) {
+\t\t\treturn false;
+\t\t}
+\t\tif ( $query->is_post_type_archive( 'product' ) || $query->is_tax( 'product_cat' ) || $query->is_tax( 'product_tag' ) ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( $query->is_tax() && 0 === strpos( (string) $query->get( 'taxonomy' ), 'pa_' ) ) {
+\t\t\treturn true;
+\t\t}
+\t\t$post_type = $query->get( 'post_type' );
+\t\treturn 'product' === $post_type || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) );
+\t}
+'''
+          new_query='''\tprivate static function is_catalog_query( WP_Query $query ): bool {
+\t\tif ( ! $query->is_main_query() || $query->is_singular() ) {
+\t\t\treturn false;
+\t\t}
+
+\t\t/* El catálogo de EMDO recompone el loop: reutilizamos su detector canónico. */
+\t\tif ( function_exists( 'elmercado_catalog_is_main_query_010224' ) && elmercado_catalog_is_main_query_010224( $query ) ) {
+\t\t\treturn true;
+\t\t}
+
+\t\tif ( $query->is_post_type_archive( 'product' ) || $query->is_tax( 'product_cat' ) || $query->is_tax( 'product_tag' ) ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( $query->is_tax() && 0 === strpos( (string) $query->get( 'taxonomy' ), 'pa_' ) ) {
+\t\t\treturn true;
+\t\t}
+\t\t$post_type = $query->get( 'post_type' );
+\t\treturn 'product' === $post_type || ( is_array( $post_type ) && in_array( 'product', $post_type, true ) );
+\t}
+'''
+          old_surface='''\tprivate static function is_catalog_surface(): bool {
+\t\tif ( function_exists( 'is_shop' ) && is_shop() ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) {
+\t\t\treturn true;
+\t\t}
+\t\treturn is_search() && 'product' === get_query_var( 'post_type' );
+\t}
+'''
+          new_surface='''\tprivate static function is_catalog_surface(): bool {
+\t\t/* Misma fuente que usan el contador exacto y la carga continua de esta tienda. */
+\t\tif ( function_exists( 'elmercado_core_filters_is_catalog' ) && elmercado_core_filters_is_catalog() ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( function_exists( 'is_shop' ) && is_shop() ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) {
+\t\t\treturn true;
+\t\t}
+\t\treturn is_search() && 'product' === get_query_var( 'post_type' );
+\t}
+'''
+          if old_query not in s: raise SystemExit('catalog query detector block not found')
+          if old_surface not in s: raise SystemExit('catalog surface detector block not found')
+          s=s.replace(old_query,new_query,1).replace(old_surface,new_surface,1)
+          p.write_text(s)
+          PY
+          php -l mu-plugins/mdo-catalog-destination-frontend-20260820.php
+      - name: Commit patch and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/patch-catalog-destination-custom-detection-20260820.yml
+          git add mu-plugins/mdo-catalog-destination-frontend-20260820.php
+          git commit -m 'Use canonical catalog detection for destination frontend'
+          git push origin HEAD:fix/catalog-destination-custom-detection
