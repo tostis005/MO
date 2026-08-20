@@ -1,0 +1,32 @@
+name: Home Meta active probe 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-meta-active-probe-20260820.yml']
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;mkdir -p runtime;PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp); php_bin=$(command -v php||true); [ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1)
+            prod="";for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)prod="$p";break;;esac;done
+            f="$prod/wp-content/mu-plugins/mdo-home-performance-20260819.php";echo "file=$f";grep -m1 "Version:" "$f"||true;grep -n "setTimeout(load" "$f"||true;grep -n "requestIdleCallback(load" "$f"||true
+          ' | tee runtime/home-meta-active-probe-20260820.txt
+      - if: always()
+        run: |
+          [ -f runtime/home-meta-active-probe-20260820.txt ]||echo failed>runtime/home-meta-active-probe-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-meta-active-probe-20260820.txt;git commit -m 'Record active Home Meta MU probe' || exit 0;git pull --rebase origin main;git push origin HEAD:main
