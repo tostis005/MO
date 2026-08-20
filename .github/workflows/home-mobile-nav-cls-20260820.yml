@@ -53,7 +53,7 @@ jobs:
           timeout 45s sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-cls-010256.php "$STAGING_USER@$STAGING_HOST:/tmp/home-cls-nav-${GITHUB_RUN_ID}.php"
           timeout 180s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
             set -e
-            THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; MU='\$THEME/mu-plugins'
+            THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; MU='$PROD/wp-content/mu-plugins'
             cp \"\$THEME/inc/home-cache.php\" /tmp/home-cache-before-nav-${GITHUB_RUN_ID}.php
             cp \"\$MU/elmercado-home-cls-010256.php\" /tmp/home-cls-before-nav-${GITHUB_RUN_ID}.php
             install -m0644 /tmp/home-cache-nav-${GITHUB_RUN_ID}.php \"\$THEME/inc/home-cache.php\"
@@ -108,7 +108,7 @@ jobs:
             SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
             timeout 180s sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
               set -e
-              THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; MU='\$THEME/mu-plugins'
+              THEME='$PROD/wp-content/themes/elmercadodeorigen-child'; MU='$PROD/wp-content/mu-plugins'
               install -m0644 /tmp/home-cache-before-nav-${GITHUB_RUN_ID}.php \"\$THEME/inc/home-cache.php\"
               install -m0644 /tmp/home-cls-before-nav-${GITHUB_RUN_ID}.php \"\$MU/elmercado-home-cls-010256.php\"
               php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp)
