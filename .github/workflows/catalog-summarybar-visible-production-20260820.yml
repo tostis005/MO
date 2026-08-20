@@ -84,7 +84,7 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
 
-      - name: Verify five responsive viewports
+      - name: Verify polished toolbar and root modal
         id: browser
         shell: bash
         env:
@@ -95,67 +95,101 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const {chromium}=require('playwright');
-          const status={result:'failed',desktop_visible:0,tablet_visible:0,mobile_portrait_visible:0,mobile_narrow_visible:0,mobile_landscape_visible:0,inside_toolbar:0,single_visible_count:0,no_horizontal_overflow:0,portrait_two_rows:0,hover_readable:0,click_opens_modal:0,other_destination_option:0,default_products:0,note:''};
+          const status={result:'failed',viewports_ok:0,inside_toolbar:0,single_visible_count:0,no_horizontal_overflow:0,no_leading_pin:0,chevron_centered:0,hover_readable:0,modal_root:0,modal_above_catalog:0,close_control_ok:0,click_opens_modal:0,other_destination_option:0,destination_change:0,default_products:0,selected_destination:'',note:''};
+          const views=[['desktop',1440,900],['laptop',1180,780],['tablet',768,1024],['landscape',844,390],['portrait',390,844],['narrow',360,800],['tiny',320,720]];
           (async()=>{
             const browser=await chromium.launch({headless:true});
-            const contexts=[];
+            const snaps={};
             try{
-              const views=[['desktop',1440,900],['tablet',768,1024],['portrait',390,844],['narrow',360,800],['landscape',844,390]];
-              const snaps={};
               for(const [name,width,height] of views){
-                const context=await browser.newContext({viewport:{width,height}}); contexts.push(context);
+                const context=await browser.newContext({viewport:{width,height}});
                 const page=await context.newPage();
-                await page.goto(`${process.env.SHOP_URL}?toolbar_final=${process.env.GITHUB_RUN_ID||Date.now()}&vp=${name}`,{waitUntil:'domcontentloaded',timeout:45000});
+                await page.goto(`${process.env.SHOP_URL}?toolbar_polish=${process.env.GITHUB_RUN_ID||Date.now()}&vp=${name}`,{waitUntil:'domcontentloaded',timeout:45000});
                 await page.waitForSelector('.woostify-sorting.emo-catalog-toolbar-shared-010229',{state:'visible',timeout:20000});
                 await page.waitForSelector('.emo-catalog-result-count-010220',{state:'visible',timeout:20000});
                 await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical [data-mdo-destination-open]',{state:'visible',timeout:20000});
                 await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering',{state:'visible',timeout:20000});
                 await page.waitForTimeout(500);
+                const button=page.locator('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical [data-mdo-destination-open]');
                 snaps[name]=await page.evaluate(()=>{
                   const visible=e=>{if(!e)return false;const c=getComputedStyle(e),r=e.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&Number(c.opacity||1)>0&&r.width>0&&r.height>0};
-                  const rect=e=>e?e.getBoundingClientRect().toJSON():null;
                   const toolbar=document.querySelector('.woostify-sorting.emo-catalog-toolbar-shared-010229');
-                  const left=toolbar?.querySelector(':scope > .woostify-toolbar-left');
                   const count=toolbar?.querySelector('.emo-catalog-result-count-010220');
                   const destination=toolbar?.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]');
                   const ordering=toolbar?.querySelector('.woocommerce-ordering');
+                  const chevron=destination?.querySelector('.mdo-catalog-destination__chevron');
+                  const pin=toolbar?.querySelector('.mdo-catalog-destination__pin,.mdo-catalog-summarybar__pin');
                   const candidates=[...new Set([...document.querySelectorAll('.woocommerce-result-count,.emo-catalog-result-count-010220,[data-mdo-summary-count],[data-mdo-toolbar-count]')])];
                   const visibleCounts=candidates.filter(visible);
-                  const tr=toolbar?.getBoundingClientRect();
-                  const fits=e=>{if(!e||!tr)return false;const r=e.getBoundingClientRect();return r.left>=tr.left-1.5&&r.right<=tr.right+1.5};
-                  const cs=toolbar?getComputedStyle(toolbar):null;
-                  return {toolbarVisible:visible(toolbar),countVisible:visible(count),destinationVisible:visible(destination),orderingVisible:visible(ordering),inside:!!(toolbar&&count&&destination&&ordering&&toolbar.contains(count)&&toolbar.contains(destination)&&toolbar.contains(ordering)),visibleCountTotal:visibleCounts.length,bodyDestination:!!document.querySelector('body > .mdo-catalog-destination--canonical'),fits:[count,destination,ordering].every(fits),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2,toolbarDisplay:cs?.display||'',toolbarHeight:tr?.height||0,toolbarRect:rect(toolbar),leftRect:rect(left),countRect:rect(count),destinationRect:rect(destination),orderingRect:rect(ordering),products:document.querySelectorAll('li.product').length};
+                  const tr=toolbar?.getBoundingClientRect(),dr=destination?.getBoundingClientRect(),or=ordering?.getBoundingClientRect(),cr=count?.getBoundingClientRect(),chr=chevron?.getBoundingClientRect();
+                  const inside=r=>!!(tr&&r&&r.left>=tr.left-1.5&&r.right<=tr.right+1.5&&r.top>=tr.top-1.5&&r.bottom<=tr.bottom+1.5);
+                  return {visible:visible(toolbar)&&visible(count)&&visible(destination)&&visible(ordering),inside:inside(cr)&&inside(dr)&&inside(or),visibleCountTotal:visibleCounts.length,pinExists:!!pin,chevronDelta:(dr&&chr)?Math.abs((chr.top+chr.height/2)-(dr.top+dr.height/2)):999,pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2,toolbarOverflow:toolbar?toolbar.scrollWidth>toolbar.clientWidth+2:true,products:document.querySelectorAll('li.product').length};
                 });
+                await button.hover();
+                const hover=await button.evaluate(el=>({color:getComputedStyle(el).color,children:[...el.querySelectorAll('*')].map(x=>getComputedStyle(x).color)}));
+                const white=v=>/rgb\(255,\s*255,\s*255\)/.test(v||'');
+                snaps[name].hoverReadable=!white(hover.color)&&hover.children.every(c=>!white(c));
                 await page.screenshot({path:`artifacts/catalog-toolbar-${name}.png`,fullPage:false});
-                if(name==='desktop'){
-                  const button=page.locator('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical [data-mdo-destination-open]');
-                  await button.hover();
-                  const hover=await button.evaluate(el=>({color:getComputedStyle(el).color,bg:getComputedStyle(el).backgroundColor,child:[...el.children].map(x=>getComputedStyle(x).color)}));
-                  const white=v=>/rgb\(255,\s*255,\s*255\)/.test(v||'');
-                  status.hover_readable=(!white(hover.color)&&hover.child.every(c=>!white(c)))?1:0;
-                  await button.click();
-                  await page.waitForFunction(()=>{const m=document.querySelector('[data-mdo-destination-modal]');if(!m||m.hidden)return false;const c=getComputedStyle(m),r=m.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0},null,{timeout:7000});
-                  status.click_opens_modal=1;
-                  const options=await page.locator('[data-mdo-destination-country] option').evaluateAll(o=>o.map(x=>x.value).filter(Boolean));
-                  status.other_destination_option=options.some(v=>v!=='ES')?1:0;
-                }
+                await context.close();
               }
-              const good=s=>s.toolbarVisible&&s.countVisible&&s.destinationVisible&&s.orderingVisible&&s.inside&&s.visibleCountTotal===1&&!s.bodyDestination&&s.fits&&!s.pageOverflow;
-              status.desktop_visible=good(snaps.desktop)?1:0;
-              status.tablet_visible=good(snaps.tablet)?1:0;
-              status.mobile_portrait_visible=good(snaps.portrait)?1:0;
-              status.mobile_narrow_visible=good(snaps.narrow)?1:0;
-              status.mobile_landscape_visible=good(snaps.landscape)?1:0;
-              status.inside_toolbar=Object.values(snaps).every(s=>s.inside&&!s.bodyDestination)?1:0;
+
+              status.default_products=snaps.desktop?.products||0;
+              status.viewports_ok=Object.values(snaps).every(s=>s.visible)?1:0;
+              status.inside_toolbar=Object.values(snaps).every(s=>s.inside)?1:0;
               status.single_visible_count=Object.values(snaps).every(s=>s.visibleCountTotal===1)?1:0;
-              status.no_horizontal_overflow=Object.values(snaps).every(s=>s.fits&&!s.pageOverflow)?1:0;
-              status.portrait_two_rows=(snaps.portrait.orderingRect?.top>=snaps.portrait.leftRect?.bottom-2&&snaps.narrow.orderingRect?.top>=snaps.narrow.leftRect?.bottom-2)?1:0;
-              status.default_products=snaps.desktop.products;
-              const checks=[status.desktop_visible,status.tablet_visible,status.mobile_portrait_visible,status.mobile_narrow_visible,status.mobile_landscape_visible,status.inside_toolbar,status.single_visible_count,status.no_horizontal_overflow,status.portrait_two_rows,status.hover_readable,status.click_opens_modal,status.other_destination_option];
-              if(checks.every(Boolean)&&status.default_products>0){status.result='success';status.note='One native white toolbar verified at five resolutions; one count, destination inside, no overflow, readable hover, modal works.'}
-              else status.note='Assertions failed: '+JSON.stringify(snaps);
+              status.no_horizontal_overflow=Object.values(snaps).every(s=>!s.pageOverflow&&!s.toolbarOverflow)?1:0;
+              status.no_leading_pin=Object.values(snaps).every(s=>!s.pinExists)?1:0;
+              status.chevron_centered=Object.values(snaps).every(s=>s.chevronDelta<=1.25)?1:0;
+              status.hover_readable=Object.values(snaps).every(s=>s.hoverReadable)?1:0;
+
+              const context=await browser.newContext({viewport:{width:390,height:844}});
+              const page=await context.newPage();
+              await page.goto(`${process.env.SHOP_URL}?modal_polish=${process.env.GITHUB_RUN_ID||Date.now()}`,{waitUntil:'domcontentloaded',timeout:45000});
+              const trigger=page.locator('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical [data-mdo-destination-open]');
+              await trigger.waitFor({state:'visible',timeout:20000});
+              await trigger.click();
+              await page.waitForSelector('.mdo-destination-modal--root:not([hidden])',{state:'visible',timeout:7000});
+              status.click_opens_modal=1;
+              const modalCheck=await page.evaluate(()=>{
+                const modal=document.querySelector('.mdo-destination-modal--root');
+                const panel=modal?.querySelector('.mdo-destination-modal__panel');
+                const close=modal?.querySelector('.mdo-destination-modal__close');
+                if(!modal||!panel||!close)return {root:false,above:false,close:false};
+                const mc=getComputedStyle(modal),pr=panel.getBoundingClientRect(),cr=close.getBoundingClientRect();
+                const x=Math.max(0,Math.min(innerWidth-1,pr.left+pr.width/2));
+                const y=Math.max(0,Math.min(innerHeight-1,pr.top+Math.min(110,pr.height/2)));
+                const top=document.elementFromPoint(x,y);
+                const before=getComputedStyle(close,'::before'),after=getComputedStyle(close,'::after');
+                return {root:modal.parentElement===document.body,above:Number(mc.zIndex)>=1000000&&!!top&&modal.contains(top),close:cr.width>=39&&cr.height>=39&&before.content!=='none'&&after.content!=='none'};
+              });
+              status.modal_root=modalCheck.root?1:0;
+              status.modal_above_catalog=modalCheck.above?1:0;
+              status.close_control_ok=modalCheck.close?1:0;
+              await page.screenshot({path:'artifacts/catalog-toolbar-modal-mobile.png',fullPage:false});
+
+              const select=page.locator('[data-mdo-destination-country]');
+              const options=await select.locator('option').evaluateAll(opts=>opts.map(o=>({value:o.value,label:o.textContent.trim()})).filter(o=>o.value));
+              const target=options.find(o=>o.value!=='ES');
+              if(!target)throw new Error('No supported destination other than Spain is available');
+              status.other_destination_option=1;
+              status.selected_destination=`${target.value}:${target.label}`;
+              await select.selectOption(target.value);
+              const responsePromise=page.waitForResponse(r=>{const data=r.request().postData()||'';return r.url().includes('admin-ajax.php')&&data.includes('mdo_set_shipping_destination')},{timeout:15000});
+              const navigationPromise=page.waitForNavigation({waitUntil:'domcontentloaded',timeout:20000}).catch(()=>null);
+              await page.locator('[data-mdo-destination-save]').click();
+              const response=await responsePromise;let payload=null;try{payload=await response.json()}catch(_){}
+              if(!response.ok()||!payload||!payload.success)throw new Error(`Destination AJAX failed: ${response.status()} ${JSON.stringify(payload)}`);
+              await navigationPromise;await page.waitForTimeout(500);
+              const cookies=await context.cookies();const cc=cookies.find(c=>c.name==='mdo_shipping_country');
+              if(!cc||cc.value!==target.value)throw new Error(`Destination cookie not persisted: expected ${target.value}, got ${cc?.value||'missing'}`);
+              status.destination_change=1;
+              await context.close();
+
+              const keys=['viewports_ok','inside_toolbar','single_visible_count','no_horizontal_overflow','no_leading_pin','chevron_centered','hover_readable','modal_root','modal_above_catalog','close_control_ok','click_opens_modal','other_destination_option','destination_change'];
+              if(keys.every(k=>status[k]===1)&&status.default_products>0){status.result='success';status.note='Polished toolbar verified at seven resolutions; no overflow/duplicates, centered chevron, readable hover and root modal above catalogue layers.'}
+              else status.note='Failed checks: '+keys.filter(k=>status[k]!==1).join(', ')+' snapshots='+JSON.stringify(snaps);
             }catch(e){status.note=(e&&e.stack?e.stack:String(e)).replace(/\n/g,' | ')}
-            finally{for(const c of contexts){try{await c.close()}catch(_){}}await browser.close();fs.writeFileSync('/tmp/mdo-toolbar-browser.json',JSON.stringify(status,null,2));console.log(JSON.stringify(status,null,2))}
+            finally{await browser.close();fs.writeFileSync('/tmp/mdo-toolbar-browser.json',JSON.stringify(status,null,2));console.log(JSON.stringify(status,null,2))}
           })();
           NODE
           [ -s /tmp/mdo-toolbar-browser.json ] || printf '{"result":"failed","note":"missing browser status"}\n' >/tmp/mdo-toolbar-browser.json
@@ -172,14 +206,14 @@ jobs:
           import json,os,datetime
           try:d=json.load(open('/tmp/mdo-toolbar-browser.json'))
           except Exception as e:d={'result':'failed','note':str(e)}
-          keys=['result','desktop_visible','tablet_visible','mobile_portrait_visible','mobile_narrow_visible','mobile_landscape_visible','inside_toolbar','single_visible_count','no_horizontal_overflow','portrait_two_rows','hover_readable','click_opens_modal','other_destination_option','default_products','note']
+          keys=['result','viewports_ok','inside_toolbar','single_visible_count','no_horizontal_overflow','no_leading_pin','chevron_centered','hover_readable','modal_root','modal_above_catalog','close_control_ok','click_opens_modal','other_destination_option','destination_change','default_products','selected_destination','note']
           out=[f'source_commit={os.environ.get("GITHUB_SHA","")}',f'workflow_run={os.environ.get("GITHUB_RUN_ID","")}',f'checked_at={datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}']+[f'{k}={str(d.get(k,"" )).replace(chr(10)," ")}' for k in keys]
           open('.deploy-status/catalog-toolbar-live.txt','w').write('\n'.join(out)+'\n')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/catalog-toolbar-live.txt
-          git commit -m 'Record final catalog toolbar responsive check [skip ci]' || exit 0
+          git commit -m 'Record polished catalog toolbar check [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
 
