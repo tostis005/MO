@@ -8,6 +8,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Conserva la base de precio por kilo sin copiar el importe del proveedor.
  * La detección se hace sobre el payload original antes de que la política
  * editorial de La Huerta elimine precios y datos de contacto.
+ *
+ * Importante: esta clase nunca realiza peticiones HTTP. Solo lee el payload que
+ * el sincronizador ya ha guardado en la base de datos.
  */
 final class MDO_Huerta_Unit_Price {
 	private const BASIS_META = '_emdo_huerta_price_basis';
@@ -15,7 +18,12 @@ final class MDO_Huerta_Unit_Price {
 	private static array $busy = array();
 
 	public static function init(): void {
-		/* Antes de MDO_Huerta_Description_Policy (prioridad 95): leer payload crudo. */
+		/* Productos ya existentes: capturar el payload crudo antes de que el
+		 * importador guarde/restaure la descripción protegida. */
+		add_action( 'woocommerce_before_product_object_save', array( __CLASS__, 'capture_before_product_save' ), 5, 2 );
+
+		/* Productos nuevos: el vínculo de origen se añade después del primer save.
+		 * Prioridad 5 = antes de MDO_Huerta_Description_Policy (95), que sanea el payload. */
 		add_action( 'added_post_meta', array( __CLASS__, 'capture_before_cleanup' ), 5, 4 );
 		add_action( 'updated_post_meta', array( __CLASS__, 'capture_before_cleanup' ), 5, 4 );
 
@@ -25,14 +33,27 @@ final class MDO_Huerta_Unit_Price {
 		add_action( 'updated_post_meta', array( __CLASS__, 'apply_after_source_link' ), 160, 4 );
 	}
 
+	public static function capture_before_product_save( $product, $data_store = null ): void {
+		unset( $data_store );
+		if ( ! $product instanceof WC_Product || ! $product->get_id() ) {
+			return;
+		}
+		$product_id = (int) $product->get_id();
+		if ( ! self::is_huerta_product( $product_id ) ) {
+			return;
+		}
+		if ( 'kg' === self::detect_from_source_payload( $product_id ) ) {
+			update_post_meta( $product_id, self::BASIS_META, 'kg' );
+		}
+	}
+
 	public static function capture_before_cleanup( int $meta_id, int $object_id, string $meta_key, $meta_value ): void {
 		unset( $meta_id, $meta_value );
 		if ( '_emdo_source_url' !== $meta_key || 'product' !== get_post_type( $object_id ) || ! self::is_huerta_product( $object_id ) ) {
 			return;
 		}
 
-		$basis = self::detect_from_source_payload( $object_id );
-		if ( 'kg' === $basis ) {
+		if ( 'kg' === self::detect_from_source_payload( $object_id ) ) {
 			update_post_meta( $object_id, self::BASIS_META, 'kg' );
 		}
 	}
@@ -60,6 +81,8 @@ final class MDO_Huerta_Unit_Price {
 			return false;
 		}
 
+		/* Solo señales explícitas de precio ligado a kg/kilo. Un peso como
+		 * "20 kg" o "caja de 7 kg" nunca activa esta regla. */
 		$patterns = array(
 			'/€\s*(?:\/|por)\s*(?:kg|kilo(?:gramo)?s?)\b/iu',
 			'/\b(?:eur|euros?)\s*(?:\/|por)\s*(?:kg|kilo(?:gramo)?s?)\b/iu',
