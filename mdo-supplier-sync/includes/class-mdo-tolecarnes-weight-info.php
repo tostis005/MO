@@ -4,6 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// Production deployment trigger: 2026-08-20.
 /**
  * Completa únicamente datos de formato/peso verificados en las fichas de
  * Tolecarnes que el conector no conserva actualmente en su descripción corta.
