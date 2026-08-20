@@ -1,0 +1,36 @@
+name: Home mobile CLS read-only 20260820
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-mobile-cls-readonly-20260820.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Lighthouse mobile
+        run: |
+          mkdir -p runtime
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=mobile --output=json --output-path=/tmp/lh.json --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          python3 - <<'PY' | tee runtime/home-mobile-cls-readonly-20260820.txt
+          import json
+          r=json.load(open('/tmp/lh.json'));a=r['audits']
+          print('score=',round(r['categories']['performance']['score']*100))
+          for k in ('first-contentful-paint','largest-contentful-paint','total-blocking-time','cumulative-layout-shift'):
+              print(k,'=',a[k]['numericValue'])
+          for x in ((a.get('layout-shifts',{}).get('details') or {}).get('items') or [])[:12]:
+              n=x.get('node') or {}; print('shift=',x.get('score'),n.get('selector') or n.get('nodeLabel') or '')
+          PY
+      - name: Record
+        if: always()
+        run: |
+          mkdir -p runtime; [ -f runtime/home-mobile-cls-readonly-20260820.txt ] || echo failed > runtime/home-mobile-cls-readonly-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-mobile-cls-readonly-20260820.txt;git commit -m 'Record deployed Home mobile CLS' || exit 0;git pull --rebase origin main;git push origin HEAD:main
