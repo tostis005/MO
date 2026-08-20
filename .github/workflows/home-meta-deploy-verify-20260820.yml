@@ -1,0 +1,75 @@
+name: Home Meta deploy verify 20260820
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-meta-deploy-verify-20260820.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-meta-final-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Validate committed MU
+        run: |
+          php -l mu-plugins/mdo-home-performance-20260819.php
+          grep -q 'Version: 1.4.2' mu-plugins/mdo-home-performance-20260819.php
+          grep -q 'setTimeout(load, 12000)' mu-plugins/mdo-home-performance-20260819.php
+
+      - name: Deploy exact committed MU and warm Home
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')";: "${PROD:?no prod}";echo "$PROD">/tmp/prod
+          sshpass -e scp $SCP mu-plugins/mdo-home-performance-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/meta-final-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';cp \"\$MU/mdo-home-performance-20260819.php\" /tmp/meta-final-before-${GITHUB_RUN_ID}.php;install -m0644 /tmp/meta-final-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-performance-20260819.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          for i in 1 2;do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null;done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          grep -q 'setTimeout(load, 12000)' /tmp/home.html
+
+      - name: Chrome network and CWV trace
+        shell: bash
+        run: |
+          set -euo pipefail;mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' >/tmp/result.json
+          const puppeteer=require('puppeteer-core');
+          (async()=>{const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const p=await b.newPage();await p.setViewport({width:412,height:915,deviceScaleFactor:1});const urls=[];p.on('request',r=>urls.push(r.url()));await p.evaluateOnNewDocument(()=>{window.__p={cls:0,lcp:0};new PerformanceObserver(l=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__p.cls+=e.value}).observe({type:'layout-shift',buffered:true});new PerformanceObserver(l=>{const a=l.getEntries();if(a.length)window.__p.lcp=a[a.length-1].startTime}).observe({type:'largest-contentful-paint',buffered:true});});await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'load',timeout:60000});await new Promise(r=>setTimeout(r,8000));const perf=await p.evaluate(()=>({cls:window.__p.cls,lcp:window.__p.lcp,fcp:(performance.getEntriesByName('first-contentful-paint')[0]||{}).startTime||0}));console.log(JSON.stringify({perf,capi:urls.filter(u=>u.includes('clientParamBuilder')||u.includes('unpkg.com'))},null,2));await b.close()})().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat /tmp/result.json | tee runtime/home-meta-deploy-verify-20260820.txt
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/result.json'));p=d['perf'];keep=not d['capi'] and p['cls']<0.02 and p['lcp']<5500
+          print('keep=',str(keep).lower());open('/tmp/keep','w').write('1' if keep else '0')
+          PY
+
+      - name: Roll back on failure and record
+        if: always()
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;K=$(cat /tmp/keep 2>/dev/null||echo 0);PROD=$(cat /tmp/prod 2>/dev/null||true);PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "$K" != 1 ];then
+            git checkout 557abb3^ -- mu-plugins/mdo-home-performance-20260819.php
+            [ -z "$PROD" ]||sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';install -m0644 /tmp/meta-final-before-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-performance-20260819.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          fi
+          mkdir -p runtime;[ -f runtime/home-meta-deploy-verify-20260820.txt ]||echo failed>runtime/home-meta-deploy-verify-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add mu-plugins/mdo-home-performance-20260819.php runtime/home-meta-deploy-verify-20260820.txt;git commit -m 'Verify delayed Home Meta helper in production' || exit 0;git pull --rebase origin main;git push origin HEAD:main
