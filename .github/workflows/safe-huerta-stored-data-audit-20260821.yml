@@ -49,6 +49,10 @@ jobs:
           : "${PROD_PATH:?Production path not found}"
           cat > /tmp/mdo-huerta-stored-audit.php <<'PHP'
           <?php
+          $wp_path = rtrim((string)getenv('MDO_WP_PATH'), '/');
+          if ($wp_path === '' || !is_file($wp_path . '/wp-load.php')) { fwrite(STDERR, "wp-load.php not found\n"); exit(2); }
+          define('WP_USE_THEMES', false);
+          require_once $wp_path . '/wp-load.php';
           global $wpdb;
           function mdo_audit_perkg($value) {
             $plain=html_entity_decode(wp_strip_all_tags((string)$value),ENT_QUOTES|ENT_HTML5,'UTF-8');
@@ -79,7 +83,11 @@ jobs:
           PHP
           REMOTE="/tmp/mdo-huerta-stored-audit-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP /tmp/mdo-huerta-stored-audit.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rm -f '$REMOTE'" > runtime/safe-huerta-stored-data-20260821.json
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); MDO_WP_PATH='$PROD_PATH' \"\$php_bin\" -d memory_limit=768M '$REMOTE'; rc=\$?; rm -f '$REMOTE'; exit \$rc" > runtime/safe-huerta-stored-data-20260821.json 2> runtime/safe-huerta-stored-data-error-20260821.txt
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then cat runtime/safe-huerta-stored-data-error-20260821.txt >&2; exit "$rc"; fi
           python3 - <<'PY'
           import json
           d=json.load(open('runtime/safe-huerta-stored-data-20260821.json'))
@@ -92,6 +100,6 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
           git pull --rebase origin main
-          git add runtime/safe-huerta-stored-data-20260821.json || true
+          git add runtime/safe-huerta-stored-data-20260821.json runtime/safe-huerta-stored-data-error-20260821.txt || true
           git commit -m 'Record safe Huerta stored data audit [skip ci]' || true
           git push origin HEAD:main
