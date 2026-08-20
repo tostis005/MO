@@ -1,0 +1,30 @@
+name: Home static guard check 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-static-guard-check-20260820.yml']
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: |
+          mkdir -p runtime
+          for q in '' '?mdo_guard_probe=1'; do
+            f=/tmp/home$( [ -z "$q" ] && echo static || echo dynamic ).html
+            curl -fsS --compressed --max-time 45 "https://www.elmercadodeorigen.com/$q" -o "$f"
+          done
+          python3 - <<'PY' | tee runtime/home-static-guard-check-20260820.txt
+          from pathlib import Path
+          for name in ('static','dynamic'):
+              s=Path('/tmp/home'+name+'.html').read_text(errors='ignore')
+              print(name,'bytes=',len(s),'hard_guard=', 'elmercado-home-mobile-nav-intent-critical' in s,'display_guard=', 'html:not([data-emo-menu-intent="1"])' in s,'first_view=', 'elmercado-home-first-view-css' in s)
+          PY
+      - if: always()
+        run: |
+          [ -f runtime/home-static-guard-check-20260820.txt ] || echo failed > runtime/home-static-guard-check-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-static-guard-check-20260820.txt;git commit -m 'Record static Home guard check' || exit 0;git pull --rebase origin main;git push origin HEAD:main
