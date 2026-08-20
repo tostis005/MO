@@ -1,0 +1,93 @@
+theme=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify
+--- files containing woostify-toolbar-left / woostify-sorting ---
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-template-functions.php:213:		echo '<div class="woostify-sorting">';
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php:346:		<div class="woostify-toolbar-left">
+--- contextual PHP snippets ---
+
+### wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-template-functions.php
+   195		 */
+   196		function woostify_after_content() {
+   197			?>
+   198				</main><!-- #main -->
+   199			</div><!-- #primary -->
+   200	
+   201			<?php
+   202			do_action( 'woostify_sidebar' );
+   203		}
+   204	}
+   205	
+   206	if ( ! function_exists( 'woostify_sorting_wrapper' ) ) {
+   207		/**
+   208		 * Sorting wrapper
+   209		 *
+   210		 * @return  void
+   211		 */
+   212		function woostify_sorting_wrapper() {
+   213			echo '<div class="woostify-sorting">';
+   214		}
+   215	}
+   216	
+   217	if ( ! function_exists( 'woostify_sorting_wrapper_close' ) ) {
+   218		/**
+   219		 * Sorting wrapper close
+   220		 *
+   221		 * @return  void
+   222		 */
+   223		function woostify_sorting_wrapper_close() {
+   224			echo '</div>';
+   225		}
+   226	}
+   227	
+   228	if ( ! function_exists( 'woostify_product_columns_wrapper' ) ) {
+   229		/**
+   230		 * Product columns wrapper
+   231		 *
+   232		 * @return  void
+   233		 */
+   234		function woostify_product_columns_wrapper() {
+   235			$columns = wc_get_loop_prop( 'columns' );
+   236			echo '<div class="columns-' . esc_attr( $columns ) . '">';
+   237		}
+   238	}
+   239	
+   240	if ( ! function_exists( 'woostify_product_columns_wrapper_close' ) ) {
+   241		/**
+
+### wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php
+   328		 * Toggle sidebar mobile button
+   329		 */
+   330		function woostify_toggle_sidebar_mobile_button() {
+   331			$icon = apply_filters( 'woostify_toggle_sidebar_mobile_button_icon', 'filter' );
+   332			?>
+   333			<button id="toggle-sidebar-mobile-button" class="<?php echo esc_attr( $icon ); ?>">
+   334				<?php Woostify_Icon::fetch_svg_icon( $icon ); ?>
+   335				<?php esc_html_e( 'Filter', 'woostify' ); ?></button>
+   336			<?php
+   337		}
+   338	}
+   339	
+   340	if ( ! function_exists( 'woostify_woocommerce_toolbar_left_open_div' ) ) {
+   341		/**
+   342		 * Toolbar left open div
+   343		 */
+   344		function woostify_woocommerce_toolbar_left_open_div() {
+   345			?>
+   346			<div class="woostify-toolbar-left">
+   347			<?php
+   348		}
+   349	}
+   350	if ( ! function_exists( 'woostify_woocommerce_toolbar_left_close_div' ) ) {
+   351		/**
+   352		 * Toolbar left close div
+   353		 */
+   354		function woostify_woocommerce_toolbar_left_close_div() {
+   355			?>
+   356			</div>
+   357			<?php
+   358		}
+   359	}
+--- before_shop_loop hooks touching sort/count ---
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:762:				remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 20 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:767:				remove_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:899:			add_action( 'woocommerce_before_shop_loop', 'woostify_sorting_wrapper', 9 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:900:			add_action( 'woocommerce_before_shop_loop', 'woostify_sorting_wrapper_close', 31 );
