@@ -1,19 +1,89 @@
 theme=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify
---- files containing woostify-toolbar-left / woostify-sorting ---
-/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-template-functions.php:213:		echo '<div class="woostify-sorting">';
-/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php:346:		<div class="woostify-toolbar-left">
---- contextual PHP snippets ---
-
-### wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-template-functions.php
-   195		 */
-   196		function woostify_after_content() {
-   197			?>
-   198				</main><!-- #main -->
-   199			</div><!-- #primary -->
-   200	
-   201			<?php
-   202			do_action( 'woostify_sidebar' );
-   203		}
+--- exact archive hook registration block ---
+   880	
+   881				remove_action( 'woocommerce_after_shop_loop_item_title', 'woocommerce_template_loop_price', 10 );
+   882				remove_action( 'woocommerce_after_shop_loop_item_title', 'woocommerce_template_loop_rating', 5 );
+   883				remove_action( 'woocommerce_after_shop_loop_item', 'woocommerce_template_loop_add_to_cart', 10 );
+   884	
+   885				remove_action( 'woocommerce_before_main_content', 'woocommerce_breadcrumb', 20 );
+   886	
+   887				// Single product.
+   888				remove_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_title', 5 );
+   889				remove_action( 'woocommerce_before_single_product_summary', 'woocommerce_show_product_images', 20 );
+   890				remove_action( 'woocommerce_before_single_product_summary', 'woocommerce_show_product_sale_flash', 10 );
+   891				remove_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_rating', 10 );
+   892				remove_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_price', 10 );
+   893	
+   894				add_action( 'woocommerce_single_product_summary', 'custom_template_single_title', 5 );
+   895				add_action( 'woocommerce_before_main_content', 'woostify_before_content', 10 );
+   896				add_action( 'woocommerce_after_main_content', 'woostify_after_content', 10 );
+   897				add_action( 'woostify_content_top', 'woostify_shop_messages', 30 );
+   898	
+   899				add_action( 'woocommerce_before_shop_loop', 'woostify_sorting_wrapper', 9 );
+   900				add_action( 'woocommerce_before_shop_loop', 'woostify_sorting_wrapper_close', 31 );
+   901	
+   902				// Woocommerce sidebar.
+   903				add_action( 'woostify_theme_footer', 'woostify_woocommerce_cart_sidebar', 120 );
+   904	
+   905				// Legacy WooCommerce columns filter.
+   906				if ( defined( 'WC_VERSION' ) && version_compare( WC_VERSION, '3.3', '<' ) ) {
+   907					add_action( 'woocommerce_before_shop_loop', 'woostify_product_columns_wrapper', 40 );
+   908					add_action( 'woocommerce_after_shop_loop', 'woostify_product_columns_wrapper_close', 40 );
+   909				}
+   910	
+   911				// SHOP SINGLE.
+   912				// Swap position price and rating star.
+   913				add_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_price', 10 );
+   914				add_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_rating', 10 );
+   915	
+   916				// Performance.
+   917				add_action( 'wp_enqueue_scripts', 'woostify_disable_woocommerce_block_styles' );
+   918	
+   919				// Quantity mode.
+   920				if ( $options['shop_page_product_quantity'] && ! $options['catalog_mode'] ) {
+   921					$add_to_cart_pos = $options['shop_page_add_to_cart_button_position'];
+   922	
+   923					if ( 'bottom' === $add_to_cart_pos ) {
+   924						add_action( 'woocommerce_after_shop_loop_item_title', 'woostify_product_quantity', 3 );
+   925					} else {
+   926						add_action( 'woocommerce_after_shop_loop_item_title', 'woostify_product_quantity', 15 );
+   927					}
+   928				}
+   929	
+   930				// SHOP SINGLE: product data tabs.
+--- toolbar-left registrations anywhere ---
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:63:			add_action( 'woocommerce_before_shop_loop', 'woostify_woocommerce_toolbar_left_open_div', 15 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:65:			add_action( 'woocommerce_before_shop_loop', 'woostify_woocommerce_toolbar_left_close_div', 25 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:762:				remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 20 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:767:				remove_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php:340:if ( ! function_exists( 'woostify_woocommerce_toolbar_left_open_div' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php:344:	function woostify_woocommerce_toolbar_left_open_div() {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php:350:if ( ! function_exists( 'woostify_woocommerce_toolbar_left_close_div' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php:354:	function woostify_woocommerce_toolbar_left_close_div() {
+--- toolbar-left functions ---
+   338	}
+   339	
+   340	if ( ! function_exists( 'woostify_woocommerce_toolbar_left_open_div' ) ) {
+   341		/**
+   342		 * Toolbar left open div
+   343		 */
+   344		function woostify_woocommerce_toolbar_left_open_div() {
+   345			?>
+   346			<div class="woostify-toolbar-left">
+   347			<?php
+   348		}
+   349	}
+   350	if ( ! function_exists( 'woostify_woocommerce_toolbar_left_close_div' ) ) {
+   351		/**
+   352		 * Toolbar left close div
+   353		 */
+   354		function woostify_woocommerce_toolbar_left_close_div() {
+   355			?>
+   356			</div>
+   357			<?php
+   358		}
+   359	}
+--- sorting wrapper functions ---
    204	}
    205	
    206	if ( ! function_exists( 'woostify_sorting_wrapper' ) ) {
@@ -39,55 +109,3 @@ theme=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-con
    226	}
    227	
    228	if ( ! function_exists( 'woostify_product_columns_wrapper' ) ) {
-   229		/**
-   230		 * Product columns wrapper
-   231		 *
-   232		 * @return  void
-   233		 */
-   234		function woostify_product_columns_wrapper() {
-   235			$columns = wc_get_loop_prop( 'columns' );
-   236			echo '<div class="columns-' . esc_attr( $columns ) . '">';
-   237		}
-   238	}
-   239	
-   240	if ( ! function_exists( 'woostify_product_columns_wrapper_close' ) ) {
-   241		/**
-
-### wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-archive-product-functions.php
-   328		 * Toggle sidebar mobile button
-   329		 */
-   330		function woostify_toggle_sidebar_mobile_button() {
-   331			$icon = apply_filters( 'woostify_toggle_sidebar_mobile_button_icon', 'filter' );
-   332			?>
-   333			<button id="toggle-sidebar-mobile-button" class="<?php echo esc_attr( $icon ); ?>">
-   334				<?php Woostify_Icon::fetch_svg_icon( $icon ); ?>
-   335				<?php esc_html_e( 'Filter', 'woostify' ); ?></button>
-   336			<?php
-   337		}
-   338	}
-   339	
-   340	if ( ! function_exists( 'woostify_woocommerce_toolbar_left_open_div' ) ) {
-   341		/**
-   342		 * Toolbar left open div
-   343		 */
-   344		function woostify_woocommerce_toolbar_left_open_div() {
-   345			?>
-   346			<div class="woostify-toolbar-left">
-   347			<?php
-   348		}
-   349	}
-   350	if ( ! function_exists( 'woostify_woocommerce_toolbar_left_close_div' ) ) {
-   351		/**
-   352		 * Toolbar left close div
-   353		 */
-   354		function woostify_woocommerce_toolbar_left_close_div() {
-   355			?>
-   356			</div>
-   357			<?php
-   358		}
-   359	}
---- before_shop_loop hooks touching sort/count ---
-/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:762:				remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 20 );
-/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:767:				remove_action( 'woocommerce_before_shop_loop', 'woocommerce_catalog_ordering', 30 );
-/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:899:			add_action( 'woocommerce_before_shop_loop', 'woostify_sorting_wrapper', 9 );
-/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/class-woostify-woocommerce.php:900:			add_action( 'woocommerce_before_shop_loop', 'woostify_sorting_wrapper_close', 31 );
