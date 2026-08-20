@@ -1,0 +1,198 @@
+name: Catalog recommended order live audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-recommended-order-live-audit-20260820.yml'
+      - 'mu-plugins/mdo-catalog-recommended-order-20260820.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog-recommended-order-live-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark audit started
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          printf 'source_commit=%s\nworkflow_run=%s\nchecked_at=%s\nstage=started\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-status/catalog-recommended-order-live.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-recommended-order-live.txt
+          git commit -m 'Start recommended order live audit [skip ci]'
+          for attempt in 1 2 3 4; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+            sleep 2
+          done
+          exit 1
+
+      - name: Resolve production and verify plugin file
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-catalog-recommended-order-20260820.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET' && grep -Fq 'Version: 1.0.1' '$TARGET' && grep -Fq \"private const ORDERBY = 'mdo_recommended'\" '$TARGET'"
+
+      - name: Verify WordPress filters
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${PORT:-22}"
+          remote_eval() {
+            local code="$1"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              wp_bin=\$(command -v wp || true)
+              \"\$php_bin\" -d display_errors=0 -d error_reporting=0 -d memory_limit=512M \"\$wp_bin\" eval '$code' --path='$PROD_PATH' --allow-root 2>/dev/null
+            "
+          }
+          CLASS="$(remote_eval 'echo class_exists("MDO_Catalog_Recommended_Order_20260820") ? "yes" : "no";')"
+          DEFAULT="$(remote_eval 'echo apply_filters("woocommerce_default_catalog_orderby", "menu_order");')"
+          LABEL="$(remote_eval 'echo (apply_filters("woocommerce_catalog_orderby", array("menu_order"=>"Default","popularity"=>"Popularity","date"=>"Date","price"=>"Price","price-desc"=>"Price desc"))["mdo_recommended"] ?? "missing");')"
+          printf 'CLASS=%s\nDEFAULT=%s\nLABEL=%s\n' "$CLASS" "$DEFAULT" "$LABEL" | tee /tmp/mdo-cli.txt
+          test "$CLASS" = 'yes'
+          test "$DEFAULT" = 'mdo_recommended'
+          test "$LABEL" = 'Recomendados'
+
+      - name: Verify live storefront and computed rank
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com/tienda/'
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO rank audit' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/default.html "${BASE}?mdo_rank_audit=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO rank audit' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/recommended.html "${BASE}?orderby=mdo_recommended&mdo_rank_audit=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO rank audit' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/price.html "${BASE}?orderby=price&mdo_rank_audit=${GITHUB_RUN_ID}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${PORT:-22}"
+          RANK="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp || true)
+            \"\$php_bin\" -d display_errors=0 -d error_reporting=0 -d memory_limit=512M \"\$wp_bin\" eval 'echo implode(",", MDO_Catalog_Ranking::rank_products(get_posts(array("post_type"=>"product","post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","orderby"=>"ID","order"=>"ASC","no_found_rows"=>true,"suppress_filters"=>true)), array("rotation_seed"=>gmdate("Y-m-d"),"diversify_vendors"=>true)));' --path='$PROD_PATH' --allow-root 2>/dev/null
+          ")"
+          printf '%s' "$RANK" > /tmp/rank.txt
+          test -s /tmp/rank.txt
+
+          python3 - <<'PY' | tee /tmp/mdo-live.txt
+          import html,re
+          from pathlib import Path
+
+          def ordering(path):
+              text=html.unescape(Path(path).read_text(encoding='utf-8',errors='ignore'))
+              match=re.search(r'<select\b(?=[^>]*(?:\bname=["\']orderby["\']|\bclass=["\'][^"\']*\borderby\b[^"\']*["\']))[^>]*>(.*?)</select>',text,re.I|re.S)
+              assert match,'orderby select not found'
+              for attrs,label in re.findall(r'<option([^>]*)>(.*?)</option>',match.group(1),re.I|re.S):
+                  if re.search(r'\bselected(?:\s*=|\s|$)',attrs,re.I):
+                      value=re.search(r'value=["\']([^"\']+)["\']',attrs,re.I)
+                      if value:return value.group(1),re.sub(r'<[^>]+>','',label).strip()
+              raise AssertionError('selected orderby option not found')
+
+          def products(path):
+              text=Path(path).read_text(encoding='utf-8',errors='ignore')
+              found=[int(v) for v in re.findall(r'<li[^>]*class=["\'][^"\']*\bpost-(\d+)\b[^"\']*["\'][^>]*>',text,re.I)]
+              out=[]
+              for value in found:
+                  if value not in out:out.append(value)
+              return out
+
+          default_value,default_label=ordering('/tmp/default.html')
+          recommended_value,_=ordering('/tmp/recommended.html')
+          price_value,_=ordering('/tmp/price.html')
+          assert default_value=='mdo_recommended',(default_value,default_label)
+          assert 'Recomend' in default_label,default_label
+          assert recommended_value=='mdo_recommended',recommended_value
+          assert price_value=='price',price_value
+          default_ids=products('/tmp/default.html')
+          recommended_ids=products('/tmp/recommended.html')
+          assert len(default_ids)>=4,default_ids
+          assert default_ids==recommended_ids,(default_ids,recommended_ids)
+          rank=[int(v) for v in Path('/tmp/rank.txt').read_text().strip().split(',') if v.strip()]
+          pos={product_id:index for index,product_id in enumerate(rank)}
+          missing=[product_id for product_id in default_ids if product_id not in pos]
+          assert not missing,('visible products missing from rank',missing)
+          indexes=[pos[product_id] for product_id in default_ids]
+          assert indexes==sorted(indexes),('storefront does not follow rank',default_ids,indexes)
+          print('result=success')
+          print('default_order=mdo_recommended')
+          print('default_label='+default_label)
+          print('visible_products='+','.join(map(str,default_ids)))
+          print('rank_positions='+','.join(map(str,indexes)))
+          print('explicit_recommended_matches=1')
+          print('manual_price_order_preserved=1')
+          PY
+
+      - name: Record successful live audit
+        run: |
+          set -euo pipefail
+          {
+            echo "source_commit=${GITHUB_SHA}"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "stage=live_verified"
+            cat /tmp/mdo-cli.txt
+            cat /tmp/mdo-live.txt
+          } > .deploy-status/catalog-recommended-order-live.txt
+          git add .deploy-status/catalog-recommended-order-live.txt
+          git commit -m 'Record recommended catalog order live audit [skip ci]'
+          for attempt in 1 2 3 4; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+            sleep 2
+          done
+          exit 1
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-recommended-order-live-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            /tmp/mdo-cli.txt
+            /tmp/mdo-live.txt
+            /tmp/default.html
+            /tmp/recommended.html
+            /tmp/price.html
+            /tmp/rank.txt
