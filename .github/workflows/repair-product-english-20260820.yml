@@ -1,0 +1,193 @@
+name: Repair product English coverage 20260820
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-product-english-20260820.yml'
+      - '.github/scripts/export-product-english-repair-20260820.php'
+      - '.github/scripts/apply-product-english-repair-20260820.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-product-english-20260820
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: |
+          php -l .github/scripts/export-product-english-repair-20260820.php
+          php -l .github/scripts/apply-product-english-repair-20260820.php
+          php -l .github/scripts/audit-current-product-english-20260820.php
+
+      - name: Prepare SSH and locate production
+        id: prod
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "prod_path=$PROD_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Export current repair candidates
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH='${{ steps.prod.outputs.prod_path }}'
+          REMOTE=/tmp/export-product-en-repair-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP .github/scripts/export-product-english-repair-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            rc=\$?; rm -f '$REMOTE'; exit \$rc
+          " > /tmp/product-en-repair-source.json
+          python3 -m json.tool /tmp/product-en-repair-source.json >/dev/null
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/product-en-repair-source.json',encoding='utf-8'))
+          print('repair_count=',d['count'])
+          print('vendors=',d['vendors'])
+          if d['huerta_source_count'] != 46:
+              raise SystemExit('Unexpected Huerta source count')
+          if d['count'] < 51:
+              raise SystemExit('Repair candidate count unexpectedly low')
+          PY
+
+      - name: Translate current Spanish source to English
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check -q deep-translator
+          cp .github/scripts/mdo-final-en-translate-v73.py /tmp/product-en-translator.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/product-en-translator.py')
+          s=p.read_text(encoding='utf-8')
+          needle='GLOSSARY={\n'
+          add="GLOSSARY={\n'La Huerta de Ana Mari':'La Huerta de Ana Mari','La Huerta de Ana Mary':'La Huerta de Ana Mari','Ana Mari':'Ana Mari','Ana Mary':'Ana Mari',\n"
+          if needle not in s:
+              raise SystemExit('Translator glossary anchor not found')
+          p.write_text(s.replace(needle,add,1),encoding='utf-8')
+          PY
+          python3 /tmp/product-en-translator.py /tmp/product-en-repair-source.json /tmp/product-en-repair-output.json
+          python3 -m json.tool /tmp/product-en-repair-output.json >/dev/null
+          python3 - <<'PY'
+          import json
+          a=json.load(open('/tmp/product-en-repair-source.json',encoding='utf-8'))
+          b=json.load(open('/tmp/product-en-repair-output.json',encoding='utf-8'))
+          if len(a['products']) != len(b['products']): raise SystemExit('Translation count mismatch')
+          if {p['id'] for p in a['products']} != {p['id'] for p in b['products']}: raise SystemExit('Translation IDs mismatch')
+          PY
+
+      - name: Apply English translations without changing visibility
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH='${{ steps.prod.outputs.prod_path }}'
+          REMOTE_APPLY=/tmp/apply-product-en-repair-${GITHUB_RUN_ID}.php
+          REMOTE_PAYLOAD=/tmp/product-en-repair-output-${GITHUB_RUN_ID}.json
+          sshpass -e scp $SCP .github/scripts/apply-product-english-repair-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE_APPLY"
+          sshpass -e scp $SCP /tmp/product-en-repair-output.json "$STAGING_USER@$STAGING_HOST:$REMOTE_PAYLOAD"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            MDO_PAYLOAD_PATH='$REMOTE_PAYLOAD' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_APPLY' --path='$PROD_PATH' --allow-root
+            rc=\$?; rm -f '$REMOTE_APPLY' '$REMOTE_PAYLOAD'; exit \$rc
+          " | tee /tmp/product-en-repair-apply.txt
+          grep -q '^APPLIED_OK ' /tmp/product-en-repair-apply.txt
+
+      - name: Re-audit production after repair
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH='${{ steps.prod.outputs.prod_path }}'
+          REMOTE=/tmp/audit-product-en-after-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP .github/scripts/audit-current-product-english-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            rc=\$?; rm -f '$REMOTE'; exit \$rc
+          " > /tmp/product-en-after.json
+          python3 -m json.tool /tmp/product-en-after.json >/dev/null
+          python3 - <<'PY' | tee /tmp/product-en-after-summary.txt
+          import json
+          d=json.load(open('/tmp/product-en-after.json',encoding='utf-8')); s=d['summary']; h=d['huerta']
+          print('catalog_products='+str(s['catalog_products']))
+          print('complete_english_fields='+str(s['complete_english_fields']))
+          print('incomplete_english_fields='+str(s['incomplete_english_fields']))
+          print('exact_copy_products='+str(s['exact_copy_products']))
+          print('spanish_residue_products='+str(s['spanish_residue_products']))
+          print('huerta_catalog_products='+str(h['catalog_products']))
+          print('huerta_complete_english_fields='+str(h['complete_english_fields']))
+          print('huerta_incomplete_english_fields='+str(h['incomplete_english_fields']))
+          print('huerta_exact_copy_products='+str(h['exact_copy_products']))
+          if s['incomplete_english_fields'] != 0: raise SystemExit('English field gaps remain')
+          if h['catalog_products'] != 46 or h['complete_english_fields'] != 46 or h['incomplete_english_fields'] != 0: raise SystemExit('Huerta English coverage incomplete')
+          if s['exact_copy_products'] != 0: raise SystemExit('Exact Spanish copies remain in English fields')
+          PY
+
+      - name: Record production repair verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "run=$GITHUB_RUN_ID"
+            echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            [ -f /tmp/product-en-repair-apply.txt ] && cat /tmp/product-en-repair-apply.txt || true
+            [ -f /tmp/product-en-after-summary.txt ] && cat /tmp/product-en-after-summary.txt || true
+          } > .deploy-status/product-english-repair-20260820.txt
+          [ -f /tmp/product-en-after.json ] && cp /tmp/product-en-after.json .deploy-status/product-english-audit-20260820.json || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/product-english-repair-20260820.txt .deploy-status/product-english-audit-20260820.json
+          git commit -m 'Record English product repair verification [skip ci]' || exit 0
+          git pull --rebase origin main || true
+          git push origin HEAD:main
