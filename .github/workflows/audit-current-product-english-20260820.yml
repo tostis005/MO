@@ -1,0 +1,95 @@
+name: Audit current product English coverage 20260820
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-current-product-english-20260820.php'
+      - '.github/workflows/audit-current-product-english-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate audit
+        run: php -l .github/scripts/audit-current-product-english-20260820.php
+
+      - name: Audit production catalog
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/audit-current-product-english-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-current-product-english-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            rc=\$?
+            rm -f '$REMOTE'
+            exit \$rc
+          " > /tmp/product-english-audit.json
+          python3 -m json.tool /tmp/product-english-audit.json >/dev/null
+
+      - name: Record audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cp /tmp/product-english-audit.json .deploy-status/product-english-audit-20260820.json
+          python3 - <<'PY' > .deploy-status/product-english-audit-20260820.txt
+          import json
+          p='.deploy-status/product-english-audit-20260820.json'
+          d=json.load(open(p,encoding='utf-8'))
+          s=d['summary']; h=d['huerta']
+          print('generated_at='+d['generated_at'])
+          for k in ['catalog_products','complete_english_fields','incomplete_english_fields','spanish_residue_products','exact_copy_products','published_native_without_english_route']:
+              print(f'{k}={s[k]}')
+          print('huerta_source_linked_products='+str(h['source_linked_products']))
+          print('huerta_catalog_products='+str(h['catalog_products']))
+          print('huerta_complete_english_fields='+str(h['complete_english_fields']))
+          print('huerta_incomplete_english_fields='+str(h['incomplete_english_fields']))
+          print('huerta_spanish_residue_products='+str(h['spanish_residue_products']))
+          print('huerta_exact_copy_products='+str(h['exact_copy_products']))
+          print('issues='+str(len(d['issues'])))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/product-english-audit-20260820.json .deploy-status/product-english-audit-20260820.txt
+          git commit -m 'Record current product English audit [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
