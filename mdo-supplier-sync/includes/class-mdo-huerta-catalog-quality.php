@@ -85,10 +85,10 @@ final class MDO_Huerta_Catalog_Quality {
 
 			$source_price = self::source_price( $product_id );
 			$unit_info    = null !== $source_price ? self::source_unit_price( $source_url, $source_price ) : null;
-			if ( is_array( $unit_info ) && ! empty( $unit_info['display'] ) ) {
-				$line = '<p class="' . esc_attr( self::UNIT_PRICE_CLASS ) . '"><strong>' . esc_html( (string) $unit_info['label'] ) . ':</strong> ' . esc_html( (string) $unit_info['display'] ) . '</p>';
+			if ( is_array( $unit_info ) && ! empty( $unit_info['label'] ) ) {
+				$line = '<p class="' . esc_attr( self::UNIT_PRICE_CLASS ) . '"><strong>' . esc_html( (string) $unit_info['label'] ) . '</strong></p>';
 				$fixed_description = rtrim( $fixed_description ) . "\n" . $line;
-				$result['unit_price'] = (string) $unit_info['display'];
+				$result['unit_price'] = (string) $unit_info['label'];
 			}
 
 			if ( trim( $fixed_description ) !== trim( $current_description ) ) {
