@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Summary Bar Visible
  * Description: Stable results + shipping destination row for desktop and mobile catalog views.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -31,9 +31,11 @@ function mdo_catalog_summarybar_text_20260820( string $es, string $en ): string 
 }
 
 function mdo_catalog_summarybar_render_20260820(): void {
-	if ( ! mdo_catalog_summarybar_is_surface_20260820() ) {
+	static $rendered = false;
+	if ( $rendered || ! mdo_catalog_summarybar_is_surface_20260820() ) {
 		return;
 	}
+	$rendered = true;
 
 	$total = function_exists( 'elmercado_catalog_exact_result_total_010220' )
 		? max( 0, (int) elmercado_catalog_exact_result_total_010220() )
@@ -68,7 +70,13 @@ function mdo_catalog_summarybar_render_20260820(): void {
 	</div>
 	<?php
 }
-add_action( 'woocommerce_before_shop_loop', 'mdo_catalog_summarybar_render_20260820', 19 );
+
+/*
+ * Prefer the shop-loop header: it sits outside Woostify's responsive sorting toolbar.
+ * Keep before_shop_loop only as a compatibility fallback; the static guard prevents duplicates.
+ */
+add_action( 'woocommerce_shop_loop_header', 'mdo_catalog_summarybar_render_20260820', 99 );
+add_action( 'woocommerce_before_shop_loop', 'mdo_catalog_summarybar_render_20260820', 1 );
 
 add_action(
 	'wp_head',
@@ -83,11 +91,14 @@ add_action(
 			.mdo-catalog-destination--canonical{display:none!important}
 
 			.mdo-catalog-summarybar{
-				display:flex;
+				display:flex!important;
+				visibility:visible!important;
+				opacity:1!important;
 				align-items:center;
 				justify-content:space-between;
 				gap:12px;
 				width:100%;
+				min-height:34px;
 				margin:0 0 14px;
 				padding:0;
 				clear:both;
@@ -95,6 +106,9 @@ add_action(
 				box-sizing:border-box;
 			}
 			.mdo-catalog-summarybar__count{
+				display:block!important;
+				visibility:visible!important;
+				opacity:1!important;
 				margin:0;
 				color:#5b6964;
 				font-size:13px;
@@ -103,7 +117,9 @@ add_action(
 				white-space:nowrap;
 			}
 			.mdo-catalog-summarybar__destination{
-				display:inline-flex;
+				display:inline-flex!important;
+				visibility:visible!important;
+				opacity:1!important;
 				align-items:center;
 				gap:6px;
 				min-height:34px;
@@ -132,7 +148,14 @@ add_action(
 			.mdo-catalog-summarybar__chevron{opacity:.65}
 
 			@media (max-width:767px){
-				.mdo-catalog-summarybar{gap:8px;margin-bottom:12px}
+				.mdo-catalog-summarybar{
+					display:flex!important;
+					visibility:visible!important;
+					opacity:1!important;
+					gap:8px;
+					margin:0 0 12px;
+					padding:0;
+				}
 				.mdo-catalog-summarybar__count{font-size:12px}
 				.mdo-catalog-summarybar__destination{min-height:32px;padding:0 9px;font-size:12px}
 			}
