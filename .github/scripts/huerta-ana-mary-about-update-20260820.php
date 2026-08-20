@@ -107,13 +107,7 @@ if ( false !== strpos( $new_description, 'Arsenio Pérez' ) || false !== strpos(
     exit( 5 );
 }
 
-if ( false === strpos( $new_description, 'Derrás del proyecto' ) ) {
-    // Deliberately no-op: validation is performed below with exact intended sentence.
-}
-
-$required = 'Derrás del proyecto se encuentran Arsenio y Antonio';
-$actual_required = 'Detrás del proyecto se encuentran Arsenio y Antonio';
-if ( false === strpos( $new_description, $actual_required ) ) {
+if ( false === strpos( $new_description, 'Detrás del proyecto se encuentran Arsenio y Antonio' ) ) {
     fwrite( STDERR, "HUERTA_ABOUT_ABORT: requested names-only sentence missing\n" );
     exit( 6 );
 }
