@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Summary Bar Visible
  * Description: One stable server-rendered results + shipping destination row for desktop and mobile catalog views.
- * Version: 1.4.1
+ * Version: 1.4.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -29,6 +29,22 @@ function mdo_catalog_summarybar_text_20260820( string $es, string $en ): string 
 	$path = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH ) : '';
 	return ( '/en' === $path || 0 === strpos( $path, '/en/' ) ) ? $en : $es;
 }
+
+/*
+ * Remove the old count at hook level after the child theme has registered it.
+ * This avoids a second result node entirely instead of fighting later !important CSS.
+ */
+add_action(
+	'wp',
+	static function (): void {
+		if ( ! mdo_catalog_summarybar_is_surface_20260820() ) {
+			return;
+		}
+		remove_action( 'woocommerce_before_shop_loop', 'woocommerce_result_count', 20 );
+		remove_action( 'woocommerce_before_shop_loop', 'elmercado_catalog_render_exact_result_count_010220', 21 );
+	},
+	1
+);
 
 function mdo_catalog_summarybar_render_20260820(): void {
 	static $rendered = false;
@@ -83,7 +99,7 @@ add_action(
 		}
 		?>
 		<style id="mdo-catalog-summarybar-visible-20260820">
-			/* Exactly one visible result count and one destination control. */
+			/* CSS fallback; the historical result callback is also removed in PHP above. */
 			body .woocommerce-result-count,
 			body .emo-catalog-result-count-010220,
 			body .mdo-catalog-destination--canonical,
