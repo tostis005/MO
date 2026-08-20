@@ -75,3 +75,5 @@ jobs:
           git commit -m 'Record catalog mobile computed audit [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
+
+# Trigger audit after workflow creation.
