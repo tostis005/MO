@@ -1,0 +1,25 @@
+--- generator ---
+candidate	q72	37408	39230	1.0487	2026/08/JAMON_ACTO_ECOLOGICO1-scaled-450x300.jpg
+candidate	q68	37408	39230	1.0487	2026/08/JAMON_ACTO_ECOLOGICO1-scaled-450x300.jpg
+candidate	q64	37408	39230	1.0487	2026/08/JAMON_ACTO_ECOLOGICO1-scaled-450x300.jpg
+skip_no_20pct_saving	37408	24106	2026/08/JAMON_ACTO_ECOLOGICO1-scaled-450x300.jpg
+candidate	q72	35201	33084	0.9399	2026/08/Tolecarnes-fondo-400x400.jpg
+candidate	q68	35201	33084	0.9399	2026/08/Tolecarnes-fondo-400x400.jpg
+candidate	q64	35201	33084	0.9399	2026/08/Tolecarnes-fondo-400x400.jpg
+skip_no_20pct_saving	35201	19536	2026/08/Tolecarnes-fondo-400x400.jpg
+candidate	q72	24274	22002	0.9064	2026/08/Packs-lotes-300x400-1.jpg
+candidate	q68	24274	22002	0.9064	2026/08/Packs-lotes-300x400-1.jpg
+candidate	q64	24274	22002	0.9064	2026/08/Packs-lotes-300x400-1.jpg
+skip_no_20pct_saving	24274	12990	2026/08/Packs-lotes-300x400-1.jpg
+--- verification ---
+JAMON_ACTO_ECOLOGICO1-scaled-450x300.webp = 0
+Tolecarnes-fondo-400x400.webp = 0
+Packs-lotes-300x400-1.webp = 0
+run 1 {'score': 64, 'fcp': 2015, 'lcp': 3282, 'tbt': 1202, 'cls': 0.0001543541523976094}
+ shift 0.0001543541523976094 div.site-header-inner > div.woostify-container > div.site-tools > div.tools-icon
+run 2 {'score': 60, 'fcp': 2235, 'lcp': 4747, 'tbt': 732, 'cls': 4.0967958566320045e-05}
+ shift 3.160615740694886e-05 div.site-header-inner > div.woostify-container > div.site-tools > div.tools-icon
+ shift 9.361801159371189e-06 div.site-tools > a.tools-icon > span.woostify-svg-icon > svg#svg50
+median {'score': 62.0, 'fcp': 2125.0, 'lcp': 4014.5, 'tbt': 967.0, 'cls': 9.766105548196472e-05}
+delivered_targets= 0
+keep= false
