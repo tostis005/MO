@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Product Category Public Products
  * Description: Prevents false-empty WooCommerce product-category archives on the English storefront only, preserving EMDO visibility rules.
- * Version: 1.1.0
+ * Version: 1.1.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
