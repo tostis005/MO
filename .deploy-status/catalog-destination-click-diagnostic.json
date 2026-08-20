@@ -1,0 +1,62 @@
+{
+  "script": "\n\t\t(() => {\n\t\t\t'use strict';\n\t\t\tconst config={\"results\":\"58 resultados\",\"shippingTo\":\"Envío a\",\"destination\":\"España\"};\n\t\t\tlet scheduled=false;\n\t\t\tconst findToolbar=()=>{const exact=document.querySelector('.woostify-sorting.emo-catalog-toolbar-shared-010229');if(exact)return exact;const ordering=document.querySelector('.woocommerce-ordering');return ordering?(ordering.closest('.woostify-sorting')||ordering.parentElement):null};\n\t\t\tconst makeCount=()=>{const el=document.createElement('span');el.className='mdo-catalog-toolbar__count';el.dataset.mdoToolbarCount='';el.setAttribute('aria-live','polite');el.textContent=config.results;return el};\n\t\t\tconst makeDestination=()=>{const b=document.createElement('button');b.type='button';b.className='mdo-catalog-toolbar__destination';b.dataset.mdoToolbarDestination='';b.setAttribute('aria-haspopup','dialog');b.setAttribute('aria-controls','mdo-catalog-destination-dialog');b.setAttribute('aria-expanded','false');b.innerHTML='<svg class=\"mdo-catalog-toolbar__pin\" aria-hidden=\"true\" viewBox=\"0 0 24 24\" width=\"15\" height=\"15\"><path d=\"M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Zm0-8.5A2.5 2.5 0 1 1 12 7a2.5 2.5 0 0 1 0 5.5Z\" fill=\"currentColor\"/></svg><span></span><svg class=\"mdo-catalog-toolbar__chevron\" aria-hidden=\"true\" viewBox=\"0 0 20 20\" width=\"13\" height=\"13\"><path d=\"m5 7.5 5 5 5-5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>';const span=b.querySelector('span');span.append(document.createTextNode(config.shippingTo+' '));const strong=document.createElement('strong');strong.textContent=config.destination;span.append(strong);return b};\n\t\t\tconst ensure=()=>{const toolbar=findToolbar();if(!toolbar)return;const ordering=toolbar.querySelector('.woocommerce-ordering')||document.querySelector('.woocommerce-ordering');toolbar.classList.add('mdo-catalog-toolbar-ready');let count=toolbar.querySelector('[data-mdo-toolbar-count]');if(!count)count=makeCount();count.textContent=config.results;let destination=toolbar.querySelector('[data-mdo-toolbar-destination]');if(!destination)destination=makeDestination();if(count.parentElement!==toolbar)toolbar.insertBefore(count,ordering&&ordering.parentElement===toolbar?ordering:toolbar.firstChild);if(destination.parentElement!==toolbar)toolbar.insertBefore(destination,ordering&&ordering.parentElement===toolbar?ordering:(count.nextSibling||null));if(ordering&&ordering.parentElement===toolbar){if(count.nextSibling!==destination)toolbar.insertBefore(count,destination);if(destination.nextSibling!==ordering)toolbar.insertBefore(destination,ordering)}};\n\t\t\tconst syncModal=modal=>{const country=modal.querySelector('[data-mdo-destination-country]');const wrap=modal.querySelector('[data-mdo-postcode-wrap]');const postcode=modal.querySelector('[data-mdo-destination-postcode]');const error=modal.querySelector('[data-mdo-destination-error]');if(error)error.hidden=true;if(country&&wrap&&postcode){const es=country.value==='ES';wrap.hidden=!es;postcode.disabled=!es;if(!es)postcode.value=''}};\n\t\t\tconst openModal=button=>{const modal=document.querySelector('[data-mdo-destination-modal]');if(!modal)return false;syncModal(modal);modal.hidden=false;modal.removeAttribute('hidden');modal.setAttribute('aria-hidden','false');document.body.classList.add('mdo-destination-modal-open');button.setAttribute('aria-expanded','true');const panel=modal.querySelector('.mdo-destination-modal__panel');requestAnimationFrame(()=>{modal.hidden=false;modal.removeAttribute('hidden');modal.setAttribute('aria-hidden','false');if(panel)panel.focus({preventScroll:true})});return true};\n\t\t\tconst toolbarButtonFromEvent=event=>{const path=typeof event.composedPath==='function'?event.composedPath():[];for(const node of path){if(node&&typeof node.matches==='function'&&node.matches('[data-mdo-toolbar-destination]'))return node}const target=event.target;return target&&typeof target.closest==='function'?target.closest('[data-mdo-toolbar-destination]'):null};\n\t\t\tconst activateDestination=event=>{const button=toolbarButtonFromEvent(event);if(!button)return;if(event.cancelable)event.preventDefault();event.stopPropagation();openModal(button)};\n\t\t\twindow.addEventListener('pointerup',activateDestination,true);\n\t\t\twindow.addEventListener('click',activateDestination,true);\n\t\t\tdocument.addEventListener('click',event=>{if(event.target.closest('[data-mdo-destination-close]'))document.querySelectorAll('[data-mdo-toolbar-destination]').forEach(b=>b.setAttribute('aria-expanded','false'))},true);\n\t\t\tconst schedule=()=>{if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;ensure()})};\n\t\t\tif(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensure,{once:true});else ensure();window.addEventListener('load',ensure,{once:true});if(document.body)new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});\n\t\t})();\n\t\t",
+  "script_has_pointerup": true,
+  "script_has_openModal": true,
+  "initial": {
+    "button": true,
+    "modal": true,
+    "modalCount": 1,
+    "hidden": true,
+    "hiddenAttr": true,
+    "aria": "true",
+    "display": "none",
+    "visibility": "hidden",
+    "width": 0,
+    "height": 0,
+    "modalClass": "mdo-destination-modal"
+  },
+  "after_real_click": {
+    "events": [
+      {
+        "type": "pointerup",
+        "target": "SPAN",
+        "buttonInPath": true
+      },
+      {
+        "type": "click",
+        "target": "SPAN",
+        "buttonInPath": true
+      }
+    ],
+    "hidden": false,
+    "hiddenAttr": false,
+    "aria": "false",
+    "display": "flex",
+    "visibility": "hidden",
+    "width": 0,
+    "height": 0,
+    "bodyClass": true
+  },
+  "after_manual_open": {
+    "hidden": false,
+    "hiddenAttr": false,
+    "aria": "false",
+    "display": "flex",
+    "visibility": "hidden",
+    "width": 0,
+    "height": 0,
+    "bodyClass": true
+  },
+  "canonical": {
+    "exists": true,
+    "onclick": "object"
+  },
+  "after_canonical_click": {
+    "hidden": false,
+    "hiddenAttr": false,
+    "aria": "false",
+    "display": "flex",
+    "width": 0,
+    "height": 0
+  }
+}
