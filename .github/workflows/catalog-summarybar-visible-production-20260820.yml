@@ -123,3 +123,5 @@ jobs:
       - name: Fail if live summary bar is wrong
         if: steps.verify.outputs.result != 'success'
         run: exit 1
+
+# Second commit triggers this workflow after its initial creation.
