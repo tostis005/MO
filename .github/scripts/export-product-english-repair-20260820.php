@@ -1,5 +1,6 @@
 <?php
 /** Export products that need an English repair. Huerta is always refreshed from current cleaned Spanish copy. */
+// Touch 2026-08-20: trigger the repair workflow after the workflow file exists on main.
 if ( ! defined( 'ABSPATH' ) ) { exit(1); }
 global $wpdb;
 function mdo_repair_plain( $v ): string { return trim( preg_replace('/\s+/u',' ',html_entity_decode(wp_strip_all_tags((string)$v),ENT_QUOTES|ENT_HTML5,'UTF-8')) ); }
