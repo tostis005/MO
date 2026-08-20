@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO English Category Query Normalizer
- * Description: Test-gated English category normalizer with request diagnostics. Disabled by default.
- * Version: 1.2.0
+ * Description: Repairs English WooCommerce category requests and the erroneous global post__in list, while preserving EMDO visibility/filter rules. Disabled by default and testable per request.
+ * Version: 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -24,6 +24,10 @@ function mdo_en_category_normalizer_test_request_20260821(): bool {
 
 function mdo_en_category_normalizer_enabled_20260821(): bool {
 	return '1' === (string) get_option( MDO_EN_CATEGORY_NORMALIZER_OPTION_20260821, '0' );
+}
+
+function mdo_en_category_normalizer_active_20260821(): bool {
+	return mdo_en_category_normalizer_enabled_20260821() || mdo_en_category_normalizer_test_request_20260821();
 }
 
 function mdo_en_category_normalizer_find_term_20260821( string $requested_slug ): ?WP_Term {
@@ -52,6 +56,69 @@ function mdo_en_category_normalizer_find_term_20260821( string $requested_slug )
 	return null;
 }
 
+/** @return int[] */
+function mdo_en_category_visible_ids_20260821( int $term_id ): array {
+	static $cache = array();
+	$term_id = absint( $term_id );
+	if ( $term_id <= 0 ) {
+		return array();
+	}
+	$scope = function_exists( 'elmercado_catalog_counts_can_view_disabled_010217' ) && elmercado_catalog_counts_can_view_disabled_010217() ? 'admin' : 'public';
+	$key = $scope . ':' . $term_id;
+	if ( isset( $cache[ $key ] ) ) {
+		return $cache[ $key ];
+	}
+
+	$term_ids = array( $term_id );
+	$children = get_term_children( $term_id, 'product_cat' );
+	if ( ! is_wp_error( $children ) ) {
+		$term_ids = array_values( array_unique( array_merge( $term_ids, array_filter( array_map( 'absint', (array) $children ) ) ) ) );
+	}
+
+	global $wpdb;
+	$sql = "SELECT DISTINCT p.ID
+		FROM {$wpdb->posts} p
+		INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id = p.ID
+		INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id
+		WHERE p.post_type = 'product'
+		AND p.post_status = 'publish'
+		AND tt.taxonomy = 'product_cat'
+		AND tt.term_id IN (" . implode( ',', array_map( 'absint', $term_ids ) ) . ')';
+
+	if ( function_exists( 'elmercado_catalog_visibility_sql_clause_010218' ) ) {
+		$sql .= elmercado_catalog_visibility_sql_clause_010218( 'p' );
+	}
+	if ( function_exists( 'elmercado_catalog_counts_excluded_authors_010217' ) ) {
+		$excluded = array_values( array_filter( array_map( 'absint', (array) elmercado_catalog_counts_excluded_authors_010217() ) ) );
+		if ( $excluded ) {
+			$sql .= ' AND p.post_author NOT IN (' . implode( ',', $excluded ) . ')';
+		}
+	}
+	$sql .= ' ORDER BY p.ID DESC';
+	$ids = array_values( array_unique( array_filter( array_map( 'absint', (array) $wpdb->get_col( $sql ) ) ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	if ( class_exists( 'MDO_Catalog_Ranking' ) && is_callable( array( 'MDO_Catalog_Ranking', 'rank_products' ) ) && $ids ) {
+		$ranked = MDO_Catalog_Ranking::rank_products( $ids );
+		if ( $ranked ) {
+			$ids = $ranked;
+		}
+	}
+	$cache[ $key ] = $ids;
+	return $ids;
+}
+
+function mdo_en_category_has_narrowing_filters_20260821(): bool {
+	foreach ( array_keys( $_GET ) as $raw_key ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$key = sanitize_key( (string) $raw_key );
+		if ( 'mdo_cat_fix_test' === $key ) {
+			continue;
+		}
+		if ( in_array( $key, array( 'min_price', 'max_price', 'vendor_id', 's', 'product_tag' ), true ) || 0 === strpos( $key, 'filter_' ) || 0 === strpos( $key, 'query_type_' ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
 add_filter(
 	'request',
 	static function ( array $query_vars ): array {
@@ -62,7 +129,7 @@ add_filter(
 		if ( $test ) {
 			$GLOBALS['mdo_en_category_diag_20260821']['request_in'] = $query_vars;
 		}
-		if ( ! mdo_en_category_normalizer_enabled_20260821() && ! $test ) {
+		if ( ! mdo_en_category_normalizer_active_20260821() ) {
 			return $query_vars;
 		}
 
@@ -84,7 +151,6 @@ add_filter(
 		if ( ! $term instanceof WP_Term || sanitize_title( $requested ) === (string) $term->slug ) {
 			return $query_vars;
 		}
-
 		if ( array_key_exists( 'product_cat', $query_vars ) ) {
 			$query_vars['product_cat'] = (string) $term->slug;
 		}
@@ -100,20 +166,53 @@ add_filter(
 	PHP_INT_MAX
 );
 
+/* Register the repair after theme/plugin pre_get_posts callbacks have already
+ * been attached, so a later global ranking list cannot overwrite it. */
 add_action(
-	'pre_get_posts',
-	static function ( WP_Query $query ): void {
-		if ( ! mdo_en_category_normalizer_test_request_20260821() || ! $query->is_main_query() ) {
-			return;
-		}
-		$GLOBALS['mdo_en_category_diag_20260821']['main_query'] = array(
-			'is_tax'       => $query->is_tax(),
-			'is_product_cat' => $query->is_tax( 'product_cat' ),
-			'product_cat'  => (string) $query->get( 'product_cat' ),
-			'taxonomy'     => (string) $query->get( 'taxonomy' ),
-			'term'         => (string) $query->get( 'term' ),
-			'post__in'     => array_values( array_filter( array_map( 'absint', (array) $query->get( 'post__in' ) ) ) ),
-			'tax_query'    => $query->get( 'tax_query' ),
+	'wp_loaded',
+	static function (): void {
+		add_action(
+			'pre_get_posts',
+			static function ( WP_Query $query ): void {
+				if ( is_admin() || ! $query->is_main_query() || ! mdo_en_category_normalizer_is_english_20260821() || ! mdo_en_category_normalizer_active_20260821() || ! $query->is_tax( 'product_cat' ) ) {
+					return;
+				}
+				$slug = sanitize_title( (string) $query->get( 'product_cat' ) );
+				$term = $slug ? get_term_by( 'slug', $slug, 'product_cat' ) : false;
+				if ( ! $term instanceof WP_Term ) {
+					return;
+				}
+
+				$valid = mdo_en_category_visible_ids_20260821( (int) $term->term_id );
+				$current_raw = array_map( 'absint', (array) $query->get( 'post__in' ) );
+				$current = array_values( array_filter( $current_raw ) );
+				$lookup = array_fill_keys( $valid, true );
+				$intersection = $current ? array_values( array_filter( $current, static fn( int $id ): bool => isset( $lookup[ $id ] ) ) ) : array();
+
+				if ( $intersection ) {
+					$replacement = $intersection;
+				} elseif ( mdo_en_category_has_narrowing_filters_20260821() && $current_raw ) {
+					/* An explicit active filter may legitimately produce no matches. */
+					$replacement = array( 0 );
+				} else {
+					$replacement = $valid ?: array( 0 );
+				}
+				$query->set( 'post__in', $replacement );
+
+				if ( mdo_en_category_normalizer_test_request_20260821() ) {
+					$GLOBALS['mdo_en_category_diag_20260821']['post_in_repair'] = array(
+						'term_id'        => (int) $term->term_id,
+						'canonical_slug' => (string) $term->slug,
+						'before_count'   => count( $current ),
+						'before_sample'  => array_slice( $current, 0, 12 ),
+						'valid_count'    => count( $valid ),
+						'valid_sample'   => array_slice( $valid, 0, 12 ),
+						'after_count'    => count( array_filter( $replacement ) ),
+						'after_sample'   => array_slice( array_values( array_filter( $replacement ) ), 0, 12 ),
+					);
+				}
+			},
+			PHP_INT_MAX
 		);
 	},
 	PHP_INT_MAX
