@@ -1,0 +1,53 @@
+name: Home vendor image sizes 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-vendor-image-sizes-20260820.yml']
+permissions:
+  contents: write
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Deploy responsive vendor pass
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')";: "${PROD:?no prod}";echo "$PROD">/tmp/prod
+          sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php "$STAGING_USER@$STAGING_HOST:/tmp/vendors-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';cp \"\$MU/elmercado-home-responsive-vendors-010253.php\" /tmp/vendors-before-${GITHUB_RUN_ID}.php;install -m0644 /tmp/vendors-${GITHUB_RUN_ID}.php \"\$MU/elmercado-home-responsive-vendors-010253.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          for i in 1 2;do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null;done
+      - name: Inspect selected images
+        run: |
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > /tmp/images.json
+          const puppeteer=require('puppeteer-core');(async()=>{const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const p=await b.newPage();await p.setViewport({width:412,height:915,deviceScaleFactor:1.75});await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'networkidle2',timeout:60000});const d=await p.evaluate(()=>['Hidalgo de la Jara','Tolecarnes'].map(alt=>{const n=document.querySelector(`img[alt="${alt}"]`);return n?{alt,currentSrc:n.currentSrc,src:n.src,sizes:n.sizes,naturalWidth:n.naturalWidth,naturalHeight:n.naturalHeight,clientWidth:n.clientWidth,clientHeight:n.clientHeight}:null}));console.log(JSON.stringify(d));await b.close()})().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat /tmp/images.json
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=mobile --output=json --output-path=/tmp/lh.json --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          python3 - <<'PY' | tee runtime/home-vendor-image-sizes-20260820.txt
+          import json
+          imgs=json.load(open('/tmp/images.json'));r=json.load(open('/tmp/lh.json'));a=r['audits'];print('images=',imgs);print('score=',round(r['categories']['performance']['score']*100));print('fcp=',round(a['first-contentful-paint']['numericValue']));print('lcp=',round(a['largest-contentful-paint']['numericValue']));print('tbt=',round(a['total-blocking-time']['numericValue']));print('cls=',a['cumulative-layout-shift']['numericValue'])
+          keep=a['cumulative-layout-shift']['numericValue']<0.02 and a['largest-contentful-paint']['numericValue']<5500
+          print('keep=',str(keep).lower());open('/tmp/keep','w').write('1' if keep else '0')
+          PY
+      - name: Revert only on regression and record
+        if: always()
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;K=$(cat /tmp/keep 2>/dev/null||echo 0);PROD=$(cat /tmp/prod);PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "$K" != 1 ];then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';install -m0644 /tmp/vendors-before-${GITHUB_RUN_ID}.php \"\$MU/elmercado-home-responsive-vendors-010253.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css";fi
+          [ -f runtime/home-vendor-image-sizes-20260820.txt ]||echo failed>runtime/home-vendor-image-sizes-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-vendor-image-sizes-20260820.txt;git commit -m 'Record mobile vendor image selection' || exit 0;git pull --rebase origin main;git push origin HEAD:main
