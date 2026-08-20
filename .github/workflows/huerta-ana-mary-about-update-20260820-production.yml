@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   update:
@@ -23,6 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate guarded producer update
         shell: bash
@@ -103,3 +105,17 @@ jobs:
             exit 7
           fi
           echo "HUERTA_ABOUT_PUBLIC_OK slug=${HUERTA_STORE_SLUG}"
+
+      - name: Record verification result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          mkdir -p runtime
+          printf 'run_id=%s\nstatus=%s\nslug=%s\n' "$GITHUB_RUN_ID" "${{ job.status }}" "${HUERTA_STORE_SLUG:-}" > runtime/huerta-ana-mary-about-update-20260820.txt
+          git add runtime/huerta-ana-mary-about-update-20260820.txt
+          git commit -m 'Record Huerta de Ana Mary About verification' || true
+          git push origin HEAD:main
