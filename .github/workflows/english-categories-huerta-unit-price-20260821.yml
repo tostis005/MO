@@ -1,0 +1,185 @@
+name: English categories and Huerta unit price 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-product-category-public-products-20260821.php'
+      - 'mu-plugins/mdo-english-home-categories-producers-20260820.php'
+      - 'mdo-supplier-sync/mdo-supplier-sync.php'
+      - 'mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php'
+      - '.github/scripts/migrate-huerta-english-unit-price-20260821.php'
+      - '.github/workflows/english-categories-huerta-unit-price-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-migrate-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: |
+          php -l mu-plugins/mdo-product-category-public-products-20260821.php
+          php -l mu-plugins/mdo-english-home-categories-producers-20260820.php
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          php -l mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php
+          php -l .github/scripts/migrate-huerta-english-unit-price-20260821.php
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy, migrate and audit production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins' '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes'"
+          sshpass -e scp $SCP mu-plugins/mdo-product-category-public-products-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-product-category-public-products-20260821.php"
+          sshpass -e scp $SCP mu-plugins/mdo-english-home-categories-producers-20260820.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-home-categories-producers-20260820.php"
+          sshpass -e scp $SCP mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php"
+          sshpass -e scp $SCP mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php"
+
+          REMOTE_MIGRATION="/tmp/mdo-huerta-en-unit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/migrate-huerta-english-unit-price-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MIGRATION"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_MIGRATION' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_MIGRATION'; exit \$rc" > runtime/huerta-english-unit-price-migration-20260821.json
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          cat > /tmp/mdo-huerta-final-audit.php <<'PHP'
+          <?php
+          global $wpdb;
+          $ids = $wpdb->get_col("SELECT DISTINCT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID WHERE p.post_type='product' AND pm.meta_key='_emdo_source_url' AND pm.meta_value LIKE '%lahuertadeanamary.com%' ORDER BY p.ID ASC") ?: array();
+          $out = array('count'=>0,'complete'=>0,'per_kg'=>0,'issues'=>array(),'products'=>array());
+          foreach ($ids as $raw_id) {
+              $id=(int)$raw_id; $p=get_post($id); if(!$p) continue; $out['count']++;
+              $title=trim((string)get_post_meta($id,'_en_US_post_title',true));
+              $slug=trim((string)get_post_meta($id,'_en_US_post_name',true));
+              $content=(string)get_post_meta($id,'_en_US_post_content',true);
+              $published=(string)get_post_meta($id,'_en_US_published',true);
+              $basis=(string)get_post_meta($id,'_emdo_huerta_price_basis',true);
+              $complete=$title!=='' && $slug!=='' && trim(wp_strip_all_tags($content))!=='' && $published==='1';
+              if($complete) $out['complete']++; else $out['issues'][]=array('id'=>$id,'type'=>'incomplete_english');
+              $has_en_label=strpos($content,'Price per kg')!==false;
+              $has_es_label=strpos((string)$p->post_content,'Precio por kilo')!==false;
+              if($basis==='kg') {
+                  $out['per_kg']++;
+                  if(!$has_en_label || !$has_es_label) $out['issues'][]=array('id'=>$id,'type'=>'missing_unit_label');
+              } elseif($has_en_label || $has_es_label) {
+                  $out['issues'][]=array('id'=>$id,'type'=>'unexpected_unit_label');
+              }
+              $spanish_residue=array();
+              foreach(array('precio por kilo','conservas','hortalizas','legumbres','ingredientes','información nutricional','conservación') as $needle) {
+                  if(stripos(wp_strip_all_tags($content),$needle)!==false) $spanish_residue[]=$needle;
+              }
+              if($spanish_residue) $out['issues'][]=array('id'=>$id,'type'=>'spanish_residue','hits'=>$spanish_residue);
+              $out['products'][]=array('id'=>$id,'native_slug'=>$p->post_name,'english_title'=>$title,'english_slug'=>$slug,'basis'=>$basis,'has_es_label'=>$has_es_label,'has_en_label'=>$has_en_label);
+          }
+          echo wp_json_encode($out,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT),"\n";
+          if($out['count']!==46 || $out['complete']!==46 || $out['issues']) exit(2);
+          PHP
+
+          REMOTE_AUDIT="/tmp/mdo-huerta-final-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/mdo-huerta-final-audit.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_AUDIT'; exit \$rc" > runtime/huerta-english-unit-price-final-20260821.json
+
+          python3 - <<'PY'
+          import json, re, subprocess, pathlib, time, html
+          stamp=str(int(time.time()))
+          base='https://www.elmercadodeorigen.com'
+          audit=json.load(open('runtime/huerta-english-unit-price-final-20260821.json',encoding='utf-8'))
+
+          product_results=[]
+          for row in audit['products']:
+              url=f"{base}/en/product/{row['english_slug']}/?mdo_en_product_audit={stamp}"
+              p=subprocess.run(['curl','-k','-L','-sS','-o','/tmp/product.html','-w','%{http_code}|%{url_effective}','--connect-timeout','8','--max-time','35','-H','Cache-Control: no-cache',url],capture_output=True,text=True)
+              body=pathlib.Path('/tmp/product.html').read_text(errors='ignore') if pathlib.Path('/tmp/product.html').exists() else ''
+              code,effective=(p.stdout.strip().split('|',1)+[''])[:2]
+              title_ok=html.unescape(row['english_title']).lower() in html.unescape(re.sub(r'<[^>]+>',' ',body)).lower()
+              label_ok=(row['basis']!='kg' or 'Price per kg' in body)
+              no_spanish_label='Precio por kilo' not in body
+              product_results.append({**row,'url':url,'http_code':int(code or 0),'effective_url':effective,'title_ok':title_ok,'label_ok':label_ok,'no_spanish_label':no_spanish_label})
+
+          def get(url):
+              return subprocess.run(['curl','-k','-L','-sS','--connect-timeout','8','--max-time','40','-H','Cache-Control: no-cache',url],capture_output=True,text=True).stdout
+
+          es_home=get(base+'/?mdo_home_audit='+stamp)
+          en_home=get(base+'/en/?mdo_home_audit='+stamp)
+          href_re=re.compile(r'<a\b(?=[^>]*\bemo-category-card\b)[^>]*\bhref=["\']([^"\']+)["\'][^>]*>',re.I)
+          es_links=href_re.findall(es_home)
+          en_links=href_re.findall(en_home)
+          if not es_links or not en_links:
+              # tolerate href before class
+              href_re2=re.compile(r'<a\b[^>]*\bhref=["\']([^"\']+)["\'][^>]*\bclass=["\'][^"\']*emo-category-card[^"\']*["\'][^>]*>',re.I)
+              es_links=es_links or href_re2.findall(es_home)
+              en_links=en_links or href_re2.findall(en_home)
+
+          category_results=[]
+          for url in en_links:
+              sep='&' if '?' in url else '?'
+              page=get(url+sep+'mdo_en_cat_audit='+stamp)
+              cards=len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',page,re.I))
+              empty=bool(re.search(r'no se han encontrado productos|no products were found',page,re.I))
+              category_results.append({'url':url,'rendered_product_cards':cards,'empty_message':empty,'bytes':len(page.encode())})
+
+          producers=get(base+'/en/producers/?mdo_producer_audit='+stamp)
+          producer_cta={
+              'visit':len(re.findall(r'>\s*Visit\s*<',producers,re.I)),
+              'visit_store':len(re.findall(r'>\s*Visit Store\s*<',producers,re.I)),
+              'visitar':len(re.findall(r'>\s*Visitar(?:\s+Tienda)?\s*<',producers,re.I)),
+          }
+
+          result={
+              'spanish_home_category_cards':len(es_links),
+              'english_home_category_cards':len(en_links),
+              'english_category_archives':category_results,
+              'producer_cta':producer_cta,
+              'huerta_products':product_results,
+          }
+          pathlib.Path('runtime/english-category-huerta-live-20260821.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+
+          bad_products=[r for r in product_results if r['http_code']!=200 or '/en/product/' not in r['effective_url'] or not r['title_ok'] or not r['label_ok'] or not r['no_spanish_label']]
+          bad_cats=[r for r in category_results if r['rendered_product_cards']<=0 or r['empty_message']]
+          if len(en_links)!=len(es_links) or bad_cats or producer_cta['visit']<=0 or producer_cta['visit_store'] or producer_cta['visitar'] or bad_products:
+              print(json.dumps({'bad_products':bad_products,'bad_categories':bad_cats,'producer_cta':producer_cta,'es_cards':len(es_links),'en_cards':len(en_links)},ensure_ascii=False,indent=2))
+              raise SystemExit(2)
+          PY
+
+      - name: Commit production verification
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main || true
+          git add runtime/huerta-english-unit-price-migration-20260821.json runtime/huerta-english-unit-price-final-20260821.json runtime/english-category-huerta-live-20260821.json
+          git commit -m 'Record English category and Huerta verification [skip ci]' || true
+          git push origin HEAD:main
