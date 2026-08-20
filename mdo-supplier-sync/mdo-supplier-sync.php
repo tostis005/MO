@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.18
+ * Version: 1.0.19
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.18' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.19' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -42,6 +42,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-cured-catalog.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-cured-producer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-adobados-catalog.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-accessories-catalog.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-auto-categorizer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-woo-importer.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-variable-upgrade.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-description-guard.php';

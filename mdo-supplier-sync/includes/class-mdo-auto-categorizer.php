@@ -241,7 +241,11 @@ final class MDO_Auto_Categorizer {
 			$sets[] = array( 'lote', 'pack', 'cesta', 'estuche', 'seleccion' );
 		}
 
-		return array_values( array_unique( array_merge( ... ( $sets ?: array( array() ) ) ) ) );
+		$keywords = array();
+		foreach ( $sets as $set ) {
+			$keywords = array_merge( $keywords, $set );
+		}
+		return array_values( array_unique( $keywords ) );
 	}
 
 	private static function significant_tokens( string $text ): array {

@@ -61,6 +61,9 @@ final class MDO_Woo_Importer {
 		}
 
 		self::apply_common_fields( $product, $payload );
+		$category_result = class_exists( 'MDO_Auto_Categorizer' )
+			? MDO_Auto_Categorizer::maybe_assign( $product, $payload, $row )
+			: array();
 		if ( $is_variable ) {
 			self::apply_variable_product( $product, $variations );
 		} else {
@@ -73,6 +76,9 @@ final class MDO_Woo_Importer {
 		}
 
 		wp_update_post( array( 'ID' => $product_id, 'post_author' => $vendor_id ) );
+		if ( class_exists( 'MDO_Auto_Categorizer' ) ) {
+			MDO_Auto_Categorizer::record_result( $product_id, $category_result );
+		}
 
 		self::sync_images( $product, $payload );
 		if ( $is_variable ) {
