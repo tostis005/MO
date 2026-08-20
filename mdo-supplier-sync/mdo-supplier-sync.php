@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.22
+ * Version: 1.0.23
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.22' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.23' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -30,6 +30,7 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-iberico-fa
 require_once MDO_SUPPLIER_SYNC_PATH . 'connectors/class-mdo-connector-huerta-ana-mary-v4.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-huerta-defaults.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-huerta-catalog-quality.php';
+require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-huerta-unit-price.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-huerta-description-policy.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-yith-extras.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-ham-taxonomy.php';
@@ -102,6 +103,7 @@ add_action(
 		MDO_Nightly_Scheduler::init();
 		MDO_Huerta_Defaults::init();
 		MDO_Huerta_Catalog_Quality::init();
+		MDO_Huerta_Unit_Price::init();
 		MDO_Huerta_Description_Policy::init();
 		MDO_Minimum_Order::init();
 		MDO_Shipping_Destinations::init();
