@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Summary Bar Visible
  * Description: One stable server-rendered results + shipping destination row for desktop and mobile catalog views.
- * Version: 1.4.0
+ * Version: 1.4.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -84,6 +84,7 @@ add_action(
 		?>
 		<style id="mdo-catalog-summarybar-visible-20260820">
 			/* Exactly one visible result count and one destination control. */
+			body .woocommerce-result-count,
 			body .emo-catalog-result-count-010220,
 			body .mdo-catalog-destination--canonical,
 			body .mdo-catalog-toolbar__count,
