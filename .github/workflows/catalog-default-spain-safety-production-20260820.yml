@@ -118,3 +118,5 @@ jobs:
       - name: Fail if default shop or selector is wrong
         if: steps.verify.outputs.result != 'success'
         run: exit 1
+
+# Verification trigger 2026-08-20T09:28Z
