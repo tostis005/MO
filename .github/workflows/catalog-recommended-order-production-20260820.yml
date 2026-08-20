@@ -1,0 +1,196 @@
+name: Catalog recommended order production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-recommended-order-production-20260820.yml'
+      - 'mu-plugins/mdo-catalog-recommended-order-20260820.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate ranking integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-catalog-recommended-order-20260820.php >/dev/null
+          grep -Fq "private const ORDERBY = 'mdo_recommended'" mu-plugins/mdo-catalog-recommended-order-20260820.php
+          grep -Fq "MDO_Catalog_Destination_Frontend::apply_default_ranking" mu-plugins/mdo-catalog-recommended-order-20260820.php
+          grep -Fq "mdo_catalog_rank_v3_" mu-plugins/mdo-catalog-recommended-order-20260820.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy recommended order to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+
+          LOCAL='mu-plugins/mdo-catalog-recommended-order-20260820.php'
+          TMP="/tmp/mdo-catalog-recommended-order-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-catalog-recommended-order-20260820.php"
+          sshpass -e scp $SCP_OPTIONS "$LOCAL" "$STAGING_USER@$STAGING_HOST:$TMP"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp || true)
+            [ -n \"\$php_bin\" ] && [ -n \"\$wp_bin\" ]
+            \"\$php_bin\" -l '$TMP' >/dev/null
+            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
+            if [ -f '$TARGET' ]; then cp -p '$TARGET' '/tmp/mdo-catalog-recommended-order-${GITHUB_RUN_ID}.backup.php'; fi
+            cp '$TMP' '$TARGET'
+            rm -f '$TMP'
+            \"\$php_bin\" -l '$TARGET' >/dev/null
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+      - name: Verify production ranking and selectable orders
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p ${PORT:-22}"
+
+          VERIFY="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp || true)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+              printf("RECOMMENDED_CLASS=%s\\n", class_exists("MDO_Catalog_Recommended_Order_20260820") ? "yes" : "no");
+              printf("RANKING_CLASS=%s\\n", class_exists("MDO_Catalog_Ranking") ? "yes" : "no");
+              printf("DESTINATION_CLASS=%s\\n", class_exists("MDO_Catalog_Destination_Frontend") ? "yes" : "no");
+              printf("DEFAULT=%s\\n", apply_filters("woocommerce_default_catalog_orderby", "menu_order"));
+              $opts = apply_filters("woocommerce_catalog_orderby", array("menu_order" => "Orden predeterminado", "popularity" => "Popularidad", "date" => "Últimos", "price" => "Precio asc", "price-desc" => "Precio desc"));
+              printf("LABEL=%s\\n", isset($opts["mdo_recommended"]) ? $opts["mdo_recommended"] : "missing");
+              $ids = get_posts(array("post_type"=>"product","post_status"=>"publish","posts_per_page"=>-1,"fields"=>"ids","orderby"=>"ID","order"=>"ASC","no_found_rows"=>true,"suppress_filters"=>true));
+              $ranked = MDO_Catalog_Ranking::rank_products($ids, array("rotation_seed"=>gmdate("Y-m-d"),"diversify_vendors"=>true));
+              printf("RANK=%s\\n", implode(",", $ranked));
+            ' --path='$PROD_PATH' --allow-root
+          ")"
+          printf '%s\n' "$VERIFY"
+          printf '%s\n' "$VERIFY" | grep -Fq 'RECOMMENDED_CLASS=yes'
+          printf '%s\n' "$VERIFY" | grep -Fq 'RANKING_CLASS=yes'
+          printf '%s\n' "$VERIFY" | grep -Fq 'DESTINATION_CLASS=yes'
+          printf '%s\n' "$VERIFY" | grep -Fq 'DEFAULT=mdo_recommended'
+          printf '%s\n' "$VERIFY" | grep -Fq 'LABEL=Recomendados'
+          printf '%s\n' "$VERIFY" | sed -n 's/^RANK=//p' > /tmp/mdo-global-rank.txt
+          test -s /tmp/mdo-global-rank.txt
+
+          BASE="https://www.elmercadodeorigen.com/tienda/"
+          DEFAULT_HTML=/tmp/mdo-shop-default.html
+          RECOMMENDED_HTML=/tmp/mdo-shop-recommended.html
+          PRICE_HTML=/tmp/mdo-shop-price.html
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO ranking verifier' -H 'Cache-Control: no-cache, no-store' -o "$DEFAULT_HTML" "${BASE}?mdo_rank_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO ranking verifier' -H 'Cache-Control: no-cache, no-store' -o "$RECOMMENDED_HTML" "${BASE}?orderby=mdo_recommended&mdo_rank_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO ranking verifier' -H 'Cache-Control: no-cache, no-store' -o "$PRICE_HTML" "${BASE}?orderby=price&mdo_rank_verify=${GITHUB_RUN_ID}"
+
+          python3 - <<'PY'
+          import html, re
+          from pathlib import Path
+
+          def product_ids(path):
+              text = Path(path).read_text(encoding='utf-8', errors='ignore')
+              patterns = [
+                  r'<li[^>]*class=["\'][^"\']*\bpost-(\d+)\b[^"\']*["\'][^>]*>',
+                  r'<li[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*data-product-id=["\'](\d+)["\']',
+              ]
+              ids=[]
+              for pat in patterns:
+                  found=[int(x) for x in re.findall(pat, text, flags=re.I)]
+                  if len(found) >= 4:
+                      ids=found
+                      break
+              out=[]
+              seen=set()
+              for pid in ids:
+                  if pid not in seen:
+                      seen.add(pid); out.append(pid)
+              return out
+
+          def selected(path):
+              text=Path(path).read_text(encoding='utf-8', errors='ignore')
+              text=html.unescape(text)
+              m=re.search(r'<option\s+value=["\']([^"\']+)["\'][^>]*\bselected(?:=["\'][^"\']*["\'])?[^>]*>(.*?)</option>', text, flags=re.I|re.S)
+              if not m:
+                  m=re.search(r'<option[^>]*\bselected(?:=["\'][^"\']*["\'])?[^>]*\svalue=["\']([^"\']+)["\'][^>]*>(.*?)</option>', text, flags=re.I|re.S)
+              assert m, 'selected ordering option not found'
+              label=re.sub(r'<[^>]+>', '', m.group(2)).strip()
+              return m.group(1), label
+
+          default_ids=product_ids('/tmp/mdo-shop-default.html')
+          recommended_ids=product_ids('/tmp/mdo-shop-recommended.html')
+          assert len(default_ids) >= 4, default_ids
+          assert default_ids == recommended_ids, (default_ids, recommended_ids)
+
+          default_value, default_label=selected('/tmp/mdo-shop-default.html')
+          recommended_value, _=selected('/tmp/mdo-shop-recommended.html')
+          price_value, _=selected('/tmp/mdo-shop-price.html')
+          assert default_value == 'mdo_recommended', (default_value, default_label)
+          assert 'Recomend' in default_label, default_label
+          assert recommended_value == 'mdo_recommended', recommended_value
+          assert price_value == 'price', price_value
+
+          rank=[int(x) for x in Path('/tmp/mdo-global-rank.txt').read_text().strip().split(',') if x.strip()]
+          pos={pid:i for i,pid in enumerate(rank)}
+          missing=[pid for pid in default_ids if pid not in pos]
+          assert not missing, ('visible products missing from EMDO rank', missing)
+          indexes=[pos[pid] for pid in default_ids]
+          assert indexes == sorted(indexes), ('catalog not following EMDO rank', default_ids, indexes)
+
+          print('default_order=mdo_recommended')
+          print('default_label=' + default_label)
+          print('visible_products=' + ','.join(map(str, default_ids)))
+          print('rank_positions=' + ','.join(map(str, indexes)))
+          print('manual_price_order_preserved=1')
+          PY
+
+      - name: Save verification artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-recommended-order-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            /tmp/mdo-global-rank.txt
+            /tmp/mdo-shop-default.html
+            /tmp/mdo-shop-recommended.html
+            /tmp/mdo-shop-price.html
