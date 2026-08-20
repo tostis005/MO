@@ -1,0 +1,77 @@
+name: Catalog mobile computed audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-mobile-computed-audit-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+      - name: Inspect mobile visibility
+        run: |
+          node <<'JS' > /tmp/mobile-audit.txt
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            for (const [name,width,height] of [['portrait',390,844],['landscape',844,390]]) {
+              const page = await browser.newPage({viewport:{width,height}, userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'});
+              await page.goto('https://www.elmercadodeorigen.com/tienda/?mdo_mobile_audit=' + Date.now(), {waitUntil:'networkidle', timeout:60000});
+              const data = await page.evaluate(() => {
+                const el = document.querySelector('[data-mdo-catalog-summarybar]');
+                const dest = document.querySelector('[data-mdo-summary-destination-open]');
+                const count = document.querySelector('.mdo-catalog-summarybar__count');
+                const rect = el ? el.getBoundingClientRect() : null;
+                const chain = [];
+                let n = el;
+                while (n && chain.length < 8) {
+                  const s = getComputedStyle(n);
+                  const r = n.getBoundingClientRect();
+                  chain.push({tag:n.tagName, id:n.id || '', cls:n.className || '', display:s.display, visibility:s.visibility, opacity:s.opacity, width:r.width, height:r.height, top:r.top, left:r.left, overflow:s.overflow});
+                  n = n.parentElement;
+                }
+                return {
+                  found:!!el,
+                  text: el ? el.innerText.trim().replace(/\s+/g,' ') : '',
+                  rect,
+                  display: el ? getComputedStyle(el).display : '',
+                  visibility: el ? getComputedStyle(el).visibility : '',
+                  destRect: dest ? dest.getBoundingClientRect() : null,
+                  countRect: count ? count.getBoundingClientRect() : null,
+                  inViewport: rect ? rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth : false,
+                  chain
+                };
+              });
+              console.log(name + '=' + JSON.stringify(data));
+              await page.close();
+            }
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          JS
+      - name: Record audit
+        if: always()
+        run: |
+          mkdir -p .deploy-status
+          cp /tmp/mobile-audit.txt .deploy-status/catalog-mobile-computed-audit.txt || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-mobile-computed-audit.txt
+          git commit -m 'Record catalog mobile computed audit [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
