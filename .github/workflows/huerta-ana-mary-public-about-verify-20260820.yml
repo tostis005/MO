@@ -1,0 +1,74 @@
+name: Verify Huerta de Ana Mary public About
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/huerta-ana-mary-public-about-verify-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check public store routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com/tienda/la-huerta-de-ana-mary/'
+          mkdir -p runtime
+          REPORT='runtime/huerta-ana-mary-public-about-verify-20260820.txt'
+          : > "$REPORT"
+          found=0
+
+          for path in '' 'about/' 'acerca-de/' 'acercade/'; do
+            url="${BASE}${path}?emdo_huerta_public_verify=${GITHUB_RUN_ID}"
+            file="/tmp/huerta-${path//\//-}.html"
+            code="$(curl -sS -L --max-redirs 5 --connect-timeout 10 --max-time 35 -A 'Mozilla/5.0 EMDO Huerta public verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$file" -w '%{http_code}' "$url" || true)"
+            names=0
+            harvest=0
+            surnames=0
+            grep -Fq 'Detrás del proyecto se encuentran Arsenio y Antonio' "$file" 2>/dev/null && names=1 || true
+            grep -Fq 'las hortalizas frescas permanecen en el campo hasta que se recibe el pedido' "$file" 2>/dev/null && harvest=1 || true
+            if grep -Fq 'Arsenio Pérez' "$file" 2>/dev/null || grep -Fq 'Antonio Luis Morán' "$file" 2>/dev/null; then surnames=1; fi
+            printf 'url=%s code=%s names=%s harvest=%s surnames=%s\n' "$url" "$code" "$names" "$harvest" "$surnames" >> "$REPORT"
+            if [ "$code" = '200' ] && [ "$names" = '1' ] && [ "$harvest" = '1' ] && [ "$surnames" = '0' ]; then
+              found=1
+              printf 'verified_url=%s\n' "$url" >> "$REPORT"
+            fi
+            if [ "$path" = '' ] && [ -s "$file" ]; then
+              printf '%s\n' 'candidate_links:' >> "$REPORT"
+              grep -oiE 'href="[^"]*(about|acerca)[^"]*"' "$file" | head -n 30 >> "$REPORT" || true
+            fi
+          done
+
+          printf 'verified=%s\n' "$found" >> "$REPORT"
+          cat "$REPORT"
+          printf 'HUERTA_PUBLIC_VERIFIED=%s\n' "$found" >> "$GITHUB_ENV"
+
+      - name: Record public verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/huerta-ana-mary-public-about-verify-20260820.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Huerta public About verification [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Require public visibility
+        shell: bash
+        run: |
+          test "${HUERTA_PUBLIC_VERIFIED:-0}" = '1'
