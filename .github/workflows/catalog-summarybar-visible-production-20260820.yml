@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
+      - 'mu-plugins/mdo-catalog-destination-modal-footer-20260820.php'
       - '.github/workflows/catalog-summarybar-visible-production-20260820.yml'
   workflow_dispatch:
 
@@ -23,103 +24,67 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate static architecture
+      - name: Validate architecture
         shell: bash
         run: |
           set -euo pipefail
-          FILE='mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
-          php -l "$FILE" >/dev/null
-          grep -q 'mdo-catalog-toolbar-layout-20260820' "$FILE"
-          if grep -q 'MutationObserver' "$FILE"; then
-            echo 'Forbidden observer found in toolbar integration' >&2
-            exit 1
+          TOOLBAR='mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
+          FOOTER='mu-plugins/mdo-catalog-destination-modal-footer-20260820.php'
+          php -l "$TOOLBAR" >/dev/null
+          php -l "$FOOTER" >/dev/null
+          grep -q 'mdo-catalog-toolbar-layout-20260820' "$TOOLBAR"
+          grep -q 'Intentionally no hooks' "$FOOTER"
+          if grep -q 'MutationObserver' "$TOOLBAR"; then
+            echo 'MutationObserver is forbidden in the toolbar integration' >&2; exit 1
           fi
-          if grep -Eq 'insertBefore|appendChild|insertAdjacentElement' "$FILE"; then
-            echo 'Forbidden client-side relocation found in toolbar integration' >&2
-            exit 1
+          if grep -Eq 'insertBefore|appendChild|insertAdjacentElement|replaceWith' "$TOOLBAR"; then
+            echo 'Client-side DOM relocation is forbidden in the toolbar integration' >&2; exit 1
           fi
-          if grep -q '<script' "$FILE"; then
-            echo 'Toolbar layout must not need JavaScript' >&2
-            exit 1
+          if grep -q '<script' "$TOOLBAR"; then
+            echo 'Toolbar layout must not need JavaScript' >&2; exit 1
+          fi
+          if grep -q "add_action" "$FOOTER"; then
+            echo 'Retired footer relocation plugin must not register actions' >&2; exit 1
           fi
 
-      - name: Deploy toolbar MU plugin
+      - name: Deploy toolbar files
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          LOCAL='mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
             [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
             done
           ')"
           : "${PROD_PATH:?production path not found}"
+          for name in mdo-catalog-summarybar-visible-20260820.php mdo-catalog-destination-modal-footer-20260820.php; do
+            local="mu-plugins/$name"
+            tmp="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
+            target="$PROD_PATH/wp-content/mu-plugins/$name"
+            sshpass -e scp $SCP_OPTIONS "$local" "$STAGING_USER@$STAGING_HOST:$tmp"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$tmp' >/dev/null && cp '$tmp' '$target' && rm -f '$tmp' && \"\$php_bin\" -l '$target' >/dev/null"
+          done
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-          TMP="/tmp/mdo-catalog-toolbar-${GITHUB_RUN_ID}.php"
-          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-catalog-summarybar-visible-20260820.php"
-          sshpass -e scp $SCP_OPTIONS "$LOCAL" "$STAGING_USER@$STAGING_HOST:$TMP"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            php_bin=\$(command -v php || true)
-            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" -l '$TMP' >/dev/null
-            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
-            cp '$TMP' '$TARGET'
-            rm -f '$TMP'
-            \"\$php_bin\" -l '$TARGET' >/dev/null
-            wp_bin=\$(command -v wp || true)
-            [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
-          "
-
-      - name: Confirm fresh production markup
+      - name: Install Chromium verifier
         shell: bash
         run: |
-          set -euo pipefail
-          URL="https://www.elmercadodeorigen.com/tienda/?mdo_toolbar_markup=${GITHUB_RUN_ID}"
-          HTML=/tmp/mdo-toolbar.html
-          curl -fsSL --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO toolbar verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "$URL"
-          grep -q 'mdo-catalog-toolbar-layout-20260820' "$HTML"
-          grep -q 'emo-catalog-result-count-010220' "$HTML"
-          grep -q 'mdo-catalog-destination--canonical' "$HTML"
-          grep -q 'data-mdo-destination-modal' "$HTML"
-          if grep -q 'data-mdo-catalog-summarybar' "$HTML"; then
-            echo 'Retired external summary bar is still rendered' >&2
-            exit 1
-          fi
-          python3 - <<'PY'
-          import re
-          s=open('/tmp/mdo-toolbar.html',encoding='utf-8',errors='ignore').read()
-          products=len(re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>',s,re.I))
-          if products < 1:
-              raise SystemExit('default Spain unexpectedly has no product cards')
-          print(f'default product cards in HTML: {products}')
-          PY
-
-      - name: Install browser verifier
-        shell: bash
-        run: |
-          set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install --no-save --no-audit --no-fund playwright@1.55.0 >/dev/null
           npx playwright install --with-deps chromium >/dev/null
 
-      - name: Verify responsive toolbar geometry and destination interaction
+      - name: Verify five responsive viewports
         id: browser
         shell: bash
         env:
@@ -128,174 +93,97 @@ jobs:
           set +e
           mkdir -p artifacts
           node <<'NODE'
-          const fs = require('fs');
-          const { chromium } = require('playwright');
-
-          const status = {
-            result: 'failed',
-            desktop_visible: 0,
-            tablet_visible: 0,
-            mobile_portrait_visible: 0,
-            mobile_narrow_visible: 0,
-            mobile_landscape_visible: 0,
-            inside_toolbar: 0,
-            single_visible_count: 0,
-            no_horizontal_overflow: 0,
-            portrait_two_rows: 0,
-            hover_readable: 0,
-            click_opens_modal: 0,
-            other_destination_option: 0,
-            default_products: 0,
-            note: ''
-          };
-
-          (async () => {
-            const browser = await chromium.launch({headless:true});
-            const contexts = [];
-            try {
-              const viewports = [
-                ['desktop', 1440, 900],
-                ['tablet', 768, 1024],
-                ['portrait', 390, 844],
-                ['narrow', 360, 800],
-                ['landscape', 844, 390]
-              ];
-
-              const snaps = {};
-              for (const [name,width,height] of viewports) {
-                const context = await browser.newContext({viewport:{width,height}});
-                contexts.push(context);
-                const page = await context.newPage();
-                await page.goto(`${process.env.SHOP_URL}?mdo_toolbar_browser=${process.env.GITHUB_RUN_ID || Date.now()}&vp=${name}`, {waitUntil:'domcontentloaded', timeout:45000});
-                await page.waitForSelector('.woostify-sorting.emo-catalog-toolbar-shared-010229', {state:'visible', timeout:20000});
-                await page.waitForSelector('.emo-catalog-result-count-010220', {state:'visible', timeout:20000});
-                await page.waitForSelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]', {state:'visible', timeout:20000});
-                await page.waitForSelector('.woocommerce-ordering', {state:'visible', timeout:20000});
+          const fs=require('fs');
+          const {chromium}=require('playwright');
+          const status={result:'failed',desktop_visible:0,tablet_visible:0,mobile_portrait_visible:0,mobile_narrow_visible:0,mobile_landscape_visible:0,inside_toolbar:0,single_visible_count:0,no_horizontal_overflow:0,portrait_two_rows:0,hover_readable:0,click_opens_modal:0,other_destination_option:0,default_products:0,note:''};
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            const contexts=[];
+            try{
+              const views=[['desktop',1440,900],['tablet',768,1024],['portrait',390,844],['narrow',360,800],['landscape',844,390]];
+              const snaps={};
+              for(const [name,width,height] of views){
+                const context=await browser.newContext({viewport:{width,height}}); contexts.push(context);
+                const page=await context.newPage();
+                await page.goto(`${process.env.SHOP_URL}?toolbar_final=${process.env.GITHUB_RUN_ID||Date.now()}&vp=${name}`,{waitUntil:'domcontentloaded',timeout:45000});
+                await page.waitForSelector('.woostify-sorting.emo-catalog-toolbar-shared-010229',{state:'visible',timeout:20000});
+                await page.waitForSelector('.emo-catalog-result-count-010220',{state:'visible',timeout:20000});
+                await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical [data-mdo-destination-open]',{state:'visible',timeout:20000});
+                await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering',{state:'visible',timeout:20000});
                 await page.waitForTimeout(500);
-
-                snaps[name] = await page.evaluate(() => {
-                  const visible = el => {
-                    if (!el) return false;
-                    const cs=getComputedStyle(el), r=el.getBoundingClientRect();
-                    return cs.display!=='none' && cs.visibility!=='hidden' && Number(cs.opacity||1)>0 && r.width>0 && r.height>0;
-                  };
-                  const rect = el => el ? el.getBoundingClientRect().toJSON() : null;
+                snaps[name]=await page.evaluate(()=>{
+                  const visible=e=>{if(!e)return false;const c=getComputedStyle(e),r=e.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&Number(c.opacity||1)>0&&r.width>0&&r.height>0};
+                  const rect=e=>e?e.getBoundingClientRect().toJSON():null;
                   const toolbar=document.querySelector('.woostify-sorting.emo-catalog-toolbar-shared-010229');
-                  const left=toolbar?.querySelector(':scope > .woostify-toolbar-left') || toolbar?.querySelector('.woostify-toolbar-left');
+                  const left=toolbar?.querySelector(':scope > .woostify-toolbar-left');
                   const count=toolbar?.querySelector('.emo-catalog-result-count-010220');
                   const destination=toolbar?.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]');
                   const ordering=toolbar?.querySelector('.woocommerce-ordering');
-                  const allCountCandidates=[...document.querySelectorAll('.woocommerce-result-count,.emo-catalog-result-count-010220,[data-mdo-summary-count],[data-mdo-toolbar-count]')];
-                  const visibleCounts=[...new Set(allCountCandidates)].filter(visible);
+                  const candidates=[...new Set([...document.querySelectorAll('.woocommerce-result-count,.emo-catalog-result-count-010220,[data-mdo-summary-count],[data-mdo-toolbar-count]')])];
+                  const visibleCounts=candidates.filter(visible);
                   const tr=toolbar?.getBoundingClientRect();
-                  const fits = el => {
-                    if (!el || !tr) return false;
-                    const r=el.getBoundingClientRect();
-                    return r.left >= tr.left-1.5 && r.right <= tr.right+1.5;
-                  };
-                  return {
-                    toolbarVisible:visible(toolbar), countVisible:visible(count), destinationVisible:visible(destination), orderingVisible:visible(ordering),
-                    inside:!!(toolbar&&count&&destination&&ordering&&toolbar.contains(count)&&toolbar.contains(destination)&&toolbar.contains(ordering)),
-                    visibleCountTotal:visibleCounts.length,
-                    countText:count?.textContent?.trim()||'',
-                    destinationText:destination?.textContent?.replace(/\s+/g,' ').trim()||'',
-                    toolbarRect:rect(toolbar), leftRect:rect(left), countRect:rect(count), destinationRect:rect(destination), orderingRect:rect(ordering),
-                    fits:[count,destination,ordering].every(fits),
-                    pageOverflow:document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
-                    externalSummary:!!document.querySelector('[data-mdo-catalog-summarybar]'),
-                    products:document.querySelectorAll('li.product').length
-                  };
+                  const fits=e=>{if(!e||!tr)return false;const r=e.getBoundingClientRect();return r.left>=tr.left-1.5&&r.right<=tr.right+1.5};
+                  const cs=toolbar?getComputedStyle(toolbar):null;
+                  return {toolbarVisible:visible(toolbar),countVisible:visible(count),destinationVisible:visible(destination),orderingVisible:visible(ordering),inside:!!(toolbar&&count&&destination&&ordering&&toolbar.contains(count)&&toolbar.contains(destination)&&toolbar.contains(ordering)),visibleCountTotal:visibleCounts.length,bodyDestination:!!document.querySelector('body > .mdo-catalog-destination--canonical'),fits:[count,destination,ordering].every(fits),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2,toolbarDisplay:cs?.display||'',toolbarHeight:tr?.height||0,toolbarRect:rect(toolbar),leftRect:rect(left),countRect:rect(count),destinationRect:rect(destination),orderingRect:rect(ordering),products:document.querySelectorAll('li.product').length};
                 });
-
-                await page.screenshot({path:`artifacts/catalog-toolbar-${name}.png`, fullPage:false});
-
-                if (name === 'desktop') {
-                  await page.locator('.mdo-catalog-destination--canonical [data-mdo-destination-open]').hover();
-                  const hover = await page.locator('.mdo-catalog-destination--canonical [data-mdo-destination-open]').evaluate(el => ({
-                    color:getComputedStyle(el).color,
-                    background:getComputedStyle(el).backgroundColor
-                  }));
-                  status.hover_readable = !/rgb\(255,\s*255,\s*255\)/.test(hover.color) && hover.color !== 'rgba(0, 0, 0, 0)' ? 1 : 0;
-
-                  await page.locator('.mdo-catalog-destination--canonical [data-mdo-destination-open]').click();
-                  await page.waitForFunction(() => {
-                    const modal=document.querySelector('[data-mdo-destination-modal]');
-                    if(!modal||modal.hidden)return false;
-                    const cs=getComputedStyle(modal),r=modal.getBoundingClientRect();
-                    return cs.display!=='none'&&cs.visibility!=='hidden'&&r.width>0&&r.height>0;
-                  }, null, {timeout:7000});
+                await page.screenshot({path:`artifacts/catalog-toolbar-${name}.png`,fullPage:false});
+                if(name==='desktop'){
+                  const button=page.locator('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical [data-mdo-destination-open]');
+                  await button.hover();
+                  const hover=await button.evaluate(el=>({color:getComputedStyle(el).color,bg:getComputedStyle(el).backgroundColor,child:[...el.children].map(x=>getComputedStyle(x).color)}));
+                  const white=v=>/rgb\(255,\s*255,\s*255\)/.test(v||'');
+                  status.hover_readable=(!white(hover.color)&&hover.child.every(c=>!white(c)))?1:0;
+                  await button.click();
+                  await page.waitForFunction(()=>{const m=document.querySelector('[data-mdo-destination-modal]');if(!m||m.hidden)return false;const c=getComputedStyle(m),r=m.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0},null,{timeout:7000});
                   status.click_opens_modal=1;
-                  const options=await page.locator('[data-mdo-destination-country] option').evaluateAll(opts=>opts.map(o=>o.value).filter(Boolean));
-                  status.other_destination_option=options.some(v=>v!=='ES') ? 1 : 0;
+                  const options=await page.locator('[data-mdo-destination-country] option').evaluateAll(o=>o.map(x=>x.value).filter(Boolean));
+                  status.other_destination_option=options.some(v=>v!=='ES')?1:0;
                 }
               }
-
-              const good = s => s.toolbarVisible && s.countVisible && s.destinationVisible && s.orderingVisible && s.inside && s.fits && !s.externalSummary;
+              const good=s=>s.toolbarVisible&&s.countVisible&&s.destinationVisible&&s.orderingVisible&&s.inside&&s.visibleCountTotal===1&&!s.bodyDestination&&s.fits&&!s.pageOverflow;
               status.desktop_visible=good(snaps.desktop)?1:0;
               status.tablet_visible=good(snaps.tablet)?1:0;
               status.mobile_portrait_visible=good(snaps.portrait)?1:0;
               status.mobile_narrow_visible=good(snaps.narrow)?1:0;
               status.mobile_landscape_visible=good(snaps.landscape)?1:0;
-              status.inside_toolbar=Object.values(snaps).every(s=>s.inside)?1:0;
+              status.inside_toolbar=Object.values(snaps).every(s=>s.inside&&!s.bodyDestination)?1:0;
               status.single_visible_count=Object.values(snaps).every(s=>s.visibleCountTotal===1)?1:0;
               status.no_horizontal_overflow=Object.values(snaps).every(s=>s.fits&&!s.pageOverflow)?1:0;
-              status.portrait_two_rows=(snaps.portrait.orderingRect && snaps.portrait.leftRect && snaps.portrait.orderingRect.top >= snaps.portrait.leftRect.bottom-2 && snaps.narrow.orderingRect.top >= snaps.narrow.leftRect.bottom-2)?1:0;
+              status.portrait_two_rows=(snaps.portrait.orderingRect?.top>=snaps.portrait.leftRect?.bottom-2&&snaps.narrow.orderingRect?.top>=snaps.narrow.leftRect?.bottom-2)?1:0;
               status.default_products=snaps.desktop.products;
-
-              const required=[
-                status.desktop_visible,status.tablet_visible,status.mobile_portrait_visible,status.mobile_narrow_visible,status.mobile_landscape_visible,
-                status.inside_toolbar,status.single_visible_count,status.no_horizontal_overflow,status.portrait_two_rows,status.hover_readable,
-                status.click_opens_modal,status.other_destination_option
-              ];
-              if(required.every(Boolean) && status.default_products>0){
-                status.result='success';
-                status.note='Single native toolbar verified at five resolutions; phone ordering wraps to row two, hover remains readable, destination modal opens.';
-              }else{
-                status.note='One or more responsive toolbar assertions failed: '+JSON.stringify(snaps);
-              }
-            } catch (error) {
-              status.note=error&&error.stack?error.stack.replace(/\n/g,' | '):String(error);
-            } finally {
-              for(const context of contexts){try{await context.close();}catch(_){}}
-              await browser.close();
-              fs.writeFileSync('/tmp/mdo-toolbar-browser.json',JSON.stringify(status,null,2));
-              console.log(JSON.stringify(status,null,2));
-            }
+              const checks=[status.desktop_visible,status.tablet_visible,status.mobile_portrait_visible,status.mobile_narrow_visible,status.mobile_landscape_visible,status.inside_toolbar,status.single_visible_count,status.no_horizontal_overflow,status.portrait_two_rows,status.hover_readable,status.click_opens_modal,status.other_destination_option];
+              if(checks.every(Boolean)&&status.default_products>0){status.result='success';status.note='One native white toolbar verified at five resolutions; one count, destination inside, no overflow, readable hover, modal works.'}
+              else status.note='Assertions failed: '+JSON.stringify(snaps);
+            }catch(e){status.note=(e&&e.stack?e.stack:String(e)).replace(/\n/g,' | ')}
+            finally{for(const c of contexts){try{await c.close()}catch(_){}}await browser.close();fs.writeFileSync('/tmp/mdo-toolbar-browser.json',JSON.stringify(status,null,2));console.log(JSON.stringify(status,null,2))}
           })();
           NODE
-          if [ ! -s /tmp/mdo-toolbar-browser.json ]; then
-            printf '{"result":"failed","note":"browser verifier did not produce a status file"}\n' > /tmp/mdo-toolbar-browser.json
-          fi
-          RESULT="$(python3 -c "import json; print(json.load(open('/tmp/mdo-toolbar-browser.json')).get('result','failed'))")"
+          [ -s /tmp/mdo-toolbar-browser.json ] || printf '{"result":"failed","note":"missing browser status"}\n' >/tmp/mdo-toolbar-browser.json
+          RESULT="$(python3 -c "import json;print(json.load(open('/tmp/mdo-toolbar-browser.json')).get('result','failed'))")"
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Record browser verification
+      - name: Record verification
         if: always()
         shell: bash
         run: |
-          set -euo pipefail
           mkdir -p .deploy-status
           python3 - <<'PY'
-          import json, os, datetime
-          try:
-              d=json.load(open('/tmp/mdo-toolbar-browser.json'))
-          except Exception as e:
-              d={'result':'failed','note':f'could not read browser status: {e}'}
+          import json,os,datetime
+          try:d=json.load(open('/tmp/mdo-toolbar-browser.json'))
+          except Exception as e:d={'result':'failed','note':str(e)}
           keys=['result','desktop_visible','tablet_visible','mobile_portrait_visible','mobile_narrow_visible','mobile_landscape_visible','inside_toolbar','single_visible_count','no_horizontal_overflow','portrait_two_rows','hover_readable','click_opens_modal','other_destination_option','default_products','note']
-          lines=[f'source_commit={os.environ.get("GITHUB_SHA","")}',f'workflow_run={os.environ.get("GITHUB_RUN_ID","")}',f'checked_at={datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}']
-          for k in keys:
-              lines.append(f'{k}={str(d.get(k,"" )).replace(chr(10)," ")}')
-          open('.deploy-status/catalog-toolbar-live.txt','w').write('\n'.join(lines)+'\n')
+          out=[f'source_commit={os.environ.get("GITHUB_SHA","")}',f'workflow_run={os.environ.get("GITHUB_RUN_ID","")}',f'checked_at={datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}']+[f'{k}={str(d.get(k,"" )).replace(chr(10)," ")}' for k in keys]
+          open('.deploy-status/catalog-toolbar-live.txt','w').write('\n'.join(out)+'\n')
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/catalog-toolbar-live.txt
-          git commit -m 'Record catalog toolbar responsive check [skip ci]' || exit 0
+          git commit -m 'Record final catalog toolbar responsive check [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
 
-      - name: Upload browser screenshots
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -304,6 +192,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Fail if browser verification is wrong
+      - name: Fail if verification is wrong
         if: steps.browser.outputs.result != 'success'
         run: exit 1
