@@ -180,11 +180,12 @@ final class MDO_Auto_Categorizer {
 			if ( '' === $keyword ) {
 				continue;
 			}
+			$phrase_bonus = str_contains( $keyword, ' ' ) ? 2.0 : 1.0;
 			if ( self::contains_phrase( $title, $keyword ) ) {
-				$score += 7.0;
+				$score += 7.0 + $phrase_bonus;
 			}
 			if ( self::contains_phrase( $url, $keyword ) ) {
-				$score += 5.0;
+				$score += 5.0 + ( $phrase_bonus / 2 );
 			}
 			if ( self::contains_phrase( $description, $keyword ) ) {
 				$score += 2.0;
@@ -202,7 +203,7 @@ final class MDO_Auto_Categorizer {
 		$sets = array();
 
 		if ( str_contains( $name, 'ques' ) ) {
-			$sets[] = array( 'queso', 'manchego', 'semicurado', 'curado', 'oveja', 'cabra' );
+			$sets[] = array( 'queso', 'quesos', 'manchego', 'semicurado' );
 		}
 		if ( str_contains( $name, 'conserv' ) ) {
 			$sets[] = array( 'conserva', 'conservas', 'tarro', 'frasco', 'mermelada', 'pisto', 'tomate frito', 'sofrito', 'encurtido', 'escabeche' );
