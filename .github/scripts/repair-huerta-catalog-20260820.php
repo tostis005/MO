@@ -1,5 +1,6 @@
 <?php
 /** One-off production repair and verification for La Huerta de Ana Mary. */
+// Trigger after the workflow is present on main.
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! class_exists( 'MDO_Database' ) || ! class_exists( 'MDO_Huerta_Defaults' ) || ! class_exists( 'MDO_Huerta_Catalog_Quality' ) ) {
 	fwrite( STDERR, "ERROR: required EMDO Huerta classes are not loaded.\n" );
