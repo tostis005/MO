@@ -1,0 +1,18 @@
+{
+  "phase": "test",
+  "result": "failed",
+  "checks": [
+    {
+      "url": "https://www.elmercadodeorigen.com/",
+      "status": 200,
+      "bytes": 735915
+    },
+    {
+      "url": "https://www.elmercadodeorigen.com/en/product-category/meat/?mdo_cat_fix_test=1",
+      "status": 200,
+      "cards": 0,
+      "empty": true
+    }
+  ],
+  "failure": "Test-mode category normalization failed"
+}
