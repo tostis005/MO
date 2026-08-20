@@ -1,5 +1,5 @@
 {
-    "generated_at": "2026-08-20T11:04:16+00:00",
+    "generated_at": "2026-08-20T11:06:00+00:00",
     "siteurl": "https://www.elmercadodeorigen.com",
     "wcfm_function": {
         "exists": true,
@@ -19,6 +19,2096 @@
             }
         ],
         "source": "\r\nif(!function_exists('wcfmmp_get_shipping_zone')) {\r\n\tfunction wcfmmp_get_shipping_zone($zoneID = '', $user_id = 0 ) {\r\n\t  if ( isset( $zoneID ) && $zoneID != '' ) {\r\n\t      $zones = WCFMmp_Shipping_Zone::get_zone( $zoneID, $user_id );\r\n\t  } else {\r\n\t      $zones = WCFMmp_Shipping_Zone::get_zones( $user_id );\r\n\t  }\r\n\t  if ( is_wp_error( $zones ) ) {\r\n\t    return array();\r\n\t  }\r\n\t  return $zones;\r\n\t}\r\n}\r\n\r\nfunction wcfmmp_convert_to_array($a) {\r\n"
+    },
+    "wcfm_zone_class": {
+        "file": "/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-shipping-zone.php",
+        "methods": {
+            "get_zones": {
+                "start": 52,
+                "end": 87,
+                "source": "\n\n  public static function get_zones($user_id = 0) {\n    $data_store = WC_Data_Store::load( 'shipping-zone' );\n    $raw_zones  = $data_store->get_zones();\n    $zones      = array();\n    $vendor_id = self::get_authorized_vendor_id( $user_id, 'view' );\n    if ( is_wp_error( $vendor_id ) ) {\n      return $vendor_id;\n    }\n\n    foreach ( $raw_zones as $raw_zone ) {\n\t\t\t\t$zone             = new WC_Shipping_Zone( $raw_zone );\n\t\t\t\t$enabled_methods  = $zone->get_shipping_methods( true );\n\t\t\t$methods_id = wp_list_pluck( $enabled_methods, 'id' );\n\n\t\t\tif ( in_array( 'wcfmmp_product_shipping_by_zone', $methods_id ) ) {\n\t\t\t\t$zones[ $zone->get_id() ]                            = $zone->get_data();\n\t\t\t\t$zones[ $zone->get_id() ]['zone_id']                 = $zone->get_id();\n\t\t\t\t$zones[ $zone->get_id() ]['formatted_zone_location'] = $zone->get_formatted_location();\n\t\t\t\t$zones[ $zone->get_id() ]['shipping_methods']        = self::get_shipping_methods( $zone->get_id(), $vendor_id );\n\t\t\t}\n    }\n\n     \n    $overall_zone         = new WC_Shipping_Zone(0);\n    $enabled_methods  = $overall_zone->get_shipping_methods( true );\n    $methods_id = wp_list_pluck( $enabled_methods, 'id' );\n\n    if ( in_array( 'wcfmmp_product_shipping_by_zone', $methods_id ) ) {\n        $zones[ $overall_zone->get_id() ]                            = $overall_zone->get_data();\n        $zones[ $overall_zone->get_id() ]['zone_id']                 = $overall_zone->get_id();\n        $zones[ $overall_zone->get_id() ]['formatted_zone_location'] = $overall_zone->get_formatted_location();\n        $zones[ $overall_zone->get_id() ]['shipping_methods']        = self::get_shipping_methods( $overall_zone->get_id(), $vendor_id );\n    }\n\n    return $zones;\n  }\n\n  \n\n"
+            },
+            "get_zone": {
+                "start": 97,
+                "end": 115,
+                "source": "\n\n  public static function get_zone( $zone_id, $user_id = 0 ) {\n    $zone = array();\n    $vendor_id = self::get_authorized_vendor_id( $user_id, 'view' );\n    if ( is_wp_error( $vendor_id ) ) {\n      return $vendor_id;\n    }\n\n    $zone_obj = WC_Shipping_Zones::get_zone_by( 'zone_id', $zone_id );\n\n    if( ! $zone_obj ) {\n      return new WP_Error( 'zone-not-found', __( 'Shipping zone not found.', 'wc-multivendor-marketplace' ) );\n    }\n    $zone['data']                    = $zone_obj->get_data();\n    $zone['formatted_zone_location'] = $zone_obj->get_formatted_location();\n    $zone['shipping_methods']        = self::get_shipping_methods( $zone_id, $vendor_id );\n    $zone['locations']               = self::get_locations( $zone_id, $vendor_id );\n\n    return $zone;\n  }\n\n  \n\n"
+            },
+            "get_shipping_methods": {
+                "start": 191,
+                "end": 219,
+                "source": "\n\n  public static function get_shipping_methods( $zone_id, $vendor_id ) {\n    global $wpdb;\n\n    $sql = \"SELECT * FROM {$wpdb->prefix}wcfm_marketplace_shipping_zone_methods WHERE `zone_id`=%d AND `vendor_id`=%d\";\n    $results = $wpdb->get_results( $wpdb->prepare($sql, $zone_id, $vendor_id ) );\n\n    $method = array();\n\n    foreach ( $results as $key => $result ) {\n        $default_settings = array(\n            'title'       => self::get_method_label( $result->method_id ),\n            'description' => __( 'Lets you charge a rate for shipping', 'wc-multivendor-marketplace' ),\n            'cost'        => '0',\n            'tax_status'  => 'none'\n        );\n\n        $method_id = $result->method_id .':'. $result->instance_id;\n        $settings = ! empty( $result->settings ) ? maybe_unserialize( $result->settings ) : array();\n        $settings = wp_parse_args( $settings, $default_settings );\n\n        $method[$method_id]['instance_id'] = $result->instance_id;\n        $method[$method_id]['id']          = $result->method_id;\n        $method[$method_id]['enabled']     = ( $result->is_enabled ) ? 'yes' : 'no';\n        $method[$method_id]['title']       = $settings['title'];\n        $method[$method_id]['settings']    = array_map( 'stripslashes_deep', maybe_unserialize( $settings ) );\n    }\n\n    return $method;\n  }\n\n  \n\n"
+            }
+        }
+    },
+    "shipping_tables": {
+        "wp_gla_shipping_rates": {
+            "columns": [
+                {
+                    "Field": "id",
+                    "Type": "bigint(20)",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "country",
+                    "Type": "varchar(2)",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "currency",
+                    "Type": "varchar(3)",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate",
+                    "Type": "double",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": "0",
+                    "Extra": ""
+                },
+                {
+                    "Field": "options",
+                    "Type": "text",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                }
+            ],
+            "rows": []
+        },
+        "wp_gla_shipping_times": {
+            "columns": [
+                {
+                    "Field": "id",
+                    "Type": "bigint(20)",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "country",
+                    "Type": "varchar(2)",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "time",
+                    "Type": "bigint(20)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": "0",
+                    "Extra": ""
+                },
+                {
+                    "Field": "max_time",
+                    "Type": "bigint(20)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": "0",
+                    "Extra": ""
+                }
+            ],
+            "rows": [
+                {
+                    "id": "1",
+                    "country": "ES",
+                    "time": "1",
+                    "max_time": "5"
+                }
+            ]
+        },
+        "wp_innozilla_woocommerce_shipping_table_rates": {
+            "columns": [
+                {
+                    "Field": "rate_id",
+                    "Type": "bigint(20)",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "rate_class",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_condition",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_min",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_max",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_cost",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_cost_per_item",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_cost_per_weight_unit",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_cost_percent",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_label",
+                    "Type": "longtext",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_priority",
+                    "Type": "int(1)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_order",
+                    "Type": "bigint(20)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "shipping_method_id",
+                    "Type": "bigint(20)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_abort",
+                    "Type": "int(1)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "rate_abort_reason",
+                    "Type": "longtext",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                }
+            ],
+            "rows": []
+        },
+        "wp_wcfm_marketplace_shipping_zone_locations": {
+            "columns": [
+                {
+                    "Field": "id",
+                    "Type": "int(11) unsigned",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "vendor_id",
+                    "Type": "int(11)",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "zone_id",
+                    "Type": "int(11)",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "location_code",
+                    "Type": "varchar(255)",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "location_type",
+                    "Type": "varchar(255)",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                }
+            ],
+            "rows": []
+        },
+        "wp_wcfm_marketplace_shipping_zone_methods": {
+            "columns": [
+                {
+                    "Field": "instance_id",
+                    "Type": "int(11) unsigned",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "method_id",
+                    "Type": "varchar(255)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": "",
+                    "Extra": ""
+                },
+                {
+                    "Field": "zone_id",
+                    "Type": "int(11) unsigned",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "vendor_id",
+                    "Type": "int(11)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "is_enabled",
+                    "Type": "tinyint(1)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": "1",
+                    "Extra": ""
+                },
+                {
+                    "Field": "settings",
+                    "Type": "longtext",
+                    "Null": "YES",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                }
+            ],
+            "rows": [
+                {
+                    "instance_id": "7",
+                    "method_id": "flat_rate",
+                    "zone_id": "2",
+                    "vendor_id": "10",
+                    "is_enabled": "0",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"2,85\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "8",
+                    "method_id": "flat_rate",
+                    "zone_id": "3",
+                    "vendor_id": "10",
+                    "is_enabled": "0",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"5.85\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "9",
+                    "method_id": "flat_rate",
+                    "zone_id": "4",
+                    "vendor_id": "10",
+                    "is_enabled": "0",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:3:\"6.8\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "10",
+                    "method_id": "flat_rate",
+                    "zone_id": "6",
+                    "vendor_id": "10",
+                    "is_enabled": "0",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"8.55\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "11",
+                    "method_id": "flat_rate",
+                    "zone_id": "7",
+                    "vendor_id": "10",
+                    "is_enabled": "0",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"8.40\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "12",
+                    "method_id": "flat_rate",
+                    "zone_id": "8",
+                    "vendor_id": "10",
+                    "is_enabled": "0",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"8.10\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "13",
+                    "method_id": "flat_rate",
+                    "zone_id": "9",
+                    "vendor_id": "10",
+                    "is_enabled": "0",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"8.85\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "14",
+                    "method_id": "flat_rate",
+                    "zone_id": "5",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "15",
+                    "method_id": "free_shipping",
+                    "zone_id": "5",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "16",
+                    "method_id": "flat_rate",
+                    "zone_id": "2",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "17",
+                    "method_id": "free_shipping",
+                    "zone_id": "2",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "18",
+                    "method_id": "flat_rate",
+                    "zone_id": "3",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "19",
+                    "method_id": "free_shipping",
+                    "zone_id": "3",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "20",
+                    "method_id": "flat_rate",
+                    "zone_id": "4",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "21",
+                    "method_id": "free_shipping",
+                    "zone_id": "4",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "22",
+                    "method_id": "flat_rate",
+                    "zone_id": "6",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "23",
+                    "method_id": "free_shipping",
+                    "zone_id": "6",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "24",
+                    "method_id": "flat_rate",
+                    "zone_id": "7",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "25",
+                    "method_id": "free_shipping",
+                    "zone_id": "7",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "26",
+                    "method_id": "flat_rate",
+                    "zone_id": "8",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "27",
+                    "method_id": "free_shipping",
+                    "zone_id": "8",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "28",
+                    "method_id": "flat_rate",
+                    "zone_id": "9",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "29",
+                    "method_id": "free_shipping",
+                    "zone_id": "9",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "30",
+                    "method_id": "flat_rate",
+                    "zone_id": "10",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:8:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"10\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:14:\"class_cost_181\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "31",
+                    "method_id": "free_shipping",
+                    "zone_id": "10",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"200\";}"
+                },
+                {
+                    "instance_id": "34",
+                    "method_id": "flat_rate",
+                    "zone_id": "10",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"12*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "36",
+                    "method_id": "free_shipping",
+                    "zone_id": "5",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "38",
+                    "method_id": "free_shipping",
+                    "zone_id": "2",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "39",
+                    "method_id": "free_shipping",
+                    "zone_id": "3",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "40",
+                    "method_id": "free_shipping",
+                    "zone_id": "4",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "41",
+                    "method_id": "free_shipping",
+                    "zone_id": "6",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "42",
+                    "method_id": "free_shipping",
+                    "zone_id": "8",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "43",
+                    "method_id": "free_shipping",
+                    "zone_id": "9",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "44",
+                    "method_id": "free_shipping",
+                    "zone_id": "7",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "45",
+                    "method_id": "flat_rate",
+                    "zone_id": "11",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"order\";}"
+                },
+                {
+                    "instance_id": "47",
+                    "method_id": "free_shipping",
+                    "zone_id": "5",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "49",
+                    "method_id": "free_shipping",
+                    "zone_id": "2",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "50",
+                    "method_id": "free_shipping",
+                    "zone_id": "3",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "51",
+                    "method_id": "free_shipping",
+                    "zone_id": "4",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "52",
+                    "method_id": "free_shipping",
+                    "zone_id": "9",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "53",
+                    "method_id": "free_shipping",
+                    "zone_id": "6",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "54",
+                    "method_id": "free_shipping",
+                    "zone_id": "7",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "55",
+                    "method_id": "free_shipping",
+                    "zone_id": "8",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "56",
+                    "method_id": "flat_rate",
+                    "zone_id": "12",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:5:\"15.00\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"class\";}"
+                },
+                {
+                    "instance_id": "57",
+                    "method_id": "flat_rate",
+                    "zone_id": "13",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"10\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "58",
+                    "method_id": "free_shipping",
+                    "zone_id": "13",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"200\";}"
+                },
+                {
+                    "instance_id": "59",
+                    "method_id": "free_shipping",
+                    "zone_id": "5",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "60",
+                    "method_id": "flat_rate",
+                    "zone_id": "12",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"20*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "62",
+                    "method_id": "flat_rate",
+                    "zone_id": "10",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:3:\"100\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "63",
+                    "method_id": "flat_rate",
+                    "zone_id": "13",
+                    "vendor_id": "93",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:3:\"100\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "64",
+                    "method_id": "flat_rate",
+                    "zone_id": "10",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"40\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "65",
+                    "method_id": "flat_rate",
+                    "zone_id": "13",
+                    "vendor_id": "10",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"40\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "66",
+                    "method_id": "flat_rate",
+                    "zone_id": "15",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "67",
+                    "method_id": "flat_rate",
+                    "zone_id": "16",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "68",
+                    "method_id": "flat_rate",
+                    "zone_id": "13",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"40\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "69",
+                    "method_id": "flat_rate",
+                    "zone_id": "18",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"class\";}"
+                },
+                {
+                    "instance_id": "70",
+                    "method_id": "flat_rate",
+                    "zone_id": "16",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"20*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "71",
+                    "method_id": "flat_rate",
+                    "zone_id": "19",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"20*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "72",
+                    "method_id": "flat_rate",
+                    "zone_id": "5",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "73",
+                    "method_id": "flat_rate",
+                    "zone_id": "2",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "74",
+                    "method_id": "flat_rate",
+                    "zone_id": "3",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "75",
+                    "method_id": "flat_rate",
+                    "zone_id": "9",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "76",
+                    "method_id": "flat_rate",
+                    "zone_id": "4",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "77",
+                    "method_id": "flat_rate",
+                    "zone_id": "6",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "78",
+                    "method_id": "flat_rate",
+                    "zone_id": "7",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "79",
+                    "method_id": "flat_rate",
+                    "zone_id": "8",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"6,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "80",
+                    "method_id": "flat_rate",
+                    "zone_id": "5",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "81",
+                    "method_id": "flat_rate",
+                    "zone_id": "2",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "82",
+                    "method_id": "flat_rate",
+                    "zone_id": "9",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "83",
+                    "method_id": "flat_rate",
+                    "zone_id": "8",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "84",
+                    "method_id": "flat_rate",
+                    "zone_id": "3",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "85",
+                    "method_id": "flat_rate",
+                    "zone_id": "4",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "86",
+                    "method_id": "flat_rate",
+                    "zone_id": "6",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "87",
+                    "method_id": "flat_rate",
+                    "zone_id": "7",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:4:\"7,95\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:2:\"70\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "88",
+                    "method_id": "free_shipping",
+                    "zone_id": "2",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "89",
+                    "method_id": "free_shipping",
+                    "zone_id": "5",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "90",
+                    "method_id": "free_shipping",
+                    "zone_id": "3",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "91",
+                    "method_id": "free_shipping",
+                    "zone_id": "9",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "92",
+                    "method_id": "free_shipping",
+                    "zone_id": "4",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "93",
+                    "method_id": "free_shipping",
+                    "zone_id": "6",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "94",
+                    "method_id": "free_shipping",
+                    "zone_id": "7",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "95",
+                    "method_id": "free_shipping",
+                    "zone_id": "8",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "96",
+                    "method_id": "flat_rate",
+                    "zone_id": "11",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"20*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "97",
+                    "method_id": "free_shipping",
+                    "zone_id": "5",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "98",
+                    "method_id": "free_shipping",
+                    "zone_id": "9",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "99",
+                    "method_id": "free_shipping",
+                    "zone_id": "8",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "100",
+                    "method_id": "free_shipping",
+                    "zone_id": "7",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "101",
+                    "method_id": "free_shipping",
+                    "zone_id": "6",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "102",
+                    "method_id": "free_shipping",
+                    "zone_id": "4",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "103",
+                    "method_id": "free_shipping",
+                    "zone_id": "3",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "104",
+                    "method_id": "free_shipping",
+                    "zone_id": "2",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"70\";}"
+                },
+                {
+                    "instance_id": "105",
+                    "method_id": "flat_rate",
+                    "zone_id": "10",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"30\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "106",
+                    "method_id": "flat_rate",
+                    "zone_id": "10",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"30\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "107",
+                    "method_id": "flat_rate",
+                    "zone_id": "13",
+                    "vendor_id": "544",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"50\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "108",
+                    "method_id": "flat_rate",
+                    "zone_id": "13",
+                    "vendor_id": "553",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"50\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "109",
+                    "method_id": "flat_rate",
+                    "zone_id": "20",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "110",
+                    "method_id": "flat_rate",
+                    "zone_id": "21",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "111",
+                    "method_id": "flat_rate",
+                    "zone_id": "22",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"20*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "112",
+                    "method_id": "flat_rate",
+                    "zone_id": "19",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "113",
+                    "method_id": "flat_rate",
+                    "zone_id": "15",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"25*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "114",
+                    "method_id": "flat_rate",
+                    "zone_id": "18",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"20*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "115",
+                    "method_id": "flat_rate",
+                    "zone_id": "20",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"15*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "116",
+                    "method_id": "flat_rate",
+                    "zone_id": "21",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"20*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "117",
+                    "method_id": "flat_rate",
+                    "zone_id": "22",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"30\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"class\";}"
+                },
+                {
+                    "instance_id": "118",
+                    "method_id": "flat_rate",
+                    "zone_id": "23",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"20\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"class\";}"
+                },
+                {
+                    "instance_id": "119",
+                    "method_id": "flat_rate",
+                    "zone_id": "17",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"15\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "120",
+                    "method_id": "flat_rate",
+                    "zone_id": "24",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"15*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "121",
+                    "method_id": "flat_rate",
+                    "zone_id": "26",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"30\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"class\";}"
+                },
+                {
+                    "instance_id": "122",
+                    "method_id": "flat_rate",
+                    "zone_id": "26",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"30\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:5:\"class\";}"
+                },
+                {
+                    "instance_id": "123",
+                    "method_id": "free_shipping",
+                    "zone_id": "6",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "124",
+                    "method_id": "free_shipping",
+                    "zone_id": "9",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "125",
+                    "method_id": "free_shipping",
+                    "zone_id": "8",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "126",
+                    "method_id": "free_shipping",
+                    "zone_id": "7",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "127",
+                    "method_id": "free_shipping",
+                    "zone_id": "4",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "128",
+                    "method_id": "free_shipping",
+                    "zone_id": "3",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "129",
+                    "method_id": "free_shipping",
+                    "zone_id": "2",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": null
+                },
+                {
+                    "instance_id": "130",
+                    "method_id": "flat_rate",
+                    "zone_id": "27",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"50\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "131",
+                    "method_id": "flat_rate",
+                    "zone_id": "28",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:8:\"35*[qty]\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "132",
+                    "method_id": "flat_rate",
+                    "zone_id": "27",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:39:\"Te permite cobrar una tarifa por env\u00edo\";s:4:\"cost\";s:2:\"34\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "133",
+                    "method_id": "flat_rate",
+                    "zone_id": "1",
+                    "vendor_id": "4507",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:12:\"Tarifa plana\";s:4:\"cost\";s:5:\"10.90\";s:10:\"tax_status\";s:7:\"taxable\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "134",
+                    "method_id": "free_shipping",
+                    "zone_id": "29",
+                    "vendor_id": "4507",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:13:\"Env\u00edo gratis\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:2:\"60\";}"
+                },
+                {
+                    "instance_id": "135",
+                    "method_id": "flat_rate",
+                    "zone_id": "1",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:0:\"\";s:4:\"cost\";s:1:\"6\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "136",
+                    "method_id": "free_shipping",
+                    "zone_id": "1",
+                    "vendor_id": "6",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:0:\"\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:3:\"100\";}"
+                },
+                {
+                    "instance_id": "139",
+                    "method_id": "flat_rate",
+                    "zone_id": "20",
+                    "vendor_id": "4507",
+                    "is_enabled": "1",
+                    "settings": "a:7:{s:5:\"title\";s:12:\"Tarifa plana\";s:11:\"description\";s:0:\"\";s:4:\"cost\";s:5:\"10.90\";s:10:\"tax_status\";s:4:\"none\";s:13:\"class_cost_18\";s:0:\"\";s:24:\"class_cost_no_class_cost\";s:0:\"\";s:16:\"calculation_type\";s:0:\"\";}"
+                },
+                {
+                    "instance_id": "140",
+                    "method_id": "free_shipping",
+                    "zone_id": "1",
+                    "vendor_id": "3",
+                    "is_enabled": "1",
+                    "settings": "a:5:{s:5:\"title\";s:13:\"Env\u00edo gratis\";s:11:\"description\";s:0:\"\";s:4:\"cost\";s:1:\"0\";s:10:\"tax_status\";s:4:\"none\";s:10:\"min_amount\";s:1:\"0\";}"
+                }
+            ]
+        },
+        "wp_woocommerce_shipping_zone_locations": {
+            "columns": [
+                {
+                    "Field": "location_id",
+                    "Type": "bigint(20) unsigned",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "zone_id",
+                    "Type": "bigint(20) unsigned",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "location_code",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "location_type",
+                    "Type": "varchar(40)",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                }
+            ],
+            "rows": [
+                {
+                    "location_id": "103",
+                    "zone_id": "12",
+                    "location_code": "DE",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "106",
+                    "zone_id": "10",
+                    "location_code": "ES:PM",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "109",
+                    "zone_id": "15",
+                    "location_code": "NL",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "110",
+                    "zone_id": "16",
+                    "location_code": "LU",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "111",
+                    "zone_id": "17",
+                    "location_code": "CH",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "112",
+                    "zone_id": "18",
+                    "location_code": "IT",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "113",
+                    "zone_id": "19",
+                    "location_code": "FR",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "114",
+                    "zone_id": "20",
+                    "location_code": "PT",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "115",
+                    "zone_id": "21",
+                    "location_code": "CZ",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "116",
+                    "zone_id": "22",
+                    "location_code": "PL",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "117",
+                    "zone_id": "11",
+                    "location_code": "BE",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "118",
+                    "zone_id": "23",
+                    "location_code": "GR",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "119",
+                    "zone_id": "24",
+                    "location_code": "AT",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "121",
+                    "zone_id": "26",
+                    "location_code": "HU",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "122",
+                    "zone_id": "27",
+                    "location_code": "SE",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "123",
+                    "zone_id": "28",
+                    "location_code": "BG",
+                    "location_type": "country"
+                },
+                {
+                    "location_id": "124",
+                    "zone_id": "29",
+                    "location_code": "ES:M",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "125",
+                    "zone_id": "29",
+                    "location_code": "ES:TO",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "126",
+                    "zone_id": "1",
+                    "location_code": "ES:C",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "127",
+                    "zone_id": "1",
+                    "location_code": "ES:VI",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "128",
+                    "zone_id": "1",
+                    "location_code": "ES:AB",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "129",
+                    "zone_id": "1",
+                    "location_code": "ES:A",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "130",
+                    "zone_id": "1",
+                    "location_code": "ES:AL",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "131",
+                    "zone_id": "1",
+                    "location_code": "ES:O",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "132",
+                    "zone_id": "1",
+                    "location_code": "ES:AV",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "133",
+                    "zone_id": "1",
+                    "location_code": "ES:BA",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "134",
+                    "zone_id": "1",
+                    "location_code": "ES:B",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "135",
+                    "zone_id": "1",
+                    "location_code": "ES:BU",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "136",
+                    "zone_id": "1",
+                    "location_code": "ES:CC",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "137",
+                    "zone_id": "1",
+                    "location_code": "ES:CA",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "138",
+                    "zone_id": "1",
+                    "location_code": "ES:S",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "139",
+                    "zone_id": "1",
+                    "location_code": "ES:CS",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "140",
+                    "zone_id": "1",
+                    "location_code": "ES:CR",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "141",
+                    "zone_id": "1",
+                    "location_code": "ES:CO",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "142",
+                    "zone_id": "1",
+                    "location_code": "ES:CU",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "143",
+                    "zone_id": "1",
+                    "location_code": "ES:GI",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "144",
+                    "zone_id": "1",
+                    "location_code": "ES:GR",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "145",
+                    "zone_id": "1",
+                    "location_code": "ES:GU",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "146",
+                    "zone_id": "1",
+                    "location_code": "ES:SS",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "147",
+                    "zone_id": "1",
+                    "location_code": "ES:H",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "148",
+                    "zone_id": "1",
+                    "location_code": "ES:HU",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "149",
+                    "zone_id": "1",
+                    "location_code": "ES:LO",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "150",
+                    "zone_id": "1",
+                    "location_code": "ES:LE",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "151",
+                    "zone_id": "1",
+                    "location_code": "ES:J",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "152",
+                    "zone_id": "1",
+                    "location_code": "ES:L",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "153",
+                    "zone_id": "1",
+                    "location_code": "ES:LU",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "154",
+                    "zone_id": "1",
+                    "location_code": "ES:M",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "155",
+                    "zone_id": "1",
+                    "location_code": "ES:MA",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "156",
+                    "zone_id": "1",
+                    "location_code": "ES:MU",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "157",
+                    "zone_id": "1",
+                    "location_code": "ES:NA",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "158",
+                    "zone_id": "1",
+                    "location_code": "ES:OR",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "159",
+                    "zone_id": "1",
+                    "location_code": "ES:P",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "160",
+                    "zone_id": "1",
+                    "location_code": "ES:PO",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "161",
+                    "zone_id": "1",
+                    "location_code": "ES:SG",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "162",
+                    "zone_id": "1",
+                    "location_code": "ES:SA",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "163",
+                    "zone_id": "1",
+                    "location_code": "ES:SE",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "164",
+                    "zone_id": "1",
+                    "location_code": "ES:SO",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "165",
+                    "zone_id": "1",
+                    "location_code": "ES:T",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "166",
+                    "zone_id": "1",
+                    "location_code": "ES:TE",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "167",
+                    "zone_id": "1",
+                    "location_code": "ES:TO",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "168",
+                    "zone_id": "1",
+                    "location_code": "ES:V",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "169",
+                    "zone_id": "1",
+                    "location_code": "ES:VA",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "170",
+                    "zone_id": "1",
+                    "location_code": "ES:BI",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "171",
+                    "zone_id": "1",
+                    "location_code": "ES:ZA",
+                    "location_type": "state"
+                },
+                {
+                    "location_id": "172",
+                    "zone_id": "1",
+                    "location_code": "ES:Z",
+                    "location_type": "state"
+                }
+            ]
+        },
+        "wp_woocommerce_shipping_zone_methods": {
+            "columns": [
+                {
+                    "Field": "zone_id",
+                    "Type": "bigint(20) unsigned",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "instance_id",
+                    "Type": "bigint(20) unsigned",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "method_id",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "method_order",
+                    "Type": "bigint(20) unsigned",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "is_enabled",
+                    "Type": "tinyint(1)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": "1",
+                    "Extra": ""
+                }
+            ],
+            "rows": [
+                {
+                    "zone_id": "1",
+                    "instance_id": "1",
+                    "method_id": "free_shipping",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "1",
+                    "instance_id": "2",
+                    "method_id": "flat_rate",
+                    "method_order": "2",
+                    "is_enabled": "0"
+                },
+                {
+                    "zone_id": "1",
+                    "instance_id": "3",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "3",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "1",
+                    "instance_id": "15",
+                    "method_id": "free_shipping_per_product",
+                    "method_order": "4",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "10",
+                    "instance_id": "23",
+                    "method_id": "free_shipping",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "10",
+                    "instance_id": "24",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "2",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "11",
+                    "instance_id": "25",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "12",
+                    "instance_id": "26",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "15",
+                    "instance_id": "30",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "16",
+                    "instance_id": "31",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "18",
+                    "instance_id": "34",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "2",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "19",
+                    "instance_id": "36",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "20",
+                    "instance_id": "37",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "21",
+                    "instance_id": "38",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "22",
+                    "instance_id": "40",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "2",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "23",
+                    "instance_id": "41",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "17",
+                    "instance_id": "42",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "2",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "24",
+                    "instance_id": "43",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "26",
+                    "instance_id": "45",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "27",
+                    "instance_id": "46",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "28",
+                    "instance_id": "47",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "29",
+                    "instance_id": "48",
+                    "method_id": "free_shipping",
+                    "method_order": "1",
+                    "is_enabled": "1"
+                },
+                {
+                    "zone_id": "29",
+                    "instance_id": "49",
+                    "method_id": "wcfmmp_product_shipping_by_zone",
+                    "method_order": "2",
+                    "is_enabled": "1"
+                }
+            ]
+        },
+        "wp_woocommerce_shipping_zones": {
+            "columns": [
+                {
+                    "Field": "zone_id",
+                    "Type": "bigint(20) unsigned",
+                    "Null": "NO",
+                    "Key": "PRI",
+                    "Default": null,
+                    "Extra": "auto_increment"
+                },
+                {
+                    "Field": "zone_name",
+                    "Type": "varchar(200)",
+                    "Null": "NO",
+                    "Key": "",
+                    "Default": null,
+                    "Extra": ""
+                },
+                {
+                    "Field": "zone_order",
+                    "Type": "bigint(20) unsigned",
+                    "Null": "NO",
+                    "Key": "MUL",
+                    "Default": null,
+                    "Extra": ""
+                }
+            ],
+            "rows": [
+                {
+                    "zone_id": "1",
+                    "zone_name": "Espa\u00f1a (pen\u00ednsula)",
+                    "zone_order": "8"
+                },
+                {
+                    "zone_id": "10",
+                    "zone_name": "Baleares",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "11",
+                    "zone_name": "B\u00e9lgica",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "12",
+                    "zone_name": "Alemania",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "15",
+                    "zone_name": "Pa\u00edses Bajos",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "16",
+                    "zone_name": "Luxemburgo",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "17",
+                    "zone_name": "Suiza",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "18",
+                    "zone_name": "Italia",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "19",
+                    "zone_name": "Francia",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "20",
+                    "zone_name": "Portugal",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "21",
+                    "zone_name": "Rep. Checa",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "22",
+                    "zone_name": "Polonia",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "23",
+                    "zone_name": "Grecia",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "24",
+                    "zone_name": "Austria",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "26",
+                    "zone_name": "Hungr\u00eda",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "27",
+                    "zone_name": "Suecia",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "28",
+                    "zone_name": "Bulgaria",
+                    "zone_order": "0"
+                },
+                {
+                    "zone_id": "29",
+                    "zone_name": "Tolecarnes (Mad-Tol)",
+                    "zone_order": "0"
+                }
+            ]
+        }
     },
     "woocommerce_zones": {
         "10": {
@@ -574,89 +2664,207 @@
                     "title": "Env\u00edos de la tienda"
                 }
             }
-        },
-        "0": {
-            "zone_id": 0,
-            "zone_name": "Ubicaciones no cubiertas por tus otras zonas",
-            "zone_locations": [],
-            "shipping_methods": []
         }
     },
     "vendors": [
         {
             "id": 3,
             "name": "1957",
-            "shipping": {
-                "_wcfmmp_user_shipping_enable": "yes",
-                "_wcfmmp_pt": "2",
-                "_wcfmmp_user_shipping_type": "by_zone"
-            },
-            "rates_underscore": "",
-            "rates_plain": "",
-            "profile_shipping_keys": [],
+            "shipping_meta": [
+                {
+                    "meta_key": "_wcfmmp_shipping",
+                    "decoded": {
+                        "_wcfmmp_user_shipping_enable": "yes",
+                        "_wcfmmp_pt": "2",
+                        "_wcfmmp_user_shipping_type": "by_zone"
+                    }
+                },
+                {
+                    "meta_key": "shipping_address_1",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_address_2",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_city",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_company",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_country",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_first_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_last_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_postcode",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_state",
+                    "decoded": ""
+                }
+            ],
             "resolver_country_codes": [],
-            "wcfm_calls": {
-                "empty_vendor": [],
-                "vendor_empty": [],
-                "vendor_only": [],
-                "empty_only": []
-            }
+            "wcfm_zones": []
         },
         {
             "id": 6,
             "name": "Hidalgo de la Jara",
-            "shipping": {
-                "_wcfmmp_user_shipping_enable": "yes",
-                "_wcfmmp_pt": "2",
-                "_wcfmmp_user_shipping_type": "by_zone"
-            },
-            "rates_underscore": "",
-            "rates_plain": "",
-            "profile_shipping_keys": [],
+            "shipping_meta": [
+                {
+                    "meta_key": "_wcfmmp_shipping",
+                    "decoded": {
+                        "_wcfmmp_user_shipping_enable": "yes",
+                        "_wcfmmp_pt": "2",
+                        "_wcfmmp_user_shipping_type": "by_zone"
+                    }
+                },
+                {
+                    "meta_key": "shipping_address_1",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_address_2",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_city",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_company",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_country",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_first_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_last_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_postcode",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_state",
+                    "decoded": ""
+                }
+            ],
             "resolver_country_codes": [],
-            "wcfm_calls": {
-                "empty_vendor": [],
-                "vendor_empty": [],
-                "vendor_only": [],
-                "empty_only": []
-            }
+            "wcfm_zones": []
         },
         {
             "id": 4514,
             "name": "La Huerta de Ana Mary",
-            "shipping": {
-                "_wcfmmp_user_shipping_enable": "yes",
-                "_wcfmmp_user_shipping_type": "by_zone"
-            },
-            "rates_underscore": "",
-            "rates_plain": "",
-            "profile_shipping_keys": [],
+            "shipping_meta": [
+                {
+                    "meta_key": "_wcfmmp_shipping",
+                    "decoded": {
+                        "_wcfmmp_user_shipping_enable": "yes",
+                        "_wcfmmp_user_shipping_type": "by_zone"
+                    }
+                },
+                {
+                    "meta_key": "shipping_address_1",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_address_2",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_city",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_country",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_first_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_last_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_postcode",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_state",
+                    "decoded": ""
+                }
+            ],
             "resolver_country_codes": [],
-            "wcfm_calls": {
-                "empty_vendor": [],
-                "vendor_empty": [],
-                "vendor_only": [],
-                "empty_only": []
-            }
+            "wcfm_zones": []
         },
         {
             "id": 4507,
             "name": "Tolecarnes",
-            "shipping": {
-                "_wcfmmp_user_shipping_enable": "yes",
-                "_wcfmmp_pt": "",
-                "_wcfmmp_user_shipping_type": "by_zone"
-            },
-            "rates_underscore": "",
-            "rates_plain": "",
-            "profile_shipping_keys": [],
+            "shipping_meta": [
+                {
+                    "meta_key": "_wcfmmp_shipping",
+                    "decoded": {
+                        "_wcfmmp_user_shipping_enable": "yes",
+                        "_wcfmmp_pt": "",
+                        "_wcfmmp_user_shipping_type": "by_zone"
+                    }
+                },
+                {
+                    "meta_key": "shipping_address_1",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_address_2",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_city",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_country",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_first_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_last_name",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_postcode",
+                    "decoded": ""
+                },
+                {
+                    "meta_key": "shipping_state",
+                    "decoded": ""
+                }
+            ],
             "resolver_country_codes": [],
-            "wcfm_calls": {
-                "empty_vendor": [],
-                "vendor_empty": [],
-                "vendor_only": [],
-                "empty_only": []
-            }
+            "wcfm_zones": []
         }
     ],
     "resolver_supported_countries": [],
