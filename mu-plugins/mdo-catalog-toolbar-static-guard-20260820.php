@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Toolbar Static Guard
  * Description: Disables the legacy mobile catalogue geometry script on public catalogue surfaces so the toolbar is controlled purely by responsive CSS.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -41,7 +41,7 @@ function mdo_catalog_toolbar_static_guard_is_shop_20260820(): bool {
  * Remove only the footer closure that writes inline !important geometry for the
  * catalogue toolbar/order control. The module's PHP labels and wp_head CSS stay.
  *
- * This is server-side hook cleanup: no MutationObserver, no DOM movement and no
+ * This is server-side hook cleanup: no DOM observer, no DOM movement and no
  * browser resize/reflow script is added in its place.
  */
 add_action(
