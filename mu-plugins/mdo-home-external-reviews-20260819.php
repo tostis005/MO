@@ -2,14 +2,14 @@
 /**
  * Plugin Name: MDO - Home External Reviews 2026-08-19
  * Description: Añade una franja ligera de prueba social con las valoraciones verificadas de Google y Trustpilot en la Home renovada.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.1';
+const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.2';
 
 /**
  * Invalida la caché de Home una sola vez cuando cambia esta pieza.
@@ -32,27 +32,54 @@ add_action(
 );
 
 /**
+ * Detecta la isla inglesa incluso si su helper todavía no se ha cargado.
+ */
+function mdo_home_external_reviews_is_english_20260820(): bool {
+	if ( function_exists( 'mdo_island_en_request' ) ) {
+		return mdo_island_en_request();
+	}
+
+	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+	$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+
+	return (bool) preg_match( '#^/en(?:/|$)#i', $path );
+}
+
+/**
  * Devuelve la franja de valoraciones. Las cifras se fijan aquí para no hacer
  * llamadas externas durante el render de la portada.
  */
 function mdo_home_external_reviews_markup_20260819(): string {
-	$google_url     = 'https://www.google.com/search?q=El+Mercado+de+Origen+Google+rese%C3%B1as';
-	$trustpilot_url = 'https://es.trustpilot.com/review/elmercadodeorigen.com';
+	$is_english = mdo_home_external_reviews_is_english_20260820();
 
-	return '<section class="mdo-review-proof" aria-label="' . esc_attr__( 'Valoraciones de clientes', 'elmercadodeorigen' ) . '">'
+	$google_url     = 'https://www.google.com/search?q=El+Mercado+de+Origen+Google+rese%C3%B1as';
+	$trustpilot_url = $is_english
+		? 'https://www.trustpilot.com/review/elmercadodeorigen.com'
+		: 'https://es.trustpilot.com/review/elmercadodeorigen.com';
+
+	$section_label = $is_english ? 'Customer ratings' : 'Valoraciones de clientes';
+	$intro         = $is_english ? 'Trusted by customers who have already ordered' : 'La confianza de quienes ya han comprado';
+	$review_word   = $is_english ? 'reviews' : 'reseñas';
+	$opinion_word  = $is_english ? 'reviews' : 'opiniones';
+	$google_score  = $is_english ? '4.9' : '4,9';
+	$trust_score   = $is_english ? '4.6' : '4,6';
+	$google_aria   = $is_english ? 'Google: 4.9 out of 5, 303 reviews' : 'Google: 4,9 de 5, 303 reseñas';
+	$trust_aria    = $is_english ? 'Trustpilot: 4.6 out of 5, 169 reviews' : 'Trustpilot: 4,6 de 5, 169 opiniones';
+
+	return '<section class="mdo-review-proof" aria-label="' . esc_attr( $section_label ) . '">'
 		. '<div class="emo-shell mdo-review-proof__inner">'
-		. '<span class="mdo-review-proof__intro">' . esc_html__( 'La confianza de quienes ya han comprado', 'elmercadodeorigen' ) . '</span>'
+		. '<span class="mdo-review-proof__intro">' . esc_html( $intro ) . '</span>'
 		. '<div class="mdo-review-proof__sources">'
-		. '<a class="mdo-review-proof__source" href="' . esc_url( $google_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="Google: 4,9 de 5, 303 reseñas">'
+		. '<a class="mdo-review-proof__source" href="' . esc_url( $google_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="' . esc_attr( $google_aria ) . '">'
 		. '<span class="mdo-review-proof__brand">Google</span>'
-		. '<span class="mdo-review-proof__score"><strong>4,9</strong><span class="mdo-review-proof__stars" aria-hidden="true">★★★★★</span></span>'
-		. '<small>303 ' . esc_html__( 'reseñas', 'elmercadodeorigen' ) . '</small>'
+		. '<span class="mdo-review-proof__score"><strong>' . esc_html( $google_score ) . '</strong><span class="mdo-review-proof__stars" aria-hidden="true">★★★★★</span></span>'
+		. '<small>303 ' . esc_html( $review_word ) . '</small>'
 		. '</a>'
 		. '<span class="mdo-review-proof__divider" aria-hidden="true"></span>'
-		. '<a class="mdo-review-proof__source" href="' . esc_url( $trustpilot_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="Trustpilot: 4,6 de 5, 169 opiniones">'
+		. '<a class="mdo-review-proof__source" href="' . esc_url( $trustpilot_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="' . esc_attr( $trust_aria ) . '">'
 		. '<span class="mdo-review-proof__brand">Trustpilot</span>'
-		. '<span class="mdo-review-proof__score"><strong>4,6</strong><span class="mdo-review-proof__stars" aria-hidden="true">★★★★★</span></span>'
-		. '<small>169 ' . esc_html__( 'opiniones', 'elmercadodeorigen' ) . '</small>'
+		. '<span class="mdo-review-proof__score"><strong>' . esc_html( $trust_score ) . '</strong><span class="mdo-review-proof__stars" aria-hidden="true">★★★★★</span></span>'
+		. '<small>169 ' . esc_html( $opinion_word ) . '</small>'
 		. '</a>'
 		. '</div></div></section>';
 }
