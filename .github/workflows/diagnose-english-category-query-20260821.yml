@@ -1,0 +1,86 @@
+name: Diagnose English category query 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-english-category-query-20260821.yml'
+      - 'runtime/triggers/diagnose-english-category-query-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Diagnose and restore
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          TARGET=mdo-english-category-query-normalizer-20260821.php
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          REMOTE="$PROD_PATH/wp-content/mu-plugins/$TARGET"
+          BACKUP="/tmp/$TARGET.diag-${GITHUB_RUN_ID}"
+          restore() {
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); if [ -n \"\$wp_bin\" ]; then \"\$wp_bin\" option update mdo_en_category_query_normalizer_enabled_20260821 0 --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; fi; if [ -f '$BACKUP' ]; then cp '$BACKUP' '$REMOTE'; else rm -f '$REMOTE'; fi" || true
+          }
+          trap restore EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'; wp_bin=\$(command -v wp || true); if [ -n \"\$wp_bin\" ]; then \"\$wp_bin\" option update mdo_en_category_query_normalizer_enabled_20260821 0 --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; fi; if [ -f '$REMOTE' ]; then cp '$REMOTE' '$BACKUP'; fi"
+          sshpass -e scp $SCP "mu-plugins/$TARGET" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE'"
+          python3 - <<'PY'
+          import subprocess,re,base64,json,pathlib
+          base='https://www.elmercadodeorigen.com'
+          def get(url):
+            p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','5','--max-time','25','-A','Mozilla/5.0 EMDO-category-diagnostic/1.0','-H','Cache-Control: no-cache','-w','\n__STATUS__:%{http_code}',url],capture_output=True,text=True)
+            raw=p.stdout; m=re.search(r'\n__STATUS__:(\d{3})\s*$',raw); return (int(m.group(1)) if m else 0, raw[:m.start()] if m else raw)
+          hs,hb=get(base+'/')
+          status,body=get(base+'/en/product-category/meat/?mdo_cat_fix_test=1')
+          cards=len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',body,re.I)); empty=bool(re.search(r'no products were found|no se han encontrado productos',body,re.I))
+          dm=re.search(r'<!--MDO_CAT_DIAG:([A-Za-z0-9+/=]+)-->',body)
+          diag={}
+          if dm:
+            try: diag=json.loads(base64.b64decode(dm.group(1)).decode('utf-8'))
+            except Exception as e: diag={'decode_error':str(e)}
+          out={'home_status':hs,'home_bytes':len(hb.encode()),'category_status':status,'cards':cards,'empty':empty,'diag':diag}
+          pathlib.Path('runtime/english-category-query-diagnostic-20260821.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          if hs!=200 or len(hb)<100000: raise SystemExit('Homepage unhealthy')
+          PY
+          restore
+          trap - EXIT
+          code=$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}' 'https://www.elmercadodeorigen.com/')
+          test "$code" = 200
+      - name: Commit diagnostic
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add runtime/english-category-query-diagnostic-20260821.json || true
+          git commit -m 'Record English category query diagnostic [skip ci]' || true
+          git push origin HEAD:main
