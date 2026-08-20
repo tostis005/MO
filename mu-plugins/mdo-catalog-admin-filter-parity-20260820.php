@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Admin Filter Parity
  * Description: Keeps frontend catalogue filters coherent for administrators while preserving public vendor visibility rules.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -95,6 +95,42 @@ function mdo_catalog_admin_filter_bypass_vendor_ids_20260820(): array {
 }
 
 /**
+ * Published products belonging to admin-visible disabled vendors. These IDs are
+ * eligibility additions only: category, attributes, price, stock and shipping
+ * restrictions are still applied later by the normal catalogue query.
+ *
+ * @return int[]
+ */
+function mdo_catalog_admin_filter_bypass_product_ids_20260820(): array {
+	static $cache = null;
+	if ( is_array( $cache ) ) {
+		return $cache;
+	}
+
+	$vendor_ids = mdo_catalog_admin_filter_bypass_vendor_ids_20260820();
+	if ( ! $vendor_ids ) {
+		$cache = array();
+		return $cache;
+	}
+
+	global $wpdb;
+	$cache = array_values(
+		array_unique(
+			array_filter(
+				array_map(
+					'absint',
+					(array) $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+						"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish' AND post_author IN (" . implode( ',', array_map( 'absint', $vendor_ids ) ) . ') ORDER BY ID DESC'
+					)
+				)
+			)
+		)
+	);
+
+	return $cache;
+}
+
+/**
  * Restore the admin-visible seller set after marketplace/public filters have
  * had a chance to alter the query. All category, attribute, price and stock
  * restrictions remain untouched.
@@ -114,6 +150,24 @@ function mdo_catalog_admin_filter_restore_query_20260820( WP_Query $query ): voi
 		$query->set( 'author__not_in', array_values( array_diff( $current_excluded, $bypass ) ) );
 	}
 
+	/*
+	 * The public recommended-order cache intentionally contains only products
+	 * eligible for the public catalogue. When that cache becomes post__in, an
+	 * admin-only vendor/category is otherwise intersected with an unrelated list
+	 * and the SQL returns zero rows. Add the admin-visible products back to the
+	 * eligibility list; the existing query keeps deciding which ones actually
+	 * match the selected category/vendor/attributes/price/stock.
+	 */
+	$admin_product_ids = mdo_catalog_admin_filter_bypass_product_ids_20260820();
+	$post_in           = array_values( array_unique( array_filter( array_map( 'absint', (array) $query->get( 'post__in' ) ) ) ) );
+	$raw_post_in       = array_values( (array) $query->get( 'post__in' ) );
+
+	if ( 1 === count( $raw_post_in ) && 0 === absint( $raw_post_in[0] ) ) {
+		$query->set( 'post__in', $admin_product_ids ?: array( 0 ) );
+	} elseif ( $post_in && $admin_product_ids ) {
+		$query->set( 'post__in', array_values( array_unique( array_merge( $post_in, $admin_product_ids ) ) ) );
+	}
+
 	$requested_vendor = isset( $_GET['vendor_id'] ) ? absint( wp_unslash( $_GET['vendor_id'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	if ( $requested_vendor <= 0 || ! in_array( $requested_vendor, $bypass, true ) ) {
 		return;
@@ -122,11 +176,6 @@ function mdo_catalog_admin_filter_restore_query_20260820( WP_Query $query ): voi
 	/* A public guard may have neutralised the seller before this late pass. */
 	$query->set( 'author', $requested_vendor );
 	$query->set( 'author__in', array( $requested_vendor ) );
-
-	$post_in = array_values( array_map( 'absint', (array) $query->get( 'post__in' ) ) );
-	if ( array( 0 ) === $post_in ) {
-		$query->set( 'post__in', array() );
-	}
 }
 
 /**
@@ -148,14 +197,14 @@ function mdo_catalog_admin_filter_restore_sql_20260820( array $clauses, WP_Query
 	}
 
 	global $wpdb;
-	$table = preg_quote( $wpdb->posts, '~' );
+	$table   = preg_quote( $wpdb->posts, '~' );
 	$pattern = '~\s+AND\s+' . $table . '\.post_author\s+NOT\s+IN\s*\(([^)]*)\)~i';
 
 	$clauses['where'] = (string) preg_replace_callback(
 		$pattern,
 		static function ( array $matches ) use ( $bypass, $wpdb ): string {
-			$raw_ids = isset( $matches[1] ) ? preg_split( '/\s*,\s*/', trim( (string) $matches[1] ) ) : array();
-			$ids = array_values( array_unique( array_filter( array_map( 'absint', (array) $raw_ids ) ) ) );
+			$raw_ids   = isset( $matches[1] ) ? preg_split( '/\s*,\s*/', trim( (string) $matches[1] ) ) : array();
+			$ids       = array_values( array_unique( array_filter( array_map( 'absint', (array) $raw_ids ) ) ) );
 			$remaining = array_values( array_diff( $ids, $bypass ) );
 
 			if ( ! $remaining ) {
