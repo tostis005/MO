@@ -22,46 +22,21 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Prepare secure channel or send mail
+      - name: Send encrypted-recipient test through production WordPress
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
+          ENC='runtime/mdo-mailtest-recipient-20260820.enc'
+          STATUS='runtime/mdo-mail-test-status-20260820.txt'
+          if [ ! -f "$ENC" ]; then echo 'STATUS=waiting_for_encrypted_recipient'; exit 0; fi
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass openssl >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PRIVATE_REMOTE="$HOME/.mdo-mailtest-private-20260820.pem"
-          PUB='runtime/mdo-mailtest-public-20260820.pem'
-          ENC='runtime/mdo-mailtest-recipient-20260820.enc'
-          STATUS='runtime/mdo-mail-test-status-20260820.txt'
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          mkdir -p runtime
-
-          if [ ! -f "$PUB" ]; then
-            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/mdo-mailtest-private.pem >/dev/null 2>&1
-            openssl pkey -in /tmp/mdo-mailtest-private.pem -pubout -out "$PUB"
-            sshpass -e scp $SCP_OPTIONS /tmp/mdo-mailtest-private.pem "$STAGING_USER@$STAGING_HOST:.mdo-mailtest-private-20260820.pem"
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "chmod 600 .mdo-mailtest-private-20260820.pem"
-            rm -f /tmp/mdo-mailtest-private.pem
-            git add "$PUB"
-            git commit -m 'Prepare encrypted WordPress mail test recipient channel'
-            git pull --rebase origin main
-            git push origin HEAD:main
-            echo 'STATUS=public_key_ready'
-            exit 0
-          fi
-
-          if [ ! -f "$ENC" ]; then
-            echo 'STATUS=waiting_for_encrypted_recipient'
-            exit 0
-          fi
 
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
@@ -73,21 +48,22 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          ENC_REMOTE="/tmp/mdo-mailtest-recipient-${GITHUB_RUN_ID}.enc"
+          ENC_REMOTE="/tmp/mdo-mailtest-recipient-${GITHUB_RUN_ID}.b64"
+          BIN_REMOTE="/tmp/mdo-mailtest-recipient-${GITHUB_RUN_ID}.bin"
           EMAIL_REMOTE="/tmp/mdo-mailtest-recipient-${GITHUB_RUN_ID}.txt"
           PHP_REMOTE="/tmp/mdo-mailtest-send-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS "$ENC" "$STAGING_USER@$STAGING_HOST:$ENC_REMOTE"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
             test -f .mdo-mailtest-private-20260820.pem
-            openssl pkeyutl -decrypt -inkey .mdo-mailtest-private-20260820.pem -in '$ENC_REMOTE' -out '$EMAIL_REMOTE'
+            base64 -d '$ENC_REMOTE' > '$BIN_REMOTE'
+            openssl pkeyutl -decrypt -inkey .mdo-mailtest-private-20260820.pem -in '$BIN_REMOTE' -out '$EMAIL_REMOTE'
             chmod 600 '$EMAIL_REMOTE'
           "
 
           cat > /tmp/mdo-mailtest-send.php <<PHP
           <?php
-          \$recipient_file = '$EMAIL_REMOTE';
-          \$to = strtolower(trim((string) @file_get_contents(\$recipient_file)));
+          \$to = strtolower(trim((string) @file_get_contents('$EMAIL_REMOTE')));
           \$guard = 'mdo_mail_test_20260820_sent_v2';
           if (get_option(\$guard)) { echo "STATUS=already_sent\n"; return; }
           if (!is_email(\$to)) { echo "STATUS=invalid_recipient\n"; return; }
@@ -120,8 +96,11 @@ jobs:
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$PHP_REMOTE' --path='$PROD_PATH' --allow-root
           ")"
           printf '%s\n' "$OUTPUT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$ENC_REMOTE' '$EMAIL_REMOTE' '$PHP_REMOTE' .mdo-mailtest-private-20260820.pem"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$ENC_REMOTE' '$BIN_REMOTE' '$EMAIL_REMOTE' '$PHP_REMOTE' .mdo-mailtest-private-20260820.pem"
+          mkdir -p runtime
           printf 'checked_at=%s\n%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OUTPUT" > "$STATUS"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add "$STATUS"
           git commit -m 'Record encrypted WordPress mail test result' || true
           git pull --rebase origin main
