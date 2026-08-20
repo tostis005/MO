@@ -1,0 +1,97 @@
+name: Safe Huerta stored data audit 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/safe-huerta-stored-data-audit-20260821.yml'
+      - 'runtime/triggers/safe-huerta-stored-data-audit-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Read Huerta data only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          cat > /tmp/mdo-huerta-stored-audit.php <<'PHP'
+          <?php
+          global $wpdb;
+          function mdo_audit_perkg($value) {
+            $plain=html_entity_decode(wp_strip_all_tags((string)$value),ENT_QUOTES|ENT_HTML5,'UTF-8');
+            $plain=preg_replace('/\s+/u',' ',$plain);
+            $patterns=array(
+              '/€\s*(?:\/|por)\s*(?:kg|kilo(?:gramo)?s?)\b/iu',
+              '/\b(?:eur|euros?)\s*(?:\/|por)\s*(?:kg|kilo(?:gramo)?s?)\b/iu',
+              '/\bprecio\s+(?:por|\/)?\s*(?:kg|kilo(?:gramo)?s?)\b/iu',
+              '/\b\d{1,4}(?:[.,]\d{1,2})?\s*€\s*(?:\/|por)\s*(?:kg|kilo(?:gramo)?s?)\b/iu',
+              '/\b\d{1,4}(?:[.,]\d{1,2})?\s*(?:€|eur|euros?)\s*(?:el|por)\s+kilo\b/iu'
+            );
+            foreach($patterns as $p){if(preg_match($p,(string)$plain))return true;}
+            return false;
+          }
+          $table=class_exists('MDO_Database')?MDO_Database::table('source_products'):'';
+          $rows=$wpdb->get_results("SELECT DISTINCT p.ID,pm.meta_value source_url FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='_emdo_source_url' WHERE p.post_type='product' AND pm.meta_value LIKE '%lahuertadeanamary.com%' ORDER BY p.ID ASC",ARRAY_A)?:array();
+          $out=array('count'=>count($rows),'products'=>array(),'per_kg_ids'=>array(),'english_complete'=>0);
+          foreach($rows as $row){
+            $id=(int)$row['ID'];$source_id=(int)get_post_meta($id,'_emdo_source_product_id',true);$payload=array();
+            if($table&&$source_id){$raw=$wpdb->get_var($wpdb->prepare("SELECT source_payload FROM {$table} WHERE id=%d LIMIT 1",$source_id));$decoded=json_decode((string)$raw,true);if(is_array($decoded))$payload=$decoded;}
+            $evidence=array();foreach(array('description','title','price_text','unit_price','price_label','price','regular_price','sale_price') as $field){if(isset($payload[$field])&&mdo_audit_perkg((string)$payload[$field]))$evidence[]=$field;}
+            $en_title=trim((string)get_post_meta($id,'_en_US_post_title',true));$en_slug=trim((string)get_post_meta($id,'_en_US_post_name',true));$en_content=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_content',true)));$en_pub=(string)get_post_meta($id,'_en_US_published',true);
+            $complete=$en_title!==''&&$en_slug!==''&&$en_content!==''&&$en_pub==='1';if($complete)$out['english_complete']++;
+            if($evidence)$out['per_kg_ids'][]=$id;
+            $out['products'][]=array('id'=>$id,'source_url'=>(string)$row['source_url'],'en_title'=>$en_title,'en_slug'=>$en_slug,'en_complete'=>$complete,'per_kg_evidence'=>$evidence,'basis_meta'=>(string)get_post_meta($id,'_emdo_huerta_price_basis',true),'es_label'=>strpos((string)get_post_field('post_content',$id),'emdo-source-unit-price')!==false,'en_label'=>strpos((string)get_post_meta($id,'_en_US_post_content',true),'emdo-source-unit-price')!==false);
+          }
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT),"\n";
+          PHP
+          REMOTE="/tmp/mdo-huerta-stored-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/mdo-huerta-stored-audit.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rm -f '$REMOTE'" > runtime/safe-huerta-stored-data-20260821.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('runtime/safe-huerta-stored-data-20260821.json'))
+          assert d['count']==46, d['count']
+          print('Huerta products:',d['count'],'English complete:',d['english_complete'],'per-kg stored evidence:',len(d['per_kg_ids']))
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add runtime/safe-huerta-stored-data-20260821.json || true
+          git commit -m 'Record safe Huerta stored data audit [skip ci]' || true
+          git push origin HEAD:main
