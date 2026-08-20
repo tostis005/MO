@@ -15,7 +15,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 8
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -63,15 +63,34 @@ jobs:
           curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home-meta.html
           grep -q 'setTimeout(load, 12000)' /tmp/home-meta.html
 
-      - name: One Lighthouse and Meta network decision
+      - name: Chrome 8s network and Core Web Vitals trace
         shell: bash
         run: |
           set -euo pipefail;mkdir -p runtime
-          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=mobile --output=json --output-path=/tmp/lh.json --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
-          python3 - <<'PY' | tee runtime/home-meta-capi-delay-20260820.txt
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' > /tmp/meta-trace.json
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page=await browser.newPage();await page.setViewport({width:412,height:915,deviceScaleFactor:1});
+            const urls=[];page.on('request',r=>urls.push(r.url()));
+            await page.evaluateOnNewDocument(()=>{
+              window.__mdoPerf={cls:0,lcp:0};
+              new PerformanceObserver(list=>{for(const e of list.getEntries())if(!e.hadRecentInput)window.__mdoPerf.cls+=e.value}).observe({type:'layout-shift',buffered:true});
+              new PerformanceObserver(list=>{const a=list.getEntries();if(a.length)window.__mdoPerf.lcp=a[a.length-1].startTime}).observe({type:'largest-contentful-paint',buffered:true});
+            });
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'load',timeout:60000});
+            await new Promise(r=>setTimeout(r,8000));
+            const perf=await page.evaluate(()=>({cls:window.__mdoPerf.cls,lcp:window.__mdoPerf.lcp,fcp:(performance.getEntriesByName('first-contentful-paint')[0]||{}).startTime||0,delay:document.documentElement.innerHTML.includes('setTimeout(load, 12000)')}));
+            console.log(JSON.stringify({perf,capi:urls.filter(u=>u.includes('clientParamBuilder')||u.includes('unpkg.com')),facebook:urls.filter(u=>u.includes('facebook')||u.includes('connect.facebook.net')).length},null,2));await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          cat /tmp/meta-trace.json | tee runtime/home-meta-capi-delay-20260820.txt
+          python3 - <<'PY'
           import json
-          r=json.load(open('/tmp/lh.json'));a=r['audits'];urls=[x.get('url','') for x in ((a.get('network-requests',{}).get('details') or {}).get('items') or [])];hits=[u for u in urls if 'clientParamBuilder' in u or 'unpkg.com' in u]
-          row={'score':round(r['categories']['performance']['score']*100),'fcp':round(a['first-contentful-paint']['numericValue']),'lcp':round(a['largest-contentful-paint']['numericValue']),'tbt':round(a['total-blocking-time']['numericValue']),'cls':a['cumulative-layout-shift']['numericValue']};print(row);print('capi_requests=',hits);print('legacy=',[(x.get('url'),x.get('wastedBytes')) for x in ((a.get('legacy-javascript',{}).get('details') or {}).get('items') or [])]);keep=not hits and row['cls']<0.02 and row['lcp']<5500;print('keep=',str(keep).lower());open('/tmp/keep-meta','w').write('1' if keep else '0')
+          d=json.load(open('/tmp/meta-trace.json'));p=d['perf'];keep=p['delay'] and not d['capi'] and p['cls']<0.02 and p['lcp']<5500
+          print('keep=',str(keep).lower());open('/tmp/keep-meta','w').write('1' if keep else '0')
           PY
 
       - name: Keep or restore and record
