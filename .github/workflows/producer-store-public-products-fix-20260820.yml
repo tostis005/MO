@@ -10,6 +10,9 @@ on:
       - '.github/workflows/producer-store-public-products-fix-20260820.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   rollback:
     runs-on: ubuntu-24.04
@@ -21,6 +24,8 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install sshpass
         run: |
           sudo apt-get update -qq
@@ -31,6 +36,7 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
+          mkdir -p runtime
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
@@ -47,3 +53,17 @@ jobs:
           sshpass -e scp $SCP mu-plugins/mdo-product-category-public-products-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-product-category-public-products-20260821.php"
           sshpass -e scp $SCP mu-plugins/mdo-english-home-categories-producers-20260820.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-home-categories-producers-20260820.php"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php'; wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          STATUS="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "curl -k -L -sS --connect-timeout 5 --max-time 15 -o /tmp/emdo-recovery-home.html -w '%{http_code}|%{size_download}|%{time_total}' https://www.elmercadodeorigen.com/ || true")"
+          printf 'homepage=%s\ncommit=%s\n' "$STATUS" "$GITHUB_SHA" > runtime/emergency-recovery-20260821.txt
+          case "$STATUS" in 200\|*) ;; *) echo "Homepage recovery check failed: $STATUS"; exit 2;; esac
+
+      - name: Record recovery verification
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main || true
+          git add runtime/emergency-recovery-20260821.txt 2>/dev/null || true
+          git commit -m 'Record emergency production recovery [skip ci]' || true
+          git push origin HEAD:main || true
