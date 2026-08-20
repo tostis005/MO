@@ -1,0 +1,112 @@
+name: Catalog default Spain safety production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-catalog-default-spain-safety-20260820.php'
+      - '.github/workflows/catalog-default-spain-safety-production-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy safety hotfix
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          LOCAL='mu-plugins/mdo-catalog-default-spain-safety-20260820.php'
+          php -l "$LOCAL" >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          TMP="/tmp/mdo-catalog-default-spain-safety-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-catalog-default-spain-safety-20260820.php"
+          sshpass -e scp $SCP_OPTIONS "$LOCAL" "$STAGING_USER@$STAGING_HOST:$TMP"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$TMP' >/dev/null
+            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
+            cp '$TMP' '$TARGET'
+            rm -f '$TMP'
+            \"\$php_bin\" -l '$TARGET' >/dev/null
+            wp_bin=\$(command -v wp || true)
+            [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+      - name: Verify neutral initial shop
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          URL="https://www.elmercadodeorigen.com/tienda/?mdo_default_spain_verify=${GITHUB_RUN_ID}"
+          HTML=/tmp/mdo-default-spain.html
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO default Spain verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "$URL"
+          CURL_CODE=$?
+          PRODUCT_COUNT=0
+          if [ $CURL_CODE -eq 0 ]; then
+            PRODUCT_COUNT=$(python3 - <<'PY'
+          import re
+          s=open('/tmp/mdo-default-spain.html',encoding='utf-8',errors='ignore').read()
+          matches=re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>', s, flags=re.I)
+          print(len(matches))
+          PY
+            )
+          fi
+          RESULT=success
+          NOTE="Default Spain shop returns products"
+          if [ $CURL_CODE -ne 0 ]; then RESULT=http_error; NOTE="Could not fetch live shop"; fi
+          if [ "$PRODUCT_COUNT" -lt 1 ]; then RESULT=no_products; NOTE="Live default shop still returns zero product cards"; fi
+          mkdir -p .deploy-status
+          printf 'result=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nproduct_cards=%s\nnote=%s\n' "$RESULT" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PRODUCT_COUNT" "$NOTE" > .deploy-status/catalog-default-spain-hotfix.txt
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record verification
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-default-spain-hotfix.txt
+          git commit -m 'Record default Spain catalog hotfix [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Fail if shop is still empty
+        if: steps.verify.outputs.result != 'success'
+        run: exit 1
