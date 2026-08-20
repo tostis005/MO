@@ -1,0 +1,368 @@
+file=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-catalog-default-spain-safety-20260820.php
+36:add_action(
+106:function mdo_catalog_default_spain_render_20260820(): void {
+192:add_action(
+196:			remove_action( 'woocommerce_before_shop_loop', array( 'MDO_Catalog_Destination_Frontend', 'render_destination_control' ), 22 );
+197:			remove_action( 'wp_head', array( 'MDO_Catalog_Destination_Frontend', 'render_styles' ), PHP_INT_MAX );
+198:			remove_action( 'wp_footer', array( 'MDO_Catalog_Destination_Frontend', 'render_script' ), PHP_INT_MAX );
+200:		add_action( 'woocommerce_before_shop_loop', 'mdo_catalog_default_spain_render_20260820', 22 );
+201:		add_action( 'wp_head', 'mdo_catalog_default_spain_styles_20260820', PHP_INT_MAX );
+202:		add_action( 'wp_footer', 'mdo_catalog_default_spain_script_20260820', PHP_INT_MAX );
+208:add_action(
+--- browser ---
+{
+  "toolbar": [
+    {
+      "i": 0,
+      "cls": "woostify-sorting emo-catalog-toolbar-shared-010229",
+      "text": "Productor Todos los productores 1957 Hidalgo de la Jara Tolecarnes <button type=\"submit\">Filtrar</button> 58 resultados Más populares Más recientes Menor precio Mayor precio",
+      "chain": [
+        {
+          "tag": "DIV",
+          "id": "",
+          "cls": "woostify-sorting emo-catalog-toolbar-shared-010229"
+        },
+        {
+          "tag": "MAIN",
+          "id": "main",
+          "cls": "site-main"
+        },
+        {
+          "tag": "DIV",
+          "id": "primary",
+          "cls": "content-area"
+        },
+        {
+          "tag": "DIV",
+          "id": "",
+          "cls": "woostify-container"
+        },
+        {
+          "tag": "DIV",
+          "id": "content",
+          "cls": "site-content"
+        },
+        {
+          "tag": "DIV",
+          "id": "view",
+          "cls": ""
+        },
+        {
+          "tag": "BODY",
+          "id": "",
+          "cls": "archive post-type-archive post-type-archive-product wp-embed-responsive wp-theme-woostify wp-child-theme-elmercadodeorigen-child theme-woostify woocommerce-shop woocommerce woocommerce-page woocommerce-js translatepress-es_ES elmercado-child-theme elmercado-has-woocommerce elmercado-editorial-content elmercado-compact-shop child-theme-detected site-normal-container has-header-layout-1 right-sidebar has-sidebar has-gallery-slider-layout hid-skus wcfm-theme-el-mercado-de-origen elementor-default elementor-kit-1458 emo-continuous-catalog emo-js-ready"
+        },
+        {
+          "tag": "HTML",
+          "id": "",
+          "cls": ""
+        }
+      ]
+    }
+  ],
+  "dest": [
+    {
+      "i": 0,
+      "tag": "DIV",
+      "cls": "mdo-catalog-destination mdo-catalog-destination--canonical",
+      "text": "⌖ Envío a España ⌄",
+      "chain": [
+        {
+          "tag": "DIV",
+          "id": "",
+          "cls": "mdo-catalog-destination mdo-catalog-destination--canonical"
+        },
+        {
+          "tag": "BODY",
+          "id": "",
+          "cls": "archive post-type-archive post-type-archive-product wp-embed-responsive wp-theme-woostify wp-child-theme-elmercadodeorigen-child theme-woostify woocommerce-shop woocommerce woocommerce-page woocommerce-js translatepress-es_ES elmercado-child-theme elmercado-has-woocommerce elmercado-editorial-content elmercado-compact-shop child-theme-detected site-normal-container has-header-layout-1 right-sidebar has-sidebar has-gallery-slider-layout hid-skus wcfm-theme-el-mercado-de-origen elementor-default elementor-kit-1458 emo-continuous-catalog emo-js-ready"
+        },
+        {
+          "tag": "HTML",
+          "id": "",
+          "cls": ""
+        }
+      ],
+      "html": "<div class=\"mdo-catalog-destination mdo-catalog-destination--canonical\" data-mdo-destination-control=\"\">\n\t\t<button type=\"button\" class=\"mdo-catalog-destination__trigger\" data-mdo-destination-open=\"\" aria-haspopup=\"dialog\" aria-controls=\"mdo-catalog-destination-dialog\">\n\t\t\t<span class=\"mdo-catalog-destination__pin\" aria-hidden=\"true\">⌖</span>\n\t\t\t<span>Envío a <strong>España</strong></span>\n\t\t\t<span class=\"mdo-catalog-destination__chevron\" aria-hidden=\"true\">⌄</span>\n\t\t</button>\n\t</div>"
+    },
+    {
+      "i": 1,
+      "tag": "BUTTON",
+      "cls": "mdo-catalog-destination__trigger",
+      "text": "⌖ Envío a España ⌄",
+      "chain": [
+        {
+          "tag": "BUTTON",
+          "id": "",
+          "cls": "mdo-catalog-destination__trigger"
+        },
+        {
+          "tag": "DIV",
+          "id": "",
+          "cls": "mdo-catalog-destination mdo-catalog-destination--canonical"
+        },
+        {
+          "tag": "BODY",
+          "id": "",
+          "cls": "archive post-type-archive post-type-archive-product wp-embed-responsive wp-theme-woostify wp-child-theme-elmercadodeorigen-child theme-woostify woocommerce-shop woocommerce woocommerce-page woocommerce-js translatepress-es_ES elmercado-child-theme elmercado-has-woocommerce elmercado-editorial-content elmercado-compact-shop child-theme-detected site-normal-container has-header-layout-1 right-sidebar has-sidebar has-gallery-slider-layout hid-skus wcfm-theme-el-mercado-de-origen elementor-default elementor-kit-1458 emo-continuous-catalog emo-js-ready"
+        },
+        {
+          "tag": "HTML",
+          "id": "",
+          "cls": ""
+        }
+      ],
+      "html": "<button type=\"button\" class=\"mdo-catalog-destination__trigger\" data-mdo-destination-open=\"\" aria-haspopup=\"dialog\" aria-controls=\"mdo-catalog-destination-dialog\">\n\t\t\t<span class=\"mdo-catalog-destination__pin\" aria-hidden=\"true\">⌖</span>\n\t\t\t<span>Envío a <strong>España</strong></span>\n\t\t\t<span class=\"mdo-catalog-destination__chevron\" aria-hidden=\"true\">⌄</span>\n\t\t</button>"
+    }
+  ],
+  "counts": [
+    {
+      "i": 0,
+      "text": "58 resultados",
+      "chain": [
+        {
+          "tag": "P",
+          "id": "",
+          "cls": "woocommerce-result-count emo-catalog-result-count-010220"
+        },
+        {
+          "tag": "DIV",
+          "id": "",
+          "cls": "woostify-toolbar-left"
+        },
+        {
+          "tag": "DIV",
+          "id": "",
+          "cls": "woostify-sorting emo-catalog-toolbar-shared-010229"
+        },
+        {
+          "tag": "MAIN",
+          "id": "main",
+          "cls": "site-main"
+        },
+        {
+          "tag": "DIV",
+          "id": "primary",
+          "cls": "content-area"
+        },
+        {
+          "tag": "DIV",
+          "id": "",
+          "cls": "woostify-container"
+        },
+        {
+          "tag": "DIV",
+          "id": "content",
+          "cls": "site-content"
+        },
+        {
+          "tag": "DIV",
+          "id": "view",
+          "cls": ""
+        }
+      ]
+    }
+  ],
+  "bodyChildren": [
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "emo-announcement"
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "view",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "mobile-navigation",
+      "cls": "sidebar-menu"
+    },
+    {
+      "tag": "DIV",
+      "id": "woostify-overlay",
+      "cls": ""
+    },
+    {
+      "tag": "SPAN",
+      "id": "scroll-to-top",
+      "cls": "scroll-to-top-position-right scroll-to-top-show-default"
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "site-dialog-search  woostify-search-wrap"
+    },
+    {
+      "tag": "DIV",
+      "id": "shop-cart-sidebar",
+      "cls": ""
+    },
+    {
+      "tag": "STYLE",
+      "id": "",
+      "cls": ""
+    },
+    {
+      "tag": "TEMPLATE",
+      "id": "tp-language",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "mdo-catalog-destination mdo-catalog-destination--canonical"
+    },
+    {
+      "tag": "DIV",
+      "id": "mdo-catalog-destination-dialog",
+      "cls": "mdo-destination-modal"
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "cookie-law-info-bar",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "cookie-law-info-again",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "cliSettingsPopup",
+      "cls": "cli-modal"
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "cli-modal-backdrop cli-fade cli-settings-overlay"
+    },
+    {
+      "tag": "DIV",
+      "id": "",
+      "cls": "cli-modal-backdrop cli-fade cli-popupbar-overlay"
+    },
+    {
+      "tag": "STYLE",
+      "id": "ht-ctc-entry-animations",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "ht-ctc-chat",
+      "cls": "ht-ctc ht-ctc-chat ctc-analytics ctc_wp_desktop style-2  ht_ctc_entry_animation ht_ctc_an_entry_corner "
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "",
+      "cls": ""
+    },
+    {
+      "tag": "NOSCRIPT",
+      "id": "",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "",
+      "cls": ""
+    },
+    {
+      "tag": "DIV",
+      "id": "hustle-popup-id-1",
+      "cls": "hustle-ui hustle-popup hustle-palette--604733addfef93_87160248 hustle_module_id_1 module_id_1  "
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "",
+      "cls": ""
+    },
+    {
+      "tag": "LINK",
+      "id": "wc-blocks-style-css",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "ht_ctc_app_js-js-extra",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "ht_ctc_app_js-js",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "fluentform-elementor-js-extra",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "fluentform-elementor-js",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "wp-hooks-js",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "wp-i18n-js",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "wp-i18n-js-after",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "swv-js",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "contact-form-7-js-translations",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "contact-form-7-js-before",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "contact-form-7-js",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "cf7apps-honeypot-refill-js-extra",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "cf7apps-honeypot-refill-js",
+      "cls": ""
+    },
+    {
+      "tag": "SCRIPT",
+      "id": "awdr-main-js-extra",
+      "cls": ""
+    }
+  ]
+}
