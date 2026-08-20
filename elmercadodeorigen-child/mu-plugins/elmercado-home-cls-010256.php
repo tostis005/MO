@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action(
 	'init',
 	static function (): void {
-		$revision = '010256-13';
+		$revision = '010256-14';
 		if ( get_option( 'elmercado_home_cls_cache_revision', '' ) === $revision ) {
 			return;
 		}
@@ -33,6 +33,40 @@ add_action(
 		update_option( 'elmercado_home_cls_cache_revision', $revision, false );
 	},
 	-100000
+);
+
+/**
+ * Keep the final producer-collage geometry in the same render-blocking inline
+ * block as the structural Woostify/Home CSS. The regular Home fresh layer also
+ * prints this CSS near </head>, but the static-cache optimizer defers standalone
+ * style blocks. Without this copy the first desktop frame uses the generic hero
+ * geometry and shifts again when the 1–5 vendor layout arrives.
+ */
+add_action(
+	'wp_enqueue_scripts',
+	static function (): void {
+		if ( is_admin() || ! is_front_page() || is_feed() || is_trackback() || wp_doing_ajax() ) {
+			return;
+		}
+
+		if ( ! function_exists( 'elmercado_home_vendor_css_010244' ) ) {
+			return;
+		}
+
+		$parent_handle = wp_style_is( 'woostify-parent-style', 'registered' )
+			? 'woostify-parent-style'
+			: ( wp_style_is( 'woostify-parent', 'registered' ) ? 'woostify-parent' : '' );
+
+		if ( '' === $parent_handle ) {
+			return;
+		}
+
+		$vendor_css = trim( (string) elmercado_home_vendor_css_010244() );
+		if ( '' !== $vendor_css ) {
+			wp_add_inline_style( $parent_handle, "\n/* elmercado-home-vendors-critical-010256-14 */\n" . $vendor_css );
+		}
+	},
+	PHP_INT_MAX
 );
 
 add_action(
