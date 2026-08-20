@@ -82,11 +82,13 @@ jobs:
           if [ $CURL_CODE -eq 0 ]; then
             read -r PRODUCT_COUNT SELECTOR_COUNT SPAIN_DEFAULT <<EOF
           $(python3 - <<'PY'
-          import re
+          import re, html
           s=open('/tmp/mdo-default-spain.html',encoding='utf-8',errors='ignore').read()
           products=len(re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>', s, flags=re.I))
           selectors=len(re.findall(r'data-mdo-destination-control(?:\s|>|=)', s, flags=re.I))
-          spain=1 if re.search(r'Envío\s+a\s*</?[^>]*>?\s*<strong>España</strong>|Envío\s+a[^<]{0,20}España', s, flags=re.I) else 0
+          text=html.unescape(re.sub(r'<[^>]+>', ' ', s))
+          text=re.sub(r'\s+', ' ', text)
+          spain=1 if 'Envío a España' in text else 0
           print(products, selectors, spain)
           PY
           )
@@ -118,5 +120,3 @@ jobs:
       - name: Fail if default shop or selector is wrong
         if: steps.verify.outputs.result != 'success'
         run: exit 1
-
-# Verification trigger 2026-08-20T09:28Z
