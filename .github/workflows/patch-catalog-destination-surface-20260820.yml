@@ -66,3 +66,5 @@ jobs:
           git commit -m 'Render destination selector on canonical catalog surface'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# Triggered again after creation so the one-shot patch runs from an already-existing workflow.
