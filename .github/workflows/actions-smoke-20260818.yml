@@ -1,28 +1,146 @@
-name: Actions smoke 2026-08-18
+name: Actions Smoke 2026-08-18
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [ main ]
     paths:
       - '.github/workflows/actions-smoke-20260818.yml'
-  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  smoke:
-    runs-on: ubuntu-24.04
+  wordpress-mail-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Record Actions execution
+
+      - name: Send one-time test through production WordPress
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p runtime
-          printf 'actions_ok=true\nrun_id=%s\nverified_at=%s\n' "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/actions-smoke-20260818.txt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add runtime/actions-smoke-20260818.txt
-          git commit -m 'Record Actions smoke execution'
-          git push origin HEAD:main
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          cat > /tmp/mdo-send-mail.php <<'PHP'
+          <?php
+          $wanted_hash = '1bc71a4b79293d6ab2ab59c465e20c2d7250ef7a97d68d99af75ed0dafff40e7';
+          $guard = 'mdo_mail_test_20260820_sent';
+
+          if (get_option($guard)) {
+              echo "MAIL_TEST_ALREADY_SENT\n";
+              return;
+          }
+
+          $candidates = [];
+          $add = static function ($email) use (&$candidates) {
+              $email = strtolower(trim((string) $email));
+              if ($email !== '' && is_email($email)) {
+                  $candidates[$email] = true;
+              }
+          };
+
+          $add(get_option('admin_email'));
+          foreach (get_users(['fields' => ['user_email']]) as $user) {
+              $add($user->user_email ?? '');
+          }
+
+          global $wpdb;
+          $tables = array_fill_keys(array_map('strval', (array) $wpdb->get_col('SHOW TABLES')), true);
+
+          $fluent = $wpdb->prefix . 'fc_subscribers';
+          if (isset($tables[$fluent])) {
+              foreach ((array) $wpdb->get_col("SELECT email FROM `{$fluent}` WHERE email IS NOT NULL AND email <> ''") as $email) {
+                  $add($email);
+              }
+          }
+
+          $orders = $wpdb->prefix . 'wc_order_addresses';
+          if (isset($tables[$orders])) {
+              foreach ((array) $wpdb->get_col("SELECT DISTINCT email FROM `{$orders}` WHERE email IS NOT NULL AND email <> ''") as $email) {
+                  $add($email);
+              }
+          }
+
+          $postmeta = $wpdb->postmeta;
+          if (isset($tables[$postmeta])) {
+              foreach ((array) $wpdb->get_col($wpdb->prepare("SELECT DISTINCT meta_value FROM `{$postmeta}` WHERE meta_key = %s AND meta_value <> ''", '_billing_email')) as $email) {
+                  $add($email);
+              }
+          }
+
+          $to = '';
+          foreach (array_keys($candidates) as $email) {
+              if (hash_equals($wanted_hash, hash('sha256', $email))) {
+                  $to = $email;
+                  break;
+              }
+          }
+
+          if ($to === '') {
+              fwrite(STDERR, "TEST_RECIPIENT_NOT_FOUND_IN_WORDPRESS\n");
+              exit(12);
+          }
+
+          $mail_error = '';
+          add_action('wp_mail_failed', static function ($error) use (&$mail_error) {
+              if (is_wp_error($error)) {
+                  $mail_error = $error->get_error_message();
+              }
+          });
+
+          $subject = 'Propuesta de colaboración con El Mercado de Origen';
+          $body = '<p>Hola José,</p>'
+              . '<p>Te escribo desde <strong>El Mercado de Origen</strong>, un marketplace en el que reunimos productos seleccionados de productores españoles y los acercamos directamente al consumidor.</p>'
+              . '<p>Estamos empezando a trabajar con creadores y perfiles relacionados con gastronomía mediante un sistema de afiliación sencillo: cada colaborador dispone de su propio enlace y recibe una comisión por las compras que genere.</p>'
+              . '<p>No hay compromiso de publicaciones ni exclusividad. La idea es que puedan recomendar productos concretos cuando encajen de forma natural con su contenido y obtener una comisión por las ventas que lleguen a través de sus recomendaciones.</p>'
+              . '<p><strong>Este es un correo de prueba</strong> enviado directamente desde el sistema de correo de nuestra web para comprobar que el envío corporativo funciona correctamente.</p>'
+              . '<p>Un saludo,<br><strong>El Mercado de Origen</strong><br>www.elmercadodeorigen.com</p>';
+
+          $ok = wp_mail($to, $subject, $body, ['Content-Type: text/html; charset=UTF-8']);
+          if (!$ok) {
+              fwrite(STDERR, "WORDPRESS_WP_MAIL_RETURNED_FALSE" . ($mail_error ? ': ' . $mail_error : '') . "\n");
+              exit(13);
+          }
+
+          update_option($guard, gmdate('c'), false);
+          echo "RECIPIENT_FOUND\n";
+          echo "WORDPRESS_WP_MAIL_ACCEPTED\n";
+          PHP
+
+          tmp="/tmp/mdo-send-mail-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-send-mail.php "$STAGING_USER@$STAGING_HOST:$tmp"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            [ -n \"\$wp_bin\" ] || { echo WP_CLI_NOT_FOUND >&2; exit 20; }
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$tmp' --path='$PROD_PATH' --allow-root
+            rc=\$?
+            rm -f '$tmp'
+            exit \$rc
+          "
