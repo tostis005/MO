@@ -1,4 +1,4 @@
-name: Catalog summary bar production
+name: Catalog toolbar destination production
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  deploy:
+  deploy-and-browser-verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy summary bar MU plugin
+      - name: Deploy toolbar MU plugin
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -52,7 +52,7 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          TMP="/tmp/mdo-catalog-summarybar-${GITHUB_RUN_ID}.php"
+          TMP="/tmp/mdo-catalog-toolbar-${GITHUB_RUN_ID}.php"
           TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-catalog-summarybar-visible-20260820.php"
           sshpass -e scp $SCP_OPTIONS "$LOCAL" "$STAGING_USER@$STAGING_HOST:$TMP"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
@@ -68,60 +68,212 @@ jobs:
             [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
           "
 
-      - name: Verify live summary bar markup
-        id: verify
+      - name: Confirm fresh production markup
         shell: bash
         run: |
-          set +e
-          URL="https://www.elmercadodeorigen.com/tienda/?mdo_summarybar_verify=${GITHUB_RUN_ID}"
-          HTML=/tmp/mdo-summarybar.html
-          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO summarybar verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "$URL"
-          CURL_CODE=$?
-          RESULT=success
-          NOTE='Summary bar present'
-          PRODUCT_COUNT=0
-          BAR_COUNT=0
-          HAS_RESULTS=0
-          HAS_SPAIN=0
-          if [ $CURL_CODE -eq 0 ]; then
-            read -r PRODUCT_COUNT BAR_COUNT HAS_RESULTS HAS_SPAIN <<EOF
-          $(python3 - <<'PY'
-          import re,html
-          s=open('/tmp/mdo-summarybar.html',encoding='utf-8',errors='ignore').read()
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/tienda/?mdo_toolbar_markup=${GITHUB_RUN_ID}"
+          HTML=/tmp/mdo-toolbar.html
+          curl -fsSL --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO toolbar verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "$URL"
+          grep -q 'mdo-catalog-toolbar-destination-js-20260820' "$HTML"
+          grep -q 'data-mdo-destination-modal' "$HTML"
+          python3 - <<'PY'
+          import re
+          s=open('/tmp/mdo-toolbar.html',encoding='utf-8',errors='ignore').read()
           products=len(re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>',s,re.I))
-          bars=len(re.findall(r'data-mdo-catalog-summarybar(?:\s|>|=)',s,re.I))
-          plain=re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>',' ',s)))
-          has_results=1 if re.search(r'\b\d+[\.,]?\d*\s+resultados?\b',plain,re.I) else 0
-          has_spain=1 if 'Envío a España' in plain else 0
-          print(products,bars,has_results,has_spain)
+          if products < 1:
+              raise SystemExit('default Spain unexpectedly has no product cards')
+          print(f'default product cards in HTML: {products}')
           PY
-          )
-          EOF
+
+      - name: Install browser verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save --no-audit --no-fund playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Verify rendered toolbar and destination interaction
+        id: browser
+        shell: bash
+        env:
+          SHOP_URL: https://www.elmercadodeorigen.com/tienda/
+        run: |
+          set +e
+          mkdir -p artifacts
+          node <<'NODE'
+          const fs = require('fs');
+          const { chromium } = require('playwright');
+
+          const status = {
+            result: 'failed',
+            desktop_visible: 0,
+            mobile_portrait_visible: 0,
+            mobile_landscape_visible: 0,
+            inside_toolbar: 0,
+            click_opens_modal: 0,
+            other_destination_option: 0,
+            destination_change: 0,
+            default_products: 0,
+            selected_destination: '',
+            note: ''
+          };
+
+          const isVisible = el => {
+            if (!el) return false;
+            const cs = getComputedStyle(el);
+            const r = el.getBoundingClientRect();
+            return cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity || 1) > 0 && r.width > 0 && r.height > 0;
+          };
+
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            try {
+              const openViewport = async (name, viewport) => {
+                const context = await browser.newContext({viewport});
+                const page = await context.newPage();
+                const url = `${process.env.SHOP_URL}?mdo_toolbar_browser=${process.env.GITHUB_RUN_ID || Date.now()}&vp=${name}`;
+                await page.goto(url, {waitUntil:'domcontentloaded', timeout:45000});
+                await page.waitForSelector('.woocommerce-ordering', {state:'attached', timeout:20000});
+                await page.waitForSelector('[data-mdo-toolbar-destination]', {state:'visible', timeout:20000});
+                await page.waitForTimeout(500);
+                const snap = await page.evaluate((visibleFnText) => {
+                  const visible = eval(`(${visibleFnText})`);
+                  const ordering = document.querySelector('.woocommerce-ordering');
+                  const toolbar = document.querySelector('.woostify-sorting.emo-catalog-toolbar-shared-010229') || ordering?.closest('.woostify-sorting') || ordering?.parentElement;
+                  const count = document.querySelector('[data-mdo-toolbar-count]');
+                  const destination = document.querySelector('[data-mdo-toolbar-destination]');
+                  return {
+                    toolbarClass: toolbar?.className || '',
+                    inside: !!(toolbar && count && destination && toolbar.contains(count) && toolbar.contains(destination) && toolbar.contains(ordering)),
+                    countVisible: visible(count),
+                    destinationVisible: visible(destination),
+                    orderingVisible: visible(ordering),
+                    countText: count?.textContent?.trim() || '',
+                    destinationText: destination?.textContent?.replace(/\s+/g,' ').trim() || '',
+                    products: document.querySelectorAll('li.product').length,
+                    rect: destination ? destination.getBoundingClientRect().toJSON() : null
+                  };
+                }, isVisible.toString());
+                await page.screenshot({path:`artifacts/catalog-toolbar-${name}.png`, fullPage:false});
+                return {context, page, snap};
+              };
+
+              const desktop = await openViewport('desktop', {width:1440,height:900});
+              const portrait = await openViewport('portrait', {width:390,height:844});
+              const landscape = await openViewport('landscape', {width:844,height:390});
+
+              const good = snap => snap.inside && snap.countVisible && snap.destinationVisible && snap.orderingVisible && /Envío a\s+España/i.test(snap.destinationText);
+              status.desktop_visible = good(desktop.snap) ? 1 : 0;
+              status.mobile_portrait_visible = good(portrait.snap) ? 1 : 0;
+              status.mobile_landscape_visible = good(landscape.snap) ? 1 : 0;
+              status.inside_toolbar = [desktop.snap, portrait.snap, landscape.snap].every(s => s.inside) ? 1 : 0;
+              status.default_products = desktop.snap.products;
+
+              await portrait.context.close();
+              await landscape.context.close();
+
+              const page = desktop.page;
+              const context = desktop.context;
+              await page.locator('[data-mdo-toolbar-destination]').click();
+              await page.waitForFunction(() => {
+                const modal = document.querySelector('[data-mdo-destination-modal]');
+                if (!modal || modal.hidden) return false;
+                const cs = getComputedStyle(modal);
+                const r = modal.getBoundingClientRect();
+                return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+              }, null, {timeout:7000});
+              status.click_opens_modal = 1;
+
+              const select = page.locator('[data-mdo-destination-country]');
+              const options = await select.locator('option').evaluateAll(opts => opts.map(o => ({value:o.value,label:o.textContent.trim()})).filter(o => o.value));
+              const target = options.find(o => o.value !== 'ES');
+              if (!target) throw new Error('No supported destination other than Spain is available in the selector');
+              status.other_destination_option = 1;
+              status.selected_destination = `${target.value}:${target.label}`;
+              await select.selectOption(target.value);
+              if ((await select.inputValue()) !== target.value) throw new Error('Could not select alternate destination');
+
+              const responsePromise = page.waitForResponse(response => {
+                const data = response.request().postData() || '';
+                return response.url().includes('admin-ajax.php') && data.includes('mdo_set_shipping_destination');
+              }, {timeout:15000});
+              const navigationPromise = page.waitForNavigation({waitUntil:'domcontentloaded', timeout:20000}).catch(() => null);
+              await page.locator('[data-mdo-destination-save]').click();
+              const ajaxResponse = await responsePromise;
+              let ajaxPayload = null;
+              try { ajaxPayload = await ajaxResponse.json(); } catch (_) {}
+              if (!ajaxResponse.ok() || !ajaxPayload || !ajaxPayload.success) {
+                throw new Error(`Destination AJAX failed: HTTP ${ajaxResponse.status()} ${JSON.stringify(ajaxPayload)}`);
+              }
+              await navigationPromise;
+              await page.waitForTimeout(700);
+              const cookies = await context.cookies();
+              const countryCookie = cookies.find(c => c.name === 'mdo_shipping_country');
+              if (!countryCookie || countryCookie.value !== target.value) {
+                throw new Error(`Destination cookie not persisted; expected ${target.value}, got ${countryCookie?.value || 'missing'}`);
+              }
+              status.destination_change = 1;
+              await context.close();
+
+              if (status.desktop_visible && status.mobile_portrait_visible && status.mobile_landscape_visible && status.inside_toolbar && status.click_opens_modal && status.other_destination_option && status.destination_change && status.default_products > 0) {
+                status.result = 'success';
+                status.note = 'Toolbar visible in all viewports; modal opens and alternate destination persists.';
+              } else {
+                status.note = 'One or more browser assertions failed.';
+              }
+            } catch (error) {
+              status.note = error && error.stack ? error.stack.replace(/\n/g, ' | ') : String(error);
+            } finally {
+              await browser.close();
+              fs.writeFileSync('/tmp/mdo-toolbar-browser.json', JSON.stringify(status, null, 2));
+              console.log(JSON.stringify(status, null, 2));
+            }
+          })();
+          NODE
+          if [ ! -s /tmp/mdo-toolbar-browser.json ]; then
+            printf '{"result":"failed","note":"browser verifier did not produce a status file"}\n' > /tmp/mdo-toolbar-browser.json
           fi
-          if [ $CURL_CODE -ne 0 ]; then RESULT=http_error; NOTE='Could not fetch live shop'; fi
-          if [ "$PRODUCT_COUNT" -lt 1 ]; then RESULT=no_products; NOTE='Shop has no product cards'; fi
-          if [ "$BAR_COUNT" -ne 1 ]; then RESULT=bar_count_wrong; NOTE='Expected exactly one summary bar'; fi
-          if [ "$HAS_RESULTS" -ne 1 ]; then RESULT=results_missing; NOTE='Results label missing from summary bar page'; fi
-          if [ "$HAS_SPAIN" -ne 1 ]; then RESULT=spain_missing; NOTE='Spain destination text missing'; fi
-          mkdir -p .deploy-status
-          printf 'result=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nproduct_cards=%s\nsummarybar_count=%s\nhas_results=%s\nhas_spain=%s\nnote=%s\n' "$RESULT" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PRODUCT_COUNT" "$BAR_COUNT" "$HAS_RESULTS" "$HAS_SPAIN" "$NOTE" > .deploy-status/catalog-summarybar-live.txt
+          cat /tmp/mdo-toolbar-browser.json
+          RESULT="$(python3 -c "import json; print(json.load(open('/tmp/mdo-toolbar-browser.json')).get('result','failed'))")"
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Record verification
+      - name: Record browser verification
         if: always()
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json, os, datetime
+          try:
+              d=json.load(open('/tmp/mdo-toolbar-browser.json'))
+          except Exception as e:
+              d={'result':'failed','note':f'could not read browser status: {e}'}
+          keys=['result','desktop_visible','mobile_portrait_visible','mobile_landscape_visible','inside_toolbar','click_opens_modal','other_destination_option','destination_change','default_products','selected_destination','note']
+          lines=[f'source_commit={os.environ.get("GITHUB_SHA","")}',f'workflow_run={os.environ.get("GITHUB_RUN_ID","")}',f'checked_at={datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}']
+          for k in keys:
+              lines.append(f'{k}={str(d.get(k,"" )).replace(chr(10)," ")}')
+          open('.deploy-status/catalog-toolbar-live.txt','w').write('\n'.join(lines)+'\n')
+          PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/catalog-summarybar-live.txt
-          git commit -m 'Record catalog summary bar live check [skip ci]' || exit 0
+          git add .deploy-status/catalog-toolbar-live.txt
+          git commit -m 'Record catalog toolbar browser check [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
 
-      - name: Fail if live summary bar is wrong
-        if: steps.verify.outputs.result != 'success'
-        run: exit 1
+      - name: Upload browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-toolbar-browser-${{ github.run_id }}
+          path: artifacts/catalog-toolbar-*.png
+          if-no-files-found: ignore
+          retention-days: 7
 
-# Second commit triggers this workflow after its initial creation.
+      - name: Fail if browser verification is wrong
+        if: steps.browser.outputs.result != 'success'
+        run: exit 1
