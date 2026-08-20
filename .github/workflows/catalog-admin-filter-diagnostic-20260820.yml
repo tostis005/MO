@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
@@ -53,5 +53,17 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
           REMOTE="/tmp/catalog-admin-filter-diagnostic-${GITHUB_RUN_ID}.php"
+          mkdir -p runtime
           sshpass -e scp $SCP_OPTIONS .github/scripts/catalog-admin-filter-diagnostic-20260820.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" 2>&1 | tee runtime/catalog-admin-filter-diagnostic-20260820.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          printf '\nWORKFLOW_RUN_ID=%s\nREMOTE_RC=%s\n' "$GITHUB_RUN_ID" "$rc" >> runtime/catalog-admin-filter-diagnostic-20260820.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/catalog-admin-filter-diagnostic-20260820.txt
+          git commit -m 'Record catalog admin filter diagnostic' || true
+          git pull --rebase origin main
+          git push origin HEAD:main
+          exit "$rc"
