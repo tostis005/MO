@@ -30,14 +30,22 @@ function elmercado_catalog_counts_can_view_disabled_010217(): bool {
  * @return int[]
  */
 function elmercado_catalog_counts_excluded_authors_010217(): array {
-	if ( elmercado_catalog_counts_can_view_disabled_010217() || ! function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
-		return array();
+	$excluded = array();
+
+	/* Los administradores pueden auditar vendedores offline, pero el destino seleccionado sigue aplicando. */
+	if ( ! elmercado_catalog_counts_can_view_disabled_010217() && function_exists( 'elmercado_wcfm_disabled_vendor_ids_010210' ) ) {
+		$excluded = array_merge( $excluded, (array) elmercado_wcfm_disabled_vendor_ids_010210() );
+	}
+
+	/* EMDO añade los vendedores que no sirven el destino actual (España por defecto, sin geolocalización). */
+	if ( class_exists( 'MDO_Catalog_Destination_Frontend' ) ) {
+		$excluded = array_merge( $excluded, MDO_Catalog_Destination_Frontend::excluded_vendor_ids() );
 	}
 
 	return array_values(
 		array_unique(
 			array_filter(
-				array_map( 'absint', elmercado_wcfm_disabled_vendor_ids_010210() )
+				array_map( 'absint', $excluded )
 			)
 		)
 	);
