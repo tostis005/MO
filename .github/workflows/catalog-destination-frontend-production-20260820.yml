@@ -83,19 +83,19 @@ jobs:
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
               if (!class_exists("MDO_Catalog_Ranking") || !class_exists("MDO_EMDO_Selection_Badge")) { exit(11); }
               echo "RANKING=yes\\nBADGE_CLASS=yes\\n";
-              $ids = get_posts(array("post_type"=>"product","post_status"=>"publish","numberposts"=>1,"fields"=>"ids","meta_key"=>MDO_Catalog_Ranking::PRIORITY_META,"meta_value"=>"100"));
-              printf("PRIORITY100_CANDIDATE=%d\\n", count($ids));
-              if ($ids) {
-                global $product;
-                $product = wc_get_product((int) $ids[0]);
-                printf("PRODUCT_ID=%d\\nPRIORITY=%d\\n", (int) $ids[0], MDO_Catalog_Ranking::get_priority((int) $ids[0]));
-                $_SERVER["REQUEST_URI"] = "/tienda/";
-                ob_start(); MDO_EMDO_Selection_Badge::render_badge(); $es = ob_get_clean();
-                $_SERVER["REQUEST_URI"] = "/en/shop/";
-                ob_start(); MDO_EMDO_Selection_Badge::render_badge(); $en = ob_get_clean();
-                printf("BADGE_ES=%s\\n", false !== strpos($es, "Selección EMDO") ? "yes" : "no");
-                printf("BADGE_EN=%s\\n", false !== strpos($en, "EMDO Selection") ? "yes" : "no");
-                if (100 !== MDO_Catalog_Ranking::get_priority((int) $ids[0]) || false === strpos($es, "Selección EMDO") || false === strpos($en, "EMDO Selection")) { exit(12); }
+              \$ids = get_posts(array("post_type"=>"product","post_status"=>"publish","numberposts"=>1,"fields"=>"ids","meta_key"=>MDO_Catalog_Ranking::PRIORITY_META,"meta_value"=>"100"));
+              printf("PRIORITY100_CANDIDATE=%d\\n", count(\$ids));
+              if (\$ids) {
+                global \$product;
+                \$product = wc_get_product((int) \$ids[0]);
+                printf("PRODUCT_ID=%d\\nPRIORITY=%d\\n", (int) \$ids[0], MDO_Catalog_Ranking::get_priority((int) \$ids[0]));
+                \$_SERVER["REQUEST_URI"] = "/tienda/";
+                ob_start(); MDO_EMDO_Selection_Badge::render_badge(); \$es = ob_get_clean();
+                \$_SERVER["REQUEST_URI"] = "/en/shop/";
+                ob_start(); MDO_EMDO_Selection_Badge::render_badge(); \$en = ob_get_clean();
+                printf("BADGE_ES=%s\\n", false !== strpos(\$es, "Selección EMDO") ? "yes" : "no");
+                printf("BADGE_EN=%s\\n", false !== strpos(\$en, "EMDO Selection") ? "yes" : "no");
+                if (100 !== MDO_Catalog_Ranking::get_priority((int) \$ids[0]) || false === strpos(\$es, "Selección EMDO") || false === strpos(\$en, "EMDO Selection")) { exit(12); }
               }
             ' --path='$PROD_PATH' --allow-root
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
