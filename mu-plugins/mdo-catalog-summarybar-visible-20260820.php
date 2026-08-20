@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Summary Bar Visible
  * Description: Stable results + shipping destination row for desktop and mobile catalog views.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -60,10 +60,10 @@ function mdo_catalog_summarybar_render_20260820(): void {
 	?>
 	<div class="mdo-catalog-summarybar" data-mdo-catalog-summarybar>
 		<span class="mdo-catalog-summarybar__count" aria-live="polite"><?php echo esc_html( $result_label ); ?></span>
-		<button type="button" class="mdo-catalog-summarybar__destination" data-mdo-summary-destination-open>
-			<span class="mdo-catalog-summarybar__pin" aria-hidden="true">⌖</span>
+		<button type="button" class="mdo-catalog-summarybar__destination" data-mdo-summary-destination-open aria-haspopup="dialog" aria-controls="mdo-catalog-destination-dialog">
+			<svg class="mdo-catalog-summarybar__pin" aria-hidden="true" viewBox="0 0 24 24" width="15" height="15"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Zm0-8.5A2.5 2.5 0 1 1 12 7a2.5 2.5 0 0 1 0 5.5Z" fill="currentColor"/></svg>
 			<span><?php echo esc_html( mdo_catalog_summarybar_text_20260820( 'Envío a', 'Shipping to' ) ); ?> <strong><?php echo esc_html( $label ); ?></strong></span>
-			<span class="mdo-catalog-summarybar__chevron" aria-hidden="true">⌄</span>
+			<svg class="mdo-catalog-summarybar__chevron" aria-hidden="true" viewBox="0 0 20 20" width="13" height="13"><path d="m5 7.5 5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
 		</button>
 	</div>
 	<?php
@@ -78,82 +78,66 @@ add_action(
 		}
 		?>
 		<style id="mdo-catalog-summarybar-visible-20260820">
-			/* Old count/control stay available for logic/modal but never compete visually. */
+			/* La barra nueva sustituye visualmente al contador/control históricos. */
 			.emo-catalog-result-count-010220,
 			.mdo-catalog-destination--canonical{display:none!important}
+
 			.mdo-catalog-summarybar{
-				box-sizing:border-box!important;
-				display:flex!important;
-				visibility:visible!important;
-				opacity:1!important;
-				align-items:center!important;
-				justify-content:space-between!important;
-				gap:10px!important;
-				width:100%!important;
-				max-width:none!important;
-				min-height:40px!important;
-				height:auto!important;
-				margin:0 0 14px!important;
-				padding:0!important;
-				float:none!important;
-				clear:both!important;
-				position:relative!important;
-				z-index:2!important;
-				font-size:13px!important;
-				line-height:1.35!important;
+				display:flex;
+				align-items:center;
+				justify-content:space-between;
+				gap:12px;
+				width:100%;
+				margin:0 0 14px;
+				padding:0;
+				clear:both;
+				float:none;
+				box-sizing:border-box;
 			}
 			.mdo-catalog-summarybar__count{
-				display:block!important;
-				visibility:visible!important;
-				opacity:1!important;
-				margin:0!important;
-				padding:0!important;
-				white-space:nowrap!important;
-				color:#53635d!important;
-				font-size:13px!important;
-				font-weight:500!important;
+				margin:0;
+				color:#5b6964;
+				font-size:13px;
+				font-weight:500;
+				line-height:1.4;
+				white-space:nowrap;
 			}
 			.mdo-catalog-summarybar__destination{
-				box-sizing:border-box!important;
-				display:inline-flex!important;
-				visibility:visible!important;
-				opacity:1!important;
-				align-items:center!important;
-				justify-content:center!important;
-				gap:6px!important;
-				min-height:36px!important;
-				margin:0!important;
-				padding:0 12px!important;
-				border:1px solid rgba(23,63,50,.16)!important;
-				border-radius:999px!important;
-				background:#fff!important;
-				box-shadow:none!important;
-				color:#173f32!important;
-				font:inherit!important;
-				font-size:13px!important;
-				line-height:1!important;
-				white-space:nowrap!important;
-				cursor:pointer!important;
+				display:inline-flex;
+				align-items:center;
+				gap:6px;
+				min-height:34px;
+				margin:0;
+				padding:0 11px;
+				border:1px solid rgba(23,63,50,.18);
+				border-radius:999px;
+				background:#fff;
+				box-shadow:none;
+				color:#173f32;
+				font:inherit;
+				font-size:13px;
+				line-height:1;
+				white-space:nowrap;
+				cursor:pointer;
 			}
-			.mdo-catalog-summarybar__destination strong{font-weight:750!important}
-			.mdo-catalog-summarybar__pin{font-size:15px!important;line-height:1!important}
-			.mdo-catalog-summarybar__chevron{font-size:16px!important;opacity:.65!important}
-			@media(max-width:767px){
-				.mdo-catalog-summarybar{
-					display:flex!important;
-					flex-wrap:nowrap!important;
-					align-items:center!important;
-					justify-content:space-between!important;
-					gap:8px!important;
-					margin:0 0 12px!important;
-					min-height:36px!important;
-				}
-				.mdo-catalog-summarybar__count{font-size:12px!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important}
-				.mdo-catalog-summarybar__destination{min-height:34px!important;padding:0 10px!important;font-size:12px!important;flex:0 0 auto!important}
+			.mdo-catalog-summarybar__destination:hover,
+			.mdo-catalog-summarybar__destination:focus-visible{
+				border-color:rgba(23,63,50,.35);
+				background:#fbfdfc;
+				outline:none;
 			}
-			@media(max-width:360px){
-				.mdo-catalog-summarybar{flex-wrap:wrap!important;justify-content:flex-start!important}
-				.mdo-catalog-summarybar__destination{margin-left:0!important}
+			.mdo-catalog-summarybar__destination strong{font-weight:700}
+			.mdo-catalog-summarybar__pin,
+			.mdo-catalog-summarybar__chevron{flex:0 0 auto}
+			.mdo-catalog-summarybar__chevron{opacity:.65}
+
+			@media (max-width:767px){
+				.mdo-catalog-summarybar{gap:8px;margin-bottom:12px}
+				.mdo-catalog-summarybar__count{font-size:12px}
+				.mdo-catalog-summarybar__destination{min-height:32px;padding:0 9px;font-size:12px}
+			}
+			@media (max-width:360px){
+				.mdo-catalog-summarybar{flex-wrap:wrap;justify-content:flex-start}
 			}
 		</style>
 		<?php
@@ -161,6 +145,10 @@ add_action(
 	PHP_INT_MAX
 );
 
+/**
+ * Único JS de esta barra: abrir el selector ya renderizado por la capa de destino.
+ * No observa, mueve ni reconstruye nodos del catálogo.
+ */
 add_action(
 	'wp_footer',
 	static function (): void {
@@ -171,44 +159,12 @@ add_action(
 		<script id="mdo-catalog-summarybar-visible-js-20260820">
 		(() => {
 			'use strict';
-			const placeBar = () => {
-				const bar = document.querySelector('[data-mdo-catalog-summarybar]');
-				if (!bar) return;
-				const ordering = document.querySelector('.woocommerce-ordering');
-				if (ordering && ordering.parentElement && bar.parentElement !== ordering.parentElement) {
-					const parent = ordering.parentElement;
-					const style = getComputedStyle(parent);
-					if (style.display.includes('flex')) parent.style.flexWrap = 'wrap';
-					parent.insertBefore(bar, ordering);
-					return;
-				}
-				const products = document.querySelector('ul.products');
-				if (products && products.parentElement && bar.nextElementSibling !== products) {
-					products.parentElement.insertBefore(bar, products);
-				}
-			};
-
-			const summaryOpen = document.querySelector('[data-mdo-summary-destination-open]');
-			if (summaryOpen) {
-				summaryOpen.addEventListener('click', () => {
-					const canonical = document.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]');
-					if (canonical) {
-						canonical.click();
-						return;
-					}
-					const modal = document.querySelector('[data-mdo-destination-modal]');
-					if (modal) {
-						modal.hidden = false;
-						modal.setAttribute('aria-hidden', 'false');
-						document.body.classList.add('mdo-destination-modal-open');
-					}
-				});
-			}
-
-			placeBar();
-			window.addEventListener('load', placeBar, {once:true});
-			window.addEventListener('resize', placeBar, {passive:true});
-			new MutationObserver(placeBar).observe(document.body, {childList:true, subtree:true});
+			const button = document.querySelector('[data-mdo-summary-destination-open]');
+			if (!button) return;
+			button.addEventListener('click', () => {
+				const canonical = document.querySelector('.mdo-catalog-destination--canonical [data-mdo-destination-open]');
+				if (canonical) canonical.click();
+			});
 		})();
 		</script>
 		<?php
