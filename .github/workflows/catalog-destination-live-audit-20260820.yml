@@ -1,0 +1,166 @@
+name: Catalog destination live audit
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/catalog-destination-live-audit-20260820.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          RESULT=success
+          NOTE='All production checks passed'
+          fail() { if [ "$RESULT" = success ]; then RESULT="$1"; NOTE="$2"; fi; }
+          mkdir -p .deploy-status
+
+          if [ -z "${STAGING_HOST:-}" ] || [ -z "${STAGING_USER:-}" ] || [ -z "${STAGING_PASSWORD:-}" ]; then
+            fail missing_credentials 'Production SSH credentials are missing'
+          fi
+
+          if [ "$RESULT" = success ]; then
+            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+            [ $? -eq 0 ] || fail sshpass_install_failed 'Could not install sshpass'
+          fi
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH=''
+          VERIFY=''
+          if [ "$RESULT" = success ]; then
+            PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+              wp_bin=$(command -v wp || true)
+              php_bin=$(command -v php || true)
+              [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+              for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+                p=$(dirname "$cfg")
+                url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+                case "$url" in
+                  https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+                esac
+              done
+            ' 2>/dev/null)"
+            [ -n "$PROD_PATH" ] || fail production_path_not_found 'Could not locate production WordPress'
+          fi
+
+          if [ "$RESULT" = success ]; then
+            VERIFY="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              wp_bin=\$(command -v wp || true)
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              test -f '$PROD_PATH/wp-content/mu-plugins/mdo-catalog-destination-frontend-20260820.php'
+              test -f '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php'
+              \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-catalog-destination-frontend-20260820.php' >/dev/null
+              \"\$php_bin\" -l '$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php' >/dev/null
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+                printf("EMDO=%s\\n", defined("MDO_SUPPLIER_SYNC_VERSION") ? MDO_SUPPLIER_SYNC_VERSION : "missing");
+                printf("SHIPPING=%s\\n", class_exists("MDO_Shipping_Destinations") ? "yes" : "no");
+                printf("RANKING=%s\\n", class_exists("MDO_Catalog_Ranking") ? "yes" : "no");
+                printf("FRONTEND=%s\\n", class_exists("MDO_Catalog_Destination_Frontend") ? "yes" : "no");
+              ' --path='$PROD_PATH' --allow-root
+            " 2>&1)"
+            code=$?
+            [ $code -eq 0 ] || fail remote_runtime_failed 'Production files or WordPress runtime verification failed'
+            printf '%s\n' "$VERIFY" | grep -Fq 'EMDO=1.0.18' || fail emdo_version_mismatch 'EMDO 1.0.18 is not active in production'
+            printf '%s\n' "$VERIFY" | grep -Fq 'SHIPPING=yes' || fail shipping_class_missing 'Shipping destination backend class is missing'
+            printf '%s\n' "$VERIFY" | grep -Fq 'RANKING=yes' || fail ranking_class_missing 'Ranking backend class is missing'
+            printf '%s\n' "$VERIFY" | grep -Fq 'FRONTEND=yes' || fail frontend_class_missing 'Destination frontend MU plugin is not loaded'
+          fi
+
+          SHOP="https://www.elmercadodeorigen.com/tienda/?mdo_live_audit=${GITHUB_RUN_ID}"
+          AJAX='https://www.elmercadodeorigen.com/wp-admin/admin-ajax.php'
+          JAR=/tmp/mdo-audit-cookies.txt
+          HTML=/tmp/mdo-audit-shop.html
+          NONCE=''
+          if [ "$RESULT" = success ]; then
+            curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO live audit' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -c "$JAR" -o "$HTML" "$SHOP"
+            [ $? -eq 0 ] || fail shop_http_failed 'Could not fetch live shop HTML'
+          fi
+          if [ "$RESULT" = success ]; then
+            grep -Fq 'data-mdo-destination-control' "$HTML" || fail selector_missing 'Destination selector is missing from live shop'
+            grep -Fq 'data-mdo-destination-modal' "$HTML" || fail modal_missing 'Destination modal is missing from live shop'
+            grep -Fq 'Envío a' "$HTML" || fail spanish_label_missing 'Spanish shipping label is missing'
+            NONCE="$(python3 - <<'PY'
+          import re
+          text=open('/tmp/mdo-audit-shop.html', encoding='utf-8', errors='ignore').read()
+          m=re.search(r'nonce:\s*"([A-Za-z0-9]+)"', text)
+          print(m.group(1) if m else '')
+          PY
+            )"
+            [ -n "$NONCE" ] || fail nonce_missing 'Could not find destination AJAX nonce'
+          fi
+
+          if [ "$RESULT" = success ]; then
+            for postcode in 51001 52001; do
+              out="/tmp/mdo-audit-${postcode}.json"
+              curl -sSL -A 'Mozilla/5.0 EMDO live audit' -b "$JAR" -c "$JAR" -X POST \
+                --data-urlencode 'action=mdo_set_shipping_destination' \
+                --data-urlencode "nonce=$NONCE" \
+                --data-urlencode 'country=ES' \
+                --data-urlencode "postcode=$postcode" \
+                -o "$out" "$AJAX"
+              python3 - "$out" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1], encoding='utf-8'))
+          ok=data.get('success') is False
+          message=str((data.get('data') or {}).get('message','')).lower()
+          raise SystemExit(0 if ok and 'ceuta' in message and 'melilla' in message else 1)
+          PY
+              [ $? -eq 0 ] || fail ceuta_melilla_not_blocked "Postcode $postcode was not rejected as expected"
+            done
+          fi
+
+          if [ "$RESULT" = success ]; then
+            VALID=/tmp/mdo-audit-valid.json
+            curl -fsSL -A 'Mozilla/5.0 EMDO live audit' -b "$JAR" -c "$JAR" -X POST \
+              --data-urlencode 'action=mdo_set_shipping_destination' \
+              --data-urlencode "nonce=$NONCE" \
+              --data-urlencode 'country=ES' \
+              --data-urlencode 'postcode=28001' \
+              -o "$VALID" "$AJAX"
+            [ $? -eq 0 ] || fail valid_postcode_http_failed 'Valid postcode request failed'
+            python3 - "$VALID" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1], encoding='utf-8'))
+          payload=data.get('data') or {}
+          raise SystemExit(0 if data.get('success') is True and payload.get('country')=='ES' and payload.get('postcode')=='28001' else 1)
+          PY
+            [ $? -eq 0 ] || fail valid_postcode_rejected 'Madrid postcode 28001 was not accepted'
+          fi
+
+          printf 'result=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nnote=%s\nruntime=%s\n' \
+            "$RESULT" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NOTE" "$(printf '%s' "$VERIFY" | tr '\n' ';')" \
+            > .deploy-status/catalog-destination-live-audit.txt
+          exit 0
+
+      - name: Record live audit result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -f .deploy-status/catalog-destination-live-audit.txt ] || { mkdir -p .deploy-status; printf 'result=runner_failed\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nnote=Audit step did not create a status file\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-status/catalog-destination-live-audit.txt; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-destination-live-audit.txt
+          git commit -m 'Record catalog destination live audit [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
