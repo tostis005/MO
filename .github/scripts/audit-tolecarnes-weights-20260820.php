@@ -1,5 +1,6 @@
 <?php
 /** Read-only production audit of Tolecarnes imported products and source weight data. */
+// Triggered after workflow registration on 2026-08-20.
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! class_exists( 'MDO_Database' ) ) { fwrite( STDERR, "ERROR: MDO database layer not loaded.\n" ); exit( 2 ); }
 
