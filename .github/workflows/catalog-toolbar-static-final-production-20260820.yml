@@ -1,0 +1,118 @@
+name: Catalog toolbar static final production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-catalog-toolbar-static-guard-20260820.php'
+      - 'mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
+      - 'mu-plugins/mdo-catalog-destination-modal-footer-20260820.php'
+      - '.github/workflows/catalog-toolbar-static-final-production-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PHP architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in mu-plugins/mdo-catalog-toolbar-static-guard-20260820.php mu-plugins/mdo-catalog-summarybar-visible-20260820.php mu-plugins/mdo-catalog-destination-modal-footer-20260820.php; do php -l "$f" >/dev/null; done
+          grep -q 'Intentionally no hooks' mu-plugins/mdo-catalog-destination-modal-footer-20260820.php
+          if grep -q 'MutationObserver' mu-plugins/mdo-catalog-summarybar-visible-20260820.php mu-plugins/mdo-catalog-toolbar-static-guard-20260820.php; then exit 1; fi
+          if grep -Eq 'insertBefore|appendChild|insertAdjacentElement|replaceWith' mu-plugins/mdo-catalog-summarybar-visible-20260820.php mu-plugins/mdo-catalog-toolbar-static-guard-20260820.php; then exit 1; fi
+          if grep -q '<script' mu-plugins/mdo-catalog-summarybar-visible-20260820.php mu-plugins/mdo-catalog-toolbar-static-guard-20260820.php; then exit 1; fi
+
+      - name: Deploy three MU plugins
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?}"
+          for name in mdo-catalog-toolbar-static-guard-20260820.php mdo-catalog-summarybar-visible-20260820.php mdo-catalog-destination-modal-footer-20260820.php; do
+            tmp="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"; target="$PROD_PATH/wp-content/mu-plugins/$name"
+            sshpass -e scp $SCP_OPTIONS "mu-plugins/$name" "$STAGING_USER@$STAGING_HOST:$tmp"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$tmp' >/dev/null && cp '$tmp' '$target' && rm -f '$tmp'"
+          done
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Install browser
+        shell: bash
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save --no-audit --no-fund playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Browser verification
+        id: browser
+        shell: bash
+        run: |
+          set +e
+          mkdir -p artifacts
+          node <<'NODE'
+          const fs=require('fs');const{chromium}=require('playwright');
+          const out={result:'failed',desktop:0,tablet:0,portrait:0,narrow:0,landscape:0,inside_toolbar:0,single_count:0,no_overflow:0,two_rows_mobile:0,legacy_geometry_script_absent:0,hover_readable:0,modal_opens:0,other_country:0,products:0,note:''};
+          (async()=>{const browser=await chromium.launch({headless:true});const cs=[];try{const views=[['desktop',1440,900],['tablet',768,1024],['portrait',390,844],['narrow',360,800],['landscape',844,390]],snaps={};for(const[v,w,h]of views){const c=await browser.newContext({viewport:{width:w,height:h}});cs.push(c);const p=await c.newPage();await p.goto(`https://www.elmercadodeorigen.com/tienda/?static_toolbar=${process.env.GITHUB_RUN_ID||Date.now()}&vp=${v}`,{waitUntil:'domcontentloaded',timeout:45000});await p.waitForSelector('.woostify-sorting.emo-catalog-toolbar-shared-010229',{state:'visible',timeout:20000});await p.waitForSelector('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger',{state:'visible',timeout:20000});await p.waitForTimeout(600);snaps[v]=await p.evaluate(()=>{const vis=e=>{if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0};const r=e=>e?e.getBoundingClientRect().toJSON():null;const t=document.querySelector('.woostify-sorting.emo-catalog-toolbar-shared-010229'),l=t?.querySelector(':scope>.woostify-toolbar-left'),count=t?.querySelector('.emo-catalog-result-count-010220'),dest=t?.querySelector('.mdo-catalog-destination__trigger'),order=t?.querySelector('.woocommerce-ordering'),tr=t?.getBoundingClientRect();const fits=e=>{if(!e||!tr)return false;const x=e.getBoundingClientRect();return x.left>=tr.left-1.5&&x.right<=tr.right+1.5};const counts=[...new Set([...document.querySelectorAll('.woocommerce-result-count,.emo-catalog-result-count-010220,[data-mdo-summary-count],[data-mdo-toolbar-count]')])].filter(vis);return{good:[t,count,dest,order].every(vis)&&[count,dest,order].every(fits)&&t.contains(count)&&t.contains(dest)&&t.contains(order),inside:t?.contains(dest)&&t?.contains(count)&&t?.contains(order),countN:counts.length,bodyDest:!!document.querySelector('body>.mdo-catalog-destination--canonical'),overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+2,legacy:!!document.getElementById('elmercado-catalog-mobile-controls-parity-script-010236'),t:r(t),l:r(l),c:r(count),d:r(dest),o:r(order),display:t?getComputedStyle(t).display:'',products:document.querySelectorAll('li.product').length}});await p.screenshot({path:`artifacts/static-toolbar-${v}.png`,fullPage:false});if(v==='desktop'){const b=p.locator('.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination__trigger');await b.hover();const hvr=await b.evaluate(e=>({c:getComputedStyle(e).color,k:[...e.children].map(x=>getComputedStyle(x).color)}));const white=x=>/rgb\(255,\s*255,\s*255\)/.test(x||'');out.hover_readable=!white(hvr.c)&&hvr.k.every(x=>!white(x))?1:0;await b.click();await p.waitForFunction(()=>{const m=document.querySelector('[data-mdo-destination-modal]');if(!m||m.hidden)return false;const s=getComputedStyle(m),r=m.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0},null,{timeout:7000});out.modal_opens=1;const opts=await p.locator('[data-mdo-destination-country] option').evaluateAll(a=>a.map(x=>x.value).filter(Boolean));out.other_country=opts.some(x=>x!=='ES')?1:0}}
+          const good=s=>s.good&&s.inside&&s.countN===1&&!s.bodyDest&&!s.overflow&&!s.legacy;for(const n of['desktop','tablet','portrait','narrow','landscape'])out[n]=good(snaps[n])?1:0;out.inside_toolbar=Object.values(snaps).every(s=>s.inside&&!s.bodyDest)?1:0;out.single_count=Object.values(snaps).every(s=>s.countN===1)?1:0;out.no_overflow=Object.values(snaps).every(s=>!s.overflow&&s.good)?1:0;out.two_rows_mobile=snaps.portrait.o?.top>=snaps.portrait.l?.bottom-2&&snaps.narrow.o?.top>=snaps.narrow.l?.bottom-2?1:0;out.legacy_geometry_script_absent=Object.values(snaps).every(s=>!s.legacy)?1:0;out.products=snaps.desktop.products;const checks=[out.desktop,out.tablet,out.portrait,out.narrow,out.landscape,out.inside_toolbar,out.single_count,out.no_overflow,out.two_rows_mobile,out.legacy_geometry_script_absent,out.hover_readable,out.modal_opens,out.other_country];if(checks.every(Boolean)&&out.products>0){out.result='success';out.note='Static responsive toolbar passed five viewports.'}else out.note='Failed snapshots: '+JSON.stringify(snaps)}catch(e){out.note=(e.stack||String(e)).replace(/\n/g,' | ')}finally{for(const c of cs){try{await c.close()}catch(_){}}await browser.close();fs.writeFileSync('/tmp/static-toolbar.json',JSON.stringify(out,null,2));console.log(JSON.stringify(out,null,2))}})();
+          NODE
+          [ -s /tmp/static-toolbar.json ] || printf '{"result":"failed","note":"missing status"}\n'>/tmp/static-toolbar.json
+          echo "result=$(python3 -c "import json;print(json.load(open('/tmp/static-toolbar.json')).get('result','failed'))")" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record status
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os,datetime
+          try:d=json.load(open('/tmp/static-toolbar.json'))
+          except Exception as e:d={'result':'failed','note':str(e)}
+          keys=['result','desktop','tablet','portrait','narrow','landscape','inside_toolbar','single_count','no_overflow','two_rows_mobile','legacy_geometry_script_absent','hover_readable','modal_opens','other_country','products','note']
+          lines=[f'source_commit={os.environ.get("GITHUB_SHA","")}',f'workflow_run={os.environ.get("GITHUB_RUN_ID","")}',f'checked_at={datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}']+[f'{k}={d.get(k,"")}' for k in keys]
+          open('.deploy-status/catalog-toolbar-static-final-live.txt','w').write('\n'.join(lines)+'\n')
+          PY
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-toolbar-static-final-live.txt
+          git commit -m 'Record static catalog toolbar production check [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-catalog-toolbar-${{ github.run_id }}
+          path: artifacts/static-toolbar-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Fail on regression
+        if: steps.browser.outputs.result != 'success'
+        run: exit 1
