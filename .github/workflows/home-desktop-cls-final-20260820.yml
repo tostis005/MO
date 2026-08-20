@@ -1,0 +1,107 @@
+name: Home desktop CLS final 20260820
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-desktop-cls-final-20260820.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: home-desktop-cls-final-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - name: Validate plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-home-desktop-cls-final-20260820.php
+
+      - name: Deploy plugin and rebuild Home cache
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')"
+          : "${PROD:?production path not found}"
+          echo "$PROD" >/tmp/prod-cls-final
+          sshpass -e scp $SCP mu-plugins/mdo-home-desktop-cls-final-20260820.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-home-desktop-cls-final-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e;MU='$PROD/wp-content/mu-plugins';if [ -f \"\$MU/mdo-home-desktop-cls-final-20260820.php\" ];then cp \"\$MU/mdo-home-desktop-cls-final-20260820.php\" /tmp/mdo-home-desktop-cls-final-before-${GITHUB_RUN_ID}.php;echo 1 >/tmp/mdo-home-desktop-cls-final-existed-${GITHUB_RUN_ID};else echo 0 >/tmp/mdo-home-desktop-cls-final-existed-${GITHUB_RUN_ID};fi;install -m0644 /tmp/mdo-home-desktop-cls-final-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-desktop-cls-final-20260820.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          for i in 1 2 3; do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null; done
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home-cls-final.html
+          grep -q 'mdo-home-desktop-cls-final-20260820' /tmp/home-cls-final.html
+
+      - name: Measure desktop 3x and mobile guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' >/tmp/cls-final.json
+          const puppeteer=require('puppeteer-core');
+          async function measure(browser,width,height){
+            const page=await browser.newPage();
+            await page.setViewport({width,height,deviceScaleFactor:1});
+            await page.evaluateOnNewDocument(()=>{window.__cls=0;window.__shifts=[];new PerformanceObserver(list=>{for(const e of list.getEntries()){if(!e.hadRecentInput){window.__cls+=e.value;window.__shifts.push({value:e.value,time:e.startTime,sources:(e.sources||[]).map(s=>{const n=s.node;if(!n||!n.tagName)return '';let x=n.tagName.toLowerCase();if(n.id)x+='#'+n.id;if(n.classList&&n.classList.length)x+='.'+[...n.classList].slice(0,4).join('.');return x;})});}}}).observe({type:'layout-shift',buffered:true});});
+            await page.goto('https://www.elmercadodeorigen.com/',{waitUntil:'load',timeout:60000});
+            await new Promise(r=>setTimeout(r,7000));
+            const data=await page.evaluate(()=>({cls:window.__cls,shifts:window.__shifts.sort((a,b)=>b.value-a.value).slice(0,5)}));
+            await page.close();return data;
+          }
+          (async()=>{const browser=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});const desktop=[];for(let i=0;i<3;i++)desktop.push(await measure(browser,1350,940));const mobile=await measure(browser,412,915);await browser.close();console.log(JSON.stringify({desktop,mobile}));})().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          python3 - <<'PY' | tee runtime/home-desktop-cls-final-20260820.txt
+          import json,statistics
+          d=json.load(open('/tmp/cls-final.json'))
+          vals=[x['cls'] for x in d['desktop']]
+          print('desktop_cls=',vals)
+          print('desktop_median=',statistics.median(vals))
+          print('desktop_max=',max(vals))
+          for i,x in enumerate(d['desktop'],1): print('desktop_run',i,'top_shifts=',x['shifts'])
+          print('mobile_cls=',d['mobile']['cls'])
+          print('mobile_top_shifts=',d['mobile']['shifts'])
+          keep=max(vals)<0.05 and statistics.median(vals)<0.025 and d['mobile']['cls']<0.02
+          print('keep=',str(keep).lower())
+          open('/tmp/keep-cls-final','w').write('1' if keep else '0')
+          PY
+
+      - name: Keep or rollback
+        if: always()
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          K=$(cat /tmp/keep-cls-final 2>/dev/null || echo 0)
+          PROD=$(cat /tmp/prod-cls-final 2>/dev/null || true)
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "$K" != 1 ] && [ -n "$PROD" ]; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';EX=\$(cat /tmp/mdo-home-desktop-cls-final-existed-${GITHUB_RUN_ID} 2>/dev/null||echo 0);if [ \"\$EX\" = 1 ];then install -m0644 /tmp/mdo-home-desktop-cls-final-before-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-desktop-cls-final-20260820.php\";else rm -f \"\$MU/mdo-home-desktop-cls-final-20260820.php\";fi;php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+            rm -f mu-plugins/mdo-home-desktop-cls-final-20260820.php
+          fi
+          mkdir -p runtime
+          [ -f runtime/home-desktop-cls-final-20260820.txt ] || echo failed > runtime/home-desktop-cls-final-20260820.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A mu-plugins/mdo-home-desktop-cls-final-20260820.php runtime/home-desktop-cls-final-20260820.txt 2>/dev/null || true
+          git commit -m 'Record final desktop Home CLS validation' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
