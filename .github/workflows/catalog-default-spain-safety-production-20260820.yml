@@ -67,7 +67,7 @@ jobs:
             [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
           "
 
-      - name: Verify neutral initial shop
+      - name: Verify neutral initial shop and selector
         id: verify
         shell: bash
         run: |
@@ -77,21 +77,29 @@ jobs:
           curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO default Spain verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$HTML" "$URL"
           CURL_CODE=$?
           PRODUCT_COUNT=0
+          SELECTOR_COUNT=0
+          SPAIN_DEFAULT=0
           if [ $CURL_CODE -eq 0 ]; then
-            PRODUCT_COUNT=$(python3 - <<'PY'
+            read -r PRODUCT_COUNT SELECTOR_COUNT SPAIN_DEFAULT <<EOF
+          $(python3 - <<'PY'
           import re
           s=open('/tmp/mdo-default-spain.html',encoding='utf-8',errors='ignore').read()
-          matches=re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>', s, flags=re.I)
-          print(len(matches))
+          products=len(re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*["\'][^>]*>', s, flags=re.I))
+          selectors=len(re.findall(r'data-mdo-destination-control(?:\s|>|=)', s, flags=re.I))
+          spain=1 if re.search(r'Envío\s+a\s*</?[^>]*>?\s*<strong>España</strong>|Envío\s+a[^<]{0,20}España', s, flags=re.I) else 0
+          print(products, selectors, spain)
           PY
-            )
+          )
+          EOF
           fi
           RESULT=success
-          NOTE="Default Spain shop returns products"
+          NOTE="Default Spain shop returns products and one Spain selector"
           if [ $CURL_CODE -ne 0 ]; then RESULT=http_error; NOTE="Could not fetch live shop"; fi
           if [ "$PRODUCT_COUNT" -lt 1 ]; then RESULT=no_products; NOTE="Live default shop still returns zero product cards"; fi
+          if [ "$SELECTOR_COUNT" -ne 1 ]; then RESULT=selector_count_wrong; NOTE="Expected exactly one destination selector"; fi
+          if [ "$SPAIN_DEFAULT" -ne 1 ]; then RESULT=spain_default_missing; NOTE="Destination selector does not visibly default to Spain"; fi
           mkdir -p .deploy-status
-          printf 'result=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nproduct_cards=%s\nnote=%s\n' "$RESULT" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PRODUCT_COUNT" "$NOTE" > .deploy-status/catalog-default-spain-hotfix.txt
+          printf 'result=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nproduct_cards=%s\nselector_count=%s\nspain_default=%s\nnote=%s\n' "$RESULT" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PRODUCT_COUNT" "$SELECTOR_COUNT" "$SPAIN_DEFAULT" "$NOTE" > .deploy-status/catalog-default-spain-hotfix.txt
           echo "result=$RESULT" >> "$GITHUB_OUTPUT"
           exit 0
 
@@ -107,6 +115,6 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
-      - name: Fail if shop is still empty
+      - name: Fail if default shop or selector is wrong
         if: steps.verify.outputs.result != 'success'
         run: exit 1
