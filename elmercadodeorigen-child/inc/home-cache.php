@@ -169,7 +169,16 @@ function elmercado_optimize_home_document_for_first_paint( string $html ): strin
 		return $html;
 	}
 
-	$critical_tag = '<style id="elmercado-home-first-view-css">' . $critical . '</style>';
+	/*
+	 * Woostify imprime el drawer móvil en el HTML aunque esté cerrado. Como su
+	 * geometría final vive en CSS que diferimos, el drawer podía participar en
+	 * el primer layout y después salir del flujo, provocando un CLS de 1.000.
+	 * Esta reserva reproduce el estado cerrado antes de cualquier paint. El
+	 * atributo data-emo-menu-intent se añade sincrónicamente en el click real,
+	 * por lo que no bloquea la apertura del menú por parte del usuario.
+	 */
+	$drawer_guard = '@media(min-width:992px){body.home #mobile-navigation.sidebar-menu,body.home .sidebar-menu{display:none!important;position:fixed!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;transform:translate3d(-105%,0,0)!important;transition:none!important}}@media(max-width:991px){body.home #mobile-navigation.sidebar-menu{position:fixed!important;top:0!important;bottom:0!important;left:0!important;width:min(88vw,360px)!important;height:100dvh!important;max-height:100dvh!important;margin:0!important;overflow-y:auto!important;z-index:99999!important;contain:layout paint}body.home #mobile-navigation.sidebar-menu[aria-hidden="true"],html:not([data-emo-menu-intent="1"]) body.home #mobile-navigation.sidebar-menu{visibility:hidden!important;opacity:0!important;pointer-events:none!important;transform:translate3d(-105%,0,0)!important;transition:none!important}}';
+	$critical_tag = '<style id="elmercado-home-first-view-css">' . $drawer_guard . $critical . '</style>';
 	$css_url      = esc_url( elmercado_home_deferred_css_url() );
 	$deferred_tag = '<link id="elmercado-home-deferred-css" rel="preload" as="style" href="' . $css_url . '" onload="this.onload=null;this.rel=\'stylesheet\'">'
 		. '<noscript><link rel="stylesheet" href="' . $css_url . '"></noscript>';
