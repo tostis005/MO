@@ -41,11 +41,16 @@ jobs:
           RESULT="success"
           VERSION="unknown"
           NOTE=""
+          EXPECTED_VERSION="$(sed -n 's/^ \* Version: //p' mdo-supplier-sync/mdo-supplier-sync.php | head -n1 | tr -d '\r')"
 
           fail() {
             RESULT="$1"
             NOTE="$2"
           }
+
+          if [ -z "$EXPECTED_VERSION" ]; then
+            fail "expected_version_not_found" "Could not read EMDO version from plugin header"
+          fi
 
           if [ -z "${STAGING_HOST:-}" ] || [ -z "${STAGING_USER:-}" ] || [ -z "${STAGING_PASSWORD:-}" ]; then
             fail "missing_credentials" "Required production SSH secrets are missing"
@@ -112,12 +117,12 @@ jobs:
               VERSION="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^VERSION=//p' | tail -n1)"
               PLUGIN_STATUS="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^STATUS=//p' | tail -n1)"
               [ -n "$VERSION" ] || VERSION="unknown"
-              if [ "$VERSION" != "1.0.16" ]; then
-                fail "version_mismatch" "Production reports a different EMDO version"
+              if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
+                fail "version_mismatch" "Production reports EMDO $VERSION but repository expects $EXPECTED_VERSION"
               elif [ "$PLUGIN_STATUS" != "active" ]; then
                 fail "plugin_not_active" "EMDO is deployed but WordPress does not report it active"
               else
-                NOTE="EMDO 1.0.16 deployed and active in production"
+                NOTE="EMDO $EXPECTED_VERSION deployed and active in production"
               fi
             fi
           fi
