@@ -215,6 +215,14 @@ final class MDO_Catalog_Destination_Frontend {
 		if ( self::$building_rank || is_admin() || ! self::is_catalog_query( $query ) ) {
 			return;
 		}
+
+		/* El destino se aplica siempre, incluso si un administrador prueba el frontend o se usa otro orderby. */
+		$shipping_excluded = self::excluded_vendor_ids();
+		if ( $shipping_excluded ) {
+			$current_excluded = array_values( array_filter( array_map( 'absint', (array) $query->get( 'author__not_in' ) ) ) );
+			$query->set( 'author__not_in', array_values( array_unique( array_merge( $current_excluded, $shipping_excluded ) ) ) );
+		}
+
 		if ( isset( $_GET['orderby'] ) && '' !== sanitize_text_field( wp_unslash( $_GET['orderby'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			return;
 		}
