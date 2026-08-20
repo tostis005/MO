@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Recommended Order
  * Description: Makes the EMDO multi-factor ranking the canonical default WooCommerce catalogue order while preserving explicit customer sorting choices.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -44,7 +44,7 @@ final class MDO_Catalog_Recommended_Order_20260820 {
 	/**
 	 * WooCommerce does not know our custom key natively. Give it a harmless
 	 * temporary SQL order; the main catalogue query is replaced with post__in by
-		 * the EMDO rank hook at priority 1600/1700 before SQL execution.
+	 * the EMDO rank hook at priority 1600/1700 before SQL execution.
 	 */
 	public static function safe_ordering_args( array $args, string $orderby, string $order ): array {
 		unset( $order );
