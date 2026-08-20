@@ -5,10 +5,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class MDO_Huerta_Defaults {
-	private const BASE_CATEGORY_SLUG      = 'hortalizas-verduras';
-	private const CONSERVAS_CATEGORY_SLUG = 'conservas';
-	private const CONSERVAS_URL_FRAGMENT  = '/conservas-3/';
-	private const SOURCE_HOSTS             = array( 'lahuertadeanamary.com', 'www.lahuertadeanamary.com' );
+	private const BASE_CATEGORY_SLUG       = 'hortalizas-verduras';
+	private const CONSERVAS_CATEGORY_SLUG  = 'conservas';
+	private const LEGUMBRES_CATEGORY_SLUG  = 'legumbres';
+	private const UNCATEGORIZED_SLUG       = 'sin-categorizar';
+	private const CONSERVAS_URL_FRAGMENT   = '/conservas-3/';
+	private const LEGUMBRES_URL_FRAGMENT   = '/legumbres-10/';
+	private const SOURCE_HOSTS              = array( 'lahuertadeanamary.com', 'www.lahuertadeanamary.com' );
 
 	public static function init(): void {
 		add_action( 'save_post_product', array( __CLASS__, 'on_product_save' ), 30, 3 );
@@ -21,14 +24,14 @@ final class MDO_Huerta_Defaults {
 		if ( wp_is_post_revision( $post_id ) || 'product' !== $post->post_type ) {
 			return;
 		}
-		self::assign_categories_if_huerta( $post_id );
+		self::apply_to_product( $post_id );
 	}
 
 	public static function on_post_meta( int $meta_id, int $object_id, string $meta_key, mixed $meta_value ): void {
 		if ( ! in_array( $meta_key, array( '_emdo_supplier_id', '_emdo_source_url' ), true ) || 'product' !== get_post_type( $object_id ) ) {
 			return;
 		}
-		self::assign_categories_if_huerta( $object_id );
+		self::apply_to_product( $object_id );
 	}
 
 	public static function image_request_args( array $args, string $url ): array {
@@ -47,32 +50,49 @@ final class MDO_Huerta_Defaults {
 		return $args;
 	}
 
-	private static function assign_categories_if_huerta( int $product_id ): void {
+	/**
+	 * La familia del proveedor es excluyente a este nivel: una conserva no debe
+	 * arrastrar Hortalizas/Verduras y una legumbre seca tampoco. Se conservan
+	 * otras categorías editoriales que pueda haber asignado EMDO, pero se limpia
+	 * siempre "Sin categorizar".
+	 */
+	public static function apply_to_product( int $product_id ): void {
 		$source_url = trim( (string) get_post_meta( $product_id, '_emdo_source_url', true ) );
 		if ( ! self::is_huerta_product( $product_id, $source_url ) ) {
 			return;
 		}
 
-		$base_term = get_term_by( 'slug', self::BASE_CATEGORY_SLUG, 'product_cat' );
-		if ( $base_term && ! is_wp_error( $base_term ) ) {
-			wp_set_object_terms( $product_id, array( (int) $base_term->term_id ), 'product_cat', true );
-		}
-
-		if ( '' === $source_url ) {
+		$desired_slug = self::family_slug( $source_url );
+		$desired_term = get_term_by( 'slug', $desired_slug, 'product_cat' );
+		if ( ! $desired_term || is_wp_error( $desired_term ) ) {
 			return;
 		}
 
-		$conservas_term = get_term_by( 'slug', self::CONSERVAS_CATEGORY_SLUG, 'product_cat' );
-		if ( ! $conservas_term || is_wp_error( $conservas_term ) ) {
+		$result = wp_set_object_terms( $product_id, array( (int) $desired_term->term_id ), 'product_cat', true );
+		if ( is_wp_error( $result ) ) {
 			return;
 		}
 
-		if ( str_contains( strtolower( $source_url ), self::CONSERVAS_URL_FRAGMENT ) ) {
-			wp_set_object_terms( $product_id, array( (int) $conservas_term->term_id ), 'product_cat', true );
-			return;
+		foreach ( array( self::BASE_CATEGORY_SLUG, self::CONSERVAS_CATEGORY_SLUG, self::LEGUMBRES_CATEGORY_SLUG, self::UNCATEGORIZED_SLUG ) as $slug ) {
+			if ( $slug === $desired_slug ) {
+				continue;
+			}
+			$term = get_term_by( 'slug', $slug, 'product_cat' );
+			if ( $term && ! is_wp_error( $term ) ) {
+				wp_remove_object_terms( $product_id, (int) $term->term_id, 'product_cat' );
+			}
 		}
+	}
 
-		wp_remove_object_terms( $product_id, (int) $conservas_term->term_id, 'product_cat' );
+	private static function family_slug( string $source_url ): string {
+		$source_url = strtolower( $source_url );
+		if ( str_contains( $source_url, self::CONSERVAS_URL_FRAGMENT ) ) {
+			return self::CONSERVAS_CATEGORY_SLUG;
+		}
+		if ( str_contains( $source_url, self::LEGUMBRES_URL_FRAGMENT ) ) {
+			return self::LEGUMBRES_CATEGORY_SLUG;
+		}
+		return self::BASE_CATEGORY_SLUG;
 	}
 
 	private static function is_huerta_product( int $product_id, string $source_url ): bool {
