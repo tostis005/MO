@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Default Spain Safety
  * Description: Keeps the default Spain catalogue neutral: no destination filtering until the customer chooses a postcode or another country.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -53,8 +53,8 @@ add_action(
 			return;
 		}
 
-		$post_in = array_values( array_filter( array_map( 'absint', (array) $query->get( 'post__in' ) ) ) );
-		if ( array( 0 ) === $post_in || ( 1 === count( (array) $query->get( 'post__in' ) ) && 0 === absint( reset( $query->query_vars['post__in'] ) ) ) ) {
+		$raw_post_in = array_values( (array) $query->get( 'post__in' ) );
+		if ( 1 === count( $raw_post_in ) && 0 === absint( $raw_post_in[0] ) ) {
 			$query->set( 'post__in', array() );
 			if ( 'post__in' === $query->get( 'orderby' ) ) {
 				$query->set( 'orderby', 'menu_order title' );
