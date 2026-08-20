@@ -6,6 +6,7 @@ on:
     branches: [ main ]
     paths:
       - '.github/workflows/actions-smoke-20260818.yml'
+      - 'runtime/mdo-mailtest-recipient-20260820.enc'
 
 permissions:
   contents: write
@@ -22,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check or send one-time test through production WordPress
+      - name: Prepare secure channel or send mail
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -30,10 +31,37 @@ jobs:
           set -euo pipefail
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          sudo apt-get install -y --no-install-recommends sshpass openssl >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PRIVATE_REMOTE="$HOME/.mdo-mailtest-private-20260820.pem"
+          PUB='runtime/mdo-mailtest-public-20260820.pem'
+          ENC='runtime/mdo-mailtest-recipient-20260820.enc'
+          STATUS='runtime/mdo-mail-test-status-20260820.txt'
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p runtime
+
+          if [ ! -f "$PUB" ]; then
+            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/mdo-mailtest-private.pem >/dev/null 2>&1
+            openssl pkey -in /tmp/mdo-mailtest-private.pem -pubout -out "$PUB"
+            sshpass -e scp $SCP_OPTIONS /tmp/mdo-mailtest-private.pem "$STAGING_USER@$STAGING_HOST:.mdo-mailtest-private-20260820.pem"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "chmod 600 .mdo-mailtest-private-20260820.pem"
+            rm -f /tmp/mdo-mailtest-private.pem
+            git add "$PUB"
+            git commit -m 'Prepare encrypted WordPress mail test recipient channel'
+            git pull --rebase origin main
+            git push origin HEAD:main
+            echo 'STATUS=public_key_ready'
+            exit 0
+          fi
+
+          if [ ! -f "$ENC" ]; then
+            echo 'STATUS=waiting_for_encrypted_recipient'
+            exit 0
+          fi
 
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
@@ -45,78 +73,56 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          cat > /tmp/mdo-send-mail.php <<'PHP'
+          ENC_REMOTE="/tmp/mdo-mailtest-recipient-${GITHUB_RUN_ID}.enc"
+          EMAIL_REMOTE="/tmp/mdo-mailtest-recipient-${GITHUB_RUN_ID}.txt"
+          PHP_REMOTE="/tmp/mdo-mailtest-send-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS "$ENC" "$STAGING_USER@$STAGING_HOST:$ENC_REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            test -f .mdo-mailtest-private-20260820.pem
+            openssl pkeyutl -decrypt -inkey .mdo-mailtest-private-20260820.pem -in '$ENC_REMOTE' -out '$EMAIL_REMOTE'
+            chmod 600 '$EMAIL_REMOTE'
+          "
+
+          cat > /tmp/mdo-mailtest-send.php <<PHP
           <?php
-          $wanted_hash = '1bc71a4b79293d6ab2ab59c465e20c2d7250ef7a97d68d99af75ed0dafff40e7';
-          $guard = 'mdo_mail_test_20260820_sent';
-
-          if (get_option($guard)) {
-              echo "STATUS=already_sent\n";
-              return;
-          }
-
-          $candidates = [];
-          $add = static function ($email) use (&$candidates) {
-              $email = strtolower(trim((string) $email));
-              if ($email !== '' && is_email($email)) $candidates[$email] = true;
-          };
-          $add(get_option('admin_email'));
-          foreach (get_users(['fields' => ['user_email']]) as $user) $add($user->user_email ?? '');
-
-          global $wpdb;
-          $tables = array_fill_keys(array_map('strval', (array) $wpdb->get_col('SHOW TABLES')), true);
-          $fluent = $wpdb->prefix . 'fc_subscribers';
-          if (isset($tables[$fluent])) foreach ((array) $wpdb->get_col("SELECT email FROM `{$fluent}` WHERE email IS NOT NULL AND email <> ''") as $email) $add($email);
-          $orders = $wpdb->prefix . 'wc_order_addresses';
-          if (isset($tables[$orders])) foreach ((array) $wpdb->get_col("SELECT DISTINCT email FROM `{$orders}` WHERE email IS NOT NULL AND email <> ''") as $email) $add($email);
-          $postmeta = $wpdb->postmeta;
-          if (isset($tables[$postmeta])) foreach ((array) $wpdb->get_col($wpdb->prepare("SELECT DISTINCT meta_value FROM `{$postmeta}` WHERE meta_key = %s AND meta_value <> ''", '_billing_email')) as $email) $add($email);
-
-          $to = '';
-          foreach (array_keys($candidates) as $email) {
-              if (hash_equals($wanted_hash, hash('sha256', $email))) { $to = $email; break; }
-          }
-          if ($to === '') { echo "STATUS=recipient_not_found\n"; return; }
-
-          $mail_error = '';
-          add_action('wp_mail_failed', static function ($error) use (&$mail_error) {
-              if (is_wp_error($error)) $mail_error = preg_replace('/[\r\n]+/', ' ', $error->get_error_message());
+          \$recipient_file = '$EMAIL_REMOTE';
+          \$to = strtolower(trim((string) @file_get_contents(\$recipient_file)));
+          \$guard = 'mdo_mail_test_20260820_sent_v2';
+          if (get_option(\$guard)) { echo "STATUS=already_sent\n"; return; }
+          if (!is_email(\$to)) { echo "STATUS=invalid_recipient\n"; return; }
+          \$mail_error = '';
+          add_action('wp_mail_failed', static function (\$error) use (&\$mail_error) {
+              if (is_wp_error(\$error)) \$mail_error = preg_replace('/[\\r\\n]+/', ' ', \$error->get_error_message());
           });
-
-          $subject = 'Propuesta de colaboración con El Mercado de Origen';
-          $body = '<p>Hola José,</p>'
+          \$subject = 'Propuesta de colaboración con El Mercado de Origen';
+          \$body = '<p>Hola José,</p>'
               . '<p>Te escribo desde <strong>El Mercado de Origen</strong>, un marketplace en el que reunimos productos seleccionados de productores españoles y los acercamos directamente al consumidor.</p>'
               . '<p>Estamos empezando a trabajar con creadores y perfiles relacionados con gastronomía mediante un sistema de afiliación sencillo: cada colaborador dispone de su propio enlace y recibe una comisión por las compras que genere.</p>'
               . '<p>No hay compromiso de publicaciones ni exclusividad. La idea es que puedan recomendar productos concretos cuando encajen de forma natural con su contenido y obtener una comisión por las ventas que lleguen a través de sus recomendaciones.</p>'
               . '<p><strong>Este es un correo de prueba</strong> enviado directamente desde el sistema de correo de nuestra web para comprobar que el envío corporativo funciona correctamente.</p>'
               . '<p>Un saludo,<br><strong>El Mercado de Origen</strong><br>www.elmercadodeorigen.com</p>';
-
-          $ok = wp_mail($to, $subject, $body, ['Content-Type: text/html; charset=UTF-8']);
-          if (!$ok) {
+          \$ok = wp_mail(\$to, \$subject, \$body, ['Content-Type: text/html; charset=UTF-8']);
+          if (!\$ok) {
               echo "STATUS=wp_mail_failed\n";
-              if ($mail_error) echo "DETAIL={$mail_error}\n";
+              if (\$mail_error) echo 'DETAIL=' . \$mail_error . "\n";
               return;
           }
-          update_option($guard, gmdate('c'), false);
+          update_option(\$guard, gmdate('c'), false);
           echo "STATUS=sent\n";
           PHP
 
-          tmp="/tmp/mdo-send-mail-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS /tmp/mdo-send-mail.php "$STAGING_USER@$STAGING_HOST:$tmp"
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-mailtest-send.php "$STAGING_USER@$STAGING_HOST:$PHP_REMOTE"
           OUTPUT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             wp_bin=\$(command -v wp || true)
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$tmp' --path='$PROD_PATH' --allow-root
-            rc=\$?
-            rm -f '$tmp'
-            exit \$rc
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$PHP_REMOTE' --path='$PROD_PATH' --allow-root
           ")"
           printf '%s\n' "$OUTPUT"
-          mkdir -p runtime
-          printf 'checked_at=%s\n%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OUTPUT" > runtime/mdo-mail-test-status-20260820.txt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add runtime/mdo-mail-test-status-20260820.txt
-          git commit -m 'Record WordPress mail test status' || true
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$ENC_REMOTE' '$EMAIL_REMOTE' '$PHP_REMOTE' .mdo-mailtest-private-20260820.pem"
+          printf 'checked_at=%s\n%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OUTPUT" > "$STATUS"
+          git add "$STATUS"
+          git commit -m 'Record encrypted WordPress mail test result' || true
+          git pull --rebase origin main
           git push origin HEAD:main
