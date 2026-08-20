@@ -43,17 +43,18 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" > /tmp/toolbar-source.txt <<'REMOTE'
           set -euo pipefail
           THEME="$PROD_PATH/wp-content/themes/woostify"
+          CLASS="$THEME/inc/woocommerce/class-woostify-woocommerce.php"
           printf 'theme=%s\n' "$THEME"
-          printf '%s\n' '--- files containing woostify-toolbar-left / woostify-sorting ---'
-          grep -R -n -E 'woostify-toolbar-left|woostify-sorting' "$THEME" --include='*.php' 2>/dev/null | head -n 80 || true
-          printf '%s\n' '--- contextual PHP snippets ---'
-          mapfile -t files < <(grep -R -l -E 'woostify-toolbar-left|woostify-sorting' "$THEME" --include='*.php' 2>/dev/null | head -n 12)
-          for f in "${files[@]}"; do
-            printf '\n### %s\n' "${f#$PROD_PATH/}"
-            nl -ba "$f" | grep -B 18 -A 28 -E 'woostify-toolbar-left|woostify-sorting' | head -n 180 || true
-          done
-          printf '%s\n' '--- before_shop_loop hooks touching sort/count ---'
-          grep -R -n -E "woocommerce_before_shop_loop.*(sorting|result|order)|add_action\(.woocommerce_before_shop_loop" "$THEME" --include='*.php' 2>/dev/null | head -n 120 || true
+          printf '%s\n' '--- exact archive hook registration block ---'
+          nl -ba "$CLASS" | sed -n '880,930p'
+          printf '%s\n' '--- toolbar-left registrations anywhere ---'
+          grep -R -n -E 'woostify_woocommerce_toolbar_left_(open|close)_div|woocommerce_catalog_ordering|woocommerce_result_count' "$THEME" --include='*.php' 2>/dev/null | head -n 160 || true
+          printf '%s\n' '--- toolbar-left functions ---'
+          FILE="$THEME/inc/woocommerce/woostify-woocommerce-archive-product-functions.php"
+          nl -ba "$FILE" | sed -n '338,365p'
+          printf '%s\n' '--- sorting wrapper functions ---'
+          FILE2="$THEME/inc/woocommerce/woostify-woocommerce-template-functions.php"
+          nl -ba "$FILE2" | sed -n '204,228p'
           REMOTE
       - name: Record diagnostic
         run: |
@@ -62,6 +63,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/woostify-toolbar-source.txt
-          git commit -m 'Record Woostify toolbar source diagnostic [skip ci]' || exit 0
+          git commit -m 'Record expanded Woostify toolbar source diagnostic [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
