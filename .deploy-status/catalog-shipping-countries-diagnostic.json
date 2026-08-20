@@ -1,0 +1,666 @@
+{
+    "generated_at": "2026-08-20T11:04:16+00:00",
+    "siteurl": "https://www.elmercadodeorigen.com",
+    "wcfm_function": {
+        "exists": true,
+        "file": "/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/helpers/wcfmmp-core-functions.php",
+        "start": 1023,
+        "end": 1033,
+        "parameters": [
+            {
+                "name": "zoneID",
+                "optional": true,
+                "default": ""
+            },
+            {
+                "name": "user_id",
+                "optional": true,
+                "default": 0
+            }
+        ],
+        "source": "\r\nif(!function_exists('wcfmmp_get_shipping_zone')) {\r\n\tfunction wcfmmp_get_shipping_zone($zoneID = '', $user_id = 0 ) {\r\n\t  if ( isset( $zoneID ) && $zoneID != '' ) {\r\n\t      $zones = WCFMmp_Shipping_Zone::get_zone( $zoneID, $user_id );\r\n\t  } else {\r\n\t      $zones = WCFMmp_Shipping_Zone::get_zones( $user_id );\r\n\t  }\r\n\t  if ( is_wp_error( $zones ) ) {\r\n\t    return array();\r\n\t  }\r\n\t  return $zones;\r\n\t}\r\n}\r\n\r\nfunction wcfmmp_convert_to_array($a) {\r\n"
+    },
+    "woocommerce_zones": {
+        "10": {
+            "zone_id": 10,
+            "zone_name": "Baleares",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "ES:PM",
+                    "type": "state"
+                }
+            ],
+            "shipping_methods": {
+                "23": {
+                    "id": "free_shipping",
+                    "instance_id": 23,
+                    "enabled": "yes",
+                    "title": "Env\u00edo gratuito"
+                },
+                "24": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 24,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "11": {
+            "zone_id": 11,
+            "zone_name": "B\u00e9lgica",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "BE",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "25": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 25,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "12": {
+            "zone_id": 12,
+            "zone_name": "Alemania",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "DE",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "26": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 26,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "15": {
+            "zone_id": 15,
+            "zone_name": "Pa\u00edses Bajos",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "NL",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "30": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 30,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "16": {
+            "zone_id": 16,
+            "zone_name": "Luxemburgo",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "LU",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "31": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 31,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "17": {
+            "zone_id": 17,
+            "zone_name": "Suiza",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "CH",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "42": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 42,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "18": {
+            "zone_id": 18,
+            "zone_name": "Italia",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "IT",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "34": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 34,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "19": {
+            "zone_id": 19,
+            "zone_name": "Francia",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "FR",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "36": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 36,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "20": {
+            "zone_id": 20,
+            "zone_name": "Portugal",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "PT",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "37": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 37,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "21": {
+            "zone_id": 21,
+            "zone_name": "Rep. Checa",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "CZ",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "38": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 38,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "22": {
+            "zone_id": 22,
+            "zone_name": "Polonia",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "PL",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "40": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 40,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "23": {
+            "zone_id": 23,
+            "zone_name": "Grecia",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "GR",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "41": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 41,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "24": {
+            "zone_id": 24,
+            "zone_name": "Austria",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "AT",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "43": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 43,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "26": {
+            "zone_id": 26,
+            "zone_name": "Hungr\u00eda",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "HU",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "45": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 45,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "27": {
+            "zone_id": 27,
+            "zone_name": "Suecia",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "SE",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "46": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 46,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "28": {
+            "zone_id": 28,
+            "zone_name": "Bulgaria",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "BG",
+                    "type": "country"
+                }
+            ],
+            "shipping_methods": {
+                "47": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 47,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "29": {
+            "zone_id": 29,
+            "zone_name": "Tolecarnes (Mad-Tol)",
+            "zone_order": 0,
+            "zone_locations": [
+                {
+                    "code": "ES:M",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:TO",
+                    "type": "state"
+                }
+            ],
+            "shipping_methods": {
+                "48": {
+                    "id": "free_shipping",
+                    "instance_id": 48,
+                    "enabled": "yes",
+                    "title": "Env\u00edo gratuito"
+                },
+                "49": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 49,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "1": {
+            "zone_id": 1,
+            "zone_name": "Espa\u00f1a (pen\u00ednsula)",
+            "zone_order": 8,
+            "zone_locations": [
+                {
+                    "code": "ES:C",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:VI",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:AB",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:A",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:AL",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:O",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:AV",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:BA",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:B",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:BU",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:CC",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:CA",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:S",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:CS",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:CR",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:CO",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:CU",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:GI",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:GR",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:GU",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:SS",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:H",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:HU",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:LO",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:LE",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:J",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:L",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:LU",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:M",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:MA",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:MU",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:NA",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:OR",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:P",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:PO",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:SG",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:SA",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:SE",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:SO",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:T",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:TE",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:TO",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:V",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:VA",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:BI",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:ZA",
+                    "type": "state"
+                },
+                {
+                    "code": "ES:Z",
+                    "type": "state"
+                }
+            ],
+            "shipping_methods": {
+                "1": {
+                    "id": "free_shipping",
+                    "instance_id": 1,
+                    "enabled": "yes",
+                    "title": "Env\u00edo gratuito"
+                },
+                "2": {
+                    "id": "flat_rate",
+                    "instance_id": 2,
+                    "enabled": "no",
+                    "title": "Precio fijo"
+                },
+                "3": {
+                    "id": "wcfmmp_product_shipping_by_zone",
+                    "instance_id": 3,
+                    "enabled": "yes",
+                    "title": "Env\u00edos de la tienda"
+                }
+            }
+        },
+        "0": {
+            "zone_id": 0,
+            "zone_name": "Ubicaciones no cubiertas por tus otras zonas",
+            "zone_locations": [],
+            "shipping_methods": []
+        }
+    },
+    "vendors": [
+        {
+            "id": 3,
+            "name": "1957",
+            "shipping": {
+                "_wcfmmp_user_shipping_enable": "yes",
+                "_wcfmmp_pt": "2",
+                "_wcfmmp_user_shipping_type": "by_zone"
+            },
+            "rates_underscore": "",
+            "rates_plain": "",
+            "profile_shipping_keys": [],
+            "resolver_country_codes": [],
+            "wcfm_calls": {
+                "empty_vendor": [],
+                "vendor_empty": [],
+                "vendor_only": [],
+                "empty_only": []
+            }
+        },
+        {
+            "id": 6,
+            "name": "Hidalgo de la Jara",
+            "shipping": {
+                "_wcfmmp_user_shipping_enable": "yes",
+                "_wcfmmp_pt": "2",
+                "_wcfmmp_user_shipping_type": "by_zone"
+            },
+            "rates_underscore": "",
+            "rates_plain": "",
+            "profile_shipping_keys": [],
+            "resolver_country_codes": [],
+            "wcfm_calls": {
+                "empty_vendor": [],
+                "vendor_empty": [],
+                "vendor_only": [],
+                "empty_only": []
+            }
+        },
+        {
+            "id": 4514,
+            "name": "La Huerta de Ana Mary",
+            "shipping": {
+                "_wcfmmp_user_shipping_enable": "yes",
+                "_wcfmmp_user_shipping_type": "by_zone"
+            },
+            "rates_underscore": "",
+            "rates_plain": "",
+            "profile_shipping_keys": [],
+            "resolver_country_codes": [],
+            "wcfm_calls": {
+                "empty_vendor": [],
+                "vendor_empty": [],
+                "vendor_only": [],
+                "empty_only": []
+            }
+        },
+        {
+            "id": 4507,
+            "name": "Tolecarnes",
+            "shipping": {
+                "_wcfmmp_user_shipping_enable": "yes",
+                "_wcfmmp_pt": "",
+                "_wcfmmp_user_shipping_type": "by_zone"
+            },
+            "rates_underscore": "",
+            "rates_plain": "",
+            "profile_shipping_keys": [],
+            "resolver_country_codes": [],
+            "wcfm_calls": {
+                "empty_vendor": [],
+                "vendor_empty": [],
+                "vendor_only": [],
+                "empty_only": []
+            }
+        }
+    ],
+    "resolver_supported_countries": [],
+    "frontend_supported_countries": {
+        "ES": "Espa\u00f1a"
+    }
+}
