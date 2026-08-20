@@ -1,0 +1,57 @@
+name: Home WebP reactivation 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-webp-reactivation-20260820.yml']
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Deploy current WebP pass
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')";: "${PROD:?no prod}";echo "$PROD">/tmp/prod
+          sshpass -e scp $SCP mu-plugins/mdo-home-webp-delivery-20260819.php "$STAGING_USER@$STAGING_HOST:/tmp/webp-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-responsive-vendors-010253.php "$STAGING_USER@$STAGING_HOST:/tmp/vendors-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';[ -f \"\$MU/mdo-home-webp-delivery-20260819.php\" ]&&cp \"\$MU/mdo-home-webp-delivery-20260819.php\" /tmp/webp-before-${GITHUB_RUN_ID}.php||true;cp \"\$MU/elmercado-home-responsive-vendors-010253.php\" /tmp/vendors-before-webp-${GITHUB_RUN_ID}.php;install -m0644 /tmp/webp-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-webp-delivery-20260819.php\";install -m0644 /tmp/vendors-${GITHUB_RUN_ID}.php \"\$MU/elmercado-home-responsive-vendors-010253.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css"
+          for i in 1 2;do curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /dev/null;done
+      - name: Verify WebP and performance
+        run: |
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          npx --yes lighthouse@12.8.2 'https://www.elmercadodeorigen.com/' --only-categories=performance --form-factor=mobile --output=json --output-path=/tmp/lh.json --quiet --chrome-flags='--headless --no-sandbox --disable-dev-shm-usage'
+          python3 - <<'PY' | tee runtime/home-webp-reactivation-20260820.txt
+          import re,json
+          s=open('/tmp/home.html',encoding='utf-8',errors='ignore').read();r=json.load(open('/tmp/lh.json'));a=r['audits']
+          print('webp_refs=',s.count('.webp'))
+          for alt in ('Hidalgo de la Jara','Tolecarnes'):
+              m=re.search(r'<img[^>]*alt=["\']'+re.escape(alt)+r'["\'][^>]*>',s,re.I)
+              print(alt,'=',m.group(0) if m else 'missing')
+          for token in ('JAMON_ACT','Tolecarnes-fondo','Packs-lotes'):
+              print(token+'_webp=',len(re.findall(token+r'[^"\' ]*\.webp',s,re.I)))
+          print('score=',round(r['categories']['performance']['score']*100),'fcp=',round(a['first-contentful-paint']['numericValue']),'lcp=',round(a['largest-contentful-paint']['numericValue']),'tbt=',round(a['total-blocking-time']['numericValue']),'cls=',a['cumulative-layout-shift']['numericValue'])
+          useful=(len(re.findall(r'(?:Tolecarnes-fondo|Packs-lotes)[^"\' ]*\.webp',s,re.I))>0)
+          keep=useful and a['cumulative-layout-shift']['numericValue']<0.02 and a['largest-contentful-paint']['numericValue']<5500
+          print('keep=',str(keep).lower());open('/tmp/keep','w').write('1' if keep else '0')
+          PY
+      - name: Restore on no benefit and record
+        if: always()
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail;K=$(cat /tmp/keep 2>/dev/null||echo 0);PROD=$(cat /tmp/prod);PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "$K" != 1 ];then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "MU='$PROD/wp-content/mu-plugins';[ -f /tmp/webp-before-${GITHUB_RUN_ID}.php ]&&install -m0644 /tmp/webp-before-${GITHUB_RUN_ID}.php \"\$MU/mdo-home-webp-delivery-20260819.php\"||rm -f \"\$MU/mdo-home-webp-delivery-20260819.php\";install -m0644 /tmp/vendors-before-webp-${GITHUB_RUN_ID}.php \"\$MU/elmercado-home-responsive-vendors-010253.php\";php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);wp_bin=\$(command -v wp);\"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root||true;rm -f '$PROD/wp-content/uploads/elmercado-home-static/index.html' '$PROD/wp-content/uploads/elmercado-home-static'/home-deferred-*.css";fi
+          [ -f runtime/home-webp-reactivation-20260820.txt ]||echo failed>runtime/home-webp-reactivation-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-webp-reactivation-20260820.txt;git commit -m 'Record Home WebP reactivation test' || exit 0;git pull --rebase origin main;git push origin HEAD:main
