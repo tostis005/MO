@@ -1,0 +1,27 @@
+name: Home CSS size read-only 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-css-size-readonly-20260820.yml']
+permissions:
+  contents: write
+jobs:
+  size:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: |
+          set -euo pipefail;mkdir -p runtime
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          python3 - <<'PY' >/tmp/css-size.txt
+          import re
+          s=open('/tmp/home.html',encoding='utf-8',errors='ignore').read();m=re.search(r'<style\b[^>]*id=["\']woostify-parent-style-inline-css["\'][^>]*>(.*?)</style>',s,re.I|re.S);print('blocking=',len(m.group(1).encode()) if m else -1);u=re.search(r'id=["\']elmercado-home-deferred-css["\'][^>]*href=["\']([^"\']+)',s,re.I);print('url=',u.group(1).replace('&amp;','&') if u else '')
+          PY
+          URL=$(sed -n 's/^url=//p' /tmp/css-size.txt);if [ -n "$URL" ];then curl -fsS --compressed --max-time 45 "$URL" -o /tmp/d.css;echo deferred=$(wc -c </tmp/d.css)>>/tmp/css-size.txt;else echo deferred=-1>>/tmp/css-size.txt;fi
+          cat /tmp/css-size.txt | tee runtime/home-css-size-readonly-20260820.txt
+      - if: always()
+        run: |
+          [ -f runtime/home-css-size-readonly-20260820.txt ]||echo failed>runtime/home-css-size-readonly-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-css-size-readonly-20260820.txt;git commit -m 'Record current Home CSS byte sizes' || exit 0;git pull --rebase origin main;git push origin HEAD:main
