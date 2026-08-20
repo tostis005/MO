@@ -1,0 +1,39 @@
+name: Home mobile nav frame trace 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-mobile-nav-frame-trace-20260820.yml']
+permissions:
+  contents: write
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: |
+          mkdir -p runtime
+          npm install --no-save --no-audit --no-fund puppeteer-core@24 >/dev/null 2>&1
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          CHROME="$CHROME" node <<'JS' | tee runtime/home-mobile-nav-frame-trace-20260820.txt
+          const puppeteer=require('puppeteer-core');
+          (async()=>{
+            const b=await puppeteer.launch({executablePath:process.env.CHROME,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await b.newPage();await p.setViewport({width:412,height:915,deviceScaleFactor:1});
+            await p.evaluateOnNewDocument(()=>{
+              window.__trace=[]; let last='';
+              const state=()=>{const n=document.querySelector('#mobile-navigation');if(!n)return null;const c=getComputedStyle(n),r=n.getBoundingClientRect();return {display:c.display,visibility:c.visibility,position:c.position,opacity:c.opacity,transform:c.transform,w:r.width,h:r.height,x:r.x,y:r.y,aria:n.getAttribute('aria-hidden'),inert:n.hasAttribute('inert'),intent:document.documentElement.getAttribute('data-emo-menu-intent')};};
+              const record=(kind,extra={})=>{const s=state();const key=JSON.stringify(s);if(kind!=='frame'||key!==last){window.__trace.push({t:performance.now(),kind,...extra,state:s});last=key;}};
+              new MutationObserver(ms=>{for(const m of ms){if(m.type==='childList'&&[...m.addedNodes].some(n=>n.nodeType===1&&(n.id==='mobile-navigation'||n.querySelector?.('#mobile-navigation'))))record('insert');if(m.type==='attributes'&&(m.target.id==='mobile-navigation'||m.target===document.documentElement))record('attr',{attr:m.attributeName});}}).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','aria-hidden','inert','data-emo-menu-intent']});
+              new PerformanceObserver(list=>{for(const e of list.getEntries())if(!e.hadRecentInput)record('shift',{value:e.value});}).observe({type:'layout-shift',buffered:true});
+              const loop=()=>{record('frame');if(performance.now()<5500)requestAnimationFrame(loop)};requestAnimationFrame(loop);
+              document.addEventListener('DOMContentLoaded',()=>record('DCL'));addEventListener('load',()=>record('load'));
+            });
+            await p.goto('https://www.elmercadodeorigen.com/',{waitUntil:'load',timeout:60000});await new Promise(r=>setTimeout(r,2500));console.log(JSON.stringify(await p.evaluate(()=>window.__trace),null,2));await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+      - if: always()
+        run: |
+          [ -f runtime/home-mobile-nav-frame-trace-20260820.txt ]||echo failed>runtime/home-mobile-nav-frame-trace-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-mobile-nav-frame-trace-20260820.txt;git commit -m 'Record Home mobile navigation frame trace' || exit 0;git pull --rebase origin main;git push origin HEAD:main
