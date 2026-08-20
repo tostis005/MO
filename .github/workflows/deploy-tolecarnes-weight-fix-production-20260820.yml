@@ -1,0 +1,122 @@
+name: Deploy Tolecarnes weight fix production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mdo-supplier-sync/includes/class-mdo-tolecarnes-weight-info.php'
+      - 'mdo-supplier-sync/mdo-supplier-sync.php'
+      - '.github/workflows/deploy-tolecarnes-weight-fix-production-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: |
+          php -l mdo-supplier-sync/includes/class-mdo-tolecarnes-weight-info.php
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+
+      - name: Deploy and repair production catalog
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          PLUGIN_PATH="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
+          REMOTE_CLASS="/tmp/class-mdo-tolecarnes-weight-info-${GITHUB_RUN_ID}.php"
+          REMOTE_MAIN="/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-tolecarnes-weight-info.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CLASS"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MAIN"
+          mkdir -p .deploy-status
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$REMOTE_CLASS'
+            \"\$php_bin\" -l '$REMOTE_MAIN'
+            mkdir -p '$PLUGIN_PATH/includes'
+            cp -a '$PLUGIN_PATH/mdo-supplier-sync.php' '$PLUGIN_PATH/mdo-supplier-sync.php.bak-tolecarnes-20260820'
+            [ ! -f '$PLUGIN_PATH/includes/class-mdo-tolecarnes-weight-info.php' ] || cp -a '$PLUGIN_PATH/includes/class-mdo-tolecarnes-weight-info.php' '$PLUGIN_PATH/includes/class-mdo-tolecarnes-weight-info.php.bak-tolecarnes-20260820'
+            install -m 0644 '$REMOTE_CLASS' '$PLUGIN_PATH/includes/class-mdo-tolecarnes-weight-info.php'
+            install -m 0644 '$REMOTE_MAIN' '$PLUGIN_PATH/mdo-supplier-sync.php'
+            rm -f '$REMOTE_CLASS' '$REMOTE_MAIN'
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'if (!class_exists("MDO_Tolecarnes_Weight_Info")) { throw new Exception("Tolecarnes weight class not loaded"); } echo "TOLE_WEIGHT_REPAIR " . wp_json_encode(MDO_Tolecarnes_Weight_Info::repair_all(), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . PHP_EOL;' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '
+              global \$wpdb;
+              \$ids=\$wpdb->get_col("SELECT DISTINCT post_id FROM {\$wpdb->postmeta} WHERE meta_key=\"_emdo_source_url\" AND meta_value LIKE \"%tolecarnes.com/producto/%\"");
+              \$with_marker=0; \$weight_signal=0; \$huesos_ok=0;
+              foreach (\$ids as \$id) {
+                \$d=(string)get_post_field("post_content",(int)\$id,"raw");
+                if (false!==strpos(\$d,"emdo-tolecarnes-format:start")) { ++\$with_marker; }
+                \$plain=wp_strip_all_tags(\$d);
+                if (preg_match("/\\b(?:peso|aprox(?:\\.|imadamente)?|kg|kilogramos?|gramos?|\\d+\\s*g\\b|\\d+\\s*kg\\b)/iu",\$plain)) { ++\$weight_signal; }
+                \$url=(string)get_post_meta((int)\$id,"_emdo_source_url",true);
+                if (false!==strpos(\$url,"/huesos-de-ternera-arr/") && false!==stripos(\$plain,"bandeja de dos huesos")) { \$huesos_ok=1; }
+              }
+              echo "TOLE_WEIGHT_VERIFY " . wp_json_encode(array("linked"=>count(\$ids),"with_marker"=>\$with_marker,"weight_signal"=>\$weight_signal,"huesos_format_ok"=>\$huesos_ok),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . PHP_EOL;
+            ' --path='$PROD_PATH' --allow-root
+            grep -q "Version: 1.0.21" '$PLUGIN_PATH/mdo-supplier-sync.php'
+            echo tolecarnes_weight_fix_ok
+          " > .deploy-status/tolecarnes-weight-fix-20260820.txt 2>&1
+          CODE=$?
+          set -e
+          echo "$CODE" > .deploy-status/tolecarnes-weight-fix-20260820.exit-code
+          cat .deploy-status/tolecarnes-weight-fix-20260820.txt
+
+      - name: Record deployment result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/tolecarnes-weight-fix-20260820.txt .deploy-status/tolecarnes-weight-fix-20260820.exit-code || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Tolecarnes weight fix deployment [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Assert deployment
+        if: always()
+        run: |
+          test -f .deploy-status/tolecarnes-weight-fix-20260820.exit-code
+          test "$(cat .deploy-status/tolecarnes-weight-fix-20260820.exit-code)" = "0"
+          grep -q '^tolecarnes_weight_fix_ok$' .deploy-status/tolecarnes-weight-fix-20260820.txt
