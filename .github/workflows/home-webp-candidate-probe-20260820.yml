@@ -1,0 +1,74 @@
+name: Home WebP candidate probe 20260820
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/home-webp-candidate-probe-20260820.yml']
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Install temporary HTTP probe
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$u" in *elmercadodeorigen.com*)printf "%s" "$p";break;;esac;done')"; : "${PROD:?no prod}"; echo "$PROD">/tmp/prod-probe
+          cat >/tmp/mdo-webp-probe.php <<'PHP'
+          <?php
+          if (!defined('ABSPATH')) exit;
+          add_action('wp_footer', static function(): void {
+              if (empty($_GET['mdo_webp_probe'])) return;
+              $uploads=wp_get_upload_dir();
+              $base=rtrim((string)$uploads['baseurl'],'/');
+              $targets=array(
+                $base.'/2026/08/JAMON_ACTO_ECOLOGICO1-scaled-450x300.jpg',
+                $base.'/2026/08/Tolecarnes-fondo-400x400.jpg',
+                $base.'/2026/08/Packs-lotes-300x400-1.jpg',
+              );
+              echo "<!--MDO_WEBP_PROBE\n";
+              echo 'baseurl='.(string)$uploads['baseurl']."\n";
+              echo 'basedir='.(string)$uploads['basedir']."\n";
+              echo 'function='.(function_exists('mdo_home_webp_candidate_url')?'yes':'no')."\n";
+              foreach($targets as $url){
+                $path=(string)wp_parse_url($url,PHP_URL_PATH);
+                $base_path=(string)wp_parse_url((string)$uploads['baseurl'],PHP_URL_PATH);
+                $rel=ltrim(rawurldecode(substr($path,strlen($base_path))),'/');
+                $src=trailingslashit((string)$uploads['basedir']).$rel;
+                $dst=preg_replace('~\.jpe?g$~i','.webp',$src);
+                $candidate=function_exists('mdo_home_webp_candidate_url')?mdo_home_webp_candidate_url($url):null;
+                printf("url=%s\nsrc=%s readable=%s size=%s\ndst=%s readable=%s size=%s\ncandidate=%s\n---\n",$url,$src,is_readable($src)?'yes':'no',is_readable($src)?filesize($src):'-',$dst,is_readable($dst)?'yes':'no',is_readable($dst)?filesize($dst):'-',$candidate?:'NULL');
+              }
+              echo "MDO_WEBP_PROBE-->");
+          }, PHP_INT_MAX);
+          PHP
+          sshpass -e scp -P "$PORT" -o StrictHostKeyChecking=no /tmp/mdo-webp-probe.php "$STAGING_USER@$STAGING_HOST:/tmp/mdo-webp-probe.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "install -m0644 /tmp/mdo-webp-probe.php '$PROD/wp-content/mu-plugins/zzz-mdo-webp-probe.php'"
+      - name: Fetch dynamic probe
+        run: |
+          mkdir -p runtime
+          curl -fsS --compressed --max-time 60 'https://www.elmercadodeorigen.com/?mdo_webp_probe=1' -o /tmp/probe.html
+          python3 - <<'PY' | tee runtime/home-webp-candidate-probe-20260820.txt
+          import re
+          s=open('/tmp/probe.html',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'<!--MDO_WEBP_PROBE\n(.*?)MDO_WEBP_PROBE-->',s,re.S)
+          print(m.group(1).strip() if m else 'probe_missing')
+          PY
+      - name: Remove probe and record
+        if: always()
+        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
+        shell: bash
+        run: |
+          PROD=$(cat /tmp/prod-probe 2>/dev/null||true);PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT";[ -z "$PROD" ]||sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD/wp-content/mu-plugins/zzz-mdo-webp-probe.php' /tmp/mdo-webp-probe.php"
+          mkdir -p runtime;[ -f runtime/home-webp-candidate-probe-20260820.txt ]||echo failed>runtime/home-webp-candidate-probe-20260820.txt
+          git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add runtime/home-webp-candidate-probe-20260820.txt;git commit -m 'Record Home WebP candidate probe' || exit 0;git pull --rebase origin main;git push origin HEAD:main
