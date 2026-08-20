@@ -1,0 +1,68 @@
+name: Patch catalog destination surface
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-catalog-destination-surface-20260820.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use canonical storefront detector only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('mu-plugins/mdo-catalog-destination-frontend-20260820.php')
+          s=p.read_text()
+          old='''\tprivate static function is_catalog_surface(): bool {
+\t\tif ( function_exists( 'is_shop' ) && is_shop() ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) {
+\t\t\treturn true;
+\t\t}
+\t\treturn is_search() && 'product' === get_query_var( 'post_type' );
+\t}
+'''
+          new='''\tprivate static function is_catalog_surface(): bool {
+\t\t/* EMDO renders /tienda/ through its own catalogue layer; use the same detector as the exact result count. */
+\t\tif ( function_exists( 'elmercado_core_filters_is_catalog' ) && elmercado_core_filters_is_catalog() ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( function_exists( 'is_shop' ) && is_shop() ) {
+\t\t\treturn true;
+\t\t}
+\t\tif ( function_exists( 'is_product_taxonomy' ) && is_product_taxonomy() ) {
+\t\t\treturn true;
+\t\t}
+\t\treturn is_search() && 'product' === get_query_var( 'post_type' );
+\t}
+'''
+          if old not in s:
+              raise SystemExit('surface detector block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          php -l mu-plugins/mdo-catalog-destination-frontend-20260820.php >/dev/null
+
+      - name: Commit frontend detector patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/patch-catalog-destination-surface-20260820.yml
+          git add mu-plugins/mdo-catalog-destination-frontend-20260820.php
+          git commit -m 'Render destination selector on canonical catalog surface'
+          git pull --rebase origin main
+          git push origin HEAD:main
