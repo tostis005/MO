@@ -71,9 +71,11 @@ jobs:
             sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DIAG' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_DIAG'; exit \$rc"
           } 2>&1 | tee runtime/catalog-admin-filter-postdeploy-20260820.txt
 
-          grep -q 'ADMIN_PARITY_LOADED=1' runtime/catalog-admin-filter-postdeploy-20260820.txt
-          grep -q 'VENDOR_NO_PRODUCTS=0' runtime/catalog-admin-filter-postdeploy-20260820.txt
-          grep -Eq 'VENDOR_PAGE_IDS=[0-9]+' runtime/catalog-admin-filter-postdeploy-20260820.txt
+          loaded=0; vendor_ok=0; ids_ok=0
+          grep -q 'ADMIN_PARITY_LOADED=1' runtime/catalog-admin-filter-postdeploy-20260820.txt && loaded=1 || true
+          grep -q 'VENDOR_NO_PRODUCTS=0' runtime/catalog-admin-filter-postdeploy-20260820.txt && vendor_ok=1 || true
+          grep -Eq 'VENDOR_PAGE_IDS=[0-9]+' runtime/catalog-admin-filter-postdeploy-20260820.txt && ids_ok=1 || true
+          printf '\nVERIFY_LOADED=%s\nVERIFY_VENDOR_NOT_EMPTY=%s\nVERIFY_VENDOR_HAS_IDS=%s\n' "$loaded" "$vendor_ok" "$ids_ok" >> runtime/catalog-admin-filter-postdeploy-20260820.txt
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -81,3 +83,7 @@ jobs:
           git commit -m 'Record admin catalog filter production verification [skip ci]' || true
           git pull --rebase origin main
           git push origin HEAD:main
+
+          test "$loaded" = 1
+          test "$vendor_ok" = 1
+          test "$ids_ok" = 1
