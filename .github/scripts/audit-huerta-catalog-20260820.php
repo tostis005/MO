@@ -1,5 +1,6 @@
 <?php
 /** Read-only production audit of La Huerta de Ana Mary imported products. */
+// Triggered after the workflow exists on main so the production audit runs reliably.
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! class_exists( 'MDO_Database' ) ) { fwrite( STDERR, "ERROR: MDO database layer not loaded.\n" ); exit( 2 ); }
 
