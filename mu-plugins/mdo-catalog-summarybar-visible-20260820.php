@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Toolbar Destination
  * Description: Exact result count and shipping destination inside the real Woostify ordering toolbar.
- * Version: 2.1.0
+ * Version: 2.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -99,7 +99,10 @@ add_action(
 			const ensure=()=>{const toolbar=findToolbar();if(!toolbar)return;const ordering=toolbar.querySelector('.woocommerce-ordering')||document.querySelector('.woocommerce-ordering');toolbar.classList.add('mdo-catalog-toolbar-ready');let count=toolbar.querySelector('[data-mdo-toolbar-count]');if(!count)count=makeCount();count.textContent=config.results;let destination=toolbar.querySelector('[data-mdo-toolbar-destination]');if(!destination)destination=makeDestination();if(count.parentElement!==toolbar)toolbar.insertBefore(count,ordering&&ordering.parentElement===toolbar?ordering:toolbar.firstChild);if(destination.parentElement!==toolbar)toolbar.insertBefore(destination,ordering&&ordering.parentElement===toolbar?ordering:(count.nextSibling||null));if(ordering&&ordering.parentElement===toolbar){if(count.nextSibling!==destination)toolbar.insertBefore(count,destination);if(destination.nextSibling!==ordering)toolbar.insertBefore(destination,ordering)}};
 			const syncModal=modal=>{const country=modal.querySelector('[data-mdo-destination-country]');const wrap=modal.querySelector('[data-mdo-postcode-wrap]');const postcode=modal.querySelector('[data-mdo-destination-postcode]');const error=modal.querySelector('[data-mdo-destination-error]');if(error)error.hidden=true;if(country&&wrap&&postcode){const es=country.value==='ES';wrap.hidden=!es;postcode.disabled=!es;if(!es)postcode.value=''}};
 			const openModal=button=>{const modal=document.querySelector('[data-mdo-destination-modal]');if(!modal)return false;syncModal(modal);modal.hidden=false;modal.removeAttribute('hidden');modal.setAttribute('aria-hidden','false');document.body.classList.add('mdo-destination-modal-open');button.setAttribute('aria-expanded','true');const panel=modal.querySelector('.mdo-destination-modal__panel');requestAnimationFrame(()=>{modal.hidden=false;modal.removeAttribute('hidden');modal.setAttribute('aria-hidden','false');if(panel)panel.focus({preventScroll:true})});return true};
-			document.addEventListener('click',event=>{const button=event.target.closest('[data-mdo-toolbar-destination]');if(!button)return;event.preventDefault();event.stopPropagation();openModal(button)},true);
+			const toolbarButtonFromEvent=event=>{const path=typeof event.composedPath==='function'?event.composedPath():[];for(const node of path){if(node&&typeof node.matches==='function'&&node.matches('[data-mdo-toolbar-destination]'))return node}const target=event.target;return target&&typeof target.closest==='function'?target.closest('[data-mdo-toolbar-destination]'):null};
+			const activateDestination=event=>{const button=toolbarButtonFromEvent(event);if(!button)return;if(event.cancelable)event.preventDefault();event.stopPropagation();openModal(button)};
+			window.addEventListener('pointerup',activateDestination,true);
+			window.addEventListener('click',activateDestination,true);
 			document.addEventListener('click',event=>{if(event.target.closest('[data-mdo-destination-close]'))document.querySelectorAll('[data-mdo-toolbar-destination]').forEach(b=>b.setAttribute('aria-expanded','false'))},true);
 			const schedule=()=>{if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;ensure()})};
 			if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensure,{once:true});else ensure();window.addEventListener('load',ensure,{once:true});if(document.body)new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
