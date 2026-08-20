@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Home Performance Hardening 2026-08-19
  * Description: Autorrepara la caché estática de Home, saca Meta de la ruta crítica, elimina CSS muerto y reduce JS/imagen en la portada.
- * Version: 1.4.1
+ * Version: 1.4.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -232,11 +232,9 @@ function mdo_home_perf_transform_html( string $html ): string {
     };
 
     const schedule = () => {
-        if ('requestIdleCallback' in window) {
-            requestIdleCallback(load, { timeout: 1500 });
-        } else {
-            setTimeout(load, 500);
-        }
+        // CAPI param enrichment is non-critical. Real interaction still loads it
+        // immediately; passive sessions get it well after the first viewport.
+        setTimeout(load, 12000);
     };
 
     window.addEventListener('pointerdown', load, { once: true, passive: true });
