@@ -1,0 +1,228 @@
+name: Catalog destination countries fix production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-catalog-summarybar-visible-20260820.php'
+      - 'mu-plugins/mdo-catalog-shipping-zones-public-fix-20260820.php'
+      - '.github/workflows/catalog-destination-countries-fix-production-20260820.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy static bar and public shipping resolver
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-catalog-summarybar-visible-20260820.php >/dev/null
+          php -l mu-plugins/mdo-catalog-shipping-zones-public-fix-20260820.php >/dev/null
+          if grep -q 'new MutationObserver' mu-plugins/mdo-catalog-summarybar-visible-20260820.php; then
+            echo 'MutationObserver regression detected' >&2
+            exit 1
+          fi
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          for FILE in mdo-catalog-summarybar-visible-20260820.php mdo-catalog-shipping-zones-public-fix-20260820.php; do
+            TMP="/tmp/${FILE}.${GITHUB_RUN_ID}"
+            TARGET="$PROD_PATH/wp-content/mu-plugins/$FILE"
+            sshpass -e scp $SCP_OPTIONS "mu-plugins/$FILE" "$STAGING_USER@$STAGING_HOST:$TMP"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -l '$TMP' >/dev/null
+              cp '$TMP' '$TARGET'
+              rm -f '$TMP'
+              \"\$php_bin\" -l '$TARGET' >/dev/null
+            "
+          done
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+      - name: Verify live shipping resolver from WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+              delete_transient(\"mdo_supported_shipping_countries_v1\");
+              \$countries=MDO_Catalog_Destination_Frontend::supported_countries();
+              \$vendors=array_values(array_map(\"absint\",(array)get_users(array(\"role\"=>\"wcfm_vendor\",\"fields\"=>\"ids\"))));
+              \$targets=array();
+              foreach(\$countries as \$code=>\$label){
+                if(\$code===\"ES\")continue;
+                \$yes=array();\$no=array();
+                foreach(\$vendors as \$vendor){
+                  if(MDO_Shipping_Destinations::vendor_can_ship_to(\$vendor,\$code,\"\")){\$yes[]=\$vendor;}else{\$no[]=\$vendor;}
+                }
+                if(\$yes){
+                  \$excluded_products=\$no?get_posts(array(\"post_type\"=>\"product\",\"post_status\"=>\"publish\",\"author__in\"=>\$no,\"fields\"=>\"ids\",\"posts_per_page\"=>-1)):array();
+                  \$targets[\$code]=array(\"label\"=>\$label,\"yes_vendors\"=>\$yes,\"no_vendors\"=>\$no,\"excluded_product_ids\"=>array_values(array_map(\"absint\",\$excluded_products)));
+                }
+              }
+              \$target=\"\";
+              foreach(\$targets as \$code=>\$info){if(!empty(\$info[\"no_vendors\"])){\$target=\$code;break;}}
+              if(!\$target && \$targets){\$target=array_key_first(\$targets);}
+              echo wp_json_encode(array(\"countries\"=>\$countries,\"vendors\"=>\$vendors,\"targets\"=>\$targets,\"target\"=>\$target),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            ' --path='$PROD_PATH' --allow-root
+          " > /tmp/mdo-destination-runtime.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/mdo-destination-runtime.json'))
+          assert len(d.get('countries',{})) > 1, d
+          assert d.get('target'), d
+          t=d['targets'][d['target']]
+          assert t.get('yes_vendors'), d
+          print('countries:', ', '.join(f'{k}:{v}' for k,v in d['countries'].items()))
+          print('target:', d['target'], t)
+          PY
+
+      - name: Install Chromium verifier
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save --no-audit --no-fund playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Verify one count, countries and filtering in real browsers
+        id: browser
+        shell: bash
+        env:
+          SHOP_URL: https://www.elmercadodeorigen.com/tienda/
+        run: |
+          set +e
+          node <<'NODE'
+          const fs=require('fs');
+          const {chromium}=require('playwright');
+          const runtime=JSON.parse(fs.readFileSync('/tmp/mdo-destination-runtime.json','utf8'));
+          const target=runtime.target;
+          const targetInfo=runtime.targets[target];
+          const status={result:'failed',countries:Object.keys(runtime.countries||{}),target,desktop_count:0,portrait_count:0,landscape_count:0,modal_open:0,options:[],destination_change:0,filter_clean:0,default_products:0,filtered_products:0,note:''};
+          const dismiss=async page=>{await page.evaluate(()=>{document.querySelectorAll('.hustle-ui.hustle-popup,.hustle-popup.hustle-show').forEach(e=>e.remove());document.documentElement.classList.remove('hustle-scroll-forbidden');document.body.classList.remove('hustle-scroll-forbidden');document.body.style.removeProperty('overflow');});};
+          const snapshot=async(page)=>page.evaluate(()=>{
+            const visible=e=>{const c=getComputedStyle(e),r=e.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&Number(c.opacity||1)>0&&r.width>0&&r.height>0;};
+            const countNodes=[...document.querySelectorAll('[data-mdo-summary-count],.emo-catalog-result-count-010220,[data-mdo-toolbar-count],.woocommerce-result-count')];
+            const uniq=[...new Set(countNodes)];
+            const visibleCounts=uniq.filter(visible);
+            const dest=document.querySelector('[data-mdo-summary-destination-open]');
+            return {visibleCount:visibleCounts.length,countTexts:visibleCounts.map(e=>e.textContent.trim()),destVisible:!!dest&&visible(dest),destText:dest?.textContent?.replace(/\s+/g,' ').trim()||'',products:[...document.querySelectorAll('li.product')].map(el=>{const m=(el.className||'').match(/(?:^|\s)post-(\d+)(?:\s|$)/);return m?Number(m[1]):0;}).filter(Boolean)};
+          });
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            try{
+              const open=async(name,viewport)=>{const context=await browser.newContext({viewport});const page=await context.newPage();await page.goto(`${process.env.SHOP_URL}?mdo_dest_final=${process.env.GITHUB_RUN_ID||Date.now()}&vp=${name}`,{waitUntil:'domcontentloaded',timeout:45000});await page.waitForSelector('[data-mdo-catalog-summarybar]',{state:'visible',timeout:20000});await page.waitForTimeout(400);return{context,page,snap:await snapshot(page)};};
+              const desktop=await open('desktop',{width:1440,height:900});
+              const portrait=await open('portrait',{width:390,height:844});
+              const landscape=await open('landscape',{width:844,height:390});
+              status.desktop_count=desktop.snap.visibleCount;
+              status.portrait_count=portrait.snap.visibleCount;
+              status.landscape_count=landscape.snap.visibleCount;
+              status.default_products=desktop.snap.products.length;
+              if(![desktop.snap,portrait.snap,landscape.snap].every(s=>s.visibleCount===1&&s.destVisible&&/Envío a\s+España/i.test(s.destText)&&s.products.length>0))throw new Error(`initial visibility/count failed ${JSON.stringify([desktop.snap,portrait.snap,landscape.snap])}`);
+              await portrait.context.close();await landscape.context.close();
+              const {page,context}=desktop;await dismiss(page);
+              await page.locator('[data-mdo-summary-destination-open]').click({timeout:7000});
+              await page.waitForFunction(()=>{const m=document.querySelector('[data-mdo-destination-modal]');if(!m||m.hidden)return false;const c=getComputedStyle(m),r=m.getBoundingClientRect();return c.display!=='none'&&c.visibility!=='hidden'&&r.width>0&&r.height>0;},null,{timeout:7000});
+              status.modal_open=1;
+              const select=page.locator('[data-mdo-destination-country]');
+              status.options=await select.locator('option').evaluateAll(os=>os.map(o=>({value:o.value,label:o.textContent.trim()})).filter(o=>o.value));
+              if(status.options.length<=1||!status.options.some(o=>o.value===target))throw new Error(`selector options wrong: ${JSON.stringify(status.options)} target=${target}`);
+              await select.selectOption(target);
+              const responsePromise=page.waitForResponse(r=>r.url().includes('admin-ajax.php')&&(r.request().postData()||'').includes('mdo_set_shipping_destination'),{timeout:15000});
+              const navPromise=page.waitForNavigation({waitUntil:'domcontentloaded',timeout:20000}).catch(()=>null);
+              await page.locator('[data-mdo-destination-save]').click({timeout:7000});
+              const response=await responsePromise;let payload=null;try{payload=await response.json();}catch(_){ }
+              if(!response.ok()||!payload?.success)throw new Error(`AJAX failed ${response.status()} ${JSON.stringify(payload)}`);
+              await navPromise;await page.waitForSelector('[data-mdo-catalog-summarybar]',{state:'visible',timeout:20000});await page.waitForTimeout(500);
+              const cookies=await context.cookies();if(cookies.find(c=>c.name==='mdo_shipping_country')?.value!==target)throw new Error('destination cookie not persisted');
+              status.destination_change=1;
+              const after=await snapshot(page);status.filtered_products=after.products.length;
+              if(after.visibleCount!==1||!after.destText.includes(runtime.countries[target])||after.products.length<1)throw new Error(`filtered page presentation failed ${JSON.stringify(after)}`);
+              const excluded=new Set((targetInfo.excluded_product_ids||[]).map(Number));
+              const leaked=after.products.filter(id=>excluded.has(id));
+              if(leaked.length)throw new Error(`products from non-shipping vendors leaked: ${leaked.join(',')}`);
+              status.filter_clean=1;
+              await context.close();
+              status.result='success';status.note='One visible result count; all supported countries exposed; alternate destination persists and visible products exclude non-shipping vendors.';
+            }catch(e){status.note=(e?.stack||String(e)).replace(/\n/g,' | ');}finally{await browser.close();fs.writeFileSync('/tmp/mdo-destination-final.json',JSON.stringify(status,null,2));console.log(JSON.stringify(status,null,2));}
+          })();
+          NODE
+          [ -s /tmp/mdo-destination-final.json ] || printf '{"result":"failed","note":"missing browser result"}\n' >/tmp/mdo-destination-final.json
+          RESULT="$(python3 -c "import json;print(json.load(open('/tmp/mdo-destination-final.json')).get('result','failed'))")"
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Record final production status
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os,datetime
+          try:b=json.load(open('/tmp/mdo-destination-final.json'))
+          except Exception as e:b={'result':'failed','note':str(e)}
+          try:r=json.load(open('/tmp/mdo-destination-runtime.json'))
+          except Exception:r={}
+          lines=[f'source_commit={os.environ.get("GITHUB_SHA","")}',f'workflow_run={os.environ.get("GITHUB_RUN_ID","")}',f'checked_at={datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}']
+          for k in ['result','desktop_count','portrait_count','landscape_count','modal_open','destination_change','filter_clean','default_products','filtered_products','target','note']:
+              lines.append(f'{k}={str(b.get(k,"")).replace(chr(10)," ")}')
+          lines.append('countries='+json.dumps(r.get('countries',{}),ensure_ascii=False,separators=(',',':')))
+          lines.append('options='+json.dumps(b.get('options',[]),ensure_ascii=False,separators=(',',':')))
+          open('.deploy-status/catalog-destination-countries-final.txt','w').write('\n'.join(lines)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-destination-countries-final.txt
+          git commit -m 'Record catalog destination countries final check [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Fail if live verification failed
+        if: steps.browser.outputs.result != 'success'
+        run: exit 1
