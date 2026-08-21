@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: emdo-instagram-publish
@@ -59,7 +59,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
-      - name: Publish queued content
+      - name: Publish queued content and verify
         if: steps.queue.outputs.publish == 'true'
         shell: bash
         env:
@@ -101,3 +101,43 @@ jobs:
             exit "$RC"
           fi
           printf '%s' "$OUTPUT" | grep -Eq '"status":"(published|skipped)"'
+
+          REQUEST_ID="$(jq -r '.request_id' instagram-queue.json)"
+          LAST_REQUEST="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" option get emdo_ig_last_queue_request_id --path='$PROD_PATH' --allow-root" | tr -d '\r\n')"
+          LOG_JSON="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" option get emdo_ig_publish_log --format=json --path='$PROD_PATH' --allow-root")"
+
+          if [ "$LAST_REQUEST" != "$REQUEST_ID" ]; then
+            echo "Production did not record the queued request id." >&2
+            exit 11
+          fi
+
+          printf '%s' "$LOG_JSON" | jq -e 'type == "array" and length > 0 and .[0].media_id != null and .[0].media_id != ""' >/dev/null
+          MEDIA_ID="$(printf '%s' "$LOG_JSON" | jq -r '.[0].media_id')"
+          PUBLISHED_AT="$(printf '%s' "$LOG_JSON" | jq -r '.[0].published_at // ""')"
+          IMAGE_URL="$(printf '%s' "$LOG_JSON" | jq -r '.[0].image_url // ""')"
+          USERNAME="$(printf '%s' "$LOG_JSON" | jq -r '.[0].username // ""')"
+
+          jq -n \
+            --arg status "published" \
+            --arg request_id "$REQUEST_ID" \
+            --arg media_id "$MEDIA_ID" \
+            --arg published_at "$PUBLISHED_AT" \
+            --arg image_url "$IMAGE_URL" \
+            --arg username "$USERNAME" \
+            '{status:$status,request_id:$request_id,media_id:$media_id,published_at:$published_at,image_url:$image_url,username:$username}' \
+            > instagram-publish-result.json
+
+      - name: Record publication result
+        if: steps.queue.outputs.publish == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s instagram-publish-result.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add instagram-publish-result.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Record Instagram publication result [skip ci]'
+          git push
