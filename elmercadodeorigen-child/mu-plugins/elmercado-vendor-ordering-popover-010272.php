@@ -106,7 +106,7 @@ add_action(
 					position:fixed !important;
 					inset:0 !important;
 					z-index:2147483000 !important;
-					dis:flex !important;
+					display:flex !important;
 					align-items:flex-end !important;
 					justify-content:center !important;
 					box-sizing:border-box !important;
@@ -160,7 +160,7 @@ add_action(
 				}
 
 				body.wcfmmp-store-page .mdo-vendor-order-option {
-					dis:flex;
+					display:flex;
 					width:100%;
 					min-height:48px;
 					align-items:center;
@@ -220,9 +220,34 @@ add_action(
 				[['position','absolute'],['left','0'],['top','0'],['width','1px'],['height','1px'],['min-width','1px'],['min-height','1px'],['max-width','1px'],['max-height','1px'],['margin','0'],['padding','0'],['border','0'],['opacity','0'],['visibility','hidden'],['pointer-events','none'],['overflow','hidden'],['clip-path','inset(50%)'],['z-index','-1']].forEach(([name,value]) => setImportant(select,name,value));
 			};
 
+			const hideSheet = instance => {
+				if (!instance) return;
+				setImportant(instance.sheet, 'display', 'none');
+				setImportant(instance.sheet, 'visibility', 'hidden');
+				setImportant(instance.sheet, 'opacity', '0');
+				setImportant(instance.sheet, 'pointer-events', 'none');
+				instance.sheet.hidden = true;
+			};
+
+			const showSheet = instance => {
+				if (!instance) return;
+				instance.sheet.hidden = false;
+				[
+					['display','flex'],['position','fixed'],['inset','0'],['z-index','2147483000'],
+					['align-items','flex-end'],['justify-content','center'],['box-sizing','border-box'],
+					['width','100vw'],['height','100dvh'],['margin','0'],['padding','0'],
+					['background','rgba(9,24,19,.38)'],['visibility','visible'],['opacity','1'],['pointer-events','auto']
+				].forEach(([name,value]) => setImportant(instance.sheet,name,value));
+				[
+					['display','block'],['box-sizing','border-box'],['width','100%'],['max-width','520px'],
+					['max-height','min(76dvh,620px)'],['overflow','auto'],['padding','10px 12px calc(12px + env(safe-area-inset-bottom))'],
+					['border-radius','22px 22px 0 0'],['background','#fff'],['box-shadow','0 -18px 44px rgba(17,42,34,.2)']
+				].forEach(([name,value]) => setImportant(instance.panel,name,value));
+			};
+
 			const closeSheet = (instance, restoreFocus = false) => {
 				if (!instance) return;
-				instance.sheet.hidden = true;
+				hideSheet(instance);
 				instance.button.setAttribute('aria-expanded', 'false');
 				document.documentElement.style.removeProperty('overflow');
 				if (restoreFocus) instance.button.focus({ preventScroll: true });
@@ -241,7 +266,7 @@ add_action(
 				if (!media.matches) return;
 				if (active && active !== instance) closeSheet(active);
 				sync(instance);
-				instance.sheet.hidden = false;
+				showSheet(instance);
 				instance.button.setAttribute('aria-expanded', 'true');
 				document.documentElement.style.setProperty('overflow', 'hidden');
 				active = instance;
@@ -317,6 +342,7 @@ add_action(
 				form.appendChild(button);
 				document.body.appendChild(sheet);
 				const instance = { select, form, button, sheet, panel };
+				hideSheet(instance);
 
 				button.addEventListener('click', event => {
 					event.preventDefault();
