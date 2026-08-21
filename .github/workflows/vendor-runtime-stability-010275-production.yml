@@ -1,10 +1,13 @@
-name: Vendor runtime stability 0.10.275 production
+name: Vendor ordering 0.10.276 and runtime production
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/vendor-runtime-stability-010275-production.yml'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-popover-010272.php'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-native-retire-010274.php'
       - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php'
   workflow_dispatch:
 
@@ -28,7 +31,13 @@ jobs:
       - name: Validate and install tools
         run: |
           set -euo pipefail
-          php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php >/dev/null
+          for f in \
+            elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php \
+            elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-popover-010272.php \
+            elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-native-retire-010274.php \
+            elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php; do
+            php -l "$f" >/dev/null
+          done
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
@@ -38,7 +47,7 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy runtime helper
+      - name: Deploy consolidated vendor controls
         id: deploy
         run: |
           set -euo pipefail
@@ -54,47 +63,91 @@ jobs:
           ')"
           test -n "$PROD_PATH"
           MU_DIR="$PROD_PATH/wp-content/mu-plugins"
-          TARGET="$MU_DIR/elmercado-vendor-runtime-stability-010275.php"
-          REMOTE="/tmp/vendor-runtime-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$MU_DIR'; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'; wp_bin=\$(command -v wp || true); [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-          PROBE="elmercado-opcache-vendor-runtime-${GITHUB_RUN_ID}.php"
+          FILES=(
+            elmercado-vendor-catalog-controls-010270.php
+            elmercado-vendor-ordering-popover-010272.php
+            elmercado-vendor-ordering-native-retire-010274.php
+            elmercado-vendor-runtime-stability-010275.php
+          )
+          for name in "${FILES[@]}"; do
+            local_path="elmercadodeorigen-child/mu-plugins/$name"
+            remote="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP_OPTIONS "$local_path" "$STAGING_USER@$STAGING_HOST:$remote"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; mkdir -p '$MU_DIR'; install -m 0644 '$remote' '$MU_DIR/$name'; rm -f '$remote'"
+          done
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); if [ -n \"\$wp_bin\" ]; then \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if (function_exists(\"rocket_clean_domain\")) { rocket_clean_domain(); } if (has_action(\"litespeed_purge_all\")) { do_action(\"litespeed_purge_all\"); } if (function_exists(\"wp_cache_clear_cache\")) { wp_cache_clear_cache(); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; fi"
+
+          PROBE="elmercado-opcache-vendor-order-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
           curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID" >/dev/null || true
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" || true
 
-      - name: Verify mobile ordering touch
+          # Warm the canonical URL after purge so the normal cached page contains the new code.
+          curl -fsSL --max-time 45 -H 'Cache-Control: no-cache' "$BASE_URL/tienda/1957/" >/tmp/vendor-canonical.html
+          grep -q 'mdoSheet010276' /tmp/vendor-canonical.html
+
+      - name: Verify mobile ordering bottom sheet on canonical URL
         id: ordering
         run: |
           set -euo pipefail
-          BASE_URL="$BASE_URL" node <<'NODE' > /tmp/vendor-ordering-010275.json 2>&1
+          BASE_URL="$BASE_URL" node <<'NODE' > /tmp/vendor-ordering-010276.json 2>&1
           const puppeteer=require('puppeteer-core');
           const sleep=ms=>new Promise(r=>setTimeout(r,ms));
           const fail=(m,d)=>{throw new Error(m+' '+JSON.stringify(d));};
           (async()=>{
             const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
-            const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:2});
-            await p.goto(`${process.env.BASE_URL}/tienda/1957/?runtime-order=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
-            await p.waitForSelector('.mdo-vendor-order-button',{visible:true,timeout:30000}); await sleep(2800);
-            const before=await p.evaluate(()=>{const b=document.querySelector('.mdo-vendor-order-button'),s=document.querySelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select');const br=b.getBoundingClientRect(),sr=s.getBoundingClientRect(),ss=getComputedStyle(s);const x=br.left+br.width/2,y=br.top+br.height/2;const hit=document.elementFromPoint(x,y);return{button:{left:br.left,top:br.top,width:br.width,height:br.height,text:b.textContent.trim()},native:{width:sr.width,height:sr.height,opacity:ss.opacity,visibility:ss.visibility,pointer:ss.pointerEvents,aria:s.getAttribute('aria-hidden')},hit:{tag:hit?.tagName,cls:hit?.className||'',isButton:hit===b||b.contains(hit)},marker:!!window.__mdoVendorFetchNoStore010275};});
-            if(before.native.width>2||before.native.height>2||before.native.opacity!=='0'||before.native.visibility!=='hidden'||before.native.pointer!=='none'||before.native.aria!=='true') fail('native select resurrected',before);
-            if(!before.hit.isButton) fail('ordering button is not top hit target',before);
-            await p.touchscreen.tap(before.button.left+before.button.width/2,before.button.top+before.button.height/2); await sleep(350);
-            const target=await p.evaluate(()=>{const m=document.querySelector('.mdo-vendor-order-menu:not([hidden])'),s=document.querySelector('.woocommerce-ordering select');if(!m)return null;const item=[...m.querySelectorAll('.mdo-vendor-order-option')].find(x=>x.dataset.value!==s.value);if(!item)return null;const r=item.getBoundingClientRect();return{value:item.dataset.value,left:r.left,top:r.top,width:r.width,height:r.height,display:getComputedStyle(m).display};});
-            if(!target) fail('ordering menu did not open after touch',before);
-            const old=p.url(); await p.touchscreen.tap(target.left+target.width/2,target.top+target.height/2);
-            await p.waitForFunction(old=>location.href!==old,{timeout:10000},old).catch(()=>{}); await sleep(1200);
-            if(p.url()===old) fail('ordering option did not navigate',{old,target});
-            console.log(JSON.stringify({ok:true,before,target,old,newUrl:p.url()})); await browser.close();
+            const p=await browser.newPage();
+            await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:3});
+            await p.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1');
+            await p.goto(`${process.env.BASE_URL}/tienda/1957/`,{waitUntil:'networkidle2',timeout:60000});
+            await p.waitForSelector('.mdo-vendor-order-button',{visible:true,timeout:30000});
+            await sleep(1800);
+            const before=await p.evaluate(()=>{
+              const b=document.querySelector('.mdo-vendor-order-button');
+              const s=document.querySelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select');
+              const r=b.getBoundingClientRect(), ss=getComputedStyle(s), hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+              return {button:{left:r.left,top:r.top,width:r.width,height:r.height,text:b.textContent.trim()},native:{opacity:ss.opacity,visibility:ss.visibility,pointer:ss.pointerEvents,aria:s.getAttribute('aria-hidden'),marker:s.dataset.mdoSheet010276||''},hitButton:hit===b||b.contains(hit)};
+            });
+            if(before.native.marker!=='1'||before.native.opacity!=='0'||before.native.visibility!=='hidden'||before.native.pointer!=='none'||before.native.aria!=='true') fail('new ordering owner not active',before);
+            if(!before.hitButton) fail('button is not tappable target',before);
+
+            await p.touchscreen.tap(before.button.left+before.button.width/2,before.button.top+before.button.height/2);
+            await sleep(300);
+            const opened=await p.evaluate(()=>{
+              const sh=document.querySelector('.mdo-vendor-order-sheet:not([hidden])');
+              if(!sh)return null;
+              const panel=sh.querySelector('.mdo-vendor-order-sheet__panel');
+              const sr=sh.getBoundingClientRect(), pr=panel.getBoundingClientRect();
+              const cs=getComputedStyle(sh);
+              const current=sh.querySelector('.mdo-vendor-order-option[aria-current="true"]');
+              const other=[...sh.querySelectorAll('.mdo-vendor-order-option')].find(x=>x!==current);
+              if(!other)return null;
+              const or=other.getBoundingClientRect();
+              return {sheet:{left:sr.left,top:sr.top,right:sr.right,bottom:sr.bottom,width:sr.width,height:sr.height,display:cs.display,visibility:cs.visibility,pointer:cs.pointerEvents},panel:{top:pr.top,bottom:pr.bottom,height:pr.height},target:{value:other.dataset.value,left:or.left,top:or.top,width:or.width,height:or.height},viewport:{width:innerWidth,height:innerHeight,visualHeight:visualViewport?.height||null}};
+            });
+            if(!opened) fail('bottom sheet did not open',before);
+            if(opened.sheet.display==='none'||opened.sheet.visibility!=='visible'||opened.sheet.pointer==='none') fail('bottom sheet not visible',opened);
+            if(opened.panel.bottom>opened.viewport.height+2||opened.panel.top<0) fail('bottom sheet panel outside viewport',opened);
+            if(opened.target.top<0||opened.target.top+opened.target.height>opened.viewport.height+2) fail('ordering option outside viewport',opened);
+
+            const old=p.url();
+            await p.touchscreen.tap(opened.target.left+opened.target.width/2,opened.target.top+opened.target.height/2);
+            await p.waitForFunction((oldUrl,val)=>location.href!==oldUrl && new URL(location.href).searchParams.get('orderby')===val,{timeout:12000},old,opened.target.value).catch(()=>{});
+            await sleep(500);
+            const newUrl=p.url();
+            if(newUrl===old||new URL(newUrl).searchParams.get('orderby')!==opened.target.value) fail('ordering option did not navigate',{old,newUrl,opened});
+            console.log(JSON.stringify({ok:true,before,opened,old,newUrl}));
+            await browser.close();
           })().catch(e=>{console.error(JSON.stringify({ok:false,error:String(e.stack||e)}));process.exit(1)});
           NODE
-          cat /tmp/vendor-ordering-010275.json
+          cat /tmp/vendor-ordering-010276.json
 
       - name: Verify continuous vendor product loading
         id: loading
         run: |
           set -euo pipefail
-          BASE_URL="$BASE_URL" node <<'NODE' > /tmp/vendor-loading-010275.json 2>&1
+          BASE_URL="$BASE_URL" node <<'NODE' > /tmp/vendor-loading-010276.json 2>&1
           const puppeteer=require('puppeteer-core');
           const sleep=ms=>new Promise(r=>setTimeout(r,ms));
           const candidates=['tolecarnes','la-huerta-de-ana-mary','hidalgo-de-la-jara','1957'];
@@ -103,26 +156,20 @@ jobs:
             const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:2});
             let chosen=null, snapshot=null;
             for(const slug of candidates){
-              await p.goto(`${process.env.BASE_URL}/tienda/${slug}/?runtime-load=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000}).catch(()=>{}); await sleep(1500);
-              snapshot=await p.evaluate(()=>({url:location.href,count:document.querySelectorAll('#wcfmmp-store ul.products > li.product').length,next:window.__emoCatalogLoaderState?.nextUrl||'',shown:window.__emoCatalogLoaderState?.shown||0,marker:!!window.__mdoVendorFetchNoStore010275,state:document.querySelector('.emo-catalog-load-state')?.className||'',message:document.querySelector('.emo-catalog-load-message')?.textContent||''}));
+              await p.goto(`${process.env.BASE_URL}/tienda/${slug}/?runtime-load=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000}).catch(()=>{}); await sleep(1200);
+              snapshot=await p.evaluate(()=>({count:document.querySelectorAll('#wcfmmp-store ul.products > li.product').length,next:window.__emoCatalogLoaderState?.nextUrl||'',marker:!!window.__mdoVendorFetchNoStore010275}));
               if(snapshot.next){chosen=slug;break;}
             }
-            if(!chosen) throw new Error('No vendor with a real next page found '+JSON.stringify(snapshot));
+            if(!chosen) throw new Error('No vendor with next page '+JSON.stringify(snapshot));
             const before=snapshot.count;
             await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
-            const started=Date.now(); let after=before, state='', message='', debug=null;
-            while(Date.now()-started<22000){
-              await sleep(500);
-              const now=await p.evaluate(()=>({count:document.querySelectorAll('#wcfmmp-store ul.products > li.product').length,state:document.querySelector('.emo-catalog-load-state')?.className||'',message:document.querySelector('.emo-catalog-load-message')?.textContent||'',debug:window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,highestPage:window.__emoCatalogLoaderState.highestPage,shown:window.__emoCatalogLoaderState.shown,loading:window.__emoCatalogLoaderState.loading}:null}));
-              after=now.count; state=now.state; message=now.message; debug=now.debug;
-              if(after>before) break;
-              if(/is-failure/.test(state)) break;
-            }
-            if(after<=before) throw new Error('Vendor loader did not append products '+JSON.stringify({chosen,before,after,state,message,debug,initial:snapshot}));
-            console.log(JSON.stringify({ok:true,chosen,before,after,state,message,debug,initial:snapshot})); await browser.close();
+            const started=Date.now(); let after=before, debug=null;
+            while(Date.now()-started<22000){await sleep(500);const now=await p.evaluate(()=>({count:document.querySelectorAll('#wcfmmp-store ul.products > li.product').length,debug:window.__emoCatalogLoaderState||null}));after=now.count;debug=now.debug;if(after>before)break;}
+            if(after<=before) throw new Error('Vendor loader did not append products '+JSON.stringify({chosen,before,after,debug}));
+            console.log(JSON.stringify({ok:true,chosen,before,after,debug})); await browser.close();
           })().catch(e=>{console.error(JSON.stringify({ok:false,error:String(e.stack||e)}));process.exit(1)});
           NODE
-          cat /tmp/vendor-loading-010275.json
+          cat /tmp/vendor-loading-010276.json
 
       - name: Record verification
         if: always()
@@ -137,13 +184,13 @@ jobs:
           import json,os,pathlib
           def read(path):
               p=pathlib.Path(path)
-              return p.read_text(errors='replace')[-10000:] if p.exists() else ''
-          out={'status':os.getenv('JOB_STATUS'),'run_id':os.getenv('GITHUB_RUN_ID'),'sha':os.getenv('GITHUB_SHA'),'deploy':os.getenv('DEPLOY_RESULT'),'ordering':os.getenv('ORDERING_RESULT'),'loading':os.getenv('LOADING_RESULT'),'ordering_payload':read('/tmp/vendor-ordering-010275.json'),'loading_payload':read('/tmp/vendor-loading-010275.json')}
+              return p.read_text(errors='replace')[-12000:] if p.exists() else ''
+          out={'status':os.getenv('JOB_STATUS'),'run_id':os.getenv('GITHUB_RUN_ID'),'sha':os.getenv('GITHUB_SHA'),'deploy':os.getenv('DEPLOY_RESULT'),'ordering':os.getenv('ORDERING_RESULT'),'loading':os.getenv('LOADING_RESULT'),'ordering_payload':read('/tmp/vendor-ordering-010276.json'),'loading_payload':read('/tmp/vendor-loading-010276.json')}
           pathlib.Path('.deploy-status/vendor-runtime-stability-010275-production.json').write_text(json.dumps(out,ensure_ascii=False))
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/vendor-runtime-stability-010275-production.json
-          git commit -m "Record vendor runtime verification $GITHUB_RUN_ID" || exit 0
+          git commit -m "Record vendor ordering 0.10.276 verification $GITHUB_RUN_ID" || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
