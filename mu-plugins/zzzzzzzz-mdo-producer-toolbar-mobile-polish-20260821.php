@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Producer Toolbar Mobile Polish
- * Description: Mobile-only deterministic polish for producer shipping and ordering controls.
- * Version: 1.4.0
+ * Description: Final mobile parity for producer toolbar controls and destination modal.
+ * Version: 2.0.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -27,197 +27,146 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 		return;
 	}
 	?>
-	<style class="mdo-producer-toolbar-mobile-polish-20260821">
-		@media (max-width:640px) {
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized {
-				position:relative !important;
-				isolation:isolate !important;
-				overflow:visible !important;
-			}
+	<style id="mdo-producer-toolbar-mobile-polish-20260821">
+		/* Producer destination modal: mirror the final main-shop modal treatment. */
+		html body > .mdo-ps-modal { z-index:2147483646 !important; }
+		html body > .mdo-ps-modal .mdo-ps-modal__close {
+			top:10px !important;
+			right:10px !important;
+			box-sizing:border-box !important;
+			width:42px !important;
+			height:42px !important;
+			min-width:42px !important;
+			min-height:42px !important;
+			margin:0 !important;
+			padding:0 !important;
+			border:0 !important;
+			border-radius:50% !important;
+			background:#f3f6f4 !important;
+			color:#173f32 !important;
+			box-shadow:none !important;
+			font-family:inherit !important;
+			font-size:25px !important;
+			font-weight:400 !important;
+			line-height:40px !important;
+			text-align:center !important;
+		}
+		html body > .mdo-ps-modal .mdo-ps-modal__panel h2 {
+			margin-right:48px !important;
+			color:#173f32 !important;
+		}
+		html body > .mdo-ps-modal form { margin:0 !important; }
+		html body > .mdo-ps-modal select,
+		html body > .mdo-ps-modal input { box-shadow:none !important; }
+		html body > .mdo-ps-modal select:focus,
+		html body > .mdo-ps-modal input:focus {
+			border-color:#658a7d !important;
+			outline:2px solid rgba(23,63,50,.08) !important;
+			outline-offset:1px !important;
+		}
+		html body > .mdo-ps-modal .mdo-ps-modal__error { line-height:1.4 !important; }
 
-			/* Shipping: a single clean line inside the 40px control. */
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination--canonical,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination {
-				position:relative !important;
-				z-index:1 !important;
-				overflow:visible !important;
-			}
+		@media (max-width:600px) {
+			html body > .mdo-ps-modal .mdo-ps-modal__panel h2 { font-size:20px !important; }
+		}
+
+		@media (max-width:640px) {
+			/*
+			 * Keep the exact main-shop 40px pill but never put its text in a second
+			 * fixed-height clipping box. This fixes descenders in Envío/Shipping.
+			 */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger {
-				position:relative !important;
-				z-index:1 !important;
-				display:grid !important;
-				grid-template-columns:minmax(0,1fr) 16px !important;
-				column-gap:9px !important;
-				align-items:center !important;
-				box-sizing:border-box !important;
-				width:100% !important;
-				min-width:0 !important;
-				max-width:100% !important;
 				height:40px !important;
 				min-height:40px !important;
 				max-height:40px !important;
-				padding:0 13px !important;
-				overflow:hidden !important;
+				padding:0 12px 0 13px !important;
+				font-size:11.75px !important;
 				line-height:1 !important;
+				overflow:visible !important;
+				pointer-events:auto !important;
 			}
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:first-child,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > svg:first-child {
-				display:none !important;
-			}
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span {
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__label,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span:first-of-type,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span:first-of-type {
 				position:static !important;
-				dis:flex !important;
-				display:flex !important;
+				display:block !important;
 				box-sizing:border-box !important;
 				width:100% !important;
 				min-width:0 !important;
-				height:38px !important;
-				min-height:38px !important;
-				max-height:38px !important;
-				align-items:center !important;
+				height:auto !important;
+				min-height:0 !important;
+				max-height:none !important;
 				margin:0 !important;
-				padding:0 !important;
+				padding:1px 0 2px !important;
 				overflow:hidden !important;
 				white-space:nowrap !important;
 				text-overflow:ellipsis !important;
 				line-height:1.2 !important;
 				pointer-events:none !important;
 			}
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__chevron,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:last-child,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > svg:last-child {
 				pointer-events:none !important;
 			}
 
-			/* Ordering: no wrapper border; only the native select is visible and interactive. */
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering {
+			/*
+			 * Ordering deliberately inherits the same styled native <select> from
+			 * mdo_ps_toolbar_ux_critical_css_20260821. Do not re-enable browser
+			 * menulist appearance: that produced the visible second border.
+			 */
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering {
 				position:relative !important;
-				z-index:200 !important;
-				display:block !important;
-				box-sizing:border-box !important;
+				z-index:20 !important;
 				border:0 !important;
-				border-radius:0 !important;
-				outline:0 !important;
 				background:transparent !important;
 				box-shadow:none !important;
 				overflow:visible !important;
 				pointer-events:auto !important;
 			}
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::before,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::after {
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering::before,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering::after {
 				content:none !important;
 				display:none !important;
 				pointer-events:none !important;
 			}
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering span {
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering > span,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering > .select2,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering > .select2-container {
 				display:none !important;
 				visibility:hidden !important;
 				pointer-events:none !important;
 			}
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering select {
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering > select,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering > select.orderby {
 				position:relative !important;
-				z-index:201 !important;
+				z-index:21 !important;
 				display:block !important;
 				visibility:visible !important;
 				opacity:1 !important;
-				box-sizing:border-box !important;
-				width:100% !important;
-				min-width:100% !important;
-				max-width:100% !important;
-				height:40px !important;
-				min-height:40px !important;
-				max-height:40px !important;
-				margin:0 !important;
-				padding:0 36px 0 14px !important;
-				border:1px solid rgba(23,63,50,.14) !important;
+				-webkit-appearance:none !important;
+				appearance:none !important;
+				background-color:#f8faf8 !important;
+				background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23173f32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+				background-repeat:no-repeat !important;
+				background-position:right 12px center !important;
+				background-size:12px 8px !important;
+				border:1px solid rgba(23,63,50,.15) !important;
 				border-radius:999px !important;
-				outline:0 !important;
-				background:#fff !important;
 				box-shadow:none !important;
 				pointer-events:auto !important;
 				cursor:pointer !important;
 				touch-action:manipulation !important;
-				-webkit-appearance:menulist !important;
-				appearance:auto !important;
 			}
 		}
 	</style>
 	<?php
 }
 
+/*
+ * CSS-only by design. The shared producer UX/static guard already owns DOM
+ * normalisation. The old repeated JS inline-style writes are intentionally gone.
+ */
 add_action( 'wp_head', 'mdo_producer_toolbar_mobile_polish_css_20260821', PHP_INT_MAX );
 add_action( 'wp_footer', 'mdo_producer_toolbar_mobile_polish_css_20260821', PHP_INT_MAX );
-
-add_action(
-	'wp_footer',
-	static function (): void {
-		if ( ! mdo_producer_toolbar_mobile_polish_is_store_20260821() ) {
-			return;
-		}
-		?>
-		<script id="mdo-producer-toolbar-mobile-polish-js-20260821">
-		(() => {
-			'use strict';
-			if (!matchMedia('(max-width:640px)').matches) return;
-			const apply = () => {
-				const store = document.querySelector('#wcfmmp-store');
-				if (!store) return;
-				const trigger = store.querySelector('.mdo-catalog-destination__trigger, .mdo-ps-destination__trigger');
-				const label = trigger?.querySelector(':scope > span');
-				if (label) {
-					const clean = label.textContent.replace(/\s+/g, ' ').trim();
-					if (label.textContent !== clean || label.children.length) label.textContent = clean;
-					label.style.setProperty('display','flex','important');
-					label.style.setProperty('height','38px','important');
-					label.style.setProperty('min-height','38px','important');
-					label.style.setProperty('max-height','38px','important');
-					label.style.setProperty('align-items','center','important');
-					label.style.setProperty('line-height','1.2','important');
-					label.style.setProperty('white-space','nowrap','important');
-					label.style.setProperty('overflow','hidden','important');
-					label.style.setProperty('pointer-events','none','important');
-				}
-				const firstSvg = trigger?.querySelector(':scope > svg:first-child');
-				if (firstSvg) firstSvg.style.setProperty('display','none','important');
-				const form = store.querySelector('.woocommerce-ordering');
-				const select = form?.querySelector('select');
-				if (form) {
-					form.style.setProperty('border','0','important');
-					form.style.setProperty('border-radius','0','important');
-					form.style.setProperty('background','transparent','important');
-					form.style.setProperty('box-shadow','none','important');
-					form.style.setProperty('pointer-events','auto','important');
-					form.style.setProperty('z-index','200','important');
-					form.querySelectorAll('span').forEach(n => {
-						n.style.setProperty('display','none','important');
-						n.style.setProperty('pointer-events','none','important');
-					});
-				}
-				if (select) {
-					select.style.setProperty('pointer-events','auto','important');
-					select.style.setProperty('z-index','201','important');
-					select.style.setProperty('appearance','auto','important');
-					select.style.setProperty('-webkit-appearance','menulist','important');
-				}
-			};
-			apply();
-			requestAnimationFrame(apply);
-			setTimeout(apply,250);
-			setTimeout(apply,900);
-			setTimeout(apply,1800);
-			const store = document.querySelector('#wcfmmp-store');
-			if (store) {
-				let timer = 0;
-				new MutationObserver(() => {
-					clearTimeout(timer);
-					timer = setTimeout(apply, 20);
-				}).observe(store, {subtree:true, childList:true});
-			}
-			window.addEventListener('pageshow', apply, {passive:true});
-		})();
-		</script>
-		<?php
-	},
-	PHP_INT_MAX
-);
