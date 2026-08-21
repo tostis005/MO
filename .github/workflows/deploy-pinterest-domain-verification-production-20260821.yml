@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -23,6 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate PHP
         run: php -l mu-plugins/mdo-pinterest-domain-verification.php
@@ -88,3 +90,16 @@ jobs:
           HTML="$(curl -fsSL --max-time 30 "$URL")"
           printf '%s' "$HTML" | grep -Fq '<meta name="p:domain_verify" content="bd9b4a2c373b774bb7753fa7040172ac">'
           echo 'pinterest_verify_ok'
+
+      - name: Record successful verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          printf 'pinterest_verify_ok %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-status/pinterest-domain-verification-20260821.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/pinterest-domain-verification-20260821.txt
+          git commit -m 'Record Pinterest verification deployment [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
