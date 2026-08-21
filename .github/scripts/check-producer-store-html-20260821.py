@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Workflow activation 2026-08-21
 from html.parser import HTMLParser
 from pathlib import Path
 import json
