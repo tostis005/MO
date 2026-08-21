@@ -1,0 +1,110 @@
+name: Journal fix observable diagnostic 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/journal-fix-diagnostic-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply cleanup and collect database report
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-english-journal-content-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-journal-content-20260821.php"
+          REMOTE="/tmp/cleanup-legacy-journal-diagnostic-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/cleanup-legacy-journal-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > journal-cleanup-diagnostic.json
+          CLEANUP_RC=$?
+          set -e
+          echo "$CLEANUP_RC" > cleanup-rc.txt
+          python3 -m json.tool journal-cleanup-diagnostic.json >/dev/null || printf '{"posts":[],"errors":["invalid cleanup output"]}\n' > journal-cleanup-diagnostic.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Inspect public output
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import html,json,os,re,subprocess
+          base='https://www.elmercadodeorigen.com'
+          cleanup=json.load(open('journal-cleanup-diagnostic.json',encoding='utf-8'))
+          def fetch(url):
+              p=subprocess.run(['curl','-k','-L','-sS','--retry','3','--retry-delay','2','--connect-timeout','10','--max-time','60','-A','Mozilla/5.0 EMDO Journal diagnostic','-H','Cache-Control: no-cache','-w','\n__HTTP__%{http_code}',url+('?mdo_diag=1' if '?' not in url else '&mdo_diag=1')],capture_output=True,text=True)
+              body,_,tail=p.stdout.rpartition('\n__HTTP__')
+              try: code=int(tail.strip())
+              except: code=0
+              return code,body
+          promo=re.compile(r'cup[oó]n|coupon|c[oó]digo\s+(?:de\s+)?(?:descuento|promocional)|discount\s+code|promo(?:tional)?\s+code|(?:usa|usar|utiliza|utilizar|introduce)\s+(?:el\s+)?c[oó]digo|(?:use|enter|apply)\s+(?:the\s+)?(?:code|coupon)',re.I)
+          result={'cleanup_rc':int(open('cleanup-rc.txt').read().strip() or 0),'cleanup':cleanup,'guides':[],'legacy_public':[],'archives':{}}
+          for lang,url in [('es',base+'/blog/'),('en',base+'/en/journal/')]:
+              code,body=fetch(url); result['archives'][lang]={'http':code,'bytes':len(body),'has_encoded_title_markup':('&lt;strong' in body.lower() or '&lt;span' in body.lower() or '&lt;h' in body.lower())}
+          guide_urls=[
+            base+'/en/ham-or-shoulder-differences-how-to-choose/',
+            base+'/en/whole-ham-or-sliced-how-to-choose-format/',
+            base+'/en/extra-virgin-olive-oil-5-litre-container-storage-guide/',
+            base+'/en/buying-meat-online-what-to-check-before-choosing-a-cut/',
+            base+'/en/seasonal-vegetables-how-to-choose-better/',
+            base+'/en/dried-pulses-soaking-cooking-how-to-choose/',
+          ]
+          for url in guide_urls:
+              code,body=fetch(url)
+              product_cards=len(re.findall(r'<li\b[^>]*class=["\'][^"\']*\bproduct\b',body,re.I))
+              result['guides'].append({'url':url,'http':code,'raw_products_shortcode':'[products ' in body,'product_cards':product_cards})
+          for p in cleanup.get('posts',[]):
+              urls=[('es',base+'/'+p['slug'].strip('/')+'/')]
+              if p.get('en_slug'): urls.append(('en',base+'/en/'+p['en_slug'].strip('/')+'/'))
+              for lang,url in urls:
+                  code,body=fetch(url)
+                  m=re.search(r'class=["\'][^"\']*emo-article-content[^"\']*["\'][^>]*>(.*?)<footer\b[^>]*class=["\'][^"\']*emo-article-footer',body,re.I|re.S)
+                  article=m.group(1) if m else body
+                  text=html.unescape(re.sub(r'<[^>]+>',' ',article))
+                  result['legacy_public'].append({'lang':lang,'url':url,'http':code,'promo_mentions':len(promo.findall(text)),'raw_title_markup':('&lt;strong' in body.lower() or '&lt;span' in body.lower())})
+          os.makedirs('.deploy-status',exist_ok=True)
+          json.dump(result,open('.deploy-status/journal-fix-diagnostic-20260821.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          open('.deploy-status/journal-fix-diagnostic-20260821.json','a').write('\n')
+          PY
+
+      - name: Commit diagnostic report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/journal-fix-diagnostic-20260821.json
+          git commit -m 'Record Journal fix diagnostic [skip ci]'
+          git push origin HEAD:main
