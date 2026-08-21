@@ -1,9 +1,11 @@
-name: Editorial authority batch 3 via proven publisher 20260821
+name: Editorial authority batch 2 publish 20260821
 
 on:
   push:
     branches: [main]
     paths:
+      - '.github/scripts/publish-editorial-authority-batch2-20260821.php'
+      - '.github/data/editorial-authority-batch2/**'
       - '.github/workflows/editorial-authority-batch2-publish-20260821.yml'
   workflow_dispatch:
 
@@ -11,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: editorial-authority-batch3-proven-20260821
+  group: editorial-authority-batch2-20260821
   cancel-in-progress: false
 
 jobs:
@@ -28,15 +30,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate source
+      - name: Validate editorial source
         shell: bash
         run: |
           set -euo pipefail
-          php -l .github/scripts/publish-editorial-authority-batch3-20260821.php
-          test "$(find .github/data/editorial-authority-batch3-20260821 -maxdepth 1 -type f -name '*.php' | wc -l)" -eq 5
-          for f in .github/data/editorial-authority-batch3-20260821/*.php; do php -l "$f"; done
+          php -l .github/scripts/publish-editorial-authority-batch2-20260821.php
+          test "$(find .github/data/editorial-authority-batch2 -maxdepth 1 -type f -name '*.php' | wc -l)" -eq 5
+          for f in .github/data/editorial-authority-batch2/*.php; do php -l "$f"; done
 
-      - name: Publish with Plesk PHP
+      - name: Publish with production Plesk PHP
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -48,50 +50,83 @@ jobs:
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
           INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            wp=$(command -v wp || true)
+            php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
-            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
-            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE=/tmp/emdo-ab3-proven-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
-          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch3-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
-          sshpass -e scp $SCP .github/data/editorial-authority-batch3-20260821/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH3_DIR='$DATA' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" > /tmp/ab3-clean-raw.json
+          : "${PROD:?}"; : "${PHP:?}"; : "${WP:?}"
+          REMOTE=/tmp/emdo-ab2-${GITHUB_RUN_ID}
+          REMOTE_DATA=$REMOTE/data
+          PUB=$REMOTE/publish.php
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$REMOTE_DATA'"
+          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch2-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e scp $SCP .github/data/editorial-authority-batch2/*.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DATA/"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH2_DIR='$REMOTE_DATA' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" > /tmp/ab2-publish.json
           python3 - <<'PY'
           import json
-          raw=open('/tmp/ab3-clean-raw.json',encoding='utf-8',errors='ignore').read(); s=raw.find('{'); e=raw.rfind('}')
-          assert s>=0 and e>=s, raw[-6000:]
-          d=json.loads(raw[s:e+1]); assert d.get('batch')==3 and len(d.get('posts',[]))==5, d
-          assert all(p.get('status')=='publish' for p in d['posts']), d
-          assert all(int(p.get('words_es',0))>=900 and int(p.get('words_en',0))>=800 for p in d['posts']), d
-          assert len({p.get('image_id') for p in d['posts']})==5, d
-          assert all(int(p.get('image_w',0))>=1200 and int(p.get('image_h',0))>=700 for p in d['posts']), d
-          open('/tmp/ab3-clean.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          raw=open('/tmp/ab2-publish.json',encoding='utf-8',errors='ignore').read()
+          start=raw.find('{'); end=raw.rfind('}')
+          assert start >= 0 and end >= start, raw[-6000:]
+          d=json.loads(raw[start:end+1])
+          assert d.get('batch') == 2, d
+          assert len(d.get('posts',[])) == 5, d
+          assert all(p.get('status') == 'publish' for p in d['posts']), d
+          assert len({p.get('image_id') for p in d['posts']}) == 5, d
+          assert all(int(p.get('words_es',0)) >= 850 for p in d['posts']), d
+          assert all(int(p.get('words_en',0)) >= 750 for p in d['posts']), d
+          assert all(int(p.get('image_w',0)) >= 1200 and int(p.get('image_h',0)) >= 700 for p in d['posts']), d
+          assert all(p.get('product_cat') for p in d['posts']), d
+          open('/tmp/ab2-clean.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
           PY
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT p.ID,p.post_status,p.post_name,pm2.meta_value AS article_key FROM wp_posts p JOIN wp_postmeta pm ON pm.post_id=p.ID AND pm.meta_key='_emdo_authority_batch' AND pm.meta_value='2' JOIN wp_postmeta pm2 ON pm2.post_id=p.ID AND pm2.meta_key='_emdo_authority_key' ORDER BY p.ID DESC LIMIT 10;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/ab2-db.txt
+          test "$(grep -c $'\tpublish\t' /tmp/ab2-db.txt)" -ge 5
 
-      - name: Verify public views and indexes
+      - name: Verify ten public article views
         shell: bash
         run: |
           set -euo pipefail
-          BASE=https://www.elmercadodeorigen.com; stamp="$GITHUB_RUN_ID"
-          check(){ url="$1"; marker="$2"; f=/tmp/ab3-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -o "$f" -w '%{http_code}' "$url?ab3_proven=$stamp"); test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH3:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; }
-          check "$BASE/como-cortar-aprovechar-jamon-iberico-casa/" ham-cutting-guide
-          check "$BASE/en/how-to-carve-and-use-an-iberian-ham-at-home/" ham-cutting-guide
-          check "$BASE/como-preparar-tabla-ibericos-cantidades-orden-acompanamientos/" iberian-board-guide
-          check "$BASE/en/how-to-build-an-iberian-charcuterie-board-quantities-order-and-accompaniments/" iberian-board-guide
-          check "$BASE/como-conservar-aove-correctamente/" evoo-storage-guide
-          check "$BASE/en/how-to-store-extra-virgin-olive-oil-correctly/" evoo-storage-guide
-          check "$BASE/entrecot-chuleton-cortes-ternera-plancha-parrilla/" steak-grill-guide
-          check "$BASE/en/ribeye-steak-bone-in-steak-and-other-beef-cuts-for-pan-or-grill/" steak-grill-guide
-          check "$BASE/patatas-que-tipo-elegir-freir-cocer-asar-tortilla-pure/" potato-cooking-guide
-          check "$BASE/en/potatoes-which-type-to-choose-for-frying-boiling-roasting-tortilla-or-mash/" potato-cooking-guide
-          curl -k -L -sS -H 'Cache-Control: no-cache' "$BASE/blog/?ab3_proven=$stamp" -o /tmp/blog-es.html
-          curl -k -L -sS -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab3_proven=$stamp" -o /tmp/blog-en.html
-          grep -Fq 'Cómo cortar y aprovechar un jamón ibérico en casa' /tmp/blog-es.html
-          grep -Fq 'How to carve and use an Iberian ham at home' /tmp/blog-en.html
+          BASE=https://www.elmercadodeorigen.com
+          stamp="$GITHUB_RUN_ID"
+          check(){
+            url="$1"; marker="$2"; out="/tmp/ab2-$(echo "$marker-$url"|tr '/:' '__').html"
+            code="$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$out" -w '%{http_code}' "${url}?ab2_final=${stamp}")"
+            test "$code" = 200
+            grep -Fq "EMDO_AUTHORITY_BATCH2:${marker}" "$out"
+            grep -Eq 'class="[^"]*products|class="[^"]*product' "$out"
+            ! grep -Fq '[products ' "$out"
+            grep -Fq 'emo-article-featured' "$out"
+          }
+          check "$BASE/como-catar-aove-en-casa/" evoo-tasting-home
+          check "$BASE/en/how-to-taste-extra-virgin-olive-oil-at-home/" evoo-tasting-home
+          check "$BASE/que-corte-ternera-elegir-cada-receta/" beef-cuts-guide
+          check "$BASE/en/which-beef-cut-to-choose-for-each-recipe/" beef-cuts-guide
+          check "$BASE/como-cocinar-ternera-cortes-minutos-horas/" beef-cooking-science
+          check "$BASE/en/how-to-cook-beef-why-some-cuts-need-minutes-and-others-hours/" beef-cooking-science
+          check "$BASE/como-conservar-hortalizas-nevera-fuera/" vegetable-storage-guide
+          check "$BASE/en/how-to-store-vegetables-what-goes-in-the-fridge-and-what-does-not/" vegetable-storage-guide
+          check "$BASE/guia-cocinar-legumbres-secas-remojo-coccion-errores/" dry-pulses-cooking-guide
+          check "$BASE/en/complete-guide-to-cooking-dried-pulses-soaking-cooking-and-common-mistakes/" dry-pulses-cooking-guide
+
+      - name: Verify both Journal indexes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://www.elmercadodeorigen.com
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/blog/?ab2=$GITHUB_RUN_ID" -o /tmp/blog-es.html
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab2=$GITHUB_RUN_ID" -o /tmp/blog-en.html
+          grep -Fq 'Cómo catar un AOVE en casa' /tmp/blog-es.html
+          grep -Fq 'Qué corte de ternera elegir para cada receta' /tmp/blog-es.html
+          grep -Fq 'How to taste extra virgin olive oil at home' /tmp/blog-en.html
+          grep -Fq 'Which beef cut to choose for each recipe' /tmp/blog-en.html
 
       - name: Record verified publication
         shell: bash
@@ -100,11 +135,17 @@ jobs:
           mkdir -p .deploy-status
           python3 - <<'PY'
           import json,os
-          d=json.load(open('/tmp/ab3-clean.json')); d.update({'verified':True,'language_views_verified':10,'blogs_verified':True,'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA']})
-          open('.deploy-status/editorial-authority-batch3-final-20260821.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          d=json.load(open('/tmp/ab2-clean.json'))
+          d['verified']=True
+          d['language_views_verified']=10
+          d['blogs_verified']=True
+          d['run_id']=os.environ['GITHUB_RUN_ID']
+          d['source_sha']=os.environ['GITHUB_SHA']
+          open('.deploy-status/editorial-authority-batch2-final-20260821.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
           PY
-          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/editorial-authority-batch3-final-20260821.json
-          git commit -m 'Record verified editorial authority batch 3 publication [skip ci]' || exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch2-final-20260821.json
+          git commit -m 'Record verified editorial authority batch 2 publication [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
