@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Producer Toolbar Mobile Polish
  * Description: Mobile-only polish for producer shipping/ordering controls: no clipped label, no double ordering border, and reliable native select interaction.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -31,14 +31,24 @@ add_action(
 		?>
 		<style id="mdo-producer-toolbar-mobile-polish-20260821">
 			@media (max-width:640px) {
-				/* Shipping pill: one clean text line, vertically centred, never clipped. */
+				/* Keep all mobile layers inside one predictable stacking context. */
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized {
+					position:relative !important;
+					isolation:isolate !important;
+					overflow:visible !important;
+				}
+
+				/* Shipping pill: one clean line, vertically centred, never clipped. */
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination--canonical,
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination {
+					position:relative !important;
+					z-index:1 !important;
 					overflow:visible !important;
 				}
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger,
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger {
 					position:relative !important;
+					z-index:1 !important;
 					display:grid !important;
 					grid-template-columns:minmax(0,1fr) 16px !important;
 					align-items:center !important;
@@ -65,7 +75,12 @@ add_action(
 				}
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span,
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span {
+					position:static !important;
+					inset:auto !important;
+					z-index:auto !important;
 					display:flex !important;
+					flex-flow:row nowrap !important;
+					gap:3px !important;
 					min-width:0 !important;
 					height:100% !important;
 					align-items:center !important;
@@ -74,12 +89,28 @@ add_action(
 					text-overflow:clip !important;
 					line-height:1.25 !important;
 					padding:1px 0 0 !important;
+					pointer-events:none !important;
+				}
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span > strong,
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span > strong {
+					display:inline !important;
+					position:static !important;
+					inset:auto !important;
+					margin:0 !important;
+					padding:0 !important;
+					line-height:inherit !important;
+					white-space:nowrap !important;
+					pointer-events:none !important;
+				}
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:last-child,
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > svg:last-child {
+					pointer-events:none !important;
 				}
 
-				/* Ordering: the form is only a transparent hit-area; the select owns the single visible border. */
+				/* Ordering: transparent form wrapper, one visible border on the native select. */
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering {
 					position:relative !important;
-					z-index:20 !important;
+					z-index:50 !important;
 					display:flex !important;
 					box-sizing:border-box !important;
 					border:0 !important;
@@ -91,14 +122,17 @@ add_action(
 					pointer-events:auto !important;
 				}
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::before,
-				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::after {
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::after,
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering span {
 					pointer-events:none !important;
 					box-shadow:none !important;
 				}
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering select {
 					position:relative !important;
-					z-index:21 !important;
+					z-index:51 !important;
 					display:block !important;
+					visibility:visible !important;
+					opacity:1 !important;
 					box-sizing:border-box !important;
 					width:100% !important;
 					min-width:100% !important;
