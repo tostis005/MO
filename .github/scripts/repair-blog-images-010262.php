@@ -15,6 +15,21 @@ $authority_overrides = require $authority_file;
 $legacy_overrides    = require $legacy_file;
 if ( ! is_array( $authority_overrides ) || ! is_array( $legacy_overrides ) ) { throw new RuntimeException( 'Invalid image override data.' ); }
 
+// The third historic article is intentionally kept here so the shared two-post
+// legacy map remains compatible with the already deployed workflow contract.
+$legacy_overrides['naranjas'] = array(
+	'featured' => array(
+		'id'=>'34815908','direct'=>'https://images.pexels.com/photos/34815908/pexels-photo-34815908.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/valencia-orange-tree-under-clear-blue-sky-34815908/','photographer'=>'Emilio Sánchez Hernández','alt_es'=>'Naranjas maduras en un naranjo de Valencia bajo cielo despejado','alt_en'=>'Ripe oranges on a Valencia orange tree under a clear sky'
+	),
+	'inline' => array(
+		array('id'=>'33707783','direct'=>'https://images.pexels.com/photos/33707783/pexels-photo-33707783.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/seville-oranges-on-tree-in-sunlight-33707783/','photographer'=>'Charlie Jordan','alt_es'=>'Naranjas maduras en un árbol de Sevilla iluminado por el sol','alt_en'=>'Ripe oranges on a tree in Seville in sunlight'),
+		array('id'=>'37343441','direct'=>'https://images.pexels.com/photos/37343441/pexels-photo-37343441.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-in-valencia-grove-37343441/','photographer'=>'Bor Jinson','alt_es'=>'Naranjas frescas creciendo en un naranjal de Valencia','alt_en'=>'Fresh oranges growing in a Valencia orange grove'),
+		array('id'=>'7299666','direct'=>'https://images.pexels.com/photos/7299666/pexels-photo-7299666.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-on-a-basket-7299666/','photographer'=>'Anna Tarazevich','alt_es'=>'Cesta de naranjas frescas con hojas verdes','alt_en'=>'Basket of fresh oranges with green leaves'),
+		array('id'=>'18102965','direct'=>'https://images.pexels.com/photos/18102965/pexels-photo-18102965.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-18102965/','photographer'=>'Jonathan Borba','alt_es'=>'Naranjas maduras listas para cosechar en un huerto','alt_en'=>'Ripe oranges ready for harvest in an orchard'),
+		array('id'=>'7288784','direct'=>'https://images.pexels.com/photos/7288784/pexels-photo-7288784.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-in-close-up-photography-7288784/','photographer'=>'Paco Álamo','alt_es'=>'Naranjas frescas reunidas en una cesta de mercado','alt_en'=>'Fresh oranges gathered in a market basket')
+	),
+);
+
 function mdo_img_validate_010262( array $img, string $context ): void {
 	foreach ( array( 'id', 'direct', 'page', 'photographer', 'alt_es' ) as $field ) {
 		if ( empty( $img[ $field ] ) ) { throw new RuntimeException( $context . ': missing image field ' . $field ); }
@@ -87,7 +102,7 @@ function mdo_set_approved_featured_010262( int $post_id, array $img ): int {
 	update_post_meta( $post_id, '_emdo_editorial_image_approved_id', $attachment_id );
 	update_post_meta( $post_id, '_emdo_editorial_image_approved_pexels_id', (string) $img['id'] );
 	update_post_meta( $post_id, '_emdo_editorial_image_approved_at', gmdate( 'c' ) );
-	update_post_meta( $post_id, '_emdo_editorial_image_override', '0.10.262' );
+	update_post_meta( $post_id, '_emdo_editorial_image_override', '0.10.263' );
 	return $attachment_id;
 }
 
@@ -95,8 +110,11 @@ function mdo_rewrite_inline_images_010262( int $post_id, array $pool ): array {
 	$content = (string) get_post_field( 'post_content', $post_id );
 	if ( '' === $content ) { return array( 'found'=>0, 'used'=>array(), 'removed'=>0 ); }
 
+	$image_count = preg_match_all( '/<img\b[^>]*>/iu', $content, $matches );
+	if ( ! is_int( $image_count ) || $image_count <= 0 ) { return array( 'found'=>0, 'used'=>array(), 'removed'=>0 ); }
+
 	$attachments = array();
-	foreach ( $pool as $index => $img ) {
+	foreach ( array_slice( $pool, 0, $image_count ) as $index => $img ) {
 		mdo_img_validate_010262( $img, 'inline ' . $post_id . ':' . $index );
 		$attachments[] = array(
 			'id'         => mdo_img_attachment_010262( $post_id, $img ),
@@ -153,7 +171,7 @@ foreach ( $legacy_overrides as $slug => $config ) {
 	foreach ( $config['inline'] as $index => $img ) { $register( $img, 'legacy-inline:' . $slug . ':' . $index ); }
 }
 
-$report = array( 'release'=>'0.10.262', 'authority'=>array(), 'legacy'=>array(), 'duplicates'=>array() );
+$report = array( 'release'=>'0.10.263', 'authority'=>array(), 'legacy'=>array(), 'duplicates'=>array() );
 foreach ( $authority_overrides as $key => $img ) {
 	$post_id = mdo_authority_post_010262( (string) $key );
 	if ( $post_id <= 0 ) { throw new RuntimeException( 'Published authority post not found: ' . $key ); }
@@ -182,7 +200,7 @@ foreach ( $legacy_overrides as $slug => $config ) {
 	);
 }
 
-// Final duplicate audit for every published authority article plus repaired legacy imagery.
+// Final duplicate audit for every published authority article plus all historic articles.
 $uses = array();
 $authority_ids = get_posts( array( 'post_type'=>'post', 'post_status'=>'publish', 'posts_per_page'=>-1, 'fields'=>'ids', 'meta_key'=>'_emdo_authority_key' ) );
 foreach ( $authority_ids as $post_id ) {
@@ -200,7 +218,7 @@ foreach ( $uses as $pexels => $contexts ) {
 }
 if ( ! empty( $report['duplicates'] ) ) { throw new RuntimeException( 'Duplicate editorial images remain: ' . wp_json_encode( $report['duplicates'] ) ); }
 
-// Explicit semantic guards for the two most sensitive claims.
+// Explicit semantic guards for the most sensitive claims and the third legacy post.
 $bellota_id = mdo_authority_post_010262( 'bellota-100-iberico-guide' );
 $montanera_id = mdo_authority_post_010262( 'montanera-iberian-ham-guide' );
 if ( '34100094' !== (string) get_post_meta( (int) get_post_thumbnail_id( $bellota_id ), '_emdo_pexels_photo_id', true ) ) { throw new RuntimeException( 'Bellota article image guard failed.' ); }
@@ -210,8 +228,13 @@ $legacy_jamon = get_page_by_path( 'jamon-iberico', OBJECT, 'post' );
 if ( $legacy_jamon instanceof WP_Post && false !== stripos( (string) get_post_field( 'post_content', $legacy_jamon->ID ), 'Jamones-en-bodega' ) ) {
 	throw new RuntimeException( 'Legacy Jamones-en-bodega duplicate reference remains.' );
 }
+$legacy_oranges = get_page_by_path( 'naranjas', OBJECT, 'post' );
+if ( ! $legacy_oranges instanceof WP_Post || '34815908' !== (string) get_post_meta( (int) get_post_thumbnail_id( $legacy_oranges->ID ), '_emdo_pexels_photo_id', true ) ) {
+	throw new RuntimeException( 'Legacy Naranjas image guard failed.' );
+}
 
 $report['authority_post_count'] = count( $authority_ids );
+$report['legacy_post_count']    = count( $report['legacy'] );
 $report['curated_image_count']  = count( $curated_ids );
 $report['status'] = 'ok';
 echo wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ) . PHP_EOL;
