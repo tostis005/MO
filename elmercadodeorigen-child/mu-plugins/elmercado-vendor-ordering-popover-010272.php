@@ -2,10 +2,9 @@
 /**
  * Native WooCommerce ordering parity for WCFM vendor stores 0.10.278.
  *
- * The shared catalogue layer already gives Shop and producer stores the same
- * ordering geometry. This MU layer only removes third-party select enhancers
- * and makes the real WooCommerce <select> the single visible/clickable control
- * at every breakpoint.
+ * The producer toolbar must expose one real WooCommerce <select>, with the
+ * same visual surface as the global Shop and without Select2/NiceSelect or
+ * legacy custom ordering controls sitting over it.
  *
  * @package ElMercadoDeOrigen
  */
@@ -22,7 +21,6 @@ add_action(
 		}
 		?>
 		<style id="elmercado-vendor-ordering-native-010278">
-			/* Historical custom ordering UIs and third-party visual wrappers are retired. */
 			body.wcfmmp-store-page .mdo-vendor-order-button,
 			body.wcfmmp-store-page .mdo-vendor-order-menu,
 			body.wcfmmp-store-page .mdo-vendor-order-sheet,
@@ -33,8 +31,8 @@ add_action(
 				pointer-events:none !important;
 			}
 
-			/* The form itself never draws a second surface around the shared native select. */
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
+				box-sizing:border-box !important;
 				border:0 !important;
 				outline:0 !important;
 				background:transparent !important;
@@ -51,11 +49,27 @@ add_action(
 				pointer-events:none !important;
 			}
 
-			/* Visibility/interactivity only; visual geometry comes from the shared Shop CSS. */
-			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select.orderby {
+			/* Target by name, not by a class WCFM can replace. */
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
+				box-sizing:border-box !important;
 				position:static !important;
 				inset:auto !important;
 				display:block !important;
+				height:40px !important;
+				min-height:40px !important;
+				max-height:40px !important;
+				margin:0 !important;
+				border:1px solid rgba(23,63,50,.14) !important;
+				border-radius:999px !important;
+				outline:0 !important;
+				background:#f8faf8 !important;
+				box-shadow:none !important;
+				color:#173f32 !important;
+				font-family:inherit !important;
+				font-size:12px !important;
+				font-weight:700 !important;
+				letter-spacing:0 !important;
+				line-height:1 !important;
 				visibility:visible !important;
 				opacity:1 !important;
 				clip:auto !important;
@@ -65,6 +79,38 @@ add_action(
 				touch-action:manipulation !important;
 				cursor:pointer !important;
 				z-index:3 !important;
+			}
+
+			@media (max-width:991px) {
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
+					position:relative !important;
+					left:50% !important;
+					width:calc(100vw - 58px) !important;
+					min-width:calc(100vw - 58px) !important;
+					max-width:calc(100vw - 58px) !important;
+					height:40px !important;
+					min-height:40px !important;
+					max-height:40px !important;
+					transform:translateX(-50%) !important;
+				}
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
+					width:100% !important;
+					min-width:100% !important;
+					max-width:100% !important;
+					padding:0 34px 0 13px !important;
+				}
+			}
+
+			@media (min-width:992px) {
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
+					width:250px !important;
+					min-width:250px !important;
+					max-width:250px !important;
+				}
+				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
+					padding:0 30px 0 12px !important;
+				}
 			}
 		</style>
 		<?php
@@ -125,7 +171,6 @@ add_action(
 				select.tabIndex = 0;
 				['display','visibility','opacity','pointer-events','position','inset','clip','clip-path','transform','z-index'].forEach(name => select.style.removeProperty(name));
 
-				/* Keep the established marker for deployment compatibility and add the real revision. */
 				select.dataset.mdoNative010277 = '1';
 				select.dataset.mdoNativeParity = '010278';
 				delete select.dataset.mdoPopover010272;
