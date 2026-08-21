@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: EMDO SEO Cleanup Layer
- * Description: Legacy redirects, functional-page index controls and clean public page/product sitemaps.
- * Version: 2026.08.21.2
+ * Description: Legacy redirects, index controls and clean public page/product sitemaps.
+ * Version: 2026.08.21.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -15,6 +15,13 @@ function emdo_cleanup_path(): string {
 
 function emdo_cleanup_is_functional_page_request(): bool {
     return (bool) preg_match( '#^/(?:en/)?(?:store-manager|affiliates)(?:/|$)#i', emdo_cleanup_path() );
+}
+
+function emdo_cleanup_is_action_url(): bool {
+    foreach ( array( 'add-to-cart', 'remove_item', 'undo_item' ) as $key ) {
+        if ( isset( $_GET[ $key ] ) ) return true;
+    }
+    return false;
 }
 
 function emdo_cleanup_status_flag_is_on( $value ): bool {
@@ -40,6 +47,26 @@ function emdo_cleanup_vendor_is_disabled( int $user_id ): bool {
     return emdo_cleanup_status_flag_is_on( get_user_meta( $user_id, '_wcfm_store_offline', true ) );
 }
 
+function emdo_cleanup_is_thin_taxonomy_request(): bool {
+    if ( ! is_tax() ) return false;
+    $object = get_queried_object();
+    if ( ! $object instanceof WP_Term ) return false;
+
+    if ( 'product_tag' === $object->taxonomy || 0 === strpos( (string) $object->taxonomy, 'pa_' ) ) return true;
+
+    if ( 'product_cat' === $object->taxonomy && function_exists( 'mdo_mentta_internal_term_ids' ) ) {
+        return in_array( (int) $object->term_id, array_map( 'intval', (array) mdo_mentta_internal_term_ids() ), true );
+    }
+
+    return false;
+}
+
+function emdo_cleanup_should_noindex(): bool {
+    return emdo_cleanup_is_functional_page_request()
+        || emdo_cleanup_is_action_url()
+        || emdo_cleanup_is_thin_taxonomy_request();
+}
+
 function emdo_cleanup_excluded_page_ids(): array {
     $ids = array();
 
@@ -58,6 +85,7 @@ function emdo_cleanup_excluded_page_ids(): array {
         'affiliates',
         'el-mercado-de-origen',
         'condiciones-especiales',
+        'inicio-bf',
     ) as $slug ) {
         $page = get_page_by_path( $slug, OBJECT, 'page' );
         if ( $page instanceof WP_Post ) $ids[] = (int) $page->ID;
@@ -155,9 +183,8 @@ function emdo_cleanup_serve_page_sitemap(): void {
 }
 
 /**
- * Select published products directly from wp_posts so WooCommerce's global
- * "hide out of stock" query setting cannot silently remove valid SEO URLs.
- * We then enforce our own public rules: active vendor + non-hidden product.
+ * Public products for the sitemap. This mirrors the storefront's stock setting:
+ * when WooCommerce is configured to hide out-of-stock items, they are omitted.
  */
 function emdo_cleanup_eligible_product_ids(): array {
     global $wpdb;
@@ -170,6 +197,7 @@ function emdo_cleanup_eligible_product_ids(): array {
         )
     );
 
+    $hide_out_of_stock = 'yes' === (string) get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
     $eligible = array();
     foreach ( array_map( 'intval', (array) $ids ) as $id ) {
         $post = get_post( $id );
@@ -178,6 +206,7 @@ function emdo_cleanup_eligible_product_ids(): array {
         if ( function_exists( 'wc_get_product' ) ) {
             $product = wc_get_product( $id );
             if ( ! $product || 'hidden' === (string) $product->get_catalog_visibility() ) continue;
+            if ( $hide_out_of_stock && 'outofstock' === (string) $product->get_stock_status() ) continue;
         }
 
         $eligible[] = $id;
@@ -209,6 +238,8 @@ add_action( 'parse_request', static function (): void {
 add_action( 'template_redirect', static function (): void {
     $path = untrailingslashit( emdo_cleanup_path() );
     $redirects = array(
+        '/inicio-bf'              => '/',
+        '/en/inicio-bf'           => '/en/',
         '/el-mercado-de-origen'   => '/quienes-somos/',
         '/condiciones-especiales' => '/envios/',
     );
@@ -217,21 +248,27 @@ add_action( 'template_redirect', static function (): void {
         exit;
     }
 
-    if ( emdo_cleanup_is_functional_page_request() && ! headers_sent() ) {
+    if ( emdo_cleanup_should_noindex() && ! headers_sent() ) {
         header( 'X-Robots-Tag: noindex, follow', true );
     }
 }, -2000 );
 
-// AIOSEO robots control for functional interfaces that should never rank.
+// AIOSEO robots control for interfaces/actions/thin taxonomies that should not rank.
 add_filter( 'aioseo_robots_meta', static function ( $attributes ) {
-    if ( ! is_array( $attributes ) || ! emdo_cleanup_is_functional_page_request() ) return $attributes;
+    if ( ! is_array( $attributes ) || ! emdo_cleanup_should_noindex() ) return $attributes;
     $attributes['noindex'] = 'noindex';
     $attributes['nofollow'] = '';
     return $attributes;
 }, PHP_INT_MAX );
 
+// Keep action URLs canonicalized to the underlying clean page without interrupting the action itself.
+add_filter( 'aioseo_canonical_url', static function ( $url ) {
+    if ( ! emdo_cleanup_is_action_url() || ! is_string( $url ) || $url === '' ) return $url;
+    return remove_query_arg( array( 'add-to-cart', 'remove_item', 'undo_item' ), $url );
+}, PHP_INT_MAX );
+
 // Core WordPress fallback in case another SEO layer is unavailable.
 add_filter( 'wp_robots', static function ( array $robots ): array {
-    if ( emdo_cleanup_is_functional_page_request() ) $robots['noindex'] = true;
+    if ( emdo_cleanup_should_noindex() ) $robots['noindex'] = true;
     return $robots;
 }, PHP_INT_MAX );
