@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Huerta English Products
  * Description: Serves La Huerta de Ana Mari product titles, descriptions and product URLs from the persisted reviewed English metadata on English storefront requests.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -168,7 +168,6 @@ function mdohep_render_fallback_20260821( string $html ): string {
 				$html = str_replace( array( $native_url, esc_url( $native_url ) ), array( $english_url, esc_url( $english_url ) ), $html );
 			}
 		}
-		/* Also correct relative links produced by some vendor templates. */
 		if ( '' !== $english_slug && $english_slug !== $native_slug ) {
 			$html = str_replace(
 				array( '/producto/' . $native_slug . '/', '/en/producto/' . $native_slug . '/', '/product/' . $native_slug . '/' ),
