@@ -1,0 +1,136 @@
+name: Producer toolbar mobile polish v5 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/producer-toolbar-mobile-polish-v5-production-20260821.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate
+        run: php -l mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php
+      - name: Deploy verify rollback
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python -m pip install --quiet selenium
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/producer-toolbar-mobile-polish-v5-20260821.txt
+          EXIT=.deploy-status/producer-toolbar-mobile-polish-v5-20260821.exit-code
+          : > "$STATUS"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf %s "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          DEST="$PROD_PATH/wp-content/mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php"
+          BAK="/tmp/mdo-producer-mobile-polish-v5-${GITHUB_RUN_ID}.bak"
+          REMOTE="/tmp/mdo-producer-mobile-polish-v5-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "[ ! -f '$DEST' ] || cp '$DEST' '$BAK'"
+          rollback(){
+            echo 'ROLLBACK producer toolbar mobile polish v5' | tee -a "$STATUS"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              if [ -f '$BAK' ]; then cp '$BAK' '$DEST'; else rm -f '$DEST'; fi
+              rm -f '$REMOTE' '$BAK'
+              wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            " || true
+          }
+          fail(){ echo "FAIL: $1" | tee -a "$STATUS"; rollback; echo 2 > "$EXIT"; exit 2; }
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e; cp '$REMOTE' '$DEST'; rm -f '$REMOTE'
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$DEST'
+            wp_bin=\$(command -v wp || true); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+          " >> "$STATUS" 2>&1 || fail 'deploy/lint failed'
+          for path in /tienda/1957/ /en/store/1957/; do
+            code=$(curl -ksS -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$path?mobile-polish-v5=$GITHUB_RUN_ID")
+            echo "HTTP $code $path" | tee -a "$STATUS"; [ "$code" = 200 ] || fail "HTTP $code $path"
+          done
+          set +e
+          python - <<'PY' >> "$STATUS" 2>&1
+          import time
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.common.action_chains import ActionChains
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+          base='https://www.elmercadodeorigen.com'
+          o=webdriver.ChromeOptions(); o.add_argument('--headless=new'); o.add_argument('--no-sandbox'); o.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=o); d.set_window_size(390,900)
+          def dismiss():
+              clicked=d.execute_script('''
+                const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&+s.opacity!==0};
+                const els=[...document.querySelectorAll('button,a,input[type="button"],input[type="submit"]')].filter(vis), t=e=>((e.innerText||e.value||e.getAttribute('aria-label')||'')+'').trim().toLowerCase();
+                const x=els.find(e=>/^(aceptar|accept|aceptar todas|accept all|permitir todas|allow all)$/.test(t(e)))||els.find(e=>/(aceptar|accept|permitir todas|allow all)/.test(t(e))); if(x){x.click();return t(x)} return '';
+              ''')
+              if clicked: print('COOKIE',clicked); time.sleep(.7)
+          try:
+              for path in ('/tienda/1957/','/en/store/1957/'):
+                  d.delete_all_cookies(); d.get(base+path+'?mobile-polish-v5=1'); time.sleep(2); dismiss()
+                  w=WebDriverWait(d,20)
+                  host=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized')))
+                  trig=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .mdo-catalog-destination__trigger')))
+                  form=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woocommerce-ordering')))
+                  sel=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woocommerce-ordering select')))
+                  span=trig.find_element(By.TAG_NAME,'span'); strong=span.find_element(By.TAG_NAME,'strong')
+                  m=d.execute_script('''
+                    const [host,trig,span,strong,form,sel]=arguments,cs=n=>getComputedStyle(n); const r=sel.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+                    const tn=[...span.childNodes].find(n=>n.nodeType===3&&n.textContent.trim()); let tr={top:0,bottom:0}; if(tn){const rg=document.createRange();rg.selectNodeContents(tn);tr=rg.getBoundingClientRect();}
+                    const br=strong.getBoundingClientRect(),sr=span.getBoundingClientRect(); return {hostH:host.getBoundingClientRect().height,spanH:span.clientHeight,spanSH:span.scrollHeight,trigH:trig.clientHeight,trigSH:trig.scrollHeight,
+                    textCenter:(tr.top+tr.bottom)/2,strongCenter:(br.top+br.bottom)/2,spanTop:sr.top,spanBottom:sr.bottom,strongTop:br.top,strongBottom:br.bottom,
+                    formBorder:[cs(form).borderTopWidth,cs(form).borderRightWidth,cs(form).borderBottomWidth,cs(form).borderLeftWidth],formShadow:cs(form).boxShadow,selectBorder:cs(sel).borderTopWidth,
+                    formPointer:cs(form).pointerEvents,selectPointer:cs(sel).pointerEvents,hitIsSelect:hit===sel,hitTag:hit?.tagName||'',firstSvg:trig.querySelector(':scope > svg:first-child')?cs(trig.querySelector(':scope > svg:first-child')).display:'none',disabled:sel.disabled,options:sel.options.length};
+                  ''',host,trig,span,strong,form,sel)
+                  print('MOBILE_V5',path,m)
+                  assert 135<=m['hostH']<=150 and m['spanSH']<=m['spanH']+1 and m['trigSH']<=m['trigH']+2,m
+                  assert abs(m['textCenter']-m['strongCenter'])<=4 and m['strongTop']>=m['spanTop']-1 and m['strongBottom']<=m['spanBottom']+1,m
+                  assert all(x=='0px' for x in m['formBorder']) and m['formShadow']=='none' and m['selectBorder'] in ('1px','0.8px'),m
+                  assert m['formPointer']=='auto' and m['selectPointer']=='auto' and m['hitIsSelect'] and m['firstSvg']=='none' and not m['disabled'] and m['options']>1,m
+                  d.execute_script('''window.__mdoNative=[]; const s=arguments[0]; ['pointerdown','mousedown','click'].forEach(t=>document.addEventListener(t,e=>{if(e.target===s)window.__mdoNative.push([t,e.defaultPrevented])},{once:false}));''',sel)
+                  ActionChains(d).move_to_element(sel).click().perform(); time.sleep(.25)
+                  ev=d.execute_script('return window.__mdoNative||[]')
+                  print('NATIVE_EVENTS',path,ev)
+                  names=[x[0] for x in ev]; assert 'pointerdown' in names and 'mousedown' in names and 'click' in names,(path,ev)
+                  assert not any(x[1] for x in ev),(path,'native event prevented',ev)
+              print('producer_toolbar_mobile_polish_v5_ok')
+          finally: d.quit()
+          PY
+          BC=$?; set -e; [ "$BC" = 0 ] || fail 'mobile v5 browser verification failed'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BAK'" || true
+          echo 'producer_toolbar_mobile_polish_v5_production_ok' | tee -a "$STATUS"; echo 0 > "$EXIT"
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-toolbar-mobile-polish-v5-20260821.* || true
+          if ! git diff --cached --quiet; then git commit -m 'Record producer toolbar mobile polish v5 [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main || true; fi
