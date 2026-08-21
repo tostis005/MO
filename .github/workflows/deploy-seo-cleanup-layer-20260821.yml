@@ -103,7 +103,7 @@ jobs:
               if urlparse(loc).path.rstrip('/') != dst.rstrip('/'): failures.append(f'{src} bad location {loc}')
 
           status,headers,final,pages=fetch('/mdo-sitemap-pages.xml')
-          print(f'PAGES_SITEMAP|HTTP={status}|BYTES={len(pages)}')
+          print(f'PAGES_SITEMAP|HTTP={status}|BYTES={len(pages)}|LOCS={pages.count("<loc>")}')
           if status!=200 or '<urlset' not in pages: failures.append('page sitemap unavailable')
           forbidden=['/carrito/','/finalizar-compra/','/mi-cuenta/','/store-manager/','/affiliates/','/el-mercado-de-origen/','/condiciones-especiales/']
           for path in forbidden:
@@ -124,11 +124,19 @@ jobs:
               if status==200 and 'noindex' not in (robots+' '+xrobots).lower(): failures.append(path+' lacks noindex')
 
           status,headers,final,products=fetch('/mdo-sitemap-products.xml')
-          print(f'PRODUCT_SITEMAP|HTTP={status}|BYTES={len(products)}')
+          print(f'PRODUCT_SITEMAP|HTTP={status}|BYTES={len(products)}|LOCS={products.count("<loc>")}')
           if status!=200 or '<urlset' not in products: failures.append('product sitemap unavailable')
-          active='/producto/carne-picada-extra/' in products
-          print(f'PRODUCT_POLICY|active-tolecarnes-carne-picada-extra|PRESENT={active}|EXPECTED=True')
-          if not active: failures.append('known active Tolecarnes product missing from product sitemap')
+          required_products=[
+              '/producto/carne-picada-extra/',
+              '/producto/cana-de-lomo-de-bellota-100-iberico-en-sobres/',
+              '/producto/cana-de-lomo-de-bellota-100-iberico/',
+              '/producto/surtido-de-bellota-100-iberico/',
+              '/producto/pack-de-cata-de-bellota-100-iberico-2x-jamon-2x-paleta-2x-lomo-2x-salchichon-2x-chorizo/',
+          ]
+          for path in required_products:
+              present=path in products
+              print(f'PRODUCT_REQUIRE|{path}|PRESENT={present}')
+              if not present: failures.append('published non-hidden product missing from sitemap: '+path)
 
           store_results={}
           for path in ['/tienda/puente-robles/','/tienda/el-catedratico/','/tienda/1957/']:
