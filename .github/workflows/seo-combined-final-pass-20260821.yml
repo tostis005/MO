@@ -1,0 +1,137 @@
+name: Combined production SEO final pass 2026-08-21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-combined-final-pass-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-seo-foundation
+  cancel-in-progress: true
+
+jobs:
+  final-pass:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint production SEO code
+        run: |
+          php -l .github/scripts/mdo-seo-foundation-20260821.php
+          php -l .github/scripts/seo-product-content-enrichment-20260821.php
+      - name: Install SSH helper
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy SEO foundation and content enrichment
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/reports
+          REPORT="$GITHUB_WORKSPACE/.github/reports/seo-combined-final-pass-20260821.txt"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" | tee "$REPORT"
+          REMOTE_SEO="/tmp/mdo-seo-foundation-${GITHUB_RUN_ID}.php"
+          REMOTE_CONTENT="/tmp/mdo-seo-content-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-seo-foundation-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SEO"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/seo-product-content-enrichment-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_CONTENT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); DEST='$PROD_PATH/wp-content/mu-plugins/mdo-seo-foundation.php'; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f \"\$DEST\" ]; then cp -a \"\$DEST\" \"\$DEST.bak-\$(date +%Y%m%d%H%M%S)\"; fi; cp '$REMOTE_SEO' \"\$DEST\"; \"\$php_bin\" -l \"\$DEST\"; echo SEO_FOUNDATION_DEPLOYED; \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_CONTENT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SEO' '$REMOTE_CONTENT'; \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; exit \$rc" | tee -a "$REPORT"
+      - name: Verify final public SEO state
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="$GITHUB_WORKSPACE/.github/reports/seo-combined-final-pass-20260821.txt"
+          python3 - <<'PY' | tee -a "$REPORT"
+          import re, ssl, time, urllib.request, urllib.error
+          from html import unescape
+          base='https://www.elmercadodeorigen.com'; stamp=str(time.time_ns()); ctx=ssl.create_default_context()
+          failures=[]
+          def get(path):
+            sep='&' if '?' in path else '?'
+            req=urllib.request.Request(base+path+sep+'emdo_final='+stamp,headers={'User-Agent':'EMDO-Final-SEO/2026-08-21'})
+            try:
+              with urllib.request.urlopen(req,timeout=45,context=ctx) as r:return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except urllib.error.HTTPError as e:return e.code,e.geturl(),e.read().decode('utf-8','replace')
+          def head(html):
+            h=html.split('</head>',1)[0]; robots=''; desc=''; canon=''
+            for tag in re.findall(r'<meta\b[^>]*>',h,re.I):
+              if re.search(r'\bname=["\']robots["\']',tag,re.I):
+                m=re.search(r'\bcontent=["\']([^"\']*)',tag,re.I);robots=unescape(m.group(1)) if m else robots
+              if re.search(r'\bname=["\']description["\']',tag,re.I):
+                m=re.search(r'\bcontent=["\']([^"\']*)',tag,re.I);desc=unescape(m.group(1)) if m else desc
+            for tag in re.findall(r'<link\b[^>]*>',h,re.I):
+              if re.search(r'\brel=["\']canonical["\']',tag,re.I):
+                m=re.search(r'\bhref=["\']([^"\']+)',tag,re.I);canon=unescape(m.group(1)) if m else canon
+            return robots,desc,canon
+          checks=[
+            ('/etiqueta-producto/jamon/',True),
+            ('/categoria-producto/mentta/',True),
+            ('/categoria-producto/mentta/mentta-jamones-paletas/',True),
+            ('/tienda/puente-robles/',True),('/tienda/el-catedratico/',True),
+            ('/en/store/puente-robles/',True),('/en/store/el-catedratico/',True),
+            ('/tienda/1957/',False),
+          ]
+          for path,want_noindex in checks:
+            status,final,body=get(path);robots,desc,canon=head(body)
+            print(f'INDEX|{path}|HTTP={status}|FINAL={final}|ROBOTS={robots}|CANON={canon}')
+            if status==200 and want_noindex and 'noindex' not in robots.lower():failures.append('missing noindex '+path)
+            if status==200 and not want_noindex and 'noindex' in robots.lower():failures.append('unexpected noindex '+path)
+          status,final,home=get('/en/');robots,desc,canon=head(home)
+          print(f'EN_HOME|HTTP={status}|DESC={desc}|CANON={canon}')
+          if status!=200 or canon!=base+'/en/' or not desc.startswith('Discover selected Spanish food chosen for its origin'):failures.append('English home SEO')
+          # Published Tolecarnes pages should expose the enriched copy.
+          for path,needle in [
+            ('/producto/carne-picada-extra/','Se presenta en paquetes de 1 kg envasados al vacío.'),
+            ('/producto/filetes-primera/','Se preparan en bandejas de 1 kg'),
+            ('/producto/lote-filetes-magro/','peso total aproximado de 3 kg'),
+          ]:
+            status,final,body=get(path)
+            ok=needle.lower() in unescape(body).lower()
+            print(f'CONTENT|{path}|HTTP={status}|FOUND={ok}')
+            if status!=200 or not ok:failures.append('content '+path)
+          if failures:
+            print('FAILURES='+repr(failures));raise SystemExit(1)
+          print('COMBINED_FINAL_SEO_VERIFY=PASS')
+          PY
+      - name: Save combined report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT=.github/reports/seo-combined-final-pass-20260821.txt
+          [ -f "$REPORT" ] || echo 'Combined final pass report missing' > "$REPORT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$REPORT"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record combined production SEO final pass [skip ci]"
+          git push
