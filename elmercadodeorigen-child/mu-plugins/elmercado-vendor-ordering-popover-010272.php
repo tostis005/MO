@@ -1,6 +1,6 @@
 <?php
 /**
- * Native WooCommerce ordering parity for WCFM vendor stores 0.10.279.
+ * Native WooCommerce ordering parity for WCFM vendor stores 0.10.280.
  *
  * The producer toolbar exposes one real WooCommerce <select>. WCFM/legacy
  * scripts may write inline !important styles after wp_head, so this owner also
@@ -21,7 +21,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-vendor-ordering-native-010279">
+		<style id="elmercado-vendor-ordering-native-010280">
 			body.wcfmmp-store-page .mdo-vendor-order-button,
 			body.wcfmmp-store-page .mdo-vendor-order-menu,
 			body.wcfmmp-store-page .mdo-vendor-order-sheet,
@@ -93,7 +93,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-vendor-ordering-native-script-010279">
+		<script id="elmercado-vendor-ordering-native-script-010280">
 		(() => {
 			'use strict';
 			if (!document.body || !document.body.classList.contains('wcfmmp-store-page')) return;
@@ -142,18 +142,25 @@ add_action(
 				].forEach(([name,value]) => important(select,name,value));
 
 				if (mobile.matches) {
+					/* Match Shop's usable viewport rather than CSS 100vw, which WCFM resolves
+					 * fractionally narrower on long vendor pages because of the scrollbar. */
+					const mobileWidth = `${Math.max(0, window.innerWidth - 58)}px`;
 					[
-						['position','relative'],['left','50%'],['width','calc(100vw - 58px)'],
-						['min-width','calc(100vw - 58px)'],['max-width','calc(100vw - 58px)'],
+						['position','relative'],['left','50%'],['width',mobileWidth],
+						['min-width',mobileWidth],['max-width',mobileWidth],
 						['height','40px'],['min-height','40px'],['max-height','40px'],['transform','translateX(-50%)']
 					].forEach(([name,value]) => important(form,name,value));
-					[['width','100%'],['min-width','100%'],['max-width','100%'],['padding','0 42px 0 12px']]
-						.forEach(([name,value]) => important(select,name,value));
+					[
+						['width','100%'],['min-width','100%'],['max-width','100%'],
+						['padding-top','0'],['padding-bottom','0'],['padding-left','12px'],['padding-right','42px']
+					].forEach(([name,value]) => important(select,name,value));
 				} else {
 					[['position','static'],['left','auto'],['transform','none'],['width','250px'],['min-width','250px'],['max-width','250px']]
 						.forEach(([name,value]) => important(form,name,value));
-					[['width','250px'],['min-width','250px'],['max-width','250px'],['padding','0 30px 0 12px']]
-						.forEach(([name,value]) => important(select,name,value));
+					[
+						['width','250px'],['min-width','250px'],['max-width','250px'],
+						['padding-top','0'],['padding-bottom','0'],['padding-left','12px'],['padding-right','30px']
+					].forEach(([name,value]) => important(select,name,value));
 				}
 			};
 
@@ -231,6 +238,7 @@ add_action(
 			requestAnimationFrame(repair);
 			window.addEventListener('load', repair, { once:true });
 			window.addEventListener('pageshow', repair, { passive:true });
+			window.addEventListener('resize', repair, { passive:true });
 			mobile.addEventListener?.('change', repair);
 			setTimeout(repair, 100);
 			setTimeout(repair, 300);
