@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: EMDO SEO Foundation
- * Description: Stable SEO titles, descriptions, canonicals and legacy redirects for El Mercado de Origen.
- * Version: 2026.08.21
+ * Description: Stable SEO titles, descriptions, canonicals, index controls and legacy redirects for El Mercado de Origen.
+ * Version: 2026.08.21.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -23,8 +23,7 @@ function emdo_seo_term_name(): string {
 }
 
 function emdo_seo_clean_term_name( string $name ): string {
-    $name = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $name ) ) );
-    return $name;
+    return trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $name ) ) );
 }
 
 function emdo_seo_title_for_request( string $current ): string {
@@ -121,14 +120,45 @@ function emdo_seo_description_for_request( string $current ): string {
     return $current;
 }
 
-// AIOSEO is the active SEO plugin in production. These documented filters keep the
-// rules persistent and avoid duplicating SEO tags in wp_head.
+// AIOSEO is the active SEO plugin in production. These filters keep the rules
+// persistent without printing duplicate title/meta tags from the theme.
 add_filter( 'aioseo_title', static function ( $title ) {
     return emdo_seo_title_for_request( (string) $title );
 }, PHP_INT_MAX );
 
 add_filter( 'aioseo_description', static function ( $description ) {
     return emdo_seo_description_for_request( (string) $description );
+}, PHP_INT_MAX );
+
+// Keep low-value faceted/attribute archives and transactional/search pages out of
+// the index while allowing crawlers to follow their links. Product categories stay indexable.
+add_filter( 'aioseo_robots_meta', static function ( $attributes ) {
+    if ( ! is_array( $attributes ) ) { return $attributes; }
+
+    $noindex = false;
+    $queried = get_queried_object();
+    if ( $queried instanceof WP_Term && str_starts_with( (string) $queried->taxonomy, 'pa_' ) ) {
+        $noindex = true;
+    }
+    if ( is_search() ) {
+        $noindex = true;
+    }
+    if ( function_exists( 'is_cart' ) && is_cart() ) {
+        $noindex = true;
+    }
+    if ( function_exists( 'is_checkout' ) && is_checkout() ) {
+        $noindex = true;
+    }
+    if ( function_exists( 'is_account_page' ) && is_account_page() ) {
+        $noindex = true;
+    }
+
+    if ( $noindex ) {
+        $attributes['noindex'] = 'noindex';
+        // Explicitly preserve link discovery; these are not crawl dead ends.
+        $attributes['nofollow'] = '';
+    }
+    return $attributes;
 }, PHP_INT_MAX );
 
 // Correct the English home canonical. TranslatePress serves the public home at /en/
@@ -140,6 +170,25 @@ add_filter( 'aioseo_canonical_url', static function ( $url ) {
     }
     return $url;
 }, PHP_INT_MAX );
+
+// The English Journal used Spanish excerpts when an explicit translated excerpt was
+// not stored. Prefer reviewed English post content as a fallback for archive cards.
+add_filter( 'get_the_excerpt', static function ( $excerpt, $post ) {
+    if ( ! emdo_seo_is_en() || ! preg_match( '#^/en/(?:journal|blog)/?$#i', emdo_seo_path() ) ) {
+        return $excerpt;
+    }
+    $post_id = $post instanceof WP_Post ? (int) $post->ID : (int) $post;
+    if ( $post_id < 1 ) { return $excerpt; }
+
+    $translated = (string) get_post_meta( $post_id, '_en_US_post_excerpt', true );
+    if ( $translated === '' ) {
+        $translated = (string) get_post_meta( $post_id, '_en_US_post_content', true );
+    }
+    if ( $translated === '' ) { return $excerpt; }
+
+    $text = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( strip_shortcodes( $translated ) ) ) );
+    return $text !== '' ? wp_trim_words( $text, 32, '…' ) : $excerpt;
+}, PHP_INT_MAX, 2 );
 
 // Google still knows an obsolete Black Friday homepage URL. Keep the old content in
 // WordPress untouched, but consolidate any residual signals into the current homepage.
