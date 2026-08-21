@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO SEO Foundation
  * Description: Stable SEO titles, descriptions, canonicals, index controls and legacy redirects for El Mercado de Origen.
- * Version: 2026.08.21.7
+ * Version: 2026.08.21.8
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -46,7 +46,7 @@ function emdo_seo_disabled_store_request(): bool {
     if ( ! preg_match( '#^/(?:tienda|en/store)/([^/]+)/?#i', $path, $m ) ) return false;
     $requested = sanitize_title( $m[1] );
     if ( $requested === '' ) return false;
-    $users = get_users( array( 'fields' => array( 'ID', 'roles' ) ) );
+    $users = get_users( array( 'fields' => 'all' ) );
     foreach ( $users as $user ) {
         if ( ! $user instanceof WP_User ) continue;
         $profile = get_user_meta( $user->ID, 'wcfmmp_profile_settings', true );
