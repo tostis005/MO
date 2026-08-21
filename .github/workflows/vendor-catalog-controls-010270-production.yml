@@ -1,0 +1,219 @@
+name: Vendor catalog controls 0.10.270 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-catalog-controls-010270-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elmercado-vendor-catalog-controls-010270
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php >/dev/null
+          grep -Fq 'elmercado-vendor-catalog-controls-010270' elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php
+          grep -Fq 'pointer-events: auto !important' elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php
+          grep -Fq 'mdo-destination-modal:not([hidden])[aria-hidden="false"]' elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php
+
+      - name: Install deployment and browser tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy MU plugin to production
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          MU_DIR="$PROD_PATH/wp-content/mu-plugins"
+          TARGET="$MU_DIR/elmercado-vendor-catalog-controls-010270.php"
+          REMOTE="/tmp/elmercado-vendor-catalog-controls-010270-${GITHUB_RUN_ID}.php"
+          BACKUP="/tmp/elmercado-vendor-catalog-controls-010270-${GITHUB_RUN_ID}.bak"
+
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -euo pipefail
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$REMOTE' >/dev/null
+            mkdir -p '$MU_DIR'
+            if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi
+            install -m 0644 '$REMOTE' '$TARGET'
+            rm -f '$REMOTE'
+            grep -Fq 'elmercado-vendor-catalog-controls-010270' '$TARGET'
+            wp_bin=\$(command -v wp || true)
+            [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+          "
+
+          PROBE="elmercado-opcache-vendor-controls-010270-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          BODY="$(curl -fsSL -H 'Cache-Control: no-store' -H 'Pragma: no-cache' --max-time 30 "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID" || true)"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE' '$BACKUP'" || true
+          printf '%s\n' "$BODY" | grep -Eq '^OPCACHE_RESET_(OK|UNAVAILABLE)$'
+
+          runtime_ok=0
+          for i in $(seq 1 30); do
+            vendor="$(curl -fsSL --max-time 30 -A 'Mozilla/5.0 EMDO vendor controls verifier' -H 'Cache-Control: no-store' -H 'Pragma: no-cache' "$BASE_URL/tienda/1957/?vendor-controls-010270=$GITHUB_RUN_ID-$i" || true)"
+            if grep -Fq 'elmercado-vendor-catalog-controls-010270' <<<"$vendor"; then
+              runtime_ok=1; break
+            fi
+            sleep 2
+          done
+          test "$runtime_ok" -eq 1
+          echo VENDOR_CONTROLS_010270_DEPLOYED_AND_RENDERING
+
+      - name: Mobile browser validation on live producer store
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          const fail = (m, d) => { throw new Error(`${m}: ${JSON.stringify(d)}`); };
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: '/usr/bin/google-chrome',
+              headless: true,
+              args: ['--no-sandbox', '--disable-dev-shm-usage']
+            });
+            const page = await browser.newPage();
+            await page.setCacheEnabled(false);
+            await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+            const url = `${process.env.BASE_URL}/tienda/1957/?vendor-controls-browser=${Date.now()}`;
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select', { timeout: 30000 });
+            await sleep(1200);
+
+            const initial = await page.evaluate(() => {
+              const select = document.querySelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select');
+              const form = select?.closest('.woocommerce-ordering');
+              const destination = document.querySelector('[data-mdo-toolbar-destination], .mdo-catalog-toolbar__destination');
+              const rect = el => { const r = el?.getBoundingClientRect(); return r ? {x:r.x,y:r.y,width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom} : null; };
+              const s = select ? getComputedStyle(select) : null;
+              const f = form ? getComputedStyle(form) : null;
+              const d = destination ? getComputedStyle(destination) : null;
+              const r = rect(select);
+              const top = r ? document.elementFromPoint(r.left + r.width/2, r.top + r.height/2) : null;
+              return {
+                bodyVendor: document.body.classList.contains('wcfmmp-store-page'),
+                marker: !!document.getElementById('elmercado-vendor-catalog-controls-010270'),
+                selectRect: r,
+                selectPointer: s?.pointerEvents,
+                selectVisibility: s?.visibility,
+                selectOpacity: s?.opacity,
+                selectDisabled: !!select?.disabled,
+                topIsSelect: top === select,
+                formBorder: f ? [f.borderTopWidth,f.borderRightWidth,f.borderBottomWidth,f.borderLeftWidth] : null,
+                destinationRect: rect(destination),
+                destinationOverflow: d?.overflow,
+                destinationLineHeight: d?.lineHeight,
+                value: select?.value,
+                options: select ? [...select.options].map(o => o.value) : []
+              };
+            });
+
+            if (!initial.bodyVendor || !initial.marker) fail('vendor marker missing', initial);
+            if (!initial.selectRect || initial.selectRect.width < 100 || initial.selectRect.height < 30) fail('ordering select has invalid geometry', initial);
+            if (initial.selectPointer !== 'auto' || initial.selectVisibility === 'hidden' || initial.selectOpacity === '0' || initial.selectDisabled) fail('ordering select is not interactive', initial);
+            if (!initial.topIsSelect) fail('another layer is covering the ordering select', initial);
+            if (initial.formBorder?.some(v => v !== '0px')) fail('ordering wrapper still has a second border', initial);
+
+            const box = initial.selectRect;
+            await page.touchscreen.tap(box.left + box.width/2, box.top + box.height/2);
+            await sleep(250);
+            const focused = await page.evaluate(() => document.activeElement === document.querySelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select'));
+            if (!focused) fail('tap did not focus ordering select', {focused});
+
+            const oldUrl = page.url();
+            await page.keyboard.press('ArrowDown');
+            await page.keyboard.press('Enter');
+            await sleep(1800);
+            const orderResult = await page.evaluate(() => {
+              const select = document.querySelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select');
+              return { value: select?.value || null, focused: document.activeElement === select };
+            }).catch(() => ({value:null,focused:false}));
+            const changed = page.url() !== oldUrl || (orderResult.value && orderResult.value !== initial.value);
+            if (!changed) fail('ordering control accepted tap but did not change selection/navigation', {oldUrl,newUrl:page.url(),initial:initial.value,result:orderResult});
+
+            await page.goto(`${process.env.BASE_URL}/tienda/1957/?vendor-destination-browser=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await page.waitForSelector('[data-mdo-toolbar-destination], .mdo-catalog-toolbar__destination', { timeout: 30000 });
+            await sleep(700);
+            const dest = await page.$('[data-mdo-toolbar-destination], .mdo-catalog-toolbar__destination');
+            await dest.click();
+            await sleep(500);
+            const modal = await page.evaluate(() => {
+              const m = document.querySelector('.mdo-destination-modal, [data-mdo-destination-modal]');
+              const close = m?.querySelector('[data-mdo-destination-close], .mdo-destination-modal__close, .mdo-destination-close');
+              if (!m) return null;
+              const s = getComputedStyle(m), r = m.getBoundingClientRect();
+              const cs = close ? getComputedStyle(close) : null;
+              const cr = close?.getBoundingClientRect();
+              return {
+                hidden: m.hasAttribute('hidden'), ariaHidden: m.getAttribute('aria-hidden'), display:s.display, visibility:s.visibility, opacity:s.opacity,
+                width:r.width, height:r.height,
+                close: close ? {width:cr.width,height:cr.height,bg:cs.backgroundColor,color:cs.color,borderRadius:cs.borderRadius} : null
+              };
+            });
+            if (!modal || modal.hidden || modal.ariaHidden !== 'false' || modal.display === 'none' || modal.visibility === 'hidden' || modal.width < 350 || modal.height < 700) fail('destination modal did not open correctly', modal);
+            if (!modal.close || modal.close.width < 34 || modal.close.height < 34) fail('destination close button is not canonical', modal);
+
+            console.log('VENDOR_CONTROLS_010270_BROWSER_OK', JSON.stringify({initial, orderResult, finalUrl:page.url(), modal}));
+            await browser.close();
+          })().catch(async err => { console.error(err); process.exit(1); });
+          NODE
