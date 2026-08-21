@@ -1,4 +1,4 @@
-name: Editorial authority batch 7 isolated recovery 20260821
+name: Editorial authority batch 9 isolated recovery 20260821
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: editorial-authority-batch7-isolated-20260821
+  group: editorial-authority-batch9-isolated-20260821
   cancel-in-progress: false
 
 jobs:
@@ -33,8 +33,8 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          php -l .github/scripts/publish-editorial-authority-batch7-20260821.php
-          for f in .github/data/editorial-authority-batch7-20260821/*.php; do php -l "$f"; done
+          php -l .github/scripts/publish-editorial-authority-batch9-20260821.php
+          for f in .github/data/editorial-authority-batch9-20260821/*.php; do php -l "$f"; done
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -47,46 +47,45 @@ jobs:
             [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE=/tmp/emdo-ab7-isolated-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
+          REMOTE=/tmp/emdo-ab9-isolated-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
-          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch7-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
-          sshpass -e scp $SCP .github/data/editorial-authority-batch7-20260821/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
-          : >/tmp/ab7-isolated.log
-          for localfile in .github/data/editorial-authority-batch7-20260821/*.php; do
+          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch9-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e scp $SCP .github/data/editorial-authority-batch9-20260821/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
+          : >/tmp/ab9-isolated.log
+          for localfile in .github/data/editorial-authority-batch9-20260821/*.php; do
             bn="$(basename "$localfile")"
-            echo "=== $bn ===" >>/tmp/ab7-isolated.log
+            echo "=== $bn ===" >>/tmp/ab9-isolated.log
             set +e
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH7_DIR='$DATA' EMDO_BATCH7_ONLY_FILE='$bn' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" >>/tmp/ab7-isolated.log 2>&1
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH9_DIR='$DATA' EMDO_BATCH9_ONLY_FILE='$bn' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" >>/tmp/ab9-isolated.log 2>&1
             rc=$?
             set -e
-            echo "rc=$rc" >>/tmp/ab7-isolated.log
+            echo "rc=$rc" >>/tmp/ab9-isolated.log
           done
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT pm2.meta_value,p.ID,p.post_status,p.post_name,thumb.meta_value AS thumbnail_id FROM wp_posts p JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' AND b.meta_value='7' JOIN wp_postmeta pm2 ON pm2.post_id=p.ID AND pm2.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/ab7-db.txt
-          test "$(grep -c $'\tpublish\t' /tmp/ab7-db.txt)" -eq 5
-          test "$(awk -F '\t' '{print $5}' /tmp/ab7-db.txt | grep -E '^[0-9]+$' | sort -u | wc -l)" -eq 5
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT pm2.meta_value,p.ID,p.post_status,p.post_name,thumb.meta_value AS thumbnail_id FROM wp_posts p JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' AND b.meta_value='9' JOIN wp_postmeta pm2 ON pm2.post_id=p.ID AND pm2.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/ab9-db.txt
+          test "$(grep -c $'\tpublish\t' /tmp/ab9-db.txt)" -eq 5
+          test "$(awk -F '\t' '{print $5}' /tmp/ab9-db.txt | grep -E '^[0-9]+$' | sort -u | wc -l)" -eq 5
       - name: Verify ten public views and both indexes
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://www.elmercadodeorigen.com; stamp="$GITHUB_RUN_ID"
-          : >/tmp/ab7-public.txt
-          check(){ url="$1"; marker="$2"; f=/tmp/ab7-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab7isolated=$stamp"); test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH7:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; echo "$marker|$url|200" >>/tmp/ab7-public.txt; }
-          check "$BASE/caduca-aove-como-saber-si-se-ha-deteriorado/" evoo-expiry-quality-guide
-          check "$BASE/en/does-extra-virgin-olive-oil-expire-how-to-tell-if-it-has-deteriorated/" evoo-expiry-quality-guide
-          check "$BASE/aove-botella-lata-garrafa-que-envase-conviene/" evoo-packaging-format-guide
-          check "$BASE/en/evoo-bottle-tin-or-large-container-which-package-is-best/" evoo-packaging-format-guide
-          check "$BASE/carne-picada-ternera-que-mirar-antes-comprar/" ground-beef-buying-guide
-          check "$BASE/en/ground-beef-what-to-check-before-buying/" ground-beef-buying-guide
-          check "$BASE/como-congelar-descongelar-hortalizas-sin-arruinar-textura/" vegetable-freezing-guide
-          check "$BASE/en/how-to-freeze-and-thaw-vegetables-without-ruining-texture/" vegetable-freezing-guide
-          check "$BASE/como-conservar-legumbres-secas-despensa/" dried-pulses-storage-guide
-          check "$BASE/en/how-to-store-dried-pulses-in-the-pantry/" dried-pulses-storage-guide
-          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/blog/?ab7isolated=$stamp" -o /tmp/blog-es.html
-          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab7isolated=$stamp" -o /tmp/blog-en.html
-          grep -Fq '¿Caduca el AOVE?' /tmp/blog-es.html
-          grep -Fq 'Carne picada de ternera' /tmp/blog-es.html
-          grep -Fq 'Does extra virgin olive oil expire?' /tmp/blog-en.html
-          grep -Fq 'Ground beef:' /tmp/blog-en.html
+          check(){ url="$1"; marker="$2"; f=/tmp/ab9-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab9isolated=$stamp"); test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH9:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; }
+          check "$BASE/partes-jamon-iberico-maza-babilla-contramaza-punta-jarrete/" iberian-ham-parts-guide
+          check "$BASE/en/parts-of-an-iberian-ham-maza-babilla-contramaza-punta-and-jarrete/" iberian-ham-parts-guide
+          check "$BASE/como-conservar-jamon-paleta-entera-antes-empezarla/" whole-ham-before-opening-storage-guide
+          check "$BASE/en/how-to-store-a-whole-ham-or-shoulder-before-starting-it/" whole-ham-before-opening-storage-guide
+          check "$BASE/acidez-aceite-oliva-que-significa-realmente/" olive-oil-acidity-guide
+          check "$BASE/en/olive-oil-acidity-what-it-really-means/" olive-oil-acidity-guide
+          check "$BASE/como-preparar-aperitivo-espanol-ibericos-conservas-aove/" spanish-aperitivo-planning-guide
+          check "$BASE/en/how-to-build-a-spanish-aperitivo-with-iberian-cured-meats-preserves-and-evoo/" spanish-aperitivo-planning-guide
+          check "$BASE/como-preparar-despensa-fondo-legumbres-conservas-aove/" spanish-pantry-staples-guide
+          check "$BASE/en/how-to-build-a-useful-pantry-with-pulses-preserves-and-evoo/" spanish-pantry-staples-guide
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/blog/?ab9isolated=$stamp" -o /tmp/blog-es.html
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab9isolated=$stamp" -o /tmp/blog-en.html
+          grep -Fq 'Partes del jamón ibérico' /tmp/blog-es.html
+          grep -Fq 'Acidez del aceite de oliva' /tmp/blog-es.html
+          grep -Fq 'Parts of an Iberian ham' /tmp/blog-en.html
+          grep -Fq 'Olive oil acidity' /tmp/blog-en.html
       - name: Record verified publication
         shell: bash
         run: |
@@ -95,14 +94,14 @@ jobs:
           python3 - <<'PY'
           import json,os
           rows=[]
-          for line in open('/tmp/ab7-db.txt',encoding='utf-8'):
+          for line in open('/tmp/ab9-db.txt',encoding='utf-8'):
               p=line.rstrip('\n').split('\t')
               if len(p)>=5: rows.append({'key':p[0],'id':int(p[1]),'status':p[2],'slug':p[3],'image_id':int(p[4])})
-          d={'batch':7,'release':'20260821','posts':rows,'verified':True,'language_views_verified':10,'blogs_verified':True,'distinct_featured_images':len({x['image_id'] for x in rows}),'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA']}
-          open('.deploy-status/editorial-authority-batch7-final-20260821.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          d={'batch':9,'release':'20260821','posts':rows,'verified':True,'language_views_verified':10,'blogs_verified':True,'distinct_featured_images':len({x['image_id'] for x in rows}),'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA']}
+          open('.deploy-status/editorial-authority-batch9-final-20260821.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
           PY
           git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/editorial-authority-batch7-final-20260821.json
-          git commit -m 'Record verified editorial authority batch 7 publication [skip ci]' || exit 0
+          git add .deploy-status/editorial-authority-batch9-final-20260821.json
+          git commit -m 'Record verified editorial authority batch 9 publication [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
