@@ -1,6 +1,6 @@
 <?php
 /**
- * Native WooCommerce ordering parity for WCFM vendor stores 0.10.281.
+ * Native WooCommerce ordering parity for WCFM vendor stores 0.10.282.
  *
  * The producer toolbar exposes one real WooCommerce <select>. WCFM/legacy
  * scripts may write inline !important styles after wp_head, so this owner also
@@ -21,7 +21,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-vendor-ordering-native-010281">
+		<style id="elmercado-vendor-ordering-native-010282">
 			body.wcfmmp-store-page .mdo-vendor-order-button,
 			body.wcfmmp-store-page .mdo-vendor-order-menu,
 			body.wcfmmp-store-page .mdo-vendor-order-sheet,
@@ -68,7 +68,7 @@ add_action(
 				box-shadow:none !important;
 				color:#173f32 !important;
 				font-family:inherit !important;
-				font-size:11.75px !important;
+				font-size:12.5px !important;
 				font-weight:700 !important;
 				letter-spacing:0 !important;
 				line-height:1 !important;
@@ -97,7 +97,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-vendor-ordering-native-script-010281">
+		<script id="elmercado-vendor-ordering-native-script-010282">
 		(() => {
 			'use strict';
 			if (!document.body || !document.body.classList.contains('wcfmmp-store-page')) return;
@@ -141,7 +141,7 @@ add_action(
 					['height','40px'],['min-height','40px'],['max-height','40px'],['margin','0'],
 					['border','1px solid rgba(23,63,50,.14)'],['border-radius','999px'],['outline','0'],
 					['background','#f8faf8'],['box-shadow','none'],['color','#173f32'],['font-family','inherit'],
-					['font-size','11.75px'],['font-weight','700'],['letter-spacing','0'],['line-height','1'],
+					['font-size','12.5px'],['font-weight','700'],['letter-spacing','0'],['line-height','1'],
 					['visibility','visible'],['opacity','1'],['clip','auto'],['clip-path','none'],['transform','none'],
 					['pointer-events','auto'],['touch-action','manipulation'],['cursor','pointer'],['z-index','3'],
 					['transition','none'],['transition-property','none'],['animation','none']
@@ -156,7 +156,8 @@ add_action(
 					].forEach(([name,value]) => important(form,name,value));
 					[
 						['width','100%'],['min-width','100%'],['max-width','100%'],
-						['padding-top','0'],['padding-bottom','0'],['padding-left','12px'],['padding-right','42px']
+						['padding-top','0'],['padding-bottom','0'],['padding-left','12px'],['padding-right','42px'],
+						['font-size','11.75px']
 					].forEach(([name,value]) => important(select,name,value));
 				} else {
 					[['position','static'],['left','auto'],['transform','none'],['width','250px'],['min-width','250px'],['max-width','250px']]
