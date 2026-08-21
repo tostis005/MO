@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Huerta English Products
  * Description: Serves La Huerta de Ana Mari product titles, descriptions and product URLs from the persisted reviewed English metadata on English storefront requests.
- * Version: 1.0.2
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -19,6 +19,60 @@ function mdohep_source_table_20260821(): string {
 	global $wpdb;
 	return class_exists( 'MDO_Database' ) ? MDO_Database::table( 'source_products' ) : $wpdb->prefix . 'mdo_source_products';
 }
+
+/**
+ * One-time production repair: the 46 Huerta translations already existed but
+ * their English publication flag was blank, so /en fell back to Spanish.
+ */
+add_action( 'init', static function (): void {
+	$flag = 'mdohep_huerta_english_repair_20260821_v4';
+	if ( 'done' === (string) get_option( $flag, '' ) ) { return; }
+	global $wpdb;
+	$table = mdohep_source_table_20260821();
+	if ( (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) { return; }
+	$ids = array_map( 'intval', (array) $wpdb->get_col(
+		"SELECT DISTINCT p.ID
+		 FROM {$wpdb->posts} p
+		 INNER JOIN {$table} src ON src.wc_product_id=p.ID AND src.source_url LIKE '%lahuertadeanamary.com%'
+		 WHERE p.post_type='product' AND p.post_status='publish'
+		 ORDER BY p.ID"
+	) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	if ( 46 !== count( $ids ) ) { return; }
+
+	$title_fixes = array(
+		12740 => array( 'Young garlic, 314 ml', 'young-garlic-314-ml' ),
+		12748 => array( 'Artisan canned leeks, 720 ml', 'artisan-canned-leeks-720-ml' ),
+		12797 => array( 'Artisan tomato sauté, 314 ml', 'artisan-tomato-saute-314-ml' ),
+		12809 => array( '12 jars of artisan tomato sauté, 314 ml', '12-jars-of-artisan-tomato-saute-314-ml' ),
+	);
+	$repaired = 0;
+	foreach ( $ids as $id ) {
+		$title   = (string) get_post_meta( $id, '_en_US_post_title', true );
+		$slug    = sanitize_title( (string) get_post_meta( $id, '_en_US_post_name', true ) );
+		$excerpt = (string) get_post_meta( $id, '_en_US_post_excerpt', true );
+		$content = (string) get_post_meta( $id, '_en_US_post_content', true );
+		if ( '' === trim( wp_strip_all_tags( $title ) ) || '' === $slug || '' === trim( wp_strip_all_tags( $content ) ) ) { continue; }
+
+		$title   = preg_replace( '/\bconservas\b/iu', 'preserves', $title );
+		$excerpt = preg_replace( '/\bconservas\b/iu', 'preserves', $excerpt );
+		$content = preg_replace( '/\bconservas\b/iu', 'preserves', $content );
+		if ( isset( $title_fixes[ $id ] ) ) {
+			$title = $title_fixes[ $id ][0];
+			$slug  = $title_fixes[ $id ][1];
+		}
+		update_post_meta( $id, '_en_US_post_title', $title );
+		update_post_meta( $id, '_en_US_post_name', $slug );
+		update_post_meta( $id, '_en_US_post_excerpt', $excerpt );
+		update_post_meta( $id, '_en_US_post_content', $content );
+		update_post_meta( $id, '_en_US_ready', '1' );
+		update_post_meta( $id, '_en_US_published', '1' );
+		++$repaired;
+	}
+	if ( 46 === $repaired ) {
+		update_option( $flag, 'done', false );
+		wp_cache_flush();
+	}
+}, 20 );
 
 function mdohep_is_huerta_product_20260821( int $product_id ): bool {
 	static $cache = array();
