@@ -1,0 +1,221 @@
+name: Final sitemap URL SEO crawl 2026-08-21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-final-sitemap-url-crawl-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-final-sitemap-url-crawl
+  cancel-in-progress: true
+
+jobs:
+  crawl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crawl every canonical sitemap URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/reports
+          python3 - <<'PY'
+          import concurrent.futures, csv, gzip, html, io, re, ssl, time, urllib.error, urllib.request, xml.etree.ElementTree as ET
+          from collections import Counter, defaultdict
+          from urllib.parse import urlparse, urlunparse
+
+          BASE='https://www.elmercadodeorigen.com'
+          SITEMAPS=[
+              BASE+'/mdo-sitemap-pages.xml',
+              BASE+'/mdo-sitemap-categories.xml',
+              BASE+'/mdo-sitemap-products.xml',
+          ]
+          STAMP=str(time.time_ns())
+          CTX=ssl.create_default_context()
+          HEADERS={
+              'User-Agent':'EMDO-Final-SEO-Crawl/2026-08-21',
+              'Cache-Control':'no-cache',
+              'Accept-Encoding':'gzip',
+          }
+
+          def request(url, retries=2, timeout=45):
+              last=None
+              for attempt in range(retries+1):
+                  try:
+                      req=urllib.request.Request(url,headers=HEADERS)
+                      with urllib.request.urlopen(req,timeout=timeout,context=CTX) as r:
+                          raw=r.read()
+                          if (r.headers.get('Content-Encoding') or '').lower()=='gzip':
+                              raw=gzip.decompress(raw)
+                          return r.status,r.geturl(),r.headers,raw
+                  except urllib.error.HTTPError as e:
+                      raw=e.read()
+                      try:
+                          if (e.headers.get('Content-Encoding') or '').lower()=='gzip': raw=gzip.decompress(raw)
+                      except Exception: pass
+                      return e.code,e.geturl(),e.headers,raw
+                  except Exception as e:
+                      last=e
+                      if attempt<retries: time.sleep(1.0+attempt)
+              raise last
+
+          def cachebust(url):
+              return url+('&' if '?' in url else '?')+'emdo_final_crawl='+STAMP
+
+          def xml_locs(raw):
+              root=ET.fromstring(raw)
+              return [el.text.strip() for el in root.iter() if el.tag.endswith('loc') and el.text and el.text.strip()]
+
+          sitemap_rows=[]
+          urls=[]
+          for sm in SITEMAPS:
+              try:
+                  status,final,headers,raw=request(cachebust(sm))
+                  locs=xml_locs(raw) if status==200 else []
+                  sitemap_rows.append((sm,status,len(locs),'',len(raw)))
+                  urls.extend(locs)
+              except Exception as e:
+                  sitemap_rows.append((sm,0,0,repr(e),0))
+          urls=list(dict.fromkeys(urls))
+
+          def attr(tag,name):
+              m=re.search(r'\b'+re.escape(name)+r'\s*=\s*(["\'])(.*?)\1',tag,re.I|re.S)
+              return html.unescape(m.group(2)).strip() if m else ''
+
+          def normalize(url):
+              p=urlparse(url)
+              path=p.path or '/'
+              if path!='/' and not path.endswith('/'): path+='/'
+              return urlunparse((p.scheme.lower(),p.netloc.lower(),path,'','',''))
+
+          def kind(url):
+              p=urlparse(url).path
+              if '/producto/' in p or '/en/product/' in p: return 'product'
+              if '/categoria-producto/' in p or '/en/product-category/' in p: return 'category'
+              return 'page'
+
+          def analyze(url):
+              row={
+                  'url':url,'kind':kind(url),'lang':'en' if urlparse(url).path.startswith('/en/') else 'es',
+                  'status':0,'final_url':'','title':'','description':'','canonical':'','robots':'',
+                  'h1_count':0,'h1_first':'','category_description_marker':False,'bytes':0,'error':''
+              }
+              try:
+                  status,final,headers,raw=request(cachebust(url))
+                  text=raw.decode('utf-8','replace')
+                  row['status']=status; row['final_url']=final; row['bytes']=len(raw)
+                  head=text.split('</head>',1)[0]
+                  mt=re.search(r'<title\b[^>]*>(.*?)</title>',head,re.I|re.S)
+                  if mt: row['title']=' '.join(html.unescape(re.sub(r'<[^>]+>',' ',mt.group(1))).split())
+                  for tag in re.findall(r'<meta\b[^>]*>',head,re.I|re.S):
+                      name=attr(tag,'name').lower()
+                      if name=='description' and not row['description']: row['description']=' '.join(attr(tag,'content').split())
+                      if name=='robots' and not row['robots']: row['robots']=' '.join(attr(tag,'content').split())
+                  for tag in re.findall(r'<link\b[^>]*>',head,re.I|re.S):
+                      rel=attr(tag,'rel').lower().split()
+                      if 'canonical' in rel and not row['canonical']: row['canonical']=attr(tag,'href')
+                  h1s=[]
+                  for rawh in re.findall(r'<h1\b[^>]*>(.*?)</h1>',text,re.I|re.S):
+                      val=' '.join(html.unescape(re.sub(r'<[^>]+>',' ',rawh)).split())
+                      if val: h1s.append(val)
+                  row['h1_count']=len(h1s); row['h1_first']=h1s[0] if h1s else ''
+                  row['category_description_marker']='data-emdo-category-description="1"' in text
+              except Exception as e:
+                  row['error']=repr(e)
+              return row
+
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+              futures=[ex.submit(analyze,u) for u in urls]
+              for i,f in enumerate(concurrent.futures.as_completed(futures),1):
+                  rows.append(f.result())
+                  if i%40==0: print('CRAWLED',i,'OF',len(urls),flush=True)
+          rows.sort(key=lambda r:r['url'])
+
+          critical=[]; warnings=[]
+          for r in rows:
+              reasons=[]; warn=[]
+              if r['status']!=200: reasons.append('http_'+str(r['status']))
+              if r['error']: reasons.append('fetch_error')
+              if not r['title']: reasons.append('missing_title')
+              if not r['description']: reasons.append('missing_description')
+              if not r['canonical']: reasons.append('missing_canonical')
+              elif normalize(r['canonical'])!=normalize(r['url']): reasons.append('canonical_mismatch')
+              if 'noindex' in r['robots'].lower(): reasons.append('sitemap_url_noindex')
+              if r['h1_count']==0: reasons.append('missing_h1')
+              elif r['h1_count']>1: warn.append('multiple_h1')
+              if r['kind']=='category' and not r['category_description_marker']: reasons.append('missing_visible_category_description')
+              if r['description'] and len(r['description'])<70: warn.append('short_description')
+              if r['description'] and len(r['description'])>190: warn.append('long_description')
+              if r['title'] and len(r['title'])>70: warn.append('long_title')
+              if reasons: critical.append((r,reasons))
+              if warn: warnings.append((r,warn))
+
+          duplicate_titles=defaultdict(list)
+          duplicate_descriptions=defaultdict(list)
+          for r in rows:
+              if r['title']: duplicate_titles[r['title'].lower()].append(r['url'])
+              if r['description']: duplicate_descriptions[r['description'].lower()].append(r['url'])
+          duplicate_titles={k:v for k,v in duplicate_titles.items() if len(v)>1}
+          duplicate_descriptions={k:v for k,v in duplicate_descriptions.items() if len(v)>1}
+
+          csv_path='.github/reports/seo-final-sitemap-url-crawl-20260821.csv'
+          fields=list(rows[0].keys()) if rows else ['url']
+          with open(csv_path,'w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(rows)
+
+          summary_path='.github/reports/seo-final-sitemap-url-crawl-summary-20260821.txt'
+          with open(summary_path,'w',encoding='utf-8') as f:
+              def out(s=''):
+                  print(s); f.write(s+'\n')
+              out('EMDO FINAL SITEMAP URL SEO CRAWL 2026-08-21')
+              for sm,status,count,error,size in sitemap_rows:
+                  out(f'SITEMAP|{sm}|HTTP={status}|LOCS={count}|BYTES={size}|ERROR={error}')
+              out('TOTAL_UNIQUE_URLS='+str(len(rows)))
+              out('BY_KIND='+repr(dict(Counter(r['kind'] for r in rows))))
+              out('BY_LANG='+repr(dict(Counter(r['lang'] for r in rows))))
+              out('HTTP_STATUS='+repr(dict(Counter(str(r['status']) for r in rows))))
+              out('CRITICAL_URLS='+str(len(critical)))
+              out('WARNING_URLS='+str(len(warnings)))
+              out('DUPLICATE_TITLE_GROUPS='+str(len(duplicate_titles)))
+              out('DUPLICATE_DESCRIPTION_GROUPS='+str(len(duplicate_descriptions)))
+              out('')
+              out('CRITICAL_DETAILS')
+              for r,reasons in critical[:150]:
+                  out('|'.join([r['kind'],r['lang'],','.join(reasons),r['url'],'title='+r['title'][:100],'canonical='+r['canonical'][:140]]))
+              out('')
+              out('WARNING_DETAILS')
+              for r,reasons in warnings[:120]:
+                  out('|'.join([r['kind'],r['lang'],','.join(reasons),r['url'],'title='+r['title'][:100],'desc_len='+str(len(r['description']))]))
+              out('')
+              out('DUPLICATE_TITLES')
+              for title,dups in list(duplicate_titles.items())[:50]: out(repr(title)+'|'+repr(dups))
+              out('')
+              out('DUPLICATE_DESCRIPTIONS')
+              for desc,dups in list(duplicate_descriptions.items())[:50]: out(repr(desc[:120])+'|'+repr(dups))
+              out('FINAL_CRAWL_STATUS='+('PASS' if not critical else 'REVIEW'))
+
+          # Never lose the report because of findings; the next step commits it.
+          PY
+      - name: Commit crawl reports
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          SUMMARY=.github/reports/seo-final-sitemap-url-crawl-summary-20260821.txt
+          CSV=.github/reports/seo-final-sitemap-url-crawl-20260821.csv
+          [ -f "$SUMMARY" ] || echo 'Final crawl failed before producing a summary' > "$SUMMARY"
+          [ -f "$CSV" ] || echo 'url' > "$CSV"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$SUMMARY" "$CSV"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record final sitemap URL SEO crawl [skip ci]"
+          git pull --rebase origin main
+          git push
