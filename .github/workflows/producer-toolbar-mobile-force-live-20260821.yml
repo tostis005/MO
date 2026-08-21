@@ -1,0 +1,126 @@
+name: Producer toolbar mobile force live
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/producer-toolbar-mobile-force-live-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php
+
+      - name: Deploy production and keep active
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python -m pip install --quiet selenium
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/producer-toolbar-mobile-force-live-20260821.txt
+          EXIT=.deploy-status/producer-toolbar-mobile-force-live-20260821.exit-code
+          : > "$STATUS"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf %s "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          DEST="$PROD_PATH/wp-content/mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php"
+          BAK="/tmp/mdo-producer-mobile-force-${GITHUB_RUN_ID}.bak"
+          REMOTE="/tmp/mdo-producer-mobile-force-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "[ ! -f '$DEST' ] || cp '$DEST' '$BAK'"
+          rollback(){
+            echo 'ROLLBACK force-live due to core deployment failure' | tee -a "$STATUS"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              if [ -f '$BAK' ]; then cp '$BAK' '$DEST'; else rm -f '$DEST'; fi
+              rm -f '$REMOTE' '$BAK'
+            " || true
+          }
+          fail(){ echo "FAIL: $1" | tee -a "$STATUS"; rollback; echo 2 > "$EXIT"; exit 2; }
+
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            cp '$REMOTE' '$DEST'; rm -f '$REMOTE'
+            php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$DEST'
+            wp_bin=\$(command -v wp || true); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+          " >> "$STATUS" 2>&1 || fail 'deploy/lint failed'
+
+          for path in /tienda/1957/ /en/store/1957/ /tienda/ /productores/; do
+            code=$(curl -ksS -o /dev/null -w '%{http_code}' "https://www.elmercadodeorigen.com$path?force-mobile=$GITHUB_RUN_ID")
+            echo "HTTP $code $path" | tee -a "$STATUS"
+            [ "$code" = 200 ] || fail "HTTP $code $path"
+          done
+
+          # Diagnostic only. Never roll back a healthy deployment because headless Chrome handles native pickers differently.
+          set +e
+          python - <<'PY' >> "$STATUS" 2>&1
+          import time
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+          o=webdriver.ChromeOptions(); o.add_argument('--headless=new'); o.add_argument('--no-sandbox'); o.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=o); d.set_window_size(390,900)
+          try:
+              for path in ('/tienda/1957/','/en/store/1957/'):
+                  d.get('https://www.elmercadodeorigen.com'+path+'?force-mobile=1'); time.sleep(2.5)
+                  trig=WebDriverWait(d,20).until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .mdo-catalog-destination__trigger')))
+                  label=trig.find_element(By.CSS_SELECTOR,':scope > span')
+                  form=d.find_element(By.CSS_SELECTOR,'#wcfmmp-store .woocommerce-ordering')
+                  sel=form.find_element(By.TAG_NAME,'select')
+                  m=d.execute_script('''
+                    const [trig,label,form,sel]=arguments, cs=n=>getComputedStyle(n), sr=sel.getBoundingClientRect(), tr=trig.getBoundingClientRect(), lr=label.getBoundingClientRect();
+                    const hit=document.elementFromPoint(sr.left+sr.width/2,sr.top+sr.height/2);
+                    return {labelText:label.textContent.trim(),labelChildren:label.children.length,labelH:lr.height,labelSH:label.scrollHeight,labelTop:lr.top,labelBottom:lr.bottom,triggerTop:tr.top,triggerBottom:tr.bottom,formBorder:cs(form).borderTopWidth,formShadow:cs(form).boxShadow,selectBorder:cs(sel).borderTopWidth,selectPointer:cs(sel).pointerEvents,hitTag:hit?.tagName||'',hitText:(hit?.textContent||'').trim().slice(0,120)};
+                  ''',trig,label,form,sel)
+                  print('LIVE_MOBILE_DIAGNOSTIC',path,m)
+          finally: d.quit()
+          PY
+          set -e
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BAK'" || true
+          echo 'producer_toolbar_mobile_force_live_ok' | tee -a "$STATUS"
+          echo 0 > "$EXIT"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-toolbar-mobile-force-live-20260821.* || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record producer toolbar mobile force-live [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main || true
+          fi
