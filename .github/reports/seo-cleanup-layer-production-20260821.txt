@@ -1,0 +1,23 @@
+REDIRECT|/el-mercado-de-origen/|HTTP=301|LOCATION=https://www.elmercadodeorigen.com/quienes-somos/
+REDIRECT|/condiciones-especiales/|HTTP=301|LOCATION=https://www.elmercadodeorigen.com/envios/
+PAGES_SITEMAP|HTTP=200|BYTES=12705
+PAGES_FORBID|/carrito/|PRESENT=False
+PAGES_FORBID|/finalizar-compra/|PRESENT=False
+PAGES_FORBID|/mi-cuenta/|PRESENT=False
+PAGES_FORBID|/store-manager/|PRESENT=False
+PAGES_FORBID|/affiliates/|PRESENT=False
+PAGES_FORBID|/el-mercado-de-origen/|PRESENT=False
+PAGES_FORBID|/condiciones-especiales/|PRESENT=False
+PAGES_REQUIRE|/quienes-somos/|PRESENT=True
+PAGES_REQUIRE|/envios/|PRESENT=True
+PAGES_REQUIRE|/tienda/|PRESENT=True
+FUNCTIONAL|/store-manager/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/mi-cuenta/|ROBOTS=noindex, max-image-preview:large|XROBOTS=
+FUNCTIONAL|/affiliates/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/affiliates/?emdo_cleanup_verify=1787305132390232779|ROBOTS=noindex, max-image-preview:large|XROBOTS=noindex, follow
+PRODUCT_SITEMAP|HTTP=200|BYTES=113959
+STORE|/tienda/puente-robles/|HTTP=404|FINAL=https://www.elmercadodeorigen.com/tienda/puente-robles/?emdo_cleanup_verify=1787305132390232779
+STORE|/tienda/el-catedratico/|HTTP=404|FINAL=https://www.elmercadodeorigen.com/tienda/el-catedratico/?emdo_cleanup_verify=1787305132390232779
+STORE|/tienda/1957/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/tienda/1957/?emdo_cleanup_verify=1787305132390232779
+FAILURES:
+- disabled-puente sample slug missing
+- disabled-catedratico sample slug missing
+- active-tolecarnes sample slug missing
