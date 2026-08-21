@@ -86,42 +86,64 @@ jobs:
             with urllib.request.urlopen(req, timeout=50, context=ctx) as r:
               return r.status, r.geturl(), r.read().decode('utf-8','replace')
 
-          for path,(want_title,want_desc_prefix) in expected.items():
-            status,final,html=fetch(path)
+          def head_values(html):
             head=html.split('</head>',1)[0]
             mt=re.search(r'<title[^>]*>(.*?)</title>',head,re.I|re.S)
             title=unescape(re.sub(r'<[^>]+>','',mt.group(1))).strip() if mt else ''
-            md=''
+            md=''; robots=''
             for tag in re.findall(r'<meta\b[^>]*>',head,re.I):
               if re.search(r'\bname=["\']description["\']',tag,re.I):
                 m=re.search(r'\bcontent=["\']([^"\']*)',tag,re.I)
-                if m: md=unescape(m.group(1)); break
+                if m: md=unescape(m.group(1))
+              if re.search(r'\bname=["\']robots["\']',tag,re.I):
+                m=re.search(r'\bcontent=["\']([^"\']*)',tag,re.I)
+                if m: robots=unescape(m.group(1))
             cans=[]
             for tag in re.findall(r'<link\b[^>]*>',head,re.I):
               if re.search(r'\brel=["\']canonical["\']',tag,re.I):
                 m=re.search(r'\bhref=["\']([^"\']+)',tag,re.I)
                 if m:cans.append(unescape(m.group(1)))
-            print(f'PAGE|{path}|HTTP={status}|FINAL={final}|TITLE={title}|DESC={md[:180]}|CANONICAL={cans[:2]}')
+            return title,md,robots,cans
+
+          pages={}
+          for path,(want_title,want_desc_prefix) in expected.items():
+            status,final,html=fetch(path); pages[path]=html
+            title,md,robots,cans=head_values(html)
+            print(f'PAGE|{path}|HTTP={status}|FINAL={final}|TITLE={title}|DESC={md[:180]}|ROBOTS={robots}|CANONICAL={cans[:2]}')
             if status!=200: failures.append(f'HTTP {path} {status}')
             if title!=want_title: failures.append(f'TITLE {path}: {title!r}')
             if not md.startswith(want_desc_prefix): failures.append(f'DESC {path}: {md!r}')
             if path=='/en/' and cans[:1]!=[base+'/en/']: failures.append(f'CANON /en/: {cans!r}')
 
+          # Thin WooCommerce attribute archives are useful for navigation, but should
+          # not compete with product/category landing pages in Google.
+          attr='/en/variedad/tradicional-lechin/'
+          try:
+            status,final,html=fetch(attr)
+            title,md,robots,cans=head_values(html)
+            print(f'INDEX_CONTROL|{attr}|HTTP={status}|ROBOTS={robots}|CANONICAL={cans[:1]}')
+            if status==200 and 'noindex' not in robots.lower(): failures.append(f'NOINDEX {attr}: {robots!r}')
+          except Exception as e:
+            print(f'INDEX_CONTROL_SKIP|{attr}|{e!r}')
+
+          # English Journal archive cards must not expose known Spanish excerpts.
+          journal=pages.get('/en/journal/','')
+          spanish_signals=['El Jamón Ibérico es un producto único','Noviembre es la época de recolección']
+          hits=[x for x in spanish_signals if x.lower() in journal.lower()]
+          print('JOURNAL_SPANISH_EXCERPT_HITS='+repr(hits))
+          if hits: failures.append('JOURNAL_SPANISH_EXCERPTS '+repr(hits))
+
           # Verify obsolete indexed landing page is permanently consolidated.
           req=urllib.request.Request(base+'/inicio-bf/?emdo_seo_verify='+stamp, headers={'User-Agent':'EMDO-SEO-Verify/2026-08-21'})
-          opener=urllib.request.build_opener(urllib.request.HTTPHandler())
-          # Prevent automatic redirect following.
           class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl): return None
           opener=urllib.request.build_opener(NoRedirect)
           try:
-            r=opener.open(req, timeout=30)
-            code=r.status; loc=r.headers.get('Location','')
+            r=opener.open(req, timeout=30); code=r.status; loc=r.headers.get('Location','')
           except urllib.error.HTTPError as e:
             code=e.code; loc=e.headers.get('Location','')
           print(f'REDIRECT|/inicio-bf/|HTTP={code}|LOCATION={loc}')
-          if code not in (301,308) or loc.rstrip('/')!=base:
-            failures.append(f'REDIRECT /inicio-bf/: {code} {loc}')
+          if code not in (301,308) or loc.rstrip('/')!=base: failures.append(f'REDIRECT /inicio-bf/: {code} {loc}')
 
           if failures:
             print('FAILURES:')
@@ -135,9 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           REPORT=.github/reports/seo-foundation-production-20260821.txt
-          if [ ! -f "$REPORT" ]; then
-            echo "Verification report was not produced" > "$REPORT"
-          fi
+          if [ ! -f "$REPORT" ]; then echo "Verification report was not produced" > "$REPORT"; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$REPORT"
