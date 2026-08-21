@@ -9,7 +9,7 @@ return array(
 'excerpt'=>'Una despensa útil no se mide por cuántos tarros acumula. Aprende a combinar legumbres secas, conservas vegetales y AOVE según frecuencia de uso, rotación y tipos de comida.',
 'en_excerpt'=>'A useful pantry is not measured by how many jars it contains. Learn how to combine dried pulses, vegetable preserves and EVOO around real cooking habits and stock rotation.',
 'image'=>array(
-'id'=>'8581370','direct'=>'https://images.pexels.com/photos/8581370/pexels-photo-8581370.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/clear-glass-jars-on-a-shelf-8581370/','photographer'=>'RDNE Stock project','alt_es'=>'Tarros de alimentos secos organizados en una despensa limpia','alt_en'=>'Jars of dry foods organised on a clean pantry shelf'),
+'id'=>'8108102','direct'=>'https://images.pexels.com/photos/8108102/pexels-photo-8108102.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/grains-and-beans-on-bowls-8108102/','photographer'=>'MART PRODUCTION','alt_es'=>'Legumbres, cereales y alimentos secos organizados en cuencos y tarros','alt_en'=>'Pulses, grains and dry foods arranged in bowls and jars'),
 'content'=><<<'HTML'
 <!-- EMDO_AUTHORITY_BATCH9:spanish-pantry-staples-guide -->
 <p>Una buena despensa no es una colección de productos “por si acaso”. Es un sistema que permite cocinar bien cuando no hay tiempo para comprar, complementar alimentos frescos y resolver comidas sin depender siempre de productos preparados. Para que funcione, los alimentos tienen que rotar: lo que entra debe acabar usándose.</p>
