@@ -1,0 +1,75 @@
+name: Diagnose Pinterestbot verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-pinterestbot-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Diagnose from production host
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          mkdir -p reports
+          REPORT=reports/pinterestbot-diagnostic-20260821.txt
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'set -u
+            UA="Pinterestbot/1.0 (+http://www.pinterest.com/bot.html)"
+            TOKEN="bd9b4a2c373b774bb7753fa7040172ac"
+            for url in \
+              "https://www.elmercadodeorigen.com/" \
+              "https://elmercadodeorigen.com/" \
+              "http://www.elmercadodeorigen.com/" \
+              "http://elmercadodeorigen.com/"
+            do
+              echo "=== $url ==="
+              echo "-- headers --"
+              curl -ksSIL --max-time 30 -A "$UA" "$url" | sed -n "1,30p"
+              echo "-- final/body --"
+              tmp=$(mktemp)
+              code=$(curl -ksSL --max-time 30 -A "$UA" -o "$tmp" -w "%{http_code}" "$url" || true)
+              echo "http_code=$code"
+              if grep -Fq "$TOKEN" "$tmp"; then echo "token=FOUND"; else echo "token=NOT_FOUND"; fi
+              if grep -Fq "<meta name=\"p:domain_verify\" content=\"$TOKEN\">" "$tmp"; then echo "exact_meta=FOUND"; else echo "exact_meta=NOT_FOUND"; fi
+              headpart=$(awk 'BEGIN{IGNORECASE=1} /<head/{p=1} p{print} /<\/head>/{exit}' "$tmp")
+              if printf "%s" "$headpart" | grep -Fq "$TOKEN"; then echo "token_in_head=YES"; else echo "token_in_head=NO"; fi
+              title=$(grep -io "<title[^>]*>[^<]*</title>" "$tmp" | head -1 || true)
+              echo "title=$title"
+              rm -f "$tmp"
+              echo
+            done
+            echo "=== robots.txt Pinterestbot ==="
+            curl -ksS --max-time 30 -A "$UA" https://www.elmercadodeorigen.com/robots.txt | sed -n "1,160p"
+          ' | tee "$REPORT"
+      - name: Persist diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/pinterestbot-diagnostic-20260821.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record Pinterestbot diagnostic [skip ci]'
+          git pull --rebase origin main || true
+          git push origin HEAD:main
