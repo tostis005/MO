@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO SEO Foundation
  * Description: Stable SEO titles, descriptions, canonicals, index controls and legacy redirects for El Mercado de Origen.
- * Version: 2026.08.21.5
+ * Version: 2026.08.21.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -29,6 +29,16 @@ function emdo_seo_term_name(): string {
 
 function emdo_seo_clean_term_name( string $name ): string {
     return trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $name ) ) );
+}
+
+function emdo_seo_legacy_mentta_category( WP_Term $term ): bool {
+    if ( (string) $term->taxonomy !== 'product_cat' ) return false;
+    if ( (string) $term->slug === 'mentta' ) return true;
+    foreach ( get_ancestors( $term->term_id, 'product_cat', 'taxonomy' ) as $ancestor_id ) {
+        $ancestor = get_term( (int) $ancestor_id, 'product_cat' );
+        if ( $ancestor instanceof WP_Term && (string) $ancestor->slug === 'mentta' ) return true;
+    }
+    return false;
 }
 
 function emdo_seo_title_for_request( string $current ): string {
@@ -109,6 +119,7 @@ add_filter( 'aioseo_robots_meta', static function ( $attributes ) {
     if ( $queried instanceof WP_Term ) {
         if ( str_starts_with( (string) $queried->taxonomy, 'pa_' ) ) $noindex = true;
         if ( (string) $queried->taxonomy === 'product_tag' ) $noindex = true;
+        if ( emdo_seo_legacy_mentta_category( $queried ) ) $noindex = true;
     }
     if ( is_search() ) $noindex = true;
     if ( function_exists( 'is_cart' ) && is_cart() ) $noindex = true;
