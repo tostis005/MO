@@ -1,5 +1,6 @@
 <?php
 /** Apply reviewed category editorial copy and English metadata. */
+/* Trigger 2026-08-21: deploy after workflow registration. */
 if ( ! defined( 'ABSPATH' ) ) { exit(1); }
 
 $targets = array(
