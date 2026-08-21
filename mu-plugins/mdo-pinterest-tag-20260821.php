@@ -2,12 +2,49 @@
 /**
  * Plugin Name: MDO Pinterest Tag
  * Description: Loads Pinterest Tag after non-necessary cookie consent is granted.
- * Version: 2026.08.21.3
+ * Version: 2026.08.21.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
+
+/**
+ * EMDO has its own 10-minute Home HTML cache. If that cache predates this tag,
+ * invalidate only the stale Home copy before the theme serves it, so the next
+ * render is rebuilt with Pinterest included.
+ */
+add_action(
+    'template_redirect',
+    static function (): void {
+        if ( ! function_exists( 'elmercado_home_cache_key' ) ) {
+            return;
+        }
+
+        $is_home = function_exists( 'elmercado_is_optimized_home' )
+            ? (bool) elmercado_is_optimized_home()
+            : ( is_front_page() || is_home() );
+        if ( ! $is_home ) {
+            return;
+        }
+
+        $key = elmercado_home_cache_key();
+        $cached = get_transient( $key );
+        if ( ! is_string( $cached ) || '' === $cached || false !== strpos( $cached, '2612375296577' ) ) {
+            return;
+        }
+
+        delete_transient( $key );
+
+        if ( function_exists( 'elmercado_home_static_cache_file' ) ) {
+            $file = elmercado_home_static_cache_file();
+            if ( is_string( $file ) && is_file( $file ) ) {
+                @unlink( $file );
+            }
+        }
+    },
+    -3000
+);
 
 add_action(
     'wp_head',
