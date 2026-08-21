@@ -1,0 +1,97 @@
+name: Emergency producer store rollback
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-producer-store-rollback-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy disabled producer store integration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE="/tmp/mdo-producer-store-rollback-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zz-mdo-producer-store-catalog-rules-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            cp '$REMOTE' '$PROD_PATH/wp-content/mu-plugins/zz-mdo-producer-store-catalog-rules-20260821.php'
+            rm -f '$REMOTE'
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/zz-mdo-producer-store-catalog-rules-20260821.php'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+          "
+
+      - name: Verify public routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          code=0
+          : > .deploy-status/emergency-producer-store-rollback-20260821.txt
+          for url in \
+            'https://www.elmercadodeorigen.com/productores/' \
+            'https://www.elmercadodeorigen.com/tienda/1957/' \
+            'https://www.elmercadodeorigen.com/en/store/1957/'
+          do
+            status=$(curl -L -sS -o /tmp/body.html -w '%{http_code}' -H 'Cache-Control: no-cache' "${url}?rollback_check=${GITHUB_RUN_ID}" || true)
+            echo "$status $url" | tee -a .deploy-status/emergency-producer-store-rollback-20260821.txt
+            if [ "$status" -lt 200 ] || [ "$status" -ge 400 ]; then code=2; fi
+          done
+          echo "$code" > .deploy-status/emergency-producer-store-rollback-20260821.exit-code
+          exit "$code"
+
+      - name: Record rollback result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/emergency-producer-store-rollback-20260821.txt .deploy-status/emergency-producer-store-rollback-20260821.exit-code || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record emergency producer store rollback [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
