@@ -1,0 +1,132 @@
+name: Editorial authority batch 2 diagnostic 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editorial-authority-batch2-diagnostic-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: editorial-authority-batch2-diagnostic-20260821
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish and collect diagnostics
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          mkdir -p .deploy-status
+          : > /tmp/ab2-out; : > /tmp/ab2-err; : > /tmp/ab2-db; : > /tmp/ab2-public
+          echo 99 > /tmp/ab2-rc
+          php -l .github/scripts/publish-editorial-authority-batch2-20260821.php > /tmp/ab2-local-lint 2>&1
+          LINT=$?
+          for f in .github/data/editorial-authority-batch2/*.php; do php -l "$f" >> /tmp/ab2-local-lint 2>&1 || LINT=$?; done
+          echo "$LINT" > /tmp/ab2-lint-rc
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          INFO_RC=$?
+          echo "$INFO_RC" > /tmp/ab2-info-rc
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          printf '%s' "$PROD" > /tmp/ab2-prod; printf '%s' "$PHP" > /tmp/ab2-php; printf '%s' "$WP" > /tmp/ab2-wp
+
+          if [ "$INFO_RC" -eq 0 ] && [ "$LINT" -eq 0 ]; then
+            REMOTE=/tmp/emdo-ab2-diag-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
+            sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch2-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
+            sshpass -e scp $SCP .github/data/editorial-authority-batch2/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH2_DIR='$DATA' '$PHP' -d memory_limit=768M -d display_errors=1 -d error_reporting=32767 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" > /tmp/ab2-out 2> /tmp/ab2-err
+            echo $? > /tmp/ab2-rc
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT pm2.meta_value,p.ID,p.post_status,p.post_name,thumb.meta_value AS thumbnail_id FROM wp_posts p JOIN wp_postmeta batch ON batch.post_id=p.ID AND batch.meta_key='_emdo_authority_batch' AND batch.meta_value='2' JOIN wp_postmeta pm2 ON pm2.post_id=p.ID AND pm2.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root" > /tmp/ab2-db 2>> /tmp/ab2-err
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1
+          fi
+
+          BASE=https://www.elmercadodeorigen.com
+          while IFS='|' read -r key url; do
+            f=/tmp/ab2-page.html
+            c=$(curl -k -L -sS --retry 2 --connect-timeout 8 --max-time 45 -A 'Mozilla/5.0 EMDO batch2 diagnostic' -H 'Cache-Control: no-cache' -o "$f" -w '%{http_code}' "$url?ab2diag=$GITHUB_RUN_ID" 2>/dev/null)
+            m=$(grep -Fc "EMDO_AUTHORITY_BATCH2:$key" "$f" 2>/dev/null || true)
+            raw=$(grep -Fc '[products ' "$f" 2>/dev/null || true)
+            products=$(grep -Ec 'class="[^"]*products|class="[^"]*product' "$f" 2>/dev/null || true)
+            feat=$(grep -Fc 'emo-article-featured' "$f" 2>/dev/null || true)
+            printf '%s|%s|http=%s|marker=%s|raw=%s|products=%s|featured=%s\n' "$key" "$url" "$c" "$m" "$raw" "$products" "$feat" >> /tmp/ab2-public
+          done <<'EOF'
+          evoo-tasting-home|https://www.elmercadodeorigen.com/como-catar-aove-en-casa/
+          evoo-tasting-home|https://www.elmercadodeorigen.com/en/how-to-taste-extra-virgin-olive-oil-at-home/
+          beef-cuts-guide|https://www.elmercadodeorigen.com/que-corte-ternera-elegir-cada-receta/
+          beef-cuts-guide|https://www.elmercadodeorigen.com/en/which-beef-cut-to-choose-for-each-recipe/
+          beef-cooking-science|https://www.elmercadodeorigen.com/como-cocinar-ternera-cortes-minutos-horas/
+          beef-cooking-science|https://www.elmercadodeorigen.com/en/how-to-cook-beef-why-some-cuts-need-minutes-and-others-hours/
+          vegetable-storage-guide|https://www.elmercadodeorigen.com/como-conservar-hortalizas-nevera-fuera/
+          vegetable-storage-guide|https://www.elmercadodeorigen.com/en/how-to-store-vegetables-what-goes-in-the-fridge-and-what-does-not/
+          dry-pulses-cooking-guide|https://www.elmercadodeorigen.com/guia-cocinar-legumbres-secas-remojo-coccion-errores/
+          dry-pulses-cooking-guide|https://www.elmercadodeorigen.com/en/complete-guide-to-cooking-dried-pulses-soaking-cooking-and-common-mistakes/
+          EOF
+          curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache' "$BASE/blog/?ab2diag=$GITHUB_RUN_ID" -o /tmp/ab2-blog-es.html 2>/dev/null
+          curl -k -L -sS --connect-timeout 8 --max-time 45 -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab2diag=$GITHUB_RUN_ID" -o /tmp/ab2-blog-en.html 2>/dev/null
+          echo "es_tasting=$(grep -Fc 'Cómo catar un AOVE en casa' /tmp/ab2-blog-es.html 2>/dev/null || true)" > /tmp/ab2-blogs
+          echo "es_beef=$(grep -Fc 'Qué corte de ternera elegir para cada receta' /tmp/ab2-blog-es.html 2>/dev/null || true)" >> /tmp/ab2-blogs
+          echo "en_tasting=$(grep -Fc 'How to taste extra virgin olive oil at home' /tmp/ab2-blog-en.html 2>/dev/null || true)" >> /tmp/ab2-blogs
+          echo "en_beef=$(grep -Fc 'Which beef cut to choose for each recipe' /tmp/ab2-blog-en.html 2>/dev/null || true)" >> /tmp/ab2-blogs
+
+          python3 - <<'PY'
+          import json,os
+          def read(p,n=40000):
+              try:return open(p,encoding='utf-8',errors='ignore').read()[-n:]
+              except:return ''
+          def num(p):
+              try:return int(open(p).read().strip())
+              except:return None
+          raw=read('/tmp/ab2-out')
+          parsed=None
+          s=raw.find('{'); e=raw.rfind('}')
+          if s>=0 and e>=s:
+              try: parsed=json.loads(raw[s:e+1])
+              except: pass
+          d={'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],
+             'lint_rc':num('/tmp/ab2-lint-rc'),'lint':read('/tmp/ab2-local-lint'),
+             'info_rc':num('/tmp/ab2-info-rc'),'prod':read('/tmp/ab2-prod',2000),'php':read('/tmp/ab2-php',2000),'wp':read('/tmp/ab2-wp',2000),
+             'publisher_rc':num('/tmp/ab2-rc'),'publisher_json':parsed,'publisher_stdout':raw,'publisher_stderr':read('/tmp/ab2-err'),
+             'db_rows':read('/tmp/ab2-db'),'public_checks':read('/tmp/ab2-public'),'blog_checks':read('/tmp/ab2-blogs')}
+          json.dump(d,open('.deploy-status/editorial-authority-batch2-diagnostic-20260821.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          open('.deploy-status/editorial-authority-batch2-diagnostic-20260821.json','a').write('\n')
+          PY
+
+      - name: Record diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch2-diagnostic-20260821.json
+          git commit -m 'Record editorial authority batch 2 diagnostics [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
