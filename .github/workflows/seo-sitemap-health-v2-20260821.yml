@@ -1,0 +1,165 @@
+name: Robust full sitemap SEO health 2026-08-21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-sitemap-health-v2-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-seo-sitemap-health-v2
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit all sitemap URLs
+        shell: bash
+        run: |
+          set -u
+          mkdir -p .github/reports
+          python3 - <<'PY'
+          import concurrent.futures, csv, html, re, ssl, urllib.request, urllib.error, xml.etree.ElementTree as ET
+          from collections import Counter
+          from urllib.parse import urlparse
+
+          BASE='https://www.elmercadodeorigen.com'
+          OUT='.github/reports/seo-sitemap-health-v2-20260821.csv'
+          SUM='.github/reports/seo-sitemap-health-v2-summary-20260821.txt'
+          ctx=ssl.create_default_context()
+          headers={'User-Agent':'EMDO-SEO-Sitemap-Audit/2026-08-21','Cache-Control':'no-cache'}
+
+          def fetch(url, limit=None, timeout=35):
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=timeout,context=ctx) as r:
+                  return r.status,r.geturl(),r.read() if limit is None else r.read(limit)
+
+          def locs(raw):
+              root=ET.fromstring(raw)
+              return [e.text.strip() for e in root.iter() if e.tag.endswith('loc') and e.text and e.text.strip()]
+
+          discovery=[]; discovery_errors=[]
+          try:
+              _,_,raw=fetch(BASE+'/sitemap_index.xml',None,45)
+              children=locs(raw)
+          except Exception as e:
+              children=[]; discovery_errors.append('INDEX '+repr(e))
+          for sm in children:
+              try:
+                  _,_,raw=fetch(sm,None,45); discovery.extend(locs(raw))
+              except Exception as e:
+                  discovery_errors.append(sm+' '+repr(e))
+          urls=list(dict.fromkeys(discovery))
+
+          def attr(tag,name):
+              m=re.search(r'\b'+re.escape(name)+r'\s*=\s*(["\'])(.*?)\1',tag,re.I|re.S)
+              return html.unescape(m.group(2)).strip() if m else ''
+
+          def kind(url):
+              p=urlparse(url).path
+              if '/producto/' in p or '/en/product/' in p:return 'product'
+              if '/categoria-producto/' in p or '/en/product-category/' in p:return 'category'
+              return 'page'
+
+          def inspect(url):
+              row={'url':url,'kind':kind(url),'status':0,'final_url':'','title':'','description':'','canonical':'','robots':'','h1_count':0,'h1_first':'','error':''}
+              try:
+                  status,final,raw=fetch(url,400000,35)
+                  text=raw.decode('utf-8','replace'); head=text.split('</head>',1)[0]
+                  row['status']=status;row['final_url']=final
+                  m=re.search(r'<title\b[^>]*>(.*?)</title>',head,re.I|re.S)
+                  if m:row['title']=' '.join(html.unescape(re.sub(r'<[^>]+>',' ',m.group(1))).split())
+                  for tag in re.findall(r'<meta\b[^>]*>',head,re.I|re.S):
+                      n=attr(tag,'name').lower()
+                      if n=='description' and not row['description']:row['description']=' '.join(attr(tag,'content').split())
+                      if n=='robots' and not row['robots']:row['robots']=' '.join(attr(tag,'content').split())
+                  for tag in re.findall(r'<link\b[^>]*>',head,re.I|re.S):
+                      if 'canonical' in attr(tag,'rel').lower().split() and not row['canonical']:row['canonical']=attr(tag,'href')
+                  hs=[]
+                  for x in re.findall(r'<h1\b[^>]*>(.*?)</h1>',text,re.I|re.S):
+                      v=' '.join(html.unescape(re.sub(r'<[^>]+>',' ',x)).split())
+                      if v:hs.append(v)
+                  row['h1_count']=len(hs);row['h1_first']=hs[0] if hs else ''
+              except urllib.error.HTTPError as e:
+                  row['status']=e.code;row['final_url']=e.geturl();row['error']=repr(e)
+              except Exception as e:row['error']=repr(e)
+              return row
+
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+              for row in ex.map(inspect,urls):rows.append(row)
+          rows.sort(key=lambda x:x['url'])
+
+          issues=[]
+          for r in rows:
+              rs=[]
+              if r['status']!=200:rs.append('http_'+str(r['status']))
+              if not r['title']:rs.append('missing_title')
+              if not r['description']:rs.append('missing_description')
+              elif len(r['description'])<60:rs.append('short_description')
+              if not r['canonical']:rs.append('missing_canonical')
+              if 'noindex' in r['robots'].lower():rs.append('sitemap_noindex')
+              if r['h1_count']==0:rs.append('missing_h1')
+              if r['h1_count']>1:rs.append('multiple_h1')
+              if r['error']:rs.append('fetch_error')
+              r['issues']=','.join(rs)
+              if rs:issues.append(r)
+
+          fields=['url','kind','status','final_url','title','description','canonical','robots','h1_count','h1_first','error','issues']
+          with open(OUT,'w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows(rows)
+
+          statuses=Counter(str(r['status']) for r in rows)
+          kinds=Counter(r['kind'] for r in rows)
+          issue_counts=Counter(x for r in rows for x in r['issues'].split(',') if x)
+          with open(SUM,'w',encoding='utf-8') as f:
+              def out(x=''):f.write(x+'\n')
+              out('EMDO ROBUST FULL SITEMAP SEO HEALTH 2026-08-21')
+              out('SITEMAPS='+repr(children))
+              out('DISCOVERY_ERRORS='+repr(discovery_errors))
+              out('TOTAL_URLS='+str(len(rows)))
+              out('BY_KIND='+repr(dict(kinds)))
+              out('HTTP_STATUS='+repr(dict(statuses)))
+              out('ISSUE_COUNTS='+repr(dict(issue_counts)))
+              out('URLS_WITH_FLAGS='+str(len(issues)))
+              out('')
+              out('CRITICAL')
+              critical={'http_0','http_404','http_500','http_502','http_503','missing_title','missing_canonical','sitemap_noindex','fetch_error'}
+              n=0
+              for r in issues:
+                  flags=set(r['issues'].split(','))
+                  if flags & critical:
+                      out(f"{r['kind']}|{r['issues']}|{r['url']}|title={r['title'][:100]}|canon={r['canonical'][:130]}")
+                      n+=1
+                      if n>=150:break
+              out('')
+              out('CONTENT_FLAGS_SAMPLE')
+              n=0
+              for r in issues:
+                  if 'missing_description' in r['issues'] or 'short_description' in r['issues'] or 'multiple_h1' in r['issues']:
+                      out(f"{r['kind']}|{r['issues']}|{r['url']}|title={r['title'][:100]}|desc={r['description'][:130]}")
+                      n+=1
+                      if n>=150:break
+          print('TOTAL_URLS',len(rows));print('HTTP_STATUS',dict(statuses));print('ISSUE_COUNTS',dict(issue_counts));print('DISCOVERY_ERRORS',discovery_errors)
+          PY
+      - name: Save sitemap audit reports
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/reports
+          [ -f .github/reports/seo-sitemap-health-v2-summary-20260821.txt ] || echo 'Audit failed before summary generation' > .github/reports/seo-sitemap-health-v2-summary-20260821.txt
+          [ -f .github/reports/seo-sitemap-health-v2-20260821.csv ] || echo 'url,kind,status,final_url,title,description,canonical,robots,h1_count,h1_first,error,issues' > .github/reports/seo-sitemap-health-v2-20260821.csv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/reports/seo-sitemap-health-v2-20260821.csv .github/reports/seo-sitemap-health-v2-summary-20260821.txt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record robust full sitemap SEO health [skip ci]"
+          git push
