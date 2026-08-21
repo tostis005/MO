@@ -39,6 +39,8 @@ $stats = array(
 	'sample_vendor'    => 0,
 	'sample_slug'      => '',
 	'blocked_sample'   => array(),
+	'sample_blocked_country' => '',
+	'sample_es_first_product_url' => '',
 	'countries'        => $countries,
 );
 
@@ -71,6 +73,9 @@ foreach ( array_values( array_unique( array_filter( array_map( 'absint', (array)
 			if ( ! $stats['blocked_sample'] ) {
 				$stats['blocked_sample'] = array( 'vendor_id' => $vendor_id, 'country' => $country );
 			}
+			if ( $vendor_id === (int) $stats['sample_vendor'] && '' === $stats['sample_blocked_country'] ) {
+				$stats['sample_blocked_country'] = $country;
+			}
 			continue;
 		}
 
@@ -99,6 +104,14 @@ foreach ( array_values( array_unique( array_filter( array_map( 'absint', (array)
 				$stats['ownership_errors'][] = array( 'vendor_id' => $vendor_id, 'product_id' => $product_id );
 			}
 		}
+	}
+}
+
+if ( $stats['sample_vendor'] ) {
+	$sample_ids = array_values( array_unique( array_filter( array_map( 'absint', (array) elmercado_public_store_fix_valid_ids_010261( (int) $stats['sample_vendor'] ) ) ) ) );
+	$sample_ranked = mdo_ps_safe_filter_ids_20260821( $sample_ids, (int) $stats['sample_vendor'], 'ES', '', true );
+	if ( $sample_ranked ) {
+		$stats['sample_es_first_product_url'] = (string) get_permalink( (int) $sample_ranked[0] );
 	}
 }
 
