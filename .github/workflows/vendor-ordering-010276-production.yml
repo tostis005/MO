@@ -1,4 +1,4 @@
-name: Vendor ordering 0.10.276 production
+name: Vendor native ordering 0.10.277 production
 
 on:
   push:
@@ -47,7 +47,7 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy ordering files
+      - name: Deploy native ordering owner
         id: deploy
         run: |
           set -euo pipefail
@@ -82,24 +82,28 @@ jobs:
             remote="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
             sshpass -e scp $SCP "elmercadodeorigen-child/mu-plugins/$name" "$STAGING_USER@$STAGING_HOST:$remote"
             sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; mkdir -p '$MU_DIR'; install -m 0644 '$remote' '$MU_DIR/$name'; rm -f '$remote'"
+            local_sha="$(sha256sum "elmercadodeorigen-child/mu-plugins/$name" | awk '{print $1}')"
+            prod_sha="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$MU_DIR/$name' | awk '{print \\$1}'")"
+            test "$local_sha" = "$prod_sha"
           done
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); if [ -n \"\$wp_bin\" ]; then \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if (function_exists(\"rocket_clean_domain\")) { rocket_clean_domain(); } if (has_action(\"litespeed_purge_all\")) { do_action(\"litespeed_purge_all\"); } if (function_exists(\"wp_cache_clear_cache\")) { wp_cache_clear_cache(); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; fi"
 
-          PROBE="elmercado-opcache-vendor-order-${GITHUB_RUN_ID}.php"
+          PROBE="elmercado-opcache-vendor-native-order-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
           curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID" >/dev/null || true
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" || true
 
           curl -fsSL --max-time 45 -H 'Cache-Control: no-cache' "$BASE_URL/tienda/1957/" > /tmp/vendor-ordering-canonical.html
-          grep -q 'mdoSheet010276' /tmp/vendor-ordering-canonical.html
+          grep -q 'mdoNative010277' /tmp/vendor-ordering-canonical.html
+          ! grep -q 'mdo-vendor-order-sheet-' /tmp/vendor-ordering-canonical.html
 
-      - name: Verify real mobile tap
+      - name: Verify native mobile touch and parity
         id: browser
         run: |
           set -euo pipefail
-          BASE_URL="$BASE_URL" node .github/scripts/verify-vendor-ordering-010276.js > /tmp/vendor-ordering-010276.json 2>&1
-          cat /tmp/vendor-ordering-010276.json
+          BASE_URL="$BASE_URL" node .github/scripts/verify-vendor-ordering-010276.js > /tmp/vendor-ordering-010277.json 2>&1
+          cat /tmp/vendor-ordering-010277.json
 
       - name: Record result
         if: always()
@@ -111,8 +115,8 @@ jobs:
           mkdir -p .deploy-status
           python3 - <<'PY'
           import json, os, pathlib
-          p = pathlib.Path('/tmp/vendor-ordering-010276.json')
-          payload = p.read_text(errors='replace')[-12000:] if p.exists() else ''
+          p = pathlib.Path('/tmp/vendor-ordering-010277.json')
+          payload = p.read_text(errors='replace')[-14000:] if p.exists() else ''
           result = {
               'status': os.getenv('JOB_STATUS'),
               'run_id': os.getenv('GITHUB_RUN_ID'),
@@ -121,11 +125,11 @@ jobs:
               'browser': os.getenv('BROWSER_RESULT'),
               'payload': payload,
           }
-          pathlib.Path('.deploy-status/vendor-ordering-010276-production.json').write_text(json.dumps(result, ensure_ascii=False))
+          pathlib.Path('.deploy-status/vendor-ordering-010277-production.json').write_text(json.dumps(result, ensure_ascii=False))
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/vendor-ordering-010276-production.json
-          git commit -m "Record vendor ordering 0.10.276 production verification $GITHUB_RUN_ID" || exit 0
+          git add .deploy-status/vendor-ordering-010277-production.json
+          git commit -m "Record vendor native ordering 0.10.277 verification $GITHUB_RUN_ID" || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
