@@ -1,10 +1,11 @@
-name: Deploy out-of-stock product SEO access 2026-08-21
+name: Deploy WooCommerce out-of-stock SEO policy 2026-08-21
 
 on:
   push:
     branches: [main]
     paths:
       - 'mu-plugins/emdo-outofstock-product-seo.php'
+      - 'mu-plugins/mdo-a-dynamic-sitemaps.php'
       - '.github/workflows/deploy-outofstock-product-seo-20260821.yml'
   workflow_dispatch:
 
@@ -26,14 +27,16 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Lint plugin
-        run: php -l mu-plugins/emdo-outofstock-product-seo.php
+      - name: Lint plugins
+        run: |
+          php -l mu-plugins/emdo-outofstock-product-seo.php
+          php -l mu-plugins/mdo-a-dynamic-sitemaps.php
       - name: Install SSH helper
         run: |
           sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-      - name: Deploy to production
+      - name: Deploy policy and sitemap to production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -47,11 +50,26 @@ jobs:
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
           ')"
           : "${PROD_PATH:?production path not found}"
-          REMOTE="/tmp/emdo-outofstock-product-seo-${GITHUB_RUN_ID}.php"
-          DEST="$PROD_PATH/wp-content/mu-plugins/emdo-outofstock-product-seo.php"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/emdo-outofstock-product-seo.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$DEST' ]; then cp -a '$DEST' '$DEST.bak-'\$(date +%Y%m%d%H%M%S); fi; cp '$REMOTE' '$DEST'; rm -f '$REMOTE'; \"\$php_bin\" -l '$DEST'; \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-      - name: Verify active out-of-stock and disabled products
+          for FILE in emdo-outofstock-product-seo.php mdo-a-dynamic-sitemaps.php; do
+            REMOTE="/tmp/${FILE}-${GITHUB_RUN_ID}"
+            DEST="$PROD_PATH/wp-content/mu-plugins/$FILE"
+            sshpass -e scp $SCP_OPTIONS "mu-plugins/$FILE" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$DEST' ]; then cp -a '$DEST' '$DEST.bak-'\$(date +%Y%m%d%H%M%S); fi; cp '$REMOTE' '$DEST'; rm -f '$REMOTE'; \"\$php_bin\" -l '$DEST'"
+          done
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify configured storefront policy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done')"
+          VALUE="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp option get woocommerce_hide_out_of_stock_items --path='$PROD_PATH' --allow-root 2>/dev/null || true")"
+          echo "WOOCOMMERCE_HIDE_OUT_OF_STOCK=$VALUE"
+          [ "$VALUE" = "yes" ]
+      - name: Verify public URLs and product sitemap
         shell: bash
         run: |
           set -euo pipefail
@@ -59,7 +77,7 @@ jobs:
           python3 - <<'PY' | tee .github/reports/outofstock-product-seo-production-20260821.txt
           import re,ssl,time,urllib.request,urllib.error
           base='https://www.elmercadodeorigen.com'; ctx=ssl.create_default_context(); stamp=str(time.time_ns())
-          active=[
+          oos=[
             '/producto/cana-de-lomo-de-bellota-100-iberico-en-sobres/',
             '/en/product/acorn-fed-cured-loin-100-iberian-in-packs-of-10-units-x-100g-machine/',
             '/producto/cana-de-lomo-de-bellota-100-iberico/',
@@ -69,36 +87,35 @@ jobs:
             '/producto/pack-de-cata-de-bellota-100-iberico-2x-jamon-2x-paleta-2x-lomo-2x-salchichon-2x-chorizo/',
             '/en/product/tasting-pack-of-100-iberian-acorn-2x-ham-2x-shoulder-ham-2x-cured-loin-2x-salchichon-2x-chorizo/',
           ]
-          disabled=[
-            '/producto/jamon-de-bellota-iberico-100-raza-iberica/',
-            '/producto/jamon-de-bellota-100-iberico-2/',
-          ]
-          failures=[]
+          disabled=['/producto/jamon-de-bellota-iberico-100-raza-iberica/','/producto/jamon-de-bellota-100-iberico-2/']
+          control='/producto/carne-picada-extra/'
           def fetch(path):
-            req=urllib.request.Request(base+path+'?emdo_oos_verify='+stamp,headers={'User-Agent':'EMDO-OOS-SEO-Verify/2026-08-21','Cache-Control':'no-cache'})
+            req=urllib.request.Request(base+path+('?' if '?' not in path else '&')+'emdo_oos_policy='+stamp,headers={'User-Agent':'EMDO-OOS-Policy-Verify/2026-08-21','Cache-Control':'no-cache'})
             try:
-              with urllib.request.urlopen(req,timeout=45,context=ctx) as r: return r.status,r.geturl(),r.read().decode('utf-8','replace')
-            except urllib.error.HTTPError as e: return e.code,e.geturl(),e.read().decode('utf-8','replace')
-          for path in active:
-            status,final,body=fetch(path)
-            head=body.split('</head>',1)[0]
-            canonical=''
-            m=re.search(r'<link\b[^>]*rel=["\'][^"\']*canonical[^"\']*["\'][^>]*href=["\']([^"\']+)',head,re.I)
-            if not m: m=re.search(r'<link\b[^>]*href=["\']([^"\']+)["\'][^>]*rel=["\'][^"\']*canonical',head,re.I)
-            if m: canonical=m.group(1)
-            robots=' '.join(re.findall(r'<meta[^>]+name=["\']robots["\'][^>]+content=["\']([^"\']*)',head,re.I))
-            h1=bool(re.search(r'<h1\b',body,re.I))
-            print(f'ACTIVE_OOS|{path}|HTTP={status}|CANONICAL={canonical}|ROBOTS={robots}|H1={h1}')
-            if status!=200 or not canonical or 'noindex' in robots.lower() or not h1: failures.append(path+' not healthy/indexable')
+              with urllib.request.urlopen(req,timeout=45,context=ctx) as r: return r.status,r.read().decode('utf-8','replace')
+            except urllib.error.HTTPError as e: return e.code,e.read().decode('utf-8','replace')
+          failures=[]
+          sm_status,sm=fetch('/mdo-sitemap-products.xml')
+          locs=set(re.findall(r'<loc>(.*?)</loc>',sm,re.I))
+          print(f'PRODUCT_SITEMAP|HTTP={sm_status}|LOCS={len(locs)}')
+          if sm_status!=200: failures.append('product sitemap not 200')
+          for path in oos:
+            status,_=fetch(path); present=base+path in locs
+            print(f'OUT_OF_STOCK|{path}|HTTP={status}|IN_SITEMAP={present}')
+            if status!=404: failures.append(path+' should remain hidden/404')
+            if present: failures.append(path+' must not be in sitemap while hide-out-of-stock is enabled')
           for path in disabled:
-            status,final,body=fetch(path)
-            print(f'DISABLED_PRODUCT|{path}|HTTP={status}')
-            if status!=404: failures.append(path+' disabled product should remain 404')
+            status,_=fetch(path); present=base+path in locs
+            print(f'DISABLED_VENDOR|{path}|HTTP={status}|IN_SITEMAP={present}')
+            if status!=404 or present: failures.append(path+' disabled vendor leakage')
+          status,_=fetch(control); present=base+control in locs
+          print(f'ACTIVE_CONTROL|{control}|HTTP={status}|IN_SITEMAP={present}')
+          if status!=200 or not present: failures.append('active in-stock control missing')
           if failures:
             print('FAILURES:')
             for f in failures: print('- '+f)
             raise SystemExit(2)
-          print('OUTOFSTOCK_PRODUCT_SEO_VERIFY=PASS')
+          print('OUTOFSTOCK_PRODUCT_SEO_POLICY=PASS')
           PY
       - name: Save report
         if: always()
@@ -106,11 +123,11 @@ jobs:
         run: |
           set -euo pipefail
           REPORT=.github/reports/outofstock-product-seo-production-20260821.txt
-          [ -f "$REPORT" ] || echo 'Out-of-stock SEO verification failed before report' > "$REPORT"
+          [ -f "$REPORT" ] || echo 'Out-of-stock SEO policy verification failed before report' > "$REPORT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$REPORT"
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "Record out-of-stock product SEO verification [skip ci]"
+          git commit -m "Record out-of-stock SEO policy verification [skip ci]"
           git pull --rebase origin main
           git push
