@@ -19,21 +19,18 @@ $promo_re = '(?:cup[oó]n|coupon|c[oó]digo\s+(?:de\s+)?(?:descuento|promocional
 $clean_promo = static function ( string $html ) use ( $promo_re ): string {
     if ( '' === $html ) { return $html; }
 
-    /* Remove normal editorial blocks devoted to the promotion. */
     $html = preg_replace(
         '#<(p|li|blockquote|h[1-6])\b[^>]*>(?:(?!</\1>)[\s\S])*?' . $promo_re . '(?:(?!</\1>)[\s\S])*?</\1>\s*#iu',
         '',
         $html
     ) ?? $html;
 
-    /* Remove a remaining promotional sentence without touching colour/label codes. */
     $html = preg_replace(
         '#(?:(?<=^)|(?<=[>\.!?]))[^<>\.!?]{0,260}' . $promo_re . '[^<>\.!?]{0,260}[\.!?]#iu',
         '',
         $html
     ) ?? $html;
 
-    /* Clean empty paragraphs left by the targeted removal. */
     $html = preg_replace( '#<p\b[^>]*>\s*(?:&nbsp;|&#160;|<br\s*/?>|\s)*</p>#iu', '', $html ) ?? $html;
     return trim( $html );
 };
@@ -51,9 +48,10 @@ $find_post = static function ( string $slug, string $hint ): ?WP_Post {
     ) );
     foreach ( $ids as $id ) {
         $candidate = get_post( (int) $id );
-        if ( $candidate instanceof WP_Post && false !== stripos( $clean = wp_strip_all_tags( html_entity_decode( $candidate->post_title, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ), $hint ) ) {
-            return $candidate;
-        }
+        $plain = $candidate instanceof WP_Post
+            ? wp_strip_all_tags( html_entity_decode( $candidate->post_title, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) )
+            : '';
+        if ( $candidate instanceof WP_Post && false !== stripos( $plain, $hint ) ) { return $candidate; }
     }
     return null;
 };
@@ -115,6 +113,7 @@ foreach ( $targets as $target ) {
     $report['posts'][] = array(
         'id' => $id,
         'slug' => (string) get_post_field( 'post_name', $id ),
+        'en_slug' => sanitize_title( (string) get_post_meta( $id, '_en_US_post_name', true ) ),
         'title' => $final_title,
         'en_title' => $final_en_title,
         'title_has_markup' => preg_match( '/<[^>]+>|&lt;[^&]+&gt;/i', $final_title ) ? 1 : 0,
