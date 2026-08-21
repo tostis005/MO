@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Producer Store Empty Destination 200
  * Description: Keeps a producer storefront publicly reachable when the selected shipping destination leaves that producer with zero products.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
