@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Huerta English Products
  * Description: Serves La Huerta de Ana Mari product titles, descriptions and product URLs from the persisted reviewed English metadata on English storefront requests.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -15,12 +15,19 @@ function mdohep_is_english_20260821(): bool {
 	return $path === '/en' || 0 === strpos( $path, '/en/' );
 }
 
+function mdohep_source_table_20260821(): string {
+	global $wpdb;
+	return class_exists( 'MDO_Database' ) ? MDO_Database::table( 'source_products' ) : $wpdb->prefix . 'mdo_source_products';
+}
+
 function mdohep_is_huerta_product_20260821( int $product_id ): bool {
 	static $cache = array();
 	if ( isset( $cache[ $product_id ] ) ) { return $cache[ $product_id ]; }
 	if ( $product_id <= 0 || 'product' !== get_post_type( $product_id ) ) { return $cache[ $product_id ] = false; }
-	$source = strtolower( (string) get_post_meta( $product_id, '_emdo_source_url', true ) );
-	return $cache[ $product_id ] = ( false !== strpos( $source, 'lahuertadeanamary.com' ) );
+	global $wpdb;
+	$table = mdohep_source_table_20260821();
+	$found = $wpdb->get_var( $wpdb->prepare( "SELECT 1 FROM {$table} WHERE wc_product_id=%d AND source_url LIKE %s LIMIT 1", $product_id, '%lahuertadeanamary.com%' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+	return $cache[ $product_id ] = ( '1' === (string) $found );
 }
 
 function mdohep_has_english_20260821( int $product_id ): bool {
@@ -120,25 +127,20 @@ add_filter( 'woocommerce_loop_product_link', static function ( string $url, $pro
 	return '' !== $english ? $english : $url;
 }, PHP_INT_MAX, 2 );
 
-/**
- * WCFM/vendor templates occasionally print stored post fields or hand-built
- * product links instead of the normal WordPress/WooCommerce filters. Rewrite
- * only Huerta product titles and native product URLs as a final English-only
- * safety net so vendor-store cards cannot fall back to Spanish.
- */
 function mdohep_render_fallback_20260821( string $html ): string {
 	if ( '' === $html || ! mdohep_is_english_20260821() ) { return $html; }
 	static $rows = null;
 	if ( null === $rows ) {
 		global $wpdb;
+		$source_table = mdohep_source_table_20260821();
 		$rows = $wpdb->get_results(
 			"SELECT DISTINCT p.ID,p.post_title,p.post_name
 			 FROM {$wpdb->posts} p
-			 INNER JOIN {$wpdb->postmeta} src ON src.post_id=p.ID AND src.meta_key='_emdo_source_url'
+			 INNER JOIN {$source_table} src ON src.wc_product_id=p.ID AND src.source_url LIKE '%lahuertadeanamary.com%'
 			 INNER JOIN {$wpdb->postmeta} pub ON pub.post_id=p.ID AND pub.meta_key='_en_US_published' AND pub.meta_value='1'
-			 WHERE p.post_type='product' AND p.post_status='publish' AND src.meta_value LIKE '%lahuertadeanamary.com%'",
+			 WHERE p.post_type='product' AND p.post_status='publish'",
 			ARRAY_A
-		) ?: array(); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
+		) ?: array(); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 	$home = rtrim( (string) get_option( 'home' ), '/' );
 	$perms = (array) get_option( 'woocommerce_permalinks', array() );
