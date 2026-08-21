@@ -1,9 +1,10 @@
 <?php
 /**
- * Reliable mobile ordering popover for WCFM vendor stores 0.10.272.
+ * Reliable mobile ordering sheet for WCFM vendor stores 0.10.276.
  *
- * Keeps the exact WooCommerce ordering values but avoids the vendor-store
- * native select picker conflict on touch devices. Desktop remains native.
+ * The vendor toolbar keeps the same compact button, but the options are shown
+ * in a viewport-anchored bottom sheet. This avoids Safari visual-viewport and
+ * clipping issues caused by the previous floating popover.
  *
  * @package ElMercadoDeOrigen
  */
@@ -21,21 +22,23 @@ add_action(
 		?>
 		<style id="elmercado-vendor-ordering-popover-010272">
 			.mdo-vendor-order-button,
-			.mdo-vendor-order-menu { display:none; }
+			.mdo-vendor-order-sheet { display:none; }
 
 			@media (max-width:991px) {
 				body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
 					position:relative !important;
-					z-index:30 !important;
+					z-index:40 !important;
 					border:0 !important;
 					background:transparent !important;
 					box-shadow:none !important;
 					overflow:visible !important;
+					pointer-events:auto !important;
 				}
 
 				body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select {
 					position:absolute !important;
-					inset:auto !important;
+					left:0 !important;
+					top:0 !important;
 					width:1px !important;
 					height:1px !important;
 					min-width:1px !important;
@@ -46,13 +49,17 @@ add_action(
 					padding:0 !important;
 					border:0 !important;
 					opacity:0 !important;
+					visibility:hidden !important;
 					pointer-events:none !important;
+					overflow:hidden !important;
 					clip-path:inset(50%) !important;
+					z-index:-1 !important;
 				}
 
 				body.wcfmmp-store-page .mdo-vendor-order-button {
-					position:relative;
-					display:flex;
+					position:relative !important;
+					z-index:42 !important;
+					display:flex !important;
 					box-sizing:border-box;
 					width:148px;
 					height:42px;
@@ -73,6 +80,7 @@ add_action(
 					overflow:hidden;
 					text-overflow:ellipsis;
 					cursor:pointer;
+					pointer-events:auto !important;
 					touch-action:manipulation;
 					-webkit-tap-highlight-color:transparent;
 				}
@@ -94,45 +102,92 @@ add_action(
 					transform:translateY(-25%) rotate(225deg);
 				}
 
-				body.wcfmmp-store-page .mdo-vendor-order-menu {
-					position:fixed;
-					z-index:2147483000;
-					dis:block;
-					box-sizing:border-box;
-					min-width:180px;
-					max-width:calc(100vw - 24px);
-					margin:0;
-					padding:6px;
-					border:1px solid rgba(23,63,50,.14);
-					border-radius:14px;
-					background:#fff;
-					box-shadow:0 14px 38px rgba(17,42,34,.16);
+				body.wcfmmp-store-page .mdo-vendor-order-sheet {
+					position:fixed !important;
+					inset:0 !important;
+					z-index:2147483000 !important;
+					dis:flex !important;
+					align-items:flex-end !important;
+					justify-content:center !important;
+					box-sizing:border-box !important;
+					width:100vw !important;
+					height:100vh !important;
+					height:100dvh !important;
+					margin:0 !important;
+					padding:0 !important;
+					background:rgba(9,24,19,.38) !important;
+					visibility:visible !important;
+					opacity:1 !important;
+					pointer-events:auto !important;
 				}
 
-				body.wcfmmp-store-page .mdo-vendor-order-menu[hidden] { display:none !important; }
-				body.wcfmmp-store-page .mdo-vendor-order-menu:not([hidden]) { display:block !important; }
+				body.wcfmmp-store-page .mdo-vendor-order-sheet[hidden] {
+					display:none !important;
+					visibility:hidden !important;
+					opacity:0 !important;
+					pointer-events:none !important;
+				}
+
+				body.wcfmmp-store-page .mdo-vendor-order-sheet__panel {
+					box-sizing:border-box;
+					width:100%;
+					max-width:520px;
+					max-height:min(76vh,620px);
+					max-height:min(76dvh,620px);
+					overflow:auto;
+					overscroll-behavior:contain;
+					-webkit-overflow-scrolling:touch;
+					padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+					border-radius:22px 22px 0 0;
+					background:#fff;
+					box-shadow:0 -18px 44px rgba(17,42,34,.2);
+				}
+
+				body.wcfmmp-store-page .mdo-vendor-order-sheet__handle {
+					display:block;
+					width:42px;
+					height:4px;
+					margin:0 auto 10px;
+					border-radius:999px;
+					background:rgba(23,63,50,.2);
+				}
+
+				body.wcfmmp-store-page .mdo-vendor-order-sheet__title {
+					margin:0;
+					padding:4px 6px 10px;
+					color:#173f32;
+					font:800 16px/1.25 inherit;
+				}
 
 				body.wcfmmp-store-page .mdo-vendor-order-option {
-					display:flex;
+					dis:flex;
 					width:100%;
-					min-height:42px;
+					min-height:48px;
 					align-items:center;
+					justify-content:space-between;
+					gap:12px;
 					margin:0;
 					padding:0 12px;
 					border:0;
-					border-radius:10px;
+					border-radius:12px;
 					background:transparent;
 					color:#173f32;
-					font:700 12px/1.2 inherit;
+					font:700 14px/1.2 inherit;
 					text-align:left;
 					cursor:pointer;
 					touch-action:manipulation;
+					-webkit-tap-highlight-color:transparent;
 				}
 
-				body.wcfmmp-store-page .mdo-vendor-order-option[aria-current="true"],
-				body.wcfmmp-store-page .mdo-vendor-order-option:focus-visible {
+				body.wcfmmp-store-page .mdo-vendor-order-option[aria-current="true"] {
 					background:#f1f5f1;
-					outline:none;
+				}
+
+				body.wcfmmp-store-page .mdo-vendor-order-option[aria-current="true"]::after {
+					content:"✓";
+					flex:0 0 auto;
+					font-size:16px;
+					line-height:1;
 				}
 			}
 		</style>
@@ -155,117 +210,149 @@ add_action(
 
 			const media = window.matchMedia('(max-width: 991px)');
 			const selectSelector = '.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select';
-			let openInstance = null;
+			let active = null;
 
-			const closeMenu = (instance, restoreFocus = false) => {
-				if (!instance) return;
-				instance.menu.hidden = true;
-				instance.button.setAttribute('aria-expanded', 'false');
-				if (restoreFocus) instance.button.focus({ preventScroll: true });
-				if (openInstance === instance) openInstance = null;
+			const setImportant = (node, name, value) => node?.style?.setProperty(name, value, 'important');
+
+			const retireSelect = select => {
+				select.setAttribute('aria-hidden', 'true');
+				select.tabIndex = -1;
+				[['position','absolute'],['left','0'],['top','0'],['width','1px'],['height','1px'],['min-width','1px'],['min-height','1px'],['max-width','1px'],['max-height','1px'],['margin','0'],['padding','0'],['border','0'],['opacity','0'],['visibility','hidden'],['pointer-events','none'],['overflow','hidden'],['clip-path','inset(50%)'],['z-index','-1']].forEach(([name,value]) => setImportant(select,name,value));
 			};
 
-			const positionMenu = instance => {
-				const r = instance.button.getBoundingClientRect();
-				const gap = 6;
-				const menuWidth = Math.max(180, r.width);
-				instance.menu.style.width = `${menuWidth}px`;
-				const maxLeft = Math.max(12, window.innerWidth - menuWidth - 12);
-				instance.menu.style.left = `${Math.min(Math.max(12, r.left), maxLeft)}px`;
-				instance.menu.style.top = `${Math.min(window.innerHeight - 12, r.bottom + gap)}px`;
+			const closeSheet = (instance, restoreFocus = false) => {
+				if (!instance) return;
+				instance.sheet.hidden = true;
+				instance.button.setAttribute('aria-expanded', 'false');
+				document.documentElement.style.removeProperty('overflow');
+				if (restoreFocus) instance.button.focus({ preventScroll: true });
+				if (active === instance) active = null;
 			};
 
 			const sync = instance => {
 				const option = instance.select.options[instance.select.selectedIndex];
-				instance.button.textContent = option ? option.textContent.trim() : '';
-				instance.menu.querySelectorAll('.mdo-vendor-order-option').forEach(item => {
+				instance.button.textContent = option ? option.textContent.trim() : 'Ordenar';
+				instance.sheet.querySelectorAll('.mdo-vendor-order-option').forEach(item => {
 					item.setAttribute('aria-current', item.dataset.value === instance.select.value ? 'true' : 'false');
 				});
 			};
 
-			const openMenu = instance => {
-				if (openInstance && openInstance !== instance) closeMenu(openInstance);
+			const openSheet = instance => {
+				if (!media.matches) return;
+				if (active && active !== instance) closeSheet(active);
 				sync(instance);
-				instance.menu.hidden = false;
+				instance.sheet.hidden = false;
 				instance.button.setAttribute('aria-expanded', 'true');
-				positionMenu(instance);
-				openInstance = instance;
+				document.documentElement.style.setProperty('overflow', 'hidden');
+				active = instance;
+				requestAnimationFrame(() => instance.sheet.querySelector('[aria-current="true"]')?.focus({ preventScroll: true }));
+			};
+
+			const navigateToOrdering = value => {
+				const url = new URL(window.location.href);
+				url.pathname = url.pathname.replace(/\/page\/\d+\/?$/i, '/');
+				['paged','product-page','product_page','page','_mdo_scroll'].forEach(key => url.searchParams.delete(key));
+				url.searchParams.set('orderby', value);
+				window.location.assign(url.href);
 			};
 
 			const makeInstance = select => {
-				if (!(select instanceof HTMLSelectElement) || select.dataset.mdoPopover010272 === '1') return;
-				select.dataset.mdoPopover010272 = '1';
+				if (!(select instanceof HTMLSelectElement)) return;
 				const form = select.closest('.woocommerce-ordering');
 				if (!form) return;
 
-				const id = `mdo-vendor-order-menu-${Math.random().toString(36).slice(2)}`;
+				retireSelect(select);
+				if (select.dataset.mdoSheet010276 === '1' && form.querySelector('.mdo-vendor-order-button')) return;
+				select.dataset.mdoSheet010276 = '1';
+
+				form.querySelectorAll('.mdo-vendor-order-button').forEach(node => node.remove());
+				document.querySelectorAll('.mdo-vendor-order-menu').forEach(node => node.remove());
+
+				const id = `mdo-vendor-order-sheet-${Math.random().toString(36).slice(2)}`;
 				const button = document.createElement('button');
 				button.type = 'button';
 				button.className = 'mdo-vendor-order-button';
-				button.setAttribute('aria-haspopup', 'listbox');
+				button.setAttribute('aria-haspopup', 'dialog');
 				button.setAttribute('aria-expanded', 'false');
 				button.setAttribute('aria-controls', id);
 
-				const menu = document.createElement('div');
-				menu.id = id;
-				menu.className = 'mdo-vendor-order-menu';
-				menu.setAttribute('role', 'listbox');
-				menu.hidden = true;
+				const sheet = document.createElement('div');
+				sheet.id = id;
+				sheet.className = 'mdo-vendor-order-sheet';
+				sheet.hidden = true;
+				sheet.setAttribute('role', 'dialog');
+				sheet.setAttribute('aria-modal', 'true');
+				sheet.setAttribute('aria-label', 'Ordenar productos');
+
+				const panel = document.createElement('div');
+				panel.className = 'mdo-vendor-order-sheet__panel';
+				const handle = document.createElement('span');
+				handle.className = 'mdo-vendor-order-sheet__handle';
+				handle.setAttribute('aria-hidden', 'true');
+				const title = document.createElement('h3');
+				title.className = 'mdo-vendor-order-sheet__title';
+				title.textContent = 'Ordenar productos';
+				panel.append(handle, title);
 
 				[...select.options].forEach(option => {
 					const item = document.createElement('button');
 					item.type = 'button';
 					item.className = 'mdo-vendor-order-option';
-					item.setAttribute('role', 'option');
 					item.dataset.value = option.value;
 					item.textContent = option.textContent.trim();
-					item.addEventListener('click', () => {
-						const changed = select.value !== item.dataset.value;
-						select.value = item.dataset.value;
+					item.addEventListener('click', event => {
+						event.preventDefault();
+						event.stopPropagation();
+						const value = item.dataset.value || '';
+						if (!value) return;
+						select.value = value;
 						sync(instance);
-						closeMenu(instance);
-						if (changed) {
-							select.dispatchEvent(new Event('change', { bubbles: true }));
-							setTimeout(() => {
-								if (document.contains(select) && select.form && select.value === item.dataset.value) {
-									try { select.form.requestSubmit ? select.form.requestSubmit() : select.form.submit(); } catch (_) {}
-								}
-							}, 250);
-						}
+						closeSheet(instance);
+						navigateToOrdering(value);
 					});
-					menu.appendChild(item);
+					panel.appendChild(item);
 				});
 
+				sheet.appendChild(panel);
 				form.appendChild(button);
-				document.body.appendChild(menu);
-				const instance = { select, form, button, menu };
-				button.addEventListener('click', () => menu.hidden ? openMenu(instance) : closeMenu(instance));
+				document.body.appendChild(sheet);
+				const instance = { select, form, button, sheet, panel };
+
+				button.addEventListener('click', event => {
+					event.preventDefault();
+					event.stopPropagation();
+					sheet.hidden ? openSheet(instance) : closeSheet(instance);
+				});
+				sheet.addEventListener('click', event => {
+					if (event.target === sheet) closeSheet(instance, true);
+				});
 				select.addEventListener('change', () => sync(instance));
 				sync(instance);
 			};
 
 			const repair = () => {
 				if (!media.matches) {
-					if (openInstance) closeMenu(openInstance);
+					if (active) closeSheet(active);
 					return;
 				}
-				document.querySelectorAll(selectSelector).forEach(makeInstance);
+				document.querySelectorAll(selectSelector).forEach(select => {
+					retireSelect(select);
+					makeInstance(select);
+				});
 			};
 
-			document.addEventListener('pointerdown', event => {
-				if (!openInstance) return;
-				if (openInstance.button.contains(event.target) || openInstance.menu.contains(event.target)) return;
-				closeMenu(openInstance);
-			}, true);
 			document.addEventListener('keydown', event => {
-				if (event.key === 'Escape' && openInstance) closeMenu(openInstance, true);
+				if (event.key === 'Escape' && active) closeSheet(active, true);
 			});
-			window.addEventListener('resize', () => { if (openInstance) positionMenu(openInstance); });
-			window.addEventListener('scroll', () => { if (openInstance) positionMenu(openInstance); }, true);
 			media.addEventListener?.('change', repair);
 			repair();
 			window.addEventListener('load', repair, { once: true });
-			new MutationObserver(m => { if (m.some(x => x.type === 'childList')) requestAnimationFrame(repair); }).observe(document.body, { childList: true, subtree: true });
+			window.addEventListener('pageshow', repair, { passive: true });
+			setTimeout(repair, 300);
+			setTimeout(repair, 1200);
+			new MutationObserver(mutations => {
+				if (mutations.some(m => m.type === 'childList')) requestAnimationFrame(repair);
+			}).observe(document.body, { childList: true, subtree: true });
 		})();
 		</script>
 		<?php
