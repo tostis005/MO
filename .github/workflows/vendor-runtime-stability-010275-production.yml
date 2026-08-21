@@ -1,0 +1,149 @@
+name: Vendor runtime stability 0.10.275 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-runtime-stability-010275-production.yml'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-test-report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate and install tools
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy runtime helper
+        id: deploy
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          MU_DIR="$PROD_PATH/wp-content/mu-plugins"
+          TARGET="$MU_DIR/elmercado-vendor-runtime-stability-010275.php"
+          REMOTE="/tmp/vendor-runtime-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$MU_DIR'; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'; wp_bin=\$(command -v wp || true); [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          PROBE="elmercado-opcache-vendor-runtime-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID" >/dev/null || true
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" || true
+
+      - name: Verify mobile ordering touch
+        id: ordering
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" node <<'NODE' > /tmp/vendor-ordering-010275.json 2>&1
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const fail=(m,d)=>{throw new Error(m+' '+JSON.stringify(d));};
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:2});
+            await p.goto(`${process.env.BASE_URL}/tienda/1957/?runtime-order=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
+            await p.waitForSelector('.mdo-vendor-order-button',{visible:true,timeout:30000}); await sleep(2800);
+            const before=await p.evaluate(()=>{const b=document.querySelector('.mdo-vendor-order-button'),s=document.querySelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select');const br=b.getBoundingClientRect(),sr=s.getBoundingClientRect(),ss=getComputedStyle(s);const x=br.left+br.width/2,y=br.top+br.height/2;const hit=document.elementFromPoint(x,y);return{button:{left:br.left,top:br.top,width:br.width,height:br.height,text:b.textContent.trim()},native:{width:sr.width,height:sr.height,opacity:ss.opacity,visibility:ss.visibility,pointer:ss.pointerEvents,aria:s.getAttribute('aria-hidden')},hit:{tag:hit?.tagName,cls:hit?.className||'',isButton:hit===b||b.contains(hit)},marker:!!window.__mdoVendorFetchNoStore010275};});
+            if(before.native.width>2||before.native.height>2||before.native.opacity!=='0'||before.native.visibility!=='hidden'||before.native.pointer!=='none'||before.native.aria!=='true') fail('native select resurrected',before);
+            if(!before.hit.isButton) fail('ordering button is not top hit target',before);
+            await p.touchscreen.tap(before.button.left+before.button.width/2,before.button.top+before.button.height/2); await sleep(350);
+            const target=await p.evaluate(()=>{const m=document.querySelector('.mdo-vendor-order-menu:not([hidden])'),s=document.querySelector('.woocommerce-ordering select');if(!m)return null;const item=[...m.querySelectorAll('.mdo-vendor-order-option')].find(x=>x.dataset.value!==s.value);if(!item)return null;const r=item.getBoundingClientRect();return{value:item.dataset.value,left:r.left,top:r.top,width:r.width,height:r.height,display:getComputedStyle(m).display};});
+            if(!target) fail('ordering menu did not open after touch',before);
+            const old=p.url(); await p.touchscreen.tap(target.left+target.width/2,target.top+target.height/2);
+            await p.waitForFunction(old=>location.href!==old,{timeout:10000},old).catch(()=>{}); await sleep(1200);
+            if(p.url()===old) fail('ordering option did not navigate',{old,target});
+            console.log(JSON.stringify({ok:true,before,target,old,newUrl:p.url()})); await browser.close();
+          })().catch(e=>{console.error(JSON.stringify({ok:false,error:String(e.stack||e)}));process.exit(1)});
+          NODE
+          cat /tmp/vendor-ordering-010275.json
+
+      - name: Verify continuous vendor product loading
+        id: loading
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" node <<'NODE' > /tmp/vendor-loading-010275.json 2>&1
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const candidates=['tolecarnes','la-huerta-de-ana-mary','hidalgo-de-la-jara','1957'];
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:2});
+            let chosen=null, snapshot=null;
+            for(const slug of candidates){
+              await p.goto(`${process.env.BASE_URL}/tienda/${slug}/?runtime-load=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000}).catch(()=>{}); await sleep(1500);
+              snapshot=await p.evaluate(()=>({url:location.href,count:document.querySelectorAll('#wcfmmp-store ul.products > li.product').length,next:window.__emoCatalogLoaderState?.nextUrl||'',shown:window.__emoCatalogLoaderState?.shown||0,marker:!!window.__mdoVendorFetchNoStore010275,state:document.querySelector('.emo-catalog-load-state')?.className||'',message:document.querySelector('.emo-catalog-load-message')?.textContent||''}));
+              if(snapshot.next){chosen=slug;break;}
+            }
+            if(!chosen) throw new Error('No vendor with a real next page found '+JSON.stringify(snapshot));
+            const before=snapshot.count;
+            await p.evaluate(()=>document.querySelector('.emo-catalog-load-state')?.scrollIntoView({block:'center'}));
+            const started=Date.now(); let after=before, state='', message='', debug=null;
+            while(Date.now()-started<22000){
+              await sleep(500);
+              const now=await p.evaluate(()=>({count:document.querySelectorAll('#wcfmmp-store ul.products > li.product').length,state:document.querySelector('.emo-catalog-load-state')?.className||'',message:document.querySelector('.emo-catalog-load-message')?.textContent||'',debug:window.__emoCatalogLoaderState?{nextUrl:window.__emoCatalogLoaderState.nextUrl,highestPage:window.__emoCatalogLoaderState.highestPage,shown:window.__emoCatalogLoaderState.shown,loading:window.__emoCatalogLoaderState.loading}:null}));
+              after=now.count; state=now.state; message=now.message; debug=now.debug;
+              if(after>before) break;
+              if(/is-failure/.test(state)) break;
+            }
+            if(after<=before) throw new Error('Vendor loader did not append products '+JSON.stringify({chosen,before,after,state,message,debug,initial:snapshot}));
+            console.log(JSON.stringify({ok:true,chosen,before,after,state,message,debug,initial:snapshot})); await browser.close();
+          })().catch(e=>{console.error(JSON.stringify({ok:false,error:String(e.stack||e)}));process.exit(1)});
+          NODE
+          cat /tmp/vendor-loading-010275.json
+
+      - name: Record verification
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DEPLOY_RESULT: ${{ steps.deploy.outcome }}
+          ORDERING_RESULT: ${{ steps.ordering.outcome }}
+          LOADING_RESULT: ${{ steps.loading.outcome }}
+        run: |
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os,pathlib
+          def read(path):
+              p=pathlib.Path(path)
+              return p.read_text(errors='replace')[-10000:] if p.exists() else ''
+          out={'status':os.getenv('JOB_STATUS'),'run_id':os.getenv('GITHUB_RUN_ID'),'sha':os.getenv('GITHUB_SHA'),'deploy':os.getenv('DEPLOY_RESULT'),'ordering':os.getenv('ORDERING_RESULT'),'loading':os.getenv('LOADING_RESULT'),'ordering_payload':read('/tmp/vendor-ordering-010275.json'),'loading_payload':read('/tmp/vendor-loading-010275.json')}
+          pathlib.Path('.deploy-status/vendor-runtime-stability-010275-production.json').write_text(json.dumps(out,ensure_ascii=False))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/vendor-runtime-stability-010275-production.json
+          git commit -m "Record vendor runtime verification $GITHUB_RUN_ID" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
