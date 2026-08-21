@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Pinterest Tag
  * Description: Loads Pinterest Tag after non-necessary cookie consent is granted.
- * Version: 2026.08.21.2
+ * Version: 2026.08.21.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
