@@ -1,0 +1,61 @@
+name: Vendor destination live diagnostic 0.10.273
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-destination-live-diagnostic-010273.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+      - name: Inspect vendor destination controls
+        run: |
+          BASE_URL="$BASE_URL" node <<'NODE' > /tmp/destination-live.json
+          const puppeteer=require('puppeteer-core');
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          (async()=>{
+            const browser=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+            const inspect=async path=>{
+              const p=await browser.newPage(); await p.setCacheEnabled(false); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:2});
+              await p.goto(`${process.env.BASE_URL}${path}?destdiag=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000}); await sleep(1000);
+              const d=await p.evaluate(()=>{
+                const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229,.woostify-sorting');
+                const compact=el=>{if(!el)return null;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return{tag:el.tagName,id:el.id||'',class:String(el.className||''),text:(el.textContent||'').trim().replace(/\s+/g,' ').slice(0,180),attrs:[...el.attributes].reduce((o,a)=>(o[a.name]=a.value,o),{}),rect:{x:r.x,y:r.y,width:r.width,height:r.height},display:s.display,visibility:s.visibility,overflow:s.overflow,lineHeight:s.lineHeight,pointer:s.pointerEvents,html:el.outerHTML.slice(0,1200)}};
+                const all=[...document.querySelectorAll('button,a,[role="button"],select,div,span')];
+                const textMatches=all.filter(el=>{const t=(el.textContent||'').trim().replace(/\s+/g,' ');return /(^|\s)(Envío a|Enviar a|Shipping to|España|Spain)(\s|$)/i.test(t)&&t.length<220;}).slice(0,40).map(compact);
+                const dataMatches=[...document.querySelectorAll('[data-mdo-toolbar-destination],[data-mdo-destination-modal],.mdo-catalog-toolbar__destination,.mdo-destination-modal')].map(compact);
+                return{bodyClass:document.body.className,toolbar:compact(toolbar),toolbarHtml:toolbar?.outerHTML.slice(0,6000)||null,textMatches,dataMatches,scripts:[...document.scripts].filter(s=>/destination|catalog-default-spain|vendor-catalog-controls/i.test((s.id||'')+' '+(s.textContent||''))).map(s=>({id:s.id||'',text:(s.textContent||'').slice(0,3000)})).slice(0,10)};
+              });
+              await p.close(); return d;
+            };
+            const out={ok:true,stores:{'1957':await inspect('/tienda/1957/'),'hidalgo':await inspect('/tienda/hidalgo-de-la-jara/')}};
+            console.log(JSON.stringify(out)); await browser.close();
+          })().catch(e=>{console.log(JSON.stringify({ok:false,error:String(e.stack||e)}));process.exit(1)});
+          NODE
+          cat /tmp/destination-live.json
+      - name: Record diagnostic
+        if: always()
+        run: |
+          mkdir -p .deploy-status
+          cp /tmp/destination-live.json .deploy-status/vendor-destination-live-diagnostic-010273.json 2>/dev/null || printf '{"ok":false,"error":"no diagnostic output"}' > .deploy-status/vendor-destination-live-diagnostic-010273.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/vendor-destination-live-diagnostic-010273.json
+          git commit -m "Record vendor destination live diagnostic $GITHUB_RUN_ID" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
