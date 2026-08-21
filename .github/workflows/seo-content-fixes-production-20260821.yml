@@ -1,0 +1,99 @@
+name: SEO content fixes production 2026-08-21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/seo-content-fixes-20260821.php'
+      - '.github/workflows/seo-content-fixes-production-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-seo-content-fixes
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint fixes
+        run: php -l .github/scripts/seo-content-fixes-20260821.php
+      - name: Install SSH helper
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Apply idempotent SEO content fixes
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/seo-content-fixes-${GITHUB_RUN_ID}.php"
+          REPORT="$GITHUB_WORKSPACE/.github/reports/seo-content-fixes-production-20260821.txt"
+          mkdir -p "$(dirname "$REPORT")"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/seo-content-fixes-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; exit \$rc" | tee "$REPORT"
+      - name: Verify category copy is public
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee -a .github/reports/seo-content-fixes-production-20260821.txt
+          import re,time,urllib.request
+          checks={
+            '/categoria-producto/jamones-paletas/':'Descubre nuestra selección de jamones y paletas de productores españoles',
+            '/categoria-producto/carnes/':'Compra carne online de productores y profesionales especializados',
+            '/en/product-category/jamones-paletas/':'Discover our selection of hams and shoulders from Spanish producers',
+          }
+          base='https://www.elmercadodeorigen.com'
+          failures=[]
+          for path,needle in checks.items():
+            url=base+path+'?seo_content_verify='+str(time.time_ns())
+            req=urllib.request.Request(url,headers={'User-Agent':'EMDO-SEO-Content-Verify/2026-08-21'})
+            with urllib.request.urlopen(req,timeout=50) as r:
+              body=r.read().decode('utf-8','replace')
+              print(f'PUBLIC|{path}|HTTP={r.status}|FOUND={needle.lower() in body.lower()}')
+              if r.status!=200 or needle.lower() not in body.lower(): failures.append(path)
+          if failures:
+            print('PUBLIC_CATEGORY_COPY_FAILURES='+repr(failures)); raise SystemExit(1)
+          print('PUBLIC_CATEGORY_COPY=PASS')
+          PY
+      - name: Save fixes report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT=.github/reports/seo-content-fixes-production-20260821.txt
+          if [ ! -f "$REPORT" ]; then echo "Fix report was not produced" > "$REPORT"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$REPORT"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record SEO content fixes verification [skip ci]"
+          git push
