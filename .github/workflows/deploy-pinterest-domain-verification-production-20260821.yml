@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: pinterest-domain-verification-production
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
@@ -26,80 +30,90 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate PHP
-        run: php -l mu-plugins/mdo-pinterest-domain-verification.php
-
-      - name: Deploy verification tag to production
+      - name: Deploy and verify Pinterest tag
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set -euo pipefail
-          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          set -u
+          mkdir -p .deploy-status
+          LOG='.deploy-status/pinterest-domain-verification-20260821.txt'
+          EXIT='.deploy-status/pinterest-domain-verification-20260821.exit-code'
 
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          set +e
+          {
+            set -euo pipefail
+            php -l mu-plugins/mdo-pinterest-domain-verification.php
+            : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
+            PORT="${STAGING_PORT:-22}"
+            SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+            SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
 
-          REMOTE_FILE="/tmp/mdo-pinterest-domain-verification-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-pinterest-domain-verification.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+            PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+              wp_bin=$(command -v wp || true)
+              php_bin=$(command -v php || true)
+              [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+              for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+                p=$(dirname "$cfg")
+                url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+                case "$url" in
+                  https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+                esac
+              done
+            ')"
+            : "${PROD_PATH:?production path not found}"
+            echo 'production_path_ok'
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -e
-            TARGET='$PROD_PATH/wp-content/mu-plugins/mdo-pinterest-domain-verification.php'
-            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
-            if [ -f \"\$TARGET\" ]; then
-              cp \"\$TARGET\" \"/tmp/mdo-pinterest-domain-verification-${GITHUB_RUN_ID}.bak.php\"
-            fi
-            cp '$REMOTE_FILE' \"\$TARGET\"
-            rm -f '$REMOTE_FILE'
+            TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-pinterest-domain-verification.php"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp '$TARGET' '$TARGET.bak-${GITHUB_RUN_ID}'; fi"
+            sshpass -e scp $SCP mu-plugins/mdo-pinterest-domain-verification.php "$STAGING_USER@$STAGING_HOST:$TARGET"
 
-            php_bin=\$(command -v php || true)
-            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" -l \"\$TARGET\" >/dev/null
-            grep -Fq 'bd9b4a2c373b774bb7753fa7040172ac' \"\$TARGET\"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -l '$TARGET' >/dev/null
+              grep -Fq 'bd9b4a2c373b774bb7753fa7040172ac' '$TARGET'
+              wp_bin=\$(command -v wp || true)
+              if [ -n \"\$wp_bin\" ]; then
+                \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+              fi
+              html=\$(curl -ksS --max-time 30 'https://www.elmercadodeorigen.com/?pinterest_verify=${GITHUB_RUN_ID}')
+              printf '%s' \"\$html\" | grep -Fq 'bd9b4a2c373b774bb7753fa7040172ac'
+            "
+            echo 'pinterest_verify_ok'
+          } > "$LOG" 2>&1
+          CODE=$?
+          set -e
+          echo "$CODE" > "$EXIT"
+          cat "$LOG"
+          echo "exit_code=$CODE"
 
-            wp_bin=\$(command -v wp || true)
-            if [ -n \"\$wp_bin\" ]; then
-              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
-            fi
-          "
-
-      - name: Verify tag on public site
-        shell: bash
-        run: |
-          set -euo pipefail
-          URL="https://www.elmercadodeorigen.com/?pinterest_verify=${GITHUB_RUN_ID}"
-          HTML="$(curl -fsSL --max-time 30 "$URL")"
-          printf '%s' "$HTML" | grep -Fq '<meta name="p:domain_verify" content="bd9b4a2c373b774bb7753fa7040172ac">'
-          echo 'pinterest_verify_ok'
-
-      - name: Record successful verification
+      - name: Record deployment result
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p .deploy-status
-          printf 'pinterest_verify_ok %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .deploy-status/pinterest-domain-verification-20260821.txt
+          test -f .deploy-status/pinterest-domain-verification-20260821.txt || echo 'workflow_failed_before_log' > .deploy-status/pinterest-domain-verification-20260821.txt
+          test -f .deploy-status/pinterest-domain-verification-20260821.exit-code || echo '99' > .deploy-status/pinterest-domain-verification-20260821.exit-code
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/pinterest-domain-verification-20260821.txt
-          git commit -m 'Record Pinterest verification deployment [skip ci]' || exit 0
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git add .deploy-status/pinterest-domain-verification-20260821.txt .deploy-status/pinterest-domain-verification-20260821.exit-code
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Pinterest verification deployment [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Fail if deployment failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat .deploy-status/pinterest-domain-verification-20260821.exit-code)" = '0'
+          grep -q '^pinterest_verify_ok$' .deploy-status/pinterest-domain-verification-20260821.txt
