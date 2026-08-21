@@ -1,0 +1,84 @@
+name: Producer toolbar mobile post consent audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/producer-toolbar-mobile-post-consent-audit-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit live mobile interaction after consent
+        shell: bash
+        run: |
+          python -m pip install --quiet selenium
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/producer-toolbar-mobile-post-consent-audit-20260821.txt
+          EXIT=.deploy-status/producer-toolbar-mobile-post-consent-audit-20260821.exit-code
+          : > "$STATUS"
+          set +e
+          python - <<'PY' >> "$STATUS" 2>&1
+          import time
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+          o=webdriver.ChromeOptions(); o.add_argument('--headless=new'); o.add_argument('--no-sandbox'); o.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=o); d.set_window_size(390,900)
+          ok=True
+          try:
+              for path in ('/tienda/1957/','/en/store/1957/'):
+                  d.delete_all_cookies() if d.current_url.startswith('http') else None
+                  d.get('https://www.elmercadodeorigen.com'+path+'?post-consent-audit=1'); time.sleep(2.3)
+                  clicked=False
+                  for b in d.find_elements(By.TAG_NAME,'button'):
+                      try:
+                          txt=' '.join((b.text or '').split()).lower()
+                          if b.is_displayed() and (txt in ('aceptar','accept','accept all','aceptar todo','aceptar todas') or txt.startswith('aceptar') or txt.startswith('accept')):
+                              d.execute_script('arguments[0].click()',b); clicked=True; time.sleep(.8); break
+                      except Exception: pass
+                  sel=WebDriverWait(d,20).until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woocommerce-ordering select')))
+                  form=sel.find_element(By.XPATH,'..')
+                  trig=d.find_element(By.CSS_SELECTOR,'#wcfmmp-store .mdo-catalog-destination__trigger')
+                  label=trig.find_element(By.CSS_SELECTOR,':scope > span')
+                  m=d.execute_script('''
+                    const [sel,form,label]=arguments, r=sel.getBoundingClientRect(), cs=n=>getComputedStyle(n);
+                    const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+                    return {hitTag:hit?.tagName||'',hitClass:hit?.className||'',hitText:(hit?.textContent||'').trim().slice(0,120),hitIsSelect:hit===sel,selectPointer:cs(sel).pointerEvents,selectBorder:cs(sel).borderTopWidth,formBorder:cs(form).borderTopWidth,formShadow:cs(form).boxShadow,labelText:label.textContent.trim(),labelChildren:label.children.length,labelH:label.getBoundingClientRect().height,labelSH:label.scrollHeight};
+                  ''',sel,form,label)
+                  d.execute_script('''window.__events=[]; for(const t of ['pointerdown','mousedown']) arguments[0].addEventListener(t,e=>window.__events.push([t,e.defaultPrevented]),{once:true});''',sel)
+                  d.execute_script('''for(const t of ['pointerdown','mousedown']) arguments[0].dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true}));''',sel)
+                  events=d.execute_script('return window.__events')
+                  print('POST_CONSENT',path,'clicked',clicked,m,'events',events)
+                  good=m['hitIsSelect'] and m['selectPointer']=='auto' and m['formBorder']=='0px' and m['formShadow']=='none' and m['labelChildren']==0 and m['labelSH']<=m['labelH']+1 and events==[['pointerdown',False],['mousedown',False]]
+                  ok = ok and good
+              print('post_consent_ok',ok)
+          finally: d.quit()
+          raise SystemExit(0 if ok else 2)
+          PY
+          code=$?
+          set -e
+          echo "$code" > "$EXIT"
+          exit 0
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-toolbar-mobile-post-consent-audit-20260821.* || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record producer toolbar post-consent audit [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main || true
+          fi
