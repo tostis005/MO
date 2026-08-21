@@ -1,0 +1,166 @@
+name: Deploy Huerta complete English storefront fix 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-huerta-english-products-20260821.php'
+      - '.github/workflows/deploy-huerta-english-products-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-huerta-english-products-20260821
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l mu-plugins/mdo-huerta-english-products-20260821.php
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p runtime
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-huerta-english-products-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-huerta-english-products-20260821.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          cat > /tmp/mdo-huerta-en-live-audit.php <<'PHP'
+          <?php
+          global $wpdb;
+          $rows = $wpdb->get_results("SELECT DISTINCT p.ID,p.post_author,p.post_title,p.post_name,p.post_content FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID WHERE p.post_type='product' AND p.post_status='publish' AND pm.meta_key='_emdo_source_url' AND pm.meta_value LIKE '%lahuertadeanamary.com%' ORDER BY p.ID ASC");
+          $out=['count'=>0,'complete'=>0,'vendors'=>[],'products'=>[],'issues'=>[]];
+          foreach((array)$rows as $p){
+            $id=(int)$p->ID;
+            $out['count']++;
+            $u=get_userdata((int)$p->post_author);
+            $vendor=$u instanceof WP_User ? (string)$u->user_nicename : '';
+            if($vendor!=='') $out['vendors'][$vendor]=($out['vendors'][$vendor]??0)+1;
+            $title=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_title',true)));
+            $slug=sanitize_title((string)get_post_meta($id,'_en_US_post_name',true));
+            $content=(string)get_post_meta($id,'_en_US_post_content',true);
+            $excerpt=(string)get_post_meta($id,'_en_US_post_excerpt',true);
+            $published=(string)get_post_meta($id,'_en_US_published',true);
+            $plain=trim(preg_replace('/\s+/u',' ',html_entity_decode(wp_strip_all_tags($content),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+            $signature=function_exists('mb_substr')?mb_substr($plain,0,90):substr($plain,0,90);
+            $ok=$published==='1' && $title!=='' && $slug!=='' && $plain!=='';
+            if($ok)$out['complete']++;else$out['issues'][]=['id'=>$id,'type'=>'incomplete_english','published'=>$published,'title'=>$title!==''?'yes':'no','slug'=>$slug!==''?'yes':'no','content'=>$plain!==''?'yes':'no'];
+            $out['products'][]=['id'=>$id,'vendor'=>$vendor,'native_title'=>(string)$p->post_title,'native_slug'=>(string)$p->post_name,'english_title'=>$title,'english_slug'=>$slug,'content_signature'=>$signature,'excerpt_present'=>trim(wp_strip_all_tags($excerpt))!==''];
+          }
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT),"\n";
+          if($out['count']<1 || $out['complete']!==$out['count'] || count($out['vendors'])!==1) exit(2);
+          PHP
+
+          REMOTE_AUDIT="/tmp/mdo-huerta-en-live-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP /tmp/mdo-huerta-en-live-audit.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_AUDIT'; exit \$rc" > runtime/huerta-english-storefront-data-20260821.json
+
+          python3 - <<'PY'
+          import html, json, pathlib, re, subprocess, time
+          data=json.load(open('runtime/huerta-english-storefront-data-20260821.json',encoding='utf-8'))
+          base='https://www.elmercadodeorigen.com'
+          vendor=next(iter(data['vendors']))
+          stamp=str(int(time.time()))
+
+          def fetch(url):
+              p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','8','--max-time','40','-H','Cache-Control: no-cache','-o','/tmp/mdo-page.html','-w','%{http_code}|%{url_effective}',url],capture_output=True,text=True)
+              body=pathlib.Path('/tmp/mdo-page.html').read_text(errors='ignore') if pathlib.Path('/tmp/mdo-page.html').exists() else ''
+              bits=p.stdout.strip().split('|',1)
+              return int(bits[0] or 0), (bits[1] if len(bits)>1 else ''), body
+
+          def text(body):
+              body=re.sub(r'<script\b.*?</script>',' ',body,flags=re.I|re.S)
+              body=re.sub(r'<style\b.*?</style>',' ',body,flags=re.I|re.S)
+              return re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>',' ',body))).strip()
+
+          product_results=[]
+          for row in data['products']:
+              url=f"{base}/en/product/{row['english_slug']}/?mdo_huerta_en={stamp}"
+              code,effective,body=fetch(url)
+              plain=text(body)
+              title_ok=row['english_title'].casefold() in plain.casefold()
+              sig=(row['content_signature'] or '').strip()
+              content_ok=(not sig) or sig[:55].casefold() in plain.casefold()
+              product_results.append({'id':row['id'],'url':url,'http_code':code,'effective_url':effective,'title_ok':title_ok,'content_ok':content_ok})
+
+          store_url=f"{base}/en/store/{vendor}/?mdo_huerta_en_store={stamp}"
+          store_code,store_effective,store_body=fetch(store_url)
+          store_plain=text(store_body)
+          english_link_hits=0
+          native_link_hits=0
+          english_title_hits=0
+          changed_pairs=0
+          for row in data['products']:
+              if row['english_slug']:
+                  expected=f"/en/product/{row['english_slug']}/"
+                  if expected in store_body: english_link_hits+=1
+              if row['english_title'] and row['english_title'].casefold() in store_plain.casefold(): english_title_hits+=1
+              if row['english_slug'] and row['english_slug'] != row['native_slug']:
+                  changed_pairs+=1
+                  for wrong in (f"/producto/{row['native_slug']}/",f"/en/producto/{row['native_slug']}/",f"/product/{row['native_slug']}/"):
+                      if wrong in store_body: native_link_hits+=1
+
+          report={
+              'data_count':data['count'],
+              'data_complete':data['complete'],
+              'vendor':vendor,
+              'store':{'url':store_url,'http_code':store_code,'effective_url':store_effective,'english_link_hits':english_link_hits,'english_title_hits':english_title_hits,'native_link_hits_for_changed_slugs':native_link_hits,'changed_slug_pairs':changed_pairs},
+              'product_pages':product_results,
+          }
+          pathlib.Path('runtime/huerta-english-storefront-live-20260821.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          bad=[r for r in product_results if r['http_code']!=200 or '/en/product/' not in r['effective_url'] or not r['title_ok'] or not r['content_ok']]
+          if store_code!=200 or '/en/store/' not in store_effective or english_link_hits<1 or english_title_hits<1 or native_link_hits>0 or bad:
+              print(json.dumps({'store':report['store'],'bad_products':bad[:10]},ensure_ascii=False,indent=2))
+              raise SystemExit(2)
+          print(json.dumps({'store':report['store'],'products_verified':len(product_results)},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Commit production verification
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main || true
+          git add runtime/huerta-english-storefront-data-20260821.json runtime/huerta-english-storefront-live-20260821.json || true
+          git commit -m 'Record Huerta complete English storefront verification [skip ci]' || true
+          git push origin HEAD:main || true
