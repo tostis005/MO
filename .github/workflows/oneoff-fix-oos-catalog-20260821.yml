@@ -1,4 +1,4 @@
-name: One-off OOS catalog consistency repair 20260821
+name: One-off OOS singular product repair 20260821
 
 on:
   push:
@@ -10,15 +10,20 @@ permissions:
   contents: write
 
 jobs:
-  patch:
+  patch-and-deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Apply surgical OOS fixes
+      - name: Apply surgical singular-query guards
         shell: bash
         run: |
           set -euo pipefail
@@ -37,55 +42,17 @@ jobs:
           parity = 'elmercadodeorigen-child/inc/catalog-query-parity-010224.php'
           replace_once(
               parity,
-              "if ( ! $query->is_main_query() || is_admin() && ! wp_doing_ajax() ) {",
-              "if ( ! $query->is_main_query() || $query->is_singular() || ( is_admin() && ! wp_doing_ajax() ) ) {",
-              'catalog parity: singular guard',
-          )
-          replace_once(
-              parity,
-              '/* Exclude-from-catalog y outofstock son obligatorios para todos. */',
-              '/* Aplica las restricciones de visibilidad definidas para los listados del catálogo. */',
-              'catalog parity: visibility comment',
+              "\tif ( ! $query->is_main_query() ) {\n\t\treturn false;\n\t}\n\n\tif ( function_exists( 'elmercado_wcfm_query_targets_products_010210' ) ) {",
+              "\tif ( ! $query->is_main_query() || $query->is_singular() ) {\n\t\treturn false;\n\t}\n\n\tif ( function_exists( 'elmercado_wcfm_query_targets_products_010210' ) ) {",
+              'catalog parity: exclude singular requests',
           )
 
           counts = 'elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php'
           replace_once(
               counts,
-              "function elmercado_catalog_hides_out_of_stock_010218(): bool {\n    return true;\n}",
-              "function elmercado_catalog_hides_out_of_stock_010218(): bool {\n    return 'yes' === (string) get_option( 'woocommerce_hide_out_of_stock_items', 'no' );\n}",
-              'counts: restore WooCommerce OOS option',
-          )
-          replace_once(
-              counts,
-              "function elmercado_catalog_force_in_stock_tax_query_010219( $query ): void {\n    if ( ! function_exists( 'elmercado_wcfm_query_targets_products_010210' ) || ! elmercado_wcfm_query_targets_products_010210( $query ) ) {\n        return;\n    }",
-              "function elmercado_catalog_force_in_stock_tax_query_010219( $query ): void {\n    if ( ! $query instanceof WP_Query || ! elmercado_catalog_hides_out_of_stock_010218() || $query->is_singular() ) {\n        return;\n    }\n\n    if ( ! function_exists( 'elmercado_wcfm_query_targets_products_010210' ) || ! elmercado_wcfm_query_targets_products_010210( $query ) ) {\n        return;\n    }",
-              'counts: never filter singular and honor Woo option',
-          )
-          replace_once(
-              counts,
-              "    foreach ( [ 'exclude-from-catalog', 'outofstock' ] as $slug ) {",
-              "    $slugs = [ 'exclude-from-catalog' ];\n    if ( elmercado_catalog_hides_out_of_stock_010218() ) {\n        $slugs[] = 'outofstock';\n    }\n\n    foreach ( $slugs as $slug ) {",
-              'counts: conditional OOS visibility term',
-          )
-          replace_once(
-              counts,
-              "    $parts[] = 'stock:hidden';",
-              "    $parts[] = 'stock:' . ( elmercado_catalog_hides_out_of_stock_010218() ? 'hidden' : 'visible' );",
-              'counts: dynamic visibility cache scope',
-          )
-
-          seo = 'mu-plugins/emdo-seo-cleanup-layer.php'
-          replace_once(
-              seo,
-              "2026.08.21.2",
-              "2026.08.21.3",
-              'SEO cleanup: version bump',
-          )
-          replace_once(
-              seo,
-              "        if ( ! $product || 'hidden' === (string) $product->get_catalog_visibility() ) {\n            continue;\n        }",
-              "        if ( ! $product || 'hidden' === (string) $product->get_catalog_visibility() ) {\n            continue;\n        }\n\n        if ( 'yes' === (string) get_option( 'woocommerce_hide_out_of_stock_items', 'no' ) && 'outofstock' === (string) $product->get_stock_status() ) {\n            continue;\n        }",
-              'SEO cleanup: sitemap follows Woo OOS option',
+              "\t\tif ( is_admin() ) {\n\t\t\treturn;\n\t\t}\n\t\tif ( function_exists( 'elmercado_wcfm_query_targets_products_010210' ) && ! elmercado_wcfm_query_targets_products_010210( $query ) ) {",
+              "\t\tif ( is_admin() || $query->is_singular() ) {\n\t\t\treturn;\n\t\t}\n\t\tif ( function_exists( 'elmercado_wcfm_query_targets_products_010210' ) && ! elmercado_wcfm_query_targets_products_010210( $query ) ) {",
+              'catalog counts: never force stock on singular requests',
           )
           PY
 
@@ -95,17 +62,71 @@ jobs:
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/catalog-query-parity-010224.php
           php -l elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
-          php -l mu-plugins/emdo-seo-cleanup-layer.php
           git diff --check
-          git diff -- elmercadodeorigen-child/inc/catalog-query-parity-010224.php elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php mu-plugins/emdo-seo-cleanup-layer.php
+          git diff -- elmercadodeorigen-child/inc/catalog-query-parity-010224.php elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
+          grep -Fq '! $query->is_main_query() || $query->is_singular()' elmercadodeorigen-child/inc/catalog-query-parity-010224.php
+          grep -Fq 'is_admin() || $query->is_singular()' elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
 
       - name: Commit repaired behavior
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$(git status --porcelain)" || { echo 'No changes produced'; exit 1; }
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add elmercadodeorigen-child/inc/catalog-query-parity-010224.php elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php mu-plugins/emdo-seo-cleanup-layer.php
-          git commit -m 'Fix out-of-stock catalog and singular product behavior'
+          git add elmercadodeorigen-child/inc/catalog-query-parity-010224.php elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
+          git commit -m 'Fix singular out-of-stock product queries'
           git push origin HEAD:main
+
+      - name: Deploy repaired catalog files to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE1="/tmp/catalog-query-parity-${GITHUB_RUN_ID}.php"
+          REMOTE2="/tmp/catalog-visibility-counts-${GITHUB_RUN_ID}.php"
+          TARGET_DIR="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc"
+
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/catalog-query-parity-010224.php "$STAGING_USER@$STAGING_HOST:$REMOTE1"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php "$STAGING_USER@$STAGING_HOST:$REMOTE2"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; cp '$TARGET_DIR/catalog-query-parity-010224.php' '/tmp/catalog-query-parity-before-${GITHUB_RUN_ID}.php'; cp '$TARGET_DIR/catalog-visibility-counts-010217.php' '/tmp/catalog-visibility-counts-before-${GITHUB_RUN_ID}.php'; cp '$REMOTE1' '$TARGET_DIR/catalog-query-parity-010224.php'; cp '$REMOTE2' '$TARGET_DIR/catalog-visibility-counts-010217.php'; rm -f '$REMOTE1' '$REMOTE2'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$TARGET_DIR/catalog-query-parity-010224.php'; \"\$php_bin\" -l '$TARGET_DIR/catalog-visibility-counts-010217.php'; wp_bin=\$(command -v wp || true); [ -z \"\$wp_bin\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify live singular product URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for URL in \
+            'https://www.elmercadodeorigen.com/producto/cana-de-lomo-de-bellota-100-iberico/' \
+            'https://www.elmercadodeorigen.com/producto/carne-picada-extra/'
+          do
+            CODE="$(curl -sS -L -o /tmp/product.html -w '%{http_code}' --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO singular-product verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${URL}?emdo_oos_verify=${GITHUB_RUN_ID}")"
+            echo "$URL -> $CODE"
+            test "$CODE" = '200'
+            if grep -Eqi '<title>[^<]*(404|página no encontrada|page not found)' /tmp/product.html; then
+              echo "OOS_SINGULAR_VERIFY_ABORT: 404-like title at $URL" >&2
+              exit 7
+            fi
+          done
+          echo 'OOS_SINGULAR_VERIFY_OK'
