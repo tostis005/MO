@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: journal-legacy-fixes-20260821
@@ -27,6 +27,8 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate PHP
         shell: bash
@@ -34,7 +36,6 @@ jobs:
           set -euo pipefail
           php -l mu-plugins/mdo-english-journal-content-20260821.php
           php -l .github/scripts/cleanup-legacy-journal-20260821.php
-          grep -q "the_content'.*8" <(tr -d '\n' < mu-plugins/mdo-english-journal-content-20260821.php) || true
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
       - name: Deploy plugin and clean legacy articles
@@ -96,15 +97,15 @@ jobs:
           curl_page "$BASE/en/journal/" /tmp/blog-en.html
 
           python3 - <<'PY'
-          import html,json,re
+          import html,json
           data=json.load(open('journal-cleanup.json',encoding='utf-8'))
-          es=open('/tmp/blog-es.html',encoding='utf-8',errors='ignore').read()
-          en=open('/tmp/blog-en.html',encoding='utf-8',errors='ignore').read()
+          es=html.unescape(open('/tmp/blog-es.html',encoding='utf-8',errors='ignore').read())
+          en=html.unescape(open('/tmp/blog-en.html',encoding='utf-8',errors='ignore').read())
           for p in data['posts']:
-              assert p['title'] in html.unescape(es), (p['slug'],'missing ES title')
-              assert p['en_title'] in html.unescape(en), (p['en_slug'],'missing EN title')
-              for raw in (p['title'],p['en_title']):
-                  assert '<' not in raw and '&lt;' not in raw.lower()
+              assert p['title'] in es, (p['slug'],'missing ES title')
+              assert p['en_title'] in en, (p['en_slug'],'missing EN title')
+              assert '<' not in p['title'] and '&lt;' not in p['title'].lower()
+              assert '<' not in p['en_title'] and '&lt;' not in p['en_title'].lower()
           PY
 
           python3 - <<'PY'
@@ -147,3 +148,28 @@ jobs:
           done
 
           echo 'EMDO_JOURNAL_LEGACY_FIX_PUBLIC_VERIFY_OK'
+
+      - name: Record verified release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os,pathlib
+          cleanup=json.load(open('journal-cleanup.json',encoding='utf-8'))
+          payload={
+            'release':'20260821-journal-legacy-fixes',
+            'verified':True,
+            'run_id':os.environ.get('GITHUB_RUN_ID',''),
+            'source_sha':os.environ.get('GITHUB_SHA',''),
+            'english_guides_with_products_verified':6,
+            'legacy_articles_cleaned':len(cleanup.get('posts',[])),
+            'legacy_posts':cleanup.get('posts',[]),
+          }
+          pathlib.Path('.deploy-status/journal-legacy-fixes-20260821.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/journal-legacy-fixes-20260821.json
+          git commit -m 'Record verified Journal legacy fixes [skip ci]'
+          git push origin HEAD:main
