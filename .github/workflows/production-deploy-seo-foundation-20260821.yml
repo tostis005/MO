@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: production-seo-foundation
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
@@ -115,8 +119,6 @@ jobs:
             if not md.startswith(want_desc_prefix): failures.append(f'DESC {path}: {md!r}')
             if path=='/en/' and cans[:1]!=[base+'/en/']: failures.append(f'CANON /en/: {cans!r}')
 
-          # Thin WooCommerce attribute archives are useful for navigation, but should
-          # not compete with product/category landing pages in Google.
           attr='/en/variedad/tradicional-lechin/'
           try:
             status,final,html=fetch(attr)
@@ -126,14 +128,12 @@ jobs:
           except Exception as e:
             print(f'INDEX_CONTROL_SKIP|{attr}|{e!r}')
 
-          # English Journal archive cards must not expose known Spanish excerpts.
           journal=pages.get('/en/journal/','')
           spanish_signals=['El Jamón Ibérico es un producto único','Noviembre es la época de recolección']
           hits=[x for x in spanish_signals if x.lower() in journal.lower()]
           print('JOURNAL_SPANISH_EXCERPT_HITS='+repr(hits))
           if hits: failures.append('JOURNAL_SPANISH_EXCERPTS '+repr(hits))
 
-          # Verify obsolete indexed landing page is permanently consolidated.
           req=urllib.request.Request(base+'/inicio-bf/?emdo_seo_verify='+stamp, headers={'User-Agent':'EMDO-SEO-Verify/2026-08-21'})
           class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl): return None
