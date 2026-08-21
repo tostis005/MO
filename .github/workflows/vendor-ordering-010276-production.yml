@@ -82,8 +82,8 @@ jobs:
             remote="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
             sshpass -e scp $SCP "elmercadodeorigen-child/mu-plugins/$name" "$STAGING_USER@$STAGING_HOST:$remote"
             sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; mkdir -p '$MU_DIR'; install -m 0644 '$remote' '$MU_DIR/$name'; rm -f '$remote'"
-            local_sha="$(sha256sum "elmercadodeorigen-child/mu-plugins/$name" | awk '{print $1}')"
-            prod_sha="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$MU_DIR/$name' | awk '{print \\$1}'")"
+            local_sha="$(sha256sum "elmercadodeorigen-child/mu-plugins/$name" | cut -d' ' -f1)"
+            prod_sha="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$MU_DIR/$name' | cut -d' ' -f1")"
             test "$local_sha" = "$prod_sha"
           done
 
