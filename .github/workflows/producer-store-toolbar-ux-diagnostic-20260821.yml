@@ -1,0 +1,128 @@
+name: Producer toolbar UX browser diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/producer-store-toolbar-ux-diagnostic-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Temporary deploy and browser diagnostic
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -u
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/producer-store-toolbar-ux-diagnostic-20260821.txt
+          EXIT=.deploy-status/producer-store-toolbar-ux-diagnostic-20260821.exit-code
+          : > "$STATUS"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf %s "$p"; break;; esac
+            done
+          ')"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php"
+          REMOTE="/tmp/mdo-toolbar-ux-diag-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "cp '$REMOTE' '$TARGET'; rm -f '$REMOTE'; php -l '$TARGET'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null || true" >> "$STATUS" 2>&1
+
+          cleanup() {
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null || true" || true
+          }
+          trap cleanup EXIT
+
+          python -m pip install --quiet selenium >> "$STATUS" 2>&1
+          { which google-chrome || true; google-chrome --version || true; which chromedriver || true; chromedriver --version || true; } >> "$STATUS" 2>&1
+
+          export MDO_RUN="$GITHUB_RUN_ID"
+          set +e
+          python - <<'PY' >> "$STATUS" 2>&1
+          import os, traceback
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+
+          base='https://www.elmercadodeorigen.com'; run=os.environ['MDO_RUN']
+          urls={'es':base+'/tienda/1957/','en':base+'/en/store/1957/','shop':base+'/tienda/'}
+          opt=webdriver.ChromeOptions(); opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage'); opt.add_argument('--window-size=1440,1200')
+          d=None
+          try:
+              d=webdriver.Chrome(options=opt); w=WebDriverWait(d,20)
+              print('CHROME_SESSION', d.capabilities.get('browserVersion'))
+              def load(url,country):
+                  d.get(base+'/?mdo_seed='+run)
+                  d.delete_cookie('mdo_shipping_country'); d.delete_cookie('mdo_shipping_postcode')
+                  d.add_cookie({'name':'mdo_shipping_country','value':country,'domain':'www.elmercadodeorigen.com','path':'/'})
+                  d.add_cookie({'name':'mdo_shipping_postcode','value':'','domain':'www.elmercadodeorigen.com','path':'/'})
+                  d.get(url+'?mdo_diag='+run+'-'+country)
+                  print('LOAD',url,country,'status-title=',d.title,'current=',d.current_url)
+              def inspect(name,url,country):
+                  load(url,country)
+                  t=w.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[data-mdo-ps-destination-open]')))
+                  print(name,'trigger_text=',repr(t.text),'display=',t.is_displayed(),'classes=',t.get_attribute('class'))
+                  ancestors=t.find_elements(By.XPATH,"ancestor::*[contains(concat(' ',normalize-space(@class),' '),' woostify-sorting ')]")
+                  print(name,'toolbar_ancestors=',len(ancestors))
+                  if ancestors:
+                      bar=ancestors[0]
+                      print(name,'toolbar_classes=',bar.get_attribute('class'),'bg=',d.execute_script('return getComputedStyle(arguments[0]).backgroundColor',bar))
+                  print(name,'trigger_bg=',d.execute_script('return getComputedStyle(arguments[0]).backgroundColor',t),'color=',d.execute_script('return getComputedStyle(arguments[0]).color',t))
+                  cards=d.find_elements(By.CSS_SELECTOR,'ul.products li.product, .products .product')
+                  print(name,'cards=',len(cards),'critical=',len(d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]')))
+                  return len(ancestors),len(cards),t.text
+              es=inspect('ES',urls['es'],'ES')
+              bes=inspect('BLOCK_ES',urls['es'],'GR')
+              en=inspect('EN',urls['en'],'ES')
+              ben=inspect('BLOCK_EN',urls['en'],'GR')
+              load(urls['shop'],'ES')
+              bars=d.find_elements(By.CSS_SELECTOR,'.woostify-sorting.emo-catalog-toolbar-shared-010229')
+              print('SHOP bars=',len(bars),'critical=',len(d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]')))
+              if bars: print('SHOP bg=',d.execute_script('return getComputedStyle(arguments[0]).backgroundColor',bars[0]))
+          except Exception:
+              traceback.print_exc()
+              raise
+          finally:
+              if d: d.quit()
+          PY
+          CODE=$?
+          set -e
+          echo "$CODE" > "$EXIT"
+          if [ "$CODE" = 0 ]; then echo 'diagnostic_complete_ok' >> "$STATUS"; else echo 'diagnostic_complete_failed' >> "$STATUS"; fi
+
+      - name: Record diagnostic
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-store-toolbar-ux-diagnostic-20260821.* || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record producer toolbar browser diagnostic [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
