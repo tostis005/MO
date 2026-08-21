@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Producer Store Toolbar UX
- * Description: Keeps shipping destination inside the white catalogue toolbar, preserves it on empty producer stores, and prevents first-paint toolbar colour flashes.
- * Version: 1.0.0
+ * Description: Mounts shipping destination inside the producer's real white toolbar, preserves it on empty stores and applies final toolbar colours before first paint.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -34,11 +34,6 @@ add_filter(
 	PHP_INT_MAX
 );
 
-/**
- * Lightweight trigger used only as a guaranteed source/fallback. The existing
- * destination modal and save logic remain owned by the already-verified safe
- * producer-store plugin.
- */
 function mdo_ps_toolbar_ux_render_trigger_20260821( string $extra_attr = '' ): void {
 	if ( ! mdo_ps_toolbar_ux_is_store_20260821()
 		|| ! function_exists( 'mdo_ps_safe_destination_20260821' )
@@ -68,17 +63,16 @@ function mdo_ps_toolbar_ux_render_trigger_20260821( string $extra_attr = '' ): v
 }
 
 /**
- * WooCommerce omits before_shop_loop completely when a query has no products.
- * Render the same white toolbar before the no-products notice so the destination
- * can always be changed again.
+ * WooCommerce omits before_shop_loop when no products remain. Render the same
+ * producer toolbar structure server-side so destination changing never locks.
  */
 function mdo_ps_toolbar_ux_empty_toolbar_20260821(): void {
 	if ( ! mdo_ps_toolbar_ux_is_store_20260821() ) {
 		return;
 	}
 	?>
-	<div class="woostify-sorting emo-catalog-toolbar-shared-010229 mdo-ps-toolbar-host mdo-ps-toolbar-empty" data-mdo-ps-toolbar-empty-server data-mdo-ps-toolbar-host>
-		<div class="woostify-toolbar-left elmercado-vendor-filter-hidden">
+	<div class="woostify-sorting elmercado-vendor-sorting-normalized mdo-ps-toolbar-host mdo-ps-toolbar-empty" data-mdo-ps-toolbar-empty-server data-mdo-ps-toolbar-host>
+		<div class="elmercado-vendor-toolbar mdo-ps-toolbar-integrated mdo-ps-toolbar-empty-inner" role="group">
 			<?php mdo_ps_toolbar_ux_render_trigger_20260821( 'data-mdo-ps-empty-trigger' ); ?>
 		</div>
 	</div>
@@ -86,11 +80,7 @@ function mdo_ps_toolbar_ux_empty_toolbar_20260821(): void {
 }
 add_action( 'woocommerce_no_products_found', 'mdo_ps_toolbar_ux_empty_toolbar_20260821', 1 );
 
-/**
- * Guaranteed pre-modal source. It is printed before the verified producer
- * modal script; therefore, on a zero-product template that does not fire the
- * WooCommerce empty hook, the existing modal script can still bind this trigger.
- */
+/** Hidden guaranteed source, printed before the already-verified modal binder. */
 function mdo_ps_toolbar_ux_source_trigger_20260821(): void {
 	if ( ! mdo_ps_toolbar_ux_is_store_20260821() ) {
 		return;
@@ -104,9 +94,9 @@ function mdo_ps_toolbar_ux_source_trigger_20260821(): void {
 add_action( 'wp_footer', 'mdo_ps_toolbar_ux_source_trigger_20260821', 1 );
 
 /**
- * Critical first-paint CSS. It is intentionally emitted at the end of wp_head:
- * after theme/enqueued CSS but before body paint. The older complete layout CSS
- * may still load later; these values already match its final white/green state.
+ * Critical CSS lives in wp_head, not wp_footer. Before the producer normalizer
+ * creates its inner toolbar, the native sorting host already uses the final
+ * white surface; after normalization the inner toolbar keeps exactly that look.
  */
 function mdo_ps_toolbar_ux_critical_css_20260821(): void {
 	if ( ! mdo_ps_toolbar_ux_is_surface_20260821() ) {
@@ -114,161 +104,77 @@ function mdo_ps_toolbar_ux_critical_css_20260821(): void {
 	}
 	?>
 	<style id="mdo-toolbar-critical-first-paint-20260821" data-mdo-toolbar-critical-first-paint="1">
-		html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229,
-		html body.mdo-producer-store-toolbar-ux .woostify-sorting,
-		html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-host {
-			box-sizing:border-box !important;
-			width:100% !important;
-			min-width:0 !important;
-			height:auto !important;
-			min-height:68px !important;
-			max-height:none !important;
-			align-items:center !important;
-			overflow:visible !important;
-			margin:0 0 16px !important;
-			padding:12px 14px !important;
-			border:1px solid rgba(23,63,50,.11) !important;
-			border-radius:16px !important;
-			background:#fff !important;
-			background-color:#fff !important;
-			box-shadow:0 10px 28px rgba(17,42,34,.055) !important;
-			color:#173f32 !important;
+		/* Main shop: final white toolbar exists from the first paint. */
+		html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229 {
+			box-sizing:border-box !important;width:100% !important;min-width:0 !important;height:auto !important;min-height:68px !important;max-height:none !important;
+			align-items:center !important;overflow:visible !important;margin:0 0 16px !important;padding:12px 14px !important;
+			border:1px solid rgba(23,63,50,.11) !important;border-radius:16px !important;background:#fff !important;background-color:#fff !important;
+			box-shadow:0 10px 28px rgba(17,42,34,.055) !important;color:#173f32 !important;
 		}
-		html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-host {
-			display:flex !important;
-			justify-content:space-between !important;
-			gap:18px !important;
+
+		/* Producer: native pre-normalized host and final inner toolbar are both white. */
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .woostify-sorting:not(.elmercado-vendor-sorting-normalized),
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar {
+			box-sizing:border-box !important;width:100% !important;min-width:0 !important;height:auto !important;min-height:54px !important;max-height:none !important;
+			align-items:center !important;overflow:visible !important;margin:0 0 18px !important;padding:10px 12px !important;
+			border:1px solid rgba(23,63,50,.12) !important;border-radius:14px !important;background:#fff !important;background-color:#fff !important;
+			box-shadow:0 8px 24px rgba(13,33,27,.045) !important;color:#173f32 !important;
 		}
-		html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-host > .woostify-toolbar-left,
-		html body.mdo-producer-store-toolbar-ux .woostify-sorting > .woostify-toolbar-left {
-			display:flex !important;
-			visibility:visible !important;
-			opacity:1 !important;
-			position:static !important;
-			box-sizing:border-box !important;
-			flex:1 1 auto !important;
-			width:auto !important;
-			min-width:0 !important;
-			min-height:42px !important;
-			align-items:center !important;
-			gap:15px !important;
-			overflow:visible !important;
-			margin:0 !important;
-			padding:0 !important;
-			float:none !important;
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated {
+			display:grid !important;grid-template-columns:minmax(0,1fr) auto minmax(180px,260px) !important;gap:14px !important;align-items:center !important;
 		}
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .woocommerce-result-count {
+			grid-column:1 !important;grid-row:1 !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .mdo-ps-destination {
+			grid-column:2 !important;grid-row:1 !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .woocommerce-ordering {
+			grid-column:3 !important;grid-row:1 !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-empty-inner {
+			display:flex !important;justify-content:flex-start !important;
+		}
+
+		/* Destination and ordering controls start directly in their final light/green state. */
 		html body .mdo-ps-destination,
 		html body .mdo-catalog-destination--canonical {
-			display:inline-flex !important;
-			visibility:visible !important;
-			opacity:1 !important;
-			position:static !important;
-			box-sizing:border-box !important;
-			width:auto !important;
-			min-width:0 !important;
-			max-width:100% !important;
-			align-items:center !important;
-			margin:0 !important;
-			padding:0 !important;
-			float:none !important;
-			transform:none !important;
+			display:inline-flex !important;visibility:visible !important;opacity:1 !important;position:static !important;box-sizing:border-box !important;
+			width:auto !important;min-width:0 !important;max-width:100% !important;align-items:center !important;margin:0 !important;padding:0 !important;float:none !important;transform:none !important;
 		}
 		html body .mdo-ps-destination__trigger,
 		html body .mdo-catalog-destination__trigger {
-			display:grid !important;
-			grid-template-columns:minmax(0,1fr) 16px !important;
-			column-gap:9px !important;
-			box-sizing:border-box !important;
-			width:auto !important;
-			min-width:0 !important;
-			max-width:100% !important;
-			height:42px !important;
-			min-height:42px !important;
-			max-height:42px !important;
-			align-items:center !important;
-			margin:0 !important;
-			padding:0 13px 0 14px !important;
-			border:1px solid rgba(23,63,50,.15) !important;
-			border-radius:999px !important;
-			background:#f8faf8 !important;
-			background-color:#f8faf8 !important;
-			box-shadow:none !important;
-			color:#173f32 !important;
-			font-family:inherit !important;
-			font-size:12.5px !important;
-			font-weight:600 !important;
-			line-height:1 !important;
-			white-space:nowrap !important;
-			cursor:pointer !important;
+			display:grid !important;grid-template-columns:minmax(0,1fr) 16px !important;column-gap:9px !important;box-sizing:border-box !important;
+			width:auto !important;min-width:0 !important;max-width:100% !important;height:42px !important;min-height:42px !important;max-height:42px !important;
+			align-items:center !important;margin:0 !important;padding:0 13px 0 14px !important;border:1px solid rgba(23,63,50,.15) !important;
+			border-radius:999px !important;background:#f8faf8 !important;background-color:#f8faf8 !important;box-shadow:none !important;color:#173f32 !important;
+			font-family:inherit !important;font-size:12.5px !important;font-weight:600 !important;line-height:1 !important;white-space:nowrap !important;cursor:pointer !important;
 		}
-		html body .mdo-ps-destination__trigger > svg:first-child {
-			display:none !important;
-		}
-		html body .mdo-ps-destination__trigger > svg:last-child {
-			display:block !important;
-			width:12px !important;
-			height:8px !important;
-			margin:0 !important;
-		}
-		html body .mdo-catalog-destination__label {
-			display:block !important;
-			min-width:0 !important;
-			overflow:hidden !important;
-			text-overflow:ellipsis !important;
-			white-space:nowrap !important;
-			line-height:1.2 !important;
-		}
+		html body .mdo-catalog-destination__label {display:block !important;min-width:0 !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;line-height:1.2 !important;}
 		html body .mdo-ps-destination__trigger strong,
-		html body .mdo-catalog-destination__trigger strong {
-			color:inherit !important;
-			font-weight:760 !important;
-		}
-		html body .mdo-catalog-destination__chevron {
-			display:grid !important;
-			place-items:center !important;
-			width:16px !important;
-			height:16px !important;
-			min-width:16px !important;
-			margin:0 !important;
-			padding:0 !important;
-			line-height:0 !important;
-			opacity:.72 !important;
-		}
+		html body .mdo-catalog-destination__trigger strong {color:inherit !important;font-weight:760 !important;}
+		html body .mdo-catalog-destination__chevron {display:grid !important;place-items:center !important;width:16px !important;height:16px !important;min-width:16px !important;margin:0 !important;padding:0 !important;line-height:0 !important;opacity:.72 !important;}
+		html body .mdo-catalog-destination__chevron svg {display:block !important;width:12px !important;height:8px !important;margin:0 !important;}
 		html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select,
-		html body.mdo-producer-store-toolbar-ux .woostify-sorting .woocommerce-ordering select {
-			background-color:#f8faf8 !important;
-			color:#173f32 !important;
-			border-color:rgba(23,63,50,.15) !important;
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar .woocommerce-ordering select {
+			background-color:#f8faf8 !important;color:#173f32 !important;border-color:rgba(23,63,50,.15) !important;
 		}
+
 		@media (max-width:640px) {
-			html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229,
-			html body.mdo-producer-store-toolbar-ux .woostify-sorting,
-			html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-host {
-				min-height:0 !important;
-				max-height:none !important;
-				height:auto !important;
-				padding:11px !important;
-				border-radius:15px !important;
+			html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229 {min-height:0 !important;height:auto !important;padding:11px !important;border-radius:15px !important;}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .woostify-sorting:not(.elmercado-vendor-sorting-normalized),
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar {min-height:0 !important;height:auto !important;margin-bottom:14px !important;padding:9px !important;border-radius:14px !important;}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated {
+				grid-template-columns:minmax(0,1fr) minmax(132px,145px) !important;grid-template-rows:auto auto !important;gap:8px !important;
 			}
-			html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-empty {
-				display:block !important;
-			}
-			html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-empty > .woostify-toolbar-left {
-				display:block !important;
-				min-height:40px !important;
-			}
-			html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-empty .mdo-ps-destination,
-			html body.mdo-producer-store-toolbar-ux .mdo-ps-toolbar-empty .mdo-ps-destination__trigger {
-				width:100% !important;
-			}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .woocommerce-result-count {grid-column:1 / -1 !important;grid-row:1 !important;min-height:20px !important;height:auto !important;}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .mdo-ps-destination {grid-column:1 !important;grid-row:2 !important;width:100% !important;}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .woocommerce-ordering {grid-column:2 !important;grid-row:2 !important;width:100% !important;min-width:0 !important;}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-empty-inner {display:block !important;}
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-empty-inner .mdo-ps-destination,
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-empty-inner .mdo-ps-destination__trigger {width:100% !important;}
 			html body .mdo-ps-destination__trigger,
-			html body .mdo-catalog-destination__trigger {
-				height:40px !important;
-				min-height:40px !important;
-				max-height:40px !important;
-				padding:0 12px 0 13px !important;
-				font-size:11.75px !important;
-			}
+			html body .mdo-catalog-destination__trigger {height:40px !important;min-height:40px !important;max-height:40px !important;padding:0 12px 0 13px !important;font-size:11.75px !important;}
 		}
 	</style>
 	<?php
@@ -276,9 +182,9 @@ function mdo_ps_toolbar_ux_critical_css_20260821(): void {
 add_action( 'wp_head', 'mdo_ps_toolbar_ux_critical_css_20260821', PHP_INT_MAX );
 
 /**
- * The normal producer trigger is rendered by WCFM outside the native toolbar.
- * Re-parent that already-bound node into the toolbar. If the toolbar itself is
- * omitted because there are zero products, create the same white shell first.
+ * The child theme builds .elmercado-vendor-toolbar later in wp_footer. Observe
+ * that normalization and move the already-bound destination node into that real
+ * white toolbar before the browser paints the next frame.
  */
 function mdo_ps_toolbar_ux_mount_script_20260821(): void {
 	if ( ! mdo_ps_toolbar_ux_is_store_20260821() ) {
@@ -289,49 +195,80 @@ function mdo_ps_toolbar_ux_mount_script_20260821(): void {
 	(() => {
 		'use strict';
 		const source = document.querySelector('[data-mdo-ps-toolbar-ux-source]');
-		const allTriggers = Array.from(document.querySelectorAll('[data-mdo-ps-destination-open]'));
-		let trigger = allTriggers.find((node) => !source || !source.contains(node));
-		if (!trigger && source) trigger = source.querySelector('[data-mdo-ps-destination-open]');
-		if (!trigger) return;
+		const store = document.querySelector('#wcfmmp-store') || document;
 
-		let wrap = trigger.closest('[data-mdo-ps-destination-trigger-wrap]');
-		if (!wrap) return;
-		wrap.classList.add('mdo-catalog-destination', 'mdo-catalog-destination--canonical');
-		trigger.classList.add('mdo-catalog-destination__trigger');
-		const directSvgs = Array.from(trigger.children).filter((node) => node.tagName && node.tagName.toLowerCase() === 'svg');
-		if (directSvgs.length > 1) {
-			directSvgs[0].classList.add('mdo-ps-pin-to-hide');
-			directSvgs[directSvgs.length - 1].classList.add('mdo-ps-chevron-direct');
-		}
+		const getWrap = () => {
+			const nodes = Array.from(document.querySelectorAll('[data-mdo-ps-destination-open]'));
+			let trigger = nodes.find((node) => !source || !source.contains(node));
+			if (!trigger && source) trigger = source.querySelector('[data-mdo-ps-destination-open]');
+			if (!trigger) return null;
+			const wrap = trigger.closest('[data-mdo-ps-destination-trigger-wrap]');
+			if (!wrap) return null;
+			wrap.classList.add('mdo-catalog-destination','mdo-catalog-destination--canonical');
+			trigger.classList.add('mdo-catalog-destination__trigger');
+			return {wrap,trigger,nodes};
+		};
 
-		const candidates = Array.from(document.querySelectorAll('.woostify-sorting.emo-catalog-toolbar-shared-010229, .woostify-sorting'));
-		let toolbar = candidates.find((node) => !source || !source.contains(node));
-		if (!toolbar) {
-			toolbar = document.createElement('div');
-			toolbar.className = 'woostify-sorting emo-catalog-toolbar-shared-010229 mdo-ps-toolbar-host mdo-ps-toolbar-empty';
-			toolbar.setAttribute('data-mdo-ps-toolbar-host', '');
-			const anchor = document.querySelector('.woocommerce-no-products-found, .woocommerce-info, ul.products, .products, .wcfmmp-store-info, main#main, .site-main');
-			if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(toolbar, anchor);
-			else document.body.appendChild(toolbar);
-		}
-		toolbar.classList.add('emo-catalog-toolbar-shared-010229', 'mdo-ps-toolbar-host');
-		toolbar.setAttribute('data-mdo-ps-toolbar-host', '');
+		const ensureEmptyToolbar = (wrap) => {
+			let host = store.querySelector('.woostify-sorting');
+			if (!host) {
+				host = document.createElement('div');
+				host.className = 'woostify-sorting elmercado-vendor-sorting-normalized mdo-ps-toolbar-host mdo-ps-toolbar-empty';
+				host.setAttribute('data-mdo-ps-toolbar-host','');
+				const anchor = store.querySelector('.woocommerce-no-products-found,.woocommerce-info,ul.products,.products,.wcfmmp-store-product') || document.querySelector('.woocommerce-no-products-found,.woocommerce-info,main#main,.site-main');
+				if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(host, anchor);
+				else if (store !== document) store.appendChild(host);
+				else document.body.appendChild(host);
+			}
+			let inner = host.querySelector(':scope > .elmercado-vendor-toolbar');
+			if (!inner) {
+				inner = document.createElement('div');
+				inner.className = 'elmercado-vendor-toolbar mdo-ps-toolbar-integrated mdo-ps-toolbar-empty-inner';
+				inner.setAttribute('role','group');
+				host.prepend(inner);
+			}
+			inner.appendChild(wrap);
+			return inner;
+		};
 
-		let left = Array.from(toolbar.children).find((node) => node.classList && node.classList.contains('woostify-toolbar-left'));
-		if (!left) {
-			left = document.createElement('div');
-			left.className = 'woostify-toolbar-left elmercado-vendor-filter-hidden';
-			toolbar.insertBefore(left, toolbar.firstChild);
-		}
-		left.appendChild(wrap);
-		wrap.setAttribute('data-mdo-ps-mounted', '1');
+		const mount = () => {
+			const data = getWrap();
+			if (!data) return false;
+			const {wrap,nodes} = data;
+			let inner = store.querySelector('.elmercado-vendor-toolbar');
+			const hasProducts = Boolean(store.querySelector('ul.products li.product,.products .product'));
+			if (!inner && !hasProducts) inner = ensureEmptyToolbar(wrap);
+			if (!inner) return false;
 
-		allTriggers.forEach((other) => {
-			if (other === trigger) return;
-			const otherWrap = other.closest('[data-mdo-ps-destination-trigger-wrap]');
-			if (otherWrap && otherWrap !== wrap) otherWrap.remove();
+			inner.classList.add('mdo-ps-toolbar-integrated');
+			const ordering = inner.querySelector(':scope > .woocommerce-ordering');
+			if (ordering) inner.insertBefore(wrap, ordering);
+			else if (wrap.parentElement !== inner) inner.appendChild(wrap);
+			wrap.setAttribute('data-mdo-ps-mounted','1');
+
+			nodes.forEach((other) => {
+				if (wrap.contains(other)) return;
+				const otherWrap = other.closest('[data-mdo-ps-destination-trigger-wrap]');
+				if (otherWrap && otherWrap !== wrap && (!source || !source.contains(otherWrap))) otherWrap.remove();
+			});
+			if (source && !source.contains(wrap)) source.remove();
+			return true;
+		};
+
+		mount();
+		let frame = 0;
+		const observer = new MutationObserver(() => {
+			if (frame) return;
+			frame = requestAnimationFrame(() => {
+				frame = 0;
+				if (mount() && store.querySelector('.elmercado-vendor-toolbar [data-mdo-ps-mounted="1"]')) observer.disconnect();
+			});
 		});
-		if (source) source.remove();
+		observer.observe(store === document ? document.body : store, {childList:true,subtree:true});
+		document.addEventListener('DOMContentLoaded', mount, {once:true});
+		window.addEventListener('pageshow', mount, {passive:true});
+		window.setTimeout(mount, 0);
+		window.setTimeout(mount, 250);
 	})();
 	</script>
 	<?php
