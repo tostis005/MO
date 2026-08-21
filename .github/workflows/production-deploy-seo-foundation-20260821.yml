@@ -90,6 +90,13 @@ jobs:
             with urllib.request.urlopen(req, timeout=50, context=ctx) as r:
               return r.status, r.geturl(), r.read().decode('utf-8','replace')
 
+          def fetch_allow_error(path):
+            try:
+              return fetch(path)
+            except urllib.error.HTTPError as e:
+              body=e.read().decode('utf-8','replace') if hasattr(e,'read') else ''
+              return e.code,e.geturl(),body
+
           def head_values(html):
             head=html.split('</head>',1)[0]
             mt=re.search(r'<title[^>]*>(.*?)</title>',head,re.I|re.S)
@@ -119,14 +126,31 @@ jobs:
             if not md.startswith(want_desc_prefix): failures.append(f'DESC {path}: {md!r}')
             if path=='/en/' and cans[:1]!=[base+'/en/']: failures.append(f'CANON /en/: {cans!r}')
 
-          attr='/en/variedad/tradicional-lechin/'
-          try:
-            status,final,html=fetch(attr)
+          # Secondary archives must remain navigable but outside Google's index.
+          noindex_paths=[
+            '/en/variedad/tradicional-lechin/',
+            '/etiqueta-producto/jamon/',
+            '/categoria-producto/mentta/',
+            '/categoria-producto/mentta/mentta-jamones-paletas/',
+          ]
+          for path in noindex_paths:
+            status,final,html=fetch_allow_error(path)
             title,md,robots,cans=head_values(html)
-            print(f'INDEX_CONTROL|{attr}|HTTP={status}|ROBOTS={robots}|CANONICAL={cans[:1]}')
-            if status==200 and 'noindex' not in robots.lower(): failures.append(f'NOINDEX {attr}: {robots!r}')
-          except Exception as e:
-            print(f'INDEX_CONTROL_SKIP|{attr}|{e!r}')
+            print(f'INDEX_CONTROL|{path}|HTTP={status}|FINAL={final}|ROBOTS={robots}|CANONICAL={cans[:1]}')
+            if status==200 and 'noindex' not in robots.lower(): failures.append(f'NOINDEX {path}: {robots!r}')
+
+          # Disabled/offline stores can be preloaded with products but must not be indexed before launch.
+          for path in ['/tienda/puente-robles/','/tienda/el-catedratico/','/en/store/puente-robles/','/en/store/el-catedratico/']:
+            status,final,html=fetch_allow_error(path)
+            title,md,robots,cans=head_values(html)
+            print(f'DISABLED_STORE|{path}|HTTP={status}|FINAL={final}|ROBOTS={robots}')
+            if status==200 and 'noindex' not in robots.lower(): failures.append(f'DISABLED_STORE_NOINDEX {path}: {robots!r}')
+
+          # An enabled store must remain indexable.
+          status,final,html=fetch('/tienda/1957/')
+          title,md,robots,cans=head_values(html)
+          print(f'ACTIVE_STORE|/tienda/1957/|HTTP={status}|ROBOTS={robots}')
+          if status!=200 or 'noindex' in robots.lower(): failures.append(f'ACTIVE_STORE_INDEX /tienda/1957/: {status} {robots!r}')
 
           journal=pages.get('/en/journal/','')
           spanish_signals=['El Jamón Ibérico es un producto único','Noviembre es la época de recolección']
