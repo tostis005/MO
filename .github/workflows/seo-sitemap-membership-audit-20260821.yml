@@ -56,4 +56,5 @@ jobs:
           git add "$REPORT"
           if git diff --cached --quiet; then exit 0; fi
           git commit -m "Record sitemap membership audit [skip ci]"
+          git pull --rebase origin main
           git push
