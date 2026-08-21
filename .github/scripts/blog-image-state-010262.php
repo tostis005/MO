@@ -1,5 +1,5 @@
 <?php
-/** Backup/restore the small set of posts touched by the 0.10.262 repair. */
+/** Backup/restore the small set of posts touched by the blog image repair. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 $mode = (string) getenv( 'MDO_STATE_MODE' );
@@ -28,7 +28,8 @@ if ( 'backup' === $mode ) {
 		$matches = get_posts( array( 'post_type'=>'post', 'post_status'=>'publish', 'posts_per_page'=>1, 'fields'=>'ids', 'meta_key'=>'_emdo_authority_key', 'meta_value'=>(string)$key ) );
 		if ( ! empty( $matches ) ) { $ids[] = (int) $matches[0]; }
 	}
-	foreach ( array_keys( $legacy ) as $slug ) {
+	$legacy_slugs = array_values( array_unique( array_merge( array_keys( $legacy ), array( 'naranjas' ) ) ) );
+	foreach ( $legacy_slugs as $slug ) {
 		$post = get_page_by_path( (string) $slug, OBJECT, 'post' );
 		if ( $post instanceof WP_Post ) { $ids[] = (int) $post->ID; }
 	}
