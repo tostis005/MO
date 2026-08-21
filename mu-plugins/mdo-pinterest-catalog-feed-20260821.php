@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Pinterest Catalog Feed
  * Description: Serves a live Pinterest-compatible retail catalog generated from the public WooCommerce catalog.
- * Version: 2026.08.21.1
+ * Version: 2026.08.21.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
