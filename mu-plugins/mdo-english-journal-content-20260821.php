@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Journal Content 20260821
  * Description: Renders reviewed English post copy and blog-category labels from persisted _en_US_* metadata on /en/ routes.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -28,12 +28,7 @@ add_filter( 'the_title', static function ( string $title, int $post_id ): string
     return mdoej_post_value_20260821( $post_id, '_en_US_post_title', $title );
 }, PHP_INT_MAX, 2 );
 
-/*
- * Replace the native post body before WordPress runs wpautop/shortcode_unautop
- * and do_shortcode. At PHP_INT_MAX the English metadata used to replace an
- * already-rendered Spanish body with raw shortcode text, so related products
- * appeared as [products ...] instead of WooCommerce cards on /en/ articles.
- */
+/* English copy must be swapped in before wpautop and do_shortcode run. */
 add_filter( 'the_content', static function ( string $content ): string {
     $post_id = (int) get_the_ID();
     return $post_id > 0 ? mdoej_post_value_20260821( $post_id, '_en_US_post_content', $content ) : $content;
@@ -42,6 +37,14 @@ add_filter( 'the_content', static function ( string $content ): string {
 add_filter( 'get_the_excerpt', static function ( $excerpt, $post ) {
     $post_id = $post instanceof WP_Post ? (int) $post->ID : (int) $post;
     return $post_id > 0 ? mdoej_post_value_20260821( $post_id, '_en_US_post_excerpt', (string) $excerpt ) : $excerpt;
+}, PHP_INT_MAX, 2 );
+
+/* Curated Journal images store a reviewed English alt in attachment meta. */
+add_filter( 'wp_get_attachment_image_attributes', static function ( array $attr, $attachment ): array {
+    if ( ! mdoej_en_20260821() || ! $attachment instanceof WP_Post ) { return $attr; }
+    $alt = trim( (string) get_post_meta( $attachment->ID, '_emdo_alt_en', true ) );
+    if ( '' !== $alt ) { $attr['alt'] = $alt; }
+    return $attr;
 }, PHP_INT_MAX, 2 );
 
 function mdoej_translate_category_20260821( WP_Term $term ): WP_Term {
