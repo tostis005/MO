@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO SEO Foundation
  * Description: Stable SEO titles, descriptions, canonicals, index controls and legacy redirects for El Mercado de Origen.
- * Version: 2026.08.21.2
+ * Version: 2026.08.21.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -11,6 +11,12 @@ function emdo_seo_path(): string {
     $uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '/';
     $path = (string) wp_parse_url( $uri, PHP_URL_PATH );
     return $path !== '' ? '/' . ltrim( $path, '/' ) : '/';
+}
+
+function emdo_seo_root(): string {
+    $root = untrailingslashit( (string) get_option( 'home' ) );
+    // TranslatePress can expose an /en-suffixed home inside an English request.
+    return untrailingslashit( (string) preg_replace( '#/en/?$#i', '', $root ) );
 }
 
 function emdo_seo_is_en(): bool {
@@ -120,8 +126,6 @@ function emdo_seo_description_for_request( string $current ): string {
     return $current;
 }
 
-// AIOSEO is the active SEO plugin in production. These filters keep the rules
-// persistent without printing duplicate title/meta tags from the theme.
 add_filter( 'aioseo_title', static function ( $title ) {
     return emdo_seo_title_for_request( (string) $title );
 }, PHP_INT_MAX );
@@ -130,8 +134,6 @@ add_filter( 'aioseo_description', static function ( $description ) {
     return emdo_seo_description_for_request( (string) $description );
 }, PHP_INT_MAX );
 
-// Keep low-value faceted/attribute archives and transactional/search pages out of
-// the index while allowing crawlers to follow their links. Product categories stay indexable.
 add_filter( 'aioseo_robots_meta', static function ( $attributes ) {
     if ( ! is_array( $attributes ) ) { return $attributes; }
 
@@ -140,39 +142,26 @@ add_filter( 'aioseo_robots_meta', static function ( $attributes ) {
     if ( $queried instanceof WP_Term && str_starts_with( (string) $queried->taxonomy, 'pa_' ) ) {
         $noindex = true;
     }
-    if ( is_search() ) {
-        $noindex = true;
-    }
-    if ( function_exists( 'is_cart' ) && is_cart() ) {
-        $noindex = true;
-    }
-    if ( function_exists( 'is_checkout' ) && is_checkout() ) {
-        $noindex = true;
-    }
-    if ( function_exists( 'is_account_page' ) && is_account_page() ) {
-        $noindex = true;
-    }
+    if ( is_search() ) { $noindex = true; }
+    if ( function_exists( 'is_cart' ) && is_cart() ) { $noindex = true; }
+    if ( function_exists( 'is_checkout' ) && is_checkout() ) { $noindex = true; }
+    if ( function_exists( 'is_account_page' ) && is_account_page() ) { $noindex = true; }
 
     if ( $noindex ) {
         $attributes['noindex'] = 'noindex';
-        // Explicitly preserve link discovery; these are not crawl dead ends.
         $attributes['nofollow'] = '';
     }
     return $attributes;
 }, PHP_INT_MAX );
 
-// Correct the English home canonical. TranslatePress serves the public home at /en/
-// while AIOSEO can otherwise resolve the translated backing page (/en/home-2/).
 add_filter( 'aioseo_canonical_url', static function ( $url ) {
     $path = emdo_seo_path();
     if ( $path === '/en/' || $path === '/en' ) {
-        return untrailingslashit( home_url( '/' ) ) . '/en/';
+        return emdo_seo_root() . '/en/';
     }
     return $url;
 }, PHP_INT_MAX );
 
-// The English Journal used Spanish excerpts when an explicit translated excerpt was
-// not stored. Prefer reviewed English post content as a fallback for archive cards.
 add_filter( 'get_the_excerpt', static function ( $excerpt, $post ) {
     if ( ! emdo_seo_is_en() || ! preg_match( '#^/en/(?:journal|blog)/?$#i', emdo_seo_path() ) ) {
         return $excerpt;
@@ -190,22 +179,18 @@ add_filter( 'get_the_excerpt', static function ( $excerpt, $post ) {
     return $text !== '' ? wp_trim_words( $text, 32, '…' ) : $excerpt;
 }, PHP_INT_MAX, 2 );
 
-// Google still knows an obsolete Black Friday homepage URL. Keep the old content in
-// WordPress untouched, but consolidate any residual signals into the current homepage.
 add_action( 'template_redirect', static function (): void {
     $path = emdo_seo_path();
     if ( $path === '/inicio-bf/' || $path === '/inicio-bf' ) {
-        wp_safe_redirect( home_url( '/' ), 301, 'EMDO SEO' );
+        wp_safe_redirect( emdo_seo_root() . '/', 301, 'EMDO SEO' );
         exit;
     }
     if ( $path === '/en/inicio-bf/' || $path === '/en/inicio-bf' ) {
-        wp_safe_redirect( untrailingslashit( home_url( '/' ) ) . '/en/', 301, 'EMDO SEO' );
+        wp_safe_redirect( emdo_seo_root() . '/en/', 301, 'EMDO SEO' );
         exit;
     }
 }, -1000 );
 
-// If a theme/plugin asks WordPress for a document title outside AIOSEO, keep the key
-// landing pages consistent without changing the visible H1/page names.
 add_filter( 'pre_get_document_title', static function ( $title ) {
     if ( ! is_string( $title ) ) { $title = ''; }
     $seo = emdo_seo_title_for_request( $title );
