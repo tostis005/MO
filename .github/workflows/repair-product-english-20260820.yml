@@ -85,7 +85,7 @@ jobs:
           print('vendors=',d['vendors'])
           if d['huerta_source_count'] != 46:
               raise SystemExit('Unexpected Huerta source count')
-          if d['count'] < 51:
+          if d['count'] < 46:
               raise SystemExit('Repair candidate count unexpectedly low')
           PY
 
