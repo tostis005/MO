@@ -25,11 +25,9 @@ jobs:
           fetch-depth: 0
 
       - name: Validate PHP
-        run: |
-          php -l mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php
-          php -l mu-plugins/zzzzzz-mdo-catalog-toolbar-visual-parity-20260821.php
+        run: php -l mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php
 
-      - name: Deploy and verify visual parity
+      - name: Deploy and verify exact toolbar parity
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -54,24 +52,24 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          UX_TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php"
-          PARITY_TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzzz-mdo-catalog-toolbar-visual-parity-20260821.php"
-          UX_BACKUP="/tmp/mdo-toolbar-ux-before-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php"
+          OLD_PARITY="$PROD_PATH/wp-content/mu-plugins/zzzzzz-mdo-catalog-toolbar-visual-parity-20260821.php"
+          BACKUP="/tmp/mdo-toolbar-ux-before-${GITHUB_RUN_ID}.php"
           PARITY_BACKUP="/tmp/mdo-toolbar-parity-before-${GITHUB_RUN_ID}.php"
-          REMOTE_UX="/tmp/mdo-toolbar-ux-${GITHUB_RUN_ID}.php"
-          REMOTE_PARITY="/tmp/mdo-toolbar-parity-${GITHUB_RUN_ID}.php"
+          REMOTE="/tmp/mdo-toolbar-ux-${GITHUB_RUN_ID}.php"
+          REMOTE_AUDIT="/tmp/mdo-toolbar-audit-${GITHUB_RUN_ID}.php"
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            if [ -f '$UX_TARGET' ]; then cp '$UX_TARGET' '$UX_BACKUP'; fi
-            if [ -f '$PARITY_TARGET' ]; then cp '$PARITY_TARGET' '$PARITY_BACKUP'; fi
+            [ ! -f '$TARGET' ] || cp '$TARGET' '$BACKUP'
+            [ ! -f '$OLD_PARITY' ] || cp '$OLD_PARITY' '$PARITY_BACKUP'
           "
 
           rollback() {
-            echo 'ROLLBACK catalog toolbar visual parity' | tee -a "$STATUS"
+            echo 'ROLLBACK catalog toolbar parity' | tee -a "$STATUS"
             sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-              if [ -f '$UX_BACKUP' ]; then cp '$UX_BACKUP' '$UX_TARGET'; else rm -f '$UX_TARGET'; fi
-              if [ -f '$PARITY_BACKUP' ]; then cp '$PARITY_BACKUP' '$PARITY_TARGET'; else rm -f '$PARITY_TARGET'; fi
-              rm -f '$REMOTE_UX' '$REMOTE_PARITY' '$UX_BACKUP' '$PARITY_BACKUP'
+              if [ -f '$BACKUP' ]; then cp '$BACKUP' '$TARGET'; else rm -f '$TARGET'; fi
+              if [ -f '$PARITY_BACKUP' ]; then cp '$PARITY_BACKUP' '$OLD_PARITY'; else rm -f '$OLD_PARITY'; fi
+              rm -f '$REMOTE' '$REMOTE_AUDIT' '$BACKUP' '$PARITY_BACKUP'
               wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
               [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
               \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
@@ -79,122 +77,132 @@ jobs:
           }
           fail() { echo "FAIL: $1" | tee -a "$STATUS"; rollback; echo 2 > "$EXIT"; exit 2; }
 
-          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_UX"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzzz-mdo-catalog-toolbar-visual-parity-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PARITY"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/verify-producer-store-safe-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
-            cp '$REMOTE_UX' '$UX_TARGET'
-            cp '$REMOTE_PARITY' '$PARITY_TARGET'
-            rm -f '$REMOTE_UX' '$REMOTE_PARITY'
+            cp '$REMOTE' '$TARGET'; rm -f '$REMOTE'; rm -f '$OLD_PARITY'
             wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" -l '$UX_TARGET'
-            \"\$php_bin\" -l '$PARITY_TARGET'
+            \"\$php_bin\" -l '$TARGET'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
           " >> "$STATUS" 2>&1 || fail 'deploy/lint failed'
 
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root
+          " >> "$STATUS" 2>&1
+          AUDIT_CODE=$?
+          set -e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_AUDIT'" || true
+          [ "$AUDIT_CODE" = 0 ] || fail 'producer filtering/ranking audit failed'
+
+          AUDIT_JSON="$(grep '^producer_store_safe_audit_ok ' "$STATUS" | tail -n1 | sed 's/^producer_store_safe_audit_ok //')"
+          SLUG="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["sample_slug"])' "$AUDIT_JSON")"
+          BLOCKED="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["sample_blocked_country"])' "$AUDIT_JSON")"
           BASE=https://www.elmercadodeorigen.com
-          for u in "$BASE/tienda/" "$BASE/tienda/1957/" "$BASE/en/store/1957/" "$BASE/productores/"; do
-            s="$(curl -L -sS --max-time 40 -H 'Cache-Control: no-cache' -o /tmp/page.html -w '%{http_code}' "${u}?mdo_parity=${GITHUB_RUN_ID}")"
+          SHOP="$BASE/tienda/"; ES="$BASE/tienda/$SLUG/"; EN="$BASE/en/store/$SLUG/"; LIST="$BASE/productores/"
+          for u in "$SHOP" "$LIST" "$ES" "$EN"; do
+            s="$(curl -L -sS --max-time 40 -H 'Cache-Control: no-cache' -H 'Cookie: mdo_shipping_country=ES; mdo_shipping_postcode=' -o /tmp/page.html -w '%{http_code}' "${u}?mdo_parity=${GITHUB_RUN_ID}")"
             echo "HTTP $s $u" | tee -a "$STATUS"
             [[ "$s" =~ ^[23][0-9][0-9]$ ]] || fail "HTTP route failure $u"
           done
 
           python -m pip install --quiet selenium
-          export MDO_BASE="$BASE" MDO_RUN="$GITHUB_RUN_ID"
+          export MDO_BASE="$BASE" MDO_RUN="$GITHUB_RUN_ID" MDO_SLUG="$SLUG" MDO_BLOCKED="$BLOCKED"
           set +e
           python - <<'PY' >> "$STATUS" 2>&1
-          import os, math
+          import os
           from selenium import webdriver
           from selenium.webdriver.common.by import By
           from selenium.webdriver.support.ui import WebDriverWait
           from selenium.webdriver.support import expected_conditions as EC
 
-          base=os.environ['MDO_BASE']; run=os.environ['MDO_RUN']
+          base=os.environ['MDO_BASE']; run=os.environ['MDO_RUN']; slug=os.environ['MDO_SLUG']; blocked=os.environ['MDO_BLOCKED']
           opt=webdriver.ChromeOptions(); opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage')
           d=webdriver.Chrome(options=opt)
 
           def rect(el):
-              return d.execute_script('const r=arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom};',el)
-          def css(el, prop):
-              return d.execute_script('return getComputedStyle(arguments[0])[arguments[1]]',el,prop)
-          def load(path,width,height):
-              d.set_window_size(width,height)
-              d.get(base+'/?seed='+run)
-              try: d.delete_cookie('mdo_shipping_country')
-              except: pass
-              try: d.delete_cookie('mdo_shipping_postcode')
-              except: pass
-              d.add_cookie({'name':'mdo_shipping_country','value':'ES','domain':'www.elmercadodeorigen.com','path':'/'})
+              return d.execute_script('const r=arguments[0].getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom};',el)
+          def css(el,p): return d.execute_script('return getComputedStyle(arguments[0])[arguments[1]]',el,p)
+          def close(a,b,t=3): return abs(a-b)<=t
+          def cy(r): return r['y']+r['h']/2
+          def seed(path,country='ES',width=1440,height=1000):
+              d.set_window_size(width,height); d.get(base+'/?seed='+run)
+              for n in ('mdo_shipping_country','mdo_shipping_postcode'):
+                  try:d.delete_cookie(n)
+                  except:pass
+              d.add_cookie({'name':'mdo_shipping_country','value':country,'domain':'www.elmercadodeorigen.com','path':'/'})
               d.add_cookie({'name':'mdo_shipping_postcode','value':'','domain':'www.elmercadodeorigen.com','path':'/'})
-              d.get(base+path+('?visual='+run+f'-{width}'))
+              d.get(base+path+('?parity='+run+f'-{width}-{country}'))
 
-          def snapshot(path,width,height,producer=False):
-              load(path,width,height)
-              w=WebDriverWait(d,20)
+          def snap(path,width,producer=False,country='ES'):
+              seed(path,country,width,1000); w=WebDriverWait(d,20)
               if producer:
-                  bar=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated')))
-                  count=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .woocommerce-result-count')))
-                  dest=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .mdo-ps-destination')))
-                  ordering=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated > .woocommerce-ordering')))
+                  bar=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-ready')))
+                  left=bar.find_element(By.CSS_SELECTOR,':scope > .woostify-toolbar-left')
+                  count=left.find_element(By.CSS_SELECTOR,':scope > .woocommerce-result-count')
+                  dest=left.find_element(By.CSS_SELECTOR,':scope > .mdo-catalog-destination--canonical')
+                  order=bar.find_element(By.CSS_SELECTOR,':scope > .woocommerce-ordering')
+                  assert not bar.find_elements(By.CSS_SELECTOR,':scope > .elmercado-vendor-toolbar'), 'legacy inner toolbar still present'
               else:
                   bar=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.woostify-sorting.emo-catalog-toolbar-shared-010229')))
-                  count=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.woostify-sorting.emo-catalog-toolbar-shared-010229 .emo-catalog-result-count-010220')))
-                  dest=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.woostify-sorting.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination--canonical')))
-                  ordering=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.woostify-sorting.emo-catalog-toolbar-shared-010229 .woocommerce-ordering')))
-              trigger=dest.find_element(By.CSS_SELECTOR,'.mdo-catalog-destination__trigger')
-              select=ordering.find_element(By.TAG_NAME,'select')
-              return {
-                  'bar':rect(bar),'count':rect(count),'dest':rect(dest),'trigger':rect(trigger),'ordering':rect(ordering),'select':rect(select),
-                  'bg':css(bar,'backgroundColor'),'radius':css(bar,'borderRadius'),'display':css(bar,'display'),'padding':css(bar,'padding'),
-                  'trigger_bg':css(trigger,'backgroundColor'),'trigger_color':css(trigger,'color'),'select_bg':css(select,'backgroundColor'),'select_color':css(select,'color')
-              }
+                  left=bar.find_element(By.CSS_SELECTOR,':scope > .woostify-toolbar-left')
+                  count=left.find_element(By.CSS_SELECTOR,':scope > .woocommerce-result-count')
+                  dest=left.find_element(By.CSS_SELECTOR,':scope > .mdo-catalog-destination--canonical')
+                  order=bar.find_element(By.CSS_SELECTOR,':scope > .woocommerce-ordering')
+              trig=dest.find_element(By.CSS_SELECTOR,'.mdo-catalog-destination__trigger'); sel=order.find_element(By.TAG_NAME,'select')
+              return {'bar':rect(bar),'left':rect(left),'count':rect(count),'dest':rect(dest),'trigger':rect(trig),'order':rect(order),'select':rect(sel),
+                      'display':css(bar,'display'),'bg':css(bar,'backgroundColor'),'radius':css(bar,'borderRadius'),'trigbg':css(trig,'backgroundColor'),'trigcolor':css(trig,'color'),'selbg':css(sel,'backgroundColor'),'selcolor':css(sel,'color')}
 
-          def center_y(r): return r['y']+r['h']/2
-          def close(a,b,tol=2.5): return abs(a-b)<=tol
-          def verify(width,height):
-              shop=snapshot('/tienda/',width,height,False)
-              prod=snapshot('/tienda/1957/',width,height,True)
-              assert shop['bg'] in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'), shop
-              assert prod['bg'] in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'), prod
-              assert shop['radius']==prod['radius'], (width,shop['radius'],prod['radius'])
-              assert close(shop['trigger']['h'],prod['trigger']['h'],1.5), (width,shop['trigger'],prod['trigger'])
-              assert close(shop['select']['h'],prod['select']['h'],1.5), (width,shop['select'],prod['select'])
-              assert shop['trigger_bg']==prod['trigger_bg'], (width,shop['trigger_bg'],prod['trigger_bg'])
-              assert shop['trigger_color']==prod['trigger_color'], (width,shop['trigger_color'],prod['trigger_color'])
-              assert shop['select_bg']==prod['select_bg'], (width,shop['select_bg'],prod['select_bg'])
-              assert shop['select_color']==prod['select_color'], (width,shop['select_color'],prod['select_color'])
+          def validate(width):
+              shop=snap('/tienda/',width,False); prod=snap(f'/tienda/{slug}/',width,True)
+              for s in (shop,prod):
+                  assert s['bg'] in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'),s
+                  assert s['trigbg'] in ('rgb(248, 250, 248)','rgba(248, 250, 248, 1)'),s
+                  assert s['trigcolor'] in ('rgb(23, 63, 50)','rgba(23, 63, 50, 1)'),s
+                  assert s['selcolor'] in ('rgb(23, 63, 50)','rgba(23, 63, 50, 1)'),s
+                  assert s['bar']['x']-1 <= s['count']['x'] and s['count']['right'] <= s['bar']['right']+1,s
+                  assert s['bar']['x']-1 <= s['dest']['x'] and s['dest']['right'] <= s['bar']['right']+1,s
+                  assert s['bar']['x']-1 <= s['order']['x'] and s['order']['right'] <= s['bar']['right']+1,s
+              assert shop['radius']==prod['radius'],(width,shop,prod)
+              assert close(shop['trigger']['h'],prod['trigger']['h'],1.5),(width,shop,prod)
+              assert close(shop['select']['h'],prod['select']['h'],1.5),(width,shop,prod)
               if width>640:
-                  assert max(abs(center_y(prod[k])-center_y(prod['dest'])) for k in ('count','ordering')) < 4, (width,prod)
-                  assert max(abs(center_y(shop[k])-center_y(shop['dest'])) for k in ('count','ordering')) < 4, (width,shop)
-                  assert close(shop['bar']['h'],prod['bar']['h'],3.0), (width,shop['bar'],prod['bar'])
+                  assert shop['display']=='flex' and prod['display']=='flex',(width,shop,prod)
+                  assert max(abs(cy(prod[k])-cy(prod['trigger'])) for k in ('count','order'))<3.5,(width,prod)
+                  assert close(shop['bar']['h'],prod['bar']['h'],2),(width,shop,prod)
               else:
-                  assert prod['count']['bottom'] <= min(prod['dest']['y'],prod['ordering']['y'])+1, (width,prod)
-                  assert shop['count']['bottom'] <= min(shop['dest']['y'],shop['ordering']['y'])+1, (width,shop)
-                  assert close(prod['dest']['y'],prod['ordering']['y'],3.0), (width,prod)
-                  assert close(shop['dest']['y'],shop['ordering']['y'],3.0), (width,shop)
-                  assert close(shop['bar']['w'],prod['bar']['w'],4.0), (width,shop['bar'],prod['bar'])
-                  assert close(shop['bar']['h'],prod['bar']['h'],4.0), (width,shop['bar'],prod['bar'])
-              print('PARITY',width,'SHOP',shop,'PROD',prod)
+                  assert shop['display']=='grid' and prod['display']=='grid',(width,shop,prod)
+                  assert prod['count']['bottom'] <= prod['dest']['y']+1,(width,prod)
+                  assert prod['left']['bottom'] <= prod['order']['y']+1,(width,prod)
+                  assert close(shop['bar']['w'],prod['bar']['w'],3),(width,shop,prod)
+                  assert close(shop['bar']['h'],prod['bar']['h'],3),(width,shop,prod)
+              print('PARITY_OK',width,'SHOP',shop,'PROD',prod)
 
-          verify(1440,1100)
-          verify(900,1000)
-          verify(390,900)
+          validate(1440); validate(900); validate(390)
 
-          en=snapshot('/en/store/1957/',390,900,True)
-          dtext=d.find_element(By.CSS_SELECTOR,'#wcfmmp-store .elmercado-vendor-toolbar.mdo-ps-toolbar-integrated [data-mdo-ps-destination-open]').text
-          assert 'Shipping to' in dtext, dtext
-          assert en['bg'] in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'), en
+          en=snap(f'/en/store/{slug}/',390,True)
+          assert 'Shipping to' in d.find_element(By.CSS_SELECTOR,'#wcfmmp-store .mdo-catalog-destination__trigger').text
+          assert en['display']=='grid'
+
+          seed(f'/tienda/{slug}/',blocked,390,900)
+          w=WebDriverWait(d,20)
+          bar=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized')))
+          trigger=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store [data-mdo-ps-destination-open]')))
+          assert css(bar,'backgroundColor') in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)')
+          assert len(d.find_elements(By.CSS_SELECTOR,'ul.products li.product,.products .product'))==0
           assert len(d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]'))==1
-          assert len(d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-visual-parity="1"]'))==1
-          print('EN_OK',dtext,en)
+          print('BLOCKED_OK',blocked,rect(bar),trigger.text)
           d.quit()
           PY
           BROWSER=$?
           set -e
           [ "$BROWSER" = 0 ] || fail 'browser visual parity verification failed'
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$UX_BACKUP' '$PARITY_BACKUP'" || true
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP' '$PARITY_BACKUP'" || true
           echo 'catalog_toolbar_visual_parity_production_ok' | tee -a "$STATUS"
           echo 0 > "$EXIT"
 
