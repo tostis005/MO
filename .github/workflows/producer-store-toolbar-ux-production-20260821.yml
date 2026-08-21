@@ -1,0 +1,266 @@
+name: Producer store toolbar UX production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php'
+      - '.github/workflows/producer-store-toolbar-ux-production-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php
+
+      - name: Deploy and verify with automatic rollback
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          mkdir -p .deploy-status
+          STATUS_FILE=.deploy-status/producer-store-toolbar-ux-20260821.txt
+          EXIT_FILE=.deploy-status/producer-store-toolbar-ux-20260821.exit-code
+          : > "$STATUS_FILE"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php"
+          REMOTE="/tmp/mdo-producer-toolbar-ux-${GITHUB_RUN_ID}.php"
+          REMOTE_AUDIT="/tmp/mdo-producer-toolbar-audit-${GITHUB_RUN_ID}.php"
+
+          rollback() {
+            echo 'ROLLBACK producer toolbar UX' | tee -a "$STATUS_FILE"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              rm -f '$TARGET' '$REMOTE' '$REMOTE_AUDIT'
+              wp_bin=\$(command -v wp || true)
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            " || true
+          }
+
+          fail() {
+            echo "FAIL: $1" | tee -a "$STATUS_FILE"
+            rollback
+            echo 2 > "$EXIT_FILE"
+            exit 2
+          }
+
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/verify-producer-store-safe-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            cp '$REMOTE' '$TARGET'
+            rm -f '$REMOTE'
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$TARGET'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+          " >> "$STATUS_FILE" 2>&1 || fail 'remote deploy/lint failed'
+
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root
+          " >> "$STATUS_FILE" 2>&1
+          AUDIT_CODE=$?
+          set -e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_AUDIT'" || true
+          [ "$AUDIT_CODE" = '0' ] || fail 'existing producer filtering/ranking audit regressed'
+
+          AUDIT_JSON="$(grep '^producer_store_safe_audit_ok ' "$STATUS_FILE" | tail -n1 | sed 's/^producer_store_safe_audit_ok //')"
+          [ -n "$AUDIT_JSON" ] || fail 'producer audit marker missing'
+          SAMPLE_SLUG="$(python -c 'import json,sys; print(json.loads(sys.argv[1]).get("sample_slug", ""))' "$AUDIT_JSON")"
+          BLOCKED_COUNTRY="$(python -c 'import json,sys; print(json.loads(sys.argv[1]).get("sample_blocked_country", ""))' "$AUDIT_JSON")"
+          EXPECTED_FIRST="$(python -c 'import json,sys; print(json.loads(sys.argv[1]).get("sample_es_first_product_url", ""))' "$AUDIT_JSON")"
+          [ -n "$SAMPLE_SLUG" ] || fail 'sample store slug missing'
+          [ -n "$BLOCKED_COUNTRY" ] || fail 'blocked country missing'
+          [ -n "$EXPECTED_FIRST" ] || fail 'expected ranking product missing'
+
+          BASE=https://www.elmercadodeorigen.com
+          SHOP_URL="$BASE/tienda/"
+          LIST_URL="$BASE/productores/"
+          ES_URL="$BASE/tienda/$SAMPLE_SLUG/"
+          EN_URL="$BASE/en/store/$SAMPLE_SLUG/"
+
+          curl_page() {
+            local url="$1" cookie="$2" out="$3"
+            curl -L -sS --max-time 40 -H 'Cache-Control: no-cache' -H "Cookie: $cookie" -o "$out" -w '%{http_code}' "${url}?mdo_toolbar_ux=${GITHUB_RUN_ID}"
+          }
+
+          SHOP_STATUS="$(curl_page "$SHOP_URL" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/shop.html || true)"
+          LIST_STATUS="$(curl_page "$LIST_URL" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/producers.html || true)"
+          ES_STATUS="$(curl_page "$ES_URL" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/store-es.html || true)"
+          EN_STATUS="$(curl_page "$EN_URL" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/store-en.html || true)"
+          BLOCK_ES_STATUS="$(curl_page "$ES_URL" "mdo_shipping_country=$BLOCKED_COUNTRY; mdo_shipping_postcode=" /tmp/store-block-es.html || true)"
+          BLOCK_EN_STATUS="$(curl_page "$EN_URL" "mdo_shipping_country=$BLOCKED_COUNTRY; mdo_shipping_postcode=" /tmp/store-block-en.html || true)"
+
+          printf 'HTTP shop=%s producers=%s es=%s en=%s blocked_es=%s blocked_en=%s\n' "$SHOP_STATUS" "$LIST_STATUS" "$ES_STATUS" "$EN_STATUS" "$BLOCK_ES_STATUS" "$BLOCK_EN_STATUS" | tee -a "$STATUS_FILE"
+          for status in "$SHOP_STATUS" "$LIST_STATUS" "$ES_STATUS" "$EN_STATUS" "$BLOCK_ES_STATUS" "$BLOCK_EN_STATUS"; do
+            [[ "$status" =~ ^[23][0-9][0-9]$ ]] || fail 'public route returned 4xx/5xx'
+          done
+
+          for page in /tmp/shop.html /tmp/store-es.html /tmp/store-en.html /tmp/store-block-es.html /tmp/store-block-en.html; do
+            grep -q 'data-mdo-toolbar-critical-first-paint="1"' "$page" || fail "critical first-paint CSS missing in $page"
+          done
+          grep -q 'mdo-producer-store-toolbar-ux' /tmp/store-es.html || fail 'producer body class missing'
+          grep -q 'mdo-producer-store-toolbar-ux' /tmp/store-block-es.html || fail 'blocked producer body class missing'
+          grep -q 'mdo-ps-toolbar-ux-js-20260821' /tmp/store-es.html || fail 'toolbar mount script missing'
+          grep -q 'mdo-ps-toolbar-ux-js-20260821' /tmp/store-block-es.html || fail 'blocked toolbar mount script missing'
+          grep -q 'Envío a' /tmp/store-es.html || fail 'Spanish destination label missing'
+          grep -q 'Shipping to' /tmp/store-en.html || fail 'English destination label missing'
+          grep -q 'Envío a' /tmp/store-block-es.html || fail 'blocked Spanish destination selector missing'
+          grep -q 'Shipping to' /tmp/store-block-en.html || fail 'blocked English destination selector missing'
+
+          python - <<'PY' || fail 'critical style is not inside head'
+          from pathlib import Path
+          for p in ['/tmp/shop.html','/tmp/store-es.html','/tmp/store-block-es.html']:
+              s=Path(p).read_text(errors='ignore')
+              marker=s.find('data-mdo-toolbar-critical-first-paint="1"')
+              head=s.lower().find('</head>')
+              assert marker >= 0 and head >= 0 and marker < head, (p, marker, head)
+          print('CRITICAL_CSS_IN_HEAD ok')
+          PY
+
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/store-es.html > /tmp/es-info.json
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/store-en.html > /tmp/en-info.json
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/store-block-es.html > /tmp/block-es-info.json
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/store-block-en.html > /tmp/block-en-info.json
+          ES_COUNT="$(python -c 'import json; print(json.load(open("/tmp/es-info.json"))["count"])')"
+          EN_COUNT="$(python -c 'import json; print(json.load(open("/tmp/en-info.json"))["count"])')"
+          BLOCK_ES_COUNT="$(python -c 'import json; print(json.load(open("/tmp/block-es-info.json"))["count"])')"
+          BLOCK_EN_COUNT="$(python -c 'import json; print(json.load(open("/tmp/block-en-info.json"))["count"])')"
+          ES_FIRST="$(python -c 'import json; print(json.load(open("/tmp/es-info.json"))["first_href"])')"
+          printf 'PRODUCT_CARDS es=%s en=%s blocked_es=%s blocked_en=%s\n' "$ES_COUNT" "$EN_COUNT" "$BLOCK_ES_COUNT" "$BLOCK_EN_COUNT" | tee -a "$STATUS_FILE"
+          [ "$ES_COUNT" -gt 0 ] || fail 'allowed Spanish store lost its products'
+          [ "$EN_COUNT" -gt 0 ] || fail 'allowed English store lost its products'
+          [ "$BLOCK_ES_COUNT" -eq 0 ] || fail 'blocked Spanish destination still shows products'
+          [ "$BLOCK_EN_COUNT" -eq 0 ] || fail 'blocked English destination still shows products'
+
+          NORMALIZED_EXPECTED="$(python -c 'from urllib.parse import urlsplit; import sys; u=urlsplit(sys.argv[1]); print((u.scheme+"://"+u.netloc+u.path).rstrip("/"))' "$EXPECTED_FIRST")"
+          NORMALIZED_ACTUAL="$(python -c 'from urllib.parse import urlsplit; import sys; u=urlsplit(sys.argv[1]); print((u.scheme+"://"+u.netloc+u.path).rstrip("/"))' "$ES_FIRST")"
+          printf 'RANK expected_first=%s actual_first=%s\n' "$NORMALIZED_EXPECTED" "$NORMALIZED_ACTUAL" | tee -a "$STATUS_FILE"
+          [ "$NORMALIZED_EXPECTED" = "$NORMALIZED_ACTUAL" ] || fail 'recommended ordering regressed'
+
+          # A real browser verifies the post-JS DOM, including the zero-product state.
+          python -m pip install --quiet selenium
+          export MDO_BASE="$BASE" MDO_SHOP="$SHOP_URL" MDO_ES="$ES_URL" MDO_EN="$EN_URL" MDO_BLOCKED="$BLOCKED_COUNTRY" MDO_RUN="$GITHUB_RUN_ID"
+          python - <<'PY' | tee -a "$STATUS_FILE" || fail 'browser DOM verification failed'
+          import os, time
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+
+          opt=webdriver.ChromeOptions()
+          opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage')
+          opt.add_argument('--window-size=1440,1200')
+          driver=webdriver.Chrome(options=opt)
+          wait=WebDriverWait(driver, 20)
+          base=os.environ['MDO_BASE']; run=os.environ['MDO_RUN']
+
+          def load(url,country='ES'):
+              driver.get(base+'/?mdo_cookie_seed='+run)
+              driver.delete_cookie('mdo_shipping_country'); driver.delete_cookie('mdo_shipping_postcode')
+              driver.add_cookie({'name':'mdo_shipping_country','value':country,'domain':'www.elmercadodeorigen.com','path':'/'})
+              driver.add_cookie({'name':'mdo_shipping_postcode','value':'','domain':'www.elmercadodeorigen.com','path':'/'})
+              sep='&' if '?' in url else '?'
+              driver.get(url+sep+'mdo_browser_ux='+run+'-'+country)
+
+          def store_check(url,country,label,expect_products):
+              load(url,country)
+              trigger=wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'[data-mdo-ps-destination-open]')))
+              toolbar=trigger.find_element(By.XPATH,"ancestor::*[contains(concat(' ',normalize-space(@class),' '),' woostify-sorting ')][1]")
+              bg=driver.execute_script('return getComputedStyle(arguments[0]).backgroundColor',toolbar)
+              tbg=driver.execute_script('return getComputedStyle(arguments[0]).backgroundColor',trigger)
+              color=driver.execute_script('return getComputedStyle(arguments[0]).color',trigger)
+              text=trigger.text
+              cards=driver.find_elements(By.CSS_SELECTOR,'ul.products li.product, .products .product')
+              assert label in text, (label,text)
+              assert bg in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'), bg
+              assert tbg in ('rgb(248, 250, 248)','rgba(248, 250, 248, 1)'), tbg
+              assert color in ('rgb(23, 63, 50)','rgba(23, 63, 50, 1)'), color
+              if expect_products: assert len(cards)>0, len(cards)
+              else: assert len(cards)==0, len(cards)
+              return len(cards), text, bg, tbg
+
+          es=store_check(os.environ['MDO_ES'],'ES','Envío a',True)
+          en=store_check(os.environ['MDO_EN'],'ES','Shipping to',True)
+          bes=store_check(os.environ['MDO_ES'],os.environ['MDO_BLOCKED'],'Envío a',False)
+          ben=store_check(os.environ['MDO_EN'],os.environ['MDO_BLOCKED'],'Shipping to',False)
+
+          load(os.environ['MDO_SHOP'],'ES')
+          shopbar=wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,'.woostify-sorting.emo-catalog-toolbar-shared-010229')))
+          shopbg=driver.execute_script('return getComputedStyle(arguments[0]).backgroundColor',shopbar)
+          assert shopbg in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'), shopbg
+          assert driver.find_element(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]')
+          print('BROWSER_DOM ok es_cards=%d en_cards=%d blocked_es=%d blocked_en=%d shop_bg=%s' % (es[0],en[0],bes[0],ben[0],shopbg))
+          driver.quit()
+          PY
+
+          echo 'producer_store_toolbar_ux_production_ok' | tee -a "$STATUS_FILE"
+          echo 0 > "$EXIT_FILE"
+
+      - name: Record verification result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-store-toolbar-ux-20260821.txt .deploy-status/producer-store-toolbar-ux-20260821.exit-code || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record producer toolbar UX result [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Fail if verification failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .deploy-status/producer-store-toolbar-ux-20260821.exit-code
+          test "$(cat .deploy-status/producer-store-toolbar-ux-20260821.exit-code)" = '0'
+          grep -q '^producer_store_toolbar_ux_production_ok$' .deploy-status/producer-store-toolbar-ux-20260821.txt
