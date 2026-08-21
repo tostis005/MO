@@ -4,7 +4,8 @@
  *
  * The producer toolbar exposes one real WooCommerce <select>. WCFM/legacy
  * scripts may write inline !important styles after wp_head, so this owner also
- * restores the final Shop geometry after those scripts have run.
+ * restores the final Shop geometry after those scripts have run and whenever
+ * they try to restyle the ordering control later.
  *
  * @package ElMercadoDeOrigen
  */
@@ -98,9 +99,11 @@ add_action(
 			if (!document.body || !document.body.classList.contains('wcfmmp-store-page')) return;
 
 			const selector = '.emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"]';
+			const formSelector = '.emo-catalog-toolbar-shared-010229 .woocommerce-ordering';
 			const enhancerSelector = '.select2,.select2-container,.chosen-container,.nice-select,.selectize-control';
 			const mobile = window.matchMedia('(max-width: 991px)');
 			let queued = false;
+			let observer = null;
 
 			const important = (node, name, value) => node?.style?.setProperty(name, value, 'important');
 
@@ -186,9 +189,21 @@ add_action(
 				}
 			};
 
+			const startObserving = () => {
+				if (!observer || !document.body) return;
+				observer.observe(document.body, {
+					childList:true,
+					subtree:true,
+					attributes:true,
+					attributeFilter:['style','class','hidden','aria-hidden','disabled']
+				});
+			};
+
 			const repair = () => {
 				queued = false;
+				observer?.disconnect();
 				document.querySelectorAll(selector).forEach(ownSelect);
+				startObserving();
 			};
 
 			const queueRepair = () => {
@@ -196,6 +211,21 @@ add_action(
 				queued = true;
 				requestAnimationFrame(repair);
 			};
+
+			observer = new MutationObserver(mutations => {
+				for (const mutation of mutations) {
+					if (mutation.type === 'childList') {
+						queueRepair();
+						return;
+					}
+					const target = mutation.target;
+					if (!(target instanceof Element)) continue;
+					if (target.matches(selector) || target.matches(formSelector) || target.matches(enhancerSelector) || target.closest(formSelector)) {
+						queueRepair();
+						return;
+					}
+				}
+			});
 
 			repair();
 			requestAnimationFrame(repair);
@@ -207,10 +237,6 @@ add_action(
 			setTimeout(repair, 750);
 			setTimeout(repair, 1250);
 			setTimeout(repair, 2500);
-
-			new MutationObserver(mutations => {
-				if (mutations.some(mutation => mutation.type === 'childList')) queueRepair();
-			}).observe(document.body, { childList:true, subtree:true });
 		})();
 		</script>
 		<?php
