@@ -1,0 +1,131 @@
+name: Vendor ordering 0.10.276 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vendor-ordering-010276-production.yml'
+      - '.github/scripts/verify-vendor-ordering-010276.js'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-popover-010272.php'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-native-retire-010274.php'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare runner
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-catalog-controls-010270.php >/dev/null
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-popover-010272.php >/dev/null
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-native-retire-010274.php >/dev/null
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
+          npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy ordering files
+        id: deploy
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          MU_DIR="$PROD_PATH/wp-content/mu-plugins"
+
+          for name in \
+            elmercado-vendor-catalog-controls-010270.php \
+            elmercado-vendor-ordering-popover-010272.php \
+            elmercado-vendor-ordering-native-retire-010274.php \
+            elmercado-vendor-runtime-stability-010275.php; do
+            remote="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP "elmercadodeorigen-child/mu-plugins/$name" "$STAGING_USER@$STAGING_HOST:$remote"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; mkdir -p '$MU_DIR'; install -m 0644 '$remote' '$MU_DIR/$name'; rm -f '$remote'"
+          done
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); if [ -n \"\$wp_bin\" ]; then \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if (function_exists(\"rocket_clean_domain\")) { rocket_clean_domain(); } if (has_action(\"litespeed_purge_all\")) { do_action(\"litespeed_purge_all\"); } if (function_exists(\"wp_cache_clear_cache\")) { wp_cache_clear_cache(); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; fi"
+
+          PROBE="elmercado-opcache-vendor-order-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+          curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID" >/dev/null || true
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" || true
+
+          curl -fsSL --max-time 45 -H 'Cache-Control: no-cache' "$BASE_URL/tienda/1957/" > /tmp/vendor-ordering-canonical.html
+          grep -q 'mdoSheet010276' /tmp/vendor-ordering-canonical.html
+
+      - name: Verify real mobile tap
+        id: browser
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" node .github/scripts/verify-vendor-ordering-010276.js > /tmp/vendor-ordering-010276.json 2>&1
+          cat /tmp/vendor-ordering-010276.json
+
+      - name: Record result
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DEPLOY_RESULT: ${{ steps.deploy.outcome }}
+          BROWSER_RESULT: ${{ steps.browser.outcome }}
+        run: |
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path('/tmp/vendor-ordering-010276.json')
+          payload = p.read_text(errors='replace')[-12000:] if p.exists() else ''
+          result = {
+              'status': os.getenv('JOB_STATUS'),
+              'run_id': os.getenv('GITHUB_RUN_ID'),
+              'sha': os.getenv('GITHUB_SHA'),
+              'deploy': os.getenv('DEPLOY_RESULT'),
+              'browser': os.getenv('BROWSER_RESULT'),
+              'payload': payload,
+          }
+          pathlib.Path('.deploy-status/vendor-ordering-010276-production.json').write_text(json.dumps(result, ensure_ascii=False))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/vendor-ordering-010276-production.json
+          git commit -m "Record vendor ordering 0.10.276 production verification $GITHUB_RUN_ID" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
