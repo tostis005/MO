@@ -1,0 +1,121 @@
+name: Editorial authority batch 7 publish 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/publish-editorial-authority-batch7-20260821.php'
+      - '.github/data/editorial-authority-batch7-20260821/**'
+      - '.github/workflows/editorial-authority-batch7-publish-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: editorial-authority-batch7-20260821
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate editorial source
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-editorial-authority-batch7-20260821.php
+          test "$(find .github/data/editorial-authority-batch7-20260821 -maxdepth 1 -type f -name '*.php' | wc -l)" -eq 5
+          for f in .github/data/editorial-authority-batch7-20260821/*.php; do php -l "$f"; done
+
+      - name: Publish with production Plesk PHP
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE=/tmp/emdo-ab7-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
+          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch7-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e scp $SCP .github/data/editorial-authority-batch7-20260821/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH7_DIR='$DATA' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" > /tmp/ab7-raw.json
+          python3 - <<'PY'
+          import json
+          raw=open('/tmp/ab7-raw.json',encoding='utf-8',errors='ignore').read(); s=raw.find('{'); e=raw.rfind('}')
+          assert s>=0 and e>=s, raw[-6000:]
+          d=json.loads(raw[s:e+1]); assert d.get('batch')==7 and len(d.get('posts',[]))==5, d
+          assert all(p.get('status')=='publish' for p in d['posts']), d
+          assert len({p.get('image_id') for p in d['posts']})==5, d
+          assert all(int(p.get('words_es',0))>=850 and int(p.get('words_en',0))>=750 for p in d['posts']), d
+          assert all(int(p.get('image_w',0))>=1200 and int(p.get('image_h',0))>=700 for p in d['posts']), d
+          assert all(p.get('product_cat') for p in d['posts']), d
+          open('/tmp/ab7-clean.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
+
+      - name: Verify ten public article views
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://www.elmercadodeorigen.com; stamp="$GITHUB_RUN_ID"
+          check(){ url="$1"; marker="$2"; f=/tmp/ab7-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab7=$stamp"); test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH7:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; }
+          check "$BASE/caduca-aove-como-saber-si-se-ha-deteriorado/" evoo-expiry-quality-guide
+          check "$BASE/en/does-extra-virgin-olive-oil-expire-how-to-tell-if-it-has-deteriorated/" evoo-expiry-quality-guide
+          check "$BASE/aove-botella-lata-garrafa-que-envase-conviene/" evoo-packaging-format-guide
+          check "$BASE/en/evoo-bottle-tin-or-large-container-which-package-is-best/" evoo-packaging-format-guide
+          check "$BASE/carne-picada-ternera-que-mirar-antes-comprar/" ground-beef-buying-guide
+          check "$BASE/en/ground-beef-what-to-check-before-buying/" ground-beef-buying-guide
+          check "$BASE/como-congelar-descongelar-hortalizas-sin-arruinar-textura/" vegetable-freezing-guide
+          check "$BASE/en/how-to-freeze-and-thaw-vegetables-without-ruining-texture/" vegetable-freezing-guide
+          check "$BASE/como-conservar-legumbres-secas-despensa/" dried-pulses-storage-guide
+          check "$BASE/en/how-to-store-dried-pulses-in-the-pantry/" dried-pulses-storage-guide
+
+      - name: Verify both Journal indexes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://www.elmercadodeorigen.com
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/blog/?ab7=$GITHUB_RUN_ID" -o /tmp/blog-es.html
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab7=$GITHUB_RUN_ID" -o /tmp/blog-en.html
+          grep -Fq '¿Caduca el AOVE?' /tmp/blog-es.html
+          grep -Fq 'Carne picada de ternera' /tmp/blog-es.html
+          grep -Fq 'Does extra virgin olive oil expire?' /tmp/blog-en.html
+          grep -Fq 'Ground beef:' /tmp/blog-en.html
+
+      - name: Record verified publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open('/tmp/ab7-clean.json')); d.update({'verified':True,'language_views_verified':10,'blogs_verified':True,'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA']})
+          open('.deploy-status/editorial-authority-batch7-final-20260821.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch7-final-20260821.json
+          git commit -m 'Record verified editorial authority batch 7 publication [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
