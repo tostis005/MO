@@ -1,7 +1,9 @@
 <?php
-/** Build a repository-wide inventory of editorial article images. */
-// 2026-08-21: repository-wide audit for image uniqueness and high-risk ham/oil subjects.
+/** Build a repository-wide inventory of effective editorial article images. */
 $root = dirname(__DIR__);
+$override_file = $root . '/.github/data/editorial-image-overrides-20260821.php';
+$overrides = is_file($override_file) ? require $override_file : array();
+if (!is_array($overrides)) { $overrides = array(); }
 $patterns = array(
     $root . '/.github/data/editorial-authority-batch*/*.php',
     $root . '/.github/data/editorial-authority-batch*-*/*.php',
@@ -22,12 +24,14 @@ foreach ($files as $file) {
     if (!is_array($article) || empty($article['key'])) {
         continue;
     }
-    $image = isset($article['image']) && is_array($article['image']) ? $article['image'] : array();
+    $key = (string)$article['key'];
+    $original = isset($article['image']) && is_array($article['image']) ? $article['image'] : array();
+    $image = isset($overrides[$key]) && is_array($overrides[$key]) ? $overrides[$key] : $original;
     $id = trim((string)($image['id'] ?? ''));
     $direct = trim((string)($image['direct'] ?? ''));
     $row = array(
         'file' => str_replace($root . '/', '', $file),
-        'key' => (string)$article['key'],
+        'key' => $key,
         'slug' => (string)($article['slug'] ?? ''),
         'title' => (string)($article['title'] ?? ''),
         'topic' => (string)($article['topic'] ?? ''),
@@ -37,6 +41,8 @@ foreach ($files as $file) {
         'photographer' => (string)($image['photographer'] ?? ''),
         'alt_es' => (string)($image['alt_es'] ?? ''),
         'alt_en' => (string)($image['alt_en'] ?? ''),
+        'overridden' => isset($overrides[$key]),
+        'original_image_id' => (string)($original['id'] ?? ''),
     );
     $rows[] = $row;
     if ($id !== '') { $by_id[$id][] = $row['key']; }
@@ -58,6 +64,7 @@ foreach ($rows as $row) {
 $out = array(
     'generated_at' => gmdate('c'),
     'article_count' => count($rows),
+    'override_count' => count($overrides),
     'duplicate_image_ids' => $dupes['ids'],
     'duplicate_image_urls' => $dupes['direct'],
     'high_risk_ham_oil' => $high_risk,
