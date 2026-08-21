@@ -1,0 +1,213 @@
+name: Producer store safe catalog rules
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/zzz-mdo-producer-store-catalog-rules-safe-20260821.php'
+      - '.github/scripts/verify-producer-store-safe-20260821.php'
+      - '.github/scripts/check-producer-store-html-20260821.py'
+      - '.github/workflows/producer-store-safe-production-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        shell: bash
+        run: |
+          php -l mu-plugins/zzz-mdo-producer-store-catalog-rules-safe-20260821.php
+          php -l .github/scripts/verify-producer-store-safe-20260821.php
+
+      - name: Deploy with rollback and verify
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          mkdir -p .deploy-status
+          STATUS_FILE=.deploy-status/producer-store-safe-20260821.txt
+          EXIT_FILE=.deploy-status/producer-store-safe-20260821.exit-code
+          : > "$STATUS_FILE"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          TARGET="$PROD_PATH/wp-content/mu-plugins/zzz-mdo-producer-store-catalog-rules-safe-20260821.php"
+          REMOTE_PLUGIN="/tmp/mdo-producer-store-safe-${GITHUB_RUN_ID}.php"
+          REMOTE_AUDIT="/tmp/mdo-producer-store-safe-audit-${GITHUB_RUN_ID}.php"
+          REMOTE_BACKUP="/tmp/mdo-producer-store-safe-${GITHUB_RUN_ID}.bak.php"
+
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzz-mdo-producer-store-catalog-rules-safe-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_PLUGIN"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/verify-producer-store-safe-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+
+          HAD_PREVIOUS="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$TARGET' ]; then cp '$TARGET' '$REMOTE_BACKUP'; printf 1; else printf 0; fi")"
+
+          rollback() {
+            echo "ROLLBACK producer-store safe module" | tee -a "$STATUS_FILE"
+            if [ "$HAD_PREVIOUS" = "1" ]; then
+              sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "cp '$REMOTE_BACKUP' '$TARGET'"
+            else
+              sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET'"
+            fi
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              wp_bin=\$(command -v wp || true)
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            " || true
+          }
+
+          fail() {
+            echo "FAIL: $1" | tee -a "$STATUS_FILE"
+            rollback
+            echo 2 > "$EXIT_FILE"
+            exit 2
+          }
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            cp '$REMOTE_PLUGIN' '$TARGET'
+            rm -f '$REMOTE_PLUGIN'
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$TARGET'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+          " >> "$STATUS_FILE" 2>&1 || fail "deploy or PHP lint failed"
+
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root
+          " >> "$STATUS_FILE" 2>&1
+          AUDIT_CODE=$?
+          set -e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_AUDIT'" || true
+          [ "$AUDIT_CODE" = "0" ] || fail "backend audit failed"
+
+          AUDIT_JSON="$(grep '^producer_store_safe_audit_ok ' "$STATUS_FILE" | tail -n1 | sed 's/^producer_store_safe_audit_ok //')"
+          [ -n "$AUDIT_JSON" ] || fail "backend audit success marker missing"
+
+          SAMPLE_SLUG="$(python -c 'import json,sys; print(json.loads(sys.argv[1]).get("sample_slug", ""))' "$AUDIT_JSON")"
+          BLOCKED_COUNTRY="$(python -c 'import json,sys; print(json.loads(sys.argv[1]).get("sample_blocked_country", ""))' "$AUDIT_JSON")"
+          EXPECTED_FIRST="$(python -c 'import json,sys; print(json.loads(sys.argv[1]).get("sample_es_first_product_url", ""))' "$AUDIT_JSON")"
+          [ -n "$SAMPLE_SLUG" ] || fail "sample store slug missing"
+          [ -n "$BLOCKED_COUNTRY" ] || fail "sample blocked country missing"
+          [ -n "$EXPECTED_FIRST" ] || fail "expected first ranked product missing"
+
+          BASE=https://www.elmercadodeorigen.com
+          ES_URL="$BASE/tienda/$SAMPLE_SLUG/"
+          EN_URL="$BASE/en/store/$SAMPLE_SLUG/"
+          LIST_URL="$BASE/productores/"
+
+          curl_page() {
+            local url="$1" cookie="$2" out="$3"
+            curl -L -sS --max-time 40 -H 'Cache-Control: no-cache' -H "Cookie: $cookie" -o "$out" -w '%{http_code}' "${url}?mdo_safe_verify=${GITHUB_RUN_ID}"
+          }
+
+          LIST_STATUS="$(curl_page "$LIST_URL" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/producers.html || true)"
+          ES_STATUS="$(curl_page "$ES_URL" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/store-es.html || true)"
+          EN_STATUS="$(curl_page "$EN_URL" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/store-en.html || true)"
+          BLOCK_ES_STATUS="$(curl_page "$ES_URL" "mdo_shipping_country=$BLOCKED_COUNTRY; mdo_shipping_postcode=" /tmp/store-block-es.html || true)"
+          BLOCK_EN_STATUS="$(curl_page "$EN_URL" "mdo_shipping_country=$BLOCKED_COUNTRY; mdo_shipping_postcode=" /tmp/store-block-en.html || true)"
+
+          printf 'HTTP producers=%s es=%s en=%s blocked_es=%s blocked_en=%s\n' "$LIST_STATUS" "$ES_STATUS" "$EN_STATUS" "$BLOCK_ES_STATUS" "$BLOCK_EN_STATUS" | tee -a "$STATUS_FILE"
+          for status in "$LIST_STATUS" "$ES_STATUS" "$EN_STATUS" "$BLOCK_ES_STATUS" "$BLOCK_EN_STATUS"; do
+            [[ "$status" =~ ^[23][0-9][0-9]$ ]] || fail "public route returned non-2xx/3xx status"
+          done
+
+          grep -q 'data-mdo-ps-destination-open' /tmp/store-es.html || fail "Spanish destination selector missing"
+          grep -q 'Envío a' /tmp/store-es.html || fail "Spanish destination label missing"
+          grep -q 'mdo_recommended' /tmp/store-es.html || fail "Spanish Recommended sort option missing"
+          grep -q 'data-mdo-ps-destination-open' /tmp/store-en.html || fail "English destination selector missing"
+          grep -q 'Shipping to' /tmp/store-en.html || fail "English destination label missing"
+          grep -q 'mdo_recommended' /tmp/store-en.html || fail "English Recommended sort option missing"
+          grep -q '>Spain<' /tmp/store-en.html || fail "English country label missing"
+          grep -q 'data-mdo-ps-destination-open' /tmp/store-block-es.html || fail "blocked Spanish selector missing"
+          grep -q 'data-mdo-ps-destination-open' /tmp/store-block-en.html || fail "blocked English selector missing"
+
+          ES_INFO="$(python .github/scripts/check-producer-store-html-20260821.py /tmp/store-es.html)"
+          EN_INFO="$(python .github/scripts/check-producer-store-html-20260821.py /tmp/store-en.html)"
+          BLOCK_ES_INFO="$(python .github/scripts/check-producer-store-html-20260821.py /tmp/store-block-es.html)"
+          BLOCK_EN_INFO="$(python .github/scripts/check-producer-store-html-20260821.py /tmp/store-block-en.html)"
+
+          ES_COUNT="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["count"])' "$ES_INFO")"
+          EN_COUNT="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["count"])' "$EN_INFO")"
+          BLOCK_ES_COUNT="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["count"])' "$BLOCK_ES_INFO")"
+          BLOCK_EN_COUNT="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["count"])' "$BLOCK_EN_INFO")"
+          ES_FIRST="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["first_href"])' "$ES_INFO")"
+
+          printf 'PRODUCT_CARDS es=%s en=%s blocked_es=%s blocked_en=%s\n' "$ES_COUNT" "$EN_COUNT" "$BLOCK_ES_COUNT" "$BLOCK_EN_COUNT" | tee -a "$STATUS_FILE"
+          [ "$ES_COUNT" -gt 0 ] || fail "Spanish allowed destination has no products"
+          [ "$EN_COUNT" -gt 0 ] || fail "English allowed destination has no products"
+          [ "$BLOCK_ES_COUNT" -eq 0 ] || fail "Spanish blocked destination still shows products"
+          [ "$BLOCK_EN_COUNT" -eq 0 ] || fail "English blocked destination still shows products"
+
+          NORMALIZED_EXPECTED="$(python -c 'from urllib.parse import urlsplit; import sys; u=urlsplit(sys.argv[1]); print((u.scheme+"://"+u.netloc+u.path).rstrip("/"))' "$EXPECTED_FIRST")"
+          NORMALIZED_ACTUAL="$(python -c 'from urllib.parse import urlsplit; import sys; u=urlsplit(sys.argv[1]); print((u.scheme+"://"+u.netloc+u.path).rstrip("/"))' "$ES_FIRST")"
+          printf 'RANK expected_first=%s actual_first=%s\n' "$NORMALIZED_EXPECTED" "$NORMALIZED_ACTUAL" | tee -a "$STATUS_FILE"
+          [ "$NORMALIZED_EXPECTED" = "$NORMALIZED_ACTUAL" ] || fail "first Spanish product does not match EMDO recommended ranking"
+
+          echo 0 > "$EXIT_FILE"
+          echo "producer_store_safe_production_ok" | tee -a "$STATUS_FILE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_BACKUP'" || true
+
+      - name: Record verification result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-store-safe-20260821.txt .deploy-status/producer-store-safe-20260821.exit-code || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record producer store safe deployment result [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Fail if verification failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .deploy-status/producer-store-safe-20260821.exit-code
+          test "$(cat .deploy-status/producer-store-safe-20260821.exit-code)" = "0"
+          grep -q '^producer_store_safe_production_ok$' .deploy-status/producer-store-safe-20260821.txt
