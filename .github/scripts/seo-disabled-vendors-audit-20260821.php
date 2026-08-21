@@ -12,17 +12,24 @@ function emdo_vendor_label( $user_id ) {
     $u = get_userdata($user_id);
     if (!$u) return 'user-'.$user_id;
     $store = get_user_meta($user_id, 'wcfmmp_profile_settings', true);
-    if (is_array($store)) {
-        foreach (array('store_name','store_slug','store_email') as $k) {
-            if (!empty($store[$k]) && $k === 'store_name') return (string)$store[$k];
-        }
-    }
+    if (is_array($store) && !empty($store['store_name'])) return (string)$store['store_name'];
     return $u->display_name ?: $u->user_login;
 }
 
+function emdo_vendor_disabled( $user_id, $user ) {
+    $roles = $user ? (array)$user->roles : array();
+    if (in_array('disable_vendor', $roles, true)) return true;
+    $disabled = strtolower(trim((string)get_user_meta($user_id, '_disable_vendor', true)));
+    if (in_array($disabled, array('1','yes','true','on'), true)) return true;
+    $offline = strtolower(trim((string)get_user_meta($user_id, '_wcfm_store_offline', true)));
+    if (in_array($offline, array('1','yes','true','on'), true)) return true;
+    return false;
+}
+
 $authors = $wpdb->get_col("SELECT DISTINCT post_author FROM {$wpdb->posts} WHERE post_type='product' ORDER BY post_author");
-echo "EMDO DISABLED VENDOR SEO READINESS AUDIT 2026-08-21\n";
+echo "EMDO DISABLED VENDOR SEO READINESS AUDIT V2 2026-08-21\n";
 echo 'PRODUCT_AUTHORS=' . count($authors) . "\n";
+$disabled_count = 0;
 
 foreach ($authors as $author_id_raw) {
     $author_id = (int)$author_id_raw;
@@ -34,8 +41,11 @@ foreach ($authors as $author_id_raw) {
         $author_id
     ), ARRAY_A);
 
+    $is_disabled = emdo_vendor_disabled($author_id, $u);
+    if ($is_disabled) $disabled_count++;
+
     $meta_rows = $wpdb->get_results($wpdb->prepare(
-        "SELECT meta_key, meta_value FROM {$wpdb->usermeta} WHERE user_id=%d AND (meta_key LIKE '%%wcfm%%' OR meta_key LIKE '%%vendor%%' OR meta_key LIKE '%%store%%' OR meta_key LIKE '%%disable%%' OR meta_key LIKE '%%active%%' OR meta_key LIKE '%%enable%%') ORDER BY meta_key",
+        "SELECT meta_key, meta_value FROM {$wpdb->usermeta} WHERE user_id=%d AND (meta_key LIKE '%%wcfm%%' OR meta_key LIKE '%%vendor%%' OR meta_key LIKE '%%store%%' OR meta_key LIKE '%%disable%%') ORDER BY meta_key",
         $author_id
     ), ARRAY_A);
     $signals = array();
@@ -54,14 +64,24 @@ foreach ($authors as $author_id_raw) {
         }
     }
 
-    $products = get_posts(array(
-        'post_type'=>'product','post_status'=>array('publish','draft','pending','private','future'),
-        'author'=>$author_id,'posts_per_page'=>-1,'orderby'=>'ID','order'=>'ASC','suppress_filters'=>true,
+    // Query IDs directly from wp_posts so marketplace/query hooks cannot leak products
+    // from another vendor into this audit.
+    $product_ids = $wpdb->get_col($wpdb->prepare(
+        "SELECT ID FROM {$wpdb->posts}
+         WHERE post_type='product' AND post_author=%d
+           AND post_status IN ('publish','draft','pending','private','future')
+         ORDER BY ID ASC",
+        $author_id
     ));
+
     $issues=array('missing_content'=>0,'short_content'=>0,'missing_excerpt'=>0,'missing_featured_image'=>0,'missing_category'=>0,'featured_alt_missing'=>0,'gallery_alt_missing'=>0,'english_unpublished'=>0,'english_missing_title'=>0,'english_missing_content'=>0);
     $samples=array();
     $unique_images=array();
-    foreach ($products as $p) {
+    $status_audited=array();
+    foreach ($product_ids as $product_id_raw) {
+        $p = get_post((int)$product_id_raw);
+        if (!$p || $p->post_type !== 'product' || (int)$p->post_author !== $author_id) continue;
+        $status_audited[$p->post_status] = ($status_audited[$p->post_status] ?? 0) + 1;
         $reasons=array();
         $len=emdo_text_len($p->post_content);
         if ($len===0) { $issues['missing_content']++; $reasons[]='missing_content'; }
@@ -83,8 +103,14 @@ foreach ($authors as $author_id_raw) {
         if ((string)get_post_meta($p->ID,'_en_US_published',true)!=='1') $issues['english_unpublished']++;
         if (trim((string)get_post_meta($p->ID,'_en_US_post_title',true))==='') $issues['english_missing_title']++;
         if (emdo_text_len(get_post_meta($p->ID,'_en_US_post_content',true))===0) $issues['english_missing_content']++;
-        if ($reasons && count($samples)<12) {
-            $samples[]=array('id'=>$p->ID,'status'=>$p->post_status,'title'=>$p->post_title,'content_len'=>$len,'reasons'=>$reasons);
+        if (($reasons || $is_disabled) && count($samples)<30) {
+            $samples[]=array(
+                'id'=>$p->ID,'status'=>$p->post_status,'title'=>$p->post_title,'content_len'=>$len,
+                'excerpt_len'=>emdo_text_len($p->post_excerpt),'reasons'=>$reasons,
+                'categories'=>wp_get_post_terms($p->ID,'product_cat',array('fields'=>'names')),
+                'sku'=>(string)get_post_meta($p->ID,'_sku',true),
+                'source_url'=>(string)get_post_meta($p->ID,'_mdo_source_url',true),
+            );
         }
     }
 
@@ -92,20 +118,14 @@ foreach ($authors as $author_id_raw) {
     $store_name=is_array($profile)&&!empty($profile['store_name']) ? $profile['store_name'] : emdo_vendor_label($author_id);
     $store_slug=is_array($profile)&&!empty($profile['store_slug']) ? $profile['store_slug'] : '';
     $row=array(
-        'user_id'=>$author_id,
-        'user_login'=>$u->user_login,
-        'display_name'=>$u->display_name,
-        'roles'=>array_values($u->roles),
-        'store_name'=>$store_name,
-        'store_slug'=>$store_slug,
-        'product_status_counts'=>$status_counts,
-        'products_checked'=>count($products),
-        'unique_images'=>count($unique_images),
-        'issues'=>$issues,
-        'status_signals'=>$signals,
-        'samples'=>$samples,
+        'user_id'=>$author_id,'disabled'=>$is_disabled,'user_login'=>$u->user_login,'display_name'=>$u->display_name,
+        'roles'=>array_values($u->roles),'store_name'=>$store_name,'store_slug'=>$store_slug,
+        'product_status_counts'=>$status_counts,'audited_status_counts'=>$status_audited,
+        'products_checked'=>count($product_ids),'product_ids'=>array_map('intval',$product_ids),
+        'unique_images'=>count($unique_images),'issues'=>$issues,'status_signals'=>$signals,'samples'=>$samples,
     );
-    echo 'VENDOR=' . wp_json_encode($row, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
+    echo ($is_disabled ? 'DISABLED_VENDOR=' : 'VENDOR=') . wp_json_encode($row, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
 }
 
+echo 'DISABLED_VENDOR_COUNT=' . $disabled_count . "\n";
 echo "END_AUDIT\n";
