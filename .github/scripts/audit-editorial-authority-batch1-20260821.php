@@ -2,6 +2,7 @@
 /** Production data audit for editorial authority batch 1. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+/* Re-audit after the explicit production repair run. */
 $keys = array(
     'iberico-seals',
     'ham-storage',
