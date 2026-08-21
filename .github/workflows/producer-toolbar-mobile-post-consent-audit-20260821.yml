@@ -38,15 +38,31 @@ jobs:
           ok=True
           try:
               for path in ('/tienda/1957/','/en/store/1957/'):
-                  d.delete_all_cookies() if d.current_url.startswith('http') else None
-                  d.get('https://www.elmercadodeorigen.com'+path+'?post-consent-audit=1'); time.sleep(2.3)
+                  if d.current_url.startswith('http'):
+                      d.delete_all_cookies()
+                  d.get('https://www.elmercadodeorigen.com'+path+'?post-consent-audit=2'); time.sleep(2.3)
                   clicked=False
-                  for b in d.find_elements(By.TAG_NAME,'button'):
-                      try:
-                          txt=' '.join((b.text or '').split()).lower()
-                          if b.is_displayed() and (txt in ('aceptar','accept','accept all','aceptar todo','aceptar todas') or txt.startswith('aceptar') or txt.startswith('accept')):
-                              d.execute_script('arguments[0].click()',b); clicked=True; time.sleep(.8); break
-                      except Exception: pass
+                  selectors=(
+                      '#cookie_action_close_header',
+                      '.wt-cli-accept-btn',
+                      '[data-cli_action="accept"]',
+                      '.cli_action_button[data-cli_action="accept"]',
+                      'a.cookie_action_close_header',
+                  )
+                  for s in selectors:
+                      for b in d.find_elements(By.CSS_SELECTOR,s):
+                          try:
+                              if b.is_displayed():
+                                  d.execute_script('arguments[0].click()',b); clicked=True; time.sleep(.9); break
+                          except Exception: pass
+                      if clicked: break
+                  if not clicked:
+                      for b in d.find_elements(By.CSS_SELECTOR,'a,button'):
+                          try:
+                              txt=' '.join((b.text or '').split()).lower()
+                              if b.is_displayed() and (txt.startswith('aceptar') or txt.startswith('accept')):
+                                  d.execute_script('arguments[0].click()',b); clicked=True; time.sleep(.9); break
+                          except Exception: pass
                   sel=WebDriverWait(d,20).until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woocommerce-ordering select')))
                   form=sel.find_element(By.XPATH,'..')
                   trig=d.find_element(By.CSS_SELECTOR,'#wcfmmp-store .mdo-catalog-destination__trigger')
@@ -60,7 +76,7 @@ jobs:
                   d.execute_script('''for(const t of ['pointerdown','mousedown']) arguments[0].dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true}));''',sel)
                   events=d.execute_script('return window.__events')
                   print('POST_CONSENT',path,'clicked',clicked,m,'events',events)
-                  good=m['hitIsSelect'] and m['selectPointer']=='auto' and m['formBorder']=='0px' and m['formShadow']=='none' and m['labelChildren']==0 and m['labelSH']<=m['labelH']+1 and events==[['pointerdown',False],['mousedown',False]]
+                  good=clicked and m['hitIsSelect'] and m['selectPointer']=='auto' and m['formBorder']=='0px' and m['formShadow']=='none' and m['labelChildren']==0 and m['labelSH']<=m['labelH']+1 and events==[['pointerdown',False],['mousedown',False]]
                   ok = ok and good
               print('post_consent_ok',ok)
           finally: d.quit()
