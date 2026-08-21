@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO - Dynamic multilingual sitemaps
  * Description: Canonical dynamic XML sitemaps for public ES/EN pages, product categories and products.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -195,6 +195,8 @@ if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 
 		/**
 		 * Published, public WooCommerce products whose marketplace seller is active.
+		 * Mirrors WooCommerce's "hide out of stock items" setting so the sitemap
+		 * never advertises URLs the storefront intentionally hides.
 		 *
 		 * @return int[]
 		 */
@@ -220,6 +222,7 @@ if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 				)
 			);
 
+			$hide_out_of_stock = 'yes' === (string) get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
 			$eligible = array();
 			foreach ( array_map( 'intval', (array) $query->posts ) as $product_id ) {
 				$post = get_post( $product_id );
@@ -235,6 +238,9 @@ if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 				if ( function_exists( 'wc_get_product' ) ) {
 					$product = wc_get_product( $product_id );
 					if ( ! $product || 'hidden' === $product->get_catalog_visibility() ) {
+						continue;
+					}
+					if ( $hide_out_of_stock && 'outofstock' === (string) $product->get_stock_status() ) {
 						continue;
 					}
 				}
