@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO SEO Foundation
  * Description: Stable SEO titles, descriptions, canonicals, index controls and legacy redirects for El Mercado de Origen.
- * Version: 2026.08.21.6
+ * Version: 2026.08.21.7
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -37,6 +37,25 @@ function emdo_seo_legacy_mentta_category( WP_Term $term ): bool {
     foreach ( get_ancestors( $term->term_id, 'product_cat', 'taxonomy' ) as $ancestor_id ) {
         $ancestor = get_term( (int) $ancestor_id, 'product_cat' );
         if ( $ancestor instanceof WP_Term && (string) $ancestor->slug === 'mentta' ) return true;
+    }
+    return false;
+}
+
+function emdo_seo_disabled_store_request(): bool {
+    $path = emdo_seo_path();
+    if ( ! preg_match( '#^/(?:tienda|en/store)/([^/]+)/?#i', $path, $m ) ) return false;
+    $requested = sanitize_title( $m[1] );
+    if ( $requested === '' ) return false;
+    $users = get_users( array( 'fields' => array( 'ID', 'roles' ) ) );
+    foreach ( $users as $user ) {
+        if ( ! $user instanceof WP_User ) continue;
+        $profile = get_user_meta( $user->ID, 'wcfmmp_profile_settings', true );
+        $slug = is_array( $profile ) && ! empty( $profile['store_slug'] ) ? sanitize_title( (string) $profile['store_slug'] ) : '';
+        if ( $slug !== $requested ) continue;
+        $role_disabled = in_array( 'disable_vendor', (array) $user->roles, true );
+        $flag_disabled = in_array( strtolower( trim( (string) get_user_meta( $user->ID, '_disable_vendor', true ) ) ), array( '1','yes','true','on' ), true );
+        $offline = in_array( strtolower( trim( (string) get_user_meta( $user->ID, '_wcfm_store_offline', true ) ) ), array( '1','yes','true','on' ), true );
+        return $role_disabled || $flag_disabled || $offline;
     }
     return false;
 }
@@ -121,6 +140,7 @@ add_filter( 'aioseo_robots_meta', static function ( $attributes ) {
         if ( (string) $queried->taxonomy === 'product_tag' ) $noindex = true;
         if ( emdo_seo_legacy_mentta_category( $queried ) ) $noindex = true;
     }
+    if ( emdo_seo_disabled_store_request() ) $noindex = true;
     if ( is_search() ) $noindex = true;
     if ( function_exists( 'is_cart' ) && is_cart() ) $noindex = true;
     if ( function_exists( 'is_checkout' ) && is_checkout() ) $noindex = true;
