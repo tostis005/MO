@@ -1,0 +1,68 @@
+name: External Pinterestbot check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/external-pinterestbot-check-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check public site as Pinterestbot
+        shell: bash
+        run: |
+          set -u
+          mkdir -p reports
+          REPORT=reports/pinterestbot-external-check-20260821.txt
+          TOKEN='bd9b4a2c373b774bb7753fa7040172ac'
+          UAS=(
+            'Pinterest/0.2 (+https://www.pinterest.com/bot.html)'
+            'Mozilla/5.0 (compatible; Pinterestbot/1.0; +https://www.pinterest.com/bot.html)'
+            'Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.96 Mobile Safari/537.36 (compatible; Pinterestbot/1.0; +https://www.pinterest.com/bot.html)'
+          )
+          {
+            for url in 'https://www.elmercadodeorigen.com/' 'https://elmercadodeorigen.com/' 'http://www.elmercadodeorigen.com/' 'http://elmercadodeorigen.com/'; do
+              echo "=== URL $url ==="
+              for ua in "${UAS[@]}"; do
+                echo "UA=$ua"
+                tmp=$(mktemp)
+                headers=$(mktemp)
+                code=$(curl -kLsS --max-time 30 -A "$ua" -D "$headers" -o "$tmp" -w '%{http_code}' "$url" || true)
+                final=$(curl -kLsS --max-time 30 -A "$ua" -o /dev/null -w '%{url_effective}' "$url" || true)
+                echo "http_code=$code"
+                echo "final_url=$final"
+                grep -Ei '^(HTTP/|location:|server:|cf-|x-|retry-after:)' "$headers" | head -40 || true
+                if grep -Fq "$TOKEN" "$tmp"; then echo 'token=FOUND'; else echo 'token=NOT_FOUND'; fi
+                if grep -Fq "<meta name=\"p:domain_verify\" content=\"$TOKEN\">" "$tmp"; then echo 'exact_meta=FOUND'; else echo 'exact_meta=NOT_FOUND'; fi
+                headpart=$(awk 'BEGIN{IGNORECASE=1} /<head/{p=1} p{print} /<\/head>/{exit}' "$tmp")
+                if printf '%s' "$headpart" | grep -Fq "$TOKEN"; then echo 'token_in_head=YES'; else echo 'token_in_head=NO'; fi
+                echo "bytes=$(wc -c < "$tmp")"
+                echo "first_title=$(grep -io '<title[^>]*>[^<]*</title>' "$tmp" | head -1 || true)"
+                rm -f "$tmp" "$headers"
+                echo
+              done
+            done
+            echo '=== robots.txt ==='
+            curl -kLsS --max-time 30 -A 'Mozilla/5.0 (compatible; Pinterestbot/1.0; +https://www.pinterest.com/bot.html)' https://www.elmercadodeorigen.com/robots.txt | sed -n '1,200p'
+          } | tee "$REPORT"
+      - name: Persist report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/pinterestbot-external-check-20260821.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record external Pinterestbot check [skip ci]'
+          git pull --rebase origin main || true
+          git push origin HEAD:main
