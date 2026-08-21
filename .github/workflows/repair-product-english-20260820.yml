@@ -7,6 +7,7 @@ on:
       - '.github/workflows/repair-product-english-20260820.yml'
       - '.github/scripts/export-product-english-repair-20260820.php'
       - '.github/scripts/apply-product-english-repair-20260820.php'
+      - 'mu-plugins/mdo-huerta-english-products-20260821.php'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +36,7 @@ jobs:
           php -l .github/scripts/export-product-english-repair-20260820.php
           php -l .github/scripts/apply-product-english-repair-20260820.php
           php -l .github/scripts/audit-current-product-english-20260820.php
+          php -l mu-plugins/mdo-huerta-english-products-20260821.php
 
       - name: Prepare SSH and locate production
         id: prod
@@ -59,6 +61,20 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
           echo "prod_path=$PROD_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Huerta English storefront layer
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH='${{ steps.prod.outputs.prod_path }}'
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-huerta-english-products-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-huerta-english-products-20260821.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-huerta-english-products-20260821.php'; wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
       - name: Export current repair candidates
         env:
@@ -168,7 +184,87 @@ jobs:
           print('huerta_exact_copy_products='+str(h['exact_copy_products']))
           if s['incomplete_english_fields'] != 0: raise SystemExit('English field gaps remain')
           if h['catalog_products'] != 46 or h['complete_english_fields'] != 46 or h['incomplete_english_fields'] != 0: raise SystemExit('Huerta English coverage incomplete')
-          if s['exact_copy_products'] != 0: raise SystemExit('Exact Spanish copies remain in English fields')
+          if h['exact_copy_products'] != 0: raise SystemExit('Exact Spanish copies remain in Huerta English fields')
+          PY
+
+      - name: Export Huerta fields for live storefront verification
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH='${{ steps.prod.outputs.prod_path }}'
+          cat > /tmp/huerta-en-live-source.php <<'PHP'
+          <?php
+          if (!defined('ABSPATH')) exit(1);
+          global $wpdb;
+          $table=class_exists('MDO_Database')?MDO_Database::table('source_products'):$wpdb->prefix.'mdo_source_products';
+          $rows=$wpdb->get_results("SELECT DISTINCT p.ID,p.post_author,p.post_title,p.post_name FROM {$wpdb->posts} p INNER JOIN {$table} src ON src.wc_product_id=p.ID AND src.source_url LIKE '%lahuertadeanamary.com%' WHERE p.post_type='product' AND p.post_status='publish' ORDER BY p.ID");
+          $patterns=['descripcion'=>'descripcion','ingredientes'=>'ingredientes','conservacion'=>'conservacion','precio'=>'precio','peso'=>'peso','aproximadamente'=>'aproximadamente','caja de'=>'caja de','pieza de'=>'pieza de','unidad'=>'unidad','unidades'=>'unidades','producto'=>'producto','fresco'=>'fresco','fresca'=>'fresca','recoleccion'=>'recoleccion','temporada'=>'temporada','origen'=>'origen','contacto'=>'contacto','correo'=>'correo','envio'=>'envio','legumbres'=>'legumbres','hortalizas'=>'hortalizas','conservas'=>'conservas'];
+          $out=['count'=>0,'complete'=>0,'vendors'=>[],'residue_issues'=>[],'products'=>[]];
+          foreach((array)$rows as $p){
+            $id=(int)$p->ID;$out['count']++;
+            $u=get_userdata((int)$p->post_author);$vendor=$u instanceof WP_User?(string)$u->user_nicename:'';if($vendor!=='')$out['vendors'][$vendor]=($out['vendors'][$vendor]??0)+1;
+            $title=trim(wp_strip_all_tags((string)get_post_meta($id,'_en_US_post_title',true)));
+            $slug=sanitize_title((string)get_post_meta($id,'_en_US_post_name',true));
+            $content=(string)get_post_meta($id,'_en_US_post_content',true);$excerpt=(string)get_post_meta($id,'_en_US_post_excerpt',true);$published=(string)get_post_meta($id,'_en_US_published',true);
+            $plain=trim(preg_replace('/\s+/u',' ',html_entity_decode(wp_strip_all_tags($content),ENT_QUOTES|ENT_HTML5,'UTF-8')));
+            $combined=$title.' '.wp_strip_all_tags($excerpt).' '.$plain.' '.str_replace('-',' ',$slug);
+            $combined=strtolower(remove_accents($combined));
+            $combined=str_replace(['la huerta de ana mari','la huerta de ana mary','el mercado de origen'],' ',$combined);
+            $hits=[];foreach($patterns as $label=>$needle){if(preg_match('/(^|[^a-z0-9])'.preg_quote($needle,'/').'([^a-z0-9]|$)/u',$combined))$hits[]=$label;}
+            if($hits)$out['residue_issues'][]=['id'=>$id,'title'=>$title,'hits'=>$hits];
+            $ok=$published==='1'&&$title!==''&&$slug!==''&&$plain!=='';if($ok)$out['complete']++;
+            $sig=function_exists('mb_substr')?mb_substr($plain,0,85):substr($plain,0,85);
+            $out['products'][]=['id'=>$id,'native_title'=>(string)$p->post_title,'native_slug'=>(string)$p->post_name,'english_title'=>$title,'english_slug'=>$slug,'content_signature'=>$sig];
+          }
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT),"\n";
+          if($out['count']!==46||$out['complete']!==46||count($out['vendors'])!==1)exit(2);
+          PHP
+          REMOTE=/tmp/huerta-en-live-source-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP /tmp/huerta-en-live-source.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/huerta-en-live-source.json
+          python3 -m json.tool /tmp/huerta-en-live-source.json >/dev/null
+
+      - name: Verify 46 English URLs titles descriptions and vendor links
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import html,json,pathlib,re,subprocess,time,unicodedata
+          data=json.load(open('/tmp/huerta-en-live-source.json',encoding='utf-8'))
+          base='https://www.elmercadodeorigen.com';vendor=next(iter(data['vendors']));stamp=str(int(time.time()))
+          def fetch(url):
+            p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','8','--max-time','35','-H','Cache-Control: no-cache','-o','/tmp/huerta-page.html','-w','%{http_code}|%{url_effective}',url],capture_output=True,text=True)
+            body=pathlib.Path('/tmp/huerta-page.html').read_text(errors='ignore') if pathlib.Path('/tmp/huerta-page.html').exists() else ''
+            bits=p.stdout.strip().split('|',1);return int(bits[0] or 0),(bits[1] if len(bits)>1 else ''),body
+          def norm(s):
+            s=html.unescape(re.sub(r'<[^>]+>',' ',s));s=unicodedata.normalize('NFKC',s);return re.sub(r'\s+',' ',s).strip().casefold()
+          products=[]
+          for r in data['products']:
+            url=f"{base}/en/product/{r['english_slug']}/?mdo_huerta_en={stamp}"
+            code,effective,body=fetch(url);page=norm(body);sig=norm(r['content_signature'])[:48]
+            products.append({'id':r['id'],'url':url,'http_code':code,'effective_url':effective,'title_ok':norm(r['english_title']) in page,'description_ok':bool(sig) and sig in page})
+          store_url=f"{base}/en/store/{vendor}/?mdo_huerta_en_store={stamp}"
+          scode,seffective,sbody=fetch(store_url);splain=norm(sbody)
+          english_link_hits=sum(1 for r in data['products'] if f"/en/product/{r['english_slug']}/" in sbody)
+          english_title_hits=sum(1 for r in data['products'] if norm(r['english_title']) in splain)
+          wrong=[]
+          for r in data['products']:
+            if r['native_slug']!=r['english_slug']:
+              for x in (f"/producto/{r['native_slug']}/",f"/en/producto/{r['native_slug']}/",f"/product/{r['native_slug']}/"):
+                if x in sbody: wrong.append({'id':r['id'],'link':x})
+          bad=[r for r in products if r['http_code']!=200 or '/en/product/' not in r['effective_url'] or not r['title_ok'] or not r['description_ok']]
+          report={'checked_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'data_count':data['count'],'data_complete':data['complete'],'spanish_residue_issues':data['residue_issues'],'vendor':vendor,'store':{'url':store_url,'http_code':scode,'effective_url':seffective,'english_link_hits':english_link_hits,'english_title_hits':english_title_hits,'wrong_spanish_links':wrong},'products_verified':len(products),'bad_products':bad}
+          pathlib.Path('.deploy-status/huerta-english-storefront-live-20260821.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          pathlib.Path('/tmp/huerta-en-live-summary.txt').write_text('huerta_live_products='+str(len(products))+'\nhuerta_live_bad_products='+str(len(bad))+'\nhuerta_live_spanish_residue='+str(len(data['residue_issues']))+'\nhuerta_store_english_link_hits='+str(english_link_hits)+'\nhuerta_store_wrong_spanish_links='+str(len(wrong))+'\n',encoding='utf-8')
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if data['residue_issues'] or bad or scode!=200 or '/en/store/' not in seffective or english_link_hits<1 or english_title_hits<1 or wrong:
+            raise SystemExit(2)
           PY
 
       - name: Record production repair verification
@@ -183,11 +279,12 @@ jobs:
             echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             [ -f /tmp/product-en-repair-apply.txt ] && cat /tmp/product-en-repair-apply.txt || true
             [ -f /tmp/product-en-after-summary.txt ] && cat /tmp/product-en-after-summary.txt || true
+            [ -f /tmp/huerta-en-live-summary.txt ] && cat /tmp/huerta-en-live-summary.txt || true
           } > .deploy-status/product-english-repair-20260820.txt
           [ -f /tmp/product-en-after.json ] && cp /tmp/product-en-after.json .deploy-status/product-english-audit-20260820.json || true
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/product-english-repair-20260820.txt .deploy-status/product-english-audit-20260820.json
+          git add .deploy-status/product-english-repair-20260820.txt .deploy-status/product-english-audit-20260820.json .deploy-status/huerta-english-storefront-live-20260821.json || true
           git commit -m 'Record English product repair verification [skip ci]' || exit 0
           git pull --rebase origin main || true
           git push origin HEAD:main
