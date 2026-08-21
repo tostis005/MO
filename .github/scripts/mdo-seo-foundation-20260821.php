@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO SEO Foundation
  * Description: Stable SEO titles, descriptions, canonicals, index controls and legacy redirects for El Mercado de Origen.
- * Version: 2026.08.21.8
+ * Version: 2026.08.21.9
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -68,6 +68,7 @@ function emdo_seo_title_for_request( string $current ): string {
         if ( preg_match( '#^/en/(?:shop|tienda)/?$#i', $path ) ) return 'Shop Spanish Food Online | El Mercado de Origen';
         if ( preg_match( '#^/en/(?:journal|blog)/?$#i', $path ) ) return 'Spanish Food Journal | El Mercado de Origen';
         if ( preg_match( '#^/en/(?:producers|productores)/?$#i', $path ) ) return 'Spanish Producers | El Mercado de Origen';
+        if ( preg_match( '#^/en/categories/?$#i', $path ) ) return 'Spanish Food Categories | El Mercado de Origen';
         if ( function_exists( 'is_product_category' ) && is_product_category() ) {
             $name = emdo_seo_clean_term_name( emdo_seo_term_name() );
             if ( $name !== '' ) return sprintf( 'Shop %s Online | El Mercado de Origen', $name );
@@ -77,6 +78,7 @@ function emdo_seo_title_for_request( string $current ): string {
     if ( is_front_page() ) return 'Productos españoles de origen | El Mercado de Origen';
     if ( function_exists( 'is_shop' ) && is_shop() ) return 'Comprar productos españoles online | El Mercado de Origen';
     if ( is_page( 'productores' ) ) return 'Productores españoles | El Mercado de Origen';
+    if ( is_page( 'categorias' ) ) return 'Categorías de productos españoles | El Mercado de Origen';
     if ( is_home() || is_page( 'blog' ) ) return 'Guías de productos y productores | El Mercado de Origen';
     if ( function_exists( 'is_product_category' ) && is_product_category() ) {
         $name = emdo_seo_clean_term_name( emdo_seo_term_name() );
@@ -93,6 +95,7 @@ function emdo_seo_description_for_request( string $current ): string {
         if ( preg_match( '#^/en/(?:shop|tienda)/?$#i', $path ) ) return 'Shop Spanish food directly from selected producers: meat, Iberian ham, cured meats, olive oil, pulses, vegetables and more.';
         if ( preg_match( '#^/en/(?:journal|blog)/?$#i', $path ) ) return 'Guides and stories about Spanish food, producers, origin and craftsmanship to help you choose products with better information.';
         if ( preg_match( '#^/en/(?:producers|productores)/?$#i', $path ) ) return 'Meet the Spanish producers behind the products at El Mercado de Origen and discover what they make, where they work and their products.';
+        if ( preg_match( '#^/en/categories/?$#i', $path ) ) return 'Explore Spanish food by category: meat, hams, cured meats, olive oils, preserves, vegetables, pulses and more from selected producers.';
         if ( function_exists( 'is_product_category' ) && is_product_category() ) {
             $name = emdo_seo_clean_term_name( emdo_seo_term_name() );
             if ( $name !== '' ) return sprintf( 'Shop %s directly from selected producers. Discover their origin, who makes them and order online at El Mercado de Origen.', $name );
@@ -102,6 +105,7 @@ function emdo_seo_description_for_request( string $current ): string {
     if ( is_front_page() ) return 'Descubre productos españoles seleccionados por su origen, calidad y productor. Compra directamente a productores de confianza en El Mercado de Origen.';
     if ( function_exists( 'is_shop' ) && is_shop() ) return 'Compra alimentos y productos españoles directamente a productores seleccionados: carnes, jamones, embutidos, aceites, legumbres, verduras y más.';
     if ( is_page( 'productores' ) ) return 'Conoce a los productores de El Mercado de Origen, descubre dónde elaboran, qué hace especial su trabajo y compra sus productos directamente online.';
+    if ( is_page( 'categorias' ) ) return 'Explora los productos por categoría: carnes, jamones, embutidos, aceites, conservas, hortalizas, legumbres y más de productores seleccionados.';
     if ( is_home() || is_page( 'blog' ) ) return 'Guías y artículos sobre productos españoles, origen, productores y elaboración para ayudarte a elegir mejor antes de comprar.';
     if ( function_exists( 'is_product_category' ) && is_product_category() ) {
         $name = emdo_seo_clean_term_name( emdo_seo_term_name() );
