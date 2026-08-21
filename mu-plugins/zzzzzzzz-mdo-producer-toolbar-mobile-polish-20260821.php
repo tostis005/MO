@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Producer Toolbar Mobile Polish
  * Description: Final mobile parity for producer toolbar controls and destination modal.
- * Version: 2.0.0
+ * Version: 2.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -22,13 +22,31 @@ function mdo_producer_toolbar_mobile_polish_is_store_20260821(): bool {
 	return function_exists( 'wcfmmp_is_store_page' ) && wcfmmp_is_store_page();
 }
 
+/**
+ * The static guard's broad MutationObserver can move/clean the ordering form while
+ * a native mobile select is opening. Keep its CSS/legacy cleanup, but disable only
+ * that repeated footer DOM observer on producer stores. The toolbar UX has already
+ * mounted the canonical structure before footer output.
+ */
+function mdo_producer_toolbar_mobile_polish_disable_observer_20260821(): void {
+	if ( ! mdo_producer_toolbar_mobile_polish_is_store_20260821() ) {
+		return;
+	}
+	remove_action(
+		'wp_footer',
+		'mdo_producer_toolbar_static_guard_structure_script_20260821',
+		PHP_INT_MAX
+	);
+}
+add_action( 'wp', 'mdo_producer_toolbar_mobile_polish_disable_observer_20260821', PHP_INT_MAX );
+
 function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 	if ( ! mdo_producer_toolbar_mobile_polish_is_store_20260821() ) {
 		return;
 	}
 	?>
 	<style id="mdo-producer-toolbar-mobile-polish-20260821">
-		/* Producer destination modal: mirror the final main-shop modal treatment. */
+		/* Producer destination modal: exact final main-shop close treatment. */
 		html body > .mdo-ps-modal { z-index:2147483646 !important; }
 		html body > .mdo-ps-modal .mdo-ps-modal__close {
 			top:10px !important;
@@ -71,39 +89,37 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 		}
 
 		@media (max-width:640px) {
-			/*
-			 * Keep the exact main-shop 40px pill but never put its text in a second
-			 * fixed-height clipping box. This fixes descenders in Envío/Shipping.
-			 */
+			/* Same 40px destination control as the global shop. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger {
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
 				height:40px !important;
 				min-height:40px !important;
 				max-height:40px !important;
 				padding:0 12px 0 13px !important;
 				font-size:11.75px !important;
-				line-height:1 !important;
+				line-height:1.2 !important;
 				overflow:visible !important;
 				pointer-events:auto !important;
 			}
+
+			/* Never clip glyph descenders inside Enviar a / Shipping to. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__label,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span:first-of-type,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span:first-of-type {
-				position:static !important;
-				display:block !important;
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__value,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span {
 				box-sizing:border-box !important;
-				width:100% !important;
-				min-width:0 !important;
 				height:auto !important;
 				min-height:0 !important;
 				max-height:none !important;
 				margin:0 !important;
-				padding:1px 0 2px !important;
-				overflow:hidden !important;
-				white-space:nowrap !important;
-				text-overflow:ellipsis !important;
-				line-height:1.2 !important;
-				pointer-events:none !important;
+				padding:0 !important;
+				line-height:1.25 !important;
+				overflow:visible !important;
+				vertical-align:middle !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__chevron,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:last-child,
@@ -111,14 +127,20 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				pointer-events:none !important;
 			}
 
-			/*
-			 * Ordering deliberately inherits the same styled native <select> from
-			 * mdo_ps_toolbar_ux_critical_css_20260821. Do not re-enable browser
-			 * menulist appearance: that produced the visible second border.
-			 */
+			/* One border and one arrow only; mirror the global shop's actual select. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering {
 				position:relative !important;
 				z-index:20 !important;
+				display:flex !important;
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
+				height:40px !important;
+				min-height:40px !important;
+				max-height:40px !important;
+				margin:0 !important;
+				padding:0 !important;
 				border:0 !important;
 				background:transparent !important;
 				box-shadow:none !important;
@@ -145,6 +167,15 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				display:block !important;
 				visibility:visible !important;
 				opacity:1 !important;
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:100% !important;
+				max-width:100% !important;
+				height:40px !important;
+				min-height:40px !important;
+				max-height:40px !important;
+				margin:0 !important;
+				padding:0 36px 0 12px !important;
 				-webkit-appearance:none !important;
 				appearance:none !important;
 				background-color:#f8faf8 !important;
@@ -155,6 +186,8 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				border:1px solid rgba(23,63,50,.15) !important;
 				border-radius:999px !important;
 				box-shadow:none !important;
+				font-size:11.75px !important;
+				line-height:1.2 !important;
 				pointer-events:auto !important;
 				cursor:pointer !important;
 				touch-action:manipulation !important;
@@ -164,9 +197,5 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 	<?php
 }
 
-/*
- * CSS-only by design. The shared producer UX/static guard already owns DOM
- * normalisation. The old repeated JS inline-style writes are intentionally gone.
- */
 add_action( 'wp_head', 'mdo_producer_toolbar_mobile_polish_css_20260821', PHP_INT_MAX );
 add_action( 'wp_footer', 'mdo_producer_toolbar_mobile_polish_css_20260821', PHP_INT_MAX );
