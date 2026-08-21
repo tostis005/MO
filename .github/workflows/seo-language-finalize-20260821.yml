@@ -1,0 +1,71 @@
+name: SEO language finalize production 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-language-finalize-20260821.yml'
+      - 'mu-plugins/emdo-seo-language-cleanup.php'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: php -l mu-plugins/emdo-seo-language-cleanup.php
+      - name: Deploy and verify
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="$PROD_PATH/wp-content/mu-plugins/emdo-seo-language-cleanup.php"
+          sshpass -e scp $SCP mu-plugins/emdo-seo-language-cleanup.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php -l '$REMOTE'; wp cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          mkdir -p reports
+          REPORT=reports/seo-language-production-20260821.txt
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'set -euo pipefail
+            base="https://www.elmercadodeorigen.com"
+            h=$(curl -ksSI --max-time 25 "$base/en/product/sobrasada-de-bellota-100-iberica/")
+            echo "$h" | grep -Eq "^HTTP/[^ ]+ 301"
+            echo "$h" | grep -qi "/en/product/100-iberian-acorn-fed-sobrasada/"
+            echo "SOBRASADA_DUPLICATE_REDIRECT=PASS"
+            target=$(curl -ksSI --max-time 25 "$base/en/product/100-iberian-acorn-fed-sobrasada/")
+            echo "$target" | grep -Eq "^HTTP/[^ ]+ 200"
+            echo "SOBRASADA_EN_TARGET=PASS"
+            journal=$(curl -ksS --max-time 30 "$base/en/journal/")
+            printf "%s" "$journal" | grep -q "A practical guide to Iberian ham"
+            printf "%s" "$journal" | grep -q "How extra virgin olive oil is harvested and made in Córdoba"
+            if printf "%s" "$journal" | grep -q "El Jamón Ibérico es un producto único"; then exit 9; fi
+            echo "EN_JOURNAL_EXCERPTS=PASS"
+            echo "SEO_LANGUAGE_VERIFY=PASS"
+          ' | tee "$REPORT"
+      - name: Persist report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/seo-language-production-20260821.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "SEO: record English production verification"
+          git push origin HEAD:main
