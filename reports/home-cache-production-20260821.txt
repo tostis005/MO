@@ -1,0 +1,32 @@
+PROD_PATH=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+=== cache header sources ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/mu-plugins/elmercado-home-fresh.php
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php.bak-32244542911
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/home-cache.php.bak-32245871682
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/elmercado-home-fresh.php.bak-native-20260816153349
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/elmercado-home-fresh.php
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/elmercado-home-fresh.php.bak-20260816201925
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/elmercado-home-fresh.php.bak-010246-20260814145055
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/elmercado-home-fresh.php.pre-home-fresh
+=== advanced-cache ===
+-rw-r--r-- 1 root root 413 Aug 16 15:40 /var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/advanced-cache.php
+<?php
+/**
+ * El Mercado de Origen early cache drop-in.
+ *
+ * The pre-bootstrap public Home cache is intentionally disabled. The child
+ * theme's WordPress-level Home cache remains available so the final presentation
+ * and translation pipeline are preserved.
+ */
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+if ( ! defined( 'ELMERCADO_EARLY_HOME_CACHE' ) ) {
+	define( 'ELMERCADO_EARLY_HOME_CACHE', false );
+}
+return;
+=== cache directories ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/uploads/mailpoet-premium/cache
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/uploads/mailpoet/cache
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/uploads/wpforms/cache
