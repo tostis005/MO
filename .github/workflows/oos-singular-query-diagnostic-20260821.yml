@@ -1,0 +1,104 @@
+name: Diagnose out-of-stock singular product 404 source 2026-08-21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oos-singular-query-diagnostic-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH helper
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Inspect production callbacks and source matches
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/reports
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE' > .github/reports/oos-singular-query-diagnostic-20260821.txt 2>&1
+          set -u
+          echo 'EMDO OOS SINGULAR QUERY DIAGNOSTIC 2026-08-21'
+          echo "PROD_PATH=$PROD_PATH"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          echo "WP_BIN=$wp_bin"
+          echo "PHP_BIN=$php_bin"
+          echo "HIDE_OOS=$($wp_bin option get woocommerce_hide_out_of_stock_items --path="$PROD_PATH" --allow-root 2>/dev/null || true)"
+          echo
+          echo '=== CALLBACKS ==='
+          cat > /tmp/emdo-oos-callbacks.php <<'PHP'
+          <?php
+          $hooks = array('pre_get_posts','posts_clauses','posts_where','the_posts','woocommerce_product_is_visible','woocommerce_product_query_tax_query','template_redirect','wp');
+          foreach ($hooks as $hook) {
+              echo "HOOK=$hook\n";
+              global $wp_filter;
+              if (empty($wp_filter[$hook]) || !($wp_filter[$hook] instanceof WP_Hook)) { echo "  NONE\n"; continue; }
+              foreach ($wp_filter[$hook]->callbacks as $priority => $callbacks) {
+                  foreach ($callbacks as $cb) {
+                      $fn = $cb['function']; $label=''; $file=''; $start=0; $end=0;
+                      try {
+                          if ($fn instanceof Closure) { $r=new ReflectionFunction($fn); $label='Closure'; }
+                          elseif (is_string($fn)) { $r=new ReflectionFunction($fn); $label=$fn; }
+                          elseif (is_array($fn) && isset($fn[0],$fn[1])) { $r=new ReflectionMethod($fn[0],$fn[1]); $label=(is_object($fn[0])?get_class($fn[0]):(string)$fn[0]).'::'.$fn[1]; }
+                          else { $r=null; $label='other'; }
+                          if ($r) { $file=(string)$r->getFileName(); $start=(int)$r->getStartLine(); $end=(int)$r->getEndLine(); }
+                      } catch (Throwable $e) { $label='reflection-error:'.$e->getMessage(); }
+                      echo '  PRIORITY='.$priority.'|'.$label.'|'.$file.'|'.$start.'-'.$end."\n";
+                  }
+              }
+          }
+          PHP
+          $wp_bin eval-file /tmp/emdo-oos-callbacks.php --path="$PROD_PATH" --allow-root 2>&1 || true
+          rm -f /tmp/emdo-oos-callbacks.php
+          echo
+          echo '=== SOURCE MATCHES (MU + THEME) ==='
+          grep -RInE --include='*.php' 'woocommerce_hide_out_of_stock_items|outofstock|product_visibility|set_404|woocommerce_product_is_visible|woocommerce_product_query_tax_query' "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes" 2>/dev/null | head -n 500 || true
+          echo
+          echo '=== SOURCE MATCHES (ACTIVE PLUGINS, focused) ==='
+          for p in $($wp_bin plugin list --status=active --field=name --path="$PROD_PATH" --allow-root 2>/dev/null); do
+            dir="$PROD_PATH/wp-content/plugins/$p"
+            [ -d "$dir" ] || continue
+            grep -RInE --include='*.php' 'woocommerce_hide_out_of_stock_items|outofstock|product_visibility|set_404|woocommerce_product_is_visible' "$dir" 2>/dev/null | head -n 60 || true
+          done
+          echo
+          echo 'DIAGNOSTIC_DONE=1'
+          REMOTE
+      - name: Commit diagnostic report
+        if: always()
+        run: |
+          set -euo pipefail
+          REPORT=.github/reports/oos-singular-query-diagnostic-20260821.txt
+          [ -f "$REPORT" ] || echo 'Diagnostic failed before report' > "$REPORT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$REPORT"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record OOS singular query diagnostic [skip ci]"
+          git pull --rebase origin main
+          git push
