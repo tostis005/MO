@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Producer Toolbar Final Geometry
  * Description: Fixes the producer destination pill intrinsic sizing and keeps the catalogue toolbar visually separated from product cards.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -17,7 +17,22 @@ add_action(
 		}
 		?>
 		<style id="mdo-producer-toolbar-final-geometry-20260821">
-			/* Producer catalogue only. Desktop/tablet: size the shipping pill from its text, not from the flexible grid track. */
+			/*
+			 * WCFM's trigger contains three real children: location SVG + text + chevron.
+			 * The shared EMDO control needs only text + chevron. Removing the first SVG
+			 * also makes the two-column grid's intrinsic width represent the real label.
+			 */
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:first-child,
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > svg:first-child {
+				display:none !important;
+				visibility:hidden !important;
+				width:0 !important;
+				height:0 !important;
+				margin:0 !important;
+				padding:0 !important;
+			}
+
+			/* Producer catalogue only. Desktop/tablet: size the shipping pill from its text. */
 			@media (min-width:641px) {
 				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left {
 					display:flex !important;
@@ -53,14 +68,17 @@ add_action(
 					overflow:visible !important;
 					white-space:nowrap !important;
 				}
-				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__label {
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span,
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span {
+					display:block !important;
+					min-width:max-content !important;
 					overflow:visible !important;
 					text-overflow:clip !important;
 					white-space:nowrap !important;
 				}
 			}
 
-			/* Remove the historical vendor pin. The shared shop control uses text + chevron only. */
+			/* No historical pseudo pin either. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger::before,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger::before {
 				content:none !important;
@@ -94,7 +112,9 @@ add_action(
 					max-width:100% !important;
 					overflow:hidden !important;
 				}
-				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__label {
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span,
+				html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span {
+					min-width:0 !important;
 					overflow:hidden !important;
 					text-overflow:ellipsis !important;
 				}
