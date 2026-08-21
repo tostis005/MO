@@ -1,0 +1,119 @@
+name: Editorial authority batch 1 Plesk diagnostic 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editorial-authority-batch1-plesk-diagnostic-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run publisher and collect diagnostics
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set +e
+          mkdir -p .deploy-status
+          : > /tmp/out; : > /tmp/err; : > /tmp/db; : > /tmp/curl
+          echo 99 > /tmp/pubrc
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2; [ -n "$php_bin" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php_bin" "$wp_bin"
+          ')"
+          INFO_RC=$?
+          PROD_PATH="${INFO%%|*}"; REST="${INFO#*|}"; PHP_BIN="${REST%%|*}"; WP_BIN="${REST#*|}"
+          printf '%s' "$INFO_RC" > /tmp/inforc
+          printf '%s' "$PROD_PATH" > /tmp/prod
+          printf '%s' "$PHP_BIN" > /tmp/phpbin
+          printf '%s' "$WP_BIN" > /tmp/wpbin
+
+          if [ "$INFO_RC" -eq 0 ] && [ -n "$PROD_PATH" ] && [ -n "$PHP_BIN" ] && [ -n "$WP_BIN" ]; then
+            PUB="/tmp/ab1-pub-${GITHUB_RUN_ID}.php"; RUN="/tmp/ab1-run-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch1-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
+            sshpass -e scp $SCP .github/scripts/run-editorial-publisher-bootstrap-20260821.php "$STAGING_USER@$STAGING_HOST:$RUN"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP_BIN")':\$PATH; EMDO_WP_ROOT='$PROD_PATH' EMDO_PUBLISHER_FILE='$PUB' '$PHP_BIN' -d display_errors=1 -d error_reporting=32767 '$RUN'" > /tmp/out 2> /tmp/err
+            echo $? > /tmp/pubrc
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP_BIN")':\$PATH; '$PHP_BIN' '$WP_BIN' db query \"SELECT pm.meta_value,p.ID,p.post_status,p.post_name FROM wp_posts p JOIN wp_postmeta pm ON pm.post_id=p.ID WHERE pm.meta_key='_emdo_authority_key' ORDER BY p.ID DESC LIMIT 10;\" --skip-column-names --path='$PROD_PATH' --allow-root" > /tmp/db 2>> /tmp/err
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP_BIN' '$WP_BIN' cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; rm -f '$PUB' '$RUN'" >/dev/null 2>&1
+          fi
+
+          BASE=https://www.elmercadodeorigen.com
+          for u in \
+            "$BASE/brida-negra-roja-verde-blanca-jamon-iberico/" \
+            "$BASE/en/black-red-green-white-seal-iberian-ham/" \
+            "$BASE/como-conservar-jamon-iberico-empezado/" \
+            "$BASE/en/how-to-store-iberian-ham-once-started/" \
+            "$BASE/lomo-chorizo-salchichon-iberico-diferencias-como-elegir/" \
+            "$BASE/en/iberian-loin-chorizo-salchichon-differences-how-to-choose/" \
+            "$BASE/picual-arbequina-lechin-que-aove-elegir/" \
+            "$BASE/en/picual-arbequina-lechin-which-evoo-to-choose/" \
+            "$BASE/que-significa-aceite-oliva-virgen-extra/" \
+            "$BASE/en/what-extra-virgin-olive-oil-really-means/"; do
+              f=/tmp/page.html
+              c=$(curl -k -L -sS --connect-timeout 8 --max-time 35 -H 'Cache-Control: no-cache' -o "$f" -w '%{http_code}' "$u?diag=$GITHUB_RUN_ID" 2>/dev/null)
+              m=$(grep -c 'EMDO_AUTHORITY_BATCH1:' "$f" 2>/dev/null || true)
+              r=$(grep -Fc '[products ' "$f" 2>/dev/null || true)
+              p=$(grep -Ec 'class="[^"]*products|class="[^"]*product' "$f" 2>/dev/null || true)
+              printf '%s marker=%s raw=%s products=%s %s\n' "$c" "$m" "$r" "$p" "$u" >> /tmp/curl
+          done
+
+          python3 - <<'PY'
+          import json,os
+          def read(p,n=24000):
+              try:return open(p,encoding='utf-8',errors='ignore').read()[-n:]
+              except:return ''
+          def n(p):
+              try:return int(open(p).read().strip())
+              except:return None
+          d={'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],
+             'info_rc':n('/tmp/inforc'),'prod_path':read('/tmp/prod',2000),'php_bin':read('/tmp/phpbin',2000),'wp_bin':read('/tmp/wpbin',2000),
+             'publisher_rc':n('/tmp/pubrc'),'publisher_stdout':read('/tmp/out'),'publisher_stderr':read('/tmp/err'),
+             'db_rows':read('/tmp/db'),'public_checks':read('/tmp/curl')}
+          json.dump(d,open('.deploy-status/editorial-authority-batch1-plesk-diagnostic-20260821.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          open('.deploy-status/editorial-authority-batch1-plesk-diagnostic-20260821.json','a').write('\n')
+          PY
+
+      - name: Commit diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          mkdir -p .deploy-status
+          test -f .deploy-status/editorial-authority-batch1-plesk-diagnostic-20260821.json || printf '{"run_id":"%s","diagnostic_missing":true}\n' "$GITHUB_RUN_ID" > .deploy-status/editorial-authority-batch1-plesk-diagnostic-20260821.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch1-plesk-diagnostic-20260821.json
+          git commit -m 'Record Plesk editorial authority batch 1 diagnostics [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
