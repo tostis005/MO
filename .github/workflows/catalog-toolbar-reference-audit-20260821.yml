@@ -1,0 +1,78 @@
+name: Catalog toolbar reference geometry audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/catalog-toolbar-reference-audit-20260821.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit rendered toolbar geometry
+        run: |
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/catalog-toolbar-reference-audit-20260821.txt
+          : > "$STATUS"
+          python -m pip install --quiet selenium
+          python - <<'PY' >> "$STATUS" 2>&1
+          import json
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+
+          base='https://www.elmercadodeorigen.com'
+          opt=webdriver.ChromeOptions(); opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=opt)
+
+          def desc(el):
+              return d.execute_script('''const e=arguments[0],r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,id:e.id,cls:e.className,display:s.display,bg:s.backgroundColor,radius:s.borderRadius,position:s.position,transform:s.transform,rect:{x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}}''',el)
+          def ancestors(el,n=7):
+              out=[]; cur=el
+              for _ in range(n):
+                  if not cur: break
+                  out.append(desc(cur))
+                  try: cur=cur.find_element(By.XPATH,'..')
+                  except: break
+              return out
+          def audit(path,width):
+              d.set_window_size(width,1000); d.get(base+path+f'?refaudit={width}')
+              w=WebDriverWait(d,20)
+              if '/tienda/1957/' in path:
+                  trigger=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store [data-mdo-ps-destination-open]')))
+                  order=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woocommerce-ordering')))
+                  count=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woocommerce-result-count')))
+                  matches=d.find_elements(By.CSS_SELECTOR,'#wcfmmp-store .emo-catalog-toolbar-shared-010229,#wcfmmp-store .elmercado-vendor-toolbar,#wcfmmp-store .woostify-sorting')
+              else:
+                  trigger=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'[data-mdo-destination-open]')))
+                  order=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.woocommerce-ordering')))
+                  count=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.emo-catalog-result-count-010220,.woocommerce-result-count')))
+                  matches=d.find_elements(By.CSS_SELECTOR,'.emo-catalog-toolbar-shared-010229,.woostify-sorting')
+              print('AUDIT',path,width)
+              print('COUNT_CHAIN',json.dumps(ancestors(count),ensure_ascii=False))
+              print('DEST_CHAIN',json.dumps(ancestors(trigger),ensure_ascii=False))
+              print('ORDER_CHAIN',json.dumps(ancestors(order),ensure_ascii=False))
+              print('MATCHES',json.dumps([desc(x) for x in matches],ensure_ascii=False))
+          for width in (1440,900,390):
+              audit('/tienda/',width)
+              audit('/tienda/1957/',width)
+          d.quit()
+          PY
+      - name: Record audit
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-toolbar-reference-audit-20260821.txt
+          git commit -m 'Record catalog toolbar reference audit [skip ci]' || exit 0
+          git pull --rebase origin main || true
+          git push origin HEAD:main
