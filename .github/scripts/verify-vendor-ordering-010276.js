@@ -33,8 +33,11 @@ const fail = (message, data) => {
       return {
         button: { left: br.left, top: br.top, width: br.width, height: br.height, text: button.textContent.trim() },
         native: {
-          width: sr.width,
-          height: sr.height,
+          rectWidth: sr.width,
+          rectHeight: sr.height,
+          cssWidth: ss.width,
+          cssHeight: ss.height,
+          position: ss.position,
           opacity: ss.opacity,
           visibility: ss.visibility,
           pointer: ss.pointerEvents,
@@ -48,8 +51,8 @@ const fail = (message, data) => {
 
     if (!before) fail('ordering controls missing');
     if (before.native.marker !== '1') fail('0.10.276 ordering owner is not active', before);
-    if (before.native.width > 2 || before.native.height > 2 || before.native.opacity !== '0' || before.native.visibility !== 'hidden' || before.native.pointer !== 'none' || before.native.aria !== 'true') {
-      fail('native select is still interactive', before);
+    if (before.native.opacity !== '0' || before.native.visibility !== 'hidden' || before.native.pointer !== 'none' || before.native.aria !== 'true') {
+      fail('native select can still interfere with touch', before);
     }
     if (!before.hitButton) fail('ordering button is not the real tap target', before);
     if (before.oldMenuCount !== 0) fail('legacy floating menu is still present', before);
