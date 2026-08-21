@@ -28,26 +28,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate and publish
+      - name: Publish with diagnostics
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set -u
+          set -euo pipefail
           mkdir -p .deploy-status
-          php -l .github/scripts/publish-editorial-authority-batch1-20260821.php > /tmp/ab1-lint.txt 2>&1
-          LINT_RC=$?
-          echo "$LINT_RC" > /tmp/ab1-lint-rc.txt
-          if [ "$LINT_RC" -ne 0 ]; then
-            python3 - <<'PY'
-          import json,os
-          out={'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'lint_rc':int(open('/tmp/ab1-lint-rc.txt').read()),'lint':open('/tmp/ab1-lint.txt').read()[-4000:],'publisher_rc':None,'published':False}
-          json.dump(out,open('.deploy-status/editorial-authority-batch1-repair-20260821.json','w'),ensure_ascii=False,indent=2); open('.deploy-status/editorial-authority-batch1-repair-20260821.json','a').write('\n')
-          PY
-            exit 0
-          fi
-
-          set -e
+          php -l .github/scripts/publish-editorial-authority-batch1-20260821.php > /tmp/lint.txt 2>&1
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -65,29 +53,49 @@ jobs:
           : "${PROD_PATH:?Production path not found}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
           sshpass -e scp $SCP mu-plugins/mdo-english-journal-content-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-journal-content-20260821.php"
-          REMOTE="/tmp/editorial-authority-batch1-repair-${GITHUB_RUN_ID}.php"
+          REMOTE="/tmp/editorial-authority-batch1-diag-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch1-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" eval 'echo wp_json_encode(array(\"site\"=>get_option(\"siteurl\"),\"ABSPATH\"=>defined(\"ABSPATH\"),\"posts\"=>wp_count_posts(\"post\")->publish));' --path='$PROD_PATH' --allow-root" > /tmp/probe-before.txt 2>/tmp/probe-before-err.txt || true
+
           set +e
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/ab1-publisher-out.txt 2> /tmp/ab1-publisher-err.txt
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/pub-out.txt 2> /tmp/pub-err.txt
           PUB_RC=$?
           set -e
-          echo "$PUB_RC" > /tmp/ab1-pub-rc.txt
+          echo "$PUB_RC" > /tmp/pub-rc.txt
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" eval 'global \$wpdb; echo wp_json_encode(array(\"posts\"=>wp_count_posts(\"post\")->publish,\"authority\"=>(int)\$wpdb->get_var(\"SELECT COUNT(*) FROM {\$wpdb->postmeta} WHERE meta_key=\\\"_emdo_authority_key\\\"\")));' --path='$PROD_PATH' --allow-root" > /tmp/probe-after.txt 2>/tmp/probe-after-err.txt || true
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
 
           python3 - <<'PY'
-          import json,os
-          rc=int(open('/tmp/ab1-pub-rc.txt').read())
-          stdout=open('/tmp/ab1-publisher-out.txt',encoding='utf-8',errors='ignore').read()
-          stderr=open('/tmp/ab1-publisher-err.txt',encoding='utf-8',errors='ignore').read()
-          data=None
-          if rc==0:
-              try: data=json.loads(stdout)
-              except Exception: pass
-          out={'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'lint_rc':0,'lint':open('/tmp/ab1-lint.txt').read().strip(),'publisher_rc':rc,'publisher_stderr':stderr[-6000:],'publisher_data':data,'published':bool(rc==0 and isinstance(data,dict) and len(data.get('posts',[]))==5)}
-          json.dump(out,open('.deploy-status/editorial-authority-batch1-repair-20260821.json','w',encoding='utf-8'),ensure_ascii=False,indent=2); open('.deploy-status/editorial-authority-batch1-repair-20260821.json','a').write('\n')
+          import json,os,re
+          def read(p):
+              try:return open(p,encoding='utf-8',errors='ignore').read()
+              except:return ''
+          def last_json(s):
+              for line in reversed([x.strip() for x in s.splitlines() if x.strip()]):
+                  if line.startswith('{'):
+                      try:return json.loads(line)
+                      except:pass
+              return None
+          stdout=read('/tmp/pub-out.txt'); stderr=read('/tmp/pub-err.txt')
+          out={
+            'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],
+            'publisher_rc':int(read('/tmp/pub-rc.txt') or 999),
+            'probe_before_raw':read('/tmp/probe-before.txt')[-3000:],
+            'probe_after_raw':read('/tmp/probe-after.txt')[-3000:],
+            'probe_before':last_json(read('/tmp/probe-before.txt')),
+            'probe_after':last_json(read('/tmp/probe-after.txt')),
+            'publisher_stdout':stdout[-12000:],
+            'publisher_stderr':stderr[-6000:],
+            'publisher_json':last_json(stdout),
+          }
+          out['published']=bool(out['probe_after'] and int(out['probe_after'].get('authority',0))>=5)
+          json.dump(out,open('.deploy-status/editorial-authority-batch1-repair-20260821.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          open('.deploy-status/editorial-authority-batch1-repair-20260821.json','a').write('\n')
           PY
 
-      - name: Record repair diagnostics
+      - name: Record diagnostics
         if: always()
         shell: bash
         run: |
@@ -96,6 +104,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/editorial-authority-batch1-repair-20260821.json
-          git commit -m 'Record editorial authority batch 1 repair [skip ci]' || exit 0
+          git commit -m 'Record editorial authority publisher diagnostics [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
