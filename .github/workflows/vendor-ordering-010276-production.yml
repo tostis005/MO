@@ -10,6 +10,7 @@ on:
       - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-popover-010272.php'
       - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-native-retire-010274.php'
       - 'elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php'
+      - 'mu-plugins/zzzzzzzzz-mdo-producer-ordering-shop-parity-20260821.php'
   workflow_dispatch:
 
 permissions:
@@ -37,6 +38,7 @@ jobs:
           php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-popover-010272.php >/dev/null
           php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-ordering-native-retire-010274.php >/dev/null
           php -l elmercadodeorigen-child/mu-plugins/elmercado-vendor-runtime-stability-010275.php >/dev/null
+          php -l mu-plugins/zzzzzzzzz-mdo-producer-ordering-shop-parity-20260821.php >/dev/null
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
@@ -87,6 +89,14 @@ jobs:
             test "$local_sha" = "$prod_sha"
           done
 
+          root_name="zzzzzzzzz-mdo-producer-ordering-shop-parity-20260821.php"
+          remote="/tmp/${root_name%.php}-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP "mu-plugins/$root_name" "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; mkdir -p '$MU_DIR'; install -m 0644 '$remote' '$MU_DIR/$root_name'; rm -f '$remote'"
+          local_sha="$(sha256sum "mu-plugins/$root_name" | cut -d' ' -f1)"
+          prod_sha="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$MU_DIR/$root_name' | cut -d' ' -f1")"
+          test "$local_sha" = "$prod_sha"
+
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); if [ -n \"\$wp_bin\" ]; then \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if (function_exists(\"rocket_clean_domain\")) { rocket_clean_domain(); } if (has_action(\"litespeed_purge_all\")) { do_action(\"litespeed_purge_all\"); } if (function_exists(\"wp_cache_clear_cache\")) { wp_cache_clear_cache(); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; fi"
 
           PROBE="elmercado-opcache-vendor-native-order-${GITHUB_RUN_ID}.php"
@@ -96,6 +106,7 @@ jobs:
 
           curl -fsSL --max-time 45 -H 'Cache-Control: no-cache' "$BASE_URL/tienda/1957/" > /tmp/vendor-ordering-canonical.html
           grep -q 'mdoNative010277' /tmp/vendor-ordering-canonical.html
+          grep -q 'mdo-producer-ordering-shop-parity-20260821' /tmp/vendor-ordering-canonical.html
           ! grep -q 'mdo-vendor-order-sheet-' /tmp/vendor-ordering-canonical.html
 
       - name: Verify native mobile touch and parity
