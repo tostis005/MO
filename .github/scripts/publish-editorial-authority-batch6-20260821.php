@@ -108,3 +108,4 @@ foreach ( $articles as $a ) {
     $report['posts'][]=array('key'=>$a['key'],'id'=>$post_id,'status'=>get_post_status($post_id),'slug'=>(string)get_post_field('post_name',$post_id),'en_slug'=>sanitize_title($a['en_slug']),'words_es'=>$words_es,'words_en'=>$words_en,'image_id'=>$image_id,'image_w'=>$w,'image_h'=>$h,'image_source'=>$a['image']['page'],'topic'=>$a['topic'],'product_cat'=>emdo_ab6_product_slug($a['topic']));
 }
 echo wp_json_encode($report,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT).PHP_EOL;
+// Batch 6 workflow trigger marker.
