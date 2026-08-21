@@ -1,0 +1,170 @@
+name: Full production SEO sitemap crawl 2026-08-21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seo-full-crawl-production-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-seo-full-crawl
+  cancel-in-progress: true
+
+jobs:
+  crawl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crawl every sitemap URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github/reports
+          python3 - <<'PY'
+          import concurrent.futures, csv, html, re, ssl, time, urllib.request, urllib.error, xml.etree.ElementTree as ET
+          from collections import Counter
+          from urllib.parse import urlparse
+
+          BASE='https://www.elmercadodeorigen.com'
+          INDEX=BASE+'/sitemap_index.xml?emdo_full_crawl='+str(time.time_ns())
+          ctx=ssl.create_default_context()
+          ua={'User-Agent':'EMDO-Full-SEO-Crawl/2026-08-21'}
+
+          def get(url, timeout=45):
+              req=urllib.request.Request(url, headers=ua)
+              with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                  return r.status, r.geturl(), r.read()
+
+          def xml_locs(raw):
+              root=ET.fromstring(raw)
+              out=[]
+              for el in root.iter():
+                  if el.tag.endswith('loc') and el.text:
+                      out.append(el.text.strip())
+              return out
+
+          status,final,raw=get(INDEX)
+          children=xml_locs(raw)
+          urls=[]
+          for sm in children:
+              s,f,b=get(sm+'?emdo_full_crawl='+str(time.time_ns()))
+              urls.extend(xml_locs(b))
+          urls=list(dict.fromkeys(urls))
+          print('SITEMAPS',children)
+          print('URL_COUNT',len(urls))
+
+          def attr(tag,name):
+              m=re.search(r'\b'+re.escape(name)+r'\s*=\s*(["\'])(.*?)\1',tag,re.I|re.S)
+              return html.unescape(m.group(2)) if m else ''
+
+          def analyze(url):
+              row={'url':url,'status':0,'final_url':'','title':'','description':'','canonical':'','robots':'','h1_count':0,'h1_first':'','bytes':0,'error':''}
+              try:
+                  cache=('&' if '?' in url else '?')+'emdo_full_crawl='+str(time.time_ns())
+                  status,final,raw=get(url+cache)
+                  text=raw.decode('utf-8','replace')
+                  row['status']=status; row['final_url']=final; row['bytes']=len(raw)
+                  head=text.split('</head>',1)[0]
+                  mt=re.search(r'<title\b[^>]*>(.*?)</title>',head,re.I|re.S)
+                  if mt: row['title']=' '.join(html.unescape(re.sub(r'<[^>]+>',' ',mt.group(1))).split())
+                  for tag in re.findall(r'<meta\b[^>]*>',head,re.I|re.S):
+                      name=attr(tag,'name').lower()
+                      if name=='description' and not row['description']: row['description']=' '.join(attr(tag,'content').split())
+                      if name=='robots' and not row['robots']: row['robots']=' '.join(attr(tag,'content').split())
+                  for tag in re.findall(r'<link\b[^>]*>',head,re.I|re.S):
+                      if attr(tag,'rel').lower()=='canonical' and not row['canonical']: row['canonical']=attr(tag,'href')
+                  h1s=[]
+                  for rawh in re.findall(r'<h1\b[^>]*>(.*?)</h1>',text,re.I|re.S):
+                      val=' '.join(html.unescape(re.sub(r'<[^>]+>',' ',rawh)).split())
+                      if val: h1s.append(val)
+                  row['h1_count']=len(h1s); row['h1_first']=h1s[0] if h1s else ''
+              except urllib.error.HTTPError as e:
+                  row['status']=e.code; row['final_url']=e.geturl(); row['error']=str(e)
+              except Exception as e:
+                  row['error']=repr(e)
+              return row
+
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+              futs={ex.submit(analyze,u):u for u in urls}
+              for i,fut in enumerate(concurrent.futures.as_completed(futs),1):
+                  rows.append(fut.result())
+                  if i%50==0: print('CRAWLED',i,'/',len(urls))
+          rows.sort(key=lambda r:r['url'])
+
+          def path_kind(url):
+              p=urlparse(url).path
+              if '/producto/' in p or '/en/product/' in p: return 'product'
+              if '/categoria-producto/' in p or '/en/product-category/' in p: return 'category'
+              return 'page'
+
+          issues=[]
+          for r in rows:
+              reasons=[]
+              kind=path_kind(r['url'])
+              if r['status']!=200: reasons.append('http_'+str(r['status']))
+              if not r['title']: reasons.append('missing_title')
+              if not r['canonical']: reasons.append('missing_canonical')
+              if r['canonical'] and r['canonical'].rstrip('/')!=r['url'].rstrip('/'):
+                  # English translated URLs can legitimately canonicalize to a normalized English slug.
+                  if not (urlparse(r['url']).path.startswith('/en/') and urlparse(r['canonical']).path.startswith('/en/')):
+                      reasons.append('canonical_mismatch')
+              if 'noindex' in r['robots'].lower(): reasons.append('sitemap_url_noindex')
+              if r['h1_count']==0: reasons.append('missing_h1')
+              if r['h1_count']>1: reasons.append('multiple_h1')
+              if not r['description']:
+                  reasons.append('missing_description')
+              elif len(r['description'])<60: reasons.append('short_description')
+              if r['error']: reasons.append('fetch_error')
+              if reasons:
+                  issues.append((r,kind,reasons))
+
+          with open('.github/reports/seo-full-crawl-production-20260821.csv','w',newline='',encoding='utf-8') as f:
+              w=csv.DictWriter(f,fieldnames=list(rows[0].keys()) if rows else ['url'])
+              w.writeheader(); w.writerows(rows)
+
+          by_kind=Counter(path_kind(r['url']) for r in rows)
+          status_counts=Counter(str(r['status']) for r in rows)
+          issue_counts=Counter(reason for r,k,reasons in issues for reason in reasons)
+          with open('.github/reports/seo-full-crawl-summary-20260821.txt','w',encoding='utf-8') as f:
+              def out(s=''):
+                  print(s); f.write(s+'\n')
+              out('EMDO FULL SEO CRAWL 2026-08-21')
+              out('TOTAL_URLS='+str(len(rows)))
+              out('URLS_BY_KIND='+repr(dict(by_kind)))
+              out('HTTP_STATUS='+repr(dict(status_counts)))
+              out('ISSUE_COUNTS='+repr(dict(issue_counts)))
+              out('URLS_WITH_ANY_FLAG='+str(len(issues)))
+              out('')
+              out('PRIORITY_ISSUES')
+              shown=0
+              priority={'http_404','http_500','http_503','missing_title','missing_canonical','canonical_mismatch','sitemap_url_noindex','missing_h1'}
+              for r,kind,reasons in issues:
+                  if priority.intersection(reasons):
+                      out('|'.join([kind,','.join(reasons),r['url'],'title='+r['title'][:120],'canon='+r['canonical'][:160]]))
+                      shown+=1
+                      if shown>=120: break
+              out('')
+              out('MISSING_OR_SHORT_DESCRIPTIONS_SAMPLE')
+              shown=0
+              for r,kind,reasons in issues:
+                  if 'missing_description' in reasons or 'short_description' in reasons:
+                      out('|'.join([kind,','.join(reasons),r['url'],'title='+r['title'][:120],'desc='+r['description'][:160]]))
+                      shown+=1
+                      if shown>=120: break
+          PY
+      - name: Commit crawl reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/reports/seo-full-crawl-production-20260821.csv .github/reports/seo-full-crawl-summary-20260821.txt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record full production SEO crawl [skip ci]"
+          git push
