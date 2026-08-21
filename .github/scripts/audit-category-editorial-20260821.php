@@ -1,4 +1,5 @@
 <?php
+/* Trigger 2026-08-21: audit current production categories after workflow registration. */
 if ( ! defined( 'ABSPATH' ) ) { exit(1); }
 $terms = get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false));
 if ( is_wp_error($terms) ) { fwrite(STDERR,$terms->get_error_message()."\n"); exit(2); }
