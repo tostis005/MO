@@ -1,0 +1,136 @@
+name: Editorial authority batch 1 Plesk PHP publish 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editorial-authority-batch1-plesk-php-publish-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish with Plesk PHP
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          read -r PROD_PATH PHP_BIN WP_BIN < <(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            [ -n "$php_bin" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s %s %s\n" "$prod" "$php_bin" "$wp_bin"
+          ')
+          : "${PROD_PATH:?}"; : "${PHP_BIN:?}"; : "${WP_BIN:?}"
+          echo "Production: $PROD_PATH"
+          echo "PHP: $PHP_BIN"
+          echo "WP: $WP_BIN"
+
+          PUB="/tmp/ab1-pub-${GITHUB_RUN_ID}.php"
+          RUN="/tmp/ab1-run-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch1-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e scp $SCP .github/scripts/run-editorial-publisher-bootstrap-20260821.php "$STAGING_USER@$STAGING_HOST:$RUN"
+
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP_BIN")':\$PATH; EMDO_WP_ROOT='$PROD_PATH' EMDO_PUBLISHER_FILE='$PUB' '$PHP_BIN' -d display_errors=1 -d error_reporting=32767 '$RUN'" > /tmp/pubout.txt 2> /tmp/puberr.txt
+          PUB_RC=$?
+          set -e
+          echo "publisher_rc=$PUB_RC"
+          cat /tmp/puberr.txt >&2
+          if [ "$PUB_RC" -ne 0 ]; then cat /tmp/pubout.txt >&2; exit "$PUB_RC"; fi
+          grep -Fq EMDO_BOOTSTRAP_OK /tmp/puberr.txt
+
+          python3 - <<'PY'
+          import json
+          raw=open('/tmp/pubout.txt',encoding='utf-8',errors='ignore').read()
+          start=raw.find('{'); end=raw.rfind('}')
+          if start < 0 or end < start:
+              raise SystemExit('No publisher JSON: '+raw[-5000:])
+          d=json.loads(raw[start:end+1])
+          assert len(d.get('posts',[]))==5, d
+          assert all(p.get('status')=='publish' for p in d['posts']), d
+          assert len({p.get('image_id') for p in d['posts']})==5, d
+          assert all(int(p.get('image_w',0))>=1200 and int(p.get('image_h',0))>=700 for p in d['posts']), d
+          open('/tmp/ab1-clean.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP_BIN")':\$PATH; '$PHP_BIN' '$WP_BIN' db query \"SELECT pm.meta_value,p.ID,p.post_status,p.post_name FROM wp_posts p JOIN wp_postmeta pm ON pm.post_id=p.ID WHERE pm.meta_key='_emdo_authority_key' ORDER BY p.ID DESC LIMIT 10;\" --skip-column-names --path='$PROD_PATH' --allow-root; '$PHP_BIN' '$WP_BIN' cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; rm -f '$PUB' '$RUN'" | tee /tmp/dbrows.txt
+          test "$(grep -c $'\tpublish\t' /tmp/dbrows.txt)" -ge 5
+
+      - name: Verify public pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://www.elmercadodeorigen.com
+          stamp="$GITHUB_RUN_ID"
+          check(){
+            url="$1"; marker="$2"; out="/tmp/ab1-$(echo "$marker-$url"|tr '/:' '__').html"
+            code="$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 70 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$out" -w '%{http_code}' "${url}?ab1_plesk=${stamp}")"
+            test "$code" = 200
+            grep -Fq "EMDO_AUTHORITY_BATCH1:${marker}" "$out"
+            grep -Eq 'class="[^"]*products|class="[^"]*product' "$out"
+            ! grep -Fq '[products ' "$out"
+            grep -Fq 'emo-article-featured' "$out"
+          }
+          check "$BASE/brida-negra-roja-verde-blanca-jamon-iberico/" iberico-seals
+          check "$BASE/en/black-red-green-white-seal-iberian-ham/" iberico-seals
+          check "$BASE/como-conservar-jamon-iberico-empezado/" ham-storage
+          check "$BASE/en/how-to-store-iberian-ham-once-started/" ham-storage
+          check "$BASE/lomo-chorizo-salchichon-iberico-diferencias-como-elegir/" cured-meats-guide
+          check "$BASE/en/iberian-loin-chorizo-salchichon-differences-how-to-choose/" cured-meats-guide
+          check "$BASE/picual-arbequina-lechin-que-aove-elegir/" oil-varieties
+          check "$BASE/en/picual-arbequina-lechin-which-evoo-to-choose/" oil-varieties
+          check "$BASE/que-significa-aceite-oliva-virgen-extra/" what-evoo-means
+          check "$BASE/en/what-extra-virgin-olive-oil-really-means/" what-evoo-means
+          curl -k -L -sS -H 'Cache-Control: no-cache' "$BASE/blog/?ab1_plesk=$stamp" -o /tmp/blog-es.html
+          curl -k -L -sS -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab1_plesk=$stamp" -o /tmp/blog-en.html
+          grep -Fq 'Brida negra, roja, verde o blanca' /tmp/blog-es.html
+          grep -Fq 'Black, red, green or white seal' /tmp/blog-en.html
+
+      - name: Record verified publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open('/tmp/ab1-clean.json'))
+          d['verified']=True; d['language_views_verified']=10; d['blogs_verified']=True
+          d['run_id']=os.environ['GITHUB_RUN_ID']; d['source_sha']=os.environ['GITHUB_SHA']
+          open('.deploy-status/editorial-authority-batch1-final-20260821.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch1-final-20260821.json
+          git commit -m 'Record verified editorial authority batch 1 publication [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
