@@ -1,0 +1,126 @@
+name: Huerta unit price audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mdo-supplier-sync/mdo-supplier-sync.php'
+      - 'mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php'
+      - '.github/scripts/audit-huerta-unit-price-20260821.php'
+      - '.github/workflows/huerta-unit-price-production-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit-and-apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP files
+        shell: bash
+        run: |
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          php -l mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php
+          php -l .github/scripts/audit-huerta-unit-price-20260821.php
+
+      - name: Deploy protection and audit production catalogue
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_MAIN="/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.php"
+          REMOTE_UNIT="/tmp/class-mdo-huerta-unit-price-${GITHUB_RUN_ID}.php"
+          REMOTE_SCRIPT="/tmp/audit-huerta-unit-price-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MAIN"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php "$STAGING_USER@$STAGING_HOST:$REMOTE_UNIT"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/audit-huerta-unit-price-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+
+          mkdir -p .deploy-status
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            PLUGIN_DIR='$PROD_PATH/wp-content/plugins/mdo-supplier-sync'
+            MAIN_FILE=\"\$PLUGIN_DIR/mdo-supplier-sync.php\"
+            UNIT_FILE=\"\$PLUGIN_DIR/includes/class-mdo-huerta-unit-price.php\"
+            [ -f \"\$MAIN_FILE\" ] || { echo 'ERROR: production EMDO plugin not found' >&2; exit 20; }
+            mkdir -p \"\$PLUGIN_DIR/includes\"
+            cp \"\$MAIN_FILE\" \"/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.bak.php\"
+            [ ! -f \"\$UNIT_FILE\" ] || cp \"\$UNIT_FILE\" \"/tmp/class-mdo-huerta-unit-price-${GITHUB_RUN_ID}.bak.php\"
+            cp '$REMOTE_MAIN' \"\$MAIN_FILE\"
+            cp '$REMOTE_UNIT' \"\$UNIT_FILE\"
+            rm -f '$REMOTE_MAIN' '$REMOTE_UNIT'
+
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l \"\$MAIN_FILE\" >/dev/null
+            \"\$php_bin\" -l \"\$UNIT_FILE\" >/dev/null
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root
+            code=\$?
+            rm -f '$REMOTE_SCRIPT'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            exit \$code
+          " > .deploy-status/huerta-unit-price-20260821.txt 2>&1
+          CODE=$?
+          set -e
+          echo "$CODE" > .deploy-status/huerta-unit-price-20260821.exit-code
+          cat .deploy-status/huerta-unit-price-20260821.txt
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/huerta-unit-price-20260821.txt .deploy-status/huerta-unit-price-20260821.exit-code || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Huerta unit price production result [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Fail if audit failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .deploy-status/huerta-unit-price-20260821.exit-code
+          test "$(cat .deploy-status/huerta-unit-price-20260821.exit-code)" = "0"
+          grep -q '^huerta_unit_price_ok ' .deploy-status/huerta-unit-price-20260821.txt
