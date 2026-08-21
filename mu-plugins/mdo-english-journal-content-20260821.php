@@ -7,6 +7,8 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+/* Editorial authority batch 1 deployment trigger: 2026-08-21. */
+
 function mdoej_en_20260821(): bool {
     if ( function_exists( 'mdoer_en' ) ) { return mdoer_en(); }
     if ( function_exists( 'mdo_en_is_request' ) ) { return mdo_en_is_request(); }
