@@ -37,5 +37,5 @@ producer_store_safe_audit_ok {"vendors_checked":4,"products_checked":107,"allowe
 HTTP shop=200 producers=200 es=200 en=200 blocked_es=200 blocked_en=200
 PRODUCT_CARDS es=3 en=3 blocked_es=0 blocked_en=0
 RANK expected_first=https://www.elmercadodeorigen.com/producto/aceite-de-oliva-virgen-extra-5l actual_first=https://www.elmercadodeorigen.com/producto/aceite-de-oliva-virgen-extra-5l
-FAIL: browser DOM verification failed
-ROLLBACK producer toolbar UX
+BROWSER_DOM ok es_cards=3 en_cards=3 blocked_es=0 blocked_en=0 shop_bg=rgb(255, 255, 255)
+producer_store_toolbar_ux_production_ok
