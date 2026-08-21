@@ -1,0 +1,180 @@
+name: Verified white producer toolbar production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/producer-store-toolbar-white-final-production-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: |
+          php -l mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php
+          php -l mu-plugins/zzzzzz-mdo-producer-toolbar-white-guard-20260821.php
+
+      - name: Deploy and verify with rollback
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/producer-store-toolbar-white-final-20260821.txt
+          EXIT=.deploy-status/producer-store-toolbar-white-final-20260821.exit-code
+          : > "$STATUS"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf %s "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          MU="$PROD_PATH/wp-content/mu-plugins"
+          UX_TARGET="$MU/zzzzz-mdo-producer-store-toolbar-ux-20260821.php"
+          WHITE_TARGET="$MU/zzzzzz-mdo-producer-toolbar-white-guard-20260821.php"
+          UX_REMOTE="/tmp/mdo-toolbar-ux-${GITHUB_RUN_ID}.php"
+          WHITE_REMOTE="/tmp/mdo-toolbar-white-${GITHUB_RUN_ID}.php"
+          AUDIT_REMOTE="/tmp/mdo-toolbar-audit-${GITHUB_RUN_ID}.php"
+
+          rollback() {
+            echo 'ROLLBACK verified producer toolbar' | tee -a "$STATUS"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              rm -f '$UX_TARGET' '$WHITE_TARGET' '$UX_REMOTE' '$WHITE_REMOTE' '$AUDIT_REMOTE'
+              wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            " || true
+          }
+          fail() { echo "FAIL: $1" | tee -a "$STATUS"; rollback; echo 2 > "$EXIT"; exit 2; }
+
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php "$STAGING_USER@$STAGING_HOST:$UX_REMOTE"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzzz-mdo-producer-toolbar-white-guard-20260821.php "$STAGING_USER@$STAGING_HOST:$WHITE_REMOTE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/verify-producer-store-safe-20260821.php "$STAGING_USER@$STAGING_HOST:$AUDIT_REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            cp '$UX_REMOTE' '$UX_TARGET'; cp '$WHITE_REMOTE' '$WHITE_TARGET'; rm -f '$UX_REMOTE' '$WHITE_REMOTE'
+            wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$UX_TARGET'; \"\$php_bin\" -l '$WHITE_TARGET'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+          " >> "$STATUS" 2>&1 || fail 'deploy/lint failed'
+
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$AUDIT_REMOTE' --path='$PROD_PATH' --allow-root
+          " >> "$STATUS" 2>&1
+          AUDIT_CODE=$?
+          set -e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$AUDIT_REMOTE'" || true
+          [ "$AUDIT_CODE" = 0 ] || fail 'producer data audit failed'
+
+          AUDIT_JSON="$(grep '^producer_store_safe_audit_ok ' "$STATUS" | tail -n1 | sed 's/^producer_store_safe_audit_ok //')"
+          SLUG="$(python -c 'import json,sys;print(json.loads(sys.argv[1])["sample_slug"])' "$AUDIT_JSON")"
+          BLOCKED="$(python -c 'import json,sys;print(json.loads(sys.argv[1])["sample_blocked_country"])' "$AUDIT_JSON")"
+          EXPECTED="$(python -c 'import json,sys;print(json.loads(sys.argv[1])["sample_es_first_product_url"])' "$AUDIT_JSON")"
+          BASE=https://www.elmercadodeorigen.com; SHOP="$BASE/tienda/"; LIST="$BASE/productores/"; ES="$BASE/tienda/$SLUG/"; EN="$BASE/en/store/$SLUG/"
+          curl_page(){ local u="$1" c="$2" o="$3"; curl -L -sS --max-time 40 -H 'Cache-Control: no-cache' -H "Cookie: $c" -o "$o" -w '%{http_code}' "${u}?mdo_white=${GITHUB_RUN_ID}"; }
+          S0="$(curl_page "$SHOP" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/shop.html)"
+          S1="$(curl_page "$LIST" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/list.html)"
+          S2="$(curl_page "$ES" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/es.html)"
+          S3="$(curl_page "$EN" 'mdo_shipping_country=ES; mdo_shipping_postcode=' /tmp/en.html)"
+          S4="$(curl_page "$ES" "mdo_shipping_country=$BLOCKED; mdo_shipping_postcode=" /tmp/bes.html)"
+          S5="$(curl_page "$EN" "mdo_shipping_country=$BLOCKED; mdo_shipping_postcode=" /tmp/ben.html)"
+          printf 'HTTP shop=%s producers=%s es=%s en=%s blocked_es=%s blocked_en=%s\n' "$S0" "$S1" "$S2" "$S3" "$S4" "$S5" | tee -a "$STATUS"
+          for s in "$S0" "$S1" "$S2" "$S3" "$S4" "$S5"; do [[ "$s" =~ ^[23][0-9][0-9]$ ]] || fail 'public HTTP failure'; done
+          for p in /tmp/es.html /tmp/en.html /tmp/bes.html /tmp/ben.html; do grep -q 'data-mdo-producer-toolbar-white-guard="1"' "$p" || fail 'white guard missing'; grep -q 'data-mdo-toolbar-critical-first-paint="1"' "$p" || fail 'critical first-paint CSS missing'; done
+          grep -q 'data-mdo-toolbar-critical-first-paint="1"' /tmp/shop.html || fail 'shop critical first-paint CSS missing'
+
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/es.html >/tmp/es.json
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/en.html >/tmp/en.json
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/bes.html >/tmp/bes.json
+          python .github/scripts/check-producer-store-html-20260821.py /tmp/ben.html >/tmp/ben.json
+          EC="$(python -c 'import json;print(json.load(open("/tmp/es.json"))["count"])')"; NC="$(python -c 'import json;print(json.load(open("/tmp/en.json"))["count"])')"; BEC="$(python -c 'import json;print(json.load(open("/tmp/bes.json"))["count"])')"; BNC="$(python -c 'import json;print(json.load(open("/tmp/ben.json"))["count"])')"
+          FIRST="$(python -c 'import json;print(json.load(open("/tmp/es.json"))["first_href"])')"
+          printf 'PRODUCT_CARDS es=%s en=%s blocked_es=%s blocked_en=%s\n' "$EC" "$NC" "$BEC" "$BNC" | tee -a "$STATUS"
+          [ "$EC" -gt 0 ] && [ "$NC" -gt 0 ] && [ "$BEC" -eq 0 ] && [ "$BNC" -eq 0 ] || fail 'product visibility regression'
+          NEXP="$(python -c 'from urllib.parse import urlsplit;import sys;u=urlsplit(sys.argv[1]);print((u.scheme+"://"+u.netloc+u.path).rstrip("/"))' "$EXPECTED")"; NFIRST="$(python -c 'from urllib.parse import urlsplit;import sys;u=urlsplit(sys.argv[1]);print((u.scheme+"://"+u.netloc+u.path).rstrip("/"))' "$FIRST")"
+          [ "$NEXP" = "$NFIRST" ] || fail 'recommended rank regression'; echo "RANK expected=$NEXP actual=$NFIRST" | tee -a "$STATUS"
+
+          python -m pip install --quiet selenium
+          export MDO_RUN="$GITHUB_RUN_ID" MDO_BASE="$BASE" MDO_SHOP="$SHOP" MDO_ES="$ES" MDO_EN="$EN" MDO_BLOCKED="$BLOCKED"
+          set +e
+          python - <<'PY' >> "$STATUS" 2>&1
+          import os, traceback
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+          opt=webdriver.ChromeOptions(); opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage'); opt.add_argument('--window-size=1440,1200')
+          d=webdriver.Chrome(options=opt); w=WebDriverWait(d,20); base=os.environ['MDO_BASE']; run=os.environ['MDO_RUN']
+          def load(url,country='ES'):
+              d.get(base+'/?seed='+run); d.delete_cookie('mdo_shipping_country'); d.delete_cookie('mdo_shipping_postcode')
+              d.add_cookie({'name':'mdo_shipping_country','value':country,'domain':'www.elmercadodeorigen.com','path':'/'})
+              d.add_cookie({'name':'mdo_shipping_postcode','value':'','domain':'www.elmercadodeorigen.com','path':'/'})
+              d.get(url+'?mdo_browser_white='+run+'-'+country)
+          def css(el,p): return d.execute_script('return getComputedStyle(arguments[0])[arguments[1]]',el,p)
+          def store(url,country,label,has_products):
+              load(url,country)
+              t=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'[data-mdo-ps-destination-open]')))
+              bar=t.find_element(By.XPATH,"ancestor::*[contains(concat(' ',normalize-space(@class),' '),' woostify-sorting ')][1]")
+              assert label in t.text, (label,t.text)
+              assert css(bar,'backgroundColor') in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'), css(bar,'backgroundColor')
+              assert css(t,'backgroundColor') in ('rgb(248, 250, 248)','rgba(248, 250, 248, 1)'), css(t,'backgroundColor')
+              assert css(t,'color') in ('rgb(23, 63, 50)','rgba(23, 63, 50, 1)'), css(t,'color')
+              cards=d.find_elements(By.CSS_SELECTOR,'ul.products li.product, .products .product')
+              assert (len(cards)>0) if has_products else (len(cards)==0), len(cards)
+              assert d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]')
+              assert d.find_elements(By.CSS_SELECTOR,'head [data-mdo-producer-toolbar-white-guard="1"]')
+              t.click(); modal=w.until(EC.visibility_of_element_located((By.ID,'mdo-ps-destination-dialog'))); assert modal.is_displayed(); modal.find_element(By.CSS_SELECTOR,'[data-mdo-ps-destination-close]').click(); w.until(EC.invisibility_of_element_located((By.ID,'mdo-ps-destination-dialog')))
+              return len(cards),css(bar,'backgroundColor')
+          es=store(os.environ['MDO_ES'],'ES','Envío a',True); en=store(os.environ['MDO_EN'],'ES','Shipping to',True); bes=store(os.environ['MDO_ES'],os.environ['MDO_BLOCKED'],'Envío a',False); ben=store(os.environ['MDO_EN'],os.environ['MDO_BLOCKED'],'Shipping to',False)
+          load(os.environ['MDO_SHOP'],'ES'); st=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.mdo-catalog-destination__trigger'))); assert css(st,'backgroundColor') in ('rgb(248, 250, 248)','rgba(248, 250, 248, 1)'); assert css(st,'color') in ('rgb(23, 63, 50)','rgba(23, 63, 50, 1)'); assert d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]')
+          print('BROWSER_OK',es,en,bes,ben,'shop',css(st,'backgroundColor'),css(st,'color')); d.quit()
+          PY
+          BC=$?
+          set -e
+          [ "$BC" = 0 ] || fail 'browser visual/interaction verification failed'
+
+          echo 'producer_store_toolbar_white_final_production_ok' | tee -a "$STATUS"
+          echo 0 > "$EXIT"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-store-toolbar-white-final-20260821.* || true
+          if ! git diff --cached --quiet; then git commit -m 'Record verified white producer toolbar result [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main; fi
+      - name: Assert success
+        if: always()
+        run: |
+          test -f .deploy-status/producer-store-toolbar-white-final-20260821.exit-code
+          test "$(cat .deploy-status/producer-store-toolbar-white-final-20260821.exit-code)" = 0
+          grep -q '^producer_store_toolbar_white_final_production_ok$' .deploy-status/producer-store-toolbar-white-final-20260821.txt
