@@ -1,5 +1,6 @@
 <?php
 /** Build a repository-wide inventory of editorial article images. */
+// 2026-08-21: repository-wide audit for image uniqueness and high-risk ham/oil subjects.
 $root = dirname(__DIR__);
 $patterns = array(
     $root . '/.github/data/editorial-authority-batch*/*.php',
