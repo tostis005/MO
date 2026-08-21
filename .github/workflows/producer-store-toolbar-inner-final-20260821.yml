@@ -1,0 +1,151 @@
+name: Producer store inner toolbar final
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/producer-store-toolbar-inner-final-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Lint
+        run: php -l mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php
+      - name: Deploy and browser verify
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python -m pip install --quiet selenium
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/producer-store-toolbar-inner-final-20260821.txt
+          EXIT=.deploy-status/producer-store-toolbar-inner-final-20260821.exit-code
+          : > "$STATUS"
+
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true); [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in *elmercadodeorigen.com*) printf %s "$p"; break;; esac; done
+          ')"
+          : "${PROD:?production path not found}"
+          TARGET="$PROD/wp-content/mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php"
+          TMP="/tmp/mdo-inner-final-${GITHUB_RUN_ID}.php"
+          BACKUP="/tmp/mdo-inner-final-backup-${GITHUB_RUN_ID}.php"
+          AUDIT="/tmp/mdo-inner-final-audit-${GITHUB_RUN_ID}.php"
+          HAD=0
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET'"; then HAD=1; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$TARGET' '$BACKUP'"; fi
+          rollback(){
+            echo 'ROLLBACK producer inner toolbar final' | tee -a "$STATUS"
+            if [ "$HAD" = 1 ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$BACKUP' '$TARGET'; rm -f '$BACKUP' '$TMP' '$AUDIT'" || true; else sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET' '$BACKUP' '$TMP' '$AUDIT'" || true; fi
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD' --allow-root >/dev/null || true" || true
+          }
+          fail(){ echo "FAIL: $1" | tee -a "$STATUS"; rollback; echo 2 > "$EXIT"; exit 2; }
+
+          sshpass -e scp $SCP mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php "$STAGING_USER@$STAGING_HOST:$TMP"
+          sshpass -e scp $SCP .github/scripts/verify-producer-store-safe-20260821.php "$STAGING_USER@$STAGING_HOST:$AUDIT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$TMP' '$TARGET'; rm -f '$TMP'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$TARGET'; wp cache flush --path='$PROD' --allow-root >/dev/null || true" >> "$STATUS" 2>&1 || fail 'deploy failed'
+
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$(command -v wp)\" eval-file '$AUDIT' --path='$PROD' --allow-root" >> "$STATUS" 2>&1
+          AC=$?
+          set -e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$AUDIT'" || true
+          [ "$AC" = 0 ] || fail 'filter/ranking audit failed'
+          J="$(grep '^producer_store_safe_audit_ok ' "$STATUS" | tail -1 | sed 's/^producer_store_safe_audit_ok //')"
+          SLUG="$(python -c 'import json,sys;print(json.loads(sys.argv[1])["sample_slug"])' "$J")"
+          BLOCKED="$(python -c 'import json,sys;print(json.loads(sys.argv[1])["sample_blocked_country"])' "$J")"
+          EXPECTED="$(python -c 'import json,sys;print(json.loads(sys.argv[1])["sample_es_first_product_url"])' "$J")"
+          BASE=https://www.elmercadodeorigen.com
+          ES="$BASE/tienda/$SLUG/"; EN="$BASE/en/store/$SLUG/"; SHOP="$BASE/tienda/"; LIST="$BASE/productores/"
+
+          for U in "$SHOP" "$LIST" "$ES" "$EN"; do C=$(curl -L -sS -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "${U}?mdo_final_inner=${GITHUB_RUN_ID}"); echo "HTTP $C $U" | tee -a "$STATUS"; [[ "$C" =~ ^[23] ]] || fail "HTTP $U"; done
+
+          export MDO_RUN="$GITHUB_RUN_ID" MDO_BASE="$BASE" MDO_ES="$ES" MDO_EN="$EN" MDO_SHOP="$SHOP" MDO_BLOCKED="$BLOCKED" MDO_EXPECTED="$EXPECTED"
+          set +e
+          python - <<'PY' >> "$STATUS" 2>&1
+          import os
+          from urllib.parse import urlsplit
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+
+          opt=webdriver.ChromeOptions(); opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage'); opt.add_argument('--window-size=1440,1200')
+          d=webdriver.Chrome(options=opt); w=WebDriverWait(d,20); base=os.environ['MDO_BASE']; run=os.environ['MDO_RUN']
+          def load(url,country):
+              d.get(base+'/?seed='+run); d.delete_cookie('mdo_shipping_country'); d.delete_cookie('mdo_shipping_postcode')
+              d.add_cookie({'name':'mdo_shipping_country','value':country,'domain':'www.elmercadodeorigen.com','path':'/'})
+              d.add_cookie({'name':'mdo_shipping_postcode','value':'','domain':'www.elmercadodeorigen.com','path':'/'})
+              d.get(url+('?mdo_browser='+run+'-'+country))
+          def css(el,p): return d.execute_script('return getComputedStyle(arguments[0])[arguments[1]]',el,p)
+          def norm(u):
+              x=urlsplit(u); return (x.scheme+'://'+x.netloc+x.path).rstrip('/')
+          def store(url,country,label,products):
+              load(url,country)
+              t=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'[data-mdo-ps-destination-open]')))
+              inner=t.find_element(By.XPATH,"ancestor::*[contains(concat(' ',normalize-space(@class),' '),' elmercado-vendor-toolbar ')][1]")
+              assert label in t.text, t.text
+              assert css(inner,'backgroundColor')=='rgb(255, 255, 255)', css(inner,'backgroundColor')
+              assert css(t,'backgroundColor')=='rgb(248, 250, 248)', css(t,'backgroundColor')
+              assert css(t,'color')=='rgb(23, 63, 50)', css(t,'color')
+              assert len(d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]'))==1
+              cards=d.find_elements(By.CSS_SELECTOR,'ul.products li.product,.products .product')
+              assert (len(cards)>0)==products, len(cards)
+              first=''
+              if cards:
+                  a=cards[0].find_element(By.CSS_SELECTOR,'a[href]'); first=a.get_attribute('href')
+              t.click(); modal=w.until(EC.visibility_of_element_located((By.ID,'mdo-ps-destination-dialog'))); assert modal.is_displayed()
+              close=modal.find_element(By.CSS_SELECTOR,'.mdo-ps-modal__close'); d.execute_script('arguments[0].click()',close); w.until(EC.invisibility_of_element_located((By.ID,'mdo-ps-destination-dialog')))
+              return len(cards), first, css(inner,'backgroundColor')
+          es=store(os.environ['MDO_ES'],'ES','Envío a',True)
+          en=store(os.environ['MDO_EN'],'ES','Shipping to',True)
+          bes=store(os.environ['MDO_ES'],os.environ['MDO_BLOCKED'],'Envío a',False)
+          ben=store(os.environ['MDO_EN'],os.environ['MDO_BLOCKED'],'Shipping to',False)
+          assert norm(es[1])==norm(os.environ['MDO_EXPECTED']), (es[1],os.environ['MDO_EXPECTED'])
+          load(os.environ['MDO_SHOP'],'ES')
+          st=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'.mdo-catalog-destination__trigger')))
+          sb=st.find_element(By.XPATH,"ancestor::*[contains(concat(' ',normalize-space(@class),' '),' woostify-sorting ')][1]")
+          assert css(sb,'backgroundColor')=='rgb(255, 255, 255)', css(sb,'backgroundColor')
+          assert css(st,'backgroundColor')=='rgb(248, 250, 248)', css(st,'backgroundColor')
+          assert css(st,'color')=='rgb(23, 63, 50)', css(st,'color')
+          assert len(d.find_elements(By.CSS_SELECTOR,'head [data-mdo-toolbar-critical-first-paint="1"]'))==1
+          print('FINAL_BROWSER_OK',es,en,bes,ben,'shop',css(sb,'backgroundColor'),css(st,'backgroundColor'),css(st,'color'))
+          d.quit()
+          PY
+          BC=$?
+          set -e
+          [ "$BC" = 0 ] || fail 'browser verification failed'
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'" || true
+          echo 'producer_store_toolbar_inner_final_ok' | tee -a "$STATUS"
+          echo 0 > "$EXIT"
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-store-toolbar-inner-final-20260821.* || true
+          if ! git diff --cached --quiet; then git commit -m 'Record final producer inner toolbar [skip ci]'; git pull --rebase origin main || true; git push origin HEAD:main; fi
+      - name: Assert success
+        if: always()
+        run: test "$(cat .deploy-status/producer-store-toolbar-inner-final-20260821.exit-code)" = 0
