@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   audit:
@@ -48,5 +48,20 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
           REMOTE="/tmp/seo-audit-production-${GITHUB_RUN_ID}.php"
+          REPORT="$GITHUB_WORKSPACE/.github/reports/seo-audit-production-20260821.txt"
+          mkdir -p "$(dirname "$REPORT")"
           sshpass -e scp $SCP_OPTIONS .github/scripts/seo-audit-production-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" | tee "$REPORT"
+      - name: Save audit report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/reports/seo-audit-production-20260821.txt
+          if git diff --cached --quiet; then
+            echo "No audit report changes to commit"
+            exit 0
+          fi
+          git commit -m "Save production SEO audit report"
+          git push
