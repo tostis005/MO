@@ -1,0 +1,125 @@
+name: Editorial authority batch 1 production audit 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-editorial-authority-batch1-20260821.php'
+      - '.github/workflows/editorial-authority-batch1-audit-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: editorial-authority-batch1-audit-20260821
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit WordPress data
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/audit-editorial-authority-batch1-20260821.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          REMOTE="/tmp/editorial-authority-batch1-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/audit-editorial-authority-batch1-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/ab1-data.json
+          python3 -m json.tool /tmp/ab1-data.json >/dev/null
+
+      - name: Audit public routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+          cat > /tmp/routes.tsv <<'EOF'
+          iberico-seals	es	/brida-negra-roja-verde-blanca-jamon-iberico/
+          iberico-seals	en	/en/black-red-green-white-seal-iberian-ham/
+          ham-storage	es	/como-conservar-jamon-iberico-empezado/
+          ham-storage	en	/en/how-to-store-iberian-ham-once-started/
+          cured-meats-guide	es	/lomo-chorizo-salchichon-iberico-diferencias-como-elegir/
+          cured-meats-guide	en	/en/iberian-loin-chorizo-salchichon-differences-how-to-choose/
+          oil-varieties	es	/picual-arbequina-lechin-que-aove-elegir/
+          oil-varieties	en	/en/picual-arbequina-lechin-which-evoo-to-choose/
+          what-evoo-means	es	/que-significa-aceite-oliva-virgen-extra/
+          what-evoo-means	en	/en/what-extra-virgin-olive-oil-really-means/
+          EOF
+          : > /tmp/public.tsv
+          while IFS=$'\t' read -r key lang path; do
+            file="/tmp/page-${key}-${lang}.html"
+            result="$(curl -k -L -sS --retry 2 --retry-delay 2 --connect-timeout 10 --max-time 60 -A 'Mozilla/5.0 EMDO audit' -H 'Cache-Control: no-cache' -o "$file" -w '%{http_code}\t%{url_effective}' "$BASE$path?ab1_audit=${GITHUB_RUN_ID}" || true)"
+            code="${result%%$'\t'*}"; effective="${result#*$'\t'}"
+            marker=0; products=0; raw=0; featured=0
+            grep -Fq "EMDO_AUTHORITY_BATCH1:${key}" "$file" 2>/dev/null && marker=1 || true
+            grep -Eq 'class="[^"]*products|class="[^"]*product' "$file" 2>/dev/null && products=1 || true
+            grep -Fq '[products ' "$file" 2>/dev/null && raw=1 || true
+            grep -Fq 'emo-article-featured' "$file" 2>/dev/null && featured=1 || true
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$key" "$lang" "${code:-0}" "$marker" "$products" "$raw" "$featured" "$effective" >> /tmp/public.tsv
+          done < /tmp/routes.tsv
+
+          curl -k -L -sS --retry 2 --connect-timeout 10 --max-time 60 -H 'Cache-Control: no-cache' "$BASE/blog/?ab1_audit=${GITHUB_RUN_ID}" -o /tmp/blog-es.html || true
+          curl -k -L -sS --retry 2 --connect-timeout 10 --max-time 60 -H 'Cache-Control: no-cache' "$BASE/en/journal/?ab1_audit=${GITHUB_RUN_ID}" -o /tmp/blog-en.html || true
+
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open('/tmp/ab1-data.json',encoding='utf-8'))
+          public=[]
+          for line in open('/tmp/public.tsv',encoding='utf-8'):
+              key,lang,code,marker,products,raw,featured,effective=line.rstrip('\n').split('\t',7)
+              public.append(dict(key=key,lang=lang,http=int(code or 0),marker=bool(int(marker)),products=bool(int(products)),raw_shortcode=bool(int(raw)),featured=bool(int(featured)),effective_url=effective))
+          bes=open('/tmp/blog-es.html',encoding='utf-8',errors='ignore').read() if os.path.exists('/tmp/blog-es.html') else ''
+          ben=open('/tmp/blog-en.html',encoding='utf-8',errors='ignore').read() if os.path.exists('/tmp/blog-en.html') else ''
+          d['public']=public
+          d['blog_es_has_batch']=('Brida negra, roja, verde o blanca' in bes and 'Picual, Arbequina o Lechín' in bes)
+          d['blog_en_has_batch']=('Black, red, green or white seal' in ben and 'Picual, Arbequina or Lechín' in ben)
+          d['all_posts_exist']=len(d.get('posts',[]))==5 and all(p.get('exists') and p.get('status')=='publish' for p in d.get('posts',[]))
+          d['all_public_ok']=len(public)==10 and all(x['http']==200 and x['marker'] and x['products'] and not x['raw_shortcode'] and x['featured'] for x in public)
+          d['run_id']=os.environ['GITHUB_RUN_ID']
+          d['source_sha']=os.environ['GITHUB_SHA']
+          os.makedirs('.deploy-status',exist_ok=True)
+          json.dump(d,open('.deploy-status/editorial-authority-batch1-audit-20260821.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          open('.deploy-status/editorial-authority-batch1-audit-20260821.json','a').write('\n')
+          print(json.dumps(d,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Record audit
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .deploy-status/editorial-authority-batch1-audit-20260821.json || exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch1-audit-20260821.json
+          git commit -m 'Record editorial authority batch 1 production audit [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
