@@ -1,0 +1,59 @@
+EMDO OOS SINGULAR QUERY DIAGNOSTIC 2026-08-21
+PROD_PATH=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+WP_BIN=/usr/local/bin/wp
+PHP_BIN=/opt/plesk/php/8.3/bin/php
+HIDE_OOS=
+
+=== CALLBACKS ===
+/usr/bin/env: ‘php’: No such file or directory
+
+=== SOURCE MATCHES (MU + THEME) ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-internal-mentta-category.php:180:	$wp_query->set_404();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-a-dynamic-sitemaps.php:225:			$hide_out_of_stock = 'yes' === (string) get_option( 'woocommerce_hide_out_of_stock_items', 'no' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-a-dynamic-sitemaps.php:243:					if ( $hide_out_of_stock && 'outofstock' === (string) $product->get_stock_status() ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/transaction-focus-final-01056.php:34:			body.elmercado-child-theme.single-product div.product.outofstock .stock.out-of-stock {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/wcfm-disabled-vendor-visibility-010210.php:293:	'woocommerce_product_is_visible',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:63: * Devuelve el término product_visibility usado por WooCommerce para agotados.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:65:function elmercado_catalog_outofstock_term_id_010219(): int {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:66:	if ( ! function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:69:	$visibility = wc_get_product_visibility_term_ids();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:70:	return isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:74: * Términos de product_visibility que no deben entrar en el catálogo ni counts.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:85:	if ( ! function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:89:	$visibility = wc_get_product_visibility_term_ids();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:91:	$stock_id   = isset( $visibility['outofstock'] ) ? absint( $visibility['outofstock'] ) : 0;
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:105: * SQL que elimina productos no catalogables o agotados por product_visibility.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:120:		. "AND emo_vis_tt.taxonomy = 'product_visibility' "
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:131:	$outofstock_id = elmercado_catalog_outofstock_term_id_010219();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:132:	if ( $outofstock_id <= 0 ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:137:		if ( ! is_array( $clause ) || 'product_visibility' !== ( $clause['taxonomy'] ?? '' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:141:		if ( 'NOT IN' === strtoupper( (string) ( $clause['operator'] ?? '' ) ) && in_array( $outofstock_id, $terms, true ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:147:		'taxonomy' => 'product_visibility',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php:149:		'terms'    => array( $outofstock_id ),
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/setup.php:141:	if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/setup.php:142:		$visibility = wc_get_product_visibility_term_ids();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/setup.php:146:				'yes' === get_option( 'woocommerce_hide_out_of_stock_items' ) ? ( $visibility['outofstock'] ?? 0 ) : 0,
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/setup.php:152:				'taxonomy' => 'product_visibility',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/product-navigation-performance-010237.php:58:	if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/product-navigation-performance-010237.php:59:		$visibility = wc_get_product_visibility_term_ids();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/product-navigation-performance-010237.php:63:				'yes' === get_option( 'woocommerce_hide_out_of_stock_items' )
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/product-navigation-performance-010237.php:64:					? absint( $visibility['outofstock'] ?? 0 )
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php:116: * Términos product_visibility que nunca pertenecen al catálogo visible.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php:125:	if ( ! function_exists( 'wc_get_product_visibility_term_ids' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php:129:	$ids = wc_get_product_visibility_term_ids();
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php:136:					$ids['outofstock'] ?? 0,
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php:291:			'taxonomy' => 'product_visibility',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/vendor-store-catalog-filters-010225.php:489:			'taxonomy' => 'product_visibility',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/checkout-stock-final-01036.php:90:			html body.elmercado-child-theme.single-product div.product.outofstock .summary::before {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-query-parity-010224.php:59:		if ( ! is_array( $clause ) || 'product_visibility' !== ( $clause['taxonomy'] ?? '' ) ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-query-parity-010224.php:71:			'taxonomy' => 'product_visibility',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/catalog-query-parity-010224.php:129:		/* Exclude-from-catalog y outofstock son obligatorios para todos. */
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/experience-polish-final-01055.php:39:			body.elmercado-child-theme.single-product div.product.outofstock .summary::before {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/experience-polish-final-01055.php:44:			body.elmercado-child-theme.single-product div.product.outofstock .stock.out-of-stock {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/elmercadodeorigen-child/inc/experience-polish-final-01055.php:62:			body.elmercado-child-theme.single-product div.product.outofstock .stock.out-of-stock::before {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-template-functions.php:657:		if ( 'outofstock' === $out_of_stock ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/themes/woostify/inc/woocommerce/woostify-woocommerce-template-functions.php:687:		if ( 'outofstock' === $out_of_stock ) {
+
+=== SOURCE MATCHES (ACTIVE PLUGINS, focused) ===
+
+DIAGNOSTIC_DONE=1
