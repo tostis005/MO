@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO English Journal Content 20260821
  * Description: Renders reviewed English post copy and blog-category labels from persisted _en_US_* metadata on /en/ routes.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -26,10 +26,16 @@ add_filter( 'the_title', static function ( string $title, int $post_id ): string
     return mdoej_post_value_20260821( $post_id, '_en_US_post_title', $title );
 }, PHP_INT_MAX, 2 );
 
+/*
+ * Replace the native post body before WordPress runs wpautop/shortcode_unautop
+ * and do_shortcode. At PHP_INT_MAX the English metadata used to replace an
+ * already-rendered Spanish body with raw shortcode text, so related products
+ * appeared as [products ...] instead of WooCommerce cards on /en/ articles.
+ */
 add_filter( 'the_content', static function ( string $content ): string {
     $post_id = (int) get_the_ID();
     return $post_id > 0 ? mdoej_post_value_20260821( $post_id, '_en_US_post_content', $content ) : $content;
-}, PHP_INT_MAX );
+}, 8 );
 
 add_filter( 'get_the_excerpt', static function ( $excerpt, $post ) {
     $post_id = $post instanceof WP_Post ? (int) $post->ID : (int) $post;
