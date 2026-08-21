@@ -1,0 +1,41 @@
+name: Validate blog images and pagination 0.10.262
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-blog-image-pagination-010262.yml'
+      - '.github/workflows/production-blog-image-pagination-010262.yml'
+      - '.github/data/editorial-image-overrides-20260821.php'
+      - '.github/data/legacy-blog-image-overrides-20260821.php'
+      - '.github/scripts/repair-blog-images-010262.php'
+      - '.github/scripts/blog-image-state-010262.php'
+      - 'scripts/editorial-image-inventory-20260821.php'
+      - 'mu-plugins/mdo-blog-image-pagination-010262.php'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and effective image inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-blog-image-pagination-010262.php
+          php -l .github/scripts/repair-blog-images-010262.php
+          php -l .github/scripts/blog-image-state-010262.php
+          php -l .github/data/editorial-image-overrides-20260821.php
+          php -l .github/data/legacy-blog-image-overrides-20260821.php
+          php -l scripts/editorial-image-inventory-20260821.php
+          php scripts/editorial-image-inventory-20260821.php > /tmp/editorial-image-inventory.json
+          php -r '$r=json_decode(file_get_contents("/tmp/editorial-image-inventory.json"),true); if(!is_array($r)||($r["article_count"]??0)<50||!empty($r["duplicate_image_ids"])||!empty($r["duplicate_image_urls"])){fwrite(STDERR,json_encode($r["duplicate_image_ids"]??[]).PHP_EOL);exit(1);} echo "EFFECTIVE_EDITORIAL_IMAGES_UNIQUE articles=".$r["article_count"]." overrides=".$r["override_count"].PHP_EOL;'
+      - name: Validate workflow YAML
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; YAML.load_file(".github/workflows/production-blog-image-pagination-010262.yml"); YAML.load_file(".github/workflows/validate-blog-image-pagination-010262.yml"); puts "WORKFLOW_YAML_OK"'
