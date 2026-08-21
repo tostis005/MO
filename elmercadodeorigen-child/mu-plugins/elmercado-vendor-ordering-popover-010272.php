@@ -1,6 +1,6 @@
 <?php
 /**
- * Native WooCommerce ordering parity for WCFM vendor stores 0.10.280.
+ * Native WooCommerce ordering parity for WCFM vendor stores 0.10.281.
  *
  * The producer toolbar exposes one real WooCommerce <select>. WCFM/legacy
  * scripts may write inline !important styles after wp_head, so this owner also
@@ -21,7 +21,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-vendor-ordering-native-010280">
+		<style id="elmercado-vendor-ordering-native-010281">
 			body.wcfmmp-store-page .mdo-vendor-order-button,
 			body.wcfmmp-store-page .mdo-vendor-order-menu,
 			body.wcfmmp-store-page .mdo-vendor-order-sheet,
@@ -40,6 +40,8 @@ add_action(
 				box-shadow:none !important;
 				overflow:visible !important;
 				pointer-events:auto !important;
+				transition:none !important;
+				animation:none !important;
 			}
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering::before,
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering::after {
@@ -79,6 +81,8 @@ add_action(
 				touch-action:manipulation !important;
 				cursor:pointer !important;
 				z-index:3 !important;
+				transition:none !important;
+				animation:none !important;
 			}
 		</style>
 		<?php
@@ -93,7 +97,7 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-vendor-ordering-native-script-010280">
+		<script id="elmercado-vendor-ordering-native-script-010281">
 		(() => {
 			'use strict';
 			if (!document.body || !document.body.classList.contains('wcfmmp-store-page')) return;
@@ -128,7 +132,8 @@ add_action(
 			const forceFinalGeometry = (form, select) => {
 				[
 					['box-sizing','border-box'],['border','0'],['outline','0'],['background','transparent'],
-					['box-shadow','none'],['overflow','visible'],['pointer-events','auto']
+					['box-shadow','none'],['overflow','visible'],['pointer-events','auto'],
+					['transition','none'],['transition-property','none'],['animation','none']
 				].forEach(([name,value]) => important(form,name,value));
 
 				[
@@ -138,12 +143,11 @@ add_action(
 					['background','#f8faf8'],['box-shadow','none'],['color','#173f32'],['font-family','inherit'],
 					['font-size','11.75px'],['font-weight','700'],['letter-spacing','0'],['line-height','1'],
 					['visibility','visible'],['opacity','1'],['clip','auto'],['clip-path','none'],['transform','none'],
-					['pointer-events','auto'],['touch-action','manipulation'],['cursor','pointer'],['z-index','3']
+					['pointer-events','auto'],['touch-action','manipulation'],['cursor','pointer'],['z-index','3'],
+					['transition','none'],['transition-property','none'],['animation','none']
 				].forEach(([name,value]) => important(select,name,value));
 
 				if (mobile.matches) {
-					/* Match Shop's usable viewport rather than CSS 100vw, which WCFM resolves
-					 * fractionally narrower on long vendor pages because of the scrollbar. */
 					const mobileWidth = `${Math.max(0, window.innerWidth - 58)}px`;
 					[
 						['position','relative'],['left','50%'],['width',mobileWidth],
