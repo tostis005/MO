@@ -9,7 +9,7 @@ return array(
 'excerpt'=>'Un jamón no es uniforme. Cada zona cambia en grasa, curación, textura y facilidad de corte. Esta guía explica cómo reconocer y aprovechar cada parte de la pieza.',
 'en_excerpt'=>'A whole ham is not uniform. Each zone differs in fat, curing, texture and carving. This guide explains how to recognise and use every part of the leg.',
 'image'=>array(
-'id'=>'36601487','direct'=>'https://images.pexels.com/photos/36601487/pexels-photo-36601487.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/hanging-iberian-hams-in-spanish-market-36601487/','photographer'=>'Pexels contributor','alt_es'=>'Piezas de jamón ibérico colgadas en un mercado español','alt_en'=>'Iberian ham legs hanging in a Spanish market'),
+'id'=>'36601487','direct'=>'https://images.pexels.com/photos/36601487/pexels-photo-36601487.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/hanging-iberian-hams-in-spanish-market-36601487/','photographer'=>'Anatolii Maks','alt_es'=>'Piezas de jamón ibérico colgadas en un mercado español','alt_en'=>'Iberian ham legs hanging in a Spanish market'),
 'content'=><<<'HTML'
 <!-- EMDO_AUTHORITY_BATCH9:iberian-ham-parts-guide -->
 <p>Cuando se habla de “un jamón” es fácil imaginar una pieza homogénea, pero desde el punto de vista del corte y de la degustación ocurre justo lo contrario. Una misma pata reúne músculos con formas, proporciones de grasa, exposición al aire y velocidades de curación diferentes. Por eso una loncha obtenida de la maza puede ser notablemente distinta de otra cortada en la babilla o en la punta, aunque ambas procedan del mismo jamón.</p>
