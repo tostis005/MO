@@ -1,0 +1,35 @@
+name: Editorial image inventory 20260821
+
+on:
+  push:
+    branches:
+      - fix/blog-image-pagination-010262
+    paths:
+      - 'scripts/editorial-image-inventory-20260821.php'
+      - '.github/workflows/editorial-image-inventory-20260821.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/blog-image-pagination-010262
+      - name: Build inventory
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          php scripts/editorial-image-inventory-20260821.php > reports/editorial-image-inventory-20260821.json
+          php -r '$d=json_decode(file_get_contents("reports/editorial-image-inventory-20260821.json"),true); if(!$d){exit(1);} echo "ARTICLES=".$d["article_count"].PHP_EOL; echo "DUP_IDS=".count($d["duplicate_image_ids"]).PHP_EOL; echo "DUP_URLS=".count($d["duplicate_image_urls"]).PHP_EOL; echo "HIGH_RISK=".count($d["high_risk_ham_oil"]).PHP_EOL;'
+      - name: Record inventory
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/editorial-image-inventory-20260821.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record editorial image inventory [skip ci]'
+          git push origin HEAD:fix/blog-image-pagination-010262
