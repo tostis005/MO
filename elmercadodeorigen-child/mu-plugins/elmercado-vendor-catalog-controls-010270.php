@@ -1,9 +1,10 @@
 <?php
 /**
- * Vendor-store mobile catalogue controls parity 0.10.270.
+ * Vendor-store destination controls parity 0.10.270.
  *
- * Keeps WCFM producer stores aligned with the global shop for the destination
- * control, native WooCommerce ordering select and destination modal.
+ * IMPORTANT: ordering is intentionally not handled here anymore. The old
+ * ordering repair observer fought with the dedicated mobile ordering control
+ * and could resurrect an invisible/native select over the real button.
  *
  * @package ElMercadoDeOrigen
  */
@@ -24,7 +25,6 @@ add_action(
 			static function (): void {
 				?>
 				<style id="elmercado-vendor-catalog-controls-010270">
-					/* Producer stores only: preserve the global-shop control geometry. */
 					body.wcfmmp-store-page [data-mdo-toolbar-destination],
 					body.wcfmmp-store-page .mdo-catalog-toolbar__destination {
 						position: relative !important;
@@ -60,40 +60,6 @@ add_action(
 						pointer-events: none !important;
 					}
 
-					/* Only the native select draws the control: no WCFM/Woostify second frame. */
-					body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
-						position: relative !important;
-						z-index: 5 !important;
-						background: transparent !important;
-						border: 0 !important;
-						outline: 0 !important;
-						box-shadow: none !important;
-						overflow: visible !important;
-						pointer-events: auto !important;
-					}
-
-					body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering::before,
-					body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering::after {
-						display: none !important;
-						content: none !important;
-						pointer-events: none !important;
-					}
-
-					body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
-						position: relative !important;
-						z-index: 6 !important;
-						display: block !important;
-						visibility: visible !important;
-						opacity: 1 !important;
-						pointer-events: auto !important;
-						touch-action: manipulation !important;
-						-webkit-appearance: menulist !important;
-						appearance: auto !important;
-						box-shadow: none !important;
-						cursor: pointer !important;
-					}
-
-					/* A destination dialog is either fully closed or fully usable. */
 					body.wcfmmp-store-page .mdo-destination-modal[hidden],
 					body.wcfmmp-store-page .mdo-destination-modal[aria-hidden="true"] {
 						display: none !important;
@@ -120,7 +86,6 @@ add_action(
 						pointer-events: auto !important;
 					}
 
-					/* Same dark circular close affordance as the canonical shop dialog. */
 					body.wcfmmp-store-page .mdo-destination-modal [data-mdo-destination-close],
 					body.wcfmmp-store-page .mdo-destination-modal .mdo-destination-modal__close,
 					body.wcfmmp-store-page .mdo-destination-modal .mdo-destination-close {
@@ -150,13 +115,6 @@ add_action(
 						stroke: currentColor !important;
 						pointer-events: none !important;
 					}
-
-					@media (max-width: 991px) {
-						body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
-						body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select {
-							isolation: isolate !important;
-						}
-					}
 				</style>
 				<?php
 			},
@@ -174,23 +132,6 @@ add_action(
 
 					const important = (node, name, value) => node?.style?.setProperty(name, value, 'important');
 					const clear = (node, ...names) => names.forEach(name => node?.style?.removeProperty(name));
-
-					const repairOrdering = () => {
-						document.querySelectorAll('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering').forEach(form => {
-							important(form, 'pointer-events', 'auto');
-							important(form, 'position', 'relative');
-							important(form, 'z-index', '5');
-							form.querySelectorAll('select').forEach(select => {
-								select.disabled = false;
-								select.removeAttribute('aria-hidden');
-								important(select, 'pointer-events', 'auto');
-								important(select, 'position', 'relative');
-								important(select, 'z-index', '6');
-								important(select, 'visibility', 'visible');
-								important(select, 'opacity', '1');
-							});
-						});
-					};
 
 					const repairDestination = () => {
 						document.querySelectorAll('[data-mdo-toolbar-destination], .mdo-catalog-toolbar__destination').forEach(button => {
@@ -222,7 +163,6 @@ add_action(
 					};
 
 					const repair = () => {
-						repairOrdering();
 						repairDestination();
 						document.querySelectorAll('.mdo-destination-modal, [data-mdo-destination-modal]').forEach(syncModal);
 					};
@@ -230,17 +170,14 @@ add_action(
 					repair();
 					window.addEventListener('load', repair, { once: true });
 
-					const observer = new MutationObserver(mutations => {
+					new MutationObserver(mutations => {
 						let needsRepair = false;
 						for (const mutation of mutations) {
 							if (mutation.type === 'childList') needsRepair = true;
-							if (mutation.type === 'attributes' && mutation.target instanceof Element && mutation.target.matches('.mdo-destination-modal, [data-mdo-destination-modal]')) {
-								syncModal(mutation.target);
-							}
+							if (mutation.type === 'attributes' && mutation.target instanceof Element && mutation.target.matches('.mdo-destination-modal, [data-mdo-destination-modal]')) syncModal(mutation.target);
 						}
 						if (needsRepair) requestAnimationFrame(repair);
-					});
-					observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'aria-hidden', 'class'] });
+					}).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'aria-hidden', 'class'] });
 				})();
 				</script>
 				<?php
