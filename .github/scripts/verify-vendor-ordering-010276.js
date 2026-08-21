@@ -70,7 +70,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
     const compareParity = (label, shop, vendor) => {
       if (!vendor) fail(`${label}: vendor ordering missing`);
       if (vendor.customCount !== 0 || vendor.enhancerCount !== 0) fail(`${label}: duplicate/custom ordering UI remains`, vendor);
-      if (vendor.select.nativeMarker !== '1' || vendor.select.parityMarker !== '010278') fail(`${label}: 0.10.278 native owner is not active`, vendor);
+      if (vendor.select.nativeMarker !== '1' || vendor.select.parityMarker !== '010279') fail(`${label}: 0.10.279 native owner is not active`, vendor);
       if (vendor.select.visibility !== 'visible' || vendor.select.opacity !== '1' || vendor.select.pointer !== 'auto' || vendor.select.aria !== null || vendor.select.disabled) {
         fail(`${label}: native vendor select is not directly interactive`, vendor);
       }
@@ -114,8 +114,8 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
 
       await page.evaluate(sel => {
         const select = document.querySelector(sel);
-        window.__mdoNativeClick010278 = 0;
-        select.addEventListener('click', () => { window.__mdoNativeClick010278 += 1; }, { capture:true });
+        window.__mdoNativeClick010279 = 0;
+        select.addEventListener('click', () => { window.__mdoNativeClick010279 += 1; }, { capture:true });
       }, selector);
 
       if (config.viewport.hasTouch) {
@@ -125,7 +125,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
       }
       await sleep(300);
       const clickState = await page.evaluate(sel => ({
-        clicks: window.__mdoNativeClick010278 || 0,
+        clicks: window.__mdoNativeClick010279 || 0,
         activeIsSelect: document.activeElement === document.querySelector(sel),
       }), selector);
       if (clickState.clicks < 1) fail(`${config.name}: real click/tap did not reach native select`, { vendor1957, clickState });
@@ -147,7 +147,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
       results[config.name] = { shop, vendor1957, vendorHidalgo, clickState, target, oldUrl, newUrl };
     }
 
-    console.log(JSON.stringify({ ok:true, revision:'010278', results }));
+    console.log(JSON.stringify({ ok:true, revision:'010279', results }));
   } finally {
     await browser.close();
   }
