@@ -1,0 +1,111 @@
+name: One-off OOS catalog consistency repair 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-fix-oos-catalog-20260821.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply surgical OOS fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly 1 match, got {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+              print(f'PATCHED: {label}')
+
+          parity = 'elmercadodeorigen-child/inc/catalog-query-parity-010224.php'
+          replace_once(
+              parity,
+              "if ( ! $query->is_main_query() || is_admin() && ! wp_doing_ajax() ) {",
+              "if ( ! $query->is_main_query() || $query->is_singular() || ( is_admin() && ! wp_doing_ajax() ) ) {",
+              'catalog parity: singular guard',
+          )
+          replace_once(
+              parity,
+              '/* Exclude-from-catalog y outofstock son obligatorios para todos. */',
+              '/* Aplica las restricciones de visibilidad definidas para los listados del catálogo. */',
+              'catalog parity: visibility comment',
+          )
+
+          counts = 'elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php'
+          replace_once(
+              counts,
+              "function elmercado_catalog_hides_out_of_stock_010218(): bool {\n    return true;\n}",
+              "function elmercado_catalog_hides_out_of_stock_010218(): bool {\n    return 'yes' === (string) get_option( 'woocommerce_hide_out_of_stock_items', 'no' );\n}",
+              'counts: restore WooCommerce OOS option',
+          )
+          replace_once(
+              counts,
+              "function elmercado_catalog_force_in_stock_tax_query_010219( $query ): void {\n    if ( ! function_exists( 'elmercado_wcfm_query_targets_products_010210' ) || ! elmercado_wcfm_query_targets_products_010210( $query ) ) {\n        return;\n    }",
+              "function elmercado_catalog_force_in_stock_tax_query_010219( $query ): void {\n    if ( ! $query instanceof WP_Query || ! elmercado_catalog_hides_out_of_stock_010218() || $query->is_singular() ) {\n        return;\n    }\n\n    if ( ! function_exists( 'elmercado_wcfm_query_targets_products_010210' ) || ! elmercado_wcfm_query_targets_products_010210( $query ) ) {\n        return;\n    }",
+              'counts: never filter singular and honor Woo option',
+          )
+          replace_once(
+              counts,
+              "    foreach ( [ 'exclude-from-catalog', 'outofstock' ] as $slug ) {",
+              "    $slugs = [ 'exclude-from-catalog' ];\n    if ( elmercado_catalog_hides_out_of_stock_010218() ) {\n        $slugs[] = 'outofstock';\n    }\n\n    foreach ( $slugs as $slug ) {",
+              'counts: conditional OOS visibility term',
+          )
+          replace_once(
+              counts,
+              "    $parts[] = 'stock:hidden';",
+              "    $parts[] = 'stock:' . ( elmercado_catalog_hides_out_of_stock_010218() ? 'hidden' : 'visible' );",
+              'counts: dynamic visibility cache scope',
+          )
+
+          seo = 'mu-plugins/emdo-seo-cleanup-layer.php'
+          replace_once(
+              seo,
+              "2026.08.21.2",
+              "2026.08.21.3",
+              'SEO cleanup: version bump',
+          )
+          replace_once(
+              seo,
+              "        if ( ! $product || 'hidden' === (string) $product->get_catalog_visibility() ) {\n            continue;\n        }",
+              "        if ( ! $product || 'hidden' === (string) $product->get_catalog_visibility() ) {\n            continue;\n        }\n\n        if ( 'yes' === (string) get_option( 'woocommerce_hide_out_of_stock_items', 'no' ) && 'outofstock' === (string) $product->get_stock_status() ) {\n            continue;\n        }",
+              'SEO cleanup: sitemap follows Woo OOS option',
+          )
+          PY
+
+      - name: Validate PHP and patch scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/catalog-query-parity-010224.php
+          php -l elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
+          php -l mu-plugins/emdo-seo-cleanup-layer.php
+          git diff --check
+          git diff -- elmercadodeorigen-child/inc/catalog-query-parity-010224.php elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php mu-plugins/emdo-seo-cleanup-layer.php
+
+      - name: Commit repaired behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$(git status --porcelain)" || { echo 'No changes produced'; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/inc/catalog-query-parity-010224.php elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php mu-plugins/emdo-seo-cleanup-layer.php
+          git commit -m 'Fix out-of-stock catalog and singular product behavior'
+          git push origin HEAD:main
