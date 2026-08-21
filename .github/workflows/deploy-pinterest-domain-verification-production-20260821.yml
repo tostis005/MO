@@ -77,14 +77,14 @@ jobs:
               php_bin=\$(command -v php || true)
               [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
               \"\$php_bin\" -l '$TARGET' >/dev/null
-              grep -Fq 'bd9b4a2c373b774bb7753fa7040172ac' '$TARGET'
               wp_bin=\$(command -v wp || true)
               if [ -n \"\$wp_bin\" ]; then
                 \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
               fi
               html=\$(curl -ksS --max-time 30 'https://www.elmercadodeorigen.com/?pinterest_verify=${GITHUB_RUN_ID}')
-              printf '%s' \"\$html\" | grep -Fq 'bd9b4a2c373b774bb7753fa7040172ac'
+              printf '%s' \"\$html\" | grep -Fq '<meta name=\"p:domain_verify\" content=\"bd9b4a2c373b774bb7753fa7040172ac\"/>'
             "
+            echo 'exact_meta_ok'
             echo 'pinterest_verify_ok'
           } > "$LOG" 2>&1
           CODE=$?
@@ -116,4 +116,5 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat .deploy-status/pinterest-domain-verification-20260821.exit-code)" = '0'
+          grep -q '^exact_meta_ok$' .deploy-status/pinterest-domain-verification-20260821.txt
           grep -q '^pinterest_verify_ok$' .deploy-status/pinterest-domain-verification-20260821.txt
