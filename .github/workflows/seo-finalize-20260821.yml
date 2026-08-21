@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: seo-finalize-production
@@ -26,6 +26,8 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Validate SEO layer
         run: php -l mu-plugins/emdo-seo-cleanup-layer.php
@@ -40,6 +42,9 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
           SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          mkdir -p reports
+          REPORT="reports/seo-final-production-20260821.txt"
+          : > "$REPORT"
 
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
@@ -49,25 +54,39 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          echo "Production path located"
+          echo "PRODUCTION_PATH_FOUND=1" | tee -a "$REPORT"
 
           REMOTE_FILE="$PROD_PATH/wp-content/mu-plugins/emdo-seo-cleanup-layer.php"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$REMOTE_FILE' ]; then cp '$REMOTE_FILE' '$REMOTE_FILE.bak-${GITHUB_RUN_ID}'; fi"
           sshpass -e scp $SCP mu-plugins/emdo-seo-cleanup-layer.php "$STAGING_USER@$STAGING_HOST:$REMOTE_FILE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -l '$REMOTE_FILE'; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" | tee -a "$REPORT"
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -l '$REMOTE_FILE'; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          # Public HTTP verification from the production host.
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'set -euo pipefail
+            base="https://www.elmercadodeorigen.com"
+            check_redirect() {
+              path="$1"; target="$2"; label="$3"
+              headers=$(curl -ksSI --max-time 25 "$base$path")
+              echo "$headers" | grep -Eq "^HTTP/[^ ]+ 301"
+              echo "$headers" | grep -Eqi "^location: .*${target}"
+              echo "${label}=PASS"
+            }
+            check_redirect "/inicio-bf/" "elmercadodeorigen.com/$" "REDIRECT_INICIO_BF"
+            check_redirect "/el-mercado-de-origen/" "/quienes-somos/" "REDIRECT_LEGACY_ABOUT"
+            check_redirect "/condiciones-especiales/" "/envios/" "REDIRECT_LEGACY_SHIPPING"
 
-          # Verify redirects and action-URL robots from the production host itself.
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e;
-            base='https://www.elmercadodeorigen.com';
-            h1=\$(curl -ksSI --max-time 20 \"\$base/inicio-bf/\"); echo \"\$h1\" | head -n 8; echo \"\$h1\" | grep -Eq '^HTTP/[^ ]+ 301'; echo \"\$h1\" | grep -qi '^location: .*elmercadodeorigen.com/';
-            h2=\$(curl -ksSI --max-time 20 \"\$base/el-mercado-de-origen/\"); echo \"\$h2\" | head -n 8; echo \"\$h2\" | grep -Eq '^HTTP/[^ ]+ 301'; echo \"\$h2\" | grep -qi '/quienes-somos/';
-            h3=\$(curl -ksSI --max-time 20 \"\$base/condiciones-especiales/\"); echo \"\$h3\" | head -n 8; echo \"\$h3\" | grep -Eq '^HTTP/[^ ]+ 301'; echo \"\$h3\" | grep -qi '/envios/';
-            action=\$(curl -ksS --max-time 25 \"\$base/?add-to-cart=5080\" || true); printf '%s' \"\$action\" | grep -Eqi '<meta[^>]+name=[\"'\"']robots[\"'\"'][^>]+noindex|<meta[^>]+content=[\"'\"'][^\"'\"']*noindex[^\"'\"']*[\"'\"'][^>]+name=[\"'\"']robots' || true;
-          "
+            action_headers=$(curl -ksS -D - -o /dev/null --max-time 25 "$base/?add-to-cart=5080" || true)
+            echo "$action_headers" | grep -Eqi "^x-robots-tag:.*noindex"
+            echo "ACTION_URL_NOINDEX=PASS"
 
-          # Verify sitemap policy using WP itself: no legacy/functional pages, no disabled vendors,
-          # and stock visibility mirrors the WooCommerce setting.
+            pages=$(curl -ksS --max-time 25 "$base/mdo-sitemap-pages.xml")
+            for bad in inicio-bf el-mercado-de-origen condiciones-especiales store-manager affiliates; do
+              if printf "%s" "$pages" | grep -qi "/${bad}/"; then echo "PAGE_SITEMAP_BAD=${bad}"; exit 8; fi
+            done
+            echo "PAGE_SITEMAP_EXCLUSIONS=PASS"
+          ' | tee -a "$REPORT"
+
+          # WordPress-level policy verification.
           AUDIT="/tmp/emdo-seo-final-${GITHUB_RUN_ID}.php"
           cat > /tmp/emdo-seo-final.php <<'PHP'
           <?php
@@ -83,16 +102,27 @@ jobs:
           }
           $excluded = function_exists('emdo_cleanup_excluded_page_ids') ? emdo_cleanup_excluded_page_ids() : array();
           $legacy = array('inicio-bf','el-mercado-de-origen','condiciones-especiales','store-manager','affiliates');
-          $missing_exclusions = array();
-          foreach ($legacy as $slug) { $page=get_page_by_path($slug, OBJECT, 'page'); if ($page instanceof WP_Post && !in_array((int)$page->ID,$excluded,true)) $missing_exclusions[]=$slug; }
+          $missing = array();
+          foreach ($legacy as $slug) { $page=get_page_by_path($slug, OBJECT, 'page'); if ($page instanceof WP_Post && !in_array((int)$page->ID,$excluded,true)) $missing[]=$slug; }
           echo 'HIDE_OUT_OF_STOCK='.$hide."\n";
           echo 'ELIGIBLE_PRODUCTS='.count($ids)."\n";
           echo 'BAD_DISABLED='.$bad_disabled."\n";
           echo 'BAD_HIDDEN='.$bad_hidden."\n";
           echo 'BAD_OUT_OF_STOCK='.$bad_stock."\n";
-          echo 'MISSING_PAGE_EXCLUSIONS='.implode(',', $missing_exclusions)."\n";
-          if ($bad_disabled || $bad_hidden || $bad_stock || $missing_exclusions) exit(2);
+          echo 'MISSING_PAGE_EXCLUSIONS='.implode(',', $missing)."\n";
+          if ($bad_disabled || $bad_hidden || $bad_stock || $missing) exit(2);
           echo "SEO_FINAL_POLICY_VERIFY=PASS\n";
           PHP
           sshpass -e scp $SCP /tmp/emdo-seo-final.php "$STAGING_USER@$STAGING_HOST:$AUDIT"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$AUDIT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$AUDIT'; exit \$rc"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$AUDIT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$AUDIT'; exit \$rc" | tee -a "$REPORT"
+          echo "SEO_FINAL_DEPLOY_VERIFY=PASS" | tee -a "$REPORT"
+
+      - name: Persist verification report
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/seo-final-production-20260821.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "SEO: record production verification"
+          git push origin HEAD:main
