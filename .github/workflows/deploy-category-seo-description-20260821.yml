@@ -93,8 +93,9 @@ jobs:
               p2status=r.status; p2body=r.read().decode('utf-8','replace')
           except urllib.error.HTTPError as e:
             p2status=e.code; p2body=e.read().decode('utf-8','replace')
-          print(f'PAGINATION|HTTP={p2status}|DESCRIPTION_MARKER={"data-emdo-category-description=\"1\"" in p2body}')
-          if p2status==200 and 'data-emdo-category-description="1"' in p2body: failures.append('category description repeated on page 2')
+          p2marker='data-emdo-category-description="1"' in p2body
+          print(f'PAGINATION|HTTP={p2status}|DESCRIPTION_MARKER={p2marker}')
+          if p2status==200 and p2marker: failures.append('category description repeated on page 2')
           if failures:
             print('FAILURES:')
             for f in failures: print('- '+f)
