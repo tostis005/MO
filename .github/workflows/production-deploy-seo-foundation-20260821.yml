@@ -1,0 +1,146 @@
+name: Production deploy SEO foundation 2026-08-21
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/mdo-seo-foundation-20260821.php'
+      - '.github/workflows/production-deploy-seo-foundation-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint SEO foundation
+        run: php -l .github/scripts/mdo-seo-foundation-20260821.php
+      - name: Install SSH helper
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+      - name: Deploy SEO foundation safely
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/mdo-seo-foundation-${GITHUB_RUN_ID}.php"
+          DEST="$PROD_PATH/wp-content/mu-plugins/mdo-seo-foundation.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/mdo-seo-foundation-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$DEST' ]; then cp -a '$DEST' '$DEST.bak-'\$(date +%Y%m%d%H%M%S); fi; cp '$REMOTE' '$DEST'; rm -f '$REMOTE'; \"\$php_bin\" -l '$DEST'; \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; echo DEPLOYED='$DEST'"
+      - name: Verify public SEO output
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="$GITHUB_WORKSPACE/.github/reports/seo-foundation-production-20260821.txt"
+          mkdir -p "$(dirname "$REPORT")"
+          python3 - <<'PY' | tee "$REPORT"
+          import re, ssl, time, urllib.request, urllib.error
+          from html import unescape
+
+          base='https://www.elmercadodeorigen.com'
+          stamp=str(time.time_ns())
+          ctx=ssl.create_default_context()
+
+          expected={
+            '/': ('Productos españoles de origen | El Mercado de Origen', 'Descubre productos españoles seleccionados por su origen, calidad y productor.'),
+            '/tienda/': ('Comprar productos españoles online | El Mercado de Origen', 'Compra alimentos y productos españoles directamente a productores seleccionados:'),
+            '/productores/': ('Productores españoles | El Mercado de Origen', 'Conoce a los productores de El Mercado de Origen,'),
+            '/blog/': ('Guías de productos y productores | El Mercado de Origen', 'Guías y artículos sobre productos españoles,'),
+            '/categoria-producto/jamones-paletas/': ('Comprar Jamones y paletas online | El Mercado de Origen', 'Compra jamones y paletas online directamente a productores seleccionados.'),
+            '/en/': ('Spanish Food from Selected Producers | El Mercado de Origen', 'Discover selected Spanish food chosen for its origin, quality and producer.'),
+            '/en/journal/': ('Spanish Food Journal | El Mercado de Origen', 'Guides and stories about Spanish food, producers, origin and craftsmanship'),
+          }
+
+          failures=[]
+          def fetch(path):
+            sep='&' if '?' in path else '?'
+            req=urllib.request.Request(base+path+sep+'emdo_seo_verify='+stamp, headers={'User-Agent':'EMDO-SEO-Verify/2026-08-21'})
+            with urllib.request.urlopen(req, timeout=50, context=ctx) as r:
+              return r.status, r.geturl(), r.read().decode('utf-8','replace')
+
+          for path,(want_title,want_desc_prefix) in expected.items():
+            status,final,html=fetch(path)
+            head=html.split('</head>',1)[0]
+            mt=re.search(r'<title[^>]*>(.*?)</title>',head,re.I|re.S)
+            title=unescape(re.sub(r'<[^>]+>','',mt.group(1))).strip() if mt else ''
+            md=''
+            for tag in re.findall(r'<meta\b[^>]*>',head,re.I):
+              if re.search(r'\bname=["\']description["\']',tag,re.I):
+                m=re.search(r'\bcontent=["\']([^"\']*)',tag,re.I)
+                if m: md=unescape(m.group(1)); break
+            cans=[]
+            for tag in re.findall(r'<link\b[^>]*>',head,re.I):
+              if re.search(r'\brel=["\']canonical["\']',tag,re.I):
+                m=re.search(r'\bhref=["\']([^"\']+)',tag,re.I)
+                if m:cans.append(unescape(m.group(1)))
+            print(f'PAGE|{path}|HTTP={status}|FINAL={final}|TITLE={title}|DESC={md[:180]}|CANONICAL={cans[:2]}')
+            if status!=200: failures.append(f'HTTP {path} {status}')
+            if title!=want_title: failures.append(f'TITLE {path}: {title!r}')
+            if not md.startswith(want_desc_prefix): failures.append(f'DESC {path}: {md!r}')
+            if path=='/en/' and cans[:1]!=[base+'/en/']: failures.append(f'CANON /en/: {cans!r}')
+
+          # Verify obsolete indexed landing page is permanently consolidated.
+          req=urllib.request.Request(base+'/inicio-bf/?emdo_seo_verify='+stamp, headers={'User-Agent':'EMDO-SEO-Verify/2026-08-21'})
+          opener=urllib.request.build_opener(urllib.request.HTTPHandler())
+          # Prevent automatic redirect following.
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener=urllib.request.build_opener(NoRedirect)
+          try:
+            r=opener.open(req, timeout=30)
+            code=r.status; loc=r.headers.get('Location','')
+          except urllib.error.HTTPError as e:
+            code=e.code; loc=e.headers.get('Location','')
+          print(f'REDIRECT|/inicio-bf/|HTTP={code}|LOCATION={loc}')
+          if code not in (301,308) or loc.rstrip('/')!=base:
+            failures.append(f'REDIRECT /inicio-bf/: {code} {loc}')
+
+          if failures:
+            print('FAILURES:')
+            for f in failures: print(f)
+            raise SystemExit(1)
+          print('SEO_FOUNDATION_VERIFY=PASS')
+          PY
+      - name: Save verification report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT=.github/reports/seo-foundation-production-20260821.txt
+          if [ ! -f "$REPORT" ]; then
+            echo "Verification report was not produced" > "$REPORT"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$REPORT"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Record SEO foundation production verification [skip ci]"
+          git push
