@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.260' );
-/* 0.10.260 difiere la cadena wp-hooks -> gtag-events de Google for WooCommerce en Home. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.261' );
+/* 0.10.261 iguala el selector de ordenación de productor con Tienda. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -195,6 +195,21 @@ add_action(
 	'after_setup_theme',
 	static function (): void {
 		$module = ELMERCADO_THEME_PATH . '/inc/catalog-mobile-controls-parity-010236.php';
+		if ( is_readable( $module ) ) {
+			require_once $module;
+		}
+	},
+	PHP_INT_MAX
+);
+
+/*
+ * El ajuste 0.10.261 se registra al final para que WCFM no pueda volver a
+ * convertir el selector de ordenación del productor en un control duplicado.
+ */
+add_action(
+	'after_setup_theme',
+	static function (): void {
+		$module = ELMERCADO_THEME_PATH . '/inc/vendor-ordering-parity-010261.php';
 		if ( is_readable( $module ) ) {
 			require_once $module;
 		}
