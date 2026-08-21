@@ -1,0 +1,138 @@
+name: Editorial guides revision 2 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/prepare-editorial-images-20260821.php'
+      - '.github/scripts/refine-editorial-guides-20260821-v2.php'
+      - 'mu-plugins/mdo-english-journal-content-20260821.php'
+      - '.github/workflows/editorial-guides-refine-v2-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: editorial-guides-refine-v2-20260821
+  cancel-in-progress: false
+
+jobs:
+  refine-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/prepare-editorial-images-20260821.php
+          php -l .github/scripts/refine-editorial-guides-20260821-v2.php
+          php -l mu-plugins/mdo-english-journal-content-20260821.php
+          test "$(grep -c "EMDO_EDITORIAL_REV2:" .github/scripts/refine-editorial-guides-20260821-v2.php)" -eq 12
+          test "$(grep -c "'_emdo_unsplash_photo_id'" .github/scripts/prepare-editorial-images-20260821.php)" -ge 1
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Import images and refine production posts
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-english-journal-content-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-journal-content-20260821.php"
+
+          IMG_REMOTE="/tmp/prepare-editorial-images-${GITHUB_RUN_ID}.php"
+          REF_REMOTE="/tmp/refine-editorial-guides-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/prepare-editorial-images-20260821.php "$STAGING_USER@$STAGING_HOST:$IMG_REMOTE"
+          sshpass -e scp $SCP .github/scripts/refine-editorial-guides-20260821-v2.php "$STAGING_USER@$STAGING_HOST:$REF_REMOTE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$IMG_REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$IMG_REMOTE'; exit \$rc" | tee /tmp/editorial-images-v2.json
+          python3 -m json.tool /tmp/editorial-images-v2.json >/dev/null
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/editorial-images-v2.json'))
+          assert len(d['images'])==6
+          assert all(int(x['width'])>=1200 and int(x['height'])>=700 for x in d['images']), d
+          PY
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REF_REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REF_REMOTE'; exit \$rc" | tee /tmp/editorial-refine-v2.json
+          python3 -m json.tool /tmp/editorial-refine-v2.json >/dev/null
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/editorial-refine-v2.json'))
+          assert d['revision']==2 and len(d['posts'])==6, d
+          for p in d['posts']:
+              assert int(p['words_es'])>=700, p
+              assert int(p['words_en'])>=650, p
+              assert int(p['image_w'])>=1200 and int(p['image_h'])>=700, p
+              assert p['image_src'].startswith('https://unsplash.com/photos/'), p
+          PY
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify public revision 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://www.elmercadodeorigen.com"; stamp="${GITHUB_RUN_ID}"
+          check(){ url="$1"; marker="$2"; phrase="$3"; file="/tmp/v2-${marker}-$(echo "$url"|tr '/:' '__').html"; code="$(curl -k -L -sS --retry 4 --retry-delay 3 --connect-timeout 10 --max-time 70 -A 'Mozilla/5.0 EMDO editorial v2 verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$file" -w '%{http_code}' "${url}?emdo_v2=${stamp}")"; test "$code" = 200; grep -Fq "EMDO_EDITORIAL_REV2:${marker}" "$file"; grep -Fq "$phrase" "$file"; grep -Fq 'emo-article-featured' "$file"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$file"; }
+          check "$BASE/jamon-o-paleta-diferencias-cual-elegir/" jamon-o-paleta 'La diferencia empieza en la anatomía'
+          check "$BASE/en/ham-or-shoulder-differences-how-to-choose/" jamon-o-paleta 'The difference begins with anatomy'
+          check "$BASE/jamon-pieza-entera-o-loncheado-como-elegir/" pieza-o-loncheado 'Qué resuelve el loncheado profesional'
+          check "$BASE/en/whole-ham-or-sliced-how-to-choose-format/" pieza-o-loncheado 'What professional slicing solves'
+          check "$BASE/aove-garrafa-5-litros-cuando-compensa-como-conservar/" aove-5-litros 'Qué deteriora realmente un aceite'
+          check "$BASE/en/extra-virgin-olive-oil-5-litre-container-storage-guide/" aove-5-litros 'What actually degrades extra virgin olive oil'
+          check "$BASE/comprar-carne-online-que-mirar-antes-elegir-corte/" carne-online 'El corte importa más que el aspecto'
+          check "$BASE/en/buying-meat-online-what-to-check-before-choosing-a-cut/" carne-online 'The cut matters more than the photograph'
+          check "$BASE/hortalizas-de-temporada-como-elegir-mejor/" hortalizas-temporada 'España no tiene una única temporada'
+          check "$BASE/en/seasonal-vegetables-how-to-choose-better/" hortalizas-temporada 'Spain does not have one single season'
+          check "$BASE/legumbres-secas-remojo-coccion-como-elegir/" legumbres 'La edad del grano explica muchos misterios'
+          check "$BASE/en/dried-pulses-soaking-cooking-how-to-choose/" legumbres 'The age of the seed explains many mysteries'
+          curl -k -L -sS -H 'Cache-Control: no-cache' "$BASE/blog/?emdo_v2=${stamp}" -o /tmp/blog-v2-es.html
+          grep -Fq 'Jamón o paleta ibérica' /tmp/blog-v2-es.html
+          grep -Fq 'Comprar carne online' /tmp/blog-v2-es.html
+          curl -k -L -sS -H 'Cache-Control: no-cache' "$BASE/en/journal/?emdo_v2=${stamp}" -o /tmp/blog-v2-en.html
+          grep -Fq 'Iberian ham or shoulder' /tmp/blog-v2-en.html
+          grep -Fq 'Buying meat online' /tmp/blog-v2-en.html
+          echo EMDO_EDITORIAL_REV2_PUBLIC_OK
+
+      - name: Record verified revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cp /tmp/editorial-refine-v2.json .deploy-status/editorial-guides-v2-20260821.json
+          python3 - <<'PY'
+          import json,os
+          p='.deploy-status/editorial-guides-v2-20260821.json'; d=json.load(open(p)); d['verified']=True; d['run_id']=os.environ.get('GITHUB_RUN_ID'); d['source_sha']=os.environ.get('GITHUB_SHA'); open(p,'w').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-guides-v2-20260821.json
+          git commit -m 'Record editorial guides v2 production verification [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
