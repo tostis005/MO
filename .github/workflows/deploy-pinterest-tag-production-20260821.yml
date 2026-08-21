@@ -1,0 +1,147 @@
+name: Deploy Pinterest tag
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-pinterest-tag-20260821.php'
+      - '.github/workflows/deploy-pinterest-tag-production-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pinterest-tag-production
+  cancel-in-progress: true
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy and verify Pinterest tag
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -u
+          mkdir -p .deploy-status
+          LOG='.deploy-status/pinterest-tag-20260821.txt'
+          EXIT='.deploy-status/pinterest-tag-20260821.exit-code'
+
+          set +e
+          {
+            set -euo pipefail
+            php -l mu-plugins/mdo-pinterest-tag-20260821.php
+            : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+            PORT="${STAGING_PORT:-22}"
+            SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+            SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+            PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+              wp_bin=$(command -v wp || true)
+              php_bin=$(command -v php || true)
+              [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+              for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+                p=$(dirname "$cfg")
+                url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+                case "$url" in
+                  https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+                esac
+              done
+            ')"
+            : "${PROD_PATH:?production path not found}"
+            echo 'production_path_ok'
+
+            TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-pinterest-tag-20260821.php"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp '$TARGET' '$TARGET.bak-${GITHUB_RUN_ID}'; fi"
+            sshpass -e scp $SCP mu-plugins/mdo-pinterest-tag-20260821.php "$STAGING_USER@$STAGING_HOST:$TARGET"
+
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+              set -e
+              php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -l '$TARGET' >/dev/null
+              grep -Fq '2612375296577' '$TARGET'
+              grep -Fq 'cookielawinfo-checkbox-non-necessary' '$TARGET'
+              wp_bin=\$(command -v wp || true)
+              if [ -n \"\$wp_bin\" ]; then
+                \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+                \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'if (function_exists("rocket_clean_domain")) rocket_clean_domain(); if (function_exists("wp_cache_clear_cache")) wp_cache_clear_cache(); if (function_exists("w3tc_flush_all")) w3tc_flush_all(); do_action("litespeed_purge_all");' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+              fi
+            "
+            echo 'deploy_ok'
+
+            # Bypass any stale page cache first to prove WordPress outputs the new tag.
+            HTML_BYPASS="$(curl -ksS --max-time 40 'https://www.elmercadodeorigen.com/?pinterest_tag_verify=${GITHUB_RUN_ID}')"
+            printf '%s' "$HTML_BYPASS" | grep -Fq '2612375296577'
+            printf '%s' "$HTML_BYPASS" | grep -Fq 's.pinimg.com/ct/core.js'
+            printf '%s' "$HTML_BYPASS" | grep -Fq 'cookielawinfo-checkbox-non-necessary'
+            echo 'bypass_html_ok'
+
+            # Check the real cached homepage as a normal external visitor.
+            HEADERS=/tmp/pinterest-tag-headers.txt
+            curl -ksS --max-time 40 -D "$HEADERS" 'https://www.elmercadodeorigen.com/' -o /tmp/pinterest-tag-home.html
+            cat "$HEADERS" | grep -Ei '^(HTTP/|x-el-mercado-cache:|cache-control:|age:)' || true
+            if grep -Fq '2612375296577' /tmp/pinterest-tag-home.html; then
+              echo 'public_home_tag_ok'
+            else
+              echo 'public_home_tag_stale_cache'
+              echo 'cache_source_search:'
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "grep -RIl --exclude='*.log' --exclude='*.sql' 'x-el-mercado-cache' '$PROD_PATH/wp-content' 2>/dev/null | head -20 || true"
+              exit 23
+            fi
+
+            # The supplied placeholder must never leak into production.
+            if grep -Fq '<user_email_address>' /tmp/pinterest-tag-home.html; then
+              echo 'ERROR_placeholder_email_exposed'
+              exit 24
+            fi
+            echo 'placeholder_email_absent'
+            echo 'pinterest_tag_ok'
+          } > "$LOG" 2>&1
+          CODE=$?
+          set -e
+          echo "$CODE" > "$EXIT"
+          cat "$LOG"
+          echo "exit_code=$CODE"
+
+      - name: Persist result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          test -f .deploy-status/pinterest-tag-20260821.txt || echo 'workflow_failed_before_log' > .deploy-status/pinterest-tag-20260821.txt
+          test -f .deploy-status/pinterest-tag-20260821.exit-code || echo '99' > .deploy-status/pinterest-tag-20260821.exit-code
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/pinterest-tag-20260821.txt .deploy-status/pinterest-tag-20260821.exit-code
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record Pinterest tag production verification [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          fi
+
+      - name: Fail if verification failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat .deploy-status/pinterest-tag-20260821.exit-code)" = '0'
+          grep -q '^pinterest_tag_ok$' .deploy-status/pinterest-tag-20260821.txt
