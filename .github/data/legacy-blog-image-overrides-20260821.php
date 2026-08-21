@@ -1,5 +1,5 @@
 <?php
-/** Curated unique image pools for all three legacy editorial articles. */
+/** Curated unbranded pools for the two legacy editorial articles. */
 return array(
     'jamon-iberico' => array(
         'featured' => array(
@@ -28,18 +28,6 @@ return array(
             array('id'=>'20105551','direct'=>'https://images.pexels.com/photos/20105551/pexels-photo-20105551.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/pouring-olive-oil-to-soup-20105551/','photographer'=>'Eduardo Krajan','alt_es'=>'Aceite de oliva vertiéndose sobre una sopa de verduras','alt_en'=>'Olive oil being poured over vegetable soup'),
             array('id'=>'9005872','direct'=>'https://images.pexels.com/photos/9005872/pexels-photo-9005872.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/a-person-holding-a-clear-glass-bottle-with-oil-9005872/','photographer'=>'Maria Verkhoturtseva','alt_es'=>'Aceite de oliva vertiéndose desde una botella de vidrio sin marca sobre una ensalada','alt_en'=>'Olive oil poured from an unbranded glass bottle over a salad'),
             array('id'=>'5507585','direct'=>'https://images.pexels.com/photos/5507585/pexels-photo-5507585.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/cooking-ingredients-on-white-surface-5507585/','photographer'=>'Jess Loiterton','alt_es'=>'Aceite de oliva con ajo, sal y romero sobre una superficie clara','alt_en'=>'Olive oil with garlic, salt and rosemary on a light surface')
-        ),
-    ),
-    'naranjas' => array(
-        'featured' => array(
-            'id'=>'34815908','direct'=>'https://images.pexels.com/photos/34815908/pexels-photo-34815908.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/valencia-orange-tree-under-clear-blue-sky-34815908/','photographer'=>'Emilio Sánchez Hernández','alt_es'=>'Naranjas maduras en un naranjo de Valencia bajo cielo despejado','alt_en'=>'Ripe oranges on a Valencia orange tree under a clear sky'
-        ),
-        'inline' => array(
-            array('id'=>'33707783','direct'=>'https://images.pexels.com/photos/33707783/pexels-photo-33707783.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/seville-oranges-on-tree-in-sunlight-33707783/','photographer'=>'Charlie Jordan','alt_es'=>'Naranjas maduras en un árbol de Sevilla iluminado por el sol','alt_en'=>'Ripe oranges on a tree in Seville in sunlight'),
-            array('id'=>'37343441','direct'=>'https://images.pexels.com/photos/37343441/pexels-photo-37343441.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-in-valencia-grove-37343441/','photographer'=>'Bor Jinson','alt_es'=>'Naranjas frescas creciendo en un naranjal de Valencia','alt_en'=>'Fresh oranges growing in a Valencia orange grove'),
-            array('id'=>'7299666','direct'=>'https://images.pexels.com/photos/7299666/pexels-photo-7299666.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-on-a-basket-7299666/','photographer'=>'Anna Tarazevich','alt_es'=>'Cesta de naranjas frescas con hojas verdes','alt_en'=>'Basket of fresh oranges with green leaves'),
-            array('id'=>'18102965','direct'=>'https://images.pexels.com/photos/18102965/pexels-photo-18102965.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-18102965/','photographer'=>'Jonathan Borba','alt_es'=>'Naranjas maduras listas para cosechar en un huerto','alt_en'=>'Ripe oranges ready for harvest in an orchard'),
-            array('id'=>'7288784','direct'=>'https://images.pexels.com/photos/7288784/pexels-photo-7288784.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-in-close-up-photography-7288784/','photographer'=>'Paco Álamo','alt_es'=>'Naranjas frescas reunidas en una cesta de mercado','alt_en'=>'Fresh oranges gathered in a market basket')
         ),
     ),
 );
