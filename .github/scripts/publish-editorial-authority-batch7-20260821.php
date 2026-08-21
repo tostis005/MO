@@ -29,7 +29,18 @@ function emdo_ab7_product_slug(string $type):string{
 }
 function emdo_ab7_products(string $html):string{$map=array('__OIL__'=>emdo_ab7_product_slug('oil'),'__MEAT__'=>emdo_ab7_product_slug('meat'),'__VEGETABLES__'=>emdo_ab7_product_slug('vegetables'),'__PULSES__'=>emdo_ab7_product_slug('pulses'));return str_replace(array_keys($map),array_values($map),$html);}
 
-$data_dir=(string)getenv('EMDO_BATCH7_DIR');if(''===$data_dir||!is_dir($data_dir)){throw new RuntimeException('EMDO_BATCH7_DIR missing');}$files=glob(trailingslashit($data_dir).'*.php');sort($files,SORT_NATURAL);if(count($files)!==5){throw new RuntimeException('Expected 5 article files, found '.count($files));}
+$data_dir=(string)getenv('EMDO_BATCH7_DIR');
+if(''===$data_dir||!is_dir($data_dir)){throw new RuntimeException('EMDO_BATCH7_DIR missing');}
+$only=(string)getenv('EMDO_BATCH7_ONLY_FILE');
+if(''!==$only){
+    $only=basename($only);
+    $target=trailingslashit($data_dir).$only;
+    if(!is_file($target)){throw new RuntimeException('Batch 7 article file not found: '.$only);}
+    $files=array($target);
+}else{
+    $files=glob(trailingslashit($data_dir).'*.php');sort($files,SORT_NATURAL);
+    if(count($files)!==5){throw new RuntimeException('Expected 5 article files, found '.count($files));}
+}
 $articles=array();foreach($files as $file){$a=require $file;if(!is_array($a)||empty($a['key'])){throw new RuntimeException('Invalid article data '.basename($file));}$articles[]=$a;}
 $guide_cat=emdo_ab7_category('Guías de compra','guias-de-compra','Buying guides','buying-guides');
 $cats=array('oil'=>emdo_ab7_category('Aceites','aceites','Olive oil','olive-oil'),'meat'=>emdo_ab7_category('Carnes','carnes','Beef and meat','beef-and-meat'),'vegetables'=>emdo_ab7_category('Hortalizas y verduras','hortalizas-y-verduras','Vegetables','vegetables'),'pulses'=>emdo_ab7_category('Legumbres','legumbres','Pulses','pulses'));
@@ -45,4 +56,3 @@ foreach($articles as $a){
     $report['posts'][]=array('key'=>$a['key'],'id'=>$post_id,'status'=>get_post_status($post_id),'slug'=>(string)get_post_field('post_name',$post_id),'en_slug'=>sanitize_title($a['en_slug']),'words_es'=>$words_es,'words_en'=>$words_en,'image_id'=>$image_id,'image_w'=>$w,'image_h'=>$h,'image_source'=>$a['image']['page'],'topic'=>$a['topic'],'product_cat'=>emdo_ab7_product_slug($a['topic']));
 }
 echo wp_json_encode($report,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT).PHP_EOL;
-// Batch 7 workflow trigger marker.
