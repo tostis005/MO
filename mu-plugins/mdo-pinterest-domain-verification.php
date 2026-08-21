@@ -2,6 +2,7 @@
 /**
  * Plugin Name: MDO Pinterest Domain Verification
  * Description: Adds the Pinterest domain verification meta tag to the public site head.
+ * Version: 1.0.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
