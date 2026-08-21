@@ -1,0 +1,220 @@
+name: Production blog images and English pagination 0.10.262
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-blog-image-pagination-010262.yml'
+      - '.github/data/editorial-image-overrides-20260821.php'
+      - '.github/data/legacy-blog-image-overrides-20260821.php'
+      - '.github/scripts/repair-blog-images-010262.php'
+      - '.github/scripts/blog-image-state-010262.php'
+      - 'mu-plugins/mdo-blog-image-pagination-010262.php'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: elmercado-production-blog-image-pagination-010262
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      STAGING_REMOTE_PATH: ${{ secrets.STAGING_REMOTE_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-blog-image-pagination-010262.php
+          php -l .github/scripts/repair-blog-images-010262.php
+          php -l .github/scripts/blog-image-state-010262.php
+          php -l .github/data/editorial-image-overrides-20260821.php
+          php -l .github/data/legacy-blog-image-overrides-20260821.php
+          php -r '$a=require ".github/data/editorial-image-overrides-20260821.php"; $l=require ".github/data/legacy-blog-image-overrides-20260821.php"; if(count($a)<15||count($l)!==2){fwrite(STDERR,"override count mismatch\n");exit(1);} $ids=[]; $add=function($img,$ctx)use(&$ids){$id=(string)($img["id"]??"");if($id===""||isset($ids[$id])){fwrite(STDERR,"duplicate curated id $id at $ctx\n");exit(1);}$ids[$id]=$ctx;}; foreach($a as $k=>$img){$add($img,"authority:$k");} foreach($l as $slug=>$cfg){$add($cfg["featured"],"legacy:$slug:featured");foreach($cfg["inline"] as $i=>$img){$add($img,"legacy:$slug:$i");}} echo "CURATED_IMAGES=".count($ids).PHP_EOL;'
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"; : "${STAGING_REMOTE_PATH:?}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Install SSH helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage release files
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          REMOTE_TMP="/tmp/mdo-blog-image-pagination-010262-${GITHUB_RUN_ID}"
+          echo "REMOTE_TMP=$REMOTE_TMP" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP'"
+          sshpass -e scp $SCP_OPTS \
+            mu-plugins/mdo-blog-image-pagination-010262.php \
+            .github/scripts/repair-blog-images-010262.php \
+            .github/scripts/blog-image-state-010262.php \
+            .github/data/editorial-image-overrides-20260821.php \
+            .github/data/legacy-blog-image-overrides-20260821.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/"
+
+      - name: Deploy repair and verify production
+        id: release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          OUT="$(sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$STAGING_REMOTE_PATH' '$REMOTE_TMP' '$GITHUB_SHA'" <<'REMOTE'
+          set -eu
+          raw="${1%/}"; incoming="$2"; commit="$3"
+          case "$raw" in */wp-content/*) dev="${raw%%/wp-content/*}" ;; */wp-content) dev="$(dirname "$raw")" ;; *) dev="$raw" ;; esac
+          if [ ! -f "$dev/wp-config.php" ]; then
+            cfg="$(find "$HOME" /var/www /home -maxdepth 9 -type f -path '*/dev.elmercadodeorigen.com/wp-config.php' 2>/dev/null | head -n1 || true)"
+            [ -n "$cfg" ] || { echo 'Cannot resolve WordPress root.' >&2; exit 1; }
+            dev="$(dirname "$cfg")"
+          fi
+          prod="$(dirname "$dev")/httpdocs"
+          [ -f "$prod/wp-config.php" ] || { echo 'Production root invalid.' >&2; exit 1; }
+
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_bin="$(command -v wp || true)"
+          [ -x "$php_bin" ] && [ -n "$wp_bin" ] || { echo 'PHP/WP-CLI unavailable.' >&2; exit 1; }
+          wp_cmd="$php_bin -d memory_limit=768M $wp_bin --path=$prod --allow-root"
+          siteurl="$(sh -c "$wp_cmd option get siteurl" 2>/dev/null || true)"
+          case "$siteurl" in https://elmercadodeorigen.com*|http://elmercadodeorigen.com*|https://www.elmercadodeorigen.com*|http://www.elmercadodeorigen.com*) ;; *) echo "Refusing deploy: siteurl=$siteurl" >&2; exit 1 ;; esac
+
+          target_dir="$prod/wp-content/mu-plugins"
+          target="$target_dir/mdo-blog-image-pagination-010262.php"
+          mkdir -p "$target_dir"
+          "$php_bin" -l "$incoming/mdo-blog-image-pagination-010262.php" >/dev/null
+          "$php_bin" -l "$incoming/repair-blog-images-010262.php" >/dev/null
+          "$php_bin" -l "$incoming/blog-image-state-010262.php" >/dev/null
+
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          short_commit="$(printf '%.10s' "$commit")"
+          backup_dir="$rollback_root/$(date -u +%Y%m%dT%H%M%SZ)-before-blog-image-pagination-010262-$short_commit"
+          mkdir -p "$backup_dir"
+          existed=no
+          if [ -f "$target" ]; then cp "$target" "$backup_dir/mdo-blog-image-pagination-010262.php"; existed=yes; fi
+          printf '%s\n' "$existed" > "$backup_dir/plugin-existed.txt"
+          printf '%s\n' "$commit" > "$backup_dir/release-sha.txt"
+          state_file="$backup_dir/post-state.json"
+          repair_report="$backup_dir/repair-report.json"
+          verified_report="$backup_dir/verified-report.json"
+
+          deployed=0
+          rollback_on_error() {
+            status=$?
+            if [ "$status" -ne 0 ] && [ "$deployed" -eq 1 ]; then
+              if [ -s "$state_file" ]; then
+                MDO_STATE_MODE=restore MDO_STATE_FILE="$state_file" MDO_AUTHORITY_IMAGE_OVERRIDES="$incoming/editorial-image-overrides-20260821.php" MDO_LEGACY_IMAGE_OVERRIDES="$incoming/legacy-blog-image-overrides-20260821.php" sh -c "$wp_cmd eval-file '$incoming/blog-image-state-010262.php'" >/dev/null 2>&1 || true
+              fi
+              if [ "$existed" = yes ]; then cp "$backup_dir/mdo-blog-image-pagination-010262.php" "$target"; else rm -f "$target"; fi
+              sh -c "$wp_cmd cache flush" >/dev/null 2>&1 || true
+            fi
+            exit "$status"
+          }
+          trap rollback_on_error EXIT
+
+          cp "$incoming/mdo-blog-image-pagination-010262.php" "$target"
+          deployed=1
+          "$php_bin" -l "$target" >/dev/null
+
+          MDO_STATE_MODE=backup MDO_STATE_FILE="$state_file" MDO_AUTHORITY_IMAGE_OVERRIDES="$incoming/editorial-image-overrides-20260821.php" MDO_LEGACY_IMAGE_OVERRIDES="$incoming/legacy-blog-image-overrides-20260821.php" sh -c "$wp_cmd eval-file '$incoming/blog-image-state-010262.php'"
+          MDO_AUTHORITY_IMAGE_OVERRIDES="$incoming/editorial-image-overrides-20260821.php" MDO_LEGACY_IMAGE_OVERRIDES="$incoming/legacy-blog-image-overrides-20260821.php" sh -c "$wp_cmd eval-file '$incoming/repair-blog-images-010262.php'" > "$repair_report"
+          test -s "$repair_report"
+          "$php_bin" -r '$r=json_decode(file_get_contents($argv[1]),true); if(!is_array($r)||($r["status"]??"")!=="ok"||!empty($r["duplicates"])||($r["authority_post_count"]??0)<50){fwrite(STDERR,"repair report failed\n");exit(1);}' "$repair_report"
+          sh -c "$wp_cmd cache flush" >/dev/null 2>&1 || true
+
+          base="${siteurl%/}"
+          check_url() {
+            path="$1"; file="$2"
+            result="$(curl -ksS -L --max-time 45 -A 'EMDO-QA/0.10.262' -o "$file" -w '%{http_code}|%{url_effective}' "$base$path?release=$commit")"
+            code="${result%%|*}"; effective="${result#*|}"
+            [ "$code" = 200 ] || { echo "$path HTTP $code" >&2; exit 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website|Page not found|Página no encontrada' "$file"
+            grep -q 'emo-journal-grid' "$file"
+            printf '%s|%s\n' "$code" "$effective"
+          }
+          qa1="$(check_url '/en/journal/' /tmp/mdo-journal-en-1.html)"
+          qa2="$(check_url '/en/journal/page/2/' /tmp/mdo-journal-en-2.html)"
+          qa3="$(check_url '/en/journal/page/3/' /tmp/mdo-journal-en-3.html)"
+          printf '%s\n' "${qa2#*|}" | grep -Eq '/en/journal/page/2/?(\?|$)'
+          printf '%s\n' "${qa3#*|}" | grep -Eq '/en/journal/page/3/?(\?|$)'
+          grep -Eq 'href=["'"'][^"'"']*/en/journal/page/2/' /tmp/mdo-journal-en-1.html
+          grep -Eq 'href=["'"'][^"'"']*/en/journal/(page/[13]/)?' /tmp/mdo-journal-en-2.html
+
+          "$php_bin" -r '$r=json_decode(file_get_contents($argv[1]),true);$r["production_verified_at"]=gmdate("c");$r["pagination"]=array("page1"=>$argv[2],"page2"=>$argv[3],"page3"=>$argv[4]);file_put_contents($argv[5],json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT));' "$repair_report" "$qa1" "$qa2" "$qa3" "$verified_report"
+          test -s "$verified_report"
+
+          trap - EXIT
+          printf '__SITEURL__=%s\n' "$siteurl"
+          printf '__PROD__=%s\n' "$prod"
+          printf '__TARGET__=%s\n' "$target"
+          printf '__BACKUP_DIR__=%s\n' "$backup_dir"
+          printf '__EXISTED__=%s\n' "$existed"
+          printf '__VERIFIED_REPORT__=%s\n' "$verified_report"
+          echo 'blog_image_pagination_010262_ok'
+          REMOTE
+          )"
+          printf '%s\n' "$OUT"
+          for key in SITEURL PROD TARGET BACKUP_DIR EXISTED VERIFIED_REPORT; do
+            value="$(printf '%s\n' "$OUT" | sed -n "s/^__${key}__=//p" | tail -n1)"
+            test -n "$value"
+            echo "PRODUCTION_${key}=$value" >> "$GITHUB_ENV"
+          done
+
+      - name: Fetch verified production report
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SCP_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          mkdir -p reports
+          sshpass -e scp $SCP_OPTS "$STAGING_USER@$STAGING_HOST:$PRODUCTION_VERIFIED_REPORT" reports/blog-image-pagination-010262-production.json
+          php -r '$r=json_decode(file_get_contents("reports/blog-image-pagination-010262-production.json"),true);if(!is_array($r)||($r["status"]??"")!=="ok"||empty($r["production_verified_at"])){exit(1);} echo "PRODUCTION_REPORT_OK\n";'
+
+      - name: Record verified deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add reports/blog-image-pagination-010262-production.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record verified blog image and pagination repair [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Release success
+        run: echo 'blog_image_pagination_010262_ok'
