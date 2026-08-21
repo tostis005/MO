@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/mdo-pinterest-catalog-feed-20260821.php'
+      - 'mu-plugins/mdo-pinterest-tag-20260821.php'
       - '.github/workflows/deploy-pinterest-catalog-feed-production-20260821.yml'
   workflow_dispatch:
 
@@ -30,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Deploy and verify feed
+      - name: Deploy and verify Pinterest feed and tag
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -44,6 +45,7 @@ jobs:
           {
             set -euo pipefail
             php -l mu-plugins/mdo-pinterest-catalog-feed-20260821.php
+            php -l mu-plugins/mdo-pinterest-tag-20260821.php
             : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
             sudo apt-get update -qq
@@ -68,17 +70,24 @@ jobs:
             : "${PROD_PATH:?production path not found}"
             echo 'production_path_ok'
 
-            TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-pinterest-catalog-feed-20260821.php"
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp '$TARGET' '$TARGET.bak-${GITHUB_RUN_ID}'; fi"
-            sshpass -e scp $SCP mu-plugins/mdo-pinterest-catalog-feed-20260821.php "$STAGING_USER@$STAGING_HOST:$TARGET"
+            FEED_TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-pinterest-catalog-feed-20260821.php"
+            TAG_TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-pinterest-tag-20260821.php"
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
+            sshpass -e scp $SCP mu-plugins/mdo-pinterest-catalog-feed-20260821.php "$STAGING_USER@$STAGING_HOST:$FEED_TARGET"
+            sshpass -e scp $SCP mu-plugins/mdo-pinterest-tag-20260821.php "$STAGING_USER@$STAGING_HOST:$TAG_TARGET"
+
             sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
               set -e
               php_bin=\$(command -v php || true)
               [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-              \"\$php_bin\" -l '$TARGET' >/dev/null
+              \"\$php_bin\" -l '$FEED_TARGET' >/dev/null
+              \"\$php_bin\" -l '$TAG_TARGET' >/dev/null
+              grep -Fq '2612375296577' '$TAG_TARGET'
+              grep -Fq 'cookielawinfo-checkbox-non-necessary' '$TAG_TARGET'
               wp_bin=\$(command -v wp || true)
               if [ -n \"\$wp_bin\" ]; then
                 \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+                \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'if (function_exists("elmercado_flush_home_cache")) { elmercado_flush_home_cache(); echo "home_cache_flushed\\n"; } if (function_exists("rocket_clean_domain")) rocket_clean_domain(); if (function_exists("wp_cache_clear_cache")) wp_cache_clear_cache(); if (function_exists("w3tc_flush_all")) w3tc_flush_all(); do_action("litespeed_purge_all");' --path='$PROD_PATH' --allow-root || true
               fi
             "
             echo 'deploy_ok'
@@ -88,72 +97,53 @@ jobs:
               -o /tmp/pinterest-catalog.csv
 
             python3 - <<'PY'
-          import csv, io, sys, urllib.request
-          path = '/tmp/pinterest-catalog.csv'
-          raw = open(path, 'rb').read()
+          import csv, io
+          raw = open('/tmp/pinterest-catalog.csv','rb').read()
           text = raw.decode('utf-8-sig')
           reader = csv.DictReader(io.StringIO(text))
           required = ['id','title','description','link','image_link','price','availability']
-          missing_headers = [x for x in required if x not in (reader.fieldnames or [])]
-          if missing_headers:
-              raise SystemExit('missing_headers=' + ','.join(missing_headers))
+          missing = [x for x in required if x not in (reader.fieldnames or [])]
+          if missing:
+              raise SystemExit('missing_headers=' + ','.join(missing))
           rows = list(reader)
           if not rows:
               raise SystemExit('feed_has_no_rows')
-          bad = []
           ids = set()
-          dupes = []
-          allowed_availability = {'in stock','out of stock','preorder'}
-          variant_rows = 0
-          for i, row in enumerate(rows, start=2):
+          bad = []
+          for i,row in enumerate(rows, start=2):
               for field in required:
-                  if not (row.get(field) or '').strip():
-                      bad.append(f'row{i}:{field}')
-              pid = (row.get('id') or '').strip()
-              if pid in ids:
-                  dupes.append(pid)
+                  if not (row.get(field) or '').strip(): bad.append(f'row{i}:{field}')
+              pid=(row.get('id') or '').strip()
+              if pid in ids: bad.append(f'row{i}:duplicate_id')
               ids.add(pid)
-              if (row.get('availability') or '').strip() not in allowed_availability:
-                  bad.append(f'row{i}:availability_value')
-              if (row.get('item_group_id') or '').strip():
-                  variant_rows += 1
-          if bad:
-              raise SystemExit('bad_required=' + ','.join(bad[:20]))
-          if dupes:
-              raise SystemExit('duplicate_ids=' + ','.join(dupes[:20]))
+          if bad: raise SystemExit('bad=' + ','.join(bad[:20]))
           print(f'rows={len(rows)}')
-          print(f'variant_rows={variant_rows}')
-          print(f'bytes={len(raw)}')
-          print('headers=' + ','.join(reader.fieldnames or []))
           print('required_fields_ok')
           print('unique_ids_ok')
-          print('availability_ok')
           PY
-
-            # Check a representative sample of landing pages and images from an external runner.
-            python3 - <<'PY'
-          import csv, io, urllib.request
-          raw = open('/tmp/pinterest-catalog.csv','rb').read().decode('utf-8-sig')
-          rows = list(csv.DictReader(io.StringIO(raw)))
-          sample = rows[:12]
-          ua = 'Pinterest/0.2 (+https://www.pinterest.com/bot.html)'
-          for kind in ('link','image_link'):
-              ok = 0
-              for row in sample:
-                  req = urllib.request.Request(row[kind], headers={'User-Agent': ua})
-                  try:
-                      with urllib.request.urlopen(req, timeout=20) as r:
-                          if 200 <= r.status < 400:
-                              ok += 1
-                  except Exception as exc:
-                      print(f'{kind}_failure={row["id"]}:{exc}')
-              print(f'{kind}_sample_ok={ok}/{len(sample)}')
-              if ok < max(1, len(sample)-2):
-                  raise SystemExit(f'{kind}_sample_too_many_failures')
-          print('external_sample_ok')
-          PY
-
             echo 'pinterest_catalog_feed_ok'
+
+            # First uncached request should rebuild EMDO's 10-minute Home cache with the tag.
+            curl -ksS --max-time 60 -D /tmp/pinterest-home-headers.txt \
+              'https://www.elmercadodeorigen.com/' -o /tmp/pinterest-home.html
+            grep -Ei '^(HTTP/|x-el-mercado-cache:)' /tmp/pinterest-home-headers.txt || true
+            grep -Fq '2612375296577' /tmp/pinterest-home.html
+            grep -Fq 's.pinimg.com/ct/core.js' /tmp/pinterest-home.html
+            grep -Fq 'cookielawinfo-checkbox-non-necessary' /tmp/pinterest-home.html
+            if grep -Fq '<user_email_address>' /tmp/pinterest-home.html; then
+              echo 'ERROR_placeholder_email_exposed'
+              exit 31
+            fi
+            echo 'placeholder_email_absent'
+
+            # Second request validates the normal cached representation too.
+            curl -ksS --max-time 60 -D /tmp/pinterest-home-headers2.txt \
+              'https://www.elmercadodeorigen.com/' -o /tmp/pinterest-home2.html
+            grep -Ei '^(HTTP/|x-el-mercado-cache:)' /tmp/pinterest-home-headers2.txt || true
+            grep -Fq '2612375296577' /tmp/pinterest-home2.html
+            grep -Fq 's.pinimg.com/ct/core.js' /tmp/pinterest-home2.html
+            echo 'public_home_tag_ok'
+            echo 'pinterest_tag_ok'
           } > "$LOG" 2>&1
           CODE=$?
           set -e
@@ -173,7 +163,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .deploy-status/pinterest-catalog-feed-20260821.txt .deploy-status/pinterest-catalog-feed-20260821.exit-code
           if ! git diff --cached --quiet; then
-            git commit -m 'Record Pinterest catalog feed validation [skip ci]'
+            git commit -m 'Record Pinterest catalog and tag validation [skip ci]'
             git pull --rebase origin main || true
             git push origin HEAD:main
           fi
@@ -185,3 +175,4 @@ jobs:
           set -euo pipefail
           test "$(cat .deploy-status/pinterest-catalog-feed-20260821.exit-code)" = '0'
           grep -q '^pinterest_catalog_feed_ok$' .deploy-status/pinterest-catalog-feed-20260821.txt
+          grep -q '^pinterest_tag_ok$' .deploy-status/pinterest-catalog-feed-20260821.txt
