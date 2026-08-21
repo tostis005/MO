@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Producer Toolbar Mobile Polish
  * Description: Mobile-only deterministic polish for producer shipping and ordering controls.
- * Version: 1.3.0
+ * Version: 1.4.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -35,7 +35,7 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				overflow:visible !important;
 			}
 
-			/* Shipping: one real line of text, no clipping and no decorative location pin. */
+			/* Shipping: a single clean line inside the 40px control. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination--canonical,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination {
 				position:relative !important;
@@ -59,7 +59,7 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				max-height:40px !important;
 				padding:0 13px !important;
 				overflow:hidden !important;
-				line-height:40px !important;
+				line-height:1 !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:first-child,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > svg:first-child {
@@ -68,17 +68,21 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span {
 				position:static !important;
-				display:block !important;
+				dis:flex !important;
+				display:flex !important;
 				box-sizing:border-box !important;
 				width:100% !important;
 				min-width:0 !important;
-				height:40px !important;
+				height:38px !important;
+				min-height:38px !important;
+				max-height:38px !important;
+				align-items:center !important;
 				margin:0 !important;
 				padding:0 !important;
 				overflow:hidden !important;
 				white-space:nowrap !important;
 				text-overflow:ellipsis !important;
-				line-height:40px !important;
+				line-height:1.2 !important;
 				pointer-events:none !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:last-child,
@@ -86,10 +90,10 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				pointer-events:none !important;
 			}
 
-			/* Ordering: wrapper is visually empty; native select owns the only border and every touch. */
+			/* Ordering: no wrapper border; only the native select is visible and interactive. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering {
 				position:relative !important;
-				z-index:50 !important;
+				z-index:200 !important;
 				display:block !important;
 				box-sizing:border-box !important;
 				border:0 !important;
@@ -101,14 +105,19 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				pointer-events:auto !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::before,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::after,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering > span {
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::after {
+				content:none !important;
 				display:none !important;
+				pointer-events:none !important;
+			}
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering span {
+				display:none !important;
+				visibility:hidden !important;
 				pointer-events:none !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering select {
 				position:relative !important;
-				z-index:51 !important;
+				z-index:201 !important;
 				display:block !important;
 				visibility:visible !important;
 				opacity:1 !important;
@@ -124,7 +133,7 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				border:1px solid rgba(23,63,50,.14) !important;
 				border-radius:999px !important;
 				outline:0 !important;
-				background-color:#fff !important;
+				background:#fff !important;
 				box-shadow:none !important;
 				pointer-events:auto !important;
 				cursor:pointer !important;
@@ -159,9 +168,12 @@ add_action(
 				if (label) {
 					const clean = label.textContent.replace(/\s+/g, ' ').trim();
 					if (label.textContent !== clean || label.children.length) label.textContent = clean;
-					label.style.setProperty('display','block','important');
-					label.style.setProperty('height','40px','important');
-					label.style.setProperty('line-height','40px','important');
+					label.style.setProperty('display','flex','important');
+					label.style.setProperty('height','38px','important');
+					label.style.setProperty('min-height','38px','important');
+					label.style.setProperty('max-height','38px','important');
+					label.style.setProperty('align-items','center','important');
+					label.style.setProperty('line-height','1.2','important');
 					label.style.setProperty('white-space','nowrap','important');
 					label.style.setProperty('overflow','hidden','important');
 					label.style.setProperty('pointer-events','none','important');
@@ -176,12 +188,15 @@ add_action(
 					form.style.setProperty('background','transparent','important');
 					form.style.setProperty('box-shadow','none','important');
 					form.style.setProperty('pointer-events','auto','important');
-					form.style.setProperty('z-index','50','important');
-					form.querySelectorAll(':scope > span').forEach(n => n.style.setProperty('display','none','important'));
+					form.style.setProperty('z-index','200','important');
+					form.querySelectorAll('span').forEach(n => {
+						n.style.setProperty('display','none','important');
+						n.style.setProperty('pointer-events','none','important');
+					});
 				}
 				if (select) {
 					select.style.setProperty('pointer-events','auto','important');
-					select.style.setProperty('z-index','51','important');
+					select.style.setProperty('z-index','201','important');
 					select.style.setProperty('appearance','auto','important');
 					select.style.setProperty('-webkit-appearance','menulist','important');
 				}
