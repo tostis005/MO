@@ -1,0 +1,35 @@
+bash: php: command not found
+/usr/bin/env: ‘php’: No such file or directory
+/usr/bin/google-chrome
+Google Chrome 151.0.7922.137 
+/usr/bin/chromedriver
+ChromeDriver 151.0.7922.138 (41fa82442390a4d4456c78f2d69a832d5720cb27-refs/branch-heads/7922@{#2891})
+CHROME_SESSION 151.0.7922.137
+LOAD https://www.elmercadodeorigen.com/tienda/1957/ ES status-title= 1957 – Productos – El Mercado de Origen current= https://www.elmercadodeorigen.com/tienda/1957/?mdo_diag=32458674605-ES
+ES trigger_text= 'Envío a España' display= True classes= mdo-ps-destination__trigger mdo-catalog-destination__trigger
+ES toolbar_ancestors= 1
+ES toolbar_classes= woostify-sorting emo-catalog-toolbar-shared-010229 mdo-ps-toolbar-host elmercado-vendor-sorting-normalized bg= rgba(0, 0, 0, 0)
+ES trigger_bg= rgb(248, 250, 248) color= rgb(23, 63, 50)
+ES cards= 3 critical= 1
+LOAD https://www.elmercadodeorigen.com/tienda/1957/ GR status-title= 1957 – Productos – El Mercado de Origen current= https://www.elmercadodeorigen.com/tienda/1957/?mdo_diag=32458674605-GR
+BLOCK_ES trigger_text= 'Envío a Grecia' display= True classes= mdo-ps-destination__trigger mdo-catalog-destination__trigger
+BLOCK_ES toolbar_ancestors= 1
+BLOCK_ES toolbar_classes= woostify-sorting emo-catalog-toolbar-shared-010229 mdo-ps-toolbar-host mdo-ps-toolbar-empty bg= rgb(255, 255, 255)
+BLOCK_ES trigger_bg= rgb(248, 250, 248) color= rgb(23, 63, 50)
+BLOCK_ES cards= 0 critical= 1
+LOAD https://www.elmercadodeorigen.com/en/store/1957/ ES status-title= 1957 – Products – El Mercado de Origen current= https://www.elmercadodeorigen.com/en/store/1957/?mdo_diag=32458674605-ES
+EN trigger_text= 'Shipping to Spain' display= True classes= mdo-ps-destination__trigger mdo-catalog-destination__trigger
+EN toolbar_ancestors= 1
+EN toolbar_classes= woostify-sorting emo-catalog-toolbar-shared-010229 mdo-ps-toolbar-host elmercado-vendor-sorting-normalized bg= rgba(0, 0, 0, 0)
+EN trigger_bg= rgb(248, 250, 248) color= rgb(23, 63, 50)
+EN cards= 3 critical= 1
+LOAD https://www.elmercadodeorigen.com/en/store/1957/ GR status-title= 1957 – Products – El Mercado de Origen current= https://www.elmercadodeorigen.com/en/store/1957/?mdo_diag=32458674605-GR
+BLOCK_EN trigger_text= 'Shipping to Greece' display= True classes= mdo-ps-destination__trigger mdo-catalog-destination__trigger
+BLOCK_EN toolbar_ancestors= 1
+BLOCK_EN toolbar_classes= woostify-sorting emo-catalog-toolbar-shared-010229 mdo-ps-toolbar-host mdo-ps-toolbar-empty bg= rgb(255, 255, 255)
+BLOCK_EN trigger_bg= rgb(248, 250, 248) color= rgb(23, 63, 50)
+BLOCK_EN cards= 0 critical= 1
+LOAD https://www.elmercadodeorigen.com/tienda/ ES status-title= Tienda - El Mercado de Origen current= https://www.elmercadodeorigen.com/tienda/?mdo_diag=32458674605-ES
+SHOP bars= 1 critical= 1
+SHOP bg= rgb(255, 255, 255)
+diagnostic_complete_ok
