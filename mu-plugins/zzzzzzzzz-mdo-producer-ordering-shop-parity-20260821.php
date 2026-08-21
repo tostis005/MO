@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Producer Ordering Shop Parity
- * Description: Makes the producer-store native WooCommerce ordering control use the exact final mobile geometry of the main shop.
- * Version: 1.0.0
+ * Description: Makes the producer-store native WooCommerce ordering control use the exact final geometry and typography of the main shop.
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -31,6 +31,13 @@ function mdo_producer_ordering_shop_parity_css_20260821(): void {
 	}
 	?>
 	<style id="mdo-producer-ordering-shop-parity-20260821">
+		@media (min-width:641px) {
+			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering > select,
+			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering > select.orderby {
+				font-size:12.5px !important;
+			}
+		}
+
 		@media (max-width:640px) {
 			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woocommerce-ordering,
 			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized > .woocommerce-ordering {
