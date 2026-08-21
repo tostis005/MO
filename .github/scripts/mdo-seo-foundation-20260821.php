@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO SEO Foundation
  * Description: Stable SEO titles, descriptions, canonicals, index controls and legacy redirects for El Mercado de Origen.
- * Version: 2026.08.21.4
+ * Version: 2026.08.21.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -34,7 +34,6 @@ function emdo_seo_clean_term_name( string $name ): string {
 function emdo_seo_title_for_request( string $current ): string {
     $path = emdo_seo_path();
     $en   = emdo_seo_is_en();
-
     if ( $en ) {
         if ( $path === '/en/' || $path === '/en' ) return 'Spanish Food from Selected Producers | El Mercado de Origen';
         if ( preg_match( '#^/en/(?:shop|tienda)/?$#i', $path ) ) return 'Shop Spanish Food Online | El Mercado de Origen';
@@ -46,7 +45,6 @@ function emdo_seo_title_for_request( string $current ): string {
         }
         return $current;
     }
-
     if ( is_front_page() ) return 'Productos españoles de origen | El Mercado de Origen';
     if ( function_exists( 'is_shop' ) && is_shop() ) return 'Comprar productos españoles online | El Mercado de Origen';
     if ( is_page( 'productores' ) ) return 'Productores españoles | El Mercado de Origen';
@@ -61,7 +59,6 @@ function emdo_seo_title_for_request( string $current ): string {
 function emdo_seo_description_for_request( string $current ): string {
     $path = emdo_seo_path();
     $en   = emdo_seo_is_en();
-
     if ( $en ) {
         if ( $path === '/en/' || $path === '/en' ) return 'Discover selected Spanish food chosen for its origin, quality and producer. Buy directly from trusted producers at El Mercado de Origen.';
         if ( preg_match( '#^/en/(?:shop|tienda)/?$#i', $path ) ) return 'Shop Spanish food directly from selected producers: meat, Iberian ham, cured meats, olive oil, pulses, vegetables and more.';
@@ -73,7 +70,6 @@ function emdo_seo_description_for_request( string $current ): string {
         }
         return $current;
     }
-
     if ( is_front_page() ) return 'Descubre productos españoles seleccionados por su origen, calidad y productor. Compra directamente a productores de confianza en El Mercado de Origen.';
     if ( function_exists( 'is_shop' ) && is_shop() ) return 'Compra alimentos y productos españoles directamente a productores seleccionados: carnes, jamones, embutidos, aceites, legumbres, verduras y más.';
     if ( is_page( 'productores' ) ) return 'Conoce a los productores de El Mercado de Origen, descubre dónde elaboran, qué hace especial su trabajo y compra sus productos directamente online.';
@@ -93,9 +89,6 @@ add_filter( 'aioseo_description', static function ( $description ) {
     return emdo_seo_description_for_request( (string) $description );
 }, PHP_INT_MAX );
 
-// The pre-existing English rendering bridge derives its final homepage meta from the
-// translated excerpt. Supply a concise SEO excerpt only for the public English home,
-// without changing the stored page content or Spanish presentation.
 add_filter( 'get_post_metadata', static function ( $value, $object_id, $meta_key, $single ) {
     if (
         emdo_seo_is_en()
@@ -113,7 +106,10 @@ add_filter( 'aioseo_robots_meta', static function ( $attributes ) {
     if ( ! is_array( $attributes ) ) return $attributes;
     $noindex = false;
     $queried = get_queried_object();
-    if ( $queried instanceof WP_Term && str_starts_with( (string) $queried->taxonomy, 'pa_' ) ) $noindex = true;
+    if ( $queried instanceof WP_Term ) {
+        if ( str_starts_with( (string) $queried->taxonomy, 'pa_' ) ) $noindex = true;
+        if ( (string) $queried->taxonomy === 'product_tag' ) $noindex = true;
+    }
     if ( is_search() ) $noindex = true;
     if ( function_exists( 'is_cart' ) && is_cart() ) $noindex = true;
     if ( function_exists( 'is_checkout' ) && is_checkout() ) $noindex = true;
