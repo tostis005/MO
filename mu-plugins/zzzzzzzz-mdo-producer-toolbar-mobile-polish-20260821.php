@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Producer Toolbar Mobile Polish
- * Description: Mobile-only polish for producer shipping/ordering controls: no clipped label, no double ordering border, and reliable native select interaction.
- * Version: 1.2.0
+ * Description: Mobile-only deterministic polish for producer shipping and ordering controls.
+ * Version: 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -35,7 +35,7 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				overflow:visible !important;
 			}
 
-			/* Destination: one line, centred, with no clipping. */
+			/* Shipping: one real line of text, no clipping and no decorative location pin. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination--canonical,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination {
 				position:relative !important;
@@ -48,6 +48,7 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				z-index:1 !important;
 				display:grid !important;
 				grid-template-columns:minmax(0,1fr) 16px !important;
+				column-gap:9px !important;
 				align-items:center !important;
 				box-sizing:border-box !important;
 				width:100% !important;
@@ -57,46 +58,27 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				min-height:40px !important;
 				max-height:40px !important;
 				padding:0 13px !important;
-				overflow:visible !important;
-				line-height:1.25 !important;
+				overflow:hidden !important;
+				line-height:40px !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:first-child,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > svg:first-child {
 				display:none !important;
-				visibility:hidden !important;
-				width:0 !important;
-				height:0 !important;
-				margin:0 !important;
-				padding:0 !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span {
 				position:static !important;
-				inset:auto !important;
-				z-index:auto !important;
-				display:flex !important;
-				flex-flow:row nowrap !important;
-				gap:3px !important;
+				display:block !important;
+				box-sizing:border-box !important;
+				width:100% !important;
 				min-width:0 !important;
-				height:100% !important;
-				align-items:center !important;
-				overflow:visible !important;
-				white-space:nowrap !important;
-				text-overflow:clip !important;
-				line-height:1.25 !important;
-				padding:1px 0 0 !important;
-				pointer-events:none !important;
-			}
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > span > strong,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger > span > strong {
-				display:inline !important;
-				position:static !important;
-				inset:auto !important;
-				flex:0 0 auto !important;
+				height:40px !important;
 				margin:0 !important;
 				padding:0 !important;
-				line-height:inherit !important;
+				overflow:hidden !important;
 				white-space:nowrap !important;
+				text-overflow:ellipsis !important;
+				line-height:40px !important;
 				pointer-events:none !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger > svg:last-child,
@@ -104,11 +86,11 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				pointer-events:none !important;
 			}
 
-			/* Ordering: the form has no visual shell; only the select has the rounded border. */
+			/* Ordering: wrapper is visually empty; native select owns the only border and every touch. */
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering {
 				position:relative !important;
 				z-index:50 !important;
-				display:flex !important;
+				display:block !important;
 				box-sizing:border-box !important;
 				border:0 !important;
 				border-radius:0 !important;
@@ -120,9 +102,9 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::before,
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering::after,
-			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering span {
+			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering > span {
+				display:none !important;
 				pointer-events:none !important;
-				box-shadow:none !important;
 			}
 			html body.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized .woocommerce-ordering select {
 				position:relative !important;
@@ -138,22 +120,24 @@ function mdo_producer_toolbar_mobile_polish_css_20260821(): void {
 				min-height:40px !important;
 				max-height:40px !important;
 				margin:0 !important;
+				padding:0 36px 0 14px !important;
 				border:1px solid rgba(23,63,50,.14) !important;
 				border-radius:999px !important;
 				outline:0 !important;
+				background-color:#fff !important;
 				box-shadow:none !important;
 				pointer-events:auto !important;
 				cursor:pointer !important;
 				touch-action:manipulation !important;
+				-webkit-appearance:menulist !important;
+				appearance:auto !important;
 			}
 		}
 	</style>
 	<?php
 }
 
-/* First-paint rules. */
 add_action( 'wp_head', 'mdo_producer_toolbar_mobile_polish_css_20260821', PHP_INT_MAX );
-/* Repeat after theme/footer polish rules so no later legacy selector can restore the block strong/double shell. */
 add_action( 'wp_footer', 'mdo_producer_toolbar_mobile_polish_css_20260821', PHP_INT_MAX );
 
 add_action(
@@ -165,19 +149,57 @@ add_action(
 		?>
 		<script id="mdo-producer-toolbar-mobile-polish-js-20260821">
 		(() => {
+			'use strict';
 			if (!matchMedia('(max-width:640px)').matches) return;
-			const apply=()=>{
-				const store=document.querySelector('#wcfmmp-store'); if(!store) return;
-				const trigger=store.querySelector('.mdo-catalog-destination__trigger');
-				const label=trigger?.querySelector('span'); const strong=label?.querySelector('strong');
-				const form=store.querySelector('.woocommerce-ordering'); const select=form?.querySelector('select');
-				if(label){label.style.setProperty('display','flex','important');label.style.setProperty('flex-flow','row nowrap','important');label.style.setProperty('overflow','visible','important');label.style.setProperty('pointer-events','none','important');}
-				if(strong){strong.style.setProperty('display','inline','important');strong.style.setProperty('position','static','important');strong.style.setProperty('line-height','inherit','important');}
-				if(form){form.style.setProperty('border','0','important');form.style.setProperty('background','transparent','important');form.style.setProperty('box-shadow','none','important');form.style.setProperty('pointer-events','auto','important');form.style.setProperty('z-index','50','important');}
-				if(select){select.style.setProperty('pointer-events','auto','important');select.style.setProperty('z-index','51','important');}
+			const apply = () => {
+				const store = document.querySelector('#wcfmmp-store');
+				if (!store) return;
+				const trigger = store.querySelector('.mdo-catalog-destination__trigger, .mdo-ps-destination__trigger');
+				const label = trigger?.querySelector(':scope > span');
+				if (label) {
+					const clean = label.textContent.replace(/\s+/g, ' ').trim();
+					if (label.textContent !== clean || label.children.length) label.textContent = clean;
+					label.style.setProperty('display','block','important');
+					label.style.setProperty('height','40px','important');
+					label.style.setProperty('line-height','40px','important');
+					label.style.setProperty('white-space','nowrap','important');
+					label.style.setProperty('overflow','hidden','important');
+					label.style.setProperty('pointer-events','none','important');
+				}
+				const firstSvg = trigger?.querySelector(':scope > svg:first-child');
+				if (firstSvg) firstSvg.style.setProperty('display','none','important');
+				const form = store.querySelector('.woocommerce-ordering');
+				const select = form?.querySelector('select');
+				if (form) {
+					form.style.setProperty('border','0','important');
+					form.style.setProperty('border-radius','0','important');
+					form.style.setProperty('background','transparent','important');
+					form.style.setProperty('box-shadow','none','important');
+					form.style.setProperty('pointer-events','auto','important');
+					form.style.setProperty('z-index','50','important');
+					form.querySelectorAll(':scope > span').forEach(n => n.style.setProperty('display','none','important'));
+				}
+				if (select) {
+					select.style.setProperty('pointer-events','auto','important');
+					select.style.setProperty('z-index','51','important');
+					select.style.setProperty('appearance','auto','important');
+					select.style.setProperty('-webkit-appearance','menulist','important');
+				}
 			};
-			apply(); requestAnimationFrame(apply); setTimeout(apply,300); setTimeout(apply,1200);
-			window.addEventListener('pageshow',apply,{passive:true});
+			apply();
+			requestAnimationFrame(apply);
+			setTimeout(apply,250);
+			setTimeout(apply,900);
+			setTimeout(apply,1800);
+			const store = document.querySelector('#wcfmmp-store');
+			if (store) {
+				let timer = 0;
+				new MutationObserver(() => {
+					clearTimeout(timer);
+					timer = setTimeout(apply, 20);
+				}).observe(store, {subtree:true, childList:true});
+			}
+			window.addEventListener('pageshow', apply, {passive:true});
 		})();
 		</script>
 		<?php
