@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Producer Toolbar Static Guard
  * Description: Prevents legacy producer scripts/styles from rewriting the shared catalogue toolbar after mount.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -76,6 +76,123 @@ function mdo_producer_toolbar_static_guard_css_20260821(): void {
 	}
 	?>
 	<style id="mdo-producer-toolbar-static-guard-20260821">
+		/*
+		 * Producer desktop/tablet contract. Do not let the destination pill shrink:
+		 * that was the source of the "Shipping to Spain" / result-count overlap.
+		 */
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host {
+			overflow:visible !important;
+			margin-bottom:22px !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left {
+			display:flex !important;
+			position:static !important;
+			order:1 !important;
+			flex:1 1 auto !important;
+			width:auto !important;
+			min-width:0 !important;
+			max-width:none !important;
+			height:42px !important;
+			min-height:42px !important;
+			max-height:42px !important;
+			align-items:center !important;
+			gap:14px !important;
+			margin:0 !important;
+			padding:0 !important;
+			overflow:visible !important;
+			float:none !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left > .woocommerce-result-count {
+			position:static !important;
+			order:1 !important;
+			flex:0 0 auto !important;
+			width:auto !important;
+			min-width:max-content !important;
+			max-width:none !important;
+			height:42px !important;
+			min-height:42px !important;
+			max-height:42px !important;
+			align-items:center !important;
+			margin:0 !important;
+			padding:0 2px !important;
+			overflow:visible !important;
+			white-space:nowrap !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left > .mdo-catalog-destination--canonical {
+			position:static !important;
+			display:inline-flex !important;
+			order:2 !important;
+			flex:0 0 auto !important;
+			width:auto !important;
+			min-width:max-content !important;
+			max-width:none !important;
+			height:42px !important;
+			min-height:42px !important;
+			max-height:42px !important;
+			margin:0 !important;
+			padding:0 !important;
+			overflow:visible !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left > .mdo-catalog-destination--canonical > .mdo-catalog-destination__trigger {
+			width:auto !important;
+			min-width:max-content !important;
+			max-width:none !important;
+			height:42px !important;
+			min-height:42px !important;
+			max-height:42px !important;
+			white-space:nowrap !important;
+			overflow:visible !important;
+		}
+		/* Historical vendor CSS added a map-pin pseudo icon; the shared shop pill does not need it. */
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-catalog-destination__trigger::before,
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .mdo-ps-destination__trigger::before {
+			content:none !important;
+			display:none !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woocommerce-ordering {
+			position:static !important;
+			order:2 !important;
+			flex:0 0 248px !important;
+			box-sizing:border-box !important;
+			width:248px !important;
+			min-width:190px !important;
+			max-width:248px !important;
+			height:42px !important;
+			min-height:42px !important;
+			max-height:42px !important;
+			align-items:center !important;
+			margin:0 0 0 auto !important;
+			padding:0 !important;
+			transform:none !important;
+			float:none !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woocommerce-ordering > select {
+			display:block !important;
+			box-sizing:border-box !important;
+			width:100% !important;
+			min-width:0 !important;
+			max-width:100% !important;
+			height:42px !important;
+			min-height:42px !important;
+			max-height:42px !important;
+			margin:0 !important;
+		}
+		html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store ul.products {
+			position:relative !important;
+			transform:none !important;
+			margin-top:0 !important;
+			padding-top:0 !important;
+		}
+
+		@media (min-width:641px) and (max-width:991px) {
+			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woocommerce-ordering {
+				flex-basis:190px !important;
+				width:190px !important;
+				min-width:170px !important;
+				max-width:190px !important;
+			}
+		}
+
 		@media (max-width:640px) {
 			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host {
 				position:relative !important;
@@ -93,7 +210,7 @@ function mdo_producer_toolbar_static_guard_css_20260821(): void {
 				height:140px !important;
 				min-height:140px !important;
 				max-height:140px !important;
-				margin:0 -17px 12px !important;
+				margin:0 -17px 22px !important;
 				padding:12px !important;
 				overflow:visible !important;
 				transform:none !important;
@@ -102,6 +219,7 @@ function mdo_producer_toolbar_static_guard_css_20260821(): void {
 			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left {
 				position:static !important;
 				display:grid !important;
+				order:initial !important;
 				grid-column:1 !important;
 				grid-row:1 !important;
 				grid-template-columns:minmax(0,1fr) !important;
@@ -124,6 +242,7 @@ function mdo_producer_toolbar_static_guard_css_20260821(): void {
 			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left > .woocommerce-result-count {
 				position:static !important;
 				display:flex !important;
+				order:initial !important;
 				grid-column:1 !important;
 				grid-row:1 !important;
 				flex:none !important;
@@ -146,6 +265,7 @@ function mdo_producer_toolbar_static_guard_css_20260821(): void {
 			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woostify-toolbar-left > .mdo-catalog-destination--canonical {
 				position:static !important;
 				display:block !important;
+				order:initial !important;
 				grid-column:1 !important;
 				grid-row:2 !important;
 				flex:none !important;
@@ -171,6 +291,7 @@ function mdo_producer_toolbar_static_guard_css_20260821(): void {
 			html body.elmercado-child-theme.wcfmmp-store-page.mdo-producer-store-toolbar-ux #wcfmmp-store#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-host > .woocommerce-ordering {
 				position:static !important;
 				display:flex !important;
+				order:initial !important;
 				grid-column:1 !important;
 				grid-row:2 !important;
 				flex:none !important;
@@ -229,7 +350,7 @@ function mdo_producer_toolbar_static_guard_structure_script_20260821(): void {
 		let frame=0;
 		let applying=false;
 		const clear=(node,names)=>{if(!node)return;names.forEach(name=>node.style.removeProperty(name));};
-		const geometry=['left','right','top','bottom','inset','display','width','min-width','max-width','height','min-height','max-height','flex','flex-basis','grid-column','grid-row','transform','margin','margin-left','margin-right','padding','float','clear','align-self','justify-self'];
+		const geometry=['left','right','top','bottom','inset','display','width','min-width','max-width','height','min-height','max-height','flex','flex-basis','grid-column','grid-row','order','transform','margin','margin-left','margin-right','padding','float','clear','align-self','justify-self'];
 
 		const normalise=()=>{
 			if(applying) return;
@@ -248,10 +369,15 @@ function mdo_producer_toolbar_static_guard_structure_script_20260821(): void {
 				const ordering=host.querySelector('.woocommerce-ordering')||store.querySelector('.elmercado-vendor-toolbar .woocommerce-ordering');
 				if(result&&result.parentElement!==left) left.appendChild(result);
 				if(destination&&destination.parentElement!==left) left.appendChild(destination);
+				if(result&&destination&&result.parentElement===left&&destination.parentElement===left&&(result.compareDocumentPosition(destination)&Node.DOCUMENT_POSITION_PRECEDING)) {
+					left.insertBefore(result,destination);
+				}
 				if(ordering&&ordering.parentElement!==host) host.appendChild(ordering);
 
 				clear(host,geometry); clear(left,geometry); clear(result,geometry); clear(destination,geometry); clear(ordering,geometry);
 				clear(ordering?.querySelector('select'),geometry);
+				const products=store.querySelector('ul.products');
+				if(products){products.style.removeProperty('transform');products.style.removeProperty('margin-bottom');products.style.removeProperty('margin-top');}
 
 				host.querySelectorAll(':scope > .elmercado-vendor-toolbar').forEach(inner=>{
 					const meaningful=Array.from(inner.children).filter(node=>getComputedStyle(node).display!=='none');
