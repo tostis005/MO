@@ -43,3 +43,4 @@ foreach ( $images as $image ) {
 }
 if(!empty($report['errors']) || count($report['images'])!==6){fwrite(STDERR,wp_json_encode($report,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT).PHP_EOL);exit(1);} 
 echo wp_json_encode($report,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT).PHP_EOL;
+// Workflow trigger marker: editorial revision 2 reviewed 2026-08-21.
