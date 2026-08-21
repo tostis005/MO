@@ -1,0 +1,214 @@
+name: Producer toolbar design production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/producer-toolbar-design-production-20260821.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: php -l mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php
+
+      - name: Deploy and verify producer toolbar
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          python -m pip install --quiet selenium
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          mkdir -p .deploy-status
+          STATUS=.deploy-status/producer-toolbar-design-20260821.txt
+          EXIT=.deploy-status/producer-toolbar-design-20260821.exit-code
+          : > "$STATUS"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf %s "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php"
+          LEGACY="$PROD_PATH/wp-content/mu-plugins/zzzzzz-mdo-catalog-toolbar-visual-parity-20260821.php"
+          BACKUP="/tmp/mdo-producer-toolbar-before-${GITHUB_RUN_ID}.php"
+          LEGACY_BACKUP="/tmp/mdo-producer-toolbar-legacy-${GITHUB_RUN_ID}.php"
+          REMOTE="/tmp/mdo-producer-toolbar-${GITHUB_RUN_ID}.php"
+          REMOTE_AUDIT="/tmp/mdo-producer-toolbar-audit-${GITHUB_RUN_ID}.php"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            [ ! -f '$TARGET' ] || cp '$TARGET' '$BACKUP'
+            [ ! -f '$LEGACY' ] || cp '$LEGACY' '$LEGACY_BACKUP'
+          "
+
+          rollback() {
+            echo 'ROLLBACK producer toolbar design' | tee -a "$STATUS"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+              if [ -f '$BACKUP' ]; then cp '$BACKUP' '$TARGET'; else rm -f '$TARGET'; fi
+              if [ -f '$LEGACY_BACKUP' ]; then cp '$LEGACY_BACKUP' '$LEGACY'; else rm -f '$LEGACY'; fi
+              rm -f '$REMOTE' '$REMOTE_AUDIT' '$BACKUP' '$LEGACY_BACKUP'
+              wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            " || true
+          }
+          fail() { echo "FAIL: $1" | tee -a "$STATUS"; rollback; echo 2 > "$EXIT"; exit 2; }
+
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/verify-producer-store-safe-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            cp '$REMOTE' '$TARGET'; rm -f '$REMOTE'; rm -f '$LEGACY'
+            wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$TARGET'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+          " >> "$STATUS" 2>&1 || fail 'deploy/lint failed'
+
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root
+          " >> "$STATUS" 2>&1
+          AUDIT_CODE=$?
+          set -e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$REMOTE_AUDIT'" || true
+          [ "$AUDIT_CODE" = 0 ] || fail 'producer filtering/ranking audit failed'
+
+          AUDIT_JSON="$(grep '^producer_store_safe_audit_ok ' "$STATUS" | tail -n1 | sed 's/^producer_store_safe_audit_ok //')"
+          SLUG="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["sample_slug"])' "$AUDIT_JSON")"
+          BLOCKED="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["sample_blocked_country"])' "$AUDIT_JSON")"
+          export MDO_SLUG="$SLUG" MDO_BLOCKED="$BLOCKED" MDO_RUN="$GITHUB_RUN_ID"
+
+          set +e
+          python - <<'PY' >> "$STATUS" 2>&1
+          import os
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+
+          base='https://www.elmercadodeorigen.com'
+          slug=os.environ['MDO_SLUG']; blocked=os.environ['MDO_BLOCKED']; run=os.environ['MDO_RUN']
+          opt=webdriver.ChromeOptions(); opt.add_argument('--headless=new'); opt.add_argument('--no-sandbox'); opt.add_argument('--disable-dev-shm-usage')
+          d=webdriver.Chrome(options=opt)
+
+          def rect(el):
+              return d.execute_script('const r=arguments[0].getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom};',el)
+          def css(el,p): return d.execute_script('return getComputedStyle(arguments[0])[arguments[1]]',el,p)
+          def seed(path,country='ES',width=1440,height=1000):
+              d.set_window_size(width,height); d.get(base+'/?seed='+run)
+              for n in ('mdo_shipping_country','mdo_shipping_postcode'):
+                  try:d.delete_cookie(n)
+                  except:pass
+              d.add_cookie({'name':'mdo_shipping_country','value':country,'domain':'www.elmercadodeorigen.com','path':'/'})
+              d.add_cookie({'name':'mdo_shipping_postcode','value':'','domain':'www.elmercadodeorigen.com','path':'/'})
+              d.get(base+path+('?toolbar='+run+f'-{width}-{country}'))
+
+          def snap(path,width,producer=False,country='ES'):
+              seed(path,country,width)
+              w=WebDriverWait(d,25)
+              if producer:
+                  bar=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized.mdo-ps-toolbar-ready')))
+              else:
+                  bar=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'body:not(.wcfmmp-store-page) .woostify-sorting.emo-catalog-toolbar-shared-010229')))
+              left=bar.find_element(By.CSS_SELECTOR,':scope > .woostify-toolbar-left')
+              count=left.find_element(By.CSS_SELECTOR,':scope > .woocommerce-result-count')
+              dest=left.find_element(By.CSS_SELECTOR,':scope > .mdo-catalog-destination--canonical')
+              order=bar.find_element(By.CSS_SELECTOR,':scope > .woocommerce-ordering')
+              trigger=dest.find_element(By.CSS_SELECTOR,'.mdo-catalog-destination__trigger')
+              select=order.find_element(By.TAG_NAME,'select')
+              return dict(bar=rect(bar),left=rect(left),count=rect(count),dest=rect(dest),order=rect(order),trigger=rect(trigger),select=rect(select),
+                          display=css(bar,'display'),bg=css(bar,'backgroundColor'),radius=css(bar,'borderRadius'),
+                          tbg=css(trigger,'backgroundColor'),tcolor=css(trigger,'color'),sbg=css(select,'backgroundColor'),scolor=css(select,'color'))
+
+          def contained(parent,child):
+              return child['x'] >= parent['x']-1 and child['right'] <= parent['right']+1 and child['y'] >= parent['y']-1 and child['bottom'] <= parent['bottom']+1
+
+          for width in (1440,900,390):
+              shop=snap('/tienda/',width,False)
+              prod=snap(f'/tienda/{slug}/',width,True)
+              for name,s in (('shop',shop),('producer',prod)):
+                  assert s['bg'] in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)'),(width,name,s)
+                  assert s['tbg'] in ('rgb(248, 250, 248)','rgba(248, 250, 248, 1)'),(width,name,s)
+                  assert s['tcolor'] in ('rgb(23, 63, 50)','rgba(23, 63, 50, 1)'),(width,name,s)
+                  assert s['scolor'] in ('rgb(23, 63, 50)','rgba(23, 63, 50, 1)'),(width,name,s)
+                  for k in ('count','dest','order'): assert contained(s['bar'],s[k]),(width,name,k,s)
+              assert shop['radius']==prod['radius'],(width,shop,prod)
+              assert abs(shop['trigger']['h']-prod['trigger']['h'])<=1.5,(width,shop,prod)
+              assert abs(shop['select']['h']-prod['select']['h'])<=1.5,(width,shop,prod)
+              if width>640:
+                  assert shop['display']=='flex' and prod['display']=='flex',(width,shop,prod)
+                  assert abs(shop['bar']['h']-prod['bar']['h'])<=3,(width,shop,prod)
+                  centers=[prod[k]['y']+prod[k]['h']/2 for k in ('count','dest','order')]
+                  assert max(centers)-min(centers)<=4,(width,prod)
+              else:
+                  assert shop['display']=='grid' and prod['display']=='grid',(width,shop,prod)
+                  assert 130 <= prod['bar']['h'] <= 155,(width,prod)
+                  assert abs(shop['bar']['h']-prod['bar']['h'])<=4,(width,shop,prod)
+                  assert prod['count']['bottom'] <= prod['dest']['y']+1,(width,prod)
+                  assert prod['dest']['bottom'] <= prod['order']['y']+12,(width,prod)
+                  assert prod['bar']['x'] >= 12 and prod['bar']['right'] <= width-12,(width,prod)
+              print('DESIGN_OK',width,'SHOP',shop,'PRODUCER',prod)
+
+          en=snap(f'/en/store/{slug}/',390,True)
+          txt=d.find_element(By.CSS_SELECTOR,'#wcfmmp-store .mdo-catalog-destination__trigger').text
+          assert 'Shipping to' in txt,txt
+
+          seed(f'/tienda/{slug}/',blocked,390,900)
+          w=WebDriverWait(d,25)
+          bar=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store .woostify-sorting.elmercado-vendor-sorting-normalized')))
+          trigger=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#wcfmmp-store [data-mdo-ps-destination-open]')))
+          assert css(bar,'backgroundColor') in ('rgb(255, 255, 255)','rgba(255, 255, 255, 1)')
+          assert len(d.find_elements(By.CSS_SELECTOR,'#wcfmmp-store ul.products li.product'))==0
+          trigger.click()
+          modal=w.until(EC.visibility_of_element_located((By.CSS_SELECTOR,'#mdo-ps-destination-dialog')))
+          assert modal.is_displayed()
+          print('BLOCKED_SELECTOR_OK',blocked,trigger.text)
+          d.quit()
+          PY
+          BROWSER=$?
+          set -e
+          [ "$BROWSER" = 0 ] || fail 'browser design verification failed'
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP' '$LEGACY_BACKUP'" || true
+          echo 'producer_toolbar_design_production_ok' | tee -a "$STATUS"
+          echo 0 > "$EXIT"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/producer-toolbar-design-20260821.* || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record producer toolbar design result [skip ci]'
+            git pull --rebase origin main || true
+            git push origin HEAD:main || true
+          fi
