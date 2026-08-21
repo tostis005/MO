@@ -1,0 +1,137 @@
+name: Editorial authority batch 1 20260821
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/publish-editorial-authority-batch1-20260821.php'
+      - 'mu-plugins/mdo-english-journal-content-20260821.php'
+      - '.github/workflows/editorial-authority-batch1-20260821.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: editorial-authority-batch1-20260821
+  cancel-in-progress: false
+
+jobs:
+  publish-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-editorial-authority-batch1-20260821.php
+          php -l mu-plugins/mdo-english-journal-content-20260821.php
+          test "$(grep -c "EMDO_AUTHORITY_BATCH1:" .github/scripts/publish-editorial-authority-batch1-20260821.php)" -eq 10
+          test "$(grep -c "'key'=>" .github/scripts/publish-editorial-authority-batch1-20260821.php)" -eq 5
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Publish to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$PROD_PATH/wp-content/mu-plugins'"
+          sshpass -e scp $SCP mu-plugins/mdo-english-journal-content-20260821.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-english-journal-content-20260821.php"
+          REMOTE="/tmp/editorial-authority-batch1-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch1-20260821.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" | tee /tmp/editorial-authority-batch1.json
+          python3 -m json.tool /tmp/editorial-authority-batch1.json >/dev/null
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/editorial-authority-batch1.json'))
+          assert len(d['posts'])==5, d
+          assert len({p['image_id'] for p in d['posts']})==5, d
+          for p in d['posts']:
+              assert p['status']=='publish', p
+              assert int(p['words_es'])>=750, p
+              assert int(p['words_en'])>=700, p
+              assert int(p['image_w'])>=1200 and int(p['image_h'])>=700, p
+              assert p['image_source'].startswith('https://www.pexels.com/photo/'), p
+          PY
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify ten public language views
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://www.elmercadodeorigen.com"; stamp="${GITHUB_RUN_ID}"
+          check(){
+            url="$1"; marker="$2"; phrase="$3"; file="/tmp/ab1-${marker}-$(echo "$url"|tr '/:' '__').html"
+            code="$(curl -k -L -sS --retry 4 --retry-delay 3 --connect-timeout 10 --max-time 70 -A 'Mozilla/5.0 EMDO authority verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$file" -w '%{http_code}' "${url}?emdo_ab1=${stamp}")"
+            test "$code" = 200
+            grep -Fq "EMDO_AUTHORITY_BATCH1:${marker}" "$file"
+            grep -Fq "$phrase" "$file"
+            grep -Fq 'emo-article-featured' "$file"
+            grep -Eq 'class="[^"]*products|class="[^"]*product' "$file"
+            if grep -Fq '[products ' "$file"; then echo "Raw product shortcode on $url" >&2; exit 8; fi
+          }
+          check "$BASE/brida-negra-roja-verde-blanca-jamon-iberico/" iberico-seals 'El porcentaje racial'
+          check "$BASE/en/black-red-green-white-seal-iberian-ham/" iberico-seals 'Breed percentage'
+          check "$BASE/como-conservar-jamon-iberico-empezado/" ham-storage 'Cortar poco y cortar a menudo'
+          check "$BASE/en/how-to-store-iberian-ham-once-started/" ham-storage 'Slice little, slice often'
+          check "$BASE/lomo-chorizo-salchichon-iberico-diferencias-como-elegir/" cured-meats-guide 'Textura: la diferencia'
+          check "$BASE/en/iberian-loin-chorizo-salchichon-differences-how-to-choose/" cured-meats-guide 'Texture is the easiest'
+          check "$BASE/picual-arbequina-lechin-que-aove-elegir/" oil-varieties 'Un mapa práctico'
+          check "$BASE/en/picual-arbequina-lechin-which-evoo-to-choose/" oil-varieties 'A practical map'
+          check "$BASE/que-significa-aceite-oliva-virgen-extra/" what-evoo-means 'La acidez no es el sabor ácido'
+          check "$BASE/en/what-extra-virgin-olive-oil-really-means/" what-evoo-means 'Free acidity is not an acidic taste'
+
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/blog/?emdo_ab1=${stamp}" -o /tmp/ab1-blog-es.html
+          grep -Fq 'Brida negra, roja, verde o blanca' /tmp/ab1-blog-es.html
+          grep -Fq 'Picual, Arbequina o Lechín' /tmp/ab1-blog-es.html
+          curl -k -L -sS --retry 3 -H 'Cache-Control: no-cache' "$BASE/en/journal/?emdo_ab1=${stamp}" -o /tmp/ab1-blog-en.html
+          grep -Fq 'Black, red, green or white seal' /tmp/ab1-blog-en.html
+          grep -Fq 'Picual, Arbequina or Lechín' /tmp/ab1-blog-en.html
+          echo EMDO_AUTHORITY_BATCH1_PUBLIC_OK
+
+      - name: Record verified batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os
+          d=json.load(open('/tmp/editorial-authority-batch1.json'))
+          d['verified']=True
+          d['language_views_verified']=10
+          d['run_id']=os.environ['GITHUB_RUN_ID']
+          d['source_sha']=os.environ['GITHUB_SHA']
+          open('.deploy-status/editorial-authority-batch1-20260821.json','w').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch1-20260821.json
+          git commit -m 'Record editorial authority batch 1 verification [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
