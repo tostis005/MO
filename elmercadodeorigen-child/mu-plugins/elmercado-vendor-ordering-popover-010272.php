@@ -1,10 +1,10 @@
 <?php
 /**
- * Native WooCommerce ordering parity for WCFM vendor stores 0.10.278.
+ * Native WooCommerce ordering parity for WCFM vendor stores 0.10.279.
  *
- * The producer toolbar must expose one real WooCommerce <select>, with the
- * same visual surface as the global Shop and without Select2/NiceSelect or
- * legacy custom ordering controls sitting over it.
+ * The producer toolbar exposes one real WooCommerce <select>. WCFM/legacy
+ * scripts may write inline !important styles after wp_head, so this owner also
+ * restores the final Shop geometry after those scripts have run.
  *
  * @package ElMercadoDeOrigen
  */
@@ -20,7 +20,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="elmercado-vendor-ordering-native-010278">
+		<style id="elmercado-vendor-ordering-native-010279">
 			body.wcfmmp-store-page .mdo-vendor-order-button,
 			body.wcfmmp-store-page .mdo-vendor-order-menu,
 			body.wcfmmp-store-page .mdo-vendor-order-sheet,
@@ -49,7 +49,6 @@ add_action(
 				pointer-events:none !important;
 			}
 
-			/* Target by name, not by a class WCFM can replace. */
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
 				box-sizing:border-box !important;
 				position:static !important;
@@ -66,7 +65,7 @@ add_action(
 				box-shadow:none !important;
 				color:#173f32 !important;
 				font-family:inherit !important;
-				font-size:12px !important;
+				font-size:11.75px !important;
 				font-weight:700 !important;
 				letter-spacing:0 !important;
 				line-height:1 !important;
@@ -79,38 +78,6 @@ add_action(
 				touch-action:manipulation !important;
 				cursor:pointer !important;
 				z-index:3 !important;
-			}
-
-			@media (max-width:991px) {
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering {
-					position:relative !important;
-					left:50% !important;
-					width:calc(100vw - 58px) !important;
-					min-width:calc(100vw - 58px) !important;
-					max-width:calc(100vw - 58px) !important;
-					height:40px !important;
-					min-height:40px !important;
-					max-height:40px !important;
-					transform:translateX(-50%) !important;
-				}
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
-					width:100% !important;
-					min-width:100% !important;
-					max-width:100% !important;
-					padding:0 34px 0 13px !important;
-				}
-			}
-
-			@media (min-width:992px) {
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering,
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
-					width:250px !important;
-					min-width:250px !important;
-					max-width:250px !important;
-				}
-				html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"] {
-					padding:0 30px 0 12px !important;
-				}
 			}
 		</style>
 		<?php
@@ -125,14 +92,17 @@ add_action(
 			return;
 		}
 		?>
-		<script id="elmercado-vendor-ordering-native-script-010278">
+		<script id="elmercado-vendor-ordering-native-script-010279">
 		(() => {
 			'use strict';
 			if (!document.body || !document.body.classList.contains('wcfmmp-store-page')) return;
 
 			const selector = '.emo-catalog-toolbar-shared-010229 .woocommerce-ordering > select[name="orderby"]';
 			const enhancerSelector = '.select2,.select2-container,.chosen-container,.nice-select,.selectize-control';
+			const mobile = window.matchMedia('(max-width: 991px)');
 			let queued = false;
+
+			const important = (node, name, value) => node?.style?.setProperty(name, value, 'important');
 
 			const navigate = value => {
 				if (!value) return;
@@ -147,11 +117,41 @@ add_action(
 				try {
 					if (window.jQuery) {
 						const $select = window.jQuery(select);
-						if ($select.data('select2') && typeof $select.select2 === 'function') {
-							$select.select2('destroy');
-						}
+						if ($select.data('select2') && typeof $select.select2 === 'function') $select.select2('destroy');
 					}
 				} catch (_) {}
+			};
+
+			const forceFinalGeometry = (form, select) => {
+				[
+					['box-sizing','border-box'],['border','0'],['outline','0'],['background','transparent'],
+					['box-shadow','none'],['overflow','visible'],['pointer-events','auto']
+				].forEach(([name,value]) => important(form,name,value));
+
+				[
+					['box-sizing','border-box'],['position','static'],['inset','auto'],['display','block'],
+					['height','40px'],['min-height','40px'],['max-height','40px'],['margin','0'],
+					['border','1px solid rgba(23,63,50,.14)'],['border-radius','999px'],['outline','0'],
+					['background','#f8faf8'],['box-shadow','none'],['color','#173f32'],['font-family','inherit'],
+					['font-size','11.75px'],['font-weight','700'],['letter-spacing','0'],['line-height','1'],
+					['visibility','visible'],['opacity','1'],['clip','auto'],['clip-path','none'],['transform','none'],
+					['pointer-events','auto'],['touch-action','manipulation'],['cursor','pointer'],['z-index','3']
+				].forEach(([name,value]) => important(select,name,value));
+
+				if (mobile.matches) {
+					[
+						['position','relative'],['left','50%'],['width','calc(100vw - 58px)'],
+						['min-width','calc(100vw - 58px)'],['max-width','calc(100vw - 58px)'],
+						['height','40px'],['min-height','40px'],['max-height','40px'],['transform','translateX(-50%)']
+					].forEach(([name,value]) => important(form,name,value));
+					[['width','100%'],['min-width','100%'],['max-width','100%'],['padding','0 42px 0 12px']]
+						.forEach(([name,value]) => important(select,name,value));
+				} else {
+					[['position','static'],['left','auto'],['transform','none'],['width','250px'],['min-width','250px'],['max-width','250px']]
+						.forEach(([name,value]) => important(form,name,value));
+					[['width','250px'],['min-width','250px'],['max-width','250px'],['padding','0 30px 0 12px']]
+						.forEach(([name,value]) => important(select,name,value));
+				}
 			};
 
 			const ownSelect = select => {
@@ -169,15 +169,15 @@ add_action(
 				select.removeAttribute('hidden');
 				select.disabled = false;
 				select.tabIndex = 0;
-				['display','visibility','opacity','pointer-events','position','inset','clip','clip-path','transform','z-index'].forEach(name => select.style.removeProperty(name));
-
 				select.dataset.mdoNative010277 = '1';
-				select.dataset.mdoNativeParity = '010278';
+				select.dataset.mdoNativeParity = '010279';
 				delete select.dataset.mdoPopover010272;
 				delete select.dataset.mdoSheet010276;
 
-				if (select.dataset.mdoNativeBound010278 !== '1') {
-					select.dataset.mdoNativeBound010278 = '1';
+				forceFinalGeometry(form, select);
+
+				if (select.dataset.mdoNativeBound010279 !== '1') {
+					select.dataset.mdoNativeBound010279 = '1';
 					select.addEventListener('change', event => {
 						event.preventDefault();
 						event.stopImmediatePropagation();
@@ -201,8 +201,11 @@ add_action(
 			requestAnimationFrame(repair);
 			window.addEventListener('load', repair, { once:true });
 			window.addEventListener('pageshow', repair, { passive:true });
-			setTimeout(repair, 250);
-			setTimeout(repair, 1000);
+			mobile.addEventListener?.('change', repair);
+			setTimeout(repair, 100);
+			setTimeout(repair, 300);
+			setTimeout(repair, 750);
+			setTimeout(repair, 1250);
 			setTimeout(repair, 2500);
 
 			new MutationObserver(mutations => {
