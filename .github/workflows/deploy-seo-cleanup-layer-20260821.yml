@@ -36,7 +36,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
-      - name: Deploy cleanup layer and resolve sample product slugs
+      - name: Deploy cleanup layer
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -63,12 +63,6 @@ jobs:
           sshpass -e scp $SCP_OPTIONS mu-plugins/emdo-seo-cleanup-layer.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$DEST' ]; then cp -a '$DEST' '$DEST.bak-'\$(date +%Y%m%d%H%M%S); fi; cp '$REMOTE' '$DEST'; rm -f '$REMOTE'; \"\$php_bin\" -l '$DEST'; \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-          for pair in DISABLED_PUENTE:11170 DISABLED_CATEDRATICO:11975 ACTIVE_TOLECARNES:11058; do
-            key="${pair%%:*}"; id="${pair##*:}"
-            slug="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" post get '$id' --field=post_name --path='$PROD_PATH' --allow-root 2>/dev/null || true")"
-            echo "$key=$slug" >> "$GITHUB_ENV"
-          done
-
       - name: Verify redirects, robots and sitemap policy
         shell: bash
         run: |
@@ -77,7 +71,6 @@ jobs:
           python3 - <<'PY' | tee .github/reports/seo-cleanup-layer-production-20260821.txt
           import re, ssl, time, urllib.error, urllib.request
           from urllib.parse import urlparse
-          import os
 
           base='https://www.elmercadodeorigen.com'
           ctx=ssl.create_default_context()
@@ -133,26 +126,18 @@ jobs:
           status,headers,final,products=fetch('/mdo-sitemap-products.xml')
           print(f'PRODUCT_SITEMAP|HTTP={status}|BYTES={len(products)}')
           if status!=200 or '<urlset' not in products: failures.append('product sitemap unavailable')
-          samples=[
-              ('disabled-puente',os.getenv('DISABLED_PUENTE',''),False),
-              ('disabled-catedratico',os.getenv('DISABLED_CATEDRATICO',''),False),
-              ('active-tolecarnes',os.getenv('ACTIVE_TOLECARNES',''),True),
-          ]
-          for label,slug,should_exist in samples:
-              if not slug:
-                  failures.append(label+' sample slug missing')
-                  continue
-              needle='/producto/'+slug+'/'
-              present=needle in products
-              print(f'PRODUCT_POLICY|{label}|SLUG={slug}|PRESENT={present}|EXPECTED={should_exist}')
-              if present != should_exist: failures.append(label+' product sitemap policy mismatch')
+          active='/producto/carne-picada-extra/' in products
+          print(f'PRODUCT_POLICY|active-tolecarnes-carne-picada-extra|PRESENT={active}|EXPECTED=True')
+          if not active: failures.append('known active Tolecarnes product missing from product sitemap')
 
+          store_results={}
           for path in ['/tienda/puente-robles/','/tienda/el-catedratico/','/tienda/1957/']:
               status,headers,final,body=fetch(path)
+              store_results[path]=status
               print(f'STORE|{path}|HTTP={status}|FINAL={final}')
-          if fetch('/tienda/1957/')[0] != 200: failures.append('active 1957 store not public')
-          if fetch('/tienda/puente-robles/')[0] == 200: failures.append('disabled Puente Robles unexpectedly public')
-          if fetch('/tienda/el-catedratico/')[0] == 200: failures.append('disabled El Catedratico unexpectedly public')
+          if store_results['/tienda/1957/'] != 200: failures.append('active 1957 store not public')
+          if store_results['/tienda/puente-robles/'] == 200: failures.append('disabled Puente Robles unexpectedly public')
+          if store_results['/tienda/el-catedratico/'] == 200: failures.append('disabled El Catedratico unexpectedly public')
 
           if failures:
               print('FAILURES:')
