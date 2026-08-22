@@ -1,0 +1,51 @@
+name: Diagnose English category after restore 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/diagnose-en-category-after-restore-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture live diagnostics
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import base64, json, re, subprocess, pathlib
+          paths=['meat','hams-and-shoulders','preserves','vegetables','pulses']
+          report={'routes':[]}
+          for slug in paths:
+              url=f'https://www.elmercadodeorigen.com/en/product-category/{slug}/?mdo_cat_fix_test=1&diag=20260822'
+              p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-category-diag/1.0','-H','Cache-Control: no-cache, no-store','-w','\n__HTTP__:%{http_code}\n__TIME__:%{time_total}\n__URL__:%{url_effective}',url],capture_output=True,text=True)
+              raw=p.stdout
+              http=re.search(r'__HTTP__:(\d+)',raw); elapsed=re.search(r'__TIME__:([0-9.]+)',raw); effective=re.search(r'__URL__:(\S+)',raw)
+              body=raw.split('\n__HTTP__:',1)[0]
+              cards=len(re.findall(r'<li[^>]+class=["\'][^"\']*\bproduct\b',body,re.I))
+              m=re.search(r'<!--MDO_CAT_DIAG:([A-Za-z0-9+/=]+)-->',body)
+              diag=None
+              if m:
+                  try: diag=json.loads(base64.b64decode(m.group(1)).decode('utf-8'))
+                  except Exception as e: diag={'decode_error':repr(e)}
+              report['routes'].append({'slug':slug,'returncode':p.returncode,'http':int(http.group(1)) if http else 0,'time':float(elapsed.group(1)) if elapsed else None,'effective':effective.group(1) if effective else '', 'cards':cards,'diagnostic':diag,'stderr':p.stderr[-1000:]})
+          pathlib.Path('.deploy-status/en-category-after-restore-diagnostic-20260822.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - name: Commit diagnostic
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/en-category-after-restore-diagnostic-20260822.json || true
+          git commit -m "Record English category post-restore diagnostic ${GITHUB_RUN_ID}" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
