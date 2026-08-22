@@ -1,0 +1,598 @@
+{
+  "es_price": {
+    "query_vars": {
+      "orderby": "price",
+      "order": "ASC",
+      "meta_key": "",
+      "posts_per_page": 15,
+      "paged": 0
+    },
+    "sql": "SELECT SQL_CALC_FOUND_ROWS  wp_posts.*\n\t\t\t\t\t FROM wp_posts  LEFT JOIN wp_wc_product_meta_lookup wc_product_meta_lookup ON wp_posts.ID = wc_product_meta_lookup.product_id \n\t\t\t\t\t WHERE 1=1  AND ( \n  wp_posts.ID NOT IN (\n\t\t\t\tSELECT object_id\n\t\t\t\tFROM wp_term_relationships\n\t\t\t\tWHERE term_taxonomy_id IN (7,9)\n\t\t\t)\n) AND wp_posts.post_author NOT IN (4508,4509)  AND wp_posts.post_type = 'product' AND ((wp_posts.post_status = 'publish')) AND wp_posts.post_status = 'publish' AND NOT EXISTS (SELECT 1 FROM wp_term_relationships emo_vis_tr INNER JOIN wp_term_taxonomy emo_vis_tt ON emo_vis_tt.term_taxonomy_id = emo_vis_tr.term_taxonomy_id WHERE emo_vis_tr.object_id = wp_posts.ID AND emo_vis_tt.taxonomy = 'product_visibility' AND emo_vis_tt.term_id IN (7,9)) AND wp_posts.post_author NOT IN (4508,4509)\n\t\t\t\t\t GROUP BY wp_posts.ID\n\t\t\t\t\t ORDER BY  wc_product_meta_lookup.min_price ASC, wc_product_meta_lookup.product_id ASC \n\t\t\t\t\t LIMIT 0, 15",
+    "ids": [
+      12806,
+      12699,
+      12754,
+      12702,
+      12718,
+      12761,
+      11097,
+      12735,
+      12724,
+      12715,
+      12845,
+      12849,
+      12706,
+      12841,
+      12721
+    ],
+    "products": [
+      {
+        "id": 12806,
+        "type": "simple",
+        "get_price": "1.75",
+        "price_meta": "1.75",
+        "min_price": "1.7500",
+        "max_price": "1.7500"
+      },
+      {
+        "id": 12699,
+        "type": "simple",
+        "get_price": "1.83",
+        "price_meta": "1.83",
+        "min_price": "1.8300",
+        "max_price": "1.8300"
+      },
+      {
+        "id": 12754,
+        "type": "simple",
+        "get_price": "1.83",
+        "price_meta": "1.83",
+        "min_price": "1.8300",
+        "max_price": "1.8300"
+      },
+      {
+        "id": 12702,
+        "type": "simple",
+        "get_price": "1.87",
+        "price_meta": "1.87",
+        "min_price": "1.8700",
+        "max_price": "1.8700"
+      },
+      {
+        "id": 12718,
+        "type": "simple",
+        "get_price": "2.05",
+        "price_meta": "2.05",
+        "min_price": "2.0500",
+        "max_price": "2.0500"
+      },
+      {
+        "id": 12761,
+        "type": "simple",
+        "get_price": "2.1",
+        "price_meta": "2.1",
+        "min_price": "2.1000",
+        "max_price": "2.1000"
+      },
+      {
+        "id": 11097,
+        "type": "simple",
+        "get_price": "2.49",
+        "price_meta": "2.49",
+        "min_price": "2.4900",
+        "max_price": "2.4900"
+      },
+      {
+        "id": 12735,
+        "type": "simple",
+        "get_price": "2.61",
+        "price_meta": "2.61",
+        "min_price": "2.6100",
+        "max_price": "2.6100"
+      },
+      {
+        "id": 12724,
+        "type": "simple",
+        "get_price": "2.75",
+        "price_meta": "2.75",
+        "min_price": "2.7500",
+        "max_price": "2.7500"
+      },
+      {
+        "id": 12715,
+        "type": "simple",
+        "get_price": "2.95",
+        "price_meta": "2.95",
+        "min_price": "2.9500",
+        "max_price": "2.9500"
+      },
+      {
+        "id": 12845,
+        "type": "simple",
+        "get_price": "3.35",
+        "price_meta": "3.35",
+        "min_price": "3.3500",
+        "max_price": "3.3500"
+      },
+      {
+        "id": 12849,
+        "type": "simple",
+        "get_price": "3.35",
+        "price_meta": "3.35",
+        "min_price": "3.3500",
+        "max_price": "3.3500"
+      },
+      {
+        "id": 12706,
+        "type": "simple",
+        "get_price": "3.58",
+        "price_meta": "3.58",
+        "min_price": "3.5800",
+        "max_price": "3.5800"
+      },
+      {
+        "id": 12841,
+        "type": "simple",
+        "get_price": "3.76",
+        "price_meta": "3.76",
+        "min_price": "3.7600",
+        "max_price": "3.7600"
+      },
+      {
+        "id": 12721,
+        "type": "simple",
+        "get_price": "3.79",
+        "price_meta": "3.79",
+        "min_price": "3.7900",
+        "max_price": "3.7900"
+      }
+    ]
+  },
+  "es_price-desc": {
+    "query_vars": {
+      "orderby": "price",
+      "order": "DESC",
+      "meta_key": "",
+      "posts_per_page": 15,
+      "paged": 0
+    },
+    "sql": "SELECT SQL_CALC_FOUND_ROWS  wp_posts.*\n\t\t\t\t\t FROM wp_posts  LEFT JOIN wp_wc_product_meta_lookup wc_product_meta_lookup ON wp_posts.ID = wc_product_meta_lookup.product_id \n\t\t\t\t\t WHERE 1=1  AND ( \n  wp_posts.ID NOT IN (\n\t\t\t\tSELECT object_id\n\t\t\t\tFROM wp_term_relationships\n\t\t\t\tWHERE term_taxonomy_id IN (7,9)\n\t\t\t)\n) AND wp_posts.post_author NOT IN (4508,4509)  AND wp_posts.post_type = 'product' AND ((wp_posts.post_status = 'publish')) AND wp_posts.post_status = 'publish' AND NOT EXISTS (SELECT 1 FROM wp_term_relationships emo_vis_tr INNER JOIN wp_term_taxonomy emo_vis_tt ON emo_vis_tt.term_taxonomy_id = emo_vis_tr.term_taxonomy_id WHERE emo_vis_tr.object_id = wp_posts.ID AND emo_vis_tt.taxonomy = 'product_visibility' AND emo_vis_tt.term_id IN (7,9)) AND wp_posts.post_author NOT IN (4508,4509)\n\t\t\t\t\t GROUP BY wp_posts.ID\n\t\t\t\t\t ORDER BY  wc_product_meta_lookup.max_price DESC, wc_product_meta_lookup.product_id DESC \n\t\t\t\t\t LIMIT 0, 15",
+    "ids": [
+      1350,
+      4160,
+      3948,
+      5045,
+      1356,
+      4199,
+      3979,
+      1363,
+      1370,
+      1056,
+      8624,
+      1220,
+      12829,
+      12819,
+      12816
+    ],
+    "products": [
+      {
+        "id": 1350,
+        "type": "variable",
+        "get_price": "405",
+        "price_meta": "405",
+        "min_price": "405.0000",
+        "max_price": "505.0000"
+      },
+      {
+        "id": 4160,
+        "type": "variable",
+        "get_price": "440",
+        "price_meta": "440",
+        "min_price": "440.0000",
+        "max_price": "500.0000"
+      },
+      {
+        "id": 3948,
+        "type": "variable",
+        "get_price": "400",
+        "price_meta": "400",
+        "min_price": "400.0000",
+        "max_price": "425.0000"
+      },
+      {
+        "id": 5045,
+        "type": "variable",
+        "get_price": "260",
+        "price_meta": "260",
+        "min_price": "260.0000",
+        "max_price": "300.0000"
+      },
+      {
+        "id": 1356,
+        "type": "variable",
+        "get_price": "165",
+        "price_meta": "165",
+        "min_price": "165.0000",
+        "max_price": "210.0000"
+      },
+      {
+        "id": 4199,
+        "type": "variable",
+        "get_price": "170",
+        "price_meta": "170",
+        "min_price": "170.0000",
+        "max_price": "185.0000"
+      },
+      {
+        "id": 3979,
+        "type": "variable",
+        "get_price": "165",
+        "price_meta": "165",
+        "min_price": "165.0000",
+        "max_price": "180.0000"
+      },
+      {
+        "id": 1363,
+        "type": "variable",
+        "get_price": "161.70",
+        "price_meta": "161.70",
+        "min_price": "161.7000",
+        "max_price": "163.9000"
+      },
+      {
+        "id": 1370,
+        "type": "variable",
+        "get_price": "111.10",
+        "price_meta": "111.10",
+        "min_price": "111.1000",
+        "max_price": "123.2000"
+      },
+      {
+        "id": 1056,
+        "type": "variable",
+        "get_price": "39.20",
+        "price_meta": "39.20",
+        "min_price": "39.2000",
+        "max_price": "119.2000"
+      },
+      {
+        "id": 8624,
+        "type": "variable",
+        "get_price": "108.90",
+        "price_meta": "108.90",
+        "min_price": "108.9000",
+        "max_price": "108.9000"
+      },
+      {
+        "id": 1220,
+        "type": "variable",
+        "get_price": "96.80",
+        "price_meta": "96.80",
+        "min_price": "96.8000",
+        "max_price": "98.1000"
+      },
+      {
+        "id": 12829,
+        "type": "simple",
+        "get_price": "85",
+        "price_meta": "85",
+        "min_price": "85.0000",
+        "max_price": "85.0000"
+      },
+      {
+        "id": 12819,
+        "type": "simple",
+        "get_price": "69",
+        "price_meta": "69",
+        "min_price": "69.0000",
+        "max_price": "69.0000"
+      },
+      {
+        "id": 12816,
+        "type": "simple",
+        "get_price": "69",
+        "price_meta": "69",
+        "min_price": "69.0000",
+        "max_price": "69.0000"
+      }
+    ]
+  },
+  "en_price": {
+    "query_vars": {
+      "orderby": "price",
+      "order": "ASC",
+      "meta_key": "",
+      "posts_per_page": 15,
+      "paged": 0
+    },
+    "sql": "SELECT SQL_CALC_FOUND_ROWS  wp_posts.*\n\t\t\t\t\t FROM wp_posts  LEFT JOIN wp_wc_product_meta_lookup wc_product_meta_lookup ON wp_posts.ID = wc_product_meta_lookup.product_id \n\t\t\t\t\t WHERE 1=1  AND ( \n  wp_posts.ID NOT IN (\n\t\t\t\tSELECT object_id\n\t\t\t\tFROM wp_term_relationships\n\t\t\t\tWHERE term_taxonomy_id IN (7,9)\n\t\t\t)\n) AND wp_posts.post_author NOT IN (4508,4509)  AND wp_posts.post_type = 'product' AND ((wp_posts.post_status = 'publish')) AND wp_posts.post_status = 'publish' AND NOT EXISTS (SELECT 1 FROM wp_term_relationships emo_vis_tr INNER JOIN wp_term_taxonomy emo_vis_tt ON emo_vis_tt.term_taxonomy_id = emo_vis_tr.term_taxonomy_id WHERE emo_vis_tr.object_id = wp_posts.ID AND emo_vis_tt.taxonomy = 'product_visibility' AND emo_vis_tt.term_id IN (7,9)) AND wp_posts.post_author NOT IN (4508,4509)\n\t\t\t\t\t GROUP BY wp_posts.ID\n\t\t\t\t\t ORDER BY  wc_product_meta_lookup.min_price ASC, wc_product_meta_lookup.product_id ASC \n\t\t\t\t\t LIMIT 0, 15",
+    "ids": [
+      12806,
+      12699,
+      12754,
+      12702,
+      12718,
+      12761,
+      11097,
+      12735,
+      12724,
+      12715,
+      12845,
+      12849,
+      12706,
+      12841,
+      12721
+    ],
+    "products": [
+      {
+        "id": 12806,
+        "type": "simple",
+        "get_price": "1.75",
+        "price_meta": "1.75",
+        "min_price": "1.7500",
+        "max_price": "1.7500"
+      },
+      {
+        "id": 12699,
+        "type": "simple",
+        "get_price": "1.83",
+        "price_meta": "1.83",
+        "min_price": "1.8300",
+        "max_price": "1.8300"
+      },
+      {
+        "id": 12754,
+        "type": "simple",
+        "get_price": "1.83",
+        "price_meta": "1.83",
+        "min_price": "1.8300",
+        "max_price": "1.8300"
+      },
+      {
+        "id": 12702,
+        "type": "simple",
+        "get_price": "1.87",
+        "price_meta": "1.87",
+        "min_price": "1.8700",
+        "max_price": "1.8700"
+      },
+      {
+        "id": 12718,
+        "type": "simple",
+        "get_price": "2.05",
+        "price_meta": "2.05",
+        "min_price": "2.0500",
+        "max_price": "2.0500"
+      },
+      {
+        "id": 12761,
+        "type": "simple",
+        "get_price": "2.1",
+        "price_meta": "2.1",
+        "min_price": "2.1000",
+        "max_price": "2.1000"
+      },
+      {
+        "id": 11097,
+        "type": "simple",
+        "get_price": "2.49",
+        "price_meta": "2.49",
+        "min_price": "2.4900",
+        "max_price": "2.4900"
+      },
+      {
+        "id": 12735,
+        "type": "simple",
+        "get_price": "2.61",
+        "price_meta": "2.61",
+        "min_price": "2.6100",
+        "max_price": "2.6100"
+      },
+      {
+        "id": 12724,
+        "type": "simple",
+        "get_price": "2.75",
+        "price_meta": "2.75",
+        "min_price": "2.7500",
+        "max_price": "2.7500"
+      },
+      {
+        "id": 12715,
+        "type": "simple",
+        "get_price": "2.95",
+        "price_meta": "2.95",
+        "min_price": "2.9500",
+        "max_price": "2.9500"
+      },
+      {
+        "id": 12845,
+        "type": "simple",
+        "get_price": "3.35",
+        "price_meta": "3.35",
+        "min_price": "3.3500",
+        "max_price": "3.3500"
+      },
+      {
+        "id": 12849,
+        "type": "simple",
+        "get_price": "3.35",
+        "price_meta": "3.35",
+        "min_price": "3.3500",
+        "max_price": "3.3500"
+      },
+      {
+        "id": 12706,
+        "type": "simple",
+        "get_price": "3.58",
+        "price_meta": "3.58",
+        "min_price": "3.5800",
+        "max_price": "3.5800"
+      },
+      {
+        "id": 12841,
+        "type": "simple",
+        "get_price": "3.76",
+        "price_meta": "3.76",
+        "min_price": "3.7600",
+        "max_price": "3.7600"
+      },
+      {
+        "id": 12721,
+        "type": "simple",
+        "get_price": "3.79",
+        "price_meta": "3.79",
+        "min_price": "3.7900",
+        "max_price": "3.7900"
+      }
+    ]
+  },
+  "en_price-desc": {
+    "query_vars": {
+      "orderby": "price",
+      "order": "DESC",
+      "meta_key": "",
+      "posts_per_page": 15,
+      "paged": 0
+    },
+    "sql": "SELECT SQL_CALC_FOUND_ROWS  wp_posts.*\n\t\t\t\t\t FROM wp_posts  LEFT JOIN wp_wc_product_meta_lookup wc_product_meta_lookup ON wp_posts.ID = wc_product_meta_lookup.product_id \n\t\t\t\t\t WHERE 1=1  AND ( \n  wp_posts.ID NOT IN (\n\t\t\t\tSELECT object_id\n\t\t\t\tFROM wp_term_relationships\n\t\t\t\tWHERE term_taxonomy_id IN (7,9)\n\t\t\t)\n) AND wp_posts.post_author NOT IN (4508,4509)  AND wp_posts.post_type = 'product' AND ((wp_posts.post_status = 'publish')) AND wp_posts.post_status = 'publish' AND NOT EXISTS (SELECT 1 FROM wp_term_relationships emo_vis_tr INNER JOIN wp_term_taxonomy emo_vis_tt ON emo_vis_tt.term_taxonomy_id = emo_vis_tr.term_taxonomy_id WHERE emo_vis_tr.object_id = wp_posts.ID AND emo_vis_tt.taxonomy = 'product_visibility' AND emo_vis_tt.term_id IN (7,9)) AND wp_posts.post_author NOT IN (4508,4509)\n\t\t\t\t\t GROUP BY wp_posts.ID\n\t\t\t\t\t ORDER BY  wc_product_meta_lookup.max_price DESC, wc_product_meta_lookup.product_id DESC \n\t\t\t\t\t LIMIT 0, 15",
+    "ids": [
+      1350,
+      4160,
+      3948,
+      5045,
+      1356,
+      4199,
+      3979,
+      1363,
+      1370,
+      1056,
+      8624,
+      1220,
+      12829,
+      12819,
+      12816
+    ],
+    "products": [
+      {
+        "id": 1350,
+        "type": "variable",
+        "get_price": "405",
+        "price_meta": "405",
+        "min_price": "405.0000",
+        "max_price": "505.0000"
+      },
+      {
+        "id": 4160,
+        "type": "variable",
+        "get_price": "440",
+        "price_meta": "440",
+        "min_price": "440.0000",
+        "max_price": "500.0000"
+      },
+      {
+        "id": 3948,
+        "type": "variable",
+        "get_price": "400",
+        "price_meta": "400",
+        "min_price": "400.0000",
+        "max_price": "425.0000"
+      },
+      {
+        "id": 5045,
+        "type": "variable",
+        "get_price": "260",
+        "price_meta": "260",
+        "min_price": "260.0000",
+        "max_price": "300.0000"
+      },
+      {
+        "id": 1356,
+        "type": "variable",
+        "get_price": "165",
+        "price_meta": "165",
+        "min_price": "165.0000",
+        "max_price": "210.0000"
+      },
+      {
+        "id": 4199,
+        "type": "variable",
+        "get_price": "170",
+        "price_meta": "170",
+        "min_price": "170.0000",
+        "max_price": "185.0000"
+      },
+      {
+        "id": 3979,
+        "type": "variable",
+        "get_price": "165",
+        "price_meta": "165",
+        "min_price": "165.0000",
+        "max_price": "180.0000"
+      },
+      {
+        "id": 1363,
+        "type": "variable",
+        "get_price": "161.70",
+        "price_meta": "161.70",
+        "min_price": "161.7000",
+        "max_price": "163.9000"
+      },
+      {
+        "id": 1370,
+        "type": "variable",
+        "get_price": "111.10",
+        "price_meta": "111.10",
+        "min_price": "111.1000",
+        "max_price": "123.2000"
+      },
+      {
+        "id": 1056,
+        "type": "variable",
+        "get_price": "39.20",
+        "price_meta": "39.20",
+        "min_price": "39.2000",
+        "max_price": "119.2000"
+      },
+      {
+        "id": 8624,
+        "type": "variable",
+        "get_price": "108.90",
+        "price_meta": "108.90",
+        "min_price": "108.9000",
+        "max_price": "108.9000"
+      },
+      {
+        "id": 1220,
+        "type": "variable",
+        "get_price": "96.80",
+        "price_meta": "96.80",
+        "min_price": "96.8000",
+        "max_price": "98.1000"
+      },
+      {
+        "id": 12829,
+        "type": "simple",
+        "get_price": "85",
+        "price_meta": "85",
+        "min_price": "85.0000",
+        "max_price": "85.0000"
+      },
+      {
+        "id": 12819,
+        "type": "simple",
+        "get_price": "69",
+        "price_meta": "69",
+        "min_price": "69.0000",
+        "max_price": "69.0000"
+      },
+      {
+        "id": 12816,
+        "type": "simple",
+        "get_price": "69",
+        "price_meta": "69",
+        "min_price": "69.0000",
+        "max_price": "69.0000"
+      }
+    ]
+  }
+}
