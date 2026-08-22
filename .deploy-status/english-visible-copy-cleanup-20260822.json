@@ -1,0 +1,41 @@
+{
+  "routes": {
+    "/en/producers/": {
+      "http": 200
+    },
+    "/en/journal/": {
+      "http": 200
+    },
+    "/en/variety/traditional-lechin/": {
+      "http": 200
+    },
+    "/en/shop/": {
+      "http": 200
+    },
+    "/en/categories/": {
+      "http": 200
+    },
+    "/en/store/1957/": {
+      "http": 200
+    },
+    "/tienda/": {
+      "http": 200
+    }
+  },
+  "failures": [
+    "Producer Visit CTA not fully English",
+    "English product description tab label not fully English"
+  ],
+  "checks": {
+    "producers_visit_count": 0,
+    "producers_visitar": true,
+    "journal_min_read": true,
+    "journal_min_lectura": false,
+    "variety_has_english": true,
+    "variety_has_spanish": false,
+    "product_path": "/en/product/4-boxes-of-vegetables-7-kg-receive-them-every-week/",
+    "product_description_en": true,
+    "product_descripcion_es": true
+  },
+  "status": "failure"
+}
