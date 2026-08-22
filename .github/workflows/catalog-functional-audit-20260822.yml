@@ -1,0 +1,95 @@
+name: Catalog functional and visual audit 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/catalog-functional-audit-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Chrome catalog audit
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p .deploy-status /tmp/emdo-cat
+          rm -rf /tmp/emdo-cat-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9242 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-cat-profile about:blank >/tmp/emdo-cat/chrome.log 2>&1 &
+          CPID=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9242/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node .github/scripts/catalog-functional-audit-20260822.js > /tmp/emdo-cat/raw.json
+          kill $CPID >/dev/null 2>&1 || true
+      - name: Build report
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          python3 - <<'PY'
+          import json,pathlib,re
+          raw=pathlib.Path('/tmp/emdo-cat/raw.json')
+          if not raw.exists() or not raw.read_text().strip():
+              out={'status':'audit-error','issues':[{'severity':'audit','area':'browser','detail':'Browser audit did not produce JSON'}],'passed':[],'visual_observations':[]}
+          else:
+              d=json.loads(raw.read_text()); t=d.get('tests',{}); issues=[]; passed=[]; visual=[]
+              for lang in ['es','en']:
+                  s=t.get(lang+'_shop',{})
+                  if s.get('readyState')=='complete' and s.get('products',0)>=10 and not s.get('overlays'):passed.append(lang.upper()+' global shop renders normally')
+                  else:issues.append({'severity':'functional','area':lang+' shop','detail':f'products={s.get("products")} ready={s.get("readyState")} overlays={s.get("overlays")}'})
+                  p2=t.get(lang+'_page2',{})
+                  if p2.get('products',0)>0:passed.append(lang.upper()+' page 2 renders product cards')
+                  else:issues.append({'severity':'functional','area':lang+' pagination','detail':'Direct page 2 remains at 0 product cards after 8.5s'})
+                  oa=t.get('order_'+lang+'_action',{}); rr=t.get('order_'+lang,{})
+                  if oa.get('ok') and rr.get('products',0)>0 and ('orderby=price' in rr.get('href','') or rr.get('prices')):passed.append(lang.upper()+' ordering by price reacts')
+                  else:issues.append({'severity':'functional','area':lang+' ordering','detail':f'action={oa} result_products={rr.get("products")}'})
+              esstore=set(t.get('vendor_store_es',{}).get('ids',[])); enstore=set(t.get('vendor_store_en',{}).get('ids',[]))
+              for lang,store in [('es',esstore),('en',enstore)]:
+                  act=t.get('vendor_filter_'+lang+'_action',{}); res=t.get('vendor_filter_'+lang,{}); ids=set(res.get('ids',[]))
+                  if act.get('clicked') and ids and (not store or ids.issubset(store)):passed.append(lang.upper()+' vendor filter 1957 works')
+                  else:issues.append({'severity':'functional','area':lang+' vendor filter','detail':f'action={act}; ids={sorted(ids)}; store={sorted(store)}'})
+                  ca=t.get('category_filter_'+lang+'_action',{}); cr=t.get('category_filter_'+lang,{})
+                  if ca.get('clicked') and cr.get('products',0)>0:passed.append(lang.upper()+' category filter works')
+                  else:issues.append({'severity':'functional','area':lang+' category filter','detail':f'action={ca}; products={cr.get("products")}'})
+                  ma=t.get('meta_'+lang+'_action',{}); mb=t.get('meta_'+lang+'_before',{}); mr=t.get('meta_'+lang+'_after',{})
+                  if ma.get('clicked'):
+                      if mr.get('products',0)>0 and (mr.get('ids')!=mb.get('ids') or mr.get('href')!=mb.get('href')):passed.append(lang.upper()+f' metadata filter works: {ma.get("label")}')
+                      else:issues.append({'severity':'functional','area':lang+' metadata filter','detail':f'clicked {ma} but catalogue did not visibly change'})
+                  else:issues.append({'severity':'observation','area':lang+' metadata filter','detail':'No additional visible checkbox/radio metadata filter found on hams category'})
+                  pl=t.get('pl_'+lang,{}); pla=t.get('pl_'+lang+'_action',{})
+                  if pla.get('ok') and 'mdo_shipping_country=PL' in pl.get('cookie','') and pl.get('products',0)>0:passed.append(lang.upper()+' Poland destination persists and products remain visible')
+                  else:issues.append({'severity':'functional','area':lang+' Poland destination','detail':f'action={pla}; cookie={pl.get("cookie")}; products={pl.get("products")}'})
+                  if pl.get('total')==105:passed.append(lang.upper()+' Poland keeps all 105 catalogue results')
+                  elif pl.get('total') is not None:issues.append({'severity':'functional','area':lang+' Poland coverage','detail':f'Poland total={pl.get("total")} instead of 105'})
+              if t.get('pl_vendor_1957',{}).get('products',0)>0:passed.append('1957 store remains populated for Poland')
+              else:issues.append({'severity':'functional','area':'Poland vendor store','detail':'1957 store has no product cards under Poland destination'})
+              g=d.get('geometry',{})
+              for lang in ['es','en']:
+                  glob=g.get(lang+'_global',{}); ven=g.get(lang+'_vendor',{})
+                  if glob or ven:
+                      visual.append({'area':lang+' destination global vs vendor','global':glob.get('destination'),'vendor':ven.get('destination'),'global_close':glob.get('modalClose'),'vendor_close':ven.get('modalClose'),'global_text':glob.get('destinationText'),'vendor_text':ven.get('destinationText')})
+                      visual.append({'area':lang+' ordering global vs vendor','global':glob.get('ordering'),'vendor':ven.get('ordering'),'global_options':glob.get('options'),'vendor_options':ven.get('options')})
+              out={'status':'issues-found' if issues else 'success','passed':passed,'issues':issues,'visual_observations':visual,'raw':d}
+          pathlib.Path('.deploy-status/catalog-functional-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'status':out['status'],'passed':len(out.get('passed',[])),'issues':len(out.get('issues',[]))},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/catalog-functional-audit-20260822.json
+          git commit -m "Record catalog functional audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
