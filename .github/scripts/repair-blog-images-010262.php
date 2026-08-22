@@ -15,8 +15,8 @@ $authority_overrides = require $authority_file;
 $legacy_overrides    = require $legacy_file;
 if ( ! is_array( $authority_overrides ) || ! is_array( $legacy_overrides ) ) { throw new RuntimeException( 'Invalid image override data.' ); }
 
-// The third historic article is intentionally kept here so the shared two-post
-// legacy map remains compatible with the already deployed workflow contract.
+// Historic articles that predate the shared authority batches stay here so the
+// two-post legacy data-file contract remains compatible with the deployed workflow.
 $legacy_overrides['naranjas'] = array(
 	'featured' => array(
 		'id'=>'34815908','direct'=>'https://images.pexels.com/photos/34815908/pexels-photo-34815908.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/valencia-orange-tree-under-clear-blue-sky-34815908/','photographer'=>'Emilio Sánchez Hernández','alt_es'=>'Naranjas maduras en un naranjo de Valencia bajo cielo despejado','alt_en'=>'Ripe oranges on a Valencia orange tree under a clear sky'
@@ -28,6 +28,22 @@ $legacy_overrides['naranjas'] = array(
 		array('id'=>'18102965','direct'=>'https://images.pexels.com/photos/18102965/pexels-photo-18102965.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-18102965/','photographer'=>'Jonathan Borba','alt_es'=>'Naranjas maduras listas para cosechar en un huerto','alt_en'=>'Ripe oranges ready for harvest in an orchard'),
 		array('id'=>'7288784','direct'=>'https://images.pexels.com/photos/7288784/pexels-photo-7288784.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-in-close-up-photography-7288784/','photographer'=>'Paco Álamo','alt_es'=>'Naranjas frescas reunidas en una cesta de mercado','alt_en'=>'Fresh oranges gathered in a market basket')
 	),
+);
+
+// These two refined guides used generic Unsplash ham imagery. Keep a distinct,
+// brand-free Pexels context image approved for each so old publishers cannot put
+// generic/serrano-looking meat back on an explicitly Iberian article.
+$legacy_overrides['jamon-o-paleta-diferencias-cual-elegir'] = array(
+	'featured' => array(
+		'id'=>'28913503','direct'=>'https://images.pexels.com/photos/28913503/pexels-photo-28913503.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-acorns-on-oak-tree-sittard-28913503/','photographer'=>'Lorna Pauli','alt_es'=>'Bellotas en una rama de encina como contexto del jamón ibérico, sin marcas ni etiquetas de terceros','alt_en'=>'Acorns on an oak branch as brand-free context for Iberian ham'
+	),
+	'inline' => array(),
+);
+$legacy_overrides['jamon-pieza-entera-o-loncheado-como-elegir'] = array(
+	'featured' => array(
+		'id'=>'34100077','direct'=>'https://images.pexels.com/photos/34100077/pexels-photo-34100077.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-acorns-and-oak-leaves-in-london-34100077/','photographer'=>'Nathan J Hilton','alt_es'=>'Bellotas y hojas de encina como contexto del jamón ibérico, sin envases ni marcas visibles','alt_en'=>'Acorns and oak leaves as brand-free context for Iberian ham'
+	),
+	'inline' => array(),
 );
 
 function mdo_img_validate_010262( array $img, string $context ): void {
@@ -218,7 +234,7 @@ foreach ( $uses as $pexels => $contexts ) {
 }
 if ( ! empty( $report['duplicates'] ) ) { throw new RuntimeException( 'Duplicate editorial images remain: ' . wp_json_encode( $report['duplicates'] ) ); }
 
-// Explicit semantic guards for the most sensitive claims and the third legacy post.
+// Explicit semantic guards for the most sensitive claims and historic articles.
 $bellota_id = mdo_authority_post_010262( 'bellota-100-iberico-guide' );
 $montanera_id = mdo_authority_post_010262( 'montanera-iberian-ham-guide' );
 if ( '34100094' !== (string) get_post_meta( (int) get_post_thumbnail_id( $bellota_id ), '_emdo_pexels_photo_id', true ) ) { throw new RuntimeException( 'Bellota article image guard failed.' ); }
@@ -231,6 +247,14 @@ if ( $legacy_jamon instanceof WP_Post && false !== stripos( (string) get_post_fi
 $legacy_oranges = get_page_by_path( 'naranjas', OBJECT, 'post' );
 if ( ! $legacy_oranges instanceof WP_Post || '34815908' !== (string) get_post_meta( (int) get_post_thumbnail_id( $legacy_oranges->ID ), '_emdo_pexels_photo_id', true ) ) {
 	throw new RuntimeException( 'Legacy Naranjas image guard failed.' );
+}
+$legacy_ham_or_shoulder = get_page_by_path( 'jamon-o-paleta-diferencias-cual-elegir', OBJECT, 'post' );
+if ( ! $legacy_ham_or_shoulder instanceof WP_Post || '28913503' !== (string) get_post_meta( (int) get_post_thumbnail_id( $legacy_ham_or_shoulder->ID ), '_emdo_pexels_photo_id', true ) ) {
+	throw new RuntimeException( 'Ham-or-shoulder approved image guard failed.' );
+}
+$legacy_whole_or_sliced = get_page_by_path( 'jamon-pieza-entera-o-loncheado-como-elegir', OBJECT, 'post' );
+if ( ! $legacy_whole_or_sliced instanceof WP_Post || '34100077' !== (string) get_post_meta( (int) get_post_thumbnail_id( $legacy_whole_or_sliced->ID ), '_emdo_pexels_photo_id', true ) ) {
+	throw new RuntimeException( 'Whole-or-sliced approved image guard failed.' );
 }
 
 $report['authority_post_count'] = count( $authority_ids );
