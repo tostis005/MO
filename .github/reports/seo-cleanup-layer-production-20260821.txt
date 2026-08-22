@@ -12,14 +12,18 @@ PAGES_REQUIRE|/quienes-somos/|PRESENT=True
 PAGES_REQUIRE|/envios/|PRESENT=True
 PAGES_REQUIRE|/tienda/|PRESENT=True
 FUNCTIONAL|/store-manager/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/mi-cuenta/|ROBOTS=noindex, max-image-preview:large|XROBOTS=
-FUNCTIONAL|/affiliates/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/affiliates/?emdo_cleanup_verify=1787382840995136995|ROBOTS=noindex, max-image-preview:large|XROBOTS=noindex, follow
-PRODUCT_SITEMAP|HTTP=200|BYTES=121399|LOCS=218
+FUNCTIONAL|/affiliates/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/affiliates/?emdo_cleanup_verify=1787385754168105022|ROBOTS=noindex, max-image-preview:large|XROBOTS=noindex, follow
+PRODUCT_SITEMAP|HTTP=200|BYTES=116059|LOCS=210
 PRODUCT_REQUIRE|/producto/carne-picada-extra/|PRESENT=True
-PRODUCT_REQUIRE|/producto/cana-de-lomo-de-bellota-100-iberico-en-sobres/|PRESENT=True
-PRODUCT_REQUIRE|/producto/cana-de-lomo-de-bellota-100-iberico/|PRESENT=True
-PRODUCT_REQUIRE|/producto/surtido-de-bellota-100-iberico/|PRESENT=True
-PRODUCT_REQUIRE|/producto/pack-de-cata-de-bellota-100-iberico-2x-jamon-2x-paleta-2x-lomo-2x-salchichon-2x-chorizo/|PRESENT=True
-STORE|/tienda/puente-robles/|HTTP=404|FINAL=https://www.elmercadodeorigen.com/tienda/puente-robles/?emdo_cleanup_verify=1787382840995136995
-STORE|/tienda/el-catedratico/|HTTP=404|FINAL=https://www.elmercadodeorigen.com/tienda/el-catedratico/?emdo_cleanup_verify=1787382840995136995
-STORE|/tienda/1957/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/tienda/1957/?emdo_cleanup_verify=1787382840995136995
-SEO_CLEANUP_LAYER_VERIFY=PASS
+PRODUCT_REQUIRE|/producto/cana-de-lomo-de-bellota-100-iberico-en-sobres/|PRESENT=False
+PRODUCT_REQUIRE|/producto/cana-de-lomo-de-bellota-100-iberico/|PRESENT=False
+PRODUCT_REQUIRE|/producto/surtido-de-bellota-100-iberico/|PRESENT=False
+PRODUCT_REQUIRE|/producto/pack-de-cata-de-bellota-100-iberico-2x-jamon-2x-paleta-2x-lomo-2x-salchichon-2x-chorizo/|PRESENT=False
+STORE|/tienda/puente-robles/|HTTP=404|FINAL=https://www.elmercadodeorigen.com/tienda/puente-robles/?emdo_cleanup_verify=1787385754168105022
+STORE|/tienda/el-catedratico/|HTTP=404|FINAL=https://www.elmercadodeorigen.com/tienda/el-catedratico/?emdo_cleanup_verify=1787385754168105022
+STORE|/tienda/1957/|HTTP=200|FINAL=https://www.elmercadodeorigen.com/tienda/1957/?emdo_cleanup_verify=1787385754168105022
+FAILURES:
+- published non-hidden product missing from sitemap: /producto/cana-de-lomo-de-bellota-100-iberico-en-sobres/
+- published non-hidden product missing from sitemap: /producto/cana-de-lomo-de-bellota-100-iberico/
+- published non-hidden product missing from sitemap: /producto/surtido-de-bellota-100-iberico/
+- published non-hidden product missing from sitemap: /producto/pack-de-cata-de-bellota-100-iberico-2x-jamon-2x-paleta-2x-lomo-2x-salchichon-2x-chorizo/
