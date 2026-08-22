@@ -1,0 +1,54 @@
+name: Cache layer diagnostic 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/cache-layer-diagnostic-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Inspect cache plugins functions directories and headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-cache
+          sudo apt-get update -qq;sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp||true);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)printf "%s" "$p";break;;esac;done')"
+          cat > /tmp/emdo-cache/cache.php <<'PHP'
+          <?php
+          $out=array('active_plugins'=>get_option('active_plugins',array()),'functions'=>array(),'constants'=>array());
+          foreach(array('rocket_clean_domain','w3tc_flush_all','wp_cache_clear_cache','wpfc_clear_all_cache','litespeed_purge_all','sg_cachepress_purge_cache','breeze_clear_all_cache') as $f)$out['functions'][$f]=function_exists($f);
+          foreach(array('WP_CACHE','DONOTCACHEPAGE','WP_ROCKET_VERSION','W3TC','LSCWP_V') as $c)$out['constants'][$c]=defined($c)?constant($c):null;
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp $SCP /tmp/emdo-cache/cache.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-cache-diagnostic.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp||true);php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);\"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-cache-diagnostic.php --path='$PROD_PATH' --allow-root" > /tmp/emdo-cache/wp.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "find '$PROD_PATH/wp-content/cache' -maxdepth 3 -type d 2>/dev/null | head -100; find '$PROD_PATH/wp-content' -maxdepth 2 -type d \( -iname '*cache*' -o -iname '*rocket*' -o -iname '*litespeed*' -o -iname '*w3tc*' \) 2>/dev/null | head -100" > /tmp/emdo-cache/dirs.txt
+          for url in 'https://www.elmercadodeorigen.com/tienda/' 'https://www.elmercadodeorigen.com/tienda/page/2/' 'https://www.elmercadodeorigen.com/en/shop/page/2/'; do echo "=== $url"; curl -k -sSI --max-time 30 "$url"; done > /tmp/emdo-cache/headers.txt
+          python3 - <<'PY'
+          import json,pathlib
+          out={'wp':json.load(open('/tmp/emdo-cache/wp.json')),'cache_dirs':pathlib.Path('/tmp/emdo-cache/dirs.txt').read_text(errors='replace').splitlines(),'headers':pathlib.Path('/tmp/emdo-cache/headers.txt').read_text(errors='replace')}
+          pathlib.Path('.deploy-status/cache-layer-diagnostic-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n');print(json.dumps(out['wp'],ensure_ascii=False));print(out['headers'])
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/cache-layer-diagnostic-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/cache-layer-diagnostic-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/cache-layer-diagnostic-20260822.json
+          git commit -m "Record cache layer diagnostic ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
