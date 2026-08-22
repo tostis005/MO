@@ -1,0 +1,106 @@
+name: Verify English categories live 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/verify-en-categories-live-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify production state
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+
+          TERM_STATE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '
+            global \$wpdb;
+            \$terms=get_terms(array(\"taxonomy\"=>\"product_cat\",\"hide_empty\"=>false)); \$out=array();
+            foreach(\$terms as \$t){ if(!\$t instanceof WP_Term) continue; \$en=sanitize_title((string)get_term_meta(\$t->term_id,\"_en_US_slug\",true)); if(!in_array(\$en,array(\"accessories\",\"marinated-products\"),true)) continue; \$children=get_term_children(\$t->term_id,\"product_cat\"); if(is_wp_error(\$children)) \$children=array(); \$ids=array_merge(array((int)\$t->term_id),array_map(\"absint\",(array)\$children)); \$sql=\"SELECT DISTINCT p.ID FROM {\$wpdb->posts} p JOIN {\$wpdb->term_relationships} tr ON tr.object_id=p.ID JOIN {\$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id WHERE p.post_type=\\\"product\\\" AND p.post_status=\\\"publish\\\" AND tt.taxonomy=\\\"product_cat\\\" AND tt.term_id IN (\".implode(\",\",\$ids).\")\"; \$pids=array_map(\"absint\",(array)\$wpdb->get_col(\$sql)); \$out[]=array(\"id\"=>(int)\$t->term_id,\"native_slug\"=>\$t->slug,\"english_slug\"=>\$en,\"published_products\"=>count(\$pids),\"ids\"=>\$pids); }
+            echo wp_json_encode(\$out);' --path='$PROD_PATH' --allow-root")"
+
+          export TERM_STATE PROD_PATH SSH
+          python3 - <<'PY'
+          import subprocess,re,json,pathlib,time,os,sys
+          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          def req(path):
+              url=base+path+('&' if '?' in path else '?')+'emdo_final_verify='+stamp
+              p=subprocess.run(['curl','-k','-sS','--connect-timeout','8','--max-time','35','--max-redirs','0','-A','Mozilla/5.0 EMDO-final-category-check/1.0','-H','Cache-Control: no-cache, no-store','-D','/tmp/hh.txt','-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+              raw=p.stdout; m=re.search(r'\n__HTTP__:(\d{3})',raw); body=raw.split('\n__HTTP__:',1)[0]; headers=pathlib.Path('/tmp/hh.txt').read_text(errors='ignore') if pathlib.Path('/tmp/hh.txt').exists() else ''
+              loc=re.findall(r'^location:\s*(.+)$',headers,re.I|re.M); xr=re.findall(r'^x-redirect-by:\s*(.+)$',headers,re.I|re.M)
+              ids=[]
+              for v in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  i=int(v)
+                  if i not in ids: ids.append(i)
+              return {'rc':p.returncode,'http':int(m.group(1)) if m else 0,'location':loc[-1].strip() if loc else '','x_redirect_by':xr[-1].strip() if xr else '','body':body,'ids':ids}
+          report={'term_state':json.loads(os.environ.get('TERM_STATE') or '[]'),'hub':{},'linked_archives':[],'vendors':[],'shop':{},'failures':[]}
+          hub=req('/en/categories/')
+          links=[]
+          for u in re.findall(r'href=["\']([^"\']*/en/product-category/([^/]+)/?)["\']',hub['body'],re.I):
+              slug=u[1].lower()
+              if slug not in links: links.append(slug)
+          report['hub']={'http':hub['http'],'location':hub['location'],'x_redirect_by':hub['x_redirect_by'],'template_marker':'data-emo-categories-hub' in hub['body'],'linked_slugs':links,'bytes':len(hub['body'].encode())}
+          if hub['rc']!=0 or hub['http']!=200 or hub['location'] or not report['hub']['template_marker'] or len(links)<8: report['failures'].append('English categories hub failed')
+          for slug in links:
+              r=req('/en/product-category/'+slug+'/')
+              row={'slug':slug,'http':r['http'],'location':r['location'],'x_redirect_by':r['x_redirect_by'],'cards':len(r['ids']),'ids':r['ids'][:15]}; report['linked_archives'].append(row)
+              if r['rc']!=0 or r['http']!=200 or r['location'] or len(r['ids'])<1: report['failures'].append('Linked category failed: '+slug)
+          for path in ['/en/store/1957/','/en/store/la-huerta-de-ana-mary/']:
+              r=req(path); report['vendors'].append({'path':path,'http':r['http'],'location':r['location'],'x_redirect_by':r['x_redirect_by'],'bytes':len(r['body'].encode())})
+              if r['rc']!=0 or r['http']!=200 or r['location'] or len(r['body'])<50000: report['failures'].append('English vendor store failed: '+path)
+          shop=req('/tienda/'); report['shop']={'http':shop['http'],'location':shop['location'],'cards':len(shop['ids']),'ids':shop['ids'][:15]}
+          if shop['rc']!=0 or shop['http']!=200 or shop['location'] or len(shop['ids'])<10: report['failures'].append('Global shop HTML failed')
+          pathlib.Path('/tmp/shopids.txt').write_text(','.join(map(str,shop['ids'])))
+          pathlib.Path('/tmp/final-cat.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          PY
+
+          IDS="$(cat /tmp/shopids.txt)"
+          STATE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); IDS='$IDS' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '\$ids=array_filter(array_map(\"absint\",explode(\",\",getenv(\"IDS\")))); \$a=array(); foreach(\$ids as \$id){\$p=get_post(\$id); if(\$p instanceof WP_Post){\$a[(int)\$p->post_author]=1;}} \$all=get_posts(array(\"post_type\"=>\"product\",\"post_status\"=>\"publish\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"suppress_filters\"=>true,\"no_found_rows\"=>true)); \$rank=get_transient(\"mdo_catalog_rank_v3_\".gmdate(\"Ymd\")); echo count(\$a).\":\".count(\$all).\":\".(is_array(\$rank)?count(\$rank):0);' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          python3 - "$STATE" <<'PY'
+          import json,sys,pathlib
+          p=pathlib.Path('/tmp/final-cat.json'); d=json.loads(p.read_text()); d['shop']['wp_state']=sys.argv[1]
+          try: vendors,published,ranked=map(int,sys.argv[1].split(':'))
+          except: vendors=published=ranked=0
+          if vendors<4 or published<100 or ranked!=published: d['failures'].append('Global shop vendor/rank state failed')
+          d['status']='success' if not d['failures'] else 'failure'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          if d['failures']: raise SystemExit(1)
+          PY
+          cp /tmp/final-cat.json .deploy-status/english-categories-live-final-20260822.json
+      - name: Commit verification
+        if: always()
+        run: |
+          mkdir -p .deploy-status
+          if [ ! -f .deploy-status/english-categories-live-final-20260822.json ] && [ -f /tmp/final-cat.json ]; then cp /tmp/final-cat.json .deploy-status/english-categories-live-final-20260822.json; fi
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add .deploy-status/english-categories-live-final-20260822.json || true
+          git commit -m "Record final English categories live verification ${GITHUB_RUN_ID} [skip ci]" || true
+          git push origin HEAD:main
