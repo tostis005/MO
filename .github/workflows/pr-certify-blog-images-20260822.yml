@@ -101,20 +101,37 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' > /tmp/public-checks.tsv
-          import json
+          import json, os, urllib.parse
           d=json.load(open('/tmp/blog-cert-report.json'))
+          attachment_by_context={}
+          for row in d.get('expected',[]):
+              if row.get('type')=='authority':
+                  attachment_by_context['authority:'+str(row.get('key',''))]=row.get('actual',{}).get('url','')
+          for row in d.get('legacy',[]):
+              slug=str(row.get('slug',''))
+              featured=row.get('featured',{})
+              attachment=featured.get('url','')
+              attachment_by_context['refined:'+slug]=attachment
+              attachment_by_context['historic:'+slug]=attachment
           for row in d['public_checks']:
-              print(f"{row['expected_pexels_id']}\t{row['url']}\t{row['context']}")
+              context=row['context']
+              attachment=attachment_by_context.get(context,'')
+              path=urllib.parse.urlparse(attachment).path
+              filename=os.path.basename(path)
+              stem=os.path.splitext(filename)[0]
+              if not stem:
+                  raise SystemExit(f'No attachment filename for {context}: {attachment}')
+              print(f"{row['expected_pexels_id']}\t{row['url']}\t{context}\t{stem}")
           PY
 
           checks=0
-          while IFS=$'\t' read -r expected url context; do
-            [ -n "$expected" ] && [ -n "$url" ]
+          while IFS=$'\t' read -r expected url context image_stem; do
+            [ -n "$expected" ] && [ -n "$url" ] && [ -n "$image_stem" ]
             page="/tmp/emdo-public-${expected}.html"
             result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260822' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$page" -w '%{http_code}|%{url_effective}' "${url}?emdo_image_cert=${GITHUB_SHA}")"
             code="${result%%|*}"; effective="${result#*|}"
             [ "$code" = 200 ] || { echo "HTTP $code for $context $effective" >&2; exit 1; }
-            grep -Fq "$expected" "$page" || { echo "Expected image $expected not rendered for $context ($effective)" >&2; exit 1; }
+            grep -Fq "$image_stem" "$page" || { echo "Expected attachment $image_stem (Pexels $expected) not rendered for $context ($effective)" >&2; exit 1; }
             if grep -Eq '37328201|19370451|4441933|36601487|37328770|24706530|34314216|36215958|24906286|30795237|30795238|947174|14639925|6059884|25185476|30811288|36183155' "$page"; then
               echo "Retired image rendered for $context ($effective)" >&2; exit 1
             fi
@@ -133,4 +150,4 @@ jobs:
       - name: Certification passed
         run: echo BLOG_IMAGE_PRODUCTION_CERTIFIED
 
-# Temporary trigger for the 2026-08-22 Iberian-ham imagery pass; do not merge.
+# Public verification follows the actual WordPress attachment filename, not a Pexels-ID filename assumption.
