@@ -1,0 +1,97 @@
+name: Shipping logic high-memory audit 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/shipping-logic-highmem-audit-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read shipping state and compare public shops
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          cat > /tmp/emdo-highmem.php <<'PHP'
+          <?php
+          $ids=get_posts(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','suppress_filters'=>true,'no_found_rows'=>true));
+          $authors=array();foreach($ids as $id){$p=get_post($id);if($p instanceof WP_Post)$authors[(int)$p->post_author]=($authors[(int)$p->post_author]??0)+1;}
+          $vendors=array();foreach($authors as $uid=>$count){$u=get_userdata($uid);if($u instanceof WP_User)$vendors[]=array('id'=>$uid,'nicename'=>$u->user_nicename,'name'=>$u->display_name,'products'=>$count);}
+          $countries=array();foreach(array('ES','PL') as $c){$allowed=array();$excluded=array();$expected=0;foreach($vendors as $v){$ok=class_exists('MDO_Shipping_Destinations')?MDO_Shipping_Destinations::vendor_can_ship_to((int)$v['id'],$c,''):true;if($ok){$allowed[]=$v['id'];$expected+=(int)$v['products'];}else{$excluded[]=$v['id'];}}$countries[$c]=array('allowed_vendors'=>$allowed,'excluded_vendors'=>$excluded,'expected_products'=>$expected);}
+          $attrs=array();if(function_exists('wc_get_attribute_taxonomies')){foreach(wc_get_attribute_taxonomies() as $a){$attrs[]=array('name'=>$a->attribute_name,'label'=>$a->attribute_label,'taxonomy'=>wc_attribute_taxonomy_name($a->attribute_name));}}
+          $cats=array();$terms=get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0));if(!is_wp_error($terms)){foreach($terms as $t){$cats[]=array('id'=>$t->term_id,'slug'=>$t->slug,'name'=>$t->name,'count'=>$t->count,'en_slug'=>(string)get_term_meta($t->term_id,'_en_US_slug',true),'en_name'=>(string)get_term_meta($t->term_id,'_en_US_name',true),'en_published'=>(string)get_term_meta($t->term_id,'_en_US_published',true));}}
+          echo wp_json_encode(array('published_products'=>count($ids),'vendors'=>$vendors,'countries'=>$countries,'attributes'=>$attrs,'categories'=>$cats),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp -q -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P "$PORT" /tmp/emdo-highmem.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-highmem.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-highmem.php --path='$PROD_PATH' --allow-root 2>/dev/null" > /tmp/server.json
+          python3 - <<'PY'
+          import json,re,subprocess,time,pathlib
+          s=json.load(open('/tmp/server.json'));base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()))
+          def req(path,country):
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-Shipping-Audit/1.0','-H','Cache-Control: no-cache, no-store','-b',f'mdo_shipping_country={country}; mdo_shipping_postcode=',base+path+'?emdo_shipping_audit='+stamp,'-w','\n__HTTP__:%{http_code}'],capture_output=True,text=True)
+              body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout);text=re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',body));n=None
+              for pat in [r'(\d+)\s+results',r'(\d+)\s+resultados']:
+                  x=re.search(pat,text,re.I)
+                  if x:n=int(x.group(1));break
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              return {'http':int(m.group(1)) if m else 0,'result_count':n,'cards':len(ids),'ids':ids[:20]}
+          public={'shops':{},'vendors':{}};fail=[]
+          for c in ['ES','PL']:
+              public['shops'][c]={'es':req('/tienda/',c),'en':req('/en/shop/',c)}
+              exp=s['countries'][c]['expected_products']
+              for lang,r in public['shops'][c].items():
+                  if r['http']!=200:fail.append(f'{lang} shop {c} HTTP {r["http"]}')
+                  if r['result_count'] is not None and r['result_count']!=exp:fail.append(f'{lang} shop {c}: {r["result_count"]} results, expected {exp}')
+          for v in s['vendors']:
+              nic=v['nicename'];public['vendors'][nic]={}
+              for c in ['ES','PL']:
+                  allowed=v['id'] in s['countries'][c]['allowed_vendors'];states={'es':req('/tienda/'+nic+'/',c),'en':req('/en/store/'+nic+'/',c)};public['vendors'][nic][c]=states
+                  for lang,r in states.items():
+                      if r['http']!=200:fail.append(f'{lang} {nic} {c} HTTP {r["http"]}')
+                      if allowed and r['cards']<1:fail.append(f'{lang} {nic} {c} allowed but empty')
+                      if (not allowed) and r['cards']>0:fail.append(f'{lang} {nic} {c} excluded but has cards')
+          out={'status':'success' if not fail else 'issues-found','server':s,'public':public,'failures':fail}
+          pathlib.Path('.deploy-status/shipping-logic-highmem-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'status':out['status'],'failures':len(fail),'vendors':len(s['vendors']),'attributes':s['attributes']},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          test -f .deploy-status/shipping-logic-highmem-audit-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/shipping-logic-highmem-audit-20260822.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/shipping-logic-highmem-audit-20260822.json
+          git commit -m "Record high-memory shipping audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
