@@ -1,0 +1,80 @@
+name: Page 2 root cause 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/page2-root-cause-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Inspect page 2 server and browser behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-p2
+          python3 - <<'PY'
+          import subprocess,re,json,time,html,pathlib
+          base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()));out={'curl':{}}
+          for key,path in [('es','/tienda/page/2/'),('en','/en/shop/page/2/')]:
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-P2/1.0','-H','Cache-Control: no-cache, no-store','-w','\n__HTTP__:%{http_code}',base+path+'?emdo_p2='+stamp],capture_output=True,text=True)
+              body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout)
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S))).strip()
+              out['curl'][key]={'http':int(m.group(1)) if m else 0,'bytes':len(body),'cards':len(ids),'ids':ids[:30],'has_updating':('Actualizando productos' in text or 'Updating products' in text),'text_sample':text[:2500]}
+              pathlib.Path(f'/tmp/emdo-p2/{key}.html').write_text(body)
+          pathlib.Path('/tmp/emdo-p2/base.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          rm -rf /tmp/emdo-p2/profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9271 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-p2/profile about:blank >/tmp/emdo-p2/chrome.log 2>&1 &
+          CPID=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9271/json/list >/dev/null 2>&1 && break; sleep 1; done
+          cat > /tmp/emdo-p2/check.js <<'JS'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){const targets=await (await fetch('http://127.0.0.1:9271/json/list')).json();const t=targets.find(x=>x.type==='page');const ws=new WebSocket(t.webSocketDebuggerUrl);await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});let id=0,p=new Map(),events=[];ws.onmessage=e=>{let m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')events.push({type:'exception',text:m.params?.exceptionDetails?.exception?.description||m.params?.exceptionDetails?.text});if(m.method==='Runtime.consoleAPICalled'&&['error','warning'].includes(m.params?.type))events.push({type:m.params.type,text:(m.params.args||[]).map(a=>a.value||a.description||'').join(' ')});if(!m.id||!p.has(m.id))return;let q=p.get(m.id);p.delete(m.id);clearTimeout(q.t);m.error?q.bad(m.error):q.ok(m.result||{})};const cmd=(method,params={},timeout=12000)=>new Promise((ok,bad)=>{let n=++id,timer=setTimeout(()=>{p.delete(n);bad(new Error(method+' timeout'))},timeout);p.set(n,{ok,bad,t:timer});ws.send(JSON.stringify({id:n,method,params}))});await cmd('Page.enable');await cmd('Runtime.enable');
+          async function evalx(expr,timeout=8000){try{return (await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},timeout)).result?.value}catch(e){return {__error:String(e)}}}
+          async function snapshot(){return evalx(`(()=>{const ids=[];for(const e of document.querySelectorAll('li.product,.products .product')){let m=(e.className||'').match(/post-(\\d+)/);let id=m?Number(m[1]):Number(e.querySelector('[data-product_id]')?.getAttribute('data-product_id')||0);if(id&&!ids.includes(id))ids.push(id)}const text=(document.body?.innerText||'').replace(/\\s+/g,' ').trim();const loaders=[...document.querySelectorAll('.emo-catalog-load-state,.blockUI,.blockOverlay,#infscr-loading,.loading-overlay')].map(e=>({cls:e.className,text:(e.innerText||'').trim(),display:getComputedStyle(e).display,visibility:getComputedStyle(e).visibility}));return {href:location.href,ready:document.readyState,cards:ids.length,ids,text:text.slice(0,2500),loaders}})()`)}
+          const out={events};
+          await cmd('Emulation.setScriptExecutionDisabled',{value:true});await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/tienda/page/2/?p2_nojs='+Date.now()});await sleep(6000);out.nojs_es=await snapshot();await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/page/2/?p2_nojs='+Date.now()});await sleep(6000);out.nojs_en=await snapshot();
+          await cmd('Emulation.setScriptExecutionDisabled',{value:false});await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/tienda/page/2/?p2_js='+Date.now()});await sleep(12000);try{await cmd('Page.stopLoading',{},3000)}catch(_){}out.js_es=await snapshot();
+          await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/page/2/?p2_js='+Date.now()});await sleep(12000);try{await cmd('Page.stopLoading',{},3000)}catch(_){}out.js_en=await snapshot();console.log(JSON.stringify(out,null,2));ws.close();}
+          main().catch(e=>{console.log(JSON.stringify({fatal:String(e)}));process.exit(0)});
+          JS
+          node /tmp/emdo-p2/check.js > /tmp/emdo-p2/browser.json || true
+          kill $CPID >/dev/null 2>&1 || true
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done')"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "grep -RIn --include='*.php' --include='*.js' -E 'Actualizando productos|Updating products' '$PROD_PATH/wp-content/themes' '$PROD_PATH/wp-content/mu-plugins' 2>/dev/null || true" > /tmp/emdo-p2/source.txt
+          python3 - <<'PY'
+          import json,pathlib
+          base=json.loads(pathlib.Path('/tmp/emdo-p2/base.json').read_text());
+          try: browser=json.loads(pathlib.Path('/tmp/emdo-p2/browser.json').read_text())
+          except: browser={'raw':pathlib.Path('/tmp/emdo-p2/browser.json').read_text(errors='replace')}
+          base['browser']=browser;base['source_matches']=pathlib.Path('/tmp/emdo-p2/source.txt').read_text(errors='replace').splitlines()
+          pathlib.Path('.deploy-status/page2-root-cause-20260822.json').write_text(json.dumps(base,ensure_ascii=False,indent=2)+'\n')
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/page2-root-cause-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/page2-root-cause-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/page2-root-cause-20260822.json
+          git commit -m "Record page 2 root cause ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
