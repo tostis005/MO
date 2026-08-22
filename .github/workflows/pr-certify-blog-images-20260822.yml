@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  certify-production-readonly:
+  repair-and-certify-production:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -24,10 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate certifier files
+      - name: Validate repair and certifier files
         shell: bash
         run: |
           set -euo pipefail
+          php -l .github/scripts/repair-blog-images-010262.php
+          php -l .github/scripts/blog-image-state-010262.php
           php -l .github/scripts/certify-blog-images-20260822.php
           php -l .github/data/editorial-image-overrides-20260821.php
           php -l .github/data/legacy-blog-image-overrides-20260821.php
@@ -36,7 +38,7 @@ jobs:
           : "${STAGING_PASSWORD:?STAGING_PASSWORD missing}"
           [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
 
-      - name: Read and certify WordPress production state
+      - name: Repair approved images and certify WordPress production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -59,50 +61,87 @@ jobs:
           ')"
           : "${PROD_PATH:?Production path not found}"
 
-          REMOTE="/tmp/emdo-pr-blog-cert-${GITHUB_RUN_ID}"
-          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '\''$REMOTE'\''" >/dev/null 2>&1 || true' EXIT
+          REMOTE="/tmp/emdo-pr-blog-repair-cert-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
           sshpass -e scp $SCP \
+            .github/scripts/repair-blog-images-010262.php \
+            .github/scripts/blog-image-state-010262.php \
             .github/scripts/certify-blog-images-20260822.php \
             .github/data/editorial-image-overrides-20260821.php \
             .github/data/legacy-blog-image-overrides-20260821.php \
             "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
-          set +e
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true)
-            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'fwrite(STDERR, \"EMDO_ABSPATH_DEFINED=\" . (defined(\"ABSPATH\") ? \"yes\" : \"no\") . PHP_EOL);' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root
-            MDO_AUTHORITY_IMAGE_OVERRIDES='$REMOTE/editorial-image-overrides-20260821.php' \
-            MDO_LEGACY_IMAGE_OVERRIDES='$REMOTE/legacy-blog-image-overrides-20260821.php' \
-            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE/certify-blog-images-20260822.php' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root
-          " > /tmp/blog-cert-report.json 2> /tmp/blog-cert-remote.stderr
-          rc=$?
-          set -e
-          echo "WP_CERT_EXIT_CODE=$rc"
-          echo "WP_CERT_STDOUT_BYTES=$(wc -c < /tmp/blog-cert-report.json)"
-          echo '--- WP CERT STDERR ---'
-          tail -n 120 /tmp/blog-cert-remote.stderr || true
-          echo '--- WP CERT STDOUT HEAD ---'
-          head -c 4000 /tmp/blog-cert-report.json || true
-          echo
-          [ "$rc" -eq 0 ] || exit "$rc"
-          [ -s /tmp/blog-cert-report.json ] || { echo 'Certifier produced empty stdout.' >&2; exit 21; }
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$REMOTE' '${GITHUB_SHA}'" <<'REMOTE_SCRIPT'
+          set -eu
+          prod="$1"; incoming="$2"; source_sha="$3"
+          wp_bin="$(command -v wp)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)"
+          wp_cmd="$php_bin -d memory_limit=768M $wp_bin --path=$prod --skip-plugins --skip-themes --allow-root"
+
+          rollback_root="$HOME/.elmercado-rollbacks/elmercadodeorigen.com"
+          backup_dir="$rollback_root/$(date -u +%Y%m%dT%H%M%SZ)-before-blog-image-cert-${source_sha%??????????????????????????????????????}"
+          mkdir -p "$backup_dir"
+          state_file="$backup_dir/post-state.json"
+          printf '%s\n' "$source_sha" > "$backup_dir/source-sha.txt"
+
+          MDO_STATE_MODE=backup \
+          MDO_STATE_FILE="$state_file" \
+          MDO_AUTHORITY_IMAGE_OVERRIDES="$incoming/editorial-image-overrides-20260821.php" \
+          MDO_LEGACY_IMAGE_OVERRIDES="$incoming/legacy-blog-image-overrides-20260821.php" \
+          sh -c "$wp_cmd eval-file '$incoming/blog-image-state-010262.php'" > "$backup_dir/backup.log"
+          test -s "$state_file"
+
+          changed=0
+          rollback_on_error() {
+            rc=$?
+            if [ "$rc" -ne 0 ] && [ "$changed" -eq 1 ]; then
+              MDO_STATE_MODE=restore \
+              MDO_STATE_FILE="$state_file" \
+              MDO_AUTHORITY_IMAGE_OVERRIDES="$incoming/editorial-image-overrides-20260821.php" \
+              MDO_LEGACY_IMAGE_OVERRIDES="$incoming/legacy-blog-image-overrides-20260821.php" \
+              sh -c "$wp_cmd eval-file '$incoming/blog-image-state-010262.php'" >/dev/null 2>&1 || true
+              sh -c "$wp_cmd cache flush" >/dev/null 2>&1 || true
+            fi
+            exit "$rc"
+          }
+          trap rollback_on_error EXIT
+
+          MDO_AUTHORITY_IMAGE_OVERRIDES="$incoming/editorial-image-overrides-20260821.php" \
+          MDO_LEGACY_IMAGE_OVERRIDES="$incoming/legacy-blog-image-overrides-20260821.php" \
+          sh -c "$wp_cmd eval-file '$incoming/repair-blog-images-010262.php'" > "$incoming/repair.json"
+          changed=1
+          "$php_bin" -r '$r=json_decode(file_get_contents($argv[1]),true);if(!is_array($r)||($r["status"]??"")!=="ok"||!empty($r["duplicates"])||($r["authority_post_count"]??0)<50){fwrite(STDERR,"repair validation failed\n");exit(1);}' "$incoming/repair.json"
+          sh -c "$wp_cmd cache flush" >/dev/null 2>&1 || true
+
+          MDO_AUTHORITY_IMAGE_OVERRIDES="$incoming/editorial-image-overrides-20260821.php" \
+          MDO_LEGACY_IMAGE_OVERRIDES="$incoming/legacy-blog-image-overrides-20260821.php" \
+          sh -c "$wp_cmd eval-file '$incoming/certify-blog-images-20260822.php'" > "$incoming/cert.json"
+          "$php_bin" -r '$r=json_decode(file_get_contents($argv[1]),true);if(!is_array($r)||($r["status"]??"")!=="ok"||($r["authority_count"]??0)<50||!empty($r["duplicates_by_pexels"])||!empty($r["duplicates_by_md5"])||!empty($r["forbidden_hits"])||!empty($r["semantic_flags"])){fwrite(STDERR,"certification validation failed\n");exit(1);}' "$incoming/cert.json"
+          cp "$incoming/repair.json" "$backup_dir/repair.json"
+          cp "$incoming/cert.json" "$backup_dir/cert.json"
+          trap - EXIT
+          printf 'BACKUP_DIR=%s\n' "$backup_dir"
+          echo WORDPRESS_REPAIR_AND_CERT_OK
+          REMOTE_SCRIPT
+
+          scp_rc=0
+          sshpass -e scp $SCP "$STAGING_USER@$STAGING_HOST:$REMOTE/repair.json" /tmp/blog-repair-report.json || scp_rc=$?
+          [ "$scp_rc" -eq 0 ]
+          sshpass -e scp $SCP "$STAGING_USER@$STAGING_HOST:$REMOTE/cert.json" /tmp/blog-cert-report.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
 
           python3 - <<'PY'
           import json
-          raw=open('/tmp/blog-cert-report.json', encoding='utf-8-sig').read().strip()
-          start=raw.find('{')
-          if start < 0:
-              raise SystemExit('No JSON object found in certifier stdout: '+raw[:500])
-          d=json.loads(raw[start:])
-          open('/tmp/blog-cert-report.json','w').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
-          assert d['status']=='ok', d.get('status')
-          assert d['authority_count'] >= 50, d['authority_count']
-          assert not d['duplicates_by_pexels'], d['duplicates_by_pexels']
-          assert not d['duplicates_by_md5'], d['duplicates_by_md5']
-          assert not d['forbidden_hits'], d['forbidden_hits']
-          assert not d['semantic_flags'], d['semantic_flags']
+          r=json.load(open('/tmp/blog-repair-report.json'))
+          d=json.load(open('/tmp/blog-cert-report.json'))
+          assert r['status']=='ok' and not r['duplicates']
+          assert d['status']=='ok'
+          assert d['authority_count'] >= 50
+          assert not d['duplicates_by_pexels']
+          assert not d['duplicates_by_md5']
+          assert not d['forbidden_hits']
+          assert not d['semantic_flags']
           print('WORDPRESS_PRODUCTION_CERT_OK')
           print('published_posts=', d['published_post_count'])
           print('authority_posts=', d['authority_count'])
@@ -130,7 +169,7 @@ jobs:
           while IFS=$'\t' read -r expected url context; do
             [ -n "$expected" ] && [ -n "$url" ]
             page="/tmp/emdo-public-${expected}.html"
-            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260822' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$page" -w '%{http_code}|%{url_effective}' "${url}?emdo_image_cert=${GITHUB_SHA}")"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO production image certification/20260822' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$page" -w '%{http_code}|%{url_effective}' "${url}?emdo_image_cert=${GITHUB_SHA}")"
             code="${result%%|*}"; effective="${result#*|}"
             [ "$code" = 200 ] || { echo "HTTP $code for $context $effective" >&2; exit 1; }
             grep -Fq "$expected" "$page" || { echo "Expected image $expected not rendered for $context ($effective)" >&2; exit 1; }
@@ -142,7 +181,7 @@ jobs:
 
           for path in '/en/journal/' '/en/journal/page/2/' '/en/journal/page/3/'; do
             file="/tmp/archive-$(echo "$path" | tr '/' '_').html"
-            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260822' -o "$file" -w '%{http_code}|%{url_effective}' "https://www.elmercadodeorigen.com${path}?emdo_image_cert=${GITHUB_SHA}")"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO production image certification/20260822' -o "$file" -w '%{http_code}|%{url_effective}' "https://www.elmercadodeorigen.com${path}?emdo_image_cert=${GITHUB_SHA}")"
             code="${result%%|*}"
             [ "$code" = 200 ] || { echo "$path returned $code" >&2; exit 1; }
             ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website|Page not found|Página no encontrada' "$file"
@@ -152,4 +191,4 @@ jobs:
       - name: Certification passed
         run: echo BLOG_IMAGE_PRODUCTION_CERTIFIED
 
-# PR #77 exists only to expose this read-only certification run.
+# PR #77 is a temporary execution surface and will not be merged.
