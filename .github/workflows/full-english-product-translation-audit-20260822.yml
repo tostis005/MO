@@ -1,0 +1,73 @@
+name: Full English product translation audit 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/full-english-product-translation-audit-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Export English translation truth and crawl all products
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-en-all
+          sudo apt-get update -qq;sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp||true);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)printf "%s" "$p";break;;esac;done')"
+          cat > /tmp/emdo-en-all/export.php <<'PHP'
+          <?php
+          $out=array('products'=>array(),'pages'=>array(),'posts'=>array());
+          foreach(array('product','page','post') as $type){$ids=get_posts(array('post_type'=>$type,'post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','suppress_filters'=>true));foreach($ids as $id){$row=array('id'=>(int)$id,'native_slug'=>get_post_field('post_name',$id),'en_published'=>(string)get_post_meta($id,'_en_US_published',true),'en_slug'=>(string)get_post_meta($id,'_en_US_post_name',true),'en_title'=>(string)get_post_meta($id,'_en_US_post_title',true),'en_content'=>(string)get_post_meta($id,'_en_US_post_content',true),'en_excerpt'=>(string)get_post_meta($id,'_en_US_post_excerpt',true));$out[$type==='product'?'products':($type==='page'?'pages':'posts')][]=$row;}}
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp $SCP /tmp/emdo-en-all/export.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-en-all-export.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp||true);php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);\"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-en-all-export.php --path='$PROD_PATH' --allow-root" > /tmp/emdo-en-all/db.json
+          python3 - <<'PY'
+          import json,re,html,subprocess,time,pathlib,concurrent.futures,urllib.parse
+          db=json.load(open('/tmp/emdo-en-all/db.json'));base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()))
+          required=[];db_issues=[]
+          for p in db['products']:
+              if p['en_published']!='1' or not p['en_slug'].strip() or not p['en_title'].strip() or not p['en_content'].strip():db_issues.append({'id':p['id'],'native_slug':p['native_slug'],'published':p['en_published'],'slug':p['en_slug'],'has_title':bool(p['en_title'].strip()),'has_content':bool(p['en_content'].strip())})
+              if p['en_published']=='1' and p['en_slug'].strip():required.append((p['id'],'/en/product/'+p['en_slug'].strip('/')+'/'))
+          patterns=[
+            r'\bAñadir al carrito\b',r'\bDescripción\b',r'\bLeer descripción completa\b',r'\bMostrar menos\b',r'\bInformación adicional\b',r'\bValoraciones\b',r'\bVendido por\b',r'\bEnvío a\b',r'\bFiltrar\b',r'\bFiltros\b',r'\bPrecio mínimo\b',r'\bPrecio máximo\b',r'\bAgotado\b',r'\bProductos relacionados\b',r'\bTambién te recomendamos\b',r'\bSelecciona una opción\b',r'\bCantidad\b',r'\bVisitar\b',r'\bmin de lectura\b',r'\bQuiénes somos\b',r'\bContacto productores\b',r'\bTérminos y condiciones\b',r'\bPolítica de privacidad\b',r'\bSeguir comprando\b'
+          ]
+          rx=[re.compile(p,re.I) for p in patterns]
+          def crawl(item):
+              id,path=item;url=base+path+'?emdo_en_all='+stamp
+              try:
+                  p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','40','-A','Mozilla/5.0 EMDO-EnglishAll/1.0','-H','Cache-Control: no-cache, no-store','-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True,timeout=45)
+                  body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout);text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S))).strip();hits=[r.pattern for r in rx if r.search(text)];return {'id':id,'path':path,'http':int(m.group(1)) if m else 0,'hits':hits,'text_sample':text[:1200] if hits else ''}
+              except Exception as e:return {'id':id,'path':path,'http':0,'hits':[],'error':str(e)}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:results=list(ex.map(crawl,required))
+          live_issues=[r for r in results if r['http']!=200 or r.get('hits') or r.get('error')]
+          # Also check published pages/posts translation completeness; not all native utility pages are intended for English, so only entries explicitly marked English-published are required.
+          content_issues=[]
+          for type_ in ['pages','posts']:
+              for x in db[type_]:
+                  if x['en_published']=='1' and (not x['en_slug'].strip() or not x['en_title'].strip() or not x['en_content'].strip()):content_issues.append({'type':type_[:-1],'id':x['id'],'native_slug':x['native_slug'],'en_slug':x['en_slug'],'has_title':bool(x['en_title'].strip()),'has_content':bool(x['en_content'].strip())})
+          out={'published_products':len(db['products']),'english_product_urls':len(required),'db_translation_issues':db_issues,'live_product_issues':live_issues,'english_page_post_metadata_issues':content_issues,'status':'success' if not db_issues and not live_issues and not content_issues else 'issues-found'}
+          pathlib.Path('.deploy-status/full-english-product-translation-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':out['status'],'published_products':out['published_products'],'english_urls':out['english_product_urls'],'db_issues':len(db_issues),'live_issues':len(live_issues),'page_post_issues':len(content_issues)},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/full-english-product-translation-audit-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/full-english-product-translation-audit-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/full-english-product-translation-audit-20260822.json
+          git commit -m "Record full English product translation audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
