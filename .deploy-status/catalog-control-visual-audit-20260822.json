@@ -1,0 +1,742 @@
+{
+  "desktop": {
+    "es_global": {
+      "ready": "complete",
+      "products": 27,
+      "destinationText": "Envío a España",
+      "destination": {
+        "tag": "BUTTON",
+        "cls": "mdo-catalog-destination__trigger",
+        "x": 241,
+        "y": 237,
+        "w": 141,
+        "h": 42,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 13px 0px 14px",
+        "fontSize": "12.5px",
+        "lineHeight": "12.5px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 756,
+        "y": 237,
+        "w": 248,
+        "h": 42,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 36px 0px 13px",
+        "fontSize": "12.5px",
+        "lineHeight": "12.5px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recomendados"
+        },
+        {
+          "value": "popularity",
+          "text": "Más populares"
+        },
+        {
+          "value": "date",
+          "text": "Más recientes"
+        },
+        {
+          "value": "price",
+          "text": "Menor precio"
+        },
+        {
+          "value": "price-desc",
+          "text": "Mayor precio"
+        }
+      ],
+      "close": {
+        "tag": "DIV",
+        "cls": "mdo-destination-modal__backdrop",
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 1000,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgba(13, 26, 21, 0.52)",
+        "padding": "0px",
+        "fontSize": "16px",
+        "lineHeight": "26.4px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 1425,
+        "y": 0,
+        "w": 430,
+        "h": 1000,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 30px 30px",
+        "fontSize": "16px",
+        "lineHeight": "26.4px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    },
+    "en_global": {
+      "ready": "complete",
+      "products": 15,
+      "destinationText": "Shipping to Spain",
+      "destination": {
+        "tag": "BUTTON",
+        "cls": "mdo-catalog-destination__trigger",
+        "x": 220,
+        "y": 237,
+        "w": 156,
+        "h": 42,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 13px 0px 14px",
+        "fontSize": "12.5px",
+        "lineHeight": "12.5px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 756,
+        "y": 237,
+        "w": 248,
+        "h": 42,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 36px 0px 13px",
+        "fontSize": "12.5px",
+        "lineHeight": "12.5px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recommended"
+        },
+        {
+          "value": "popularity",
+          "text": "Most popular"
+        },
+        {
+          "value": "date",
+          "text": "Newest"
+        },
+        {
+          "value": "price",
+          "text": "Lowest price"
+        },
+        {
+          "value": "price-desc",
+          "text": "Highest price"
+        }
+      ],
+      "close": {
+        "tag": "DIV",
+        "cls": "mdo-destination-modal__backdrop",
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 1000,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgba(13, 26, 21, 0.52)",
+        "padding": "0px",
+        "fontSize": "16px",
+        "lineHeight": "26.4px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 1425,
+        "y": 0,
+        "w": 430,
+        "h": 1000,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 30px 30px",
+        "fontSize": "16px",
+        "lineHeight": "26.4px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    },
+    "es_vendor": {
+      "ready": "complete",
+      "products": 3,
+      "destinationText": "",
+      "destination": null,
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 708,
+        "y": 614,
+        "w": 250,
+        "h": 40,
+        "border": "1px solid rgba(23, 63, 50, 0.14)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.14)",
+        "borderRadius": "999px",
+        "background": "rgb(247, 249, 246)",
+        "padding": "0px 30px 0px 12px",
+        "fontSize": "12px",
+        "lineHeight": "normal",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "auto",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recomendados"
+        },
+        {
+          "value": "popularity",
+          "text": "Más populares"
+        },
+        {
+          "value": "date",
+          "text": "Más recientes"
+        },
+        {
+          "value": "price",
+          "text": "Menor precio"
+        },
+        {
+          "value": "price-desc",
+          "text": "Mayor precio"
+        }
+      ],
+      "close": null,
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 1425,
+        "y": 0,
+        "w": 430,
+        "h": 1000,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 30px 30px",
+        "fontSize": "16px",
+        "lineHeight": "26.4px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    },
+    "en_vendor": {
+      "ready": "complete",
+      "products": 3,
+      "destinationText": "",
+      "destination": null,
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 708,
+        "y": 614,
+        "w": 250,
+        "h": 40,
+        "border": "1px solid rgba(23, 63, 50, 0.14)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.14)",
+        "borderRadius": "999px",
+        "background": "rgb(247, 249, 246)",
+        "padding": "0px 30px 0px 12px",
+        "fontSize": "12px",
+        "lineHeight": "normal",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "auto",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recommended"
+        },
+        {
+          "value": "popularity",
+          "text": "Most popular"
+        },
+        {
+          "value": "date",
+          "text": "Newest"
+        },
+        {
+          "value": "price",
+          "text": "Lowest price"
+        },
+        {
+          "value": "price-desc",
+          "text": "Highest price"
+        }
+      ],
+      "close": null,
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 1425,
+        "y": 0,
+        "w": 430,
+        "h": 1000,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 30px 30px",
+        "fontSize": "16px",
+        "lineHeight": "26.4px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    }
+  },
+  "mobile": {
+    "es_global": {
+      "ready": "complete",
+      "products": 15,
+      "destinationText": "Envío a España",
+      "destination": {
+        "tag": "BUTTON",
+        "cls": "mdo-catalog-destination__trigger",
+        "x": 29,
+        "y": 233,
+        "w": 332,
+        "h": 40,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 12px 0px 13px",
+        "fontSize": "11.75px",
+        "lineHeight": "11.75px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 29,
+        "y": 283,
+        "w": 332,
+        "h": 40,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 42px 0px 12px",
+        "fontSize": "11.75px",
+        "lineHeight": "11.75px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recomendados"
+        },
+        {
+          "value": "popularity",
+          "text": "Más populares"
+        },
+        {
+          "value": "date",
+          "text": "Más recientes"
+        },
+        {
+          "value": "price",
+          "text": "Menor precio"
+        },
+        {
+          "value": "price-desc",
+          "text": "Mayor precio"
+        }
+      ],
+      "close": {
+        "tag": "DIV",
+        "cls": "mdo-destination-modal__backdrop",
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 844,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgba(13, 26, 21, 0.52)",
+        "padding": "0px",
+        "fontSize": "15px",
+        "lineHeight": "24.75px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 390,
+        "y": 0,
+        "w": 378,
+        "h": 844,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 15px 15px",
+        "fontSize": "15px",
+        "lineHeight": "24.75px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    },
+    "en_global": {
+      "ready": "complete",
+      "products": 15,
+      "destinationText": "Shipping to Spain",
+      "destination": {
+        "tag": "BUTTON",
+        "cls": "mdo-catalog-destination__trigger",
+        "x": 29,
+        "y": 233,
+        "w": 332,
+        "h": 40,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 12px 0px 13px",
+        "fontSize": "11.75px",
+        "lineHeight": "11.75px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 29,
+        "y": 283,
+        "w": 332,
+        "h": 40,
+        "border": "1px solid rgba(23, 63, 50, 0.15)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.15)",
+        "borderRadius": "999px",
+        "background": "rgb(248, 250, 248)",
+        "padding": "0px 42px 0px 12px",
+        "fontSize": "11.75px",
+        "lineHeight": "11.75px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recommended"
+        },
+        {
+          "value": "popularity",
+          "text": "Most popular"
+        },
+        {
+          "value": "date",
+          "text": "Newest"
+        },
+        {
+          "value": "price",
+          "text": "Lowest price"
+        },
+        {
+          "value": "price-desc",
+          "text": "Highest price"
+        }
+      ],
+      "close": {
+        "tag": "DIV",
+        "cls": "mdo-destination-modal__backdrop",
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 844,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgba(13, 26, 21, 0.52)",
+        "padding": "0px",
+        "fontSize": "15px",
+        "lineHeight": "24.75px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "visible"
+      },
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 390,
+        "y": 0,
+        "w": 378,
+        "h": 844,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 15px 15px",
+        "fontSize": "15px",
+        "lineHeight": "24.75px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    },
+    "es_vendor": {
+      "ready": "complete",
+      "products": 3,
+      "destinationText": "",
+      "destination": null,
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 270,
+        "y": 550,
+        "w": 148,
+        "h": 42,
+        "border": "1px solid rgba(23, 63, 50, 0.14)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.14)",
+        "borderRadius": "999px",
+        "background": "rgb(247, 249, 246)",
+        "padding": "0px 42px 0px 10px",
+        "fontSize": "11.5px",
+        "lineHeight": "11.5px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recomendados"
+        },
+        {
+          "value": "popularity",
+          "text": "Más populares"
+        },
+        {
+          "value": "date",
+          "text": "Más recientes"
+        },
+        {
+          "value": "price",
+          "text": "Menor precio"
+        },
+        {
+          "value": "price-desc",
+          "text": "Mayor precio"
+        }
+      ],
+      "close": null,
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 390,
+        "y": 0,
+        "w": 378,
+        "h": 844,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 15px 15px",
+        "fontSize": "15px",
+        "lineHeight": "24.75px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    },
+    "en_vendor": {
+      "ready": "complete",
+      "products": 3,
+      "destinationText": "",
+      "destination": null,
+      "ordering": {
+        "tag": "SELECT",
+        "cls": "orderby",
+        "x": 268,
+        "y": 550,
+        "w": 148,
+        "h": 42,
+        "border": "1px solid rgba(23, 63, 50, 0.14)",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "borderColor": "rgba(23, 63, 50, 0.14)",
+        "borderRadius": "999px",
+        "background": "rgb(247, 249, 246)",
+        "padding": "0px 42px 0px 10px",
+        "fontSize": "11.5px",
+        "lineHeight": "11.5px",
+        "color": "rgb(23, 63, 50)",
+        "boxShadow": "none",
+        "appearance": "none",
+        "overflow": "clip"
+      },
+      "orderingOptions": [
+        {
+          "value": "mdo_recommended",
+          "text": "Recommended"
+        },
+        {
+          "value": "popularity",
+          "text": "Most popular"
+        },
+        {
+          "value": "date",
+          "text": "Newest"
+        },
+        {
+          "value": "price",
+          "text": "Lowest price"
+        },
+        {
+          "value": "price-desc",
+          "text": "Highest price"
+        }
+      ],
+      "close": null,
+      "closeText": "",
+      "modal": {
+        "tag": "DIV",
+        "cls": "",
+        "x": 390,
+        "y": 0,
+        "w": 378,
+        "h": 844,
+        "border": "0px none rgb(24, 34, 30)",
+        "borderWidth": "0px",
+        "borderStyle": "none",
+        "borderColor": "rgb(24, 34, 30)",
+        "borderRadius": "0px",
+        "background": "rgb(255, 253, 248)",
+        "padding": "0px 15px 15px",
+        "fontSize": "15px",
+        "lineHeight": "24.75px",
+        "color": "rgb(24, 34, 30)",
+        "boxShadow": "rgba(11, 38, 29, 0.2) -24px 0px 70px 0px",
+        "appearance": "none",
+        "overflow": "visible"
+      }
+    }
+  }
+}
