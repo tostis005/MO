@@ -1,0 +1,78 @@
+name: Commerce and Journal smoke audit 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/commerce-journal-smoke-audit-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Resolve routes and exercise cart checkout journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-commerce
+          sudo apt-get update -qq;sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp||true);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)printf "%s" "$p";break;;esac;done')"
+          cat > /tmp/emdo-commerce/routes.php <<'PHP'
+          <?php
+          $out=array();
+          foreach(array('cart'=>'woocommerce_cart_page_id','checkout'=>'woocommerce_checkout_page_id') as $k=>$opt){$id=(int)get_option($opt);$out[$k]=array('id'=>$id,'native_slug'=>get_post_field('post_name',$id),'en_slug'=>get_post_meta($id,'_en_US_post_name',true),'en_published'=>get_post_meta($id,'_en_US_published',true));}
+          $chosen=0;foreach(get_posts(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids')) as $id){$p=wc_get_product($id);if($p&&$p->is_type('simple')&&$p->is_purchasable()&&$p->is_in_stock()&&'1'===get_post_meta($id,'_en_US_published',true)&&get_post_meta($id,'_en_US_post_name',true)){$chosen=$id;break;}}
+          if($chosen){$p=wc_get_product($chosen);$out['product']=array('id'=>$chosen,'native_slug'=>get_post_field('post_name',$chosen),'en_slug'=>get_post_meta($chosen,'_en_US_post_name',true),'native_title'=>get_the_title($chosen),'en_title'=>get_post_meta($chosen,'_en_US_post_title',true),'price'=>$p->get_price());}
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp $SCP /tmp/emdo-commerce/routes.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-commerce-routes.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp||true);php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);\"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-commerce-routes.php --path='$PROD_PATH' --allow-root" > /tmp/emdo-commerce/routes.json
+          python3 - <<'PY'
+          import json,re,subprocess,html,time,pathlib,os
+          cfg=json.load(open('/tmp/emdo-commerce/routes.json'));base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()));out={'resolved':cfg,'tests':{},'failures':[]}
+          product=cfg.get('product') or {};pid=product.get('id');
+          def fetch(path,jar=None,post=None):
+              url=base+path;cmd=['curl','-k','-sS','-L','--max-redirs','8','--connect-timeout','8','--max-time','50','-A','Mozilla/5.0 EMDO-CommerceSmoke/1.0','-H','Cache-Control: no-cache, no-store']
+              if jar:cmd+=['-c',jar,'-b',jar]
+              if post is not None:cmd+=['--data',post]
+              cmd+=['-w','\n__HTTP__:%{http_code}',url]
+              p=subprocess.run(cmd,capture_output=True,text=True);body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout);text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S))).strip();return {'http':int(m.group(1)) if m else 0,'body':body,'text':text}
+          if not pid:out['failures'].append('No simple purchasable bilingual product found')
+          else:
+              for lang in ['es','en']:
+                  jar=f'/tmp/emdo-commerce/{lang}.jar'
+                  ppath=('/producto/'+product['native_slug']+'/' if lang=='es' else '/en/product/'+product['en_slug']+'/')
+                  cartslug=cfg['cart']['native_slug'] if lang=='es' else cfg['cart']['en_slug']; checkoutslug=cfg['checkout']['native_slug'] if lang=='es' else cfg['checkout']['en_slug'];prefix='' if lang=='es' else '/en'
+                  product_r=fetch(ppath,jar);add_r=fetch((prefix+'/shop/' if lang=='en' else '/tienda/')+'?add-to-cart='+str(pid),jar);cart_r=fetch(prefix+'/'+str(cartslug).strip('/')+'/',jar);checkout_r=fetch(prefix+'/'+str(checkoutslug).strip('/')+'/',jar)
+                  out['tests'][lang]={'product_http':product_r['http'],'add_http':add_r['http'],'cart_http':cart_r['http'],'cart_has_item':bool(re.search(r'woocommerce-cart-form__cart-item|cart_item',cart_r['body'],re.I)),'cart_has_product':(product['en_title'] if lang=='en' else product['native_title']) in cart_r['text'],'checkout_http':checkout_r['http'],'checkout_has_form':bool(re.search(r'name=["\']checkout["\']|woocommerce-checkout|checkout_coupon',checkout_r['body'],re.I)),'checkout_text_sample':checkout_r['text'][:500]}
+                  t=out['tests'][lang]
+                  if t['product_http']!=200:out['failures'].append(lang+' product HTTP')
+                  if t['cart_http']!=200 or not t['cart_has_item']:out['failures'].append(lang+' add-to-cart/cart failed')
+                  if t['checkout_http']!=200 or not t['checkout_has_form']:out['failures'].append(lang+' checkout render failed')
+          # Journal pages 1 and 2 in both languages.
+          for key,path in [('blog1','/blog/'),('blog2','/blog/page/2/'),('journal1','/en/journal/'),('journal2','/en/journal/page/2/')]:
+              r=fetch(path);cards=len(re.findall(r'<article\b[^>]*class=["\'][^"\']*emo-article-card',r['body'],re.I));out['tests'][key]={'http':r['http'],'cards':cards,'spanish_reading_time':bool(re.search(r'\b\d+\s+min\s+de\s+lectura\b',r['text'],re.I)),'english_reading_time':bool(re.search(r'\b\d+\s+min\s+read\b',r['text'],re.I))}
+              if r['http']!=200:out['failures'].append(key+' HTTP '+str(r['http']))
+              if cards<1:out['failures'].append(key+' no article cards')
+          if out['tests'].get('journal1',{}).get('spanish_reading_time') or out['tests'].get('journal2',{}).get('spanish_reading_time'):out['failures'].append('English Journal reading-time Spanish residue')
+          out['status']='success' if not out['failures'] else 'failure';pathlib.Path('.deploy-status/commerce-journal-smoke-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':out['status'],'failures':out['failures'],'tests':out['tests']},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/commerce-journal-smoke-audit-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/commerce-journal-smoke-audit-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/commerce-journal-smoke-audit-20260822.json
+          git commit -m "Record commerce Journal smoke audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
