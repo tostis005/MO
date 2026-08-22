@@ -1,0 +1,257 @@
+name: Global bilingual production functional audit 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/global-functional-audit-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: HTTP crawl and discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-global-audit
+          python3 - <<'PY'
+          import re,json,time,subprocess,html
+          from urllib.parse import urlsplit,urlunsplit
+          BASE='https://www.elmercadodeorigen.com'
+          stamp=str(int(time.time()))
+          def request(path, follow=True):
+              if path.startswith('http'):
+                  url=path
+              else:
+                  url=BASE+path
+              sep='&' if '?' in url else '?'
+              url=url+sep+'emdo_global_audit='+stamp
+              cmd=['curl','-k','-sS','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-Global-Audit/1.0','-H','Cache-Control: no-cache, no-store','-D','/tmp/emdo-h.txt','-w','\n__HTTP__:%{http_code}\n__URL__:%{url_effective}',url]
+              if follow: cmd[1:1]=['-L','--max-redirs','8']
+              p=subprocess.run(cmd,capture_output=True,text=True)
+              raw=p.stdout; body=raw.split('\n__HTTP__:',1)[0]
+              hm=re.search(r'\n__HTTP__:(\d{3})',raw); um=re.search(r'\n__URL__:(.+)',raw)
+              h=open('/tmp/emdo-h.txt',errors='ignore').read() if __import__('os').path.exists('/tmp/emdo-h.txt') else ''
+              loc=re.findall(r'^location:\s*(.+)$',h,re.I|re.M)
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids: ids.append(x)
+              text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',body))).strip()
+              count=''
+              for pat in [r'([0-9]+)\s+results',r'([0-9]+)\s+resultados']:
+                  m=re.search(pat,text,re.I)
+                  if m: count=m.group(1); break
+              return {'http':int(hm.group(1)) if hm else 0,'effective_url':um.group(1).strip() if um else '', 'location':loc[-1].strip() if loc else '', 'bytes':len(body.encode()),'cards':len(ids),'ids':ids[:40],'result_count':int(count) if count else None,'body':body,'text':text}
+          def links(body):
+              out=[]
+              for href in re.findall(r'href=["\']([^"\']+)["\']',body,re.I):
+                  href=html.unescape(href)
+                  if href.startswith('/'):
+                      href=BASE+href
+                  if not href.startswith(BASE): continue
+                  u=urlsplit(href); p=u.path
+                  if any(x in p for x in ['/wp-admin/','/wp-content/','/feed/']) or p.endswith(('.jpg','.jpeg','.png','.webp','.svg','.pdf','.zip')): continue
+                  clean=urlunsplit((u.scheme,u.netloc,u.path,u.query,''))
+                  if clean not in out: out.append(clean)
+              return out
+          ui_es=['Envío a','¿Dónde quieres recibir tu pedido?','Guardar destino','Mostrando','Ordenar por','Categorías','Añadir al carrito','Actualizando productos','No se encontraron productos','Código postal']
+          ui_en=['Shipping to','Where do you want to receive your order?','Save destination','Showing','Sort by','Categories','Add to cart','Updating products','No products were found','Postcode']
+          core=['/','/en/','/tienda/','/en/shop/','/categorias/','/en/categories/','/productores/','/en/producers/','/blog/','/en/journal/']
+          pages={}
+          for p in core:
+              r=request(p); pages[p]={k:v for k,v in r.items() if k not in ('body','text')}
+              if p.startswith('/en/'):
+                  pages[p]['spanish_ui_hits']=[x for x in ui_es if x.lower() in r['text'].lower()]
+          es_home=request('/'); en_home=request('/en/'); es_cat=request('/categorias/'); en_cat=request('/en/categories/'); es_prod=request('/productores/'); en_prod=request('/en/producers/')
+          discovered={
+            'es_nav':links(es_home['body'])[:60], 'en_nav':links(en_home['body'])[:60],
+            'es_categories':[u for u in links(es_cat['body']) if '/categoria-producto/' in u][:40],
+            'en_categories':[u for u in links(en_cat['body']) if '/en/product-category/' in u][:40],
+            'es_vendors':[u for u in links(es_prod['body']) if re.search(r'/(?:tienda|store)/[^/]+/?$',urlsplit(u).path,re.I)][:20],
+            'en_vendors':[u for u in links(en_prod['body']) if '/en/store/' in u][:20],
+          }
+          shop=request('/tienda/'); enshop=request('/en/shop/')
+          discovered['es_products']=[u for u in links(shop['body']) if '/producto/' in u][:20]
+          discovered['en_products']=[u for u in links(enshop['body']) if '/en/product/' in u][:20]
+          crawl={}; seen=[]
+          targets=[]
+          for group in ['es_nav','en_nav','es_categories','en_categories','es_vendors','en_vendors','es_products','en_products']:
+              for u in discovered[group]:
+                  if u not in targets: targets.append(u)
+          for u in targets[:140]:
+              r=request(u); item={k:v for k,v in r.items() if k not in ('body','text')}
+              path=urlsplit(u).path
+              if path.startswith('/en/'):
+                  item['spanish_ui_hits']=[x for x in ui_es if x.lower() in r['text'].lower()]
+              crawl[u]=item
+          out={'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'core':pages,'discovered':discovered,'crawl':crawl}
+          open('/tmp/emdo-global-audit/http.json','w').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          PY
+
+      - name: Browser functional audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-global-chrome
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9240 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-global-chrome about:blank >/tmp/emdo-global-chrome.log 2>&1 &
+          CPID=$!
+          trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9240/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE' > /tmp/emdo-global-audit/browser.json
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9240/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0; const pending=new Map(); const exceptions=[]; const consoleErrors=[];
+            ws.onmessage=e=>{const m=JSON.parse(e.data); if(m.method==='Runtime.exceptionThrown'){exceptions.push(m.params?.exceptionDetails?.exception?.description||m.params?.exceptionDetails?.text||'exception');return;} if(m.method==='Runtime.consoleAPICalled'&&m.params?.type==='error'){consoleErrors.push((m.params.args||[]).map(a=>a.value||a.description||'').join(' '));return;} if(!m.id||!pending.has(m.id))return; const q=pending.get(m.id); pending.delete(m.id); clearTimeout(q.timer); m.error?q.bad(m.error):q.ok(m.result||{});};
+            const cmd=(method,params={},timeout=30000)=>new Promise((ok,bad)=>{const n=++id,timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable'); await cmd('Runtime.enable'); await cmd('Network.enable');
+            const E=async(expression)=>{const r=await cmd('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true},30000);return r.result?.value};
+            async function nav(path, wait=5000){await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com'+path+(path.includes('?')?'&':'?')+'emdo_browser_audit='+Date.now()},30000); await sleep(wait); return snap();}
+            async function snap(){return await E(`(()=>{const visible=e=>{if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>0&&r.width>1&&r.height>1}; const ids=[]; for(const e of document.querySelectorAll('li.product,.products .product')){let m=(e.className||'').match(/post-(\\d+)/);let i=m?Number(m[1]):Number(e.querySelector('[data-product_id]')?.getAttribute('data-product_id')||0);if(i&&!ids.includes(i))ids.push(i)} let rc=(document.querySelector('.woocommerce-result-count')?.innerText||'').trim(); let price=[...document.querySelectorAll('li.product .price,.products .product .price')].slice(0,6).map(e=>e.innerText.trim()); let text=(document.body?.innerText||'').replace(/\\s+/g,' ').trim(); let controls=[...document.querySelectorAll('input[type=checkbox],input[type=radio],select,a,button')].filter(visible).slice(0,400).map(e=>{let lab=''; if(e.id){let l=document.querySelector('label[for="'+CSS.escape(e.id)+'"]');if(l)lab=l.innerText.trim()} if(!lab&&e.closest('label'))lab=e.closest('label').innerText.trim(); return {tag:e.tagName,type:e.type||'',name:e.name||'',value:e.value||'',text:(e.innerText||lab||e.getAttribute('aria-label')||'').trim().replace(/\\s+/g,' ').slice(0,120),href:e.href||''}}); return {href:location.href,title:document.title,readyState:document.readyState,products:ids.length,ids,resultCount:rc,prices:price,text:text.slice(0,120000),controls,nodes:document.getElementsByTagName('*').length,heap:(performance.memory||{}).usedJSHeapSize||0,overlays:[...document.querySelectorAll('.blockUI,.blockOverlay,.preloader,.loader,.loading-overlay,[aria-busy="true"]')].filter(visible).map(e=>e.className||e.getAttribute('aria-busy'))};})()`)}
+            async function clickText(txt){return await E(`(()=>{const t=${JSON.stringify(txt)}.toLowerCase();const vis=e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>1&&r.height>1};const els=[...document.querySelectorAll('label,a,button')].filter(vis);const e=els.find(x=>(x.innerText||'').trim().toLowerCase()===t)||els.find(x=>(x.innerText||'').trim().toLowerCase().includes(t));if(!e)return {clicked:false};let target=e;if(e.tagName==='LABEL'&&e.htmlFor)target=document.getElementById(e.htmlFor)||e;target.click();return {clicked:true,tag:target.tagName,text:(e.innerText||'').trim(),href:target.href||''};})()`)}
+            async function selectOrder(){return await E(`(()=>{const s=document.querySelector('select.orderby');if(!s)return {ok:false,options:[]};const opts=[...s.options].map(o=>({v:o.value,t:o.textContent.trim()}));const o=[...s.options].find(o=>o.value==='price')||[...s.options].find(o=>/price.*low|precio.*bajo/i.test(o.textContent));if(!o)return {ok:false,options:opts};s.value=o.value;s.dispatchEvent(new Event('change',{bubbles:true}));return {ok:true,value:o.value,options:opts};})()`)}
+            async function setDestination(country){return await E(`(async()=>{const open=document.querySelector('[data-mdo-destination-open]');if(!open)return {ok:false,reason:'no trigger'};open.click();await new Promise(r=>setTimeout(r,250));const sel=document.querySelector('[data-mdo-destination-country]'),form=document.querySelector('[data-mdo-destination-form]');if(!sel||!form)return {ok:false,reason:'no form'};if(![...sel.options].some(o=>o.value===${JSON.stringify(country)}))return {ok:false,reason:'country unavailable',options:[...sel.options].map(o=>[o.value,o.textContent.trim()])};sel.value=${JSON.stringify(country)};sel.dispatchEvent(new Event('change',{bubbles:true}));form.requestSubmit();return {ok:true};})()`)}
+            async function waitReload(oldHref){for(let i=0;i<20;i++){await sleep(700);let h=await E('location.href');let ready=await E('document.readyState');if(ready==='complete'&&h===oldHref){} if(ready==='complete'&&i>3)return true;}return false;}
+            async function geometry(path){await nav(path,4000);return await E(`(()=>{const r=e=>{if(!e)return null;const b=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width),h:Math.round(b.height),border:s.border,background:s.backgroundColor,borderRadius:s.borderRadius,fontSize:s.fontSize,color:s.color}};return {destination:r(document.querySelector('[data-mdo-destination-open]')),ordering:r(document.querySelector('select.orderby')),modalClose:r(document.querySelector('[data-mdo-destination-close]')),destinationText:(document.querySelector('[data-mdo-destination-open]')?.innerText||'').trim(),orderingOptions:[...document.querySelectorAll('select.orderby option')].map(o=>o.textContent.trim())};})()`)}
+            const out={snapshots:{},tests:{},geometry:{},language:{},exceptions,consoleErrors};
+            out.snapshots.es_shop=await nav('/tienda/');
+            out.snapshots.en_shop=await nav('/en/shop/');
+            out.language.en_shop_hits=['Envío a','¿Dónde quieres recibir tu pedido?','Guardar destino','Mostrando','Ordenar por','Categorías','Añadir al carrito','Actualizando productos','Código postal','No se encontraron productos'].filter(x=>out.snapshots.en_shop.text.toLowerCase().includes(x.toLowerCase()));
+            out.snapshots.en_categories=await nav('/en/categories/');
+            out.language.en_categories_hits=['Categorías','Ver productos','Tienda','Conservas artesanas','Hortalizas y verduras','Legumbres'].filter(x=>out.snapshots.en_categories.text.toLowerCase().includes(x.toLowerCase()));
+            out.snapshots.en_producers=await nav('/en/producers/');
+            out.language.en_producers_hits=['Productores','Visitar','Tienda','Ver tienda'].filter(x=>out.snapshots.en_producers.text.toLowerCase().includes(x.toLowerCase()));
+            out.snapshots.en_journal=await nav('/en/journal/');
+            out.language.en_journal_hits=['Leer más','Publicado','Artículos','El Jamón Ibérico','Noviembre es la época','Aceite de oliva virgen extra'].filter(x=>out.snapshots.en_journal.text.toLowerCase().includes(x.toLowerCase()));
+            // Page 2 real browser behavior in both languages.
+            out.tests.es_page2=await nav('/tienda/page/2/',8000);
+            out.tests.en_page2=await nav('/en/shop/page/2/',8000);
+            // Ordering: change through the real select and inspect resulting catalogue.
+            await nav('/tienda/',3500); out.tests.order_es_action=await selectOrder(); await sleep(5000); out.tests.order_es_result=await snap();
+            await nav('/en/shop/',3500); out.tests.order_en_action=await selectOrder(); await sleep(5000); out.tests.order_en_result=await snap();
+            // Vendor filter: use the visible 1957 filter control; compare against vendor store IDs.
+            out.tests.vendor_store_es=await nav('/tienda/1957/',5000);
+            out.tests.vendor_store_en=await nav('/en/store/1957/',5000);
+            await nav('/tienda/',4000); out.tests.vendor_filter_es_action=await clickText('1957'); await sleep(5500); out.tests.vendor_filter_es_result=await snap();
+            await nav('/en/shop/',4000); out.tests.vendor_filter_en_action=await clickText('1957'); await sleep(5500); out.tests.vendor_filter_en_result=await snap();
+            // Category filter: click the real category control from the shop.
+            await nav('/tienda/',4000); out.tests.category_filter_es_action=await clickText('Carnes'); await sleep(5000); out.tests.category_filter_es_result=await snap();
+            await nav('/en/shop/',4000); out.tests.category_filter_en_action=await clickText('Meat'); await sleep(5000); out.tests.category_filter_en_result=await snap();
+            // Discover and apply one additional checkbox/radio metadata filter on a category page, if present.
+            out.tests.meta_es_before=await nav('/categoria-producto/jamones-paletas/',4500);
+            out.tests.meta_es_action=await E(`(()=>{const known=/1957|hidalgo|tolecarnes|huerta|categor|productor|vendor/i;const candidates=[...document.querySelectorAll('input[type=checkbox],input[type=radio]')].filter(i=>{const s=getComputedStyle(i),r=i.getBoundingClientRect();if(s.display==='none'||s.visibility==='hidden'||r.width<1||r.height<1)return false;let l=i.id?document.querySelector('label[for="'+CSS.escape(i.id)+'"]'):null;let t=(l?.innerText||i.closest('label')?.innerText||i.name||'').trim();return t&&!known.test(t)});const i=candidates[0];if(!i)return {clicked:false,candidates:[]};let l=i.id?document.querySelector('label[for="'+CSS.escape(i.id)+'"]'):null;let t=(l?.innerText||i.closest('label')?.innerText||i.name||'').trim();i.click();return {clicked:true,label:t,name:i.name,value:i.value};})()`); await sleep(5000); out.tests.meta_es_after=await snap();
+            out.tests.meta_en_before=await nav('/en/product-category/hams-and-shoulders/',4500);
+            out.tests.meta_en_action=await E(`(()=>{const known=/1957|hidalgo|tolecarnes|huerta|categor|producer|vendor/i;const candidates=[...document.querySelectorAll('input[type=checkbox],input[type=radio]')].filter(i=>{const s=getComputedStyle(i),r=i.getBoundingClientRect();if(s.display==='none'||s.visibility==='hidden'||r.width<1||r.height<1)return false;let l=i.id?document.querySelector('label[for="'+CSS.escape(i.id)+'"]'):null;let t=(l?.innerText||i.closest('label')?.innerText||i.name||'').trim();return t&&!known.test(t)});const i=candidates[0];if(!i)return {clicked:false,candidates:[]};let l=i.id?document.querySelector('label[for="'+CSS.escape(i.id)+'"]'):null;let t=(l?.innerText||i.closest('label')?.innerText||i.name||'').trim();i.click();return {clicked:true,label:t,name:i.name,value:i.value};})()`); await sleep(5000); out.tests.meta_en_after=await snap();
+            // Destination Poland in Spanish and English. Save via the actual form and confirm cookie/total/results after reload.
+            await nav('/tienda/',4000); let href=await E('location.href'); out.tests.pl_es_action=await setDestination('PL'); await waitReload(href); await sleep(5000); out.tests.pl_es_result=await snap(); out.tests.pl_es_cookie=await E('document.cookie');
+            await nav('/en/shop/',4000); href=await E('location.href'); out.tests.pl_en_action=await setDestination('PL'); await waitReload(href); await sleep(5000); out.tests.pl_en_result=await snap(); out.tests.pl_en_cookie=await E('document.cookie');
+            out.tests.pl_vendor_1957=await nav('/en/store/1957/',4500);
+            // Reset Spain for subsequent visitors in this isolated browser only.
+            await nav('/en/shop/',3000); href=await E('location.href'); out.tests.reset_es_action=await setDestination('ES'); await waitReload(href); await sleep(3000);
+            // Visual parity metrics after reset.
+            out.geometry.es_global=await geometry('/tienda/');
+            out.geometry.en_global=await geometry('/en/shop/');
+            out.geometry.es_vendor=await geometry('/tienda/1957/');
+            out.geometry.en_vendor=await geometry('/en/store/1957/');
+            // Sample one product page per language from current shop links.
+            await nav('/tienda/',3500); let esLink=await E(`[...document.querySelectorAll('a')].map(a=>a.href).find(h=>h&&h.includes('/producto/'))||''`); if(esLink){out.tests.es_product=await nav(new URL(esLink).pathname,4500)}
+            await nav('/en/shop/',3500); let enLink=await E(`[...document.querySelectorAll('a')].map(a=>a.href).find(h=>h&&h.includes('/en/product/'))||''`); if(enLink){out.tests.en_product=await nav(new URL(enLink).pathname,4500);out.language.en_product_hits=['Añadir al carrito','Descripción','Productos relacionados','Envío','Productor','Categorías'].filter(x=>out.tests.en_product.text.toLowerCase().includes(x.toLowerCase()))}
+            // Trim large fields before serializing.
+            const trim=o=>{if(!o||typeof o!=='object')return;for(const k of Object.keys(o)){if(k==='text')o[k]=o[k].slice(0,20000);else if(k==='controls')o[k]=o[k].slice(0,180);else trim(o[k])}}; trim(out);
+            console.log(JSON.stringify(out,null,2)); ws.close();
+          }
+          main().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          kill $CPID >/dev/null 2>&1 || true
+          trap - EXIT
+
+      - name: Build audit summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,re,pathlib
+          h=json.load(open('/tmp/emdo-global-audit/http.json')); b=json.load(open('/tmp/emdo-global-audit/browser.json'))
+          issues=[]; passed=[]; visual=[]
+          for p,v in h['core'].items():
+              if v.get('http')!=200: issues.append({'severity':'functional','area':'core route','detail':f'{p} returns {v.get("http")}'})
+              else: passed.append(f'{p} HTTP 200')
+              if p.startswith('/en/') and v.get('spanish_ui_hits'): issues.append({'severity':'translation','area':p,'detail':'Spanish UI markers: '+', '.join(v['spanish_ui_hits'])})
+          for u,v in h['crawl'].items():
+              if v.get('http')!=200: issues.append({'severity':'functional','area':'crawl','detail':f'{u} -> {v.get("http")}'})
+              if '/en/' in u and v.get('spanish_ui_hits'): issues.append({'severity':'translation','area':u,'detail':'Spanish UI markers: '+', '.join(v['spanish_ui_hits'])})
+          for area,hits in b.get('language',{}).items():
+              if hits: issues.append({'severity':'translation','area':area,'detail':'Visible Spanish markers: '+', '.join(hits)})
+          t=b.get('tests',{})
+          for lang in ['es','en']:
+              s=b['snapshots'].get(lang+'_shop',{})
+              if s.get('products',0)>=10: passed.append(lang.upper()+' shop renders products in Chrome')
+              else: issues.append({'severity':'functional','area':lang+' shop','detail':'Too few products in Chrome'})
+              p2=t.get(lang+'_page2',{})
+              if p2.get('products',0)>0: passed.append(lang.upper()+' shop page 2 renders products')
+              else: issues.append({'severity':'functional','area':lang+' shop pagination','detail':'Page 2 stays at 0 product cards after browser wait'})
+              oa=t.get('order_'+lang+'_action',{}); rr=t.get('order_'+lang+'_result',{})
+              if oa.get('ok') and ('orderby=price' in rr.get('href','') or rr.get('products',0)>0): passed.append(lang.upper()+' ordering control reacts')
+              else: issues.append({'severity':'functional','area':lang+' ordering','detail':'Price ordering control did not complete correctly'})
+          esStore=set(t.get('vendor_store_es',{}).get('ids',[])); enStore=set(t.get('vendor_store_en',{}).get('ids',[]))
+          for lang,store in [('es',esStore),('en',enStore)]:
+              act=t.get('vendor_filter_'+lang+'_action',{}); res=t.get('vendor_filter_'+lang+'_result',{}); ids=set(res.get('ids',[]))
+              if act.get('clicked') and ids and (not store or ids.issubset(store)): passed.append(lang.upper()+' vendor filter 1957 works')
+              else: issues.append({'severity':'functional','area':lang+' vendor filter','detail':f'1957 filter failed or returned unexpected IDs; action={act}, ids={sorted(ids)} store={sorted(store)}'})
+          for lang in ['es','en']:
+              act=t.get('category_filter_'+lang+'_action',{}); res=t.get('category_filter_'+lang+'_result',{})
+              if act.get('clicked') and res.get('products',0)>0: passed.append(lang.upper()+' category filter works')
+              else: issues.append({'severity':'functional','area':lang+' category filter','detail':f'Category filter action/result failed: {act}'})
+              ma=t.get('meta_'+lang+'_action',{}); before=t.get('meta_'+lang+'_before',{}); after=t.get('meta_'+lang+'_after',{})
+              if ma.get('clicked'):
+                  if after.get('products',0)>0 and (after.get('ids')!=before.get('ids') or after.get('href')!=before.get('href')): passed.append(lang.upper()+f' metadata filter works ({ma.get("label")})')
+                  else: issues.append({'severity':'functional','area':lang+' metadata filter','detail':f'Filter clicked but catalogue did not visibly change: {ma}'})
+              else: issues.append({'severity':'observation','area':lang+' metadata filter','detail':'No additional checkbox/radio metadata filter was discoverable on the ham category'})
+          for lang in ['es','en']:
+              act=t.get('pl_'+lang+'_action',{}); res=t.get('pl_'+lang+'_result',{}); cookie=t.get('pl_'+lang+'_cookie','')
+              if act.get('ok') and 'mdo_shipping_country=PL' in cookie and res.get('products',0)>0: passed.append(lang.upper()+' Poland destination persists and catalogue remains populated')
+              else: issues.append({'severity':'functional','area':lang+' Poland destination','detail':f'Poland destination failed: action={act}, cookie={cookie}, products={res.get("products")}'})
+              # Current full catalogue should remain 105 if every published product ships to Poland.
+              m=re.search(r'(\d+)\s+(?:results|resultados)',res.get('resultCount','') or '')
+              n=int(m.group(1)) if m else None
+              if n==105: passed.append(lang.upper()+' Poland keeps all 105 catalogue products')
+              elif n is not None: issues.append({'severity':'functional','area':lang+' Poland catalogue coverage','detail':f'Poland shows {n} results instead of 105'})
+          if t.get('pl_vendor_1957',{}).get('products',0)>0: passed.append('1957 vendor store remains populated for Poland')
+          else: issues.append({'severity':'functional','area':'Poland vendor store','detail':'1957 store has no products for Poland'})
+          # Geometry comparisons: intentionally observations only.
+          g=b.get('geometry',{})
+          gg=g.get('es_global',{}); gv=g.get('es_vendor',{})
+          if gg and gv:
+              visual.append({'area':'destination global vs vendor','global':gg.get('destination'),'vendor':gv.get('destination'),'global_close':gg.get('modalClose'),'vendor_close':gv.get('modalClose'),'global_text':gg.get('destinationText'),'vendor_text':gv.get('destinationText')})
+              visual.append({'area':'ordering global vs vendor','global':gg.get('ordering'),'vendor':gv.get('ordering'),'global_options':gg.get('orderingOptions'),'vendor_options':gv.get('orderingOptions')})
+          ge=g.get('en_global',{}); gev=g.get('en_vendor',{})
+          if ge and gev:
+              visual.append({'area':'destination EN global vs vendor','global':ge.get('destination'),'vendor':gev.get('destination'),'global_close':ge.get('modalClose'),'vendor_close':gev.get('modalClose'),'global_text':ge.get('destinationText'),'vendor_text':gev.get('destinationText')})
+              visual.append({'area':'ordering EN global vs vendor','global':ge.get('ordering'),'vendor':gev.get('ordering'),'global_options':ge.get('orderingOptions'),'vendor_options':gev.get('orderingOptions')})
+          out={'status':'issues-found' if issues else 'success','passed':passed,'issues':issues,'visual_observations':visual,'http':h,'browser':b}
+          pathlib.Path('.deploy-status/global-functional-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'status':out['status'],'passed':len(passed),'issues':len(issues),'visual':len(visual)},ensure_ascii=False))
+          PY
+
+      - name: Commit audit report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/global-functional-audit-20260822.json
+          git commit -m "Record global bilingual functional audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
