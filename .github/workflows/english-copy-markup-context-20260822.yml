@@ -1,0 +1,45 @@
+name: English copy markup context 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/english-copy-markup-context-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Fetch exact markup contexts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import subprocess,re,json,time,pathlib,html
+          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          def body(path):
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-Markup/1.0','-H','Cache-Control: no-cache, no-store',base+path+'?emdo_markup='+stamp],capture_output=True,text=True)
+              return p.stdout
+          def ctx(s,pattern):
+              out=[]
+              for m in re.finditer(pattern,s,re.I):out.append(s[max(0,m.start()-600):min(len(s),m.end()+600)])
+              return out[:12]
+          producers=body('/en/producers/'); product=body('/en/product/4-boxes-of-vegetables-7-kg-receive-them-every-week/')
+          out={'producers_visitar':ctx(producers,r'Visitar'),'product_descripcion':ctx(product,r'Descripci(?:ó|&oacute;|&#243;)n'),'producer_bytes':len(producers),'product_bytes':len(product)}
+          pathlib.Path('.deploy-status/english-copy-markup-context-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'visitar_contexts':len(out['producers_visitar']),'descripcion_contexts':len(out['product_descripcion'])}))
+          PY
+      - name: Commit report
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/english-copy-markup-context-20260822.json
+          git commit -m "Record English copy markup context ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
