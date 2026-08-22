@@ -1,0 +1,60 @@
+name: Locate English SEO redirect source 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/locate-english-seo-redirect-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Locate redirect source in production
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" > .deploy-status/english-seo-redirect-source-20260822.txt <<'REMOTE'
+          set -euo pipefail
+          echo "PROD_PATH=$PROD_PATH"
+          echo "=== EXACT STRING ==="
+          grep -RIn --include='*.php' --exclude-dir='cache' --exclude-dir='uploads' -F "MDO English SEO" "$PROD_PATH/wp-content" 2>/dev/null || true
+          echo "=== REDIRECT FUNCTIONS IN ENGLISH/SEO FILES ==="
+          find "$PROD_PATH/wp-content" -type f -name '*.php' \( -iname '*english*' -o -iname '*seo*' -o -iname '*route*' -o -iname '*canonical*' \) -print0 2>/dev/null \
+            | xargs -0 grep -nHE "wp_safe_redirect|wp_redirect|X-Redirect-By|redirect_canonical|template_redirect" 2>/dev/null || true
+          echo "=== HEADER SOURCE PROBE ==="
+          curl -k -sS -D - -o /dev/null --connect-timeout 8 --max-time 20 --max-redirs 0 -A 'Mozilla/5.0 EMDO-redirect-source/1.0' -H 'Cache-Control: no-cache' 'https://www.elmercadodeorigen.com/en/categories/?emdo_source_probe=1' || true
+          REMOTE
+      - name: Commit diagnostic
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add .deploy-status/english-seo-redirect-source-20260822.txt || true
+          git commit -m 'Record English SEO redirect source [skip ci]' || true
+          git push origin HEAD:main
