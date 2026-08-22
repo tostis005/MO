@@ -1,0 +1,52 @@
+{
+  "curl": {
+    "shop": {
+      "rc": 0,
+      "http": 301,
+      "location": "https://www.elmercadodeorigen.com/en/shop/",
+      "x_redirect_by": "MDO English page canonical",
+      "bytes": 0,
+      "cards": 0,
+      "ids": []
+    },
+    "legacy": {
+      "rc": 0,
+      "http": 301,
+      "location": "https://www.elmercadodeorigen.com/en/shop/?emdo_en_shop_diag=1787391573",
+      "x_redirect_by": "MDO English SEO",
+      "bytes": 0,
+      "cards": 0,
+      "ids": []
+    },
+    "home": {
+      "rc": 0,
+      "http": 200,
+      "location": "",
+      "x_redirect_by": "",
+      "bytes": 1221928,
+      "cards": 7,
+      "ids": [
+        3699,
+        1056,
+        1356,
+        1350,
+        4199,
+        1693,
+        4160
+      ]
+    },
+    "shop_menu_hrefs": [
+      "https://www.elmercadodeorigen.com/en/shop/",
+      "https://www.elmercadodeorigen.com/en/shop/"
+    ]
+  },
+  "chrome": {
+    "fatal": "Error: Runtime.evaluate timeout\n    at Timeout._onTimeout ([stdin]:9:133)\n    at listOnTimeout (node:internal/timers:585:17)\n    at process.processTimers (node:internal/timers:521:7)"
+  },
+  "status": "failure",
+  "failures": [
+    "English shop HTTP/redirect failure",
+    "English shop initial HTML has too few products",
+    "No browser snapshots"
+  ]
+}
