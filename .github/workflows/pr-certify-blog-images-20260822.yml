@@ -68,18 +68,35 @@ jobs:
             .github/data/legacy-blog-image-overrides-20260821.php \
             "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
+          set +e
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            set -e
             wp_bin=\$(command -v wp); php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" \"\$wp_bin\" eval 'fwrite(STDERR, \"EMDO_ABSPATH_DEFINED=\" . (defined(\"ABSPATH\") ? \"yes\" : \"no\") . PHP_EOL);' --path='$PROD_PATH' --allow-root
             MDO_AUTHORITY_IMAGE_OVERRIDES='$REMOTE/editorial-image-overrides-20260821.php' \
             MDO_LEGACY_IMAGE_OVERRIDES='$REMOTE/legacy-blog-image-overrides-20260821.php' \
             \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE/certify-blog-images-20260822.php' --path='$PROD_PATH' --allow-root
-          " > /tmp/blog-cert-report.json
+          " > /tmp/blog-cert-report.json 2> /tmp/blog-cert-remote.stderr
+          rc=$?
+          set -e
+          echo "WP_CERT_EXIT_CODE=$rc"
+          echo "WP_CERT_STDOUT_BYTES=$(wc -c < /tmp/blog-cert-report.json)"
+          echo '--- WP CERT STDERR ---'
+          tail -n 120 /tmp/blog-cert-remote.stderr || true
+          echo '--- WP CERT STDOUT HEAD ---'
+          head -c 4000 /tmp/blog-cert-report.json || true
+          echo
+          [ "$rc" -eq 0 ] || exit "$rc"
+          [ -s /tmp/blog-cert-report.json ] || { echo 'Certifier produced empty stdout.' >&2; exit 21; }
 
           python3 - <<'PY'
           import json
-          d=json.load(open('/tmp/blog-cert-report.json'))
+          raw=open('/tmp/blog-cert-report.json', encoding='utf-8-sig').read().strip()
+          start=raw.find('{')
+          if start < 0:
+              raise SystemExit('No JSON object found in certifier stdout: '+raw[:500])
+          d=json.loads(raw[start:])
+          open('/tmp/blog-cert-report.json','w').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
           assert d['status']=='ok', d.get('status')
           assert d['authority_count'] >= 50, d['authority_count']
           assert not d['duplicates_by_pexels'], d['duplicates_by_pexels']
@@ -135,5 +152,4 @@ jobs:
       - name: Certification passed
         run: echo BLOG_IMAGE_PRODUCTION_CERTIFIED
 
-# PR trigger marker: this branch exists only to expose the read-only certification run.
-# Synchronize trigger after PR #77 was opened.
+# PR #77 exists only to expose this read-only certification run.
