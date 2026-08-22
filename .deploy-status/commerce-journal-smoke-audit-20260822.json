@@ -1,0 +1,72 @@
+{
+  "resolved": {
+    "cart": {
+      "id": 7,
+      "native_slug": "carrito",
+      "en_slug": "cart",
+      "en_published": "1"
+    },
+    "checkout": {
+      "id": 8,
+      "native_slug": "finalizar-compra",
+      "en_slug": "checkout",
+      "en_published": "1"
+    },
+    "product": {
+      "id": 12849,
+      "native_slug": "lenteja-pardina",
+      "en_slug": "pardina-lentil",
+      "native_title": "Lenteja pardina",
+      "en_title": "Pardina lentil",
+      "price": "3.35"
+    }
+  },
+  "tests": {
+    "es": {
+      "product_http": 200,
+      "add_http": 200,
+      "cart_http": 200,
+      "cart_has_item": true,
+      "cart_has_product": true,
+      "checkout_http": 200,
+      "checkout_has_form": true,
+      "checkout_text_sample": "Finalizar compra - El Mercado de Origen Selección cuidada de productores Compra segura y transparente Envíos preparados con cuidado Tel: 603 02 95 09 Saltar a la navegación Saltar al contenido El Mercado de Origen Inicio Tienda Blog Productores Contacto Búsqueda de productos Acceder / Registro image/svg+xml 1 Finalizar compra Inicio / Finalizar compra Hay algunos problemas con los artículos de tu carrito. Por favor vuelve a la página del carrito y resuelve los problemas antes de pagar. Volver al"
+    },
+    "en": {
+      "product_http": 200,
+      "add_http": 200,
+      "cart_http": 200,
+      "cart_has_item": true,
+      "cart_has_product": true,
+      "checkout_http": 200,
+      "checkout_has_form": true,
+      "checkout_text_sample": "Checkout | El Mercado de Origen Carefully selected producers Secure and transparent shopping Orders prepared with care Tel: 603 02 95 09 Skip to navigation Skip to content El Mercado de Origen Home Shop Journal Producers Contact Products search Login / Register image/svg+xml 1 Checkout Home / Checkout There are some issues with the items in your cart. Please go back to the cart page and resolve these issues before checking out. Return to cart About us For producers Terms and Conditions Cookie Po"
+    },
+    "blog1": {
+      "http": 200,
+      "cards": 10,
+      "spanish_reading_time": true,
+      "english_reading_time": false
+    },
+    "blog2": {
+      "http": 200,
+      "cards": 10,
+      "spanish_reading_time": true,
+      "english_reading_time": false
+    },
+    "journal1": {
+      "http": 200,
+      "cards": 10,
+      "spanish_reading_time": false,
+      "english_reading_time": true
+    },
+    "journal2": {
+      "http": 200,
+      "cards": 10,
+      "spanish_reading_time": false,
+      "english_reading_time": true
+    }
+  },
+  "failures": [],
+  "status": "success"
+}
