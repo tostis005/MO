@@ -1,6 +1,7 @@
 <?php
 /** Curated unbranded pools for the two legacy editorial articles. */
 /** 2026-08-22: reduced repetitive acorn imagery in the historic Jamón Ibérico article. */
+/** Certification trigger for the diversity pass; selections are unchanged. */
 return array(
     'jamon-iberico' => array(
         'featured' => array(
