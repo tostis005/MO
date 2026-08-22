@@ -1,0 +1,608 @@
+{
+  "status": "success",
+  "server": {
+    "published_products": 105,
+    "vendors": [
+      {
+        "id": 4514,
+        "nicename": "la-huerta-de-ana-mary",
+        "name": "La Huerta de Ana Mary",
+        "products": 46
+      },
+      {
+        "id": 4507,
+        "nicename": "tolecarnes",
+        "name": "Tolecarnes",
+        "products": 39
+      },
+      {
+        "id": 6,
+        "nicename": "hidalgo-de-la-jara",
+        "name": "Hidalgo de la Jara",
+        "products": 17
+      },
+      {
+        "id": 3,
+        "nicename": "1957",
+        "name": "1957",
+        "products": 3
+      }
+    ],
+    "countries": {
+      "ES": {
+        "allowed_vendors": [
+          4514,
+          4507,
+          6,
+          3
+        ],
+        "excluded_vendors": [],
+        "expected_products": 105
+      },
+      "PL": {
+        "allowed_vendors": [
+          6,
+          3
+        ],
+        "excluded_vendors": [
+          4514,
+          4507
+        ],
+        "expected_products": 20
+      }
+    },
+    "attributes": [
+      {
+        "name": "alimentacion",
+        "label": "Alimentación",
+        "taxonomy": "pa_alimentacion"
+      },
+      {
+        "name": "calidad",
+        "label": "Calidad",
+        "taxonomy": "pa_calidad"
+      },
+      {
+        "name": "con-dop",
+        "label": "Con DOP",
+        "taxonomy": "pa_con-dop"
+      },
+      {
+        "name": "curacion",
+        "label": "Curación",
+        "taxonomy": "pa_curacion"
+      },
+      {
+        "name": "dop",
+        "label": "Denominación de origen",
+        "taxonomy": "pa_dop"
+      },
+      {
+        "name": "origen",
+        "label": "Origen",
+        "taxonomy": "pa_origen"
+      },
+      {
+        "name": "peso",
+        "label": "Peso",
+        "taxonomy": "pa_peso"
+      },
+      {
+        "name": "preparacion",
+        "label": "Preparación",
+        "taxonomy": "pa_preparacion"
+      },
+      {
+        "name": "productor",
+        "label": "Productor",
+        "taxonomy": "pa_productor"
+      },
+      {
+        "name": "rango-peso",
+        "label": "Peso",
+        "taxonomy": "pa_rango-peso"
+      },
+      {
+        "name": "raza-iberica",
+        "label": "Raza ibérica",
+        "taxonomy": "pa_raza-iberica"
+      },
+      {
+        "name": "tamano",
+        "label": "Tamaño",
+        "taxonomy": "pa_tamano"
+      },
+      {
+        "name": "tipo-pieza",
+        "label": "Tipo de pieza",
+        "taxonomy": "pa_tipo-pieza"
+      },
+      {
+        "name": "tipo-producto",
+        "label": "Tipo de producto",
+        "taxonomy": "pa_tipo-producto"
+      },
+      {
+        "name": "variedad",
+        "label": "Variedad",
+        "taxonomy": "pa_variedad"
+      }
+    ],
+    "categories": [
+      {
+        "id": 421,
+        "slug": "accesorios",
+        "name": "Accesorios",
+        "count": 4,
+        "en_slug": "accessories",
+        "en_name": "Accessories",
+        "en_published": "1"
+      },
+      {
+        "id": 418,
+        "slug": "adobados",
+        "name": "Adobados",
+        "count": 3,
+        "en_slug": "marinated-products",
+        "en_name": "Marinated products",
+        "en_published": "1"
+      },
+      {
+        "id": 382,
+        "slug": "carnes",
+        "name": "Carnes",
+        "count": 39,
+        "en_slug": "meat",
+        "en_name": "Meat",
+        "en_published": "1"
+      },
+      {
+        "id": 429,
+        "slug": "mentta",
+        "name": "MENTTA",
+        "count": 20,
+        "en_slug": "",
+        "en_name": "",
+        "en_published": "0"
+      },
+      {
+        "id": 409,
+        "slug": "packs-y-lotes",
+        "name": "Packs y lotes",
+        "count": 44,
+        "en_slug": "packs-and-bundles",
+        "en_name": "Packs and bundles",
+        "en_published": "1"
+      },
+      {
+        "id": 15,
+        "slug": "sin-categorizar",
+        "name": "Sin categorizar",
+        "count": 0,
+        "en_slug": "uncategorized",
+        "en_name": "Uncategorized",
+        "en_published": "1"
+      },
+      {
+        "id": 16,
+        "slug": "aceites",
+        "name": "Aceites",
+        "count": 3,
+        "en_slug": "oils",
+        "en_name": "Oils",
+        "en_published": "1"
+      },
+      {
+        "id": 435,
+        "slug": "conservas",
+        "name": "Conservas",
+        "count": 23,
+        "en_slug": "preserves",
+        "en_name": "Preserves",
+        "en_published": "1"
+      },
+      {
+        "id": 105,
+        "slug": "embutidos-y-curados",
+        "name": "Embutidos y curados",
+        "count": 58,
+        "en_slug": "cured-meats",
+        "en_name": "Cured meats",
+        "en_published": "1"
+      },
+      {
+        "id": 434,
+        "slug": "hortalizas-verduras",
+        "name": "Hortalizas/Verduras",
+        "count": 18,
+        "en_slug": "vegetables",
+        "en_name": "Vegetables",
+        "en_published": "1"
+      },
+      {
+        "id": 149,
+        "slug": "jamones-paletas",
+        "name": "Jamones y paletas",
+        "count": 139,
+        "en_slug": "hams-and-shoulders",
+        "en_name": "Hams and shoulders",
+        "en_published": "1"
+      },
+      {
+        "id": 436,
+        "slug": "legumbres",
+        "name": "Legumbres",
+        "count": 5,
+        "en_slug": "pulses",
+        "en_name": "Pulses",
+        "en_published": "1"
+      },
+      {
+        "id": 27,
+        "slug": "naranjas",
+        "name": "Naranjas",
+        "count": 0,
+        "en_slug": "oranges",
+        "en_name": "Oranges",
+        "en_published": "1"
+      },
+      {
+        "id": 164,
+        "slug": "quesos",
+        "name": "Quesos",
+        "count": 0,
+        "en_slug": "cheeses",
+        "en_name": "Cheeses",
+        "en_published": "1"
+      },
+      {
+        "id": 141,
+        "slug": "uncategorized",
+        "name": "Uncategorized",
+        "count": 0,
+        "en_slug": "uncategorized-2",
+        "en_name": "Uncategorized",
+        "en_published": "1"
+      }
+    ]
+  },
+  "public": {
+    "shops": {
+      "ES": {
+        "es": {
+          "http": 200,
+          "result_count": 105,
+          "cards": 15,
+          "ids": [
+            12829,
+            1056,
+            11139,
+            4199,
+            11112,
+            12825,
+            1599,
+            11131,
+            1356,
+            1220,
+            1350,
+            11156,
+            4160,
+            12832,
+            11105
+          ]
+        },
+        "en": {
+          "http": 200,
+          "result_count": 105,
+          "cards": 15,
+          "ids": [
+            12829,
+            1056,
+            11139,
+            4199,
+            11112,
+            12825,
+            1599,
+            11131,
+            1356,
+            1220,
+            1350,
+            11156,
+            4160,
+            12832,
+            11105
+          ]
+        }
+      },
+      "PL": {
+        "es": {
+          "http": 200,
+          "result_count": 20,
+          "cards": 15,
+          "ids": [
+            1056,
+            4199,
+            1599,
+            1356,
+            1220,
+            1350,
+            4160,
+            1693,
+            1363,
+            1695,
+            1380,
+            5343,
+            8624,
+            5045,
+            5348
+          ]
+        },
+        "en": {
+          "http": 200,
+          "result_count": 20,
+          "cards": 15,
+          "ids": [
+            1056,
+            4199,
+            1599,
+            1356,
+            1220,
+            1350,
+            4160,
+            1693,
+            1363,
+            1695,
+            1380,
+            5343,
+            8624,
+            5045,
+            5348
+          ]
+        }
+      }
+    },
+    "vendors": {
+      "la-huerta-de-ana-mary": {
+        "ES": {
+          "es": {
+            "http": 200,
+            "result_count": 46,
+            "cards": 12,
+            "ids": [
+              12829,
+              12825,
+              12832,
+              12849,
+              12709,
+              12806,
+              12767,
+              12754,
+              12743,
+              12770,
+              12733,
+              12845
+            ]
+          },
+          "en": {
+            "http": 200,
+            "result_count": 46,
+            "cards": 12,
+            "ids": [
+              12829,
+              12825,
+              12832,
+              12849,
+              12709,
+              12806,
+              12767,
+              12754,
+              12743,
+              12770,
+              12733,
+              12845
+            ]
+          }
+        },
+        "PL": {
+          "es": {
+            "http": 200,
+            "result_count": 46,
+            "cards": 0,
+            "ids": []
+          },
+          "en": {
+            "http": 200,
+            "result_count": 46,
+            "cards": 0,
+            "ids": []
+          }
+        }
+      },
+      "tolecarnes": {
+        "ES": {
+          "es": {
+            "http": 200,
+            "result_count": 39,
+            "cards": 12,
+            "ids": [
+              11139,
+              11112,
+              11131,
+              11156,
+              11105,
+              11166,
+              11110,
+              11073,
+              11082,
+              11103,
+              11099,
+              11107
+            ]
+          },
+          "en": {
+            "http": 200,
+            "result_count": 39,
+            "cards": 12,
+            "ids": [
+              11139,
+              11112,
+              11131,
+              11156,
+              11105,
+              11166,
+              11110,
+              11073,
+              11082,
+              11103,
+              11099,
+              11107
+            ]
+          }
+        },
+        "PL": {
+          "es": {
+            "http": 200,
+            "result_count": 39,
+            "cards": 0,
+            "ids": []
+          },
+          "en": {
+            "http": 200,
+            "result_count": 39,
+            "cards": 0,
+            "ids": []
+          }
+        }
+      },
+      "hidalgo-de-la-jara": {
+        "ES": {
+          "es": {
+            "http": 200,
+            "result_count": 17,
+            "cards": 12,
+            "ids": [
+              4199,
+              1356,
+              1350,
+              4160,
+              1693,
+              1363,
+              1695,
+              8624,
+              5045,
+              1380,
+              5343,
+              5348
+            ]
+          },
+          "en": {
+            "http": 200,
+            "result_count": 17,
+            "cards": 12,
+            "ids": [
+              4199,
+              1356,
+              1350,
+              4160,
+              1693,
+              1363,
+              1695,
+              8624,
+              5045,
+              1380,
+              5343,
+              5348
+            ]
+          }
+        },
+        "PL": {
+          "es": {
+            "http": 200,
+            "result_count": 17,
+            "cards": 12,
+            "ids": [
+              4199,
+              1356,
+              1350,
+              4160,
+              1693,
+              1363,
+              1695,
+              8624,
+              5045,
+              1380,
+              5343,
+              5348
+            ]
+          },
+          "en": {
+            "http": 200,
+            "result_count": 17,
+            "cards": 12,
+            "ids": [
+              4199,
+              1356,
+              1350,
+              4160,
+              1693,
+              1363,
+              1695,
+              8624,
+              5045,
+              1380,
+              5343,
+              5348
+            ]
+          }
+        }
+      },
+      "1957": {
+        "ES": {
+          "es": {
+            "http": 200,
+            "result_count": 3,
+            "cards": 3,
+            "ids": [
+              1056,
+              1599,
+              1220
+            ]
+          },
+          "en": {
+            "http": 200,
+            "result_count": 3,
+            "cards": 3,
+            "ids": [
+              1056,
+              1599,
+              1220
+            ]
+          }
+        },
+        "PL": {
+          "es": {
+            "http": 200,
+            "result_count": 3,
+            "cards": 3,
+            "ids": [
+              1056,
+              1599,
+              1220
+            ]
+          },
+          "en": {
+            "http": 200,
+            "result_count": 3,
+            "cards": 3,
+            "ids": [
+              1056,
+              1599,
+              1220
+            ]
+          }
+        }
+      }
+    }
+  },
+  "failures": []
+}
