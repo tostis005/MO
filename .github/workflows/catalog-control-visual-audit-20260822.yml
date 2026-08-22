@@ -1,0 +1,49 @@
+name: Catalog control visual audit 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/catalog-control-visual-audit-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Measure controls at desktop and mobile widths
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-visual
+          rm -rf /tmp/emdo-visual/profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9283 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-visual/profile about:blank >/tmp/emdo-visual/chrome.log 2>&1 &
+          CPID=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9283/json/list >/dev/null 2>&1 && break; sleep 1; done
+          cat > /tmp/emdo-visual/audit.js <<'JS'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9283/json/list')).json();const t=targets.find(x=>x.type==='page');const ws=new WebSocket(t.webSocketDebuggerUrl);await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});let id=0,p=new Map();ws.onmessage=e=>{let m=JSON.parse(e.data);if(!m.id||!p.has(m.id))return;let q=p.get(m.id);p.delete(m.id);clearTimeout(q.timer);m.error?q.bad(m.error):q.ok(m.result||{})};const cmd=(method,params={},timeout=18000)=>new Promise((ok,bad)=>{let n=++id,timer=setTimeout(()=>{p.delete(n);bad(new Error(method+' timeout'))},timeout);p.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}))});await cmd('Page.enable');await cmd('Runtime.enable');
+            const E=async expr=>(await cmd('Runtime.evaluate',{expression:expr,returnByValue:true,awaitPromise:true},12000)).result?.value;
+            const infoExpr=`(()=>{const get=e=>{if(!e)return null;const b=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:String(e.className||''),x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width),h:Math.round(b.height),border:s.border,borderWidth:s.borderWidth,borderStyle:s.borderStyle,borderColor:s.borderColor,borderRadius:s.borderRadius,background:s.backgroundColor,padding:s.padding,fontSize:s.fontSize,lineHeight:s.lineHeight,color:s.color,boxShadow:s.boxShadow,appearance:s.appearance,overflow:s.overflow}};const d=document.querySelector('[data-mdo-destination-open]'),o=document.querySelector('select.orderby');const products=document.querySelectorAll('li.product,.products .product').length;if(d)d.click();const close=document.querySelector('[data-mdo-destination-close]');const modal=document.querySelector('[data-mdo-destination-modal],[role=dialog]');return {ready:document.readyState,products,destinationText:(d?.innerText||'').replace(/\\s+/g,' ').trim(),destination:get(d),ordering:get(o),orderingOptions:o?[...o.options].map(x=>({value:x.value,text:x.textContent.trim()})):[],close:get(close),closeText:(close?.innerText||close?.getAttribute('aria-label')||'').trim(),modal:get(modal)}})()`;
+            async function one(path,width,height){await cmd('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600});await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com'+path+'?emdo_visual='+Date.now()});await sleep(5500);try{await cmd('Page.stopLoading',{},2500)}catch(_){};return E(infoExpr)}
+            const routes={es_global:'/tienda/',en_global:'/en/shop/',es_vendor:'/tienda/1957/',en_vendor:'/en/store/1957/'};const out={desktop:{},mobile:{}};
+            for(const [k,path] of Object.entries(routes))out.desktop[k]=await one(path,1440,1000);
+            for(const [k,path] of Object.entries(routes))out.mobile[k]=await one(path,390,844);
+            console.log(JSON.stringify(out,null,2));ws.close();
+          }
+          main().catch(e=>{console.log(JSON.stringify({fatal:String(e)}));process.exit(0)});
+          JS
+          node /tmp/emdo-visual/audit.js > .deploy-status/catalog-control-visual-audit-20260822.json
+          kill $CPID >/dev/null 2>&1 || true
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/catalog-control-visual-audit-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/catalog-control-visual-audit-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/catalog-control-visual-audit-20260822.json
+          git commit -m "Record catalog control visual audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
