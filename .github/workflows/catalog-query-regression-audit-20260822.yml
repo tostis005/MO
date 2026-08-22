@@ -1,0 +1,125 @@
+name: Catalog query regression audit 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/catalog-query-regression-audit-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run deterministic catalog checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          cat > /tmp/emdo-query-data.php <<'PHP'
+          <?php
+          $out=array('ham_filters'=>array(),'price'=>array());
+          $ham=get_term_by('slug','jamones-paletas','product_cat');
+          if($ham instanceof WP_Term){
+            $cat_ids=array_merge(array((int)$ham->term_id),array_map('intval',(array)get_term_children($ham->term_id,'product_cat')));
+            foreach(array('tipo-pieza','calidad','raza-iberica','alimentacion','con-dop','dop','origen','preparacion','rango-peso','curacion','productor') as $attr){
+              $tax=wc_attribute_taxonomy_name($attr); if(!taxonomy_exists($tax))continue;
+              $terms=get_terms(array('taxonomy'=>$tax,'hide_empty'=>true,'orderby'=>'count','order'=>'DESC'));
+              if(is_wp_error($terms))continue;
+              foreach($terms as $term){
+                $q=new WP_Query(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','no_found_rows'=>true,'suppress_filters'=>true,'tax_query'=>array('relation'=>'AND',array('taxonomy'=>'product_cat','field'=>'term_id','terms'=>$cat_ids,'include_children'=>false),array('taxonomy'=>$tax,'field'=>'term_id','terms'=>array($term->term_id)))));
+                if(count($q->posts)>0){$out['ham_filters'][]=array('attribute'=>$attr,'taxonomy'=>$tax,'term'=>$term->slug,'term_name'=>$term->name,'expected_ids'=>array_map('intval',$q->posts),'expected_count'=>count($q->posts));break;}
+              }
+            }
+          }
+          global $wpdb;$rows=$wpdb->get_results("SELECT product_id,min_price,max_price FROM {$wpdb->wc_product_meta_lookup}",ARRAY_A);foreach($rows as $r){$out['price'][(string)$r['product_id']]=array((float)$r['min_price'],(float)$r['max_price']);}
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp -q -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P "$PORT" /tmp/emdo-query-data.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-query-data.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-query-data.php --path='$PROD_PATH' --allow-root 2>/dev/null" > /tmp/query-data.json
+          python3 - <<'PY'
+          import json,re,subprocess,time,pathlib,html
+          qdata=json.load(open('/tmp/query-data.json'));base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()))
+          def req(path):
+              sep='&' if '?' in path else '?';url=base+path+sep+'emdo_query_audit='+stamp
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-Query-Audit/1.0','-w','\n__HTTP__:%{http_code}\n__URL__:%{url_effective}',url],capture_output=True,text=True)
+              body=p.stdout.split('\n__HTTP__:',1)[0];hm=re.search(r'\n__HTTP__:(\d{3})',p.stdout);um=re.search(r'\n__URL__:(.+)',p.stdout);text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',body)))
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              total=None
+              for pat in [r'(\d+)\s+results',r'(\d+)\s+resultados']:
+                  m=re.search(pat,text,re.I)
+                  if m:total=int(m.group(1));break
+              return {'http':int(hm.group(1)) if hm else 0,'effective_url':um.group(1).strip() if um else '', 'cards':len(ids),'ids':ids[:30],'total':total,'text':text[:3000]}
+          out={'checks':{},'failures':[],'ham_filter_data':qdata['ham_filters']}
+          for lang,path in [('es','/tienda/?vendor_id=3'),('en','/en/shop/?vendor_id=3')]:
+              r=req(path);out['checks']['vendor_'+lang]=r
+              if r['http']!=200 or r['total']!=3 or set(r['ids'])!={1056,1599,1220}:out['failures'].append('1957 vendor query failed '+lang)
+          for lang,basepath in [('es','/tienda/'),('en','/en/shop/')]:
+              asc=req(basepath+'?orderby=price');desc=req(basepath+'?orderby=price-desc');out['checks']['order_'+lang]={'asc':asc,'desc':desc}
+              prices=qdata['price']
+              ap=[prices[str(i)][0] for i in asc['ids'] if str(i) in prices];dp=[prices[str(i)][0] for i in desc['ids'] if str(i) in prices]
+              out['checks']['order_'+lang]['asc_prices']=ap;out['checks']['order_'+lang]['desc_prices']=dp
+              if asc['http']!=200 or desc['http']!=200 or asc['cards']<10 or desc['cards']<10:out['failures'].append('Ordering route failed '+lang)
+              if len(ap)>1 and any(ap[i]>ap[i+1]+1e-9 for i in range(len(ap)-1)):out['failures'].append('Ascending price order is not monotonic '+lang)
+              if len(dp)>1 and any(dp[i]<dp[i+1]-1e-9 for i in range(len(dp)-1)):out['failures'].append('Descending price order is not monotonic '+lang)
+          if qdata['ham_filters']:
+              f=qdata['ham_filters'][0];param='filter_'+f['attribute']+'='+f['term']+'&query_type_'+f['attribute']+'=or'
+              for lang,path in [('es','/categoria-producto/jamones-paletas/?'+param),('en','/en/product-category/hams-and-shoulders/?'+param)]:
+                  r=req(path);out['checks']['meta_'+lang]=r
+                  expected=set(f['expected_ids']);visible=set(r['ids'])
+                  if r['http']!=200 or r['cards']<1 or not visible.issubset(expected):out['failures'].append('Attribute filter failed '+lang+' '+f['attribute']+'='+f['term'])
+          cats=[('accesorios','accessories',4),('adobados','marinated-products',3),('carnes','meat',39),('packs-y-lotes','packs-and-bundles',44),('aceites','oils',3),('conservas','preserves',23),('embutidos-y-curados','cured-meats',58),('hortalizas-verduras','vegetables',18),('jamones-paletas','hams-and-shoulders',139),('legumbres','pulses',5)]
+          for es,en,count in cats:
+              a=req('/categoria-producto/'+es+'/');b=req('/en/product-category/'+en+'/');out['checks']['cat_'+es]={'es':a,'en':b}
+              if a['http']!=200 or b['http']!=200:out['failures'].append('Category route failed '+es)
+              if count>0 and (a['cards']<1 or b['cards']<1):out['failures'].append('Category empty unexpectedly '+es)
+          # Chrome direct page 2: browser-side rendering after 12 seconds.
+          for lang,path in [('es','/tienda/page/2/'),('en','/en/shop/page/2/')]:
+              url=base+path+'?emdo_page2_query='+stamp
+              c=subprocess.run(['google-chrome','--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=12000','--dump-dom',url],capture_output=True,text=True,timeout=50)
+              dom=c.stdout;ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',dom)+re.findall(r'data-product_id=["\'](\d+)["\']',dom,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              out['checks']['page2_'+lang]={'cards':len(ids),'ids':ids[:30],'has_updating':('Updating products' in dom or 'Actualizando productos' in dom),'bytes':len(dom.encode())}
+              if len(ids)<1:out['failures'].append('Page 2 browser remains empty '+lang)
+          out['status']='success' if not out['failures'] else 'issues-found'
+          pathlib.Path('.deploy-status/catalog-query-regression-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'status':out['status'],'failures':out['failures'],'filter':qdata['ham_filters'][0] if qdata['ham_filters'] else None},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          test -f .deploy-status/catalog-query-regression-audit-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/catalog-query-regression-audit-20260822.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/catalog-query-regression-audit-20260822.json
+          git commit -m "Record catalog query regression audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
