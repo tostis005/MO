@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO English Commerce Public URI Guard
- * Description: Resolves internally mapped English commerce routes and restores their browser-facing URI before legacy canonical handlers can self-redirect.
- * Version: 1.2.0
+ * Plugin Name: MDO English Public URI Guard
+ * Description: Resolves internally mapped English commerce routes and restores clean browser-facing English URIs before legacy canonical handlers can self-redirect.
+ * Version: 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -61,9 +61,35 @@ add_action(
 );
 
 /**
- * By template_redirect WordPress has already parsed the query. Put the clean
- * browser-facing URI back so the legacy canonical handlers see the URL the
- * visitor actually requested instead of the internal Spanish rewrite target.
+ * Return true only for a published English page/post alias. This deliberately
+ * excludes taxonomy, vendor and commerce-base routes, which have their own
+ * resolvers and canonical guards.
+ */
+function mdo_ecg_is_clean_content_alias_20260822( string $public_path ): bool {
+    if ( 1 !== preg_match( '#^/en/([^/]+)/?$#i', $public_path, $match ) ) {
+        return false;
+    }
+
+    $slug = sanitize_title( rawurldecode( (string) $match[1] ) );
+    if ( '' === $slug || in_array( $slug, array( 'shop', 'store', 'product', 'product-category', 'product-tag' ), true ) ) {
+        return false;
+    }
+
+    if ( function_exists( 'mdoer_post_row_by_en_slug' ) ) {
+        return is_array( mdoer_post_row_by_en_slug( $slug, array( 'page', 'post' ) ) );
+    }
+
+    if ( function_exists( 'mdo_en_find_by_slug' ) ) {
+        return (bool) ( mdo_en_find_by_slug( 'page', $slug ) || mdo_en_find_by_slug( 'post', $slug ) );
+    }
+
+    return false;
+}
+
+/**
+ * By template_redirect WordPress has already parsed the internally mapped query.
+ * Put the clean browser-facing URI back so legacy canonical handlers see the URL
+ * the visitor actually requested instead of the internal Spanish rewrite target.
  */
 add_action(
     'template_redirect',
@@ -74,15 +100,16 @@ add_action(
 
         $public_uri  = mdo_ecg_public_uri_20260822();
         $public_path = (string) wp_parse_url( $public_uri, PHP_URL_PATH );
-        $is_clean_shop = 1 === preg_match( '#^/en/shop(?:/page/[1-9][0-9]*)?/?$#i', $public_path );
+        $is_clean_shop   = 1 === preg_match( '#^/en/shop(?:/page/[1-9][0-9]*)?/?$#i', $public_path );
         $is_clean_product = 1 === preg_match( '#^/en/product/[^/]+/?$#i', $public_path );
+        $is_clean_content = mdo_ecg_is_clean_content_alias_20260822( $public_path );
 
-        if ( ! $is_clean_shop && ! $is_clean_product ) {
+        if ( ! $is_clean_shop && ! $is_clean_product && ! $is_clean_content ) {
             return;
         }
 
         $_SERVER['REQUEST_URI'] = $public_uri;
-        $GLOBALS['mdo_en_commerce_public_uri_restored_20260822'] = true;
+        $GLOBALS['mdo_en_public_uri_restored_20260822'] = true;
     },
     0
 );
