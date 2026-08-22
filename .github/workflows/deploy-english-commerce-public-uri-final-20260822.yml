@@ -1,0 +1,131 @@
+name: Deploy English commerce public URI final 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/deploy-english-commerce-public-uri-final-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Deploy and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          REPORT='.deploy-status/english-commerce-public-uri-final-20260822.json'
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          DST="$PROD_PATH/wp-content/mu-plugins/mdo-zzzz-english-shop-public-uri-guard-20260822.php"
+          BACKUP="/tmp/emdo-commerce-uri-${GITHUB_RUN_ID}.bak"
+          HAD_OLD=0
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$DST'"; then HAD_OLD=1; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$DST' '$BACKUP'"; fi
+          rollback(){
+            if [ "$HAD_OLD" = 1 ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$BACKUP' '$DST'" || true; else sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$DST'" || true; fi
+          }
+          trap 'rc=$?; if [ $rc -ne 0 ]; then rollback; fi; exit $rc' EXIT
+          sshpass -e scp $SCP mu-plugins/mdo-zzzz-english-shop-public-uri-guard-20260822.php "$STAGING_USER@$STAGING_HOST:$DST"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$DST' >/dev/null"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          export PROD_PATH SSH
+          python3 - <<'PY'
+          import subprocess,re,json,pathlib,time
+          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          def req(path):
+              url=base+path+('&' if '?' in path else '?')+'emdo_final='+stamp
+              p=subprocess.run(['curl','-k','-sS','--connect-timeout','8','--max-time','45','--max-redirs','0','-A','Mozilla/5.0 EMDO-Final/1.0','-H','Cache-Control: no-cache, no-store','-D','/tmp/h.txt','-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+              raw=p.stdout; m=re.search(r'\n__HTTP__:(\d{3})',raw); body=raw.split('\n__HTTP__:',1)[0]
+              h=pathlib.Path('/tmp/h.txt').read_text(errors='ignore') if pathlib.Path('/tmp/h.txt').exists() else ''
+              loc=re.findall(r'^location:\s*(.+)$',h,re.I|re.M); xr=re.findall(r'^x-redirect-by:\s*(.+)$',h,re.I|re.M)
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids: ids.append(x)
+              return {'http':int(m.group(1)) if m else 0,'location':loc[-1].strip() if loc else '','x_redirect_by':xr[-1].strip() if xr else '','cards':len(ids),'ids':ids[:30],'bytes':len(body.encode()),'body':body}
+          rawshop=req('/en/shop/'); links=re.findall(r'href=["\']([^"\']*/en/product/[^"\']+/)["\']',rawshop['body'],re.I)
+          paths={'en_shop':'/en/shop/','en_shop_page2':'/en/shop/page/2/','legacy_shop':'/en/tienda/','en_categories':'/en/categories/','en_meat':'/en/product-category/meat/','en_vendor':'/en/store/1957/','es_shop':'/tienda/'}
+          tests={k:{kk:vv for kk,vv in req(v).items() if kk!='body'} for k,v in paths.items()}
+          tests['en_shop']={k:v for k,v in rawshop.items() if k!='body'}
+          if links:
+              p=re.sub(r'^https?://[^/]+','',links[0]); tests['en_product']={k:v for k,v in req(p).items() if k!='body'}
+          fail=[]
+          direct=['en_shop','en_categories','en_meat','en_vendor','es_shop']
+          for k in direct:
+              if tests[k]['http']!=200 or tests[k]['location']: fail.append(k+' is not direct 200')
+          if tests['en_shop']['cards']<10: fail.append('English shop has too few products')
+          if tests['en_meat']['cards']<1: fail.append('English category has no products')
+          if tests['es_shop']['cards']<10: fail.append('Spanish shop has too few products')
+          if tests['en_shop_page2']['http']!=200 or tests['en_shop_page2']['location']: fail.append('English shop page 2 failed')
+          if tests['legacy_shop']['http'] not in (301,302) or '/en/shop/' not in tests['legacy_shop']['location']: fail.append('Legacy English shop redirect failed')
+          if 'en_product' not in tests or tests['en_product']['http']!=200 or tests['en_product']['location']: fail.append('English product is not direct 200')
+          out={'http':tests,'browser':{},'wp_state':'','failures':fail,'status':'failure' if fail else 'pending'}
+          pathlib.Path('/tmp/emdo-final.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n'); pathlib.Path('/tmp/esids').write_text(','.join(map(str,tests['es_shop']['ids'])))
+          if fail: raise SystemExit('; '.join(fail))
+          PY
+
+          rm -rf /tmp/emdo-final-chrome
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9234 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-final-chrome about:blank >/tmp/chrome-final.log 2>&1 & CPID=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9234/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE' >/tmp/browser-final.json
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          (async()=>{const ts=await (await fetch('http://127.0.0.1:9234/json/list')).json(),t=ts.find(x=>x.type==='page'),ws=new WebSocket(t.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});let id=0,p=new Map();ws.onmessage=e=>{let m=JSON.parse(e.data);if(!m.id||!p.has(m.id))return;let q=p.get(m.id);p.delete(m.id);clearTimeout(q.t);m.error?q.j(m.error):q.r(m.result||{})};const c=(method,params={},ms=25000)=>new Promise((r,j)=>{let n=++id,t=setTimeout(()=>{p.delete(n);j(new Error(method+' timeout'))},ms);p.set(n,{r,j,t});ws.send(JSON.stringify({id:n,method,params}))});await c('Page.enable');await c('Runtime.enable');await c('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/?emdo_chrome='+Date.now()},30000);let ex=`(()=>{let ps=[...document.querySelectorAll('li.product,.products .product')],ss=[...document.scripts].map(s=>s.src||'');return {href:location.href,readyState:document.readyState,products:ps.length,nodes:document.getElementsByTagName('*').length,heap:(performance.memory||{}).usedJSHeapSize||0,translateDom:ss.some(s=>s.includes('trp-translate-dom-changes')),autoLoader:!!document.getElementById('elmercado-catalog-scroll-final-010234')}})()`;let a=[];for(let i=0;i<3;i++){await sleep(4000);let r=await c('Runtime.evaluate',{expression:ex,returnByValue:true});a.push(r.result.value)}console.log(JSON.stringify({snapshots:a},null,2));ws.close()})().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+          kill $CPID >/dev/null 2>&1 || true
+
+          IDS="$(cat /tmp/esids)"
+          STATE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); IDS='$IDS' \"\$php_bin\" \"\$wp_bin\" eval '\$ids=array_filter(array_map(\"absint\",explode(\",\",getenv(\"IDS\"))));\$a=array();foreach(\$ids as \$id){\$p=get_post(\$id);if(\$p instanceof WP_Post)\$a[(int)\$p->post_author]=1;}\$all=get_posts(array(\"post_type\"=>\"product\",\"post_status\"=>\"publish\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"suppress_filters\"=>true));\$r=get_transient(\"mdo_catalog_rank_v3_\".gmdate(\"Ymd\"));echo count(\$a).\":\".count(\$all).\":\".(is_array(\$r)?count(\$r):0);' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          python3 - "$STATE" <<'PY'
+          import json,pathlib,sys
+          p=pathlib.Path('/tmp/emdo-final.json');d=json.loads(p.read_text());b=json.loads(pathlib.Path('/tmp/browser-final.json').read_text());d['browser']=b;d['wp_state']=sys.argv[1];s=b.get('snapshots') or []
+          if not s:d['failures'].append('No Chrome snapshots')
+          else:
+              if s[-1].get('readyState')!='complete' or s[-1].get('products',0)<10 or '/en/shop/' not in s[-1].get('href',''):d['failures'].append('Chrome English shop render failed')
+              if s[-1].get('translateDom') or s[-1].get('autoLoader'):d['failures'].append('Unstable English client loader/translator active')
+              if s[-1].get('nodes',0)>s[0].get('nodes',0)+2000 or s[-1].get('heap',0)>350000000:d['failures'].append('Chrome DOM/heap unstable')
+          try:v,pub,rank=map(int,sys.argv[1].split(':'))
+          except:v=pub=rank=0
+          if v<4 or pub<100 or rank!=pub:d['failures'].append('Global catalogue state regressed')
+          d['status']='success' if not d['failures'] else 'failure';p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          if d['failures']:raise SystemExit('; '.join(d['failures']))
+          PY
+          cp /tmp/emdo-final.json "$REPORT"
+          trap - EXIT
+      - name: Preserve report on failure
+        if: failure()
+        run: |
+          mkdir -p .deploy-status
+          if [ -f /tmp/emdo-final.json ]; then cp /tmp/emdo-final.json .deploy-status/english-commerce-public-uri-final-20260822.json; else printf '{"status":"failure","failures":["verification failed before report"]}\n' > .deploy-status/english-commerce-public-uri-final-20260822.json; fi
+      - name: Commit report
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/english-commerce-public-uri-final-20260822.json || true
+          git commit -m "Record final English commerce verification ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
