@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO English Shop Public URI Guard
- * Description: Restores the browser-facing /en/shop/ URI after internal routing has resolved the WooCommerce query, preventing the legacy English router from redirecting the clean shop URL to itself.
- * Version: 1.0.0
+ * Plugin Name: MDO English Commerce Public URI Guard
+ * Description: Restores clean browser-facing English shop/product URIs after internal routing has resolved the WordPress/WooCommerce query, preventing legacy canonical self-redirects.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -10,15 +10,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * mdo-production-english-seo-routes.php intentionally rewrites /en/shop/ to
- * /en/tienda/ very early so WordPress/WooCommerce can resolve the native shop.
- * By template_redirect the query is already resolved. The older island router,
- * however, reads REQUEST_URI at priority 1 and otherwise mistakes that internal
- * URI for a public legacy URL, producing a 301 from /en/shop/ back to itself.
+ * mdo-production-english-seo-routes.php intentionally maps clean public English
+ * commerce URLs to native Spanish rewrite endpoints before WordPress parses the
+ * request. By template_redirect the query is already resolved. The older island
+ * router still reads REQUEST_URI at priority 1, so without this handoff it can
+ * mistake the internal URI for a public legacy URL and redirect the clean URL
+ * back to itself.
  *
- * Restore only the public English shop URI immediately before canonical
- * redirects run. This does not change query vars, products, ranking, shipping,
- * ordering, vendor state or Spanish routes.
+ * Restore only the clean public shop and product URL families immediately before
+ * canonical redirects run. Query vars and catalogue state are left untouched.
  */
 add_action(
     'template_redirect',
@@ -34,12 +34,15 @@ add_action(
         $public_uri  = (string) $GLOBALS['mdoer_public_request_uri'];
         $public_path = (string) wp_parse_url( $public_uri, PHP_URL_PATH );
 
-        if ( 1 !== preg_match( '#^/en/shop(?:/page/[1-9][0-9]*)?/?$#i', $public_path ) ) {
+        $is_clean_shop = 1 === preg_match( '#^/en/shop(?:/page/[1-9][0-9]*)?/?$#i', $public_path );
+        $is_clean_product = 1 === preg_match( '#^/en/product/[^/]+/?$#i', $public_path );
+
+        if ( ! $is_clean_shop && ! $is_clean_product ) {
             return;
         }
 
         $_SERVER['REQUEST_URI'] = $public_uri;
-        $GLOBALS['mdo_en_shop_public_uri_restored_20260822'] = true;
+        $GLOBALS['mdo_en_commerce_public_uri_restored_20260822'] = true;
     },
     0
 );
