@@ -1,0 +1,318 @@
+name: Restore approved post-Aug20 runtime 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-post-aug20-approved-runtime-20260822.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: restore-post-aug20-approved-runtime-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate approved payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            elmercadodeorigen-child/page-categorias.php
+            elmercadodeorigen-child/inc/catalog-query-parity-010224.php
+            elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php
+            mdo-supplier-sync/mdo-supplier-sync.php
+            mdo-supplier-sync/includes/class-mdo-huerta-unit-price.php
+            mu-plugins/emdo-category-seo-description.php
+            mu-plugins/emdo-outofstock-product-seo.php
+            mu-plugins/emdo-seo-cleanup-layer.php
+            mu-plugins/emdo-seo-language-cleanup.php
+            mu-plugins/mdo-a-dynamic-sitemaps.php
+            mu-plugins/mdo-blog-image-pagination-010262.php
+            mu-plugins/mdo-catalog-toolbar-static-guard-20260820.php
+            mu-plugins/mdo-english-category-display-20260821.php
+            mu-plugins/mdo-english-category-query-normalizer-20260821.php
+            mu-plugins/mdo-english-home-categories-producers-20260820.php
+            mu-plugins/mdo-english-journal-content-20260821.php
+            mu-plugins/mdo-huerta-english-products-20260821.php
+            mu-plugins/mdo-pinterest-catalog-feed-20260821.php
+            mu-plugins/mdo-pinterest-domain-verification.php
+            mu-plugins/mdo-pinterest-tag-20260821.php
+            mu-plugins/mdo-product-category-public-products-20260821.php
+            mu-plugins/zz-mdo-producer-store-catalog-rules-20260821.php
+            mu-plugins/zzz-mdo-producer-store-catalog-rules-safe-20260821.php
+            mu-plugins/zzzz-mdo-producer-store-empty-destination-200-20260821.php
+            mu-plugins/mdo-catalog-rank-cache-coherence-20260822.php
+          )
+          for file in "${files[@]}"; do
+            test -f "$file"
+            php -l "$file" >/dev/null
+          done
+          # Explicitly excluded: unfinished producer shipping/ordering UI and old catalogue-query patch.
+          test ! -e mu-plugins/zzz-mdo-catalog-query-coherence-20260822.php
+          test ! -e mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php
+          test ! -e mu-plugins/zzzzzz-mdo-producer-toolbar-static-guard-20260821.php
+          test ! -e mu-plugins/zzzzzz-mdo-producer-toolbar-white-guard-20260821.php
+          test ! -e mu-plugins/zzzzzzz-mdo-producer-toolbar-final-geometry-20260821.php
+          test ! -e mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php
+          test ! -e mu-plugins/zzzzzzzzz-mdo-producer-ordering-shop-parity-20260821.php
+          test ! -e elmercadodeorigen-child/inc/vendor-ordering-parity-010261.php
+
+      - name: Locate production runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          THEME_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo get_stylesheet_directory();' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          : "${THEME_PATH:?active child theme path not found}"
+          PLUGIN_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "find '$PROD_PATH/wp-content/plugins' -maxdepth 2 -type f -name 'mdo-supplier-sync.php' -print -quit 2>/dev/null | xargs -r dirname")"
+          if [ -z "$PLUGIN_PATH" ]; then PLUGIN_PATH="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"; fi
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "THEME_PATH=$THEME_PATH" >> "$GITHUB_ENV"
+          echo "PLUGIN_PATH=$PLUGIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Backup and deploy approved runtime
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          BACKUP="/tmp/emdo-pre-approved-restore-${GITHUB_RUN_ID}.tar.gz"
+          theme_base="$(basename "$THEME_PATH")"
+          plugin_base="$(basename "$PLUGIN_PATH")"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; cd '$PROD_PATH/wp-content'; tar -czf '$BACKUP' --ignore-failed-read mu-plugins 'themes/$theme_base' 'plugins/$plugin_base'"
+          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$THEME_PATH/inc' '$PROD_PATH/wp-content/mu-plugins' '$PLUGIN_PATH'"
+          sshpass -e scp $SCP elmercadodeorigen-child/page-categorias.php "$STAGING_USER@$STAGING_HOST:$THEME_PATH/page-categorias.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/catalog-query-parity-010224.php "$STAGING_USER@$STAGING_HOST:$THEME_PATH/inc/catalog-query-parity-010224.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/catalog-visibility-counts-010217.php "$STAGING_USER@$STAGING_HOST:$THEME_PATH/inc/catalog-visibility-counts-010217.php"
+
+          mu_files=(
+            emdo-category-seo-description.php
+            emdo-outofstock-product-seo.php
+            emdo-seo-cleanup-layer.php
+            emdo-seo-language-cleanup.php
+            mdo-a-dynamic-sitemaps.php
+            mdo-blog-image-pagination-010262.php
+            mdo-catalog-toolbar-static-guard-20260820.php
+            mdo-english-category-display-20260821.php
+            mdo-english-category-query-normalizer-20260821.php
+            mdo-english-home-categories-producers-20260820.php
+            mdo-english-journal-content-20260821.php
+            mdo-huerta-english-products-20260821.php
+            mdo-pinterest-catalog-feed-20260821.php
+            mdo-pinterest-domain-verification.php
+            mdo-pinterest-tag-20260821.php
+            mdo-product-category-public-products-20260821.php
+            zz-mdo-producer-store-catalog-rules-20260821.php
+            zzz-mdo-producer-store-catalog-rules-safe-20260821.php
+            zzzz-mdo-producer-store-empty-destination-200-20260821.php
+            mdo-catalog-rank-cache-coherence-20260822.php
+          )
+          for file in "${mu_files[@]}"; do
+            sshpass -e scp $SCP "mu-plugins/$file" "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/$file"
+          done
+
+          tar -C mdo-supplier-sync -czf /tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz .
+          sshpass -e scp $SCP /tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz "$STAGING_USER@$STAGING_HOST:/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PLUGIN_PATH'; tar -xzf '/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz' -C '$PLUGIN_PATH'; rm -f '/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz'"
+
+          # Keep the intentionally excluded/unfinished producer toolbar layers and old query patch OFF production.
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f \
+            '$PROD_PATH/wp-content/mu-plugins/zzz-mdo-catalog-query-coherence-20260822.php' \
+            '$PROD_PATH/wp-content/mu-plugins/zzzzz-mdo-producer-store-toolbar-ux-20260821.php' \
+            '$PROD_PATH/wp-content/mu-plugins/zzzzzz-mdo-producer-toolbar-static-guard-20260821.php' \
+            '$PROD_PATH/wp-content/mu-plugins/zzzzzz-mdo-producer-toolbar-white-guard-20260821.php' \
+            '$PROD_PATH/wp-content/mu-plugins/zzzzzzz-mdo-producer-toolbar-final-geometry-20260821.php' \
+            '$PROD_PATH/wp-content/mu-plugins/zzzzzzzz-mdo-producer-toolbar-mobile-polish-20260821.php' \
+            '$PROD_PATH/wp-content/mu-plugins/zzzzzzzzz-mdo-producer-ordering-shop-parity-20260821.php' \
+            '$THEME_PATH/inc/vendor-ordering-parity-010261.php' \
+            '$THEME_PATH/mu-plugins/elmercado-vendor-catalog-controls-010270.php' \
+            '$THEME_PATH/mu-plugins/elmercado-vendor-ordering-native-retire-010274.php' \
+            '$THEME_PATH/mu-plugins/elmercado-vendor-ordering-popover-010272.php' \
+            '$THEME_PATH/mu-plugins/elmercado-vendor-ordering-touch-fix-010271.php' \
+            '$THEME_PATH/mu-plugins/elmercado-vendor-runtime-stability-010275.php'"
+
+          # Validate PHP on the actual production copies, then clear ranking/cache state.
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); for f in \
+            '$THEME_PATH/page-categorias.php' \
+            '$THEME_PATH/inc/catalog-query-parity-010224.php' \
+            '$THEME_PATH/inc/catalog-visibility-counts-010217.php' \
+            '$PLUGIN_PATH/mdo-supplier-sync.php' \
+            '$PLUGIN_PATH/includes/class-mdo-huerta-unit-price.php' \
+            '$PROD_PATH/wp-content/mu-plugins/mdo-english-category-query-normalizer-20260821.php' \
+            '$PROD_PATH/wp-content/mu-plugins/mdo-huerta-english-products-20260821.php' \
+            '$PROD_PATH/wp-content/mu-plugins/mdo-catalog-rank-cache-coherence-20260822.php'; do \"\$php_bin\" -l \"\$f\" >/dev/null; done; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'delete_transient(\"mdo_catalog_rank_v3_\" . gmdate(\"Ymd\")); if (function_exists(\"wp_cache_flush\")) wp_cache_flush();' --path='$PROD_PATH' --allow-root >/dev/null; \"\$wp_bin\" transient delete --all --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+          if [ -f .github/scripts/elmercado-opcache-reset.php ]; then
+            probe="elmercado-opcache-approved-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$probe"
+            curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$probe?run=$GITHUB_RUN_ID" >/dev/null || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$probe'" || true
+          fi
+
+      - name: Verify global shop still exposes full catalogue
+        id: shop
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          url="$BASE_URL/tienda/?emdo_restore_all=${GITHUB_RUN_ID}"
+          code="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache, no-store, must-revalidate' -H 'Pragma: no-cache' -o /tmp/shop.html -w '%{http_code}' "$url")"
+          test "$code" = 200
+          python3 - <<'PY'
+          import pathlib,re
+          html=pathlib.Path('/tmp/shop.html').read_text(errors='replace')
+          ids=[]; seen=set()
+          for tag in re.findall(r'<(?:li|div)\b[^>]*>',html,flags=re.I):
+              if not re.search(r'class=["\'][^"\']*\bproduct\b[^"\']*["\']',tag,flags=re.I): continue
+              for v in re.findall(r'\bpost-(\d+)\b',tag)+re.findall(r'data-product_id=["\'](\d+)["\']',tag,flags=re.I):
+                  i=int(v)
+                  if i not in seen: seen.add(i); ids.append(i)
+          if len(ids)<12: raise SystemExit(f'Only {len(ids)} product cards: {ids}')
+          pathlib.Path('/tmp/shop-ids.csv').write_text(','.join(map(str,ids)))
+          print('cards',ids)
+          PY
+          ids="$(cat /tmp/shop-ids.csv)"
+          authors="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$ids'" <<'REMOTE'
+          set -eu
+          wp_path="$1"; ids="$2"; wp_bin=$(command -v wp); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          OLDIFS="$IFS"; IFS=','
+          for id in $ids; do author=$("$php_bin" "$wp_bin" post get "$id" --field=post_author --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); [ -n "$author" ] && printf '%s:%s\n' "$id" "$author"; done
+          IFS="$OLDIFS"
+          REMOTE
+          )"
+          printf '%s\n' "$authors" | tee /tmp/shop-authors.txt
+          vendors="$(printf '%s\n' "$authors" | cut -d: -f2 | sed '/^$/d' | sort -u | wc -l)"
+          test "$vendors" -ge 4
+          state="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '\$p=get_posts(array(\"post_type\"=>\"product\",\"post_status\"=>\"publish\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"suppress_filters\"=>true,\"no_found_rows\"=>true)); \$c=get_transient(\"mdo_catalog_rank_v3_\".gmdate(\"Ymd\")); echo count(\$p).\":\".(is_array(\$c)?count(\$c):0);' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          published="${state%%:*}"; cached="${state##*:}"
+          test "$published" -gt 100
+          test "$cached" = "$published"
+          printf 'HTTP=%s vendors=%s rank=%s cards=%s\n' "$code" "$vendors" "$state" "$(cat /tmp/shop-ids.csv)" > /tmp/shop-result.txt
+
+      - name: Verify categories Spanish and English
+        id: categories
+        shell: bash
+        run: |
+          set -euo pipefail
+          es_code="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/categories-es.html -w '%{http_code}' "$BASE_URL/categorias/?restore=${GITHUB_RUN_ID}")"
+          en_code="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/categories-en.html -w '%{http_code}' "$BASE_URL/en/categories/?restore=${GITHUB_RUN_ID}")"
+          test "$es_code" = 200
+          test "$en_code" = 200
+          grep -Fq 'Conservas artesanas de pimientos' /tmp/categories-es.html
+          grep -Fq 'Hortalizas y verduras frescas de temporada' /tmp/categories-es.html
+          grep -Fq 'Alubias, garbanzos y lentejas' /tmp/categories-es.html
+          grep -Fq 'Naranjas frescas de distintas variedades' /tmp/categories-es.html
+          grep -Fq 'Quesos de distintas procedencias' /tmp/categories-es.html
+          grep -Fq 'Preserves' /tmp/categories-en.html
+          grep -Fq 'Vegetables' /tmp/categories-en.html
+          grep -Fq 'Pulses' /tmp/categories-en.html
+          for slug in accessories marinated-products meat packs-and-bundles oils preserves cured-meats vegetables hams-and-shoulders pulses; do
+            code="$(curl -sS -L --max-time 35 -H 'Cache-Control: no-cache' -o /tmp/cat.html -w '%{http_code}' "$BASE_URL/en/product-category/$slug/?restore=${GITHUB_RUN_ID}")"
+            test "$code" = 200
+          done
+          printf 'ES=%s EN=%s archives=10/10\n' "$es_code" "$en_code" > /tmp/categories-result.txt
+
+      - name: Verify Huerta English, Journal, SEO and Pinterest
+        id: extras
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          huerta="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/huerta-en.html -w '%{http_code}' "$BASE_URL/en/store/la-huerta-de-ana-mary/?restore=${GITHUB_RUN_ID}")"
+          journal="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/journal-en.html -w '%{http_code}' "$BASE_URL/en/journal/?restore=${GITHUB_RUN_ID}")"
+          journal2="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/journal-en-2.html -w '%{http_code}' "$BASE_URL/en/journal/page/2/?restore=${GITHUB_RUN_ID}")"
+          sitemap="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/products-sitemap.xml -w '%{http_code}' "$BASE_URL/mdo-sitemap-products.xml?restore=${GITHUB_RUN_ID}")"
+          home="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache' -o /tmp/home.html -w '%{http_code}' "$BASE_URL/?restore=${GITHUB_RUN_ID}")"
+          test "$huerta" = 200
+          test "$journal" = 200
+          test "$journal2" = 200
+          test "$sitemap" = 200
+          test "$home" = 200
+          grep -Fq '<urlset' /tmp/products-sitemap.xml
+          grep -Fq 'p:domain_verify' /tmp/home.html
+          grep -Fq 'bd9b4a2c373b774bb7753fa7040172ac' /tmp/home.html
+
+          db_state="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'global \$wpdb; \$t=class_exists(\"MDO_Database\")?MDO_Database::table(\"source_products\"):\$wpdb->prefix.\"mdo_source_products\"; \$ids=array_map(\"intval\",(array)\$wpdb->get_col(\"SELECT DISTINCT p.ID FROM {\$wpdb->posts} p INNER JOIN {\$t} s ON s.wc_product_id=p.ID AND s.source_url LIKE \\\"%lahuertadeanamary.com%\\\" WHERE p.post_type=\\\"product\\\" AND p.post_status=\\\"publish\\\"\")); \$ready=0; foreach(\$ids as \$id){if((string)get_post_meta(\$id,\"_en_US_published\",true)===\"1\" && trim((string)get_post_meta(\$id,\"_en_US_post_title\",true))!==\"\") \$ready++;} echo count(\$ids).\":\".\$ready.\":\".(class_exists(\"MDO_Huerta_Unit_Price\")?\"unitprice\":\"no-unitprice\");' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          test "$db_state" = '46:46:unitprice'
+          printf 'huerta=%s journal=%s journal2=%s sitemap=%s pinterest=%s huerta_db=%s\n' "$huerta" "$journal" "$journal2" "$sitemap" "$home" "$db_state" > /tmp/extras-result.txt
+
+      - name: Record final restoration result
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DEPLOY_RESULT: ${{ steps.deploy.outcome }}
+          SHOP_RESULT: ${{ steps.shop.outcome }}
+          CATEGORY_RESULT: ${{ steps.categories.outcome }}
+          EXTRAS_RESULT: ${{ steps.extras.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os,pathlib
+          def text(p):
+              q=pathlib.Path(p)
+              return q.read_text(errors='replace').strip() if q.exists() else ''
+          out={
+            'status':os.getenv('JOB_STATUS'),
+            'run_id':os.getenv('GITHUB_RUN_ID'),
+            'sha':os.getenv('GITHUB_SHA'),
+            'deploy':os.getenv('DEPLOY_RESULT'),
+            'shop':os.getenv('SHOP_RESULT'),
+            'categories':os.getenv('CATEGORY_RESULT'),
+            'extras':os.getenv('EXTRAS_RESULT'),
+            'backup':os.getenv('BACKUP',''),
+            'excluded':'producer shipping/order toolbar layers + zzz-mdo-catalog-query-coherence-20260822.php',
+            'shop_verification':text('/tmp/shop-result.txt'),
+            'category_verification':text('/tmp/categories-result.txt'),
+            'extras_verification':text('/tmp/extras-result.txt'),
+          }
+          pathlib.Path('.deploy-status/restore-post-aug20-approved-runtime-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/restore-post-aug20-approved-runtime-20260822.json
+          git commit -m "Record approved post-Aug20 runtime restore ${GITHUB_RUN_ID}" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
