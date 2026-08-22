@@ -1,0 +1,62 @@
+name: Price order trace 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/price-order-trace-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Trace public price queries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-price
+          sudo apt-get update -qq; sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp||true);php_bin=$(command -v php||true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)printf "%s" "$p";break;;esac;done')"
+          cat > /tmp/emdo-price/trace.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH')||empty($_GET['emdo_price_trace']))return;
+          $GLOBALS['emdo_price_trace']=array();
+          function emdo_price_main($q){return $q instanceof WP_Query&&$q->is_main_query()&&!$q->is_singular()&&($q->is_post_type_archive('product')||'product'===$q->get('post_type'));}
+          add_filter('posts_request',function($sql,$q){if(emdo_price_main($q)){$GLOBALS['emdo_price_trace']['query_vars']=array('orderby'=>$q->get('orderby'),'order'=>$q->get('order'),'meta_key'=>$q->get('meta_key'),'posts_per_page'=>$q->get('posts_per_page'),'paged'=>$q->get('paged'));$GLOBALS['emdo_price_trace']['sql']=$sql;}return $sql;},PHP_INT_MAX,2);
+          add_filter('the_posts',function($posts,$q){if(emdo_price_main($q)){$ids=array_map(fn($p)=>(int)$p->ID,$posts);$GLOBALS['emdo_price_trace']['ids']=$ids;global $wpdb;$rows=array();foreach($ids as $id){$p=wc_get_product($id);$lookup=$wpdb->get_row($wpdb->prepare("SELECT min_price,max_price FROM {$wpdb->wc_product_meta_lookup} WHERE product_id=%d",$id),ARRAY_A);$rows[]=array('id'=>$id,'type'=>$p?$p->get_type():'','get_price'=>$p?$p->get_price():null,'price_meta'=>get_post_meta($id,'_price',true),'min_price'=>$lookup['min_price']??null,'max_price'=>$lookup['max_price']??null);} $GLOBALS['emdo_price_trace']['products']=$rows;}return $posts;},PHP_INT_MAX-5,2);
+          add_action('wp_footer',function(){echo '<script id="emdo-price-trace" type="application/json">'.wp_json_encode($GLOBALS['emdo_price_trace'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).'</script>';},PHP_INT_MAX);
+          PHP
+          DST="$PROD_PATH/wp-content/mu-plugins/0000-emdo-price-trace-temp.php"; sshpass -e scp $SCP /tmp/emdo-price/trace.php "$STAGING_USER@$STAGING_HOST:$DST"
+          cleanup(){ sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$DST'" >/dev/null 2>&1||true; }; trap cleanup EXIT
+          python3 - <<'PY'
+          import subprocess,re,json,html,pathlib,time
+          base='https://www.elmercadodeorigen.com';out={}
+          for lang,root in [('es','/tienda/'),('en','/en/shop/')]:
+            for order in ['price','price-desc']:
+              url=base+root+'?orderby='+order+'&emdo_price_trace=1&t='+str(int(time.time()))
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--max-time','50','-H','Cache-Control: no-cache, no-store',url],capture_output=True,text=True)
+              m=re.search(r'<script id="emdo-price-trace" type="application/json">(.*?)</script>',p.stdout,re.S)
+              out[lang+'_'+order]=json.loads(html.unescape(m.group(1))) if m else {'missing_trace':True}
+          pathlib.Path('.deploy-status/price-order-trace-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          for k,v in out.items(): print(k, v.get('query_vars'), [(x['id'],x['type'],x['price_meta'],x['min_price'],x['max_price']) for x in v.get('products',[])])
+          PY
+          cleanup;trap - EXIT
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/price-order-trace-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/price-order-trace-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/price-order-trace-20260822.json
+          git commit -m "Record price order trace ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
