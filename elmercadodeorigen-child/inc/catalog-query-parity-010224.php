@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Indica si una consulta es el loop principal de Tienda/categoría/atributo.
  */
 function elmercado_catalog_is_main_query_010224( WP_Query $query ): bool {
-	if ( ! $query->is_main_query() || $query->is_singular() ) {
+	if ( ! $query->is_main_query() ) {
 		return false;
 	}
 

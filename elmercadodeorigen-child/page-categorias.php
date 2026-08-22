@@ -46,11 +46,6 @@ $category_summaries = array(
 	'packs-y-lotes'       => 'Packs y lotes que combinan distintos productos, tanto para regalar como para probar varias especialidades.',
 	'accesorios'          => 'Accesorios y complementos para cortar, servir, conservar o presentar los productos.',
 	'adobados'            => 'Carnes y otros productos adobados o marinados, con distintas preparaciones y formatos.',
-	'conservas'           => 'Conservas artesanas de pimientos, puerros, ajetes, tomate y otras elaboraciones vegetales.',
-	'hortalizas-verduras' => 'Hortalizas y verduras frescas de temporada, desde patatas, pimientos y calabacines hasta otras variedades de la huerta.',
-	'legumbres'           => 'Alubias, garbanzos y lentejas en distintas variedades, seleccionadas para guisos, potajes y otras recetas.',
-	'naranjas'            => 'Naranjas frescas de distintas variedades, seleccionadas para mesa, zumo y otros usos.',
-	'quesos'              => 'Quesos de distintas procedencias, tipos de leche, curaciones y formatos.',
 );
 
 $visible_items = array();
