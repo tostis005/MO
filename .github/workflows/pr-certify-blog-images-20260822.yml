@@ -1,0 +1,136 @@
+name: PR certify production blog imagery 20260822
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/scripts/certify-blog-images-20260822.php'
+      - '.github/data/editorial-image-overrides-20260821.php'
+      - '.github/data/legacy-blog-image-overrides-20260821.php'
+      - '.github/workflows/pr-certify-blog-images-20260822.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  certify-production-readonly:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate certifier files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/certify-blog-images-20260822.php
+          php -l .github/data/editorial-image-overrides-20260821.php
+          php -l .github/data/legacy-blog-image-overrides-20260821.php
+          : "${STAGING_HOST:?STAGING_HOST missing}"
+          : "${STAGING_USER:?STAGING_USER missing}"
+          : "${STAGING_PASSWORD:?STAGING_PASSWORD missing}"
+          [[ "${STAGING_PORT:-22}" =~ ^[0-9]{1,5}$ ]]
+
+      - name: Read and certify WordPress production state
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 2
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 8 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+
+          REMOTE="/tmp/emdo-pr-blog-cert-${GITHUB_RUN_ID}"
+          trap 'sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '\''$REMOTE'\''" >/dev/null 2>&1 || true' EXIT
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          sshpass -e scp $SCP \
+            .github/scripts/certify-blog-images-20260822.php \
+            .github/data/editorial-image-overrides-20260821.php \
+            .github/data/legacy-blog-image-overrides-20260821.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            MDO_AUTHORITY_IMAGE_OVERRIDES='$REMOTE/editorial-image-overrides-20260821.php' \
+            MDO_LEGACY_IMAGE_OVERRIDES='$REMOTE/legacy-blog-image-overrides-20260821.php' \
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE/certify-blog-images-20260822.php' --path='$PROD_PATH' --allow-root
+          " > /tmp/blog-cert-report.json
+
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/blog-cert-report.json'))
+          assert d['status']=='ok', d.get('status')
+          assert d['authority_count'] >= 50, d['authority_count']
+          assert not d['duplicates_by_pexels'], d['duplicates_by_pexels']
+          assert not d['duplicates_by_md5'], d['duplicates_by_md5']
+          assert not d['forbidden_hits'], d['forbidden_hits']
+          assert not d['semantic_flags'], d['semantic_flags']
+          print('WORDPRESS_PRODUCTION_CERT_OK')
+          print('published_posts=', d['published_post_count'])
+          print('authority_posts=', d['authority_count'])
+          print('audited_images=', len(d['all_images']))
+          print('curated_authority_checks=', len(d['expected']))
+          print('legacy_refined_checks=', len(d['legacy']))
+          print('duplicates_by_pexels=0')
+          print('duplicates_by_md5=0')
+          print('forbidden_hits=0')
+          print('semantic_flags=0')
+          PY
+
+      - name: Verify public rendering and cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/public-checks.tsv
+          import json
+          d=json.load(open('/tmp/blog-cert-report.json'))
+          for row in d['public_checks']:
+              print(f"{row['expected_pexels_id']}\t{row['url']}\t{row['context']}")
+          PY
+
+          checks=0
+          while IFS=$'\t' read -r expected url context; do
+            [ -n "$expected" ] && [ -n "$url" ]
+            page="/tmp/emdo-public-${expected}.html"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260822' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$page" -w '%{http_code}|%{url_effective}' "${url}?emdo_image_cert=${GITHUB_SHA}")"
+            code="${result%%|*}"; effective="${result#*|}"
+            [ "$code" = 200 ] || { echo "HTTP $code for $context $effective" >&2; exit 1; }
+            grep -Fq "$expected" "$page" || { echo "Expected image $expected not rendered for $context ($effective)" >&2; exit 1; }
+            if grep -Eq '37328201|19370451|4441933|36601487|37328770|24706530|34314216|36215958|24906286|30795237|30795238|947174|14639925|6059884|25185476|30811288|36183155' "$page"; then
+              echo "Retired image rendered for $context ($effective)" >&2; exit 1
+            fi
+            checks=$((checks+1))
+          done < /tmp/public-checks.tsv
+
+          for path in '/en/journal/' '/en/journal/page/2/' '/en/journal/page/3/'; do
+            file="/tmp/archive-$(echo "$path" | tr '/' '_').html"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260822' -o "$file" -w '%{http_code}|%{url_effective}' "https://www.elmercadodeorigen.com${path}?emdo_image_cert=${GITHUB_SHA}")"
+            code="${result%%|*}"
+            [ "$code" = 200 ] || { echo "$path returned $code" >&2; exit 1; }
+            ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website|Page not found|Página no encontrada' "$file"
+          done
+          echo "PUBLIC_RENDER_CERT_OK checks=$checks pagination=3"
+
+      - name: Certification passed
+        run: echo BLOG_IMAGE_PRODUCTION_CERTIFIED
