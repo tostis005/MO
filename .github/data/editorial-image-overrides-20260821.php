@@ -23,10 +23,25 @@ return array(
         'id'=>'34785887','direct'=>'https://images.pexels.com/photos/34785887/pexels-photo-34785887.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/freshly-harvested-green-and-black-olives-34785887/','photographer'=>'Farzona Comnas','alt_es'=>'Aceitunas verdes y maduras recién recolectadas','alt_en'=>'Freshly harvested green and ripe olives'
     ),
     'iberian-breed-percentage-guide' => array(
-        'id'=>'34314216','direct'=>'https://images.pexels.com/photos/34314216/pexels-photo-34314216.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/authentic-jamon-iberico-hangs-in-spanish-market-34314216/','photographer'=>'Anatolii Maks','alt_es'=>'Piezas de jamón ibérico colgadas en un mercado español','alt_en'=>'Jamón Ibérico legs hanging in a Spanish market'
+        'id'=>'16207036','direct'=>'https://images.pexels.com/photos/16207036/pexels-photo-16207036.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/three-hairy-pigs-16207036/','photographer'=>'Vanessa Riecke','alt_es'=>'Cerdos negros en una explotación rural de España, imagen contextual sin marcas ni etiquetas de producto','alt_en'=>'Black pigs on a rural farm in Spain, used as brand-free breed context'
     ),
     'iberian-ham-bones-trimmings-guide' => array(
-        'id'=>'36215958','direct'=>'https://images.pexels.com/photos/36215958/pexels-photo-36215958.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/rows-of-jamon-iberico-ham-hanging-for-display-36215958/','photographer'=>'Anatolii Maks','alt_es'=>'Piezas de jamón ibérico colgadas y listas para su aprovechamiento','alt_en'=>'Jamón Ibérico legs hanging and ready to be carved and used'
+        'id'=>'34184378','direct'=>'https://images.pexels.com/photos/34184378/pexels-photo-34184378.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-acorns-on-oak-tree-branch-in-fall-34184378/','photographer'=>'Nikolaos D. Nomikos','alt_es'=>'Bellotas verdes en una rama de encina, contexto de origen del ibérico sin marcas ni etiquetas','alt_en'=>'Green acorns on an oak branch, brand-free context for Iberian ham'
+    ),
+    'ham-starting-orientation-guide' => array(
+        'id'=>'33121703','direct'=>'https://images.pexels.com/photos/33121703/pexels-photo-33121703.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-acorns-in-hand-outdoors-33121703/','photographer'=>'Alejandro Jiménez Vivanco','alt_es'=>'Bellotas sostenidas en una mano como contexto de alimentación y origen del ibérico, sin producto de terceros','alt_en'=>'Acorns held in a hand as brand-free Iberian origin context'
+    ),
+    'iberian-ham-parts-guide' => array(
+        'id'=>'6033783','direct'=>'https://images.pexels.com/photos/6033783/pexels-photo-6033783.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/man-holding-oak-leaves-and-acorns-6033783/','photographer'=>'cottonbro studio','alt_es'=>'Bellotas y hojas de encina en la mano, recurso contextual sin etiquetas ni marcas','alt_en'=>'Acorns and oak leaves in hand, a brand-free contextual image'
+    ),
+    'whole-ham-before-opening-storage-guide' => array(
+        'id'=>'34923565','direct'=>'https://images.pexels.com/photos/34923565/pexels-photo-34923565.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/majestic-oak-tree-by-ruidera-lagoon-34923565/','photographer'=>'Emilio Sánchez Hernández','alt_es'=>'Encina en un paisaje español, contexto de origen sin piezas etiquetadas ni marcas de terceros','alt_en'=>'Oak tree in a Spanish landscape, used as brand-free origin context'
+    ),
+    'serve-iberian-ham-guide' => array(
+        'id'=>'29024630','direct'=>'https://images.pexels.com/photos/29024630/pexels-photo-29024630.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-autumn-acorns-and-leaves-on-forest-ground-29024630/','photographer'=>'Gundula Vogel','alt_es'=>'Bellotas y hojas de encina en el suelo, contexto ibérico sin confundir el producto servido','alt_en'=>'Acorns and oak leaves, brand-free Iberian context without misrepresenting the served product'
+    ),
+    'olive-oil-label-guide' => array(
+        'id'=>'15156661','direct'=>'https://images.pexels.com/photos/15156661/pexels-photo-15156661.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-olives-growing-on-branches-15156661/','photographer'=>'Content Pixie','alt_es'=>'Aceitunas maduras en el olivo, imagen de AOVE sin botella, etiqueta ni marca visible','alt_en'=>'Ripe olives on the tree, an EVOO image with no bottle, label or visible brand'
     ),
     'vegetable-preserve-label-guide' => array(
         'id'=>'33984948','direct'=>'https://images.pexels.com/photos/33984948/pexels-photo-33984948.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/fresh-tomatoes-with-jars-of-preserved-vegetables-33984948/','photographer'=>'TIVASEE .','alt_es'=>'Tomates frescos junto a tarros de conservas vegetales sin marca visible','alt_en'=>'Fresh tomatoes beside unbranded jars of preserved vegetables'
