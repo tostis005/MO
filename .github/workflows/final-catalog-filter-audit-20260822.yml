@@ -1,0 +1,105 @@
+name: Final catalog filter audit 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/final-catalog-filter-audit-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Build server truth and exercise public filters
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-filter-final
+          sudo apt-get update -qq;sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp || true);php_bin=$(command -v php || true);[ -n "$php_bin" ]||php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1);for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null);do p=$(dirname "$cfg");url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true);case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com)printf "%s" "$p";break;;esac;done')"
+          cat > /tmp/emdo-filter-final/truth.php <<'PHP'
+          <?php
+          $out=array('products'=>array(),'categories'=>array(),'meta_test'=>null);
+          $ids=get_posts(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','suppress_filters'=>true));
+          foreach($ids as $id){$p=wc_get_product($id);$out['products'][(string)$id]=array('author'=>(int)get_post_field('post_author',$id),'price'=>$p?(float)$p->get_price():null);}
+          foreach(get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0)) as $t){if(!$t instanceof WP_Term)continue;$out['categories'][$t->slug]=array('id'=>$t->term_id,'name'=>$t->name,'en_slug'=>get_term_meta($t->term_id,'_en_US_slug',true),'en_name'=>get_term_meta($t->term_id,'_en_US_name',true),'en_published'=>get_term_meta($t->term_id,'_en_US_published',true));}
+          $ham=get_term_by('slug','jamones-paletas','product_cat');
+          if($ham instanceof WP_Term){foreach(array('tipo-pieza','calidad','raza-iberica','alimentacion','con-dop','dop','origen','preparacion','rango-peso','curacion') as $a){$tax=wc_attribute_taxonomy_name($a);if(!taxonomy_exists($tax))continue;$terms=get_terms(array('taxonomy'=>$tax,'hide_empty'=>true,'orderby'=>'count','order'=>'DESC'));if(is_wp_error($terms))continue;foreach($terms as $term){$q=get_posts(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','tax_query'=>array('relation'=>'AND',array('taxonomy'=>'product_cat','field'=>'term_id','terms'=>array($ham->term_id),'include_children'=>true),array('taxonomy'=>$tax,'field'=>'term_id','terms'=>array($term->term_id)))));if(count($q)>0){$out['meta_test']=array('attribute'=>$a,'taxonomy'=>$tax,'term_slug'=>$term->slug,'term_name'=>$term->name,'raw_expected_ids'=>array_map('intval',$q));break 2;}}}}
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp $SCP /tmp/emdo-filter-final/truth.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-filter-final-truth.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp||true);php_bin=\$(command -v php||true);[ -n \"\$php_bin\" ]||php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -n1);\"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-filter-final-truth.php --path='$PROD_PATH' --allow-root" > /tmp/emdo-filter-final/truth.json
+          python3 - <<'PY'
+          import json,re,subprocess,time,html,urllib.parse,pathlib
+          truth=json.load(open('/tmp/emdo-filter-final/truth.json'));base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()));out={'tests':{},'truth':{'meta_test':truth.get('meta_test')},'failures':[]}
+          prices={int(k):v.get('price') for k,v in truth['products'].items()};authors={int(k):v.get('author') for k,v in truth['products'].items()}
+          def req(path):
+              u=base+path+('&' if '?' in path else '?')+'emdo_filter_final='+stamp
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','50','-A','Mozilla/5.0 EMDO-FilterFinal/1.0','-H','Cache-Control: no-cache, no-store','-w','\n__HTTP__:%{http_code}',u],capture_output=True,text=True);body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout)
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S))).strip();n=None
+              for pat in [r'(\d+)\s+results',r'(\d+)\s+resultados']:
+                  z=re.search(pat,text,re.I)
+                  if z:n=int(z.group(1));break
+              return {'http':int(m.group(1)) if m else 0,'cards':len(ids),'ids':ids[:20],'result_count':n,'title':re.search(r'<title[^>]*>(.*?)</title>',body,re.I|re.S).group(1).strip() if re.search(r'<title[^>]*>(.*?)</title>',body,re.I|re.S) else ''}
+          # Global + vendor filter.
+          for lang,path in [('es','/tienda/'),('en','/en/shop/')]:
+              out['tests'][f'shop_{lang}']=req(path)
+              out['tests'][f'vendor1957_{lang}']=req(path+'?vendor_id=3')
+              for mode in ['price','price-desc']:out['tests'][f'order_{mode}_{lang}']=req(path+'?orderby='+mode)
+          # All translated/public top-level categories that actually have current products are tested in ES+EN.
+          for slug,c in truth['categories'].items():
+              es=req('/categoria-producto/'+slug+'/');out['tests']['cat_es_'+slug]=es
+              if c.get('en_published')=='1' and c.get('en_slug'):
+                  out['tests']['cat_en_'+slug]=req('/en/product-category/'+str(c['en_slug'])+'/')
+          mt=truth.get('meta_test')
+          if mt:
+              q=f"filter_{mt['attribute']}={urllib.parse.quote(str(mt['term_slug']))}&query_type_{mt['attribute']}=or"
+              out['tests']['meta_es']=req('/categoria-producto/jamones-paletas/?'+q)
+              out['tests']['meta_en']=req('/en/product-category/hams-and-shoulders/?'+q)
+          # Assertions.
+          for lang in ['es','en']:
+              s=out['tests'][f'shop_{lang}'];
+              if s['http']!=200 or s['result_count']!=105 or s['cards']<15:out['failures'].append(f'{lang} shop baseline {s}')
+              v=out['tests'][f'vendor1957_{lang}'];
+              if v['http']!=200 or v['result_count']!=3 or set(v['ids'])!={1056,1599,1220} or any(authors.get(i)!=3 for i in v['ids']):out['failures'].append(f'{lang} vendor 1957 filter mismatch {v}')
+              for mode,reverse in [('price',False),('price-desc',True)]:
+                  r=out['tests'][f'order_{mode}_{lang}'];vals=[prices.get(i) for i in r['ids'] if prices.get(i) is not None]
+                  if r['http']!=200 or len(vals)<5:out['failures'].append(f'{lang} {mode} insufficient data')
+                  elif reverse and vals!=sorted(vals,reverse=True):out['failures'].append(f'{lang} descending price order {vals}')
+                  elif not reverse and vals!=sorted(vals):out['failures'].append(f'{lang} ascending price order {vals}')
+          for k,r in out['tests'].items():
+              if k.startswith('cat_') and r['http']!=200:out['failures'].append(f'{k} HTTP {r["http"]}')
+          # Only require cards for categories whose live public archive has a positive displayed count; zero-product historical categories are allowed to be empty.
+          for k,r in out['tests'].items():
+              if k.startswith('cat_') and r['result_count'] not in (None,0) and r['cards']<1:out['failures'].append(f'{k} count {r["result_count"]} but no cards')
+          if mt:
+              exp=set(map(int,mt['raw_expected_ids']))
+              for lang in ['es','en']:
+                  r=out['tests']['meta_'+lang]
+                  if r['http']!=200 or r['cards']<1:out['failures'].append(f'{lang} metadata filter empty')
+                  elif not set(r['ids']).issubset(exp):out['failures'].append(f'{lang} metadata filter includes unexpected IDs')
+          out['status']='success' if not out['failures'] else 'failure';pathlib.Path('.deploy-status/final-catalog-filter-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':out['status'],'failures':out['failures'],'meta_test':mt,'vendor_es':out['tests']['vendor1957_es'],'vendor_en':out['tests']['vendor1957_en']},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/final-catalog-filter-audit-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/final-catalog-filter-audit-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/final-catalog-filter-audit-20260822.json
+          git commit -m "Record final catalog filter audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
