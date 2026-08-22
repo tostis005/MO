@@ -1,0 +1,179 @@
+name: Deploy catalog rank cache coherence production 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-catalog-rank-cache-coherence-20260822.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog-rank-cache-coherence-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      FIX_FILE: mdo-catalog-rank-cache-coherence-20260822.php
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare deployment
+        run: |
+          set -euo pipefail
+          php -l "mu-plugins/$FIX_FILE" >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy coherence guard
+        id: deploy
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          MU_DIR="$PROD_PATH/wp-content/mu-plugins"
+          BACKUP="/tmp/${FIX_FILE%.php}-pre-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$MU_DIR'; if [ -f '$MU_DIR/$FIX_FILE' ]; then cp '$MU_DIR/$FIX_FILE' '$BACKUP'; fi"
+          remote="/tmp/${FIX_FILE%.php}-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP "mu-plugins/$FIX_FILE" "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; install -m 0644 '$remote' '$MU_DIR/$FIX_FILE'; rm -f '$remote'"
+          local_sha="$(sha256sum "mu-plugins/$FIX_FILE" | cut -d' ' -f1)"
+          prod_sha="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sha256sum '$MU_DIR/$FIX_FILE' | cut -d' ' -f1")"
+          test "$local_sha" = "$prod_sha"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'delete_transient(\"mdo_catalog_rank_v3_\" . gmdate(\"Ymd\")); if (function_exists(\"wp_cache_flush\")) { wp_cache_flush(); }' --path='$PROD_PATH' --allow-root >/dev/null"
+
+          if [ -f .github/scripts/elmercado-opcache-reset.php ]; then
+            PROBE="elmercado-opcache-rank-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP .github/scripts/elmercado-opcache-reset.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/$PROBE"
+            curl -fsSL --max-time 30 -H 'Cache-Control: no-store' "$BASE_URL/$PROBE?run=$GITHUB_RUN_ID" >/dev/null || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PROD_PATH/$PROBE'" || true
+          fi
+
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+      - name: Verify real global shop cards
+        id: verify
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          URL="$BASE_URL/tienda/?emdo_rank_fix=${GITHUB_RUN_ID}"
+          status="$(curl -sS -L --max-time 45 -H 'Cache-Control: no-cache, no-store, must-revalidate' -H 'Pragma: no-cache' -o /tmp/shop.html -w '%{http_code}' "$URL")"
+          test "$status" = '200'
+
+          python3 - <<'PY'
+          import re, pathlib
+          html = pathlib.Path('/tmp/shop.html').read_text(errors='replace')
+          ids = []
+          seen = set()
+          for tag in re.findall(r'<(?:li|div)\b[^>]*>', html, flags=re.I):
+              if not re.search(r'class=["\'][^"\']*\bproduct\b[^"\']*["\']', tag, flags=re.I):
+                  continue
+              found = re.findall(r'\bpost-(\d+)\b', tag) + re.findall(r'data-product_id=["\'](\d+)["\']', tag, flags=re.I)
+              for value in found:
+                  pid = int(value)
+                  if pid not in seen:
+                      seen.add(pid); ids.append(pid)
+          if len(ids) < 4:
+              raise SystemExit(f'Only {len(ids)} rendered product cards found: {ids}')
+          pathlib.Path('/tmp/card-ids.csv').write_text(','.join(map(str, ids)))
+          print('Rendered product IDs:', ids)
+          PY
+
+          ids="$(cat /tmp/card-ids.csv)"
+          authors="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH' '$ids'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          ids="$2"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          OLDIFS="$IFS"; IFS=','
+          for id in $ids; do
+            author=$("$php_bin" "$wp_bin" post get "$id" --field=post_author --path="$wp_path" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            [ -n "$author" ] && printf '%s:%s\n' "$id" "$author"
+          done
+          IFS="$OLDIFS"
+          REMOTE
+          )"
+          printf '%s\n' "$authors" | tee /tmp/card-authors.txt
+          vendor_count="$(cut -d: -f2 /tmp/card-authors.txt | sed '/^$/d' | sort -u | wc -l)"
+          test "$vendor_count" -ge 2
+
+          rank_state="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '\$published=get_posts(array(\"post_type\"=>\"product\",\"post_status\"=>\"publish\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"suppress_filters\"=>true,\"no_found_rows\"=>true)); \$cached=get_transient(\"mdo_catalog_rank_v3_\".gmdate(\"Ymd\")); echo count(\$published).\":\".(is_array(\$cached)?count(\$cached):0);' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          printf 'Published:cached rank = %s\n' "$rank_state"
+          published_count="${rank_state%%:*}"
+          cached_count="${rank_state##*:}"
+          test "$published_count" -gt 3
+          test "$cached_count" = "$published_count"
+          echo "HTTP=$status vendor_count=$vendor_count rank_state=$rank_state" > /tmp/rank-fix-result.txt
+
+      - name: Record result
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          DEPLOY_RESULT: ${{ steps.deploy.outcome }}
+          VERIFY_RESULT: ${{ steps.verify.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json, os, pathlib
+          out = {
+              'status': os.getenv('JOB_STATUS'),
+              'run_id': os.getenv('GITHUB_RUN_ID'),
+              'sha': os.getenv('GITHUB_SHA'),
+              'deploy': os.getenv('DEPLOY_RESULT'),
+              'verify': os.getenv('VERIFY_RESULT'),
+              'baseline': '2026-08-20T23:56:54+02:00',
+              'fix': 'catalog rank cache coherence',
+              'backup': os.getenv('BACKUP', ''),
+              'rendered_product_ids': pathlib.Path('/tmp/card-ids.csv').read_text().strip() if pathlib.Path('/tmp/card-ids.csv').exists() else '',
+              'card_authors': pathlib.Path('/tmp/card-authors.txt').read_text().strip() if pathlib.Path('/tmp/card-authors.txt').exists() else '',
+              'verification': pathlib.Path('/tmp/rank-fix-result.txt').read_text().strip() if pathlib.Path('/tmp/rank-fix-result.txt').exists() else '',
+          }
+          pathlib.Path('.deploy-status/catalog-rank-cache-coherence-20260822.json').write_text(json.dumps(out, ensure_ascii=False, indent=2) + '\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-rank-cache-coherence-20260822.json
+          git commit -m "Record catalog rank cache coherence ${GITHUB_RUN_ID}" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
