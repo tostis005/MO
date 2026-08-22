@@ -90,8 +90,6 @@ jobs:
           print('published_posts=', d['published_post_count'])
           print('authority_posts=', d['authority_count'])
           print('audited_images=', len(d['all_images']))
-          print('curated_authority_checks=', len(d['expected']))
-          print('legacy_refined_checks=', len(d['legacy']))
           print('duplicates_by_pexels=0')
           print('duplicates_by_md5=0')
           print('forbidden_hits=0')
@@ -134,3 +132,5 @@ jobs:
 
       - name: Certification passed
         run: echo BLOG_IMAGE_PRODUCTION_CERTIFIED
+
+# Temporary trigger for the 2026-08-22 Iberian-ham imagery pass; do not merge.
