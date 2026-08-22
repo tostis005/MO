@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Catalog Rank Cache Coherence
- * Description: Invalidates an incomplete/stale daily catalogue rank before the public catalogue query consumes it.
- * Version: 1.0.0
+ * Description: Invalidates an incomplete/stale daily catalogue rank before the public catalogue query consumes it and clears stale catalogue page caches at the same time.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -36,6 +36,40 @@ final class MDO_Catalog_Rank_Cache_Coherence_20260822 {
 
 		if ( $cached_set !== $published_set ) {
 			delete_transient( $key );
+			self::purge_page_caches();
+		}
+	}
+
+	/**
+	 * A stale rank can already have been rendered into page-cache entries for
+	 * /tienda/page/N/ and /en/shop/page/N/. Clearing the transient alone repairs
+	 * the next uncached query but does not remove those old HTML responses.
+	 *
+	 * This runs only when an incoherent rank has actually been detected.
+	 */
+	private static function purge_page_caches(): void {
+		wp_cache_flush();
+
+		if ( function_exists( 'rocket_clean_domain' ) ) {
+			rocket_clean_domain();
+		}
+		if ( function_exists( 'w3tc_flush_all' ) ) {
+			w3tc_flush_all();
+		}
+		if ( function_exists( 'wp_cache_clear_cache' ) ) {
+			wp_cache_clear_cache();
+		}
+		if ( function_exists( 'wpfc_clear_all_cache' ) ) {
+			wpfc_clear_all_cache( true );
+		}
+		if ( function_exists( 'sg_cachepress_purge_cache' ) ) {
+			sg_cachepress_purge_cache();
+		}
+		if ( function_exists( 'breeze_clear_all_cache' ) ) {
+			breeze_clear_all_cache();
+		}
+		if ( has_action( 'litespeed_purge_all' ) ) {
+			do_action( 'litespeed_purge_all' );
 		}
 	}
 
