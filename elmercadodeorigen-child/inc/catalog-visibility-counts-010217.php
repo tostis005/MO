@@ -160,7 +160,7 @@ function elmercado_catalog_force_in_stock_tax_query_010219( array $tax_query ): 
 add_action(
 	'pre_get_posts',
 	static function ( WP_Query $query ): void {
-		if ( is_admin() ) {
+		if ( is_admin() || $query->is_singular() ) {
 			return;
 		}
 		if ( function_exists( 'elmercado_wcfm_query_targets_products_010210' ) && ! elmercado_wcfm_query_targets_products_010210( $query ) ) {
