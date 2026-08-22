@@ -1,0 +1,146 @@
+name: Deploy final English category repair 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/deploy-english-category-final-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: english-category-final-production-20260822
+  cancel-in-progress: false
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      EARLY: 0001-mdo-english-category-public-route-20260822.php
+      FINAL: zzzzzzzzzz-mdo-english-category-final-20260822.php
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate repair
+        run: |
+          set -euo pipefail
+          php -l "mu-plugins/$EARLY" >/dev/null
+          php -l "mu-plugins/$FINAL" >/dev/null
+          grep -Fq '/en/product-category/' "mu-plugins/$EARLY"
+          grep -Fq 'mdo_ec_final_visible_ids_20260822' "mu-plugins/$FINAL"
+
+      - name: Deploy with automatic rollback and verify
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          test -n "$PROD_PATH"
+          MU="$PROD_PATH/wp-content/mu-plugins"
+          BDIR="/tmp/emdo-en-cat-final-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$MU' '$BDIR'; for f in '$EARLY' '$FINAL'; do if [ -f '$MU/'\"\$f\" ]; then cp '$MU/'\"\$f\" '$BDIR/'\"\$f\"; echo \"\$f=present\" >> '$BDIR/state'; else echo \"\$f=absent\" >> '$BDIR/state'; fi; done"
+          rollback() {
+            echo 'Verification failed; rolling back English category guard.' >&2
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; while IFS='=' read -r f state; do [ -n \"\$f\" ] || continue; if [ \"\$state\" = present ]; then cp '$BDIR/'\"\$f\" '$MU/'\"\$f\"; else rm -f '$MU/'\"\$f\"; fi; done < '$BDIR/state'; wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); [ -n \"\$wp_bin\" ] && \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
+          }
+          trap rollback ERR
+
+          sshpass -e scp $SCP "mu-plugins/$EARLY" "$STAGING_USER@$STAGING_HOST:$MU/$EARLY"
+          sshpass -e scp $SCP "mu-plugins/$FINAL" "$STAGING_USER@$STAGING_HOST:$MU/$FINAL"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$MU/$EARLY' >/dev/null; \"\$php_bin\" -l '$MU/$FINAL' >/dev/null; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" option update mdo_en_category_query_normalizer_enabled_20260821 0 --path='$PROD_PATH' --allow-root >/dev/null; \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'delete_transient(\"mdo_catalog_rank_v3_\".gmdate(\"Ymd\")); if(function_exists(\"wp_cache_flush\")){wp_cache_flush();}' --path='$PROD_PATH' --allow-root >/dev/null"
+
+          python3 - <<'PY'
+          import subprocess,re,json,pathlib,time
+          base='https://www.elmercadodeorigen.com'
+          cats={
+            'accessories':'Accessories','marinated-products':'Marinated products','meat':'Meat',
+            'packs-and-bundles':'Packs and bundles','oils':'Oils','preserves':'Preserves',
+            'cured-meats':'Cured meats','vegetables':'Vegetables','hams-and-shoulders':'Hams and shoulders','pulses':'Pulses'
+          }
+          def get(path, timeout=50):
+            last=None
+            for attempt in range(3):
+              p=subprocess.run(['curl','-k','-L','-sS','--connect-timeout','10','--max-time',str(timeout),'-A','Mozilla/5.0 EMDO-final-category-check/1.0','-H','Cache-Control: no-cache, no-store, must-revalidate','-H','Pragma: no-cache','-w','\n__HTTP__:%{http_code}\n__URL__:%{url_effective}',base+path],capture_output=True,text=True)
+              raw=p.stdout
+              hm=re.search(r'\n__HTTP__:(\d{3})',raw); um=re.search(r'\n__URL__:(\S+)',raw)
+              body=raw.split('\n__HTTP__:',1)[0]
+              last=(p.returncode,int(hm.group(1)) if hm else 0,um.group(1) if um else '',body,p.stderr)
+              if p.returncode==0 and last[1]==200: return last
+              time.sleep(2)
+            return last
+          report={'categories':[]}
+          for slug,label in cats.items():
+            rc,status,effective,body,stderr=get(f'/en/product-category/{slug}/?emdo_en_cat_final=1')
+            ids=[]
+            for v in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+              i=int(v)
+              if i not in ids: ids.append(i)
+            visible=label.lower() in re.sub(r'<[^>]+>',' ',body).lower()
+            report['categories'].append({'slug':slug,'status':status,'returncode':rc,'effective':effective,'cards':len(ids),'ids':ids[:20],'label_visible':visible,'stderr':stderr[-500:]})
+            if rc!=0 or status!=200 or len(ids)<1 or not visible:
+              pathlib.Path('/tmp/en-category-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+              raise SystemExit(f'English category failed: {slug}, rc={rc}, status={status}, cards={len(ids)}, label={visible}')
+          rc,status,effective,body,stderr=get('/en/categories/?emdo_en_cat_final=1')
+          report['hub']={'status':status,'effective':effective,'has_preserves':'Preserves' in body,'has_vegetables':'Vegetables' in body,'has_pulses':'Pulses' in body}
+          if rc!=0 or status!=200 or not all((report['hub']['has_preserves'],report['hub']['has_vegetables'],report['hub']['has_pulses'])):
+            raise SystemExit('English categories hub failed')
+          pathlib.Path('/tmp/en-category-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+
+          # Global shop must remain the known-good 105/105 multi-vendor catalogue.
+          curl -k -L -sS --retry 2 --retry-delay 2 --connect-timeout 10 --max-time 60 -A 'Mozilla/5.0 EMDO-global-shop-guard/1.0' -H 'Cache-Control: no-cache, no-store' "$BASE_URL/tienda/?en_cat_guard=${GITHUB_RUN_ID}" -o /tmp/shop.html
+          ids="$(grep -oE 'post-[0-9]+' /tmp/shop.html | sed 's/post-//' | awk '!seen[$0]++' | head -n 15 | paste -sd, -)"
+          test -n "$ids"
+          STATE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); IDS='$ids' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '\$ids=array_filter(array_map(\"absint\",explode(\",\",getenv(\"IDS\")))); \$a=array(); foreach(\$ids as \$id){\$p=get_post(\$id);if(\$p instanceof WP_Post){\$a[(int)\$p->post_author]=1;}} \$all=get_posts(array(\"post_type\"=>\"product\",\"post_status\"=>\"publish\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"suppress_filters\"=>true,\"no_found_rows\"=>true)); \$rank=get_transient(\"mdo_catalog_rank_v3_\".gmdate(\"Ymd\")); echo count(\$a).\":\".count(\$all).\":\".(is_array(\$rank)?count(\$rank):0);' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+          vendors="${STATE%%:*}"; rest="${STATE#*:}"; published="${rest%%:*}"; ranked="${rest##*:}"
+          test "$vendors" -ge 4
+          test "$published" -gt 100
+          test "$ranked" = "$published"
+
+          trap - ERR
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "BACKUP_DIR=$BDIR" >> "$GITHUB_ENV"
+          echo "GLOBAL_STATE=$STATE" >> "$GITHUB_ENV"
+          echo "SHOP_IDS=$ids" >> "$GITHUB_ENV"
+
+      - name: Record successful verification
+        if: success()
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          export REPORT="$(cat /tmp/en-category-report.json)"
+          python3 - <<'PY'
+          import json,os,pathlib
+          out={
+            'status':'success','run_id':os.getenv('GITHUB_RUN_ID'),'sha':os.getenv('GITHUB_SHA'),
+            'backup_dir':os.getenv('BACKUP_DIR',''),'global_shop_state':os.getenv('GLOBAL_STATE',''),
+            'global_shop_ids':os.getenv('SHOP_IDS',''),'categories':json.loads(os.getenv('REPORT','{}')),
+            'scope':'English product-category routes only; global shop untouched'
+          }
+          pathlib.Path('.deploy-status/english-category-final-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add .deploy-status/english-category-final-20260822.json
+          git commit -m "Record final English category repair ${GITHUB_RUN_ID}" || exit 0
+          git push origin HEAD:main
