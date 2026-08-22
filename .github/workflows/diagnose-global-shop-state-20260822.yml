@@ -1,0 +1,116 @@
+name: Diagnose production global shop state 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-global-shop-state-20260822.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BASE_URL: https://www.elmercadodeorigen.com
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/diagnose-global-shop-state-20260822.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -T 15 -p "$PORT" -H "$STAGING_HOST" > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read production state
+        id: diagnostic
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=yes -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+          REMOTE="/tmp/diagnose-global-shop-state-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/diagnose-global-shop-state-20260822.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          raw="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root 2>&1; rm -f '$REMOTE'")"
+          printf '%s\n' "$raw"
+          printf '%s\n' "$raw" | sed -n 's/^__EMDO_SHOP_STATE__//p' | tail -n1 > /tmp/shop-state.json
+          test -s /tmp/shop-state.json
+          python3 -m json.tool /tmp/shop-state.json
+
+          curl -sS -L --max-time 45 -H 'Cache-Control: no-cache, no-store, must-revalidate' -H 'Pragma: no-cache' "$BASE_URL/tienda/?emdo_state=${GITHUB_RUN_ID}" -o /tmp/shop.html
+          python3 - <<'PY'
+          import re, pathlib, json
+          html = pathlib.Path('/tmp/shop.html').read_text(errors='replace')
+          ids = set()
+          for tag in re.findall(r'<(?:li|div)\b[^>]*>', html, flags=re.I):
+              if re.search(r'class=["\'][^"\']*\bproduct\b[^"\']*["\']', tag, flags=re.I):
+                  ids.update(int(x) for x in re.findall(r'\bpost-(\d+)\b', tag))
+                  ids.update(int(x) for x in re.findall(r'data-product_id=["\'](\d+)["\']', tag, flags=re.I))
+          pathlib.Path('/tmp/rendered.json').write_text(json.dumps({'rendered_product_ids': sorted(ids)}))
+          print('Rendered product IDs:', sorted(ids))
+          PY
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+      - name: Record diagnostic
+        if: always()
+        env:
+          DIAG_RESULT: ${{ steps.diagnostic.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json, os, pathlib
+          state = None
+          rendered = None
+          if pathlib.Path('/tmp/shop-state.json').exists():
+              try: state = json.loads(pathlib.Path('/tmp/shop-state.json').read_text())
+              except Exception as e: state = {'parse_error': str(e)}
+          if pathlib.Path('/tmp/rendered.json').exists():
+              try: rendered = json.loads(pathlib.Path('/tmp/rendered.json').read_text())
+              except Exception as e: rendered = {'parse_error': str(e)}
+          out = {
+              'run_id': os.getenv('GITHUB_RUN_ID'),
+              'sha': os.getenv('GITHUB_SHA'),
+              'diagnostic': os.getenv('DIAG_RESULT'),
+              'shop_state': state,
+              'rendered': rendered,
+          }
+          pathlib.Path('.deploy-status/global-shop-state-20260822.json').write_text(json.dumps(out, ensure_ascii=False, indent=2) + '\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/global-shop-state-20260822.json
+          git commit -m "Record global shop state diagnostic ${GITHUB_RUN_ID}" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
