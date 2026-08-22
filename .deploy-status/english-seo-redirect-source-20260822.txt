@@ -1,0 +1,67 @@
+PROD_PATH=/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs
+=== EXACT STRING ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-production-english-seo-routes.php:3: * Plugin Name: MDO English SEO Routes
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php:291:				wp_safe_redirect( $to, 301, 'MDO English SEO' );
+=== REDIRECT FUNCTIONS IN ENGLISH/SEO FILES ===
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-production-english-seo-routes.php:145:add_filter( 'redirect_canonical', static fn( $redirect ) => mdoer_en() ? false : $redirect, PHP_INT_MAX );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-production-english-seo-routes.php:250:add_action( 'template_redirect', static function(): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-production-english-seo-routes.php:256:    if ( $public !== $wanted && ( '/en/tienda/' === $public || str_starts_with( $public, '/en/producto/' ) ) ) { wp_safe_redirect( $x['en'], 301, 'MDO-English-Routing' ); exit; }
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-production-english-seo-routes.php:278:add_action( 'template_redirect', static function(): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/zzzzzzzzzz-mdo-english-category-final-20260822.php:159:add_filter( 'redirect_canonical', static function ( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php:237:	'template_redirect',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php:291:				wp_safe_redirect( $to, 301, 'MDO English SEO' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php:350:	'template_redirect',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zz-english-store-canonical-010261.php:4: * Description: Prevents WordPress redirect_canonical from looping clean English WCFM store URLs that are internally mapped to native WCFM routes.
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zz-english-store-canonical-010261.php:26:	'redirect_canonical',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-launch-quality-010262.php:81:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/emdo-seo-language-cleanup.php:31:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/emdo-seo-language-cleanup.php:36:    wp_safe_redirect(
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/emdo-seo-cleanup-layer.php:238:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/emdo-seo-cleanup-layer.php:247:        wp_safe_redirect( home_url( $redirects[ $path ] ), 301, 'EMDO SEO Cleanup' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-dynamic-routes-010264.php:92:add_filter( 'redirect_canonical', static function ( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-dynamic-routes-010264.php:105:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-dynamic-routes-010264.php:108:	if ( count( $parts ) === 1 && $parts[0] === 'vendor-registration' ) { wp_safe_redirect( mdodr_for_producers_url_010264(), 301, 'MDO closed vendor registration' ); exit; }
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-dynamic-routes-010264.php:111:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-attributes-010263.php:153:add_filter( 'redirect_canonical', static function ( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-attributes-010263.php:160:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-attributes-010263.php:175:		wp_safe_redirect( $target, 301, 'MDO English Variety canonical' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-zzz-english-attributes-010263.php:181:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-storefront-stability-010258.php:204:	'template_redirect',
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:187:add_filter( 'redirect_canonical', static function ( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:195:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:203:            if ( $target !== '' ) { wp_safe_redirect( $target, 301, 'MDO English page canonical' ); exit; }
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:211:            if ( $target !== '' ) { wp_safe_redirect( $target, 301, 'MDO English product canonical' ); exit; }
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:329:add_filter( 'redirect_canonical', static function ( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:339:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:360:        wp_safe_redirect( $target, 301, 'MDO English vendor base' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:370:            wp_safe_redirect( $target, 301, 'MDO English taxonomy slug' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:422:add_filter( 'redirect_canonical', static function ( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:429:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:437:        wp_safe_redirect( $target, 301, 'MDO English post canonical' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:479:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-english-slug-router.php:531:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-seo-foundation.php:176:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-seo-foundation.php:179:        wp_safe_redirect( emdo_seo_root() . '/', 301, 'EMDO SEO' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-seo-foundation.php:183:        wp_safe_redirect( emdo_seo_root() . '/en/', 301, 'EMDO SEO' );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/mdo-huerta-english-products-20260821.php:238:add_action( 'template_redirect', static function (): void {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/mu-plugins/zzzz-mdo-english-categories-hub-route-20260822.php:51:add_filter( 'redirect_canonical', static function ( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordpress-seo/inc/sitemaps/class-sitemaps-router.php:27:		add_filter( 'redirect_canonical', [ $this, 'redirect_canonical' ] );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordpress-seo/inc/sitemaps/class-sitemaps-router.php:28:		add_action( 'template_redirect', [ $this, 'template_redirect' ], 0 );
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordpress-seo/inc/sitemaps/class-sitemaps-router.php:78:	public function redirect_canonical( $redirect ) {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wordpress-seo/inc/sitemaps/class-sitemaps-router.php:92:	public function template_redirect() {
+/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs/wp-content/plugins/wc-multivendor-marketplace/core/class-wcfmmp-store-seo.php:20:		add_action( 'template_redirect', array( $this, 'wcfmmp_output_meta_tags' ) );
+=== HEADER SOURCE PROBE ===
+HTTP/2 301 
+server: nginx
+date: Sat, 22 Aug 2026 08:45:00 GMT
+content-type: text/html; charset=UTF-8
+content-length: 0
+x-powered-by: PHP/8.2.33
+vary: accept,content-type
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-redirect-by: MDO English SEO
+set-cookie: total_page=1; expires=Sat, 22 Aug 2026 10:45:00 GMT; Max-Age=7200
+set-cookie: _fbp=fb.1.1787388300720.1747773955.AQECAQMB; expires=Fri, 20 Nov 2026 08:45:00 GMT; Max-Age=7776000; path=/; domain=elmercadodeorigen.com
+location: https://www.elmercadodeorigen.com/en/categories/?emdo_source_probe=1
+x-powered-by: PleskLin
+
