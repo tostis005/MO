@@ -1,0 +1,101 @@
+name: Deploy English page URI guard 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/deploy-english-page-uri-guard-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Deploy with rollback and verify routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          DST="$PROD_PATH/wp-content/mu-plugins/mdo-zzzz-english-shop-public-uri-guard-20260822.php"
+          BACKUP="/tmp/mdo-en-page-uri-${GITHUB_RUN_ID}.bak"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$DST' '$BACKUP'"
+          rollback(){ sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$BACKUP' '$DST'" || true; }
+          trap 'rc=$?; if [ $rc -ne 0 ]; then rollback; fi; exit $rc' EXIT
+          sshpass -e scp $SCP mu-plugins/mdo-zzzz-english-shop-public-uri-guard-20260822.php "$STAGING_USER@$STAGING_HOST:$DST"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$DST' >/dev/null"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          export PROD_PATH SSH
+          python3 - <<'PY'
+          import subprocess,re,json,time,pathlib,os
+          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          paths=['/en/producers/','/en/journal/','/en/about-us/','/en/shipping/','/en/contact/','/en/shop/','/en/categories/','/en/store/1957/','/en/product-category/meat/','/tienda/','/categorias/','/productores/','/blog/']
+          out={'routes':{},'failures':[],'attributes':[]}
+          for path in paths:
+              url=base+path+'?emdo_page_guard='+stamp
+              p=subprocess.run(['curl','-k','-sS','--connect-timeout','8','--max-time','45','--max-redirs','0','-A','Mozilla/5.0 EMDO-Page-Guard/1.0','-D','/tmp/h.txt','-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+              raw=p.stdout; body=raw.split('\n__HTTP__:',1)[0]; m=re.search(r'\n__HTTP__:(\d{3})',raw)
+              h=pathlib.Path('/tmp/h.txt').read_text(errors='ignore') if pathlib.Path('/tmp/h.txt').exists() else ''
+              loc=re.findall(r'^location:\s*(.+)$',h,re.I|re.M); xr=re.findall(r'^x-redirect-by:\s*(.+)$',h,re.I|re.M)
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              item={'http':int(m.group(1)) if m else 0,'location':loc[-1].strip() if loc else '','x_redirect_by':xr[-1].strip() if xr else '','bytes':len(body.encode()),'cards':len(ids),'ids':ids[:20]}
+              out['routes'][path]=item
+              if item['http']!=200 or item['location']:out['failures'].append(path+' is not direct 200')
+          # sample English product from shop must still remain direct 200
+          shop=subprocess.run(['curl','-k','-sS','--max-time','45',base+'/en/shop/?emdo_page_guard_product='+stamp],capture_output=True,text=True).stdout
+          lm=re.search(r'href=["\']([^"\']*/en/product/[^"\']+/)["\']',shop,re.I)
+          if lm:
+              u=lm.group(1); u=u if u.startswith('http') else base+u
+              p=subprocess.run(['curl','-k','-sS','--max-redirs','0','--max-time','45','-D','/tmp/hp.txt','-w','\n__HTTP__:%{http_code}',u+'?emdo_page_guard='+stamp],capture_output=True,text=True)
+              m=re.search(r'\n__HTTP__:(\d{3})',p.stdout); hh=pathlib.Path('/tmp/hp.txt').read_text(errors='ignore'); loc=re.findall(r'^location:\s*(.+)$',hh,re.I|re.M)
+              out['product']={'url':u,'http':int(m.group(1)) if m else 0,'location':loc[-1].strip() if loc else ''}
+              if out['product']['http']!=200 or out['product']['location']:out['failures'].append('English product regressed')
+          # Inventory of WooCommerce attribute taxonomies for the next language pass.
+          cmd=f'''wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); "$php_bin" "$wp_bin" eval 'foreach(wc_get_attribute_taxonomies() as $a){{echo $a->attribute_name."|".$a->attribute_label."\\n";}}' --path="{os.environ['PROD_PATH']}" --allow-root 2>/dev/null'''
+          q=subprocess.run(['bash','-lc',f'sshpass -e ssh {os.environ["SSH"]} "$STAGING_USER@$STAGING_HOST" {json.dumps(cmd)}'],capture_output=True,text=True)
+          out['attributes']=[x for x in q.stdout.splitlines() if '|' in x]
+          pathlib.Path('.deploy-status/english-page-uri-guard-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          if out['failures']:raise SystemExit('; '.join(out['failures']))
+          PY
+          trap - EXIT
+      - name: Preserve report on failure
+        if: failure()
+        shell: bash
+        run: |
+          test -f .deploy-status/english-page-uri-guard-20260822.json || printf '{"failures":["verification failed before report"]}\n' > .deploy-status/english-page-uri-guard-20260822.json
+      - name: Commit report
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/english-page-uri-guard-20260822.json
+          git commit -m "Record English page URI guard verification ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
