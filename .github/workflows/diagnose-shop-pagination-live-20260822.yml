@@ -1,0 +1,62 @@
+name: Diagnose shop pagination live 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/diagnose-shop-pagination-live-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare English and Spanish pagination
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import subprocess,re,json,pathlib,time
+          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          def get(path):
+              url=base+path+('?emdo_page_diag='+stamp)
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','60','-A','Mozilla/5.0 EMDO-Pagination-Diagnostic/1.0','-H','Cache-Control: no-cache, no-store','-D','/tmp/page-h.txt','-w','\n__HTTP__:%{http_code}\n__URL__:%{url_effective}',url],capture_output=True,text=True)
+              raw=p.stdout; body=raw.split('\n__HTTP__:',1)[0]; tail=raw.split('\n__HTTP__:',1)[1] if '\n__HTTP__:' in raw else ''
+              hm=re.search(r'^(\d{3})',tail); um=re.search(r'\n__URL__:(.+)',tail)
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids: ids.append(x)
+              text=re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S)).strip()
+              return {
+                'http':int(hm.group(1)) if hm else 0,
+                'effective_url':um.group(1).strip() if um else '',
+                'bytes':len(body.encode()),
+                'cards':len(ids),'ids':ids[:30],
+                'is_404_class':bool(re.search(r'<body[^>]*\berror404\b',body,re.I)),
+                'has_no_products':bool(re.search(r'No products were found|No se encontraron productos',body,re.I)),
+                'result_count':(re.findall(r'<p[^>]*woocommerce-result-count[^>]*>(.*?)</p>',body,re.I|re.S) or [''])[0][:500],
+                'pagination_hrefs':re.findall(r'<a[^>]*class=["\'][^"\']*page-numbers[^"\']*["\'][^>]*href=["\']([^"\']+)',body,re.I)[:20],
+                'text_tail':text[-1800:]
+              }
+          out={p:get(p) for p in ['/en/shop/','/en/shop/page/2/','/tienda/','/tienda/page/2/']}
+          pathlib.Path('.deploy-status/shop-pagination-live-diagnostic-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/shop-pagination-live-diagnostic-20260822.json
+          git commit -m "Record live shop pagination diagnostic ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
