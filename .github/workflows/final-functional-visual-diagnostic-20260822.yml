@@ -1,0 +1,156 @@
+name: Final functional visual diagnostic 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/final-functional-visual-diagnostic-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect production DB, routes and exact markup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-final
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          cat > /tmp/emdo-final/db.php <<'PHP'
+          <?php
+          $out=array('attributes'=>array());
+          foreach(array('tipo-pieza','calidad','raza-iberica','alimentacion','con-dop','dop','origen','preparacion','rango-peso','curacion','productor') as $slug){
+            $tax=wc_attribute_taxonomy_name($slug); if(!taxonomy_exists($tax))continue;
+            $terms=get_terms(array('taxonomy'=>$tax,'hide_empty'=>true));
+            $out['attributes'][$slug]=array();
+            if(!is_wp_error($terms))foreach($terms as $t)$out['attributes'][$slug][]=array('slug'=>$t->slug,'name'=>$t->name,'count'=>$t->count);
+          }
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp -q -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P "$PORT" /tmp/emdo-final/db.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-final-db.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file /tmp/emdo-final-db.php --path='$PROD_PATH' --allow-root" > /tmp/emdo-final/db.json
+          python3 - <<'PY'
+          import json,re,subprocess,time,html,pathlib,urllib.parse
+          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          db=json.load(open('/tmp/emdo-final/db.json'))
+          chosen=None
+          for attr in ['tipo-pieza','calidad','raza-iberica','alimentacion']:
+              terms=db.get('attributes',{}).get(attr,[])
+              if terms:
+                  chosen=(attr,terms[0]['slug'],terms[0]['name']);break
+          def req(path,country='ES',chrome=False):
+              sep='&' if '?' in path else '?'; url=base+path+sep+'emdo_final='+stamp
+              if chrome:
+                  p=subprocess.run(['google-chrome','--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=8500','--dump-dom',url],capture_output=True,text=True,timeout=55)
+                  body=p.stdout; code=200 if body else 0
+              else:
+                  p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-Final-Audit/1.0','-H','Cache-Control: no-cache, no-store','-b',f'mdo_shipping_country={country}; mdo_shipping_postcode=', '-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+                  body=p.stdout.split('\n__HTTP__:',1)[0]; m=re.search(r'\n__HTTP__:(\d{3})',p.stdout); code=int(m.group(1)) if m else 0
+              text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S))).strip()
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              count=None
+              for pat in [r'(\d+)\s+results',r'(\d+)\s+resultados']:
+                  m=re.search(pat,text,re.I)
+                  if m: count=int(m.group(1));break
+              return {'http':code,'cards':len(ids),'ids':ids[:30],'result_count':count,'text':text,'html':body}
+          out={'db':db,'chosen_attribute':chosen,'routes':{},'markup':{},'failures':[]}
+          tests={
+            'shop_es':('/tienda/','ES',False),'shop_en':('/en/shop/','ES',False),
+            'vendor_es':('/tienda/?vendor_id=3','ES',False),'vendor_en':('/en/shop/?vendor_id=3','ES',False),
+            'meat_es':('/categoria-producto/carnes/','ES',False),'meat_en':('/en/product-category/meat/','ES',False),
+            'order_es':('/tienda/?orderby=price','ES',False),'order_en':('/en/shop/?orderby=price','ES',False),
+            'page2_es':('/tienda/page/2/','ES',True),'page2_en':('/en/shop/page/2/','ES',True),
+            'pl_es':('/tienda/','PL',False),'pl_en':('/en/shop/','PL',False),
+          }
+          if chosen:
+              a,s,n=chosen
+              tests['meta_es']=(f'/categoria-producto/jamones-paletas/?filter_{a}={urllib.parse.quote(s)}&query_type_{a}=or','ES',False)
+              tests['meta_en']=(f'/en/product-category/hams-and-shoulders/?filter_{a}={urllib.parse.quote(s)}&query_type_{a}=or','ES',False)
+          for k,(p,c,ch) in tests.items():
+              r=req(p,c,ch); out['routes'][k]={x:v for x,v in r.items() if x not in ('html','text')}
+          prod=req('/en/producers/','ES',True); product=req('/en/product/4-boxes-of-vegetables-7-kg-receive-them-every-week/','ES',True)
+          def contexts(body,term):
+              vals=[]
+              for m in re.finditer(term,body,re.I): vals.append(body[max(0,m.start()-350):min(len(body),m.end()+350)])
+              return vals[:8]
+          out['markup']['visitar_contexts']=contexts(prod['html'],r'Visitar')
+          out['markup']['descripcion_contexts']=contexts(product['html'],r'Descripci(?:ó|&oacute;)n')
+          out['markup']['producer_text_has_visitar']=bool(re.search(r'\bVisitar\b',prod['text'],re.I))
+          out['markup']['product_text_has_descripcion']=bool(re.search(r'\bDescripción\b',product['text'],re.I))
+          # functional assertions
+          for k,r in out['routes'].items():
+              if r['http']!=200: out['failures'].append(f'{k} HTTP {r["http"]}')
+          for k in ['shop_es','shop_en']:
+              if out['routes'][k]['result_count']!=105: out['failures'].append(f'{k} total {out["routes"][k]["result_count"]} != 105')
+          for k in ['vendor_es','vendor_en']:
+              if out['routes'][k]['result_count']!=3 or set(out['routes'][k]['ids'])!={1056,1599,1220}: out['failures'].append(f'{k} vendor 1957 mismatch')
+          for k in ['meat_es','meat_en']:
+              if not out['routes'][k]['cards']: out['failures'].append(f'{k} no products')
+          for k in ['order_es','order_en']:
+              if not out['routes'][k]['cards']: out['failures'].append(f'{k} no products')
+          for k in ['page2_es','page2_en']:
+              if out['routes'][k]['cards']<1: out['failures'].append(f'{k} page 2 no product cards after Chrome wait')
+          for k in ['pl_es','pl_en']:
+              if out['routes'][k]['result_count']!=20: out['failures'].append(f'{k} Poland total {out["routes"][k]["result_count"]} != 20')
+          for k in ['meta_es','meta_en']:
+              if k in out['routes'] and out['routes'][k]['cards']<1: out['failures'].append(f'{k} attribute filter has no products')
+          pathlib.Path('.deploy-status/final-functional-diagnostic-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'failures':out['failures'],'chosen_attribute':chosen},ensure_ascii=False))
+          PY
+      - name: Measure global versus vendor controls in Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/emdo-final/profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9258 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-final/profile about:blank >/tmp/emdo-final/chrome.log 2>&1 &
+          CPID=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9258/json/list >/dev/null 2>&1 && break; sleep 1; done
+          cat > /tmp/emdo-final/geom.js <<'JS'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9258/json/list')).json();const target=targets.find(x=>x.type==='page');const ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});let id=0,p=new Map();ws.onmessage=e=>{let m=JSON.parse(e.data);if(!m.id||!p.has(m.id))return;let q=p.get(m.id);p.delete(m.id);clearTimeout(q.t);m.error?q.bad(m.error):q.ok(m.result||{})};const cmd=(method,params={})=>new Promise((ok,bad)=>{let n=++id,t=setTimeout(()=>{p.delete(n);bad(new Error(method+' timeout'))},25000);p.set(n,{ok,bad,t});ws.send(JSON.stringify({id:n,method,params}))});await cmd('Page.enable');await cmd('Runtime.enable');
+            const E=async expr=>(await cmd('Runtime.evaluate',{expression:expr,returnByValue:true,awaitPromise:true})).result?.value;
+            async function one(path){await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com'+path+'?emdo_geom='+Date.now()});await sleep(6500);return E(`(()=>{const info=e=>{if(!e)return null;let b=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:e.className,id:e.id,x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width),h:Math.round(b.height),border:s.border,borderWidth:s.borderWidth,borderStyle:s.borderStyle,borderColor:s.borderColor,borderRadius:s.borderRadius,background:s.backgroundColor,padding:s.padding,fontSize:s.fontSize,lineHeight:s.lineHeight,color:s.color,boxShadow:s.boxShadow,appearance:s.appearance}};let d=document.querySelector('[data-mdo-destination-open]'),o=document.querySelector('select.orderby'),filter=document.querySelector('.emo-shop-filter-toggle,.filter-button,.shop-filter-button,[data-filter-toggle]');return {href:location.href,destinationText:(d?.innerText||'').replace(/\\s+/g,' ').trim(),destination:info(d),ordering:info(o),orderingOptions:o?[...o.options].map(x=>({value:x.value,text:x.textContent.trim()})):[],filter:info(filter),body:(document.body?.innerText||'').slice(0,3000)}})()`)}
+            let out={es_global:await one('/tienda/'),en_global:await one('/en/shop/'),es_vendor:await one('/tienda/1957/'),en_vendor:await one('/en/store/1957/')};console.log(JSON.stringify(out,null,2));ws.close();}
+          main().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node /tmp/emdo-final/geom.js > .deploy-status/final-visual-geometry-20260822.json
+          kill $CPID >/dev/null 2>&1 || true
+      - name: Commit reports
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          test -f .deploy-status/final-functional-diagnostic-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/final-functional-diagnostic-20260822.json
+          test -f .deploy-status/final-visual-geometry-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/final-visual-geometry-20260822.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/final-functional-diagnostic-20260822.json .deploy-status/final-visual-geometry-20260822.json
+          git commit -m "Record final functional visual diagnostic ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
