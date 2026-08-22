@@ -84,6 +84,7 @@ add_action(
 		?>
 		<script id="elmercado-producer-layout-normalizer">
 		(() => {
+			const isEnglish = /^\/en(?:\/|$)/i.test(window.location.pathname) || (document.documentElement.lang || '').toLowerCase().startsWith('en');
 			const important = (element, property, value) => {
 				if (element) element.style.setProperty(property, value, 'important');
 			};
@@ -129,13 +130,14 @@ add_action(
 						(container || control).remove();
 					});
 
-					const producerName = card.querySelector('.store-data h2, .store-data h2 a')?.textContent?.trim() || 'el productor';
+					const producerName = card.querySelector('.store-data h2, .store-data h2 a')?.textContent?.trim() || (isEnglish ? 'the producer' : 'el productor');
 					const visitButton = card.querySelector('a.wcfmmp-visit-store');
 
 					if (visitButton) {
-						visitButton.textContent = 'Visitar';
-						visitButton.setAttribute('aria-label', `Visitar la tienda de ${producerName}`);
-						visitButton.setAttribute('title', `Visitar la tienda de ${producerName}`);
+						visitButton.textContent = isEnglish ? 'Visit' : 'Visitar';
+						const visitLabel = isEnglish ? `Visit ${producerName}'s store` : `Visitar la tienda de ${producerName}`;
+						visitButton.setAttribute('aria-label', visitLabel);
+						visitButton.setAttribute('title', visitLabel);
 						important(visitButton, 'display', 'inline-flex');
 						important(visitButton, 'align-items', 'center');
 						important(visitButton, 'justify-content', 'center');
