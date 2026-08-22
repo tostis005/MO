@@ -28,7 +28,18 @@ if ( 'backup' === $mode ) {
 		$matches = get_posts( array( 'post_type'=>'post', 'post_status'=>'publish', 'posts_per_page'=>1, 'fields'=>'ids', 'meta_key'=>'_emdo_authority_key', 'meta_value'=>(string)$key ) );
 		if ( ! empty( $matches ) ) { $ids[] = (int) $matches[0]; }
 	}
-	$legacy_slugs = array_values( array_unique( array_merge( array_keys( $legacy ), array( 'naranjas' ) ) ) );
+	$legacy_slugs = array_values(
+		array_unique(
+			array_merge(
+				array_keys( $legacy ),
+				array(
+					'naranjas',
+					'jamon-o-paleta-diferencias-cual-elegir',
+					'jamon-pieza-entera-o-loncheado-como-elegir',
+				)
+			)
+		)
+	);
 	foreach ( $legacy_slugs as $slug ) {
 		$post = get_page_by_path( (string) $slug, OBJECT, 'post' );
 		if ( $post instanceof WP_Post ) { $ids[] = (int) $post->ID; }
