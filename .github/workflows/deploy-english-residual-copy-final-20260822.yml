@@ -1,0 +1,106 @@
+name: Deploy final English residual copy 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/deploy-english-residual-copy-final-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Deploy language-aware generators and cleanup layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-copy-final
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          declare -A SRC DST BAK HAD
+          SRC[a]='elmercadodeorigen-child/inc/editorial-finish.php'; DST[a]="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/editorial-finish.php"
+          SRC[b]='elmercadodeorigen-child/inc/mobile-reading-checkout-01060.php'; DST[b]="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/inc/mobile-reading-checkout-01060.php"
+          SRC[c]='mu-plugins/mdo-english-visible-copy-cleanup-20260822.php'; DST[c]="$PROD_PATH/wp-content/mu-plugins/mdo-english-visible-copy-cleanup-20260822.php"
+          for k in a b c; do
+            BAK[$k]="/tmp/emdo-copy-final-${GITHUB_RUN_ID}-$k.bak"; HAD[$k]=0
+            if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '${DST[$k]}'"; then HAD[$k]=1; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '${DST[$k]}' '${BAK[$k]}'"; fi
+          done
+          rollback(){
+            for k in a b c; do
+              if [ "${HAD[$k]}" = 1 ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '${BAK[$k]}' '${DST[$k]}'" || true; else sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '${DST[$k]}'" || true; fi
+            done
+          }
+          trap 'rc=$?; if [ $rc -ne 0 ]; then rollback; fi; exit $rc' EXIT
+          for k in a b c; do sshpass -e scp $SCP "${SRC[$k]}" "$STAGING_USER@$STAGING_HOST:${DST[$k]}"; done
+          for k in a b c; do sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '${DST[$k]}' >/dev/null"; done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          python3 - <<'PY'
+          import subprocess,re,json,html,time,pathlib
+          base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()));out={'routes':{},'checks':{},'failures':[]}
+          def chrome(path):
+              u=base+path+('?' if '?' not in path else '&')+'emdo_copy_final='+stamp
+              p=subprocess.run(['google-chrome','--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=6500','--dump-dom',u],capture_output=True,text=True,timeout=45)
+              dom=p.stdout;text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',dom,flags=re.I|re.S))).strip()
+              return text,dom
+          def http(path):
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--max-time','40','-w','\n__HTTP__:%{http_code}',base+path+'?emdo_copy_final='+stamp],capture_output=True,text=True);m=re.search(r'\n__HTTP__:(\d{3})',p.stdout);return int(m.group(1)) if m else 0
+          for path in ['/en/producers/','/en/journal/','/en/variety/traditional-lechin/','/en/shop/','/en/categories/','/en/store/1957/','/tienda/','/productores/','/blog/']:
+              code=http(path);out['routes'][path]=code
+              if code!=200:out['failures'].append(path+' HTTP '+str(code))
+          producers,_=chrome('/en/producers/');producers_es,_=chrome('/productores/');journal,_=chrome('/en/journal/');journal_es,_=chrome('/blog/');variety,_=chrome('/en/variety/traditional-lechin/');shop,shopdom=chrome('/en/shop/')
+          pm=re.findall(r'href=["\']([^"\']*/en/product/[^"\']+/)["\']',shopdom,re.I);product='';product_path=''
+          if pm:
+              product_path=re.sub(r'^https?://[^/]+','',pm[0]);product,_=chrome(product_path)
+          checks={
+            'en_producer_visit':len(re.findall(r'\bVisit\b',producers)),
+            'en_producer_visitar':bool(re.search(r'\bVisitar\b',producers,re.I)),
+            'es_producer_visitar':len(re.findall(r'\bVisitar\b',producers_es,re.I)),
+            'en_journal_min_read':bool(re.search(r'\b\d+\s+min\s+read\b',journal,re.I)),
+            'en_journal_min_lectura':bool(re.search(r'\b\d+\s+min\s+de\s+lectura\b',journal,re.I)),
+            'es_journal_min_lectura':bool(re.search(r'\b\d+\s+min\s+de\s+lectura\b',journal_es,re.I)),
+            'variety_english':('Variety' in variety),'variety_spanish':bool(re.search(r'\bVariedad\b',variety,re.I)),
+            'product_path':product_path,
+            'product_read_full_description':('Read full description' in product),
+            'product_leer_descripcion':bool(re.search(r'Leer\s+descripción\s+completa',product,re.I)),
+            'product_mostrar_menos':bool(re.search(r'Mostrar\s+menos',product,re.I)),
+            'product_description':('Description' in product),
+          }
+          if checks['en_producer_visit']<4 or checks['en_producer_visitar']:out['failures'].append('English producer CTA still Spanish')
+          if checks['es_producer_visitar']<4:out['failures'].append('Spanish producer CTA regression')
+          if not checks['en_journal_min_read'] or checks['en_journal_min_lectura']:out['failures'].append('English Journal reading time leak')
+          if not checks['es_journal_min_lectura']:out['failures'].append('Spanish Journal regression')
+          if not checks['variety_english'] or checks['variety_spanish']:out['failures'].append('English Variety label leak')
+          if product_path and (not checks['product_read_full_description'] or checks['product_leer_descripcion'] or checks['product_mostrar_menos']):out['failures'].append('English product mobile description controls leak')
+          out['checks']=checks;out['status']='success' if not out['failures'] else 'failure'
+          pathlib.Path('.deploy-status/english-residual-copy-final-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          if out['failures']:raise SystemExit('; '.join(out['failures']))
+          PY
+          trap - EXIT
+      - name: Preserve report on failure
+        if: failure()
+        run: test -f .deploy-status/english-residual-copy-final-20260822.json || printf '{"status":"failure","failures":["verification failed before report"]}\n' > .deploy-status/english-residual-copy-final-20260822.json
+      - name: Commit report
+        if: always()
+        run: |
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/english-residual-copy-final-20260822.json
+          git commit -m "Record final English copy verification ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
