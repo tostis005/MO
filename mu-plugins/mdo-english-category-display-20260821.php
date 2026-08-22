@@ -77,3 +77,5 @@ add_filter( 'woocommerce_taxonomy_archive_description_raw', static function ( st
     $english = mdoecd_description_20260821( (int) $term->term_id );
     return '' !== trim( wp_strip_all_tags( $english ) ) ? $english : $description;
 }, PHP_INT_MAX, 2 );
+
+// Production redeploy marker: 2026-08-22 10:34 +02:00.
