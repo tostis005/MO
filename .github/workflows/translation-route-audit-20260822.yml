@@ -1,0 +1,70 @@
+name: Translation and route audit 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/translation-route-audit-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit live routes and visible English text
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p .deploy-status /tmp/emdo-lang
+          python3 - <<'PY'
+          import subprocess,re,json,html,time,pathlib
+          base='https://www.elmercadodeorigen.com'
+          routes=['/','/tienda/','/categorias/','/productores/','/blog/','/en/','/en/shop/','/en/categories/','/en/producers/','/en/journal/','/en/about-us/','/en/shipping/','/en/contact/','/en/store/1957/','/en/store/1957/about/','/en/product-category/meat/','/en/product-category/hams-and-shoulders/','/en/variedad/tradicional-lechin/']
+          spanish_ui=['Envío a','¿Dónde quieres recibir tu pedido?','Guardar destino','Mostrando','Ordenar por','Categorías del producto','Añadir al carrito','Actualizando productos','Código postal','No se han encontrado productos','Visitar tienda','Leer más','Descripción','Productos relacionados']
+          specific_spanish=['El Jamón Ibérico es un producto','Noviembre es la época','Variedad:']
+          report={'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'routes':{},'failures':[]}
+          for p in routes:
+              url=base+p+('?' if '?' not in p else '&')+'emdo_lang_audit='+str(int(time.time()))
+              r=subprocess.run(['curl','-k','-sS','-L','--max-redirs','6','--connect-timeout','8','--max-time','35','-A','Mozilla/5.0 EMDO-Lang-Audit/1.0','-w','\n__HTTP__:%{http_code}\n__URL__:%{url_effective}',url],capture_output=True,text=True)
+              body=r.stdout.split('\n__HTTP__:',1)[0]; hm=re.search(r'\n__HTTP__:(\d{3})',r.stdout); um=re.search(r'\n__URL__:(.+)',r.stdout)
+              item={'http':int(hm.group(1)) if hm else 0,'effective_url':um.group(1).strip() if um else '', 'bytes':len(body.encode())}
+              if p.startswith('/en/') or p=='/en/':
+                  c=subprocess.run(['google-chrome','--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=6500','--dump-dom',url],capture_output=True,text=True,timeout=45)
+                  dom=c.stdout or body
+                  text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',dom,flags=re.I|re.S))).strip()
+                  item['spanish_ui_hits']=[x for x in spanish_ui if x.lower() in text.lower()]
+                  item['specific_spanish_hits']=[x for x in specific_spanish if x.lower() in text.lower()]
+                  item['title']=re.search(r'<title[^>]*>(.*?)</title>',dom,re.I|re.S).group(1).strip() if re.search(r'<title[^>]*>(.*?)</title>',dom,re.I|re.S) else ''
+                  item['sample']=text[:1000]
+              report['routes'][p]=item
+              if item['http']!=200: report['failures'].append(f'{p} HTTP {item["http"]}')
+          # Pull a sample English product from the live shop and inspect it too.
+          shop=subprocess.run(['curl','-k','-sS','-L','--max-time','35',base+'/en/shop/?emdo_lang_product=1'],capture_output=True,text=True).stdout
+          m=re.search(r'href=["\']([^"\']*/en/product/[^"\']+/)["\']',shop,re.I)
+          if m:
+              u=m.group(1); u=u if u.startswith('http') else base+u
+              pth=re.sub(r'^https?://[^/]+','',u)
+              c=subprocess.run(['google-chrome','--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=6500','--dump-dom',u],capture_output=True,text=True,timeout=45)
+              dom=c.stdout; text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',dom,flags=re.I|re.S))).strip()
+              report['sample_product']={'path':pth,'spanish_ui_hits':[x for x in spanish_ui if x.lower() in text.lower()],'specific_spanish_hits':[x for x in specific_spanish if x.lower() in text.lower()],'sample':text[:1600]}
+          pathlib.Path('.deploy-status/translation-route-audit-20260822.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          PY
+      - name: Commit report
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          test -f .deploy-status/translation-route-audit-20260822.json || printf '{"failures":["audit step failed before report"]}\n' > .deploy-status/translation-route-audit-20260822.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/translation-route-audit-20260822.json
+          git commit -m "Record translation route audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
