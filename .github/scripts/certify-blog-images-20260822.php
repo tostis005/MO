@@ -178,3 +178,5 @@ if ( ! empty( $report['semantic_flags'] ) ) { throw new RuntimeException( 'Seman
 
 $report['status'] = 'ok';
 echo wp_json_encode( $report, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT ) . PHP_EOL;
+
+// Trigger marker: workflow already exists on main before this push.
