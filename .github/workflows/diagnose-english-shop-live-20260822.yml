@@ -1,0 +1,118 @@
+name: Diagnose English shop live 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/diagnose-english-shop-live-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Diagnose English shop
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import subprocess,re,json,pathlib,os,time
+          base='https://www.elmercadodeorigen.com'
+          stamp=str(int(time.time()))
+          def req(path):
+              url=base+path+('&' if '?' in path else '?')+'emdo_en_shop_diag='+stamp
+              p=subprocess.run(['curl','-k','-sS','--connect-timeout','8','--max-time','45','--max-redirs','0','-A','Mozilla/5.0 EMDO-English-Shop-Diagnostic/1.0','-H','Cache-Control: no-cache, no-store','-D','/tmp/hh.txt','-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+              raw=p.stdout; m=re.search(r'\n__HTTP__:(\d{3})',raw); body=raw.split('\n__HTTP__:',1)[0]
+              headers=pathlib.Path('/tmp/hh.txt').read_text(errors='ignore') if pathlib.Path('/tmp/hh.txt').exists() else ''
+              loc=re.findall(r'^location:\s*(.+)$',headers,re.I|re.M); xr=re.findall(r'^x-redirect-by:\s*(.+)$',headers,re.I|re.M)
+              ids=[]
+              for v in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  i=int(v)
+                  if i not in ids: ids.append(i)
+              return {'rc':p.returncode,'http':int(m.group(1)) if m else 0,'location':loc[-1].strip() if loc else '','x_redirect_by':xr[-1].strip() if xr else '','bytes':len(body.encode()),'cards':len(ids),'ids':ids[:30],'body':body}
+          shop=req('/en/shop/')
+          legacy=req('/en/tienda/')
+          home=req('/en/')
+          menu=[]
+          for href,text in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',home['body'],re.I|re.S):
+              clean=re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',text)).strip()
+              if clean.lower()=='shop': menu.append(href)
+          report={'curl':{'shop':{k:v for k,v in shop.items() if k!='body'},'legacy':{k:v for k,v in legacy.items() if k!='body'},'home':{k:v for k,v in home.items() if k!='body'},'shop_menu_hrefs':menu},'chrome':{},'status':'diagnostic'}
+          pathlib.Path('/tmp/en-shop-diag-base.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+
+          rm -rf /tmp/emdo-en-shop-profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9231 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-en-shop-profile about:blank >/tmp/chrome-en-shop.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9231/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE' > /tmp/en-shop-chrome.json
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9231/json/list')).json();
+            const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl);
+            await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0; const pending=new Map(); const consoleErrors=[]; const exceptions=[];
+            ws.onmessage=e=>{const m=JSON.parse(e.data); if(m.method==='Runtime.exceptionThrown'){exceptions.push(m.params?.exceptionDetails?.text||'exception');return;} if(m.method==='Log.entryAdded'){const x=m.params?.entry;if(x&&x.level==='error')consoleErrors.push(x.text||'error');return;} if(!m.id||!pending.has(m.id))return; const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=15000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable'); await cmd('Runtime.enable'); await cmd('Log.enable');
+            await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com/en/shop/?emdo_browser_diag='+Date.now()},30000);
+            const expr=`(() => {
+              const vis=e=>{if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>0&&r.width>2&&r.height>2};
+              const selectors=['.blockUI','.blockOverlay','.woocommerce .loading','.wcfmmp-store-list-map','.preloader','.loader','.loading-overlay','[aria-busy="true"]'];
+              const overlays=[]; for(const sel of selectors){for(const e of document.querySelectorAll(sel)){if(vis(e))overlays.push(sel+'|'+(e.className||'').toString().slice(0,120));}}
+              const products=[...document.querySelectorAll('li.product, .products .product')];
+              const scripts=[...document.scripts].map(s=>s.src||'inline').filter(Boolean);
+              const shopLinks=[...document.querySelectorAll('a')].filter(a=>(a.textContent||'').trim().toLowerCase()==='shop').map(a=>a.href);
+              const body=(document.body?.innerText||'').replace(/\\s+/g,' ').slice(0,1200);
+              return {href:location.href,title:document.title,readyState:document.readyState,nodes:document.getElementsByTagName('*').length,products:products.length,productIds:products.map(e=>{const m=(e.className||'').match(/post-(\\d+)/);return m?Number(m[1]):0}).filter(Boolean).slice(0,30),heap:(performance.memory||{}).usedJSHeapSize||0,overlays,shopLinks,body,translateDom:scripts.some(s=>s.includes('trp-translate-dom-changes')),autoLoader:!!document.getElementById('elmercado-catalog-scroll-final-010234'),scripts:scripts.filter(s=>/translate|catalog|shop|wcfm|woocommerce/i.test(s)).slice(0,80)};
+            })()`;
+            const snaps=[];
+            for(let i=0;i<3;i++){await sleep(5000);const r=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},15000);snaps.push(r.result.value);}
+            console.log(JSON.stringify({snapshots:snaps,consoleErrors:consoleErrors.slice(0,30),exceptions:exceptions.slice(0,30)},null,2));
+            ws.close();
+          }
+          main().catch(e=>{console.log(JSON.stringify({fatal:String(e&&e.stack||e)},null,2));process.exit(0)});
+          NODE
+
+          python3 - <<'PY'
+          import json,pathlib
+          base=json.loads(pathlib.Path('/tmp/en-shop-diag-base.json').read_text())
+          try: chrome=json.loads(pathlib.Path('/tmp/en-shop-chrome.json').read_text())
+          except Exception as e: chrome={'fatal':'invalid chrome output: '+repr(e),'raw':pathlib.Path('/tmp/en-shop-chrome.json').read_text(errors='ignore')[:4000]}
+          base['chrome']=chrome
+          snaps=chrome.get('snapshots') or []
+          failures=[]
+          shop=base['curl']['shop']
+          if shop.get('http')!=200 or shop.get('location'): failures.append('English shop HTTP/redirect failure')
+          if shop.get('cards',0)<10: failures.append('English shop initial HTML has too few products')
+          if snaps:
+              last=snaps[-1]
+              if last.get('products',0)<10: failures.append('English shop browser has too few products')
+              if last.get('overlays'): failures.append('Visible loading overlay remains')
+              if last.get('readyState')!='complete': failures.append('Browser document did not complete')
+              if len(snaps)>=2 and snaps[-1].get('nodes',0)>snaps[0].get('nodes',0)+2000: failures.append('DOM is growing abnormally')
+              if last.get('heap',0)>350000000: failures.append('JS heap is abnormally high')
+          else: failures.append('No browser snapshots')
+          base['failures']=failures
+          base['status']='failure' if failures else 'success'
+          pathlib.Path('.deploy-status/english-shop-live-diagnostic-20260822.json').write_text(json.dumps(base,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps(base,ensure_ascii=False,indent=2))
+          PY
+      - name: Commit diagnostic
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add .deploy-status/english-shop-live-diagnostic-20260822.json || true
+          git commit -m "Record English shop live diagnostic ${GITHUB_RUN_ID} [skip ci]" || true
+          git push origin HEAD:main
