@@ -1,6 +1,7 @@
 <?php
 /** Curated unbranded pools for the two legacy editorial articles. */
 /** 2026-08-22: certification trigger; image selections below are unchanged. */
+/** PR #77 retrigger after making retired Naranjas optional in the repairer. */
 return array(
     'jamon-iberico' => array(
         'featured' => array(
