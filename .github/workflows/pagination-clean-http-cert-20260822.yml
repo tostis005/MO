@@ -1,0 +1,55 @@
+name: Pagination clean HTTP certification 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/pagination-clean-http-cert-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Certify exact clean shop pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import subprocess,re,html,json,pathlib
+          base='https://www.elmercadodeorigen.com';out={'pages':{},'failures':[]}
+          for key,path in [('p1_es','/tienda/'),('p2_es','/tienda/page/2/'),('p3_es','/tienda/page/3/'),('p1_en','/en/shop/'),('p2_en','/en/shop/page/2/'),('p3_en','/en/shop/page/3/')]:
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-PaginationCert/1.0','-H','Cache-Control: no-cache, no-store','-w','\n__HTTP__:%{http_code}',base+path],capture_output=True,text=True)
+              body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout);ids=[]
+              for x in re.findall(r'<li\b[^>]*class=["\'][^"\']*\bpost-(\d+)\b[^"\']*\bproduct\b|<li\b[^>]*class=["\'][^"\']*\bproduct\b[^"\']*\bpost-(\d+)\b',body,re.I):
+                  z=int(x[0] or x[1]);
+                  if z not in ids:ids.append(z)
+              if not ids:
+                  for x in re.findall(r'\bpost-(\d+)\b',body):
+                      z=int(x)
+                      if z not in ids:ids.append(z)
+              text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S))).strip();total=None
+              for pat in [r'(\d+)\s+results',r'(\d+)\s+resultados']:
+                  z=re.search(pat,text,re.I)
+                  if z: total=int(z.group(1));break
+              r={'http':int(m.group(1)) if m else 0,'cards':len(ids[:15]),'ids':ids[:15],'total':total,'has_updating':bool(re.search(r'Actualizando productos|Updating products',text,re.I))};out['pages'][key]=r
+              if r['http']!=200:out['failures'].append(key+' HTTP '+str(r['http']))
+              if len(r['ids'])!=15:out['failures'].append(key+' cards '+str(len(r['ids'])))
+              if r['total']!=105:out['failures'].append(key+' total '+str(r['total']))
+          for lang in ['es','en']:
+              s=[set(out['pages'][f'p{i}_{lang}']['ids']) for i in (1,2,3)]
+              if any(s[i]&s[j] for i in range(3) for j in range(i+1,3)):out['failures'].append(lang+' page ID overlap')
+          if out['pages']['p1_es']['ids']!=out['pages']['p1_en']['ids'] or out['pages']['p2_es']['ids']!=out['pages']['p2_en']['ids'] or out['pages']['p3_es']['ids']!=out['pages']['p3_en']['ids']:out['failures'].append('ES/EN pagination parity mismatch')
+          out['status']='success' if not out['failures'] else 'failure';pathlib.Path('.deploy-status/pagination-clean-http-cert-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n');print(json.dumps(out,ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/pagination-clean-http-cert-20260822.json
+          git commit -m "Record clean pagination certification ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
