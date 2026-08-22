@@ -1,0 +1,120 @@
+name: Shipping and category logic audit 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/shipping-category-logic-audit-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit server shipping logic and public catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          REMOTE="wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" eval-file /tmp/emdo-shipping-logic-audit.php --path='$PROD_PATH' --allow-root"
+          cat > /tmp/emdo-shipping-logic-audit.php <<'PHP'
+          <?php
+          $out = array('vendors'=>array(),'countries'=>array(),'attributes'=>array(),'categories'=>array(),'published_products'=>0);
+          $ids = get_posts(array('post_type'=>'product','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids','suppress_filters'=>true,'no_found_rows'=>true));
+          $out['published_products']=count($ids);
+          $authors=array(); foreach($ids as $id){$p=get_post($id);if($p instanceof WP_Post)$authors[(int)$p->post_author]=($authors[(int)$p->post_author]??0)+1;}
+          foreach($authors as $uid=>$count){$u=get_userdata($uid);if(!$u instanceof WP_User)continue;$out['vendors'][]=array('id'=>$uid,'nicename'=>$u->user_nicename,'name'=>$u->display_name,'products'=>$count,'roles'=>(array)$u->roles);}
+          foreach(array('ES','PL') as $country){$allowed=array();$excluded=array();$products=0;foreach($out['vendors'] as $v){$ok=class_exists('MDO_Shipping_Destinations')?MDO_Shipping_Destinations::vendor_can_ship_to((int)$v['id'],$country,''):true;if($ok){$allowed[]=$v['id'];$products+=(int)$v['products'];}else{$excluded[]=$v['id'];}}$out['countries'][$country]=array('allowed_vendors'=>$allowed,'excluded_vendors'=>$excluded,'expected_products'=>$products);}
+          if(function_exists('wc_get_attribute_taxonomies')){foreach(wc_get_attribute_taxonomies() as $a){$tax=wc_attribute_taxonomy_name($a->attribute_name);$terms=get_terms(array('taxonomy'=>$tax,'hide_empty'=>false));$out['attributes'][]=array('name'=>$a->attribute_name,'label'=>$a->attribute_label,'taxonomy'=>$tax,'terms'=>is_wp_error($terms)?0:count($terms));}}
+          $cats=get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0));if(!is_wp_error($cats)){foreach($cats as $t){$out['categories'][]=array('id'=>$t->term_id,'slug'=>$t->slug,'name'=>$t->name,'count'=>$t->count,'en_slug'=>get_term_meta($t->term_id,'_en_US_slug',true),'en_name'=>get_term_meta($t->term_id,'_en_US_name',true),'en_published'=>get_term_meta($t->term_id,'_en_US_published',true));}}
+          echo wp_json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+          PHP
+          sshpass -e scp -q -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P "$PORT" /tmp/emdo-shipping-logic-audit.php "$STAGING_USER@$STAGING_HOST:/tmp/emdo-shipping-logic-audit.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "$REMOTE" > /tmp/server.json
+          export PROD_PATH
+          python3 - <<'PY'
+          import json,re,subprocess,time,pathlib
+          server=json.load(open('/tmp/server.json')); base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          def req(path,country='ES'):
+              url=base+path+('?' if '?' not in path else '&')+'emdo_ship_logic='+stamp
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','45','-A','Mozilla/5.0 EMDO-Shipping-Logic/1.0','-H','Cache-Control: no-cache, no-store','-b',f'mdo_shipping_country={country}; mdo_shipping_postcode=', '-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+              body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout)
+              text=re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',body))
+              n=None
+              for pat in [r'(\d+)\s+results',r'(\d+)\s+resultados']:
+                  x=re.search(pat,text,re.I)
+                  if x:n=int(x.group(1));break
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              return {'http':int(m.group(1)) if m else 0,'result_count':n,'cards':len(ids),'ids':ids[:30]}
+          public={'shops':{},'vendors':{},'categories':{}}
+          for c in ['ES','PL']:
+              public['shops'][c]={'es':req('/tienda/',c),'en':req('/en/shop/',c)}
+          for v in server['vendors']:
+              nic=v['nicename'];public['vendors'][nic]={}
+              for c in ['ES','PL']:
+                  public['vendors'][nic][c]={'es':req('/tienda/'+nic+'/',c),'en':req('/en/store/'+nic+'/',c)}
+          for cat in server['categories']:
+              if not cat.get('slug'):continue
+              x={'es':req('/categoria-producto/'+cat['slug']+'/','ES')}
+              if cat.get('en_published')=='1' and cat.get('en_slug'):x['en']=req('/en/product-category/'+cat['en_slug']+'/','ES')
+              public['categories'][cat['slug']]=x
+          failures=[]
+          for c in ['ES','PL']:
+              expected=server['countries'][c]['expected_products']
+              for lang in ['es','en']:
+                  r=public['shops'][c][lang]
+                  if r['http']!=200:failures.append(f'{lang} shop {c} HTTP {r["http"]}')
+                  if r['result_count'] is not None and r['result_count']!=expected:failures.append(f'{lang} shop {c} count {r["result_count"]} != expected {expected}')
+          for nic,states in public['vendors'].items():
+              vendor=next(v for v in server['vendors'] if v['nicename']==nic)
+              for c in ['ES','PL']:
+                  allowed=vendor['id'] in server['countries'][c]['allowed_vendors']
+                  for lang in ['es','en']:
+                      r=states[c][lang]
+                      if r['http']!=200:failures.append(f'{lang} vendor {nic} {c} HTTP {r["http"]}')
+                      if allowed and r['cards']<1:failures.append(f'{lang} vendor {nic} {c} allowed but no product cards')
+                      if not allowed and r['cards']>0:failures.append(f'{lang} vendor {nic} {c} excluded but shows cards')
+          for slug,x in public['categories'].items():
+              if x['es']['http']!=200:failures.append('ES category '+slug+' HTTP '+str(x['es']['http']))
+              if 'en' in x and x['en']['http']!=200:failures.append('EN category '+slug+' HTTP '+str(x['en']['http']))
+          out={'server':server,'public':public,'failures':failures,'status':'success' if not failures else 'issues-found'}
+          pathlib.Path('.deploy-status/shipping-category-logic-audit-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({'status':out['status'],'failures':len(failures),'vendors':len(server['vendors']),'categories':len(server['categories']),'attributes':len(server['attributes'])},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          test -f .deploy-status/shipping-category-logic-audit-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/shipping-category-logic-audit-20260822.json
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/shipping-category-logic-audit-20260822.json
+          git commit -m "Record shipping category logic audit ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
