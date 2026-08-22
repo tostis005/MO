@@ -101,6 +101,11 @@ add_action(
 		(() => {
 			'use strict';
 
+			const isEnglish = /^\/en(?:\/|$)/i.test(window.location.pathname) || (document.documentElement.lang || '').toLowerCase().startsWith('en');
+			const labels = isEnglish
+				? { more: 'Read full description', less: 'Show less' }
+				: { more: 'Leer descripción completa', less: 'Mostrar menos' };
+
 			const setupDescription = () => {
 				if (!document.body.classList.contains('single-product')) return;
 				const panel = document.querySelector('.woocommerce-Tabs-panel--description,#tab-description');
@@ -118,7 +123,7 @@ add_action(
 				button.className = 'emo-product-description-toggle';
 				button.setAttribute('aria-controls', panel.id);
 				button.setAttribute('aria-expanded', 'false');
-				button.textContent = 'Leer descripción completa';
+				button.textContent = labels.more;
 				panel.append(button);
 
 				const sync = () => {
@@ -128,14 +133,14 @@ add_action(
 					if (!mobile || !long) {
 						panel.classList.remove('is-expanded');
 						button.setAttribute('aria-expanded', 'false');
-						button.textContent = 'Leer descripción completa';
+						button.textContent = labels.more;
 					}
 				};
 
 				button.addEventListener('click', () => {
 					const expanded = panel.classList.toggle('is-expanded');
 					button.setAttribute('aria-expanded', String(expanded));
-					button.textContent = expanded ? 'Mostrar menos' : 'Leer descripción completa';
+					button.textContent = expanded ? labels.less : labels.more;
 					if (!expanded) {
 						const top = panel.getBoundingClientRect().top + scrollY - 110;
 						scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
