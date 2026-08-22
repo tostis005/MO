@@ -1,0 +1,77 @@
+name: Diagnose empty English categories 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/diagnose-empty-en-categories-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Diagnose two categories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" > .deploy-status/empty-english-categories-diagnostic-20260822.json <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -d memory_limit=768M "$wp_bin" eval '
+          global $wpdb;
+          $wanted=array("accessories","marinated-products");
+          $terms=get_terms(array("taxonomy"=>"product_cat","hide_empty"=>false));
+          $out=array("categories"=>array(),"excluded_authors"=>function_exists("elmercado_catalog_counts_excluded_authors_010217")?array_values(array_map("absint",(array)elmercado_catalog_counts_excluded_authors_010217())):array());
+          foreach($terms as $t){
+            if(!$t instanceof WP_Term) continue;
+            $en=sanitize_title((string)get_term_meta($t->term_id,"_en_US_slug",true));
+            if(!in_array($en,$wanted,true)) continue;
+            $children=get_term_children($t->term_id,"product_cat"); if(is_wp_error($children)) $children=array();
+            $term_ids=array_values(array_unique(array_merge(array((int)$t->term_id),array_map("absint",(array)$children))));
+            $sql="SELECT DISTINCT p.ID,p.post_author,p.post_status,p.post_title FROM {$wpdb->posts} p INNER JOIN {$wpdb->term_relationships} tr ON tr.object_id=p.ID INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id=tr.term_taxonomy_id WHERE p.post_type=\"product\" AND tt.taxonomy=\"product_cat\" AND tt.term_id IN (".implode(",",$term_ids).") ORDER BY p.ID";
+            $rows=$wpdb->get_results($sql,ARRAY_A); $products=array();
+            foreach((array)$rows as $r){
+              $id=(int)$r["ID"];
+              $vis=wp_get_post_terms($id,"product_visibility",array("fields"=>"slugs")); if(is_wp_error($vis)) $vis=array();
+              $products[]=array("id"=>$id,"author"=>(int)$r["post_author"],"status"=>(string)$r["post_status"],"title"=>(string)$r["post_title"],"stock"=>(string)get_post_meta($id,"_stock_status",true),"visibility"=>array_values((array)$vis));
+            }
+            $visible=function_exists("elmercado_catalog_visible_category_count_010217")?(int)elmercado_catalog_visible_category_count_010217((int)$t->term_id):null;
+            $out["categories"][]=array("term_id"=>(int)$t->term_id,"native_slug"=>$t->slug,"english_slug"=>$en,"raw_term_count"=>(int)$t->count,"public_visible_count"=>$visible,"products"=>$products);
+          }
+          echo wp_json_encode($out,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE
+      - name: Commit diagnostic
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add .deploy-status/empty-english-categories-diagnostic-20260822.json || true
+          git commit -m 'Record empty English categories diagnostic [skip ci]' || true
+          git push origin HEAD:main
