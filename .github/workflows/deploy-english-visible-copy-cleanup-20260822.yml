@@ -1,0 +1,103 @@
+name: Deploy English visible copy cleanup 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/deploy-english-visible-copy-cleanup-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Deploy and verify live English copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD_PATH:?Production path not found}"
+          DST="$PROD_PATH/wp-content/mu-plugins/mdo-english-visible-copy-cleanup-20260822.php"
+          HAD=0; BAK="/tmp/emdo-visible-copy-${GITHUB_RUN_ID}.bak"
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$DST'"; then HAD=1; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$DST' '$BAK'"; fi
+          rollback(){ if [ "$HAD" = 1 ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp '$BAK' '$DST'" || true; else sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$DST'" || true; fi; }
+          trap 'rc=$?; if [ $rc -ne 0 ]; then rollback; fi; exit $rc' EXIT
+          sshpass -e scp $SCP mu-plugins/mdo-english-visible-copy-cleanup-20260822.php "$STAGING_USER@$STAGING_HOST:$DST"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$DST' >/dev/null"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          python3 - <<'PY'
+          import subprocess,re,json,html,time,pathlib
+          base='https://www.elmercadodeorigen.com'; stamp=str(int(time.time()))
+          paths=['/en/producers/','/en/journal/','/en/variety/traditional-lechin/','/en/shop/','/en/categories/','/en/store/1957/','/tienda/']
+          out={'routes':{},'failures':[]}
+          def chrome(path):
+              u=base+path+'?emdo_copy_verify='+stamp
+              p=subprocess.run(['google-chrome','--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--virtual-time-budget=6500','--dump-dom',u],capture_output=True,text=True,timeout=45)
+              dom=p.stdout; text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',dom,flags=re.I|re.S))).strip()
+              return text,dom
+          for path in paths:
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--max-time','40','-w','\n__HTTP__:%{http_code}',base+path+'?emdo_copy_verify='+stamp],capture_output=True,text=True)
+              m=re.search(r'\n__HTTP__:(\d{3})',p.stdout); item={'http':int(m.group(1)) if m else 0}
+              if item['http']!=200: out['failures'].append(path+' HTTP '+str(item['http']))
+              out['routes'][path]=item
+          producers,_=chrome('/en/producers/'); journal,_=chrome('/en/journal/'); variety,_=chrome('/en/variety/traditional-lechin/'); shop,shopdom=chrome('/en/shop/')
+          pm=re.findall(r'href=["\']([^"\']*/en/product/[^"\']+/)["\']',shopdom,re.I)
+          product=''; product_path=''
+          if pm:
+              product_path=re.sub(r'^https?://[^/]+','',pm[0]); product,_=chrome(product_path)
+          checks={
+            'producers_visit_count':len(re.findall(r'\bVisit\b',producers)),
+            'producers_visitar':bool(re.search(r'\bVisitar\b',producers,re.I)),
+            'journal_min_read':bool(re.search(r'\b\d+\s+min\s+read\b',journal,re.I)),
+            'journal_min_lectura':bool(re.search(r'\b\d+\s+min\s+de\s+lectura\b',journal,re.I)),
+            'variety_has_english':('Variety' in variety),
+            'variety_has_spanish':bool(re.search(r'\bVariedad\b',variety,re.I)),
+            'product_path':product_path,
+            'product_description_en':('Description' in product),
+            'product_descripcion_es':bool(re.search(r'\bDescripción\b',product,re.I)),
+          }
+          if checks['producers_visit_count']<4 or checks['producers_visitar']:out['failures'].append('Producer Visit CTA not fully English')
+          if not checks['journal_min_read'] or checks['journal_min_lectura']:out['failures'].append('Journal reading time not fully English')
+          if not checks['variety_has_english'] or checks['variety_has_spanish']:out['failures'].append('Variety archive label not fully English')
+          if product_path and (not checks['product_description_en'] or checks['product_descripcion_es']):out['failures'].append('English product description tab label not fully English')
+          out['checks']=checks;out['status']='success' if not out['failures'] else 'failure'
+          pathlib.Path('.deploy-status/english-visible-copy-cleanup-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          if out['failures']:raise SystemExit('; '.join(out['failures']))
+          PY
+          trap - EXIT
+      - name: Preserve report on failure
+        if: failure()
+        run: test -f .deploy-status/english-visible-copy-cleanup-20260822.json || printf '{"status":"failure","failures":["verification failed before report"]}\n' > .deploy-status/english-visible-copy-cleanup-20260822.json
+      - name: Commit report
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/english-visible-copy-cleanup-20260822.json
+          git commit -m "Record English visible copy verification ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
