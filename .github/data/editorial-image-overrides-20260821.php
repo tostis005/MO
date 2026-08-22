@@ -4,11 +4,14 @@ return array(
     'ham-cutting-guide' => array(
         'id'=>'37639098','direct'=>'https://images.pexels.com/photos/37639098/pexels-photo-37639098.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/chef-carving-jamon-iberico-in-restaurant-setting-37639098/','photographer'=>'Nadin Sh','alt_es'=>'Cortador profesional trabajando una pieza de jamón ibérico en un jamonero','alt_en'=>'Professional carver slicing Jamón Ibérico on a ham stand'
     ),
+    'iberian-board-guide' => array(
+        'id'=>'4055796','direct'=>'https://images.pexels.com/photos/4055796/pexels-photo-4055796.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/young-acorn-in-macro-photography-4055796/','photographer'=>'Petr Ganaj','alt_es'=>'Bellota joven en una encina como contexto natural de los productos ibéricos, sin marcas ni etiquetas','alt_en'=>'Young acorn on an oak tree as brand-free context for Iberian products'
+    ),
     'ham-quantity-per-person-guide' => array(
-        'id'=>'2992882','direct'=>'https://images.pexels.com/photos/2992882/pexels-photo-2992882.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/food-on-a-plate-2992882/','photographer'=>'Mark Neal','alt_es'=>'Ración servida de jamón ibérico sobre una tosta en un plato','alt_en'=>'Served portion of Iberian ham on toast on a plate'
+        'id'=>'10700017','direct'=>'https://images.pexels.com/photos/10700017/pexels-photo-10700017.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-acorn-on-fall-ground-with-tree-leaves-10700017/','photographer'=>'Hanna Plants','alt_es'=>'Bellota entre hojas de encina como contexto del jamón ibérico, sin producto genérico ni etiquetas','alt_en'=>'Acorn among oak leaves as brand-free context for Iberian ham'
     ),
     'sliced-ham-storage-guide' => array(
-        'id'=>'31023834','direct'=>'https://images.pexels.com/photos/31023834/pexels-photo-31023834.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/traditional-spanish-bocadillo-with-jamon-on-rustic-plate-31023834/','photographer'=>'Julias Torten und Törtchen','alt_es'=>'Lonchas de jamón ibérico servidas sobre pan en un plato rústico','alt_en'=>'Slices of Iberian ham served on bread on a rustic plate'
+        'id'=>'9851249','direct'=>'https://images.pexels.com/photos/9851249/pexels-photo-9851249.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-an-acorn-lying-on-moss-9851249/','photographer'=>'Marek Kupiec','alt_es'=>'Bellota sobre musgo como contexto del jamón ibérico loncheado, sin confundirlo con bacon u otros curados','alt_en'=>'Acorn on moss as brand-free context for sliced Iberian ham'
     ),
     'bellota-100-iberico-guide' => array(
         'id'=>'34100094','direct'=>'https://images.pexels.com/photos/34100094/pexels-photo-34100094.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-acorns-on-oak-branch-in-autumn-34100094/','photographer'=>'Nathan J Hilton','alt_es'=>'Bellotas maduras en una rama de encina, recurso clave de la montanera','alt_en'=>'Ripe acorns on an oak branch, a key resource of the montanera'
