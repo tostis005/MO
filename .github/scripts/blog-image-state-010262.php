@@ -36,6 +36,7 @@ if ( 'backup' === $mode ) {
 					'naranjas',
 					'jamon-o-paleta-diferencias-cual-elegir',
 					'jamon-pieza-entera-o-loncheado-como-elegir',
+					'que-significa-aceite-oliva-virgen-extra',
 				)
 			)
 		)
