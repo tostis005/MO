@@ -1,0 +1,72 @@
+name: Page 2 query trace 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/page2-query-trace-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Trace main product query then remove diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-qtrace
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}";SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT";SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done')"
+          : "${PROD_PATH:?Production path not found}"
+          cat > /tmp/emdo-qtrace/qtrace.php <<'PHP'
+          <?php
+          if(!defined('ABSPATH'))exit;
+          if(empty($_GET['emdo_qtrace']))return;
+          $GLOBALS['emdo_qtrace']=array('stages'=>array());
+          function emdo_qtrace_is_main($q){if(!$q instanceof WP_Query||!$q->is_main_query())return false;$pt=$q->get('post_type');return $q->is_post_type_archive('product')||$q->is_tax('product_cat')||$q->is_tax('product_tag')||'product'===$pt||(is_array($pt)&&in_array('product',$pt,true));}
+          function emdo_qtrace_snap($q,$stage){if(!emdo_qtrace_is_main($q))return;$GLOBALS['emdo_qtrace']['stages'][$stage]=array('paged'=>$q->get('paged'),'page'=>$q->get('page'),'posts_per_page'=>$q->get('posts_per_page'),'offset'=>$q->get('offset'),'post__in'=>$q->get('post__in'),'post__not_in'=>$q->get('post__not_in'),'author'=>$q->get('author'),'author__in'=>$q->get('author__in'),'author__not_in'=>$q->get('author__not_in'),'orderby'=>$q->get('orderby'),'order'=>$q->get('order'),'fields'=>$q->get('fields'),'tax_query'=>$q->get('tax_query'),'meta_query'=>$q->get('meta_query'),'is_archive'=>$q->is_archive,'is_post_type_archive'=>$q->is_post_type_archive('product'),'is_tax'=>$q->is_tax());}
+          foreach(array(1,25,100,1200,1500,999999,PHP_INT_MAX) as $p){add_action('pre_get_posts',function($q)use($p){emdo_qtrace_snap($q,'pre_'.$p);},$p);}
+          add_filter('posts_request',function($sql,$q){if(emdo_qtrace_is_main($q)){$GLOBALS['emdo_qtrace']['sql']=$sql;emdo_qtrace_snap($q,'posts_request');}return $sql;},PHP_INT_MAX,2);
+          add_filter('the_posts',function($posts,$q){if(emdo_qtrace_is_main($q)){$GLOBALS['emdo_qtrace']['returned_ids']=array_map(fn($p)=>(int)$p->ID,$posts);$GLOBALS['emdo_qtrace']['found_posts']=$q->found_posts;$GLOBALS['emdo_qtrace']['max_num_pages']=$q->max_num_pages;emdo_qtrace_snap($q,'the_posts');}return $posts;},PHP_INT_MAX-10,2);
+          add_action('wp_footer',function(){echo '<script type="application/json" id="emdo-qtrace">'.wp_json_encode($GLOBALS['emdo_qtrace'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).'</script>';},PHP_INT_MAX);
+          PHP
+          DST="$PROD_PATH/wp-content/mu-plugins/0000-emdo-qtrace-temp.php"
+          sshpass -e scp $SCP /tmp/emdo-qtrace/qtrace.php "$STAGING_USER@$STAGING_HOST:$DST"
+          cleanup(){ sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$DST'" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          python3 - <<'PY'
+          import subprocess,re,json,time,pathlib,html as h
+          base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()));out={}
+          for key,path in [('p1_es','/tienda/'),('p2_es','/tienda/page/2/'),('p3_es','/tienda/page/3/'),('p1_en','/en/shop/'),('p2_en','/en/shop/page/2/'),('p3_en','/en/shop/page/3/')]:
+              sep='&' if '?' in path else '?';url=base+path+sep+'emdo_qtrace=1&stamp='+stamp
+              p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','50','-A','Mozilla/5.0 EMDO-QTrace/1.0','-H','Cache-Control: no-cache, no-store','-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+              body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout);j=re.search(r'<script type="application/json" id="emdo-qtrace">(.*?)</script>',body,re.S)
+              data=None
+              if j:
+                  try:data=json.loads(h.unescape(j.group(1)))
+                  except Exception as e:data={'parse_error':str(e),'raw':j.group(1)[:5000]}
+              out[key]={'http':int(m.group(1)) if m else 0,'trace':data}
+          pathlib.Path('.deploy-status/page2-query-trace-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps({k:{'http':v['http'],'returned':(v['trace'] or {}).get('returned_ids'),'paged':((v['trace'] or {}).get('stages',{}).get('posts_request') or {}).get('paged'),'post_in_len':len((((v['trace'] or {}).get('stages',{}).get('posts_request') or {}).get('post__in') or []))} for k,v in out.items()},ensure_ascii=False))
+          PY
+          cleanup;trap - EXIT
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/page2-query-trace-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/page2-query-trace-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/page2-query-trace-20260822.json
+          git commit -m "Record page 2 query trace ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
