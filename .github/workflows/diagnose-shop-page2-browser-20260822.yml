@@ -1,0 +1,57 @@
+name: Diagnose shop page 2 in Chrome 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/diagnose-shop-page2-browser-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Chrome page 2 diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          rm -rf /tmp/emdo-page2-chrome
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9238 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-page2-chrome about:blank >/tmp/page2-chrome.log 2>&1 &
+          CPID=$!; trap 'kill $CPID >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9238/json/list >/dev/null 2>&1 && break; sleep 1; done
+          node - <<'NODE' >/tmp/page2.json
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function main(){
+            const targets=await (await fetch('http://127.0.0.1:9238/json/list')).json(); const t=targets.find(x=>x.type==='page');
+            const ws=new WebSocket(t.webSocketDebuggerUrl); await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});
+            let id=0;const pending=new Map();const exceptions=[];const consoleErrors=[];
+            ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown'){exceptions.push(m.params?.exceptionDetails?.text||'exception');return;}if(m.method==='Log.entryAdded'){const x=m.params?.entry;if(x&&x.level==='error')consoleErrors.push(x.text||'error');return;}if(!m.id||!pending.has(m.id))return;const p=pending.get(m.id);pending.delete(m.id);clearTimeout(p.timer);m.error?p.bad(m.error):p.ok(m.result||{});};
+            const cmd=(method,params={},timeout=30000)=>new Promise((ok,bad)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);bad(new Error(method+' timeout'));},timeout);pending.set(n,{ok,bad,timer});ws.send(JSON.stringify({id:n,method,params}));});
+            await cmd('Page.enable');await cmd('Runtime.enable');await cmd('Log.enable');
+            const expr=`(()=>{const ps=[...document.querySelectorAll('li.product,.products .product')];const body=(document.body?.innerText||'').replace(/\\s+/g,' ');return {href:location.href,readyState:document.readyState,products:ps.length,ids:ps.map(e=>{const m=(e.className||'').match(/post-(\\d+)/);return m?Number(m[1]):0}).filter(Boolean).slice(0,30),nodes:document.getElementsByTagName('*').length,updating:/Updating products|Actualizando productos/i.test(body),noProducts:/No products were found|No se encontraron productos/i.test(body),pagination:[...document.querySelectorAll('a.page-numbers')].map(a=>a.href).slice(0,20)};})()`;
+            const out={};
+            for(const [key,url] of [['en','https://www.elmercadodeorigen.com/en/shop/page/2/?emdo_page2_chrome='+Date.now()],['es','https://www.elmercadodeorigen.com/tienda/page/2/?emdo_page2_chrome='+Date.now()]]){
+              await cmd('Page.navigate',{url},45000);const snaps=[];for(let i=0;i<4;i++){await sleep(4000);const r=await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},20000);snaps.push(r.result.value);}out[key]={snapshots:snaps};
+            }
+            out.exceptions=exceptions.slice(0,30);out.consoleErrors=consoleErrors.slice(0,30);console.log(JSON.stringify(out,null,2));ws.close();
+          }
+          main().catch(e=>{console.error(e.stack||String(e));process.exit(1)});
+          NODE
+          cp /tmp/page2.json .deploy-status/shop-page2-browser-diagnostic-20260822.json
+      - name: Commit report
+        if: always()
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .deploy-status/shop-page2-browser-diagnostic-20260822.json || true
+          git commit -m "Record shop page 2 Chrome diagnostic ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main
+          git push origin HEAD:main
