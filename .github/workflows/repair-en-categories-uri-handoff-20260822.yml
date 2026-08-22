@@ -1,0 +1,195 @@
+name: Repair English categories URI handoff 20260822
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/repair-en-categories-uri-handoff-20260822.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-en-categories-uri-handoff-20260822
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate scoped files
+        run: |
+          set -euo pipefail
+          for f in \
+            mu-plugins/mdo-zz-english-public-uri-coherence-20260822.php \
+            mu-plugins/zzzz-mdo-english-categories-hub-route-20260822.php \
+            mu-plugins/0001-mdo-english-category-public-route-20260822.php \
+            mu-plugins/zzzzzzzzzz-mdo-english-category-final-20260822.php; do
+            php -l "$f"
+          done
+
+      - name: Deploy and verify with rollback
+        id: repair
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          mkdir -p .deploy-status /tmp/en-cat-uri
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
+          ')"
+          if [ -z "$PROD_PATH" ]; then echo '{"status":"failure","failures":["production path not found"]}' > /tmp/en-cat-uri/result.json; exit 2; fi
+
+          MU="$PROD_PATH/wp-content/mu-plugins"
+          BDIR="/tmp/emdo-en-category-uri-handoff-${GITHUB_RUN_ID}"
+          FILES="mdo-zz-english-public-uri-coherence-20260822.php zzzz-mdo-english-categories-hub-route-20260822.php 0001-mdo-english-category-public-route-20260822.php zzzzzzzzzz-mdo-english-category-final-20260822.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$MU' '$BDIR'; : > '$BDIR/state'; for f in $FILES; do if [ -f '$MU/'\"\$f\" ]; then cp '$MU/'\"\$f\" '$BDIR/'\"\$f\"; echo \"\$f=present\" >> '$BDIR/state'; else echo \"\$f=absent\" >> '$BDIR/state'; fi; done"
+
+          rollback() {
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "while IFS='=' read -r f state; do [ -n \"\$f\" ] || continue; if [ \"\$state\" = present ]; then cp '$BDIR/'\"\$f\" '$MU/'\"\$f\"; else rm -f '$MU/'\"\$f\"; fi; done < '$BDIR/state'; wp_bin=\$(command -v wp || true); [ -n \"\$wp_bin\" ] && \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" || true
+          }
+
+          for f in $FILES; do
+            if ! sshpass -e scp $SCP "mu-plugins/$f" "$STAGING_USER@$STAGING_HOST:$MU/$f"; then
+              echo '{"status":"failure","failures":["deploy copy failed"]}' > /tmp/en-cat-uri/result.json
+              rollback
+              exit 3
+            fi
+          done
+
+          if ! sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); for f in $FILES; do \"\$php_bin\" -l '$MU/'\"\$f\" >/dev/null || exit 11; done; [ -n \"\$wp_bin\" ] && \"\$wp_bin\" option update mdo_en_category_query_normalizer_enabled_20260821 0 --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; [ -n \"\$wp_bin\" ] && \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"; then
+            echo '{"status":"failure","failures":["remote lint or cache flush failed"]}' > /tmp/en-cat-uri/result.json
+            rollback
+            exit 4
+          fi
+
+          export PROD_PATH SSH
+          python3 - <<'PY'
+          import subprocess,re,json,pathlib,time,sys,os
+          base='https://www.elmercadodeorigen.com'
+          slugs=['accessories','marinated-products','meat','packs-and-bundles','oils','preserves','cured-meats','vegetables','hams-and-shoulders','pulses']
+          stamp=str(int(time.time()))
+          def request(path,follow=False,timeout=35):
+              sep='&' if '?' in path else '?'
+              url=base+path+sep+'emdo_uri_fix='+stamp
+              cmd=['curl','-k','-sS','--connect-timeout','8','--max-time',str(timeout),'-A','Mozilla/5.0 EMDO-category-uri-fix/1.0','-H','Cache-Control: no-cache, no-store','-H','Pragma: no-cache','-D','/tmp/h.txt','-w','\n__HTTP__:%{http_code}\n__URL__:%{url_effective}']
+              if follow: cmd += ['-L','--max-redirs','5']
+              cmd.append(url)
+              p=subprocess.run(cmd,capture_output=True,text=True)
+              raw=p.stdout
+              hm=re.search(r'\n__HTTP__:(\d{3})',raw); um=re.search(r'\n__URL__:(.*)$',raw,re.S)
+              body=raw.split('\n__HTTP__:',1)[0]
+              headers=pathlib.Path('/tmp/h.txt').read_text(errors='ignore') if pathlib.Path('/tmp/h.txt').exists() else ''
+              loc=re.findall(r'^location:\s*(.+)$',headers,re.I|re.M)
+              xr=re.findall(r'^x-redirect-by:\s*(.+)$',headers,re.I|re.M)
+              return {'rc':p.returncode,'http':int(hm.group(1)) if hm else 0,'url':um.group(1).strip() if um else '','body':body,'location':loc[-1].strip() if loc else '','x_redirect_by':xr[-1].strip() if xr else '','stderr':p.stderr[-600:]}
+          def ids(body):
+              out=[]
+              for v in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  i=int(v)
+                  if i not in out: out.append(i)
+              return out
+          report={'status':'pending','hub':{},'archives':[],'spanish':{},'shop':{},'failures':[]}
+
+          h=request('/en/categories/',False)
+          report['hub']={'http':h['http'],'location':h['location'],'x_redirect_by':h['x_redirect_by'],'bytes':len(h['body'].encode()),'template_marker':'data-emo-categories-hub' in h['body'],'english_links':len(set(re.findall(r'href=["\'][^"\']*/en/product-category/[^"\']+["\']',h['body'],re.I)))}
+          if h['rc']!=0 or h['http']!=200 or h['location'] or not report['hub']['template_marker'] or report['hub']['english_links']<8:
+              report['failures'].append('English categories hub is not a direct rendered 200')
+
+          s=request('/categorias/',False)
+          report['spanish']={'http':s['http'],'location':s['location'],'template_marker':'data-emo-categories-hub' in s['body']}
+          if s['rc']!=0 or s['http']!=200 or s['location'] or not report['spanish']['template_marker']:
+              report['failures'].append('Spanish categories hub regressed')
+
+          for slug in slugs:
+              r=request('/en/product-category/'+slug+'/',False)
+              pids=ids(r['body'])
+              row={'slug':slug,'http':r['http'],'location':r['location'],'x_redirect_by':r['x_redirect_by'],'cards':len(pids),'ids':pids[:15]}
+              report['archives'].append(row)
+              if r['rc']!=0 or r['http']!=200 or r['location'] or len(pids)<1:
+                  report['failures'].append('English archive failed: '+slug)
+
+          sh=request('/tienda/',False)
+          shop_ids=ids(sh['body'])
+          report['shop']={'http':sh['http'],'location':sh['location'],'cards':len(shop_ids),'ids':shop_ids[:15]}
+          if sh['rc']!=0 or sh['http']!=200 or sh['location'] or len(shop_ids)<10:
+              report['failures'].append('Global shop HTML regressed')
+
+          pathlib.Path('/tmp/en-cat-uri/shop_ids.txt').write_text(','.join(map(str,shop_ids)))
+          pathlib.Path('/tmp/en-cat-uri/result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          sys.exit(1 if report['failures'] else 0)
+          PY
+          rc=$?
+
+          if [ "$rc" -eq 0 ]; then
+            IDS="$(cat /tmp/en-cat-uri/shop_ids.txt)"
+            STATE="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); IDS='$IDS' \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval '\$ids=array_filter(array_map(\"absint\",explode(\",\",getenv(\"IDS\")))); \$a=array(); foreach(\$ids as \$id){\$p=get_post(\$id); if(\$p instanceof WP_Post){\$a[(int)\$p->post_author]=1;}} \$all=get_posts(array(\"post_type\"=>\"product\",\"post_status\"=>\"publish\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"suppress_filters\"=>true,\"no_found_rows\"=>true)); \$rank=get_transient(\"mdo_catalog_rank_v3_\".gmdate(\"Ymd\")); echo count(\$a).\":\".count(\$all).\":\".(is_array(\$rank)?count(\$rank):0);' --path='$PROD_PATH' --allow-root 2>/dev/null")"
+            python3 - "$STATE" <<'PY'
+          import json,sys,pathlib
+          p=pathlib.Path('/tmp/en-cat-uri/result.json'); d=json.loads(p.read_text()); state=sys.argv[1]; d['shop']['wp_state']=state
+          try: vendors,published,ranked=map(int,state.split(':'))
+          except: vendors=published=ranked=0
+          if vendors<4 or published<100 or ranked!=published: d['failures'].append('Global shop vendor/rank guard failed')
+          d['status']='success' if not d['failures'] else 'failure'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          sys.exit(1 if d['failures'] else 0)
+          PY
+            rc=$?
+          fi
+
+          if [ "$rc" -ne 0 ]; then
+            python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('/tmp/en-cat-uri/result.json')
+          if p.exists():
+              d=json.loads(p.read_text()); d['status']='failure'; d['rolled_back']=True; p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+            rollback
+            exit 5
+          fi
+
+          python3 - "$BDIR" <<'PY'
+          import json,pathlib,sys
+          p=pathlib.Path('/tmp/en-cat-uri/result.json'); d=json.loads(p.read_text()); d['status']='success'; d['rolled_back']=False; d['backup_dir']=sys.argv[1]; p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          echo "backup_dir=$BDIR" >> "$GITHUB_OUTPUT"
+
+      - name: Record production result
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          if [ -f /tmp/en-cat-uri/result.json ]; then cp /tmp/en-cat-uri/result.json .deploy-status/english-categories-uri-handoff-20260822.json; else echo '{"status":"failure","failures":["no result produced"]}' > .deploy-status/english-categories-uri-handoff-20260822.json; fi
+          export OUTCOME='${{ steps.repair.outcome }}' RUN_ID="$GITHUB_RUN_ID" SHA="$GITHUB_SHA"
+          python3 - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path('.deploy-status/english-categories-uri-handoff-20260822.json'); d=json.loads(p.read_text()); d['workflow_outcome']=os.getenv('OUTCOME'); d['run_id']=os.getenv('RUN_ID'); d['sha']=os.getenv('SHA'); p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git pull --rebase origin main
+          git add .deploy-status/english-categories-uri-handoff-20260822.json
+          git commit -m "Record English categories URI handoff ${GITHUB_RUN_ID} [skip ci]" || exit 0
+          git push origin HEAD:main
+
+      - name: Fail if rolled back
+        if: steps.repair.outcome != 'success'
+        run: exit 1
