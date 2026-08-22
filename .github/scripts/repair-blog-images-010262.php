@@ -15,20 +15,24 @@ $authority_overrides = require $authority_file;
 $legacy_overrides    = require $legacy_file;
 if ( ! is_array( $authority_overrides ) || ! is_array( $legacy_overrides ) ) { throw new RuntimeException( 'Invalid image override data.' ); }
 
-// Historic articles that predate the shared authority batches stay here so the
-// two-post legacy data-file contract remains compatible with the deployed workflow.
-$legacy_overrides['naranjas'] = array(
-	'featured' => array(
-		'id'=>'34815908','direct'=>'https://images.pexels.com/photos/34815908/pexels-photo-34815908.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/valencia-orange-tree-under-clear-blue-sky-34815908/','photographer'=>'Emilio Sánchez Hernández','alt_es'=>'Naranjas maduras en un naranjo de Valencia bajo cielo despejado','alt_en'=>'Ripe oranges on a Valencia orange tree under a clear sky'
-	),
-	'inline' => array(
-		array('id'=>'33707783','direct'=>'https://images.pexels.com/photos/33707783/pexels-photo-33707783.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/seville-oranges-on-tree-in-sunlight-33707783/','photographer'=>'Charlie Jordan','alt_es'=>'Naranjas maduras en un árbol de Sevilla iluminado por el sol','alt_en'=>'Ripe oranges on a tree in Seville in sunlight'),
-		array('id'=>'37343441','direct'=>'https://images.pexels.com/photos/37343441/pexels-photo-37343441.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-in-valencia-grove-37343441/','photographer'=>'Bor Jinson','alt_es'=>'Naranjas frescas creciendo en un naranjal de Valencia','alt_en'=>'Fresh oranges growing in a Valencia orange grove'),
-		array('id'=>'7299666','direct'=>'https://images.pexels.com/photos/7299666/pexels-photo-7299666.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-on-a-basket-7299666/','photographer'=>'Anna Tarazevich','alt_es'=>'Cesta de naranjas frescas con hojas verdes','alt_en'=>'Basket of fresh oranges with green leaves'),
-		array('id'=>'18102965','direct'=>'https://images.pexels.com/photos/18102965/pexels-photo-18102965.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-18102965/','photographer'=>'Jonathan Borba','alt_es'=>'Naranjas maduras listas para cosechar en un huerto','alt_en'=>'Ripe oranges ready for harvest in an orchard'),
-		array('id'=>'7288784','direct'=>'https://images.pexels.com/photos/7288784/pexels-photo-7288784.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-in-close-up-photography-7288784/','photographer'=>'Paco Álamo','alt_es'=>'Naranjas frescas reunidas en una cesta de mercado','alt_en'=>'Fresh oranges gathered in a market basket')
-	),
-);
+// Historic Naranjas is optional: keep its curated mapping only while that post
+// actually exists and is published. A retired post must never block repairs for
+// the live Journal.
+$legacy_oranges_candidate = get_page_by_path( 'naranjas', OBJECT, 'post' );
+if ( $legacy_oranges_candidate instanceof WP_Post && 'publish' === $legacy_oranges_candidate->post_status ) {
+	$legacy_overrides['naranjas'] = array(
+		'featured' => array(
+			'id'=>'34815908','direct'=>'https://images.pexels.com/photos/34815908/pexels-photo-34815908.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/valencia-orange-tree-under-clear-blue-sky-34815908/','photographer'=>'Emilio Sánchez Hernández','alt_es'=>'Naranjas maduras en un naranjo de Valencia bajo cielo despejado','alt_en'=>'Ripe oranges on a Valencia orange tree under a clear sky'
+		),
+		'inline' => array(
+			array('id'=>'33707783','direct'=>'https://images.pexels.com/photos/33707783/pexels-photo-33707783.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/seville-oranges-on-tree-in-sunlight-33707783/','photographer'=>'Charlie Jordan','alt_es'=>'Naranjas maduras en un árbol de Sevilla iluminado por el sol','alt_en'=>'Ripe oranges on a tree in Seville in sunlight'),
+			array('id'=>'37343441','direct'=>'https://images.pexels.com/photos/37343441/pexels-photo-37343441.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-in-valencia-grove-37343441/','photographer'=>'Bor Jinson','alt_es'=>'Naranjas frescas creciendo en un naranjal de Valencia','alt_en'=>'Fresh oranges growing in a Valencia orange grove'),
+			array('id'=>'7299666','direct'=>'https://images.pexels.com/photos/7299666/pexels-photo-7299666.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-on-a-basket-7299666/','photographer'=>'Anna Tarazevich','alt_es'=>'Cesta de naranjas frescas con hojas verdes','alt_en'=>'Basket of fresh oranges with green leaves'),
+			array('id'=>'18102965','direct'=>'https://images.pexels.com/photos/18102965/pexels-photo-18102965.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/ripe-oranges-on-tree-18102965/','photographer'=>'Jonathan Borba','alt_es'=>'Naranjas maduras listas para cosechar en un huerto','alt_en'=>'Ripe oranges ready for harvest in an orchard'),
+			array('id'=>'7288784','direct'=>'https://images.pexels.com/photos/7288784/pexels-photo-7288784.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/orange-fruits-in-close-up-photography-7288784/','photographer'=>'Paco Álamo','alt_es'=>'Naranjas frescas reunidas en una cesta de mercado','alt_en'=>'Fresh oranges gathered in a market basket')
+		),
+	);
+}
 
 // These two refined guides used generic Unsplash ham imagery. Keep a distinct,
 // brand-free Pexels context image approved for each so old publishers cannot put
@@ -245,7 +249,7 @@ if ( $legacy_jamon instanceof WP_Post && false !== stripos( (string) get_post_fi
 	throw new RuntimeException( 'Legacy Jamones-en-bodega duplicate reference remains.' );
 }
 $legacy_oranges = get_page_by_path( 'naranjas', OBJECT, 'post' );
-if ( ! $legacy_oranges instanceof WP_Post || '34815908' !== (string) get_post_meta( (int) get_post_thumbnail_id( $legacy_oranges->ID ), '_emdo_pexels_photo_id', true ) ) {
+if ( $legacy_oranges instanceof WP_Post && 'publish' === $legacy_oranges->post_status && '34815908' !== (string) get_post_meta( (int) get_post_thumbnail_id( $legacy_oranges->ID ), '_emdo_pexels_photo_id', true ) ) {
 	throw new RuntimeException( 'Legacy Naranjas image guard failed.' );
 }
 $legacy_ham_or_shoulder = get_page_by_path( 'jamon-o-paleta-diferencias-cual-elegir', OBJECT, 'post' );
