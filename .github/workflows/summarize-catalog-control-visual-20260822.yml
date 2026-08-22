@@ -1,0 +1,43 @@
+name: Summarize catalog control visual 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/summarize-catalog-control-visual-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  summarize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Build compact visual comparison
+        run: |
+          python3 - <<'PY'
+          import json,pathlib
+          d=json.loads(pathlib.Path('.deploy-status/catalog-control-visual-audit-20260822.json').read_text());out={}
+          fields=['w','h','border','borderRadius','background','padding','fontSize','lineHeight','appearance','boxShadow']
+          for viewport in ['desktop','mobile']:
+            out[viewport]={}
+            for lang in ['es','en']:
+              g=d[viewport][lang+'_global'];v=d[viewport][lang+'_vendor'];
+              out[viewport][lang]={
+                'global_products':g.get('products'),'vendor_products':v.get('products'),
+                'destination':{'global_present':bool(g.get('destination')),'vendor_present':bool(v.get('destination')),'global_text':g.get('destinationText'),'vendor_text':v.get('destinationText')},
+                'ordering_global':{k:(g.get('ordering') or {}).get(k) for k in fields},
+                'ordering_vendor':{k:(v.get('ordering') or {}).get(k) for k in fields},
+                'ordering_same_options':g.get('orderingOptions')==v.get('orderingOptions'),
+                'modal_global':{k:(g.get('modal') or {}).get(k) for k in ['w','h','background','padding','boxShadow']},
+                'modal_vendor':{k:(v.get('modal') or {}).get(k) for k in ['w','h','background','padding','boxShadow']},
+                'close_global_present':bool(g.get('close')),'close_vendor_present':bool(v.get('close')),
+              }
+          pathlib.Path('.deploy-status/catalog-control-visual-summary-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n');print(json.dumps(out,ensure_ascii=False))
+          PY
+      - name: Commit summary
+        run: |
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/catalog-control-visual-summary-20260822.json
+          git commit -m "Record catalog visual summary ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
