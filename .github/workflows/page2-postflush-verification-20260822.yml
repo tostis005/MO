@@ -1,0 +1,80 @@
+name: Page 2 post-flush verification 20260822
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/triggers/page2-postflush-verification-20260822.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Verify clean and bypassed pagination
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status /tmp/emdo-p2verify
+          python3 - <<'PY'
+          import subprocess,re,json,html,time,pathlib
+          base='https://www.elmercadodeorigen.com';stamp=str(int(time.time()));out={'curl':{},'failures':[]}
+          paths={'p1_es':'/tienda/','p2_es':'/tienda/page/2/','p3_es':'/tienda/page/3/','p1_en':'/en/shop/','p2_en':'/en/shop/page/2/','p3_en':'/en/shop/page/3/'}
+          def parse(body,code):
+              ids=[]
+              for x in re.findall(r'\bpost-(\d+)\b',body)+re.findall(r'data-product_id=["\'](\d+)["\']',body,re.I):
+                  x=int(x)
+                  if x not in ids:ids.append(x)
+              text=html.unescape(re.sub(r'\s+',' ',re.sub(r'<script\b[^>]*>.*?</script>|<style\b[^>]*>.*?</style>|<[^>]+>',' ',body,flags=re.I|re.S))).strip();n=None
+              for pat in [r'(\d+)\s+results',r'(\d+)\s+resultados']:
+                  m=re.search(pat,text,re.I)
+                  if m:n=int(m.group(1));break
+              return {'http':code,'cards':len(ids),'ids':ids[:30],'result_count':n}
+          for k,path in paths.items():
+              out['curl'][k]={}
+              for mode,url in [('clean',base+path),('bypass',base+path+('?' if '?' not in path else '&')+'emdo_p2verify='+stamp)]:
+                  p=subprocess.run(['curl','-k','-sS','-L','--max-redirs','5','--connect-timeout','8','--max-time','50','-A','Mozilla/5.0 EMDO-P2Verify/1.0','-H','Cache-Control: no-cache, no-store','-w','\n__HTTP__:%{http_code}',url],capture_output=True,text=True)
+                  body=p.stdout.split('\n__HTTP__:',1)[0];m=re.search(r'\n__HTTP__:(\d{3})',p.stdout);out['curl'][k][mode]=parse(body,int(m.group(1)) if m else 0)
+          pathlib.Path('/tmp/emdo-p2verify/curl.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          rm -rf /tmp/emdo-p2verify/profile
+          google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9294 --remote-allow-origins='*' --user-data-dir=/tmp/emdo-p2verify/profile about:blank >/tmp/emdo-p2verify/chrome.log 2>&1 &
+          CPID=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:9294/json/list >/dev/null 2>&1 && break; sleep 1; done
+          cat > /tmp/emdo-p2verify/check.js <<'JS'
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));async function main(){const ts=await(await fetch('http://127.0.0.1:9294/json/list')).json();const t=ts.find(x=>x.type==='page'),ws=new WebSocket(t.webSocketDebuggerUrl);await new Promise((ok,bad)=>{ws.onopen=ok;ws.onerror=bad});let id=0,p=new Map(),events=[];ws.onmessage=e=>{let m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')events.push(m.params?.exceptionDetails?.exception?.description||m.params?.exceptionDetails?.text);if(!m.id||!p.has(m.id))return;let q=p.get(m.id);p.delete(m.id);clearTimeout(q.t);m.error?q.bad(m.error):q.ok(m.result||{})};const cmd=(method,params={},timeout=15000)=>new Promise((ok,bad)=>{let n=++id,timer=setTimeout(()=>{p.delete(n);bad(new Error(method+' timeout'))},timeout);p.set(n,{ok,bad,t:timer});ws.send(JSON.stringify({id:n,method,params}))});await cmd('Page.enable');await cmd('Runtime.enable');const E=async expr=>{try{return(await cmd('Runtime.evaluate',{expression:expr,returnByValue:true},8000)).result?.value}catch(e){return{error:String(e)}}};async function snap(){return E(`(()=>{let ids=[];for(const e of document.querySelectorAll('li.product,.products .product')){let m=(e.className||'').match(/post-(\\d+)/),id=m?Number(m[1]):Number(e.querySelector('[data-product_id]')?.getAttribute('data-product_id')||0);if(id&&!ids.includes(id))ids.push(id)}let text=(document.body?.innerText||'').replace(/\\s+/g,' ').trim();let r=(document.querySelector('.woocommerce-result-count,.emo-catalog-result-count-010220')?.innerText||'').trim();return{href:location.href,ready:document.readyState,cards:ids.length,ids,resultText:r,hasUpdating:/Actualizando productos|Updating products/i.test(text),overlayVisible:[...document.querySelectorAll('#emo-catalog-filter-progress,.emo-catalog-load-state')].some(e=>{let s=getComputedStyle(e);return !e.hidden&&s.display!=='none'&&s.visibility!=='hidden'})}})()`)}async function one(path){await cmd('Page.navigate',{url:'https://www.elmercadodeorigen.com'+path});await sleep(9000);try{await cmd('Page.stopLoading',{},2500)}catch(_){};return snap()}let out={events};for(const [k,pth] of Object.entries({p1_es:'/tienda/',p2_es:'/tienda/page/2/',p3_es:'/tienda/page/3/',p1_en:'/en/shop/',p2_en:'/en/shop/page/2/',p3_en:'/en/shop/page/3/'}))out[k]=await one(pth);console.log(JSON.stringify(out,null,2));ws.close()}main().catch(e=>console.log(JSON.stringify({fatal:String(e)})));
+          JS
+          node /tmp/emdo-p2verify/check.js > /tmp/emdo-p2verify/browser.json || true
+          kill $CPID >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import json,pathlib
+          out=json.loads(pathlib.Path('/tmp/emdo-p2verify/curl.json').read_text());
+          try:out['browser']=json.loads(pathlib.Path('/tmp/emdo-p2verify/browser.json').read_text())
+          except Exception as e:out['browser']={'parse_error':str(e),'raw':pathlib.Path('/tmp/emdo-p2verify/browser.json').read_text(errors='replace')}
+          fail=[]
+          for k,modes in out['curl'].items():
+              for mode,r in modes.items():
+                  if r['http']!=200:fail.append(f'{k} {mode} HTTP {r["http"]}')
+                  if r['cards']!=15:fail.append(f'{k} {mode} cards {r["cards"]} != 15')
+                  if r['result_count']!=105:fail.append(f'{k} {mode} total {r["result_count"]} != 105')
+          b=out.get('browser',{})
+          if 'fatal' in b:fail.append('browser fatal '+str(b['fatal']))
+          for k in ['p1_es','p2_es','p3_es','p1_en','p2_en','p3_en']:
+              r=b.get(k,{})
+              if r.get('cards',0)<15:fail.append(f'browser {k} cards {r.get("cards")}')
+          for lang in ['es','en']:
+              sets=[set((b.get(f'p{i}_{lang}') or {}).get('ids',[])[:15]) for i in [1,2,3]]
+              if any(sets[i]&sets[j] for i in range(3) for j in range(i+1,3)):fail.append(f'browser {lang} page overlap')
+          out['failures']=fail;out['status']='success' if not fail else 'failure';pathlib.Path('.deploy-status/page2-postflush-verification-20260822.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':out['status'],'failures':fail},ensure_ascii=False))
+          PY
+      - name: Commit report
+        if: always()
+        run: |
+          test -f .deploy-status/page2-postflush-verification-20260822.json || printf '{"status":"audit-error"}\n' > .deploy-status/page2-postflush-verification-20260822.json
+          git config user.name github-actions;git config user.email github-actions@github.com
+          git add .deploy-status/page2-postflush-verification-20260822.json
+          git commit -m "Record pagination post-flush verification ${GITHUB_RUN_ID} [skip ci]" || true
+          git pull --rebase origin main;git push origin HEAD:main
