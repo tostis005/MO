@@ -113,19 +113,19 @@ jobs:
           while IFS=$'\t' read -r expected url context; do
             [ -n "$expected" ] && [ -n "$url" ]
             page="/tmp/emdo-public-${expected}.html"
-            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260822' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$page" -w '%{http_code}|%{url_effective}' "${url}?emdo_image_cert=${GITHUB_SHA}")"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260823' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$page" -w '%{http_code}|%{url_effective}' "${url}?emdo_image_cert=${GITHUB_SHA}")"
             code="${result%%|*}"; effective="${result#*|}"
             [ "$code" = 200 ] || { echo "HTTP $code for $context $effective" >&2; exit 1; }
             grep -Fq "$expected" "$page" || { echo "Expected image $expected not rendered for $context ($effective)" >&2; exit 1; }
-            if grep -Eq '37328201|19370451|4441933|36601487|37328770|24706530|34314216|36215958|24906286|30795237|30795238|947174|14639925|6059884|25185476|30811288|36183155' "$page"; then
-              echo "Retired image rendered for $context ($effective)" >&2; exit 1
+            if grep -Eq '37328201|19370451|4441933|36601487|37328770|24706530|34314216|36215958|24906286|30795237|30795238|947174|14639925|6059884|25185476|30811288|36183155|37639098|37326360|37326564|28879279|38289321|3296657|38681145|5532663' "$page"; then
+              echo "Retired or rejected image rendered for $context ($effective)" >&2; exit 1
             fi
             checks=$((checks+1))
           done < /tmp/public-checks.tsv
 
           for path in '/en/journal/' '/en/journal/page/2/' '/en/journal/page/3/'; do
             file="/tmp/archive-$(echo "$path" | tr '/' '_').html"
-            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260822' -o "$file" -w '%{http_code}|%{url_effective}' "https://www.elmercadodeorigen.com${path}?emdo_image_cert=${GITHUB_SHA}")"
+            result="$(curl -ksS -L --retry 3 --retry-delay 2 --connect-timeout 12 --max-time 60 -A 'EMDO PR production image certification/20260823' -o "$file" -w '%{http_code}|%{url_effective}' "https://www.elmercadodeorigen.com${path}?emdo_image_cert=${GITHUB_SHA}")"
             code="${result%%|*}"
             [ "$code" = 200 ] || { echo "$path returned $code" >&2; exit 1; }
             ! grep -Eqi 'Fatal error:|Parse error:|Uncaught Error:|There has been a critical error on this website|Page not found|Página no encontrada' "$file"
@@ -134,3 +134,5 @@ jobs:
 
       - name: Certification passed
         run: echo BLOG_IMAGE_PRODUCTION_CERTIFIED
+
+# Final brand-free visual review trigger 20260823.
