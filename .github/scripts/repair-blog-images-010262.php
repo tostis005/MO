@@ -54,9 +54,13 @@ function mdo_img_validate_010262( array $img, string $context ): void {
 	foreach ( array( 'id', 'direct', 'page', 'photographer', 'alt_es' ) as $field ) {
 		if ( empty( $img[ $field ] ) ) { throw new RuntimeException( $context . ': missing image field ' . $field ); }
 	}
-	if ( ! preg_match( '/^[0-9]+$/', (string) $img['id'] ) ) { throw new RuntimeException( $context . ': invalid Pexels id.' ); }
-	if ( 0 !== strpos( (string) $img['direct'], 'https://images.pexels.com/' ) ) { throw new RuntimeException( $context . ': non-Pexels direct URL.' ); }
-	if ( 0 !== strpos( (string) $img['page'], 'https://www.pexels.com/' ) ) { throw new RuntimeException( $context . ': non-Pexels source page.' ); }
+	if ( ! preg_match( '/^[0-9]+$/', (string) $img['id'] ) ) { throw new RuntimeException( $context . ': invalid editorial image id.' ); }
+	$direct = (string) $img['direct'];
+	$page   = (string) $img['page'];
+	$is_pexels  = 0 === strpos( $direct, 'https://images.pexels.com/' ) && 0 === strpos( $page, 'https://www.pexels.com/' );
+	$is_commons = 0 === strpos( $direct, 'https://upload.wikimedia.org/' ) && 0 === strpos( $page, 'https://commons.wikimedia.org/' );
+	if ( ! $is_pexels && ! $is_commons ) { throw new RuntimeException( $context . ': unsupported editorial image source.' ); }
+	if ( $is_commons && ( empty( $img['license'] ) || empty( $img['license_url'] ) ) ) { throw new RuntimeException( $context . ': Commons image requires license metadata.' ); }
 }
 
 function mdo_img_attachment_010262( int $post_id, array $img ): int {
@@ -79,20 +83,25 @@ function mdo_img_attachment_010262( int $post_id, array $img ): int {
 		$attachment_id = (int) $attachment_id;
 	}
 
+	$provider = 0 === strpos( (string) $img['page'], 'https://commons.wikimedia.org/' ) ? 'Wikimedia Commons' : 'Pexels';
+	$license = (string) ( $img['license'] ?? 'Pexels License - free personal and commercial use' );
+	$license_url = (string) ( $img['license_url'] ?? 'https://www.pexels.com/license/' );
 	wp_update_post(
 		array(
 			'ID'           => $attachment_id,
 			'post_title'   => wp_strip_all_tags( (string) $img['alt_es'] ),
-			'post_excerpt' => 'Fotografía: ' . wp_strip_all_tags( (string) $img['photographer'] ) . ' · Pexels.',
+			'post_excerpt' => 'Fotografía: ' . wp_strip_all_tags( (string) $img['photographer'] ) . ' · ' . $provider . '.',
 		)
 	);
 	update_post_meta( $attachment_id, '_wp_attachment_image_alt', (string) $img['alt_es'] );
 	update_post_meta( $attachment_id, '_en_US_attachment_alt', (string) ( $img['alt_en'] ?? $img['alt_es'] ) );
+	// Keep the historic key for compatibility with the existing audit/report pipeline.
 	update_post_meta( $attachment_id, '_emdo_pexels_photo_id', (string) $img['id'] );
 	update_post_meta( $attachment_id, '_emdo_pexels_page', (string) $img['page'] );
 	update_post_meta( $attachment_id, '_emdo_pexels_photographer', (string) $img['photographer'] );
-	update_post_meta( $attachment_id, '_emdo_image_license', 'Pexels License - free personal and commercial use' );
-	update_post_meta( $attachment_id, '_emdo_image_license_url', 'https://www.pexels.com/license/' );
+	update_post_meta( $attachment_id, '_emdo_editorial_image_provider', $provider );
+	update_post_meta( $attachment_id, '_emdo_image_license', $license );
+	update_post_meta( $attachment_id, '_emdo_image_license_url', $license_url );
 
 	$meta = wp_get_attachment_metadata( $attachment_id );
 	$width  = (int) ( $meta['width'] ?? 0 );
@@ -122,7 +131,7 @@ function mdo_set_approved_featured_010262( int $post_id, array $img ): int {
 	update_post_meta( $post_id, '_emdo_editorial_image_approved_id', $attachment_id );
 	update_post_meta( $post_id, '_emdo_editorial_image_approved_pexels_id', (string) $img['id'] );
 	update_post_meta( $post_id, '_emdo_editorial_image_approved_at', gmdate( 'c' ) );
-	update_post_meta( $post_id, '_emdo_editorial_image_override', '0.10.263' );
+	update_post_meta( $post_id, '_emdo_editorial_image_override', '0.10.264' );
 	return $attachment_id;
 }
 
@@ -191,7 +200,7 @@ foreach ( $legacy_overrides as $slug => $config ) {
 	foreach ( $config['inline'] as $index => $img ) { $register( $img, 'legacy-inline:' . $slug . ':' . $index ); }
 }
 
-$report = array( 'release'=>'0.10.263', 'authority'=>array(), 'legacy'=>array(), 'duplicates'=>array() );
+$report = array( 'release'=>'0.10.264', 'authority'=>array(), 'legacy'=>array(), 'duplicates'=>array() );
 foreach ( $authority_overrides as $key => $img ) {
 	$post_id = mdo_authority_post_010262( (string) $key );
 	if ( $post_id <= 0 ) { throw new RuntimeException( 'Published authority post not found: ' . $key ); }
