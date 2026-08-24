@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
- * Description: Renders the ordering chevron as a non-blocking CSS pseudo-element so the native select remains fully clickable on every browser.
- * Version: 1.0.0
+ * Description: Renders the ordering chevron as a non-blocking CSS pseudo-element so the native select remains fully clickable on every browser, and keeps the producer mobile toolbar aligned with the global shop.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -61,6 +61,17 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			#mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
 				right:14px !important;
 			}
+			/* Producer store pages inherit a narrower WCFM content column. Expand only
+			 * this controls card to the exact 16px viewport gutters used by /tienda/. */
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 {
+				position:relative !important;
+				left:50% !important;
+				width:calc(100vw - 32px) !important;
+				min-width:calc(100vw - 32px) !important;
+				max-width:calc(100vw - 32px) !important;
+				transform:translateX(-50%) !important;
+			}
 		}
 	</style>
 	<script id="mdo-catalog-top-controls-arrow-final-20260824-js">
@@ -78,6 +89,23 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			select.style.setProperty('pointer-events', 'auto', 'important');
 			select.style.setProperty('-webkit-appearance', 'none', 'important');
 			select.style.setProperty('appearance', 'none', 'important');
+
+			const producer = !!toolbar.querySelector('[data-mdo-ps-destination-open]');
+			const mobile = window.matchMedia('(max-width:640px)').matches;
+			if (producer && mobile) {
+				toolbar.style.setProperty('position', 'relative', 'important');
+				toolbar.style.setProperty('left', '50%', 'important');
+				toolbar.style.setProperty('width', 'calc(100vw - 32px)', 'important');
+				toolbar.style.setProperty('min-width', 'calc(100vw - 32px)', 'important');
+				toolbar.style.setProperty('max-width', 'calc(100vw - 32px)', 'important');
+				toolbar.style.setProperty('transform', 'translateX(-50%)', 'important');
+				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v4';
+			} else {
+				toolbar.style.removeProperty('left');
+				toolbar.style.removeProperty('transform');
+				delete toolbar.dataset.mdoProducerMobileWidthParity;
+			}
+
 			toolbar.dataset.mdoCatalogArrowFinal = '20260824-v3';
 			return true;
 		};
