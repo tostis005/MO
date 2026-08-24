@@ -1,0 +1,50 @@
+name: Record catalog top controls production status
+
+on:
+  workflow_run:
+    workflows: ['Catalog top controls parity production']
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Record completed production run
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          STATUS: ${{ github.event.workflow_run.status }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT: ${{ github.event.workflow_run.event }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json, os, pathlib, datetime
+          result = {
+              'workflow': 'Catalog top controls parity production',
+              'run_id': int(os.environ['RUN_ID']),
+              'run_number': int(os.environ['RUN_NUMBER']),
+              'status': os.environ['STATUS'],
+              'conclusion': os.environ['CONCLUSION'],
+              'head_sha': os.environ['HEAD_SHA'],
+              'event': os.environ['EVENT'],
+              'run_url': os.environ['RUN_URL'],
+              'recorded_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+          }
+          pathlib.Path('.deploy-status/catalog-top-controls-parity-20260824-production.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/catalog-top-controls-parity-20260824-production.json
+          git commit -m "Record catalog top controls production run $RUN_ID" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
