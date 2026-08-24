@@ -23,49 +23,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Inspect production mail configuration and delivery trail
+      - name: Inspect mail delivery
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set -euo pipefail
+          set -u
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass dnsutils >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-
-          {
-            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "=== DNS ==="
-            echo "MX:"; dig +short MX elmercadodeorigen.com || true
-            echo "TXT:"; dig +short TXT elmercadodeorigen.com || true
-            echo "DMARC:"; dig +short TXT _dmarc.elmercadodeorigen.com || true
-            echo "A:"; dig +short A elmercadodeorigen.com || true
-            ip=$(dig +short A elmercadodeorigen.com | head -n1 || true)
-            [ -z "$ip" ] || { echo "PTR($ip):"; dig +short -x "$ip" || true; }
-            echo "=== WORDPRESS ==="
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); echo 'active mail-related plugins:'; \"\$php_bin\" \"\$wp_bin\" plugin list --status=active --field=name --path='$PROD_PATH' --allow-root 2>/dev/null | grep -Ei 'smtp|mail|email|send|post|ses|brevo|sendinblue|mailgun|postmark|spark|wpforms|fluent|newsletter' || true; echo 'all active plugins:'; \"\$php_bin\" \"\$wp_bin\" plugin list --status=active --field=name --path='$PROD_PATH' --allow-root 2>/dev/null | sort || true; echo 'filtered wp_mail from:'; \"\$php_bin\" \"\$wp_bin\" eval 'echo apply_filters(\"wp_mail_from\", \"wordpress@\" . wp_parse_url(network_home_url(), PHP_URL_HOST));' --path='$PROD_PATH' --allow-root 2>/dev/null || true; echo; echo 'filtered wp_mail from name:'; \"\$php_bin\" \"\$wp_bin\" eval 'echo apply_filters(\"wp_mail_from_name\", \"WordPress\");' --path='$PROD_PATH' --allow-root 2>/dev/null || true; echo; echo 'php sendmail_path:'; \"\$php_bin\" -r 'echo ini_get(\"sendmail_path\"), PHP_EOL;' || true; echo 'mail binaries:'; command -v sendmail || true; command -v postfix || true; command -v exim || true; command -v msmtp || true; echo 'queue:'; (mailq 2>/dev/null || postqueue -p 2>/dev/null || exim -bp 2>/dev/null || true) | grep -Ei 'jose\.fraga@gmail\.com|elmercadodeorigen\.com|Mail queue is empty|empty' | tail -n 80; echo 'delivery log matches:'; for f in /var/log/maillog /var/log/mail.log /var/log/plesk/maillog; do if [ -r \"\$f\" ]; then echo \"LOG=\$f\"; grep -Fi 'jose.fraga@gmail.com' \"\$f\" | tail -n 40; fi; done"
-          } > /tmp/email-diagnostics.txt
+          PROD_PATH="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
 
           mkdir -p .deploy-status
-          cp /tmp/email-diagnostics.txt .deploy-status/email-diagnostics-20260824.txt
-          cat .deploy-status/email-diagnostics-20260824.txt
+          OUT=.deploy-status/email-diagnostics-20260824.txt
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "=== PUBLIC DNS ==="
+            echo "MX:"; dig +short MX elmercadodeorigen.com
+            echo "SPF/TXT:"; dig +short TXT elmercadodeorigen.com
+            echo "DMARC:"; dig +short TXT _dmarc.elmercadodeorigen.com
+            echo "A:"; dig +short A elmercadodeorigen.com
+            ip=$(dig +short A elmercadodeorigen.com | head -n1)
+            if [ -n "$ip" ]; then echo "PTR for $ip:"; dig +short -x "$ip"; fi
+            echo "=== PRODUCTION SERVER ==="
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" bash -s -- "$PROD_PATH" <<'REMOTE'
+PROD_PATH="$1"
+wp_bin=$(command -v wp || true)
+php_bin=$(command -v php || true)
+[ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+echo "siteurl:"
+"$php_bin" "$wp_bin" option get siteurl --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
+echo "mail-related active plugins:"
+"$php_bin" "$wp_bin" plugin list --status=active --field=name --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'smtp|mail|email|send|post|ses|brevo|sendinblue|mailgun|postmark|spark|newsletter' || echo '(none detected)'
+echo "php sendmail_path:"
+"$php_bin" -r 'echo ini_get("sendmail_path"), PHP_EOL;' 2>/dev/null || true
+echo "mail binaries:"
+for b in sendmail postfix exim mailq postqueue; do command -v "$b" 2>/dev/null || true; done
+echo "queue matches:"
+(mailq 2>/dev/null || postqueue -p 2>/dev/null || exim -bp 2>/dev/null || true) | grep -Ei 'jose\.fraga@gmail\.com|elmercadodeorigen\.com|empty' | tail -n 80 || true
+echo "delivery log matches:"
+for f in /var/log/maillog /var/log/mail.log /var/log/plesk/maillog; do
+  if [ -r "$f" ]; then
+    echo "LOG=$f"
+    grep -Fi 'jose.fraga@gmail.com' "$f" | tail -n 60 || true
+  fi
+done
+REMOTE
+          } > "$OUT" 2>&1
+
+          cat "$OUT"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/email-diagnostics-20260824.txt
+          git add "$OUT"
           git commit -m 'Record email delivery diagnostics' || true
-          git push origin HEAD:main
+          git pull --rebase origin main || true
+          git push origin HEAD:main || true
