@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.2
+ * Version: 1.3.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -97,51 +97,16 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				max-width:100% !important;
 			}
 
-			/* Keep the native destination chevron, but give its actual V the same visual
-			 * footprint as the ordering chevron. Decorative arrows never receive taps. */
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger {
-				position:relative !important;
-				display:flex !important;
-				align-items:center !important;
-				justify-content:center !important;
-				padding:0 36px 0 13px !important;
-			}
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:first-child,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:first-child {
-				display:none !important;
-			}
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > span,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > span {
-				width:100% !important;
-				text-align:center !important;
-			}
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:last-child,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:last-child {
-				display:block !important;
-				position:absolute !important;
+			/* The ordering arrow remains decorative and centred. */
+			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after,
+			html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
 				top:50% !important;
-				right:10px !important;
-				left:auto !important;
-				width:18px !important;
-				height:18px !important;
-				min-width:18px !important;
-				max-width:18px !important;
-				margin:0 !important;
-				padding:0 !important;
-				opacity:.72 !important;
-				transform:translateY(-50%) !important;
-				transform-origin:center !important;
-				pointer-events:none !important;
-			}
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
-				top:50% !important;
-				right:14px !important;
-				width:7px !important;
-				height:7px !important;
+				right:15px !important;
+				width:8px !important;
+				height:8px !important;
 				margin:0 !important;
 				transform:translateY(-65%) rotate(45deg) !important;
+				pointer-events:none !important;
 			}
 		}
 	</style>
@@ -152,11 +117,53 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 		let observer = null;
 
 		const isProducerMobile = (toolbar) => !!toolbar?.querySelector('[data-mdo-ps-destination-open]') && window.matchMedia('(max-width:640px)').matches;
+		const setImportant = (el, name, value) => el?.style?.setProperty(name, value, 'important');
 
 		const enforceProducerOrderPadding = (toolbar, select) => {
 			if (!toolbar || !select || !isProducerMobile(toolbar)) return;
 			if (getComputedStyle(select).paddingRight !== '36px' || select.style.getPropertyPriority('padding-right') !== 'important') {
 				select.style.setProperty('padding-right', '36px', 'important');
+			}
+		};
+
+		const styleProducerDestination = (toolbar) => {
+			if (!isProducerMobile(toolbar)) return;
+			const trigger = toolbar.querySelector('[data-mdo-ps-destination-open]');
+			if (!trigger) return;
+			const svgs = [...trigger.querySelectorAll(':scope > svg')];
+			const pin = svgs[0] || null;
+			const chevron = svgs[svgs.length - 1] || null;
+			const text = trigger.querySelector(':scope > span');
+
+			setImportant(trigger, 'position', 'relative');
+			setImportant(trigger, 'display', 'flex');
+			setImportant(trigger, 'align-items', 'center');
+			setImportant(trigger, 'justify-content', 'center');
+			setImportant(trigger, 'width', '100%');
+			setImportant(trigger, 'min-width', '0');
+			setImportant(trigger, 'max-width', '100%');
+			setImportant(trigger, 'padding', '0 13px');
+			setImportant(pin, 'display', 'none');
+			setImportant(text, 'display', 'block');
+			setImportant(text, 'width', '100%');
+			setImportant(text, 'min-width', '0');
+			setImportant(text, 'text-align', 'center');
+			if (chevron && chevron !== pin) {
+				setImportant(chevron, 'display', 'block');
+				setImportant(chevron, 'position', 'absolute');
+				setImportant(chevron, 'top', '50%');
+				setImportant(chevron, 'right', '9px');
+				setImportant(chevron, 'left', 'auto');
+				setImportant(chevron, 'width', '20px');
+				setImportant(chevron, 'height', '20px');
+				setImportant(chevron, 'min-width', '20px');
+				setImportant(chevron, 'max-width', '20px');
+				setImportant(chevron, 'margin', '0');
+				setImportant(chevron, 'padding', '0');
+				setImportant(chevron, 'opacity', '.72');
+				setImportant(chevron, 'transform', 'translateY(-50%)');
+				setImportant(chevron, 'transform-origin', 'center');
+				setImportant(chevron, 'pointer-events', 'none');
 			}
 		};
 
@@ -196,8 +203,9 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				toolbar.style.setProperty('min-width', 'calc(100vw - 32px)', 'important');
 				toolbar.style.setProperty('max-width', 'calc(100vw - 32px)', 'important');
 				toolbar.style.setProperty('transform', 'translateX(-50%)', 'important');
-				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v5';
+				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v4';
 				enforceProducerOrderPadding(toolbar, select);
+				styleProducerDestination(toolbar);
 				watchProducerOrder(toolbar, select);
 			} else {
 				toolbar.style.removeProperty('left');
