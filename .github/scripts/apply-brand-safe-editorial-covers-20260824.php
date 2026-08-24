@@ -68,13 +68,13 @@ function mdo_cover_all_target_ids_20260824( array $local, array $pexels ): array
     return array_values(array_unique(array_map('intval',$ids)));
 }
 
-function mdo_cover_force_thumbnail_20260824( int $post_id, int $attachment_id ): void {
+function mdo_cover_write_raw_thumbnail_20260824( int $post_id, int $attachment_id ): void {
     if ( $post_id <= 0 || $attachment_id <= 0 || 'attachment' !== get_post_type($attachment_id) ) {
-        throw new RuntimeException('Invalid featured image assignment.');
+        throw new RuntimeException('Invalid raw featured-image assignment.');
     }
     update_post_meta($post_id,'_thumbnail_id',$attachment_id);
     clean_post_cache($post_id);
-    if ( (int)get_post_thumbnail_id($post_id) !== $attachment_id ) {
+    if ( (int)get_post_meta($post_id,'_thumbnail_id',true) !== $attachment_id ) {
         global $wpdb;
         $meta_id = (int)$wpdb->get_var($wpdb->prepare("SELECT meta_id FROM {$wpdb->postmeta} WHERE post_id=%d AND meta_key='_thumbnail_id' ORDER BY meta_id ASC LIMIT 1",$post_id));
         if ( $meta_id > 0 ) {
@@ -85,19 +85,43 @@ function mdo_cover_force_thumbnail_20260824( int $post_id, int $attachment_id ):
         }
         clean_post_cache($post_id);
     }
-    if ( (int)get_post_thumbnail_id($post_id) !== $attachment_id ) {
-        throw new RuntimeException('Featured image assignment did not persist for post ' . $post_id . '.');
+    if ( (int)get_post_meta($post_id,'_thumbnail_id',true) !== $attachment_id ) {
+        throw new RuntimeException('Raw featured image did not persist for post ' . $post_id . '.');
     }
 }
 
-function mdo_cover_clear_thumbnail_20260824( int $post_id ): void {
-    delete_post_meta($post_id,'_thumbnail_id');
-    clean_post_cache($post_id);
-    if ( (int)get_post_thumbnail_id($post_id) > 0 ) {
-        global $wpdb;
-        $wpdb->delete($wpdb->postmeta,array('post_id'=>$post_id,'meta_key'=>'_thumbnail_id'),array('%d','%s'));
-        clean_post_cache($post_id);
+function mdo_cover_activate_thumbnail_20260824( int $post_id, int $attachment_id, string $approved_pexels_id = '' ): void {
+    mdo_cover_write_raw_thumbnail_20260824($post_id,$attachment_id);
+    update_post_meta($post_id,'_emdo_editorial_image_approved_id',$attachment_id);
+    if ( '' !== $approved_pexels_id ) {
+        update_post_meta($post_id,'_emdo_editorial_image_approved_pexels_id',$approved_pexels_id);
+    } else {
+        delete_post_meta($post_id,'_emdo_editorial_image_approved_pexels_id');
     }
+    clean_post_cache($post_id);
+    if ( (int)get_post_thumbnail_id($post_id) !== $attachment_id ) {
+        throw new RuntimeException('Approved image guard did not resolve the new cover for post ' . $post_id . '.');
+    }
+}
+
+function mdo_cover_restore_meta_20260824( int $post_id, array $saved ): void {
+    $raw = (int)($saved['thumbnail_raw'] ?? 0);
+    if ($raw > 0) {
+        mdo_cover_write_raw_thumbnail_20260824($post_id,$raw);
+    } else {
+        delete_post_meta($post_id,'_thumbnail_id');
+    }
+    $approved = (int)($saved['approved_id'] ?? 0);
+    if ($approved > 0) { update_post_meta($post_id,'_emdo_editorial_image_approved_id',$approved); }
+    else { delete_post_meta($post_id,'_emdo_editorial_image_approved_id'); }
+    $approved_pexels = (string)($saved['approved_pexels_id'] ?? '');
+    if ('' !== $approved_pexels) { update_post_meta($post_id,'_emdo_editorial_image_approved_pexels_id',$approved_pexels); }
+    else { delete_post_meta($post_id,'_emdo_editorial_image_approved_pexels_id'); }
+    foreach (array('_emdo_editorial_cover_asset_id'=>'cover_asset_id','_emdo_editorial_cover_brand_safe'=>'cover_brand_safe','_emdo_editorial_cover_updated_at'=>'cover_updated_at') as $meta_key=>$state_key) {
+        $value = (string)($saved[$state_key] ?? '');
+        if ('' !== $value) { update_post_meta($post_id,$meta_key,$value); } else { delete_post_meta($post_id,$meta_key); }
+    }
+    clean_post_cache($post_id);
 }
 
 function mdo_cover_crop_attachment_20260824( int $post_id, array $spec ): int {
@@ -156,7 +180,7 @@ function mdo_cover_crop_attachment_20260824( int $post_id, array $spec ): int {
         update_post_meta($attachment_id,'_emdo_image_license','El Mercado de Origen owned product photography - editorial crop');
     }
     update_post_meta($attachment_id,'_wp_attachment_image_alt',(string)$spec['alt']);
-    mdo_cover_force_thumbnail_20260824($post_id,$attachment_id);
+    mdo_cover_activate_thumbnail_20260824($post_id,$attachment_id,'');
     update_post_meta($post_id,'_emdo_editorial_cover_asset_id',$asset);
     update_post_meta($post_id,'_emdo_editorial_cover_brand_safe','1');
     update_post_meta($post_id,'_emdo_editorial_cover_updated_at',gmdate('c'));
@@ -180,7 +204,7 @@ function mdo_cover_pexels_attachment_20260824( int $post_id, array $spec ): int 
     update_post_meta($attachment_id,'_emdo_pexels_photographer',(string)$spec['photographer']);
     update_post_meta($attachment_id,'_emdo_image_license','Pexels License - free personal and commercial use');
     update_post_meta($attachment_id,'_emdo_image_license_url','https://www.pexels.com/license/');
-    mdo_cover_force_thumbnail_20260824($post_id,$attachment_id);
+    mdo_cover_activate_thumbnail_20260824($post_id,$attachment_id,$id);
     update_post_meta($post_id,'_emdo_editorial_cover_asset_id','pexels-' . $id);
     update_post_meta($post_id,'_emdo_editorial_cover_brand_safe','1');
     update_post_meta($post_id,'_emdo_editorial_cover_updated_at',gmdate('c'));
@@ -192,7 +216,16 @@ $target_ids = mdo_cover_all_target_ids_20260824($local,$pexels);
 if ( 'backup' === $mode ) {
     if ( '' === $state_file ) { throw new RuntimeException('State file required for backup'); }
     $state = array();
-    foreach ($target_ids as $post_id) { $state[(string)$post_id] = (int)get_post_thumbnail_id($post_id); }
+    foreach ($target_ids as $post_id) {
+        $state[(string)$post_id] = array(
+            'thumbnail_raw'=>(int)get_post_meta($post_id,'_thumbnail_id',true),
+            'approved_id'=>(int)get_post_meta($post_id,'_emdo_editorial_image_approved_id',true),
+            'approved_pexels_id'=>(string)get_post_meta($post_id,'_emdo_editorial_image_approved_pexels_id',true),
+            'cover_asset_id'=>(string)get_post_meta($post_id,'_emdo_editorial_cover_asset_id',true),
+            'cover_brand_safe'=>(string)get_post_meta($post_id,'_emdo_editorial_cover_brand_safe',true),
+            'cover_updated_at'=>(string)get_post_meta($post_id,'_emdo_editorial_cover_updated_at',true),
+        );
+    }
     if ( false === file_put_contents($state_file, wp_json_encode($state,JSON_PRETTY_PRINT)) ) { throw new RuntimeException('Could not write cover state'); }
     echo wp_json_encode(array('status'=>'ok','mode'=>'backup','posts'=>count($state),'state_file'=>$state_file),JSON_PRETTY_PRINT) . PHP_EOL;
     return;
@@ -202,9 +235,9 @@ if ( 'restore' === $mode ) {
     if ( '' === $state_file || ! is_file($state_file) ) { throw new RuntimeException('State file missing for restore'); }
     $state = json_decode((string)file_get_contents($state_file),true);
     if ( ! is_array($state) ) { throw new RuntimeException('Invalid restore state'); }
-    foreach ($state as $post_id=>$thumb) {
-        $post_id=(int)$post_id; $thumb=(int)$thumb;
-        if ($thumb>0) { mdo_cover_force_thumbnail_20260824($post_id,$thumb); } else { mdo_cover_clear_thumbnail_20260824($post_id); }
+    foreach ($state as $post_id=>$saved) {
+        if (!is_array($saved)) { throw new RuntimeException('Invalid saved post state'); }
+        mdo_cover_restore_meta_20260824((int)$post_id,$saved);
     }
     echo wp_json_encode(array('status'=>'ok','mode'=>'restore','posts'=>count($state)),JSON_PRETTY_PRINT) . PHP_EOL;
     return;
@@ -236,6 +269,19 @@ foreach ($report['local'] as $row) {
     if ( isset($hashes[$hash]) ) { throw new RuntimeException('Duplicate local cover bytes: ' . $row['target'] . ' / ' . $hashes[$hash]); }
     $hashes[$hash] = $row['target'];
 }
+
+$new_pexels = array_map(static fn($x)=>(string)$x['id'],$pexels);
+$usage = array_fill_keys($new_pexels,array());
+$published = get_posts(array('post_type'=>'post','post_status'=>'publish','posts_per_page'=>-1,'fields'=>'ids'));
+foreach ($published as $pid) {
+    $aid = (int)get_post_thumbnail_id((int)$pid);
+    $pex = $aid > 0 ? (string)get_post_meta($aid,'_emdo_pexels_photo_id',true) : '';
+    if (isset($usage[$pex])) { $usage[$pex][] = (int)$pid; }
+}
+foreach ($usage as $id=>$posts) {
+    if (count($posts) > 1) { throw new RuntimeException('New Pexels cover reused across posts: ' . $id . ' => ' . implode(',',$posts)); }
+}
+
 $report['status']='ok';
 $report['custom_count']=count($report['local']);
 $report['pexels_count']=count($report['pexels']);
