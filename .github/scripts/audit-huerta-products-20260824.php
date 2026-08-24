@@ -1,6 +1,7 @@
 <?php
 /**
  * Read-only production audit for La Huerta de Ana Mary products.
+ * Triggered after workflow creation on 2026-08-24.
  */
 if ( ! defined( 'ABSPATH' ) ) {
     exit( 1 );
