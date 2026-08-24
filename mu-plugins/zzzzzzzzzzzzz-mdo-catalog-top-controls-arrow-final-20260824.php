@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.6
+ * Version: 1.3.7
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -63,30 +63,6 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				right:14px !important;
 			}
 
-			/* On mobile both catalogue controls use the complete usable viewport width,
-			 * matching the 16px gutters already used by toolbar, filters and products. */
-			#mdo-catalog-parity-final-20260824 .mdo-catalog-destination,
-			#mdo-catalog-parity-final-20260824 .mdo-ps-destination,
-			#mdo-catalog-parity-final-20260824 .woocommerce-ordering {
-				position:relative !important;
-				left:50% !important;
-				box-sizing:border-box !important;
-				width:calc(100vw - 32px) !important;
-				min-width:calc(100vw - 32px) !important;
-				max-width:calc(100vw - 32px) !important;
-				margin-left:0 !important;
-				margin-right:0 !important;
-				transform:translateX(-50%) !important;
-			}
-			#mdo-catalog-parity-final-20260824 .mdo-catalog-destination__trigger,
-			#mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
-			#mdo-catalog-parity-final-20260824 select[name="orderby"] {
-				box-sizing:border-box !important;
-				width:100% !important;
-				min-width:0 !important;
-				max-width:100% !important;
-			}
-
 			/* WCFM adds a second mobile gutter. Only the producer catalogue surfaces
 			 * escape that gutter so they use the same 16px viewport margins as /tienda/. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824,
@@ -131,11 +107,7 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				margin-right:0 !important;
 			}
 
-			/* Both producer controls fill their now full-width wrappers. */
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
+			/* Producer controls keep their internal trigger/select at full wrapper width. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
 			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 select[name="orderby"],
@@ -165,7 +137,8 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 		let observedSelect = null;
 		let observer = null;
 
-		const isProducerMobile = (toolbar) => !!toolbar?.querySelector('[data-mdo-ps-destination-open]') && window.matchMedia('(max-width:640px)').matches;
+		const isMobile = () => window.matchMedia('(max-width:640px)').matches;
+		const isProducerMobile = (toolbar) => !!toolbar?.querySelector('[data-mdo-ps-destination-open]') && isMobile();
 		const setImportant = (el, name, value) => el?.style?.setProperty(name, value, 'important');
 
 		const enforceProducerOrderPadding = (toolbar, select) => {
@@ -173,6 +146,38 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			if (getComputedStyle(select).paddingRight !== '36px' || select.style.getPropertyPriority('padding-right') !== 'important') {
 				select.style.setProperty('padding-right', '36px', 'important');
 			}
+		};
+
+		const enforceMobileFullWidthControls = (toolbar, form, select) => {
+			if (!toolbar || !form || !select || !isMobile()) return;
+			const destination = toolbar.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
+			const destinationWrap = destination?.closest('.mdo-catalog-destination,.mdo-ps-destination') || destination?.parentElement;
+			const width = Math.max(0, window.innerWidth - 32);
+			const pin = (el) => {
+				if (!el) return;
+				setImportant(el, 'position', 'relative');
+				setImportant(el, 'box-sizing', 'border-box');
+				setImportant(el, 'transform', 'none');
+				setImportant(el, 'width', `${width}px`);
+				setImportant(el, 'min-width', `${width}px`);
+				setImportant(el, 'max-width', `${width}px`);
+				setImportant(el, 'margin-left', '0');
+				setImportant(el, 'margin-right', '0');
+				setImportant(el, 'left', '0px');
+				const rect = el.getBoundingClientRect();
+				setImportant(el, 'left', `${16 - rect.left}px`);
+			};
+			pin(destinationWrap);
+			pin(form);
+			setImportant(destination, 'box-sizing', 'border-box');
+			setImportant(destination, 'width', '100%');
+			setImportant(destination, 'min-width', '0');
+			setImportant(destination, 'max-width', '100%');
+			setImportant(select, 'box-sizing', 'border-box');
+			setImportant(select, 'width', '100%');
+			setImportant(select, 'min-width', '0');
+			setImportant(select, 'max-width', '100%');
+			toolbar.dataset.mdoMobileControlsFullWidth = '20260824-v1';
 		};
 
 		const styleProducerDestination = (toolbar) => {
@@ -244,7 +249,7 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			select.style.setProperty('appearance', 'none', 'important');
 
 			const producer = !!toolbar.querySelector('[data-mdo-ps-destination-open]');
-			const mobile = window.matchMedia('(max-width:640px)').matches;
+			const mobile = isMobile();
 			if (producer && mobile) {
 				toolbar.style.setProperty('position', 'relative', 'important');
 				toolbar.style.setProperty('left', '50%', 'important');
@@ -261,6 +266,12 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				toolbar.style.removeProperty('transform');
 				delete toolbar.dataset.mdoProducerMobileWidthParity;
 				watchProducerOrder(null, null);
+			}
+
+			if (mobile) {
+				enforceMobileFullWidthControls(toolbar, form, select);
+			} else {
+				delete toolbar.dataset.mdoMobileControlsFullWidth;
 			}
 
 			toolbar.dataset.mdoCatalogArrowFinal = '20260824-v3';
