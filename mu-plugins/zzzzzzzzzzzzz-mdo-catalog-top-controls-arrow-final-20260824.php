@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.1
+ * Version: 1.3.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -63,8 +63,8 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				right:14px !important;
 			}
 
-			/* Producer pages sit inside a narrower WCFM column. The controls card,
-			 * filter trigger and product grid all use the shop's 16px viewport gutter. */
+			/* WCFM adds a second mobile gutter. Only the producer catalogue surfaces
+			 * escape that gutter so they use the same 16px viewport margins as /tienda/. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824,
 			body.wcfm-store-page #mdo-catalog-parity-final-20260824,
 			body.wcfmmp-store-page #wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229,
@@ -82,17 +82,7 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				transform:translateX(-50%) !important;
 			}
 
-			body.wcfmmp-store-page #wcfmmp-store ul.products > li.product,
-			body.wcfm-store-page #wcfmmp-store ul.products > li.product {
-				box-sizing:border-box !important;
-				width:100% !important;
-				min-width:0 !important;
-				max-width:100% !important;
-				margin-left:0 !important;
-				margin-right:0 !important;
-			}
-
-			/* Both producer controls fill the complete inner width of the shared card. */
+			/* Both controls fill the complete inner width of the shared card. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
 			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
@@ -107,8 +97,8 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				max-width:100% !important;
 			}
 
-			/* Keep the producer destination's native SVG, but size/position it to match
-			 * the ordering chevron. The first SVG is the location pin and stays hidden. */
+			/* Keep the native destination chevron, but give its actual V the same visual
+			 * footprint as the ordering chevron. Decorative arrows never receive taps. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
 			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger {
 				position:relative !important;
@@ -131,16 +121,16 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				display:block !important;
 				position:absolute !important;
 				top:50% !important;
-				right:14px !important;
+				right:10px !important;
 				left:auto !important;
-				width:10px !important;
-				height:10px !important;
-				min-width:10px !important;
-				max-width:10px !important;
+				width:18px !important;
+				height:18px !important;
+				min-width:18px !important;
+				max-width:18px !important;
 				margin:0 !important;
 				padding:0 !important;
 				opacity:.72 !important;
-				transform:translateY(-50%) scale(1.25,1.8) !important;
+				transform:translateY(-50%) !important;
 				transform-origin:center !important;
 				pointer-events:none !important;
 			}
@@ -206,7 +196,7 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				toolbar.style.setProperty('min-width', 'calc(100vw - 32px)', 'important');
 				toolbar.style.setProperty('max-width', 'calc(100vw - 32px)', 'important');
 				toolbar.style.setProperty('transform', 'translateX(-50%)', 'important');
-				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v4';
+				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v5';
 				enforceProducerOrderPadding(toolbar, select);
 				watchProducerOrder(toolbar, select);
 			} else {
