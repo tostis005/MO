@@ -1,0 +1,70 @@
+name: Audit outreach delivery 2026-08-24
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-outreach-delivery-20260824.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Count recent authenticated outreach delivery
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          RESULT=$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "python3 - <<'PY'
+from datetime import datetime, timedelta
+from pathlib import Path
+p=Path('/var/log/maillog')
+now=datetime.now()
+cut=now-timedelta(minutes=20)
+enq=sent=bounced=0
+if p.exists():
+    for line in p.open(errors='ignore'):
+        try:
+            ts=datetime.strptime(f'{now.year} '+line[:15], '%Y %b %d %H:%M:%S')
+        except Exception:
+            continue
+        if ts < cut:
+            continue
+        if 'from=<hola@elmercadodeorigen.com>' in line:
+            enq += 1
+        if ' status=sent ' in line or ', status=sent ' in line:
+            sent += 1
+        if ' status=bounced ' in line or ', status=bounced ' in line:
+            bounced += 1
+print(f'enqueued_from_hola={enq}')
+print(f'all_outgoing_sent_recent={sent}')
+print(f'all_outgoing_bounced_recent={bounced}')
+PY")
+          mkdir -p .deploy-status
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "$RESULT"
+          } > .deploy-status/outreach-delivery-audit-20260824.txt
+          cat .deploy-status/outreach-delivery-audit-20260824.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/outreach-delivery-audit-20260824.txt
+          git commit -m 'Record outreach delivery audit' || true
+          git pull --rebase origin main || true
+          git push origin HEAD:main || true
