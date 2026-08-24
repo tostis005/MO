@@ -62,7 +62,7 @@ jobs:
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true)
             php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
               p=$(dirname "$cfg")
               url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
@@ -73,18 +73,22 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
+          TEMPLATE_FLAG=0
+          NAME_B64=''
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             [ -f .github/outreach-queue.env ] || { echo 'queue file missing' >&2; exit 5; }
             TO_B64="$(sed -n 's/^TO_B64=//p' .github/outreach-queue.env | head -n1)"
-            SUBJECT_B64="$(sed -n 's/^SUBJECT_B64=//p' .github/outreach-queue.env | head -n1)"
-            BODY_B64="$(sed -n 's/^BODY_B64=//p' .github/outreach-queue.env | head -n1)"
+            NAME_B64="$(sed -n 's/^NAME_B64=//p' .github/outreach-queue.env | head -n1)"
+            SUBJECT_B64=''
+            BODY_B64=''
+            TEMPLATE_FLAG=1
           else
             TO_B64="$(printf '%s' "$INPUT_MAIL_TO" | base64 -w0)"
             SUBJECT_B64="$(printf '%s' "$INPUT_MAIL_SUBJECT" | base64 -w0)"
             BODY_B64="$(printf '%s' "$INPUT_MAIL_BODY" | base64 -w0)"
           fi
 
-          [ -n "$TO_B64" ] && [ -n "$SUBJECT_B64" ] && [ -n "$BODY_B64" ]
+          [ -n "$TO_B64" ]
           REMOTE_SCRIPT="/tmp/emdo-outreach-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/send-emdo-outreach-email.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
 
@@ -92,6 +96,6 @@ jobs:
             php_bin=\$(command -v php || true); \
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \
             wp_bin=\$(command -v wp); \
-            EMDO_MAIL_TO_B64='$TO_B64' EMDO_MAIL_SUBJECT_B64='$SUBJECT_B64' EMDO_MAIL_BODY_B64='$BODY_B64' \
+            EMDO_MAIL_TO_B64='$TO_B64' EMDO_MAIL_NAME_B64='$NAME_B64' EMDO_MAIL_SUBJECT_B64='$SUBJECT_B64' EMDO_MAIL_BODY_B64='$BODY_B64' EMDO_AFFILIATE_TEMPLATE='$TEMPLATE_FLAG' \
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; \
             rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
