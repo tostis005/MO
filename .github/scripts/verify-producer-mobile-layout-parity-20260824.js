@@ -1,6 +1,5 @@
 'use strict';
 
-// Strict rerun: production CSS is unchanged; this commit only retriggers the guarded workflow.
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -35,6 +34,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
         destSvg,
         orderArrow:{width:parseFloat(pseudo.width),height:parseFloat(pseudo.height),right:parseFloat(pseudo.right),top:pseudo.top,transform:pseudo.transform,pointerEvents:pseudo.pointerEvents},
         orderPaddingRight:getComputedStyle(ordering).paddingRight,
+        fullWidthMarker:toolbar?.dataset?.mdoMobileControlsFullWidth || '',
         href:location.href,
       };
     });
@@ -48,6 +48,20 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
     const shop=await measure('/tienda/','shop');
     const producer=await measure('/tienda/1957/','1957');
     const hidalgo=await measure('/tienda/hidalgo-de-la-jara/','hidalgo');
+    const surfaces=[['shop',shop],['1957',producer],['hidalgo',hidalgo]];
+    const expectedLeft=16;
+    const expectedWidth=358;
+
+    for(const [label,s] of surfaces){
+      if(s.fullWidthMarker!=='20260824-v1') fail(`${label}: mobile full-width owner did not run`,s.fullWidthMarker);
+      for(const part of ['destination','ordering']){
+        if(!s[part]) fail(`${label}: missing ${part}`,s);
+        if(Math.abs(s[part].left-expectedLeft)>1||Math.abs(s[part].width-expectedWidth)>1){
+          fail(`${label}: ${part} is not full mobile width`,{expected:{left:expectedLeft,width:expectedWidth},actual:s[part]});
+        }
+      }
+    }
+
     const producers=[['1957',producer],['hidalgo',hidalgo]];
     for(const [label,p] of producers){
       for(const part of ['toolbar','destination','ordering','filter','products']){
@@ -70,6 +84,6 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
       if(p.orderPaddingRight!=='36px') fail(`${label}: ordering padding drifted`,p.orderPaddingRight);
     }
     fs.writeFileSync('/tmp/producer-mobile-layout-parity-20260824.json',JSON.stringify({ok:true,shop,producer,hidalgo},null,2));
-    console.log(JSON.stringify({ok:true,revision:'20260824-layout-v2'}));
+    console.log(JSON.stringify({ok:true,revision:'20260824-layout-v3-full-width'}));
   } finally { await browser.close(); }
 })().catch(error=>{try{fs.writeFileSync('/tmp/producer-mobile-layout-parity-20260824.json',JSON.stringify({ok:false,error:String(error.stack||error)},null,2));}catch(_){};console.error(error.stack||error);process.exit(1);});
