@@ -68,6 +68,38 @@ function mdo_cover_all_target_ids_20260824( array $local, array $pexels ): array
     return array_values(array_unique(array_map('intval',$ids)));
 }
 
+function mdo_cover_force_thumbnail_20260824( int $post_id, int $attachment_id ): void {
+    if ( $post_id <= 0 || $attachment_id <= 0 || 'attachment' !== get_post_type($attachment_id) ) {
+        throw new RuntimeException('Invalid featured image assignment.');
+    }
+    update_post_meta($post_id,'_thumbnail_id',$attachment_id);
+    clean_post_cache($post_id);
+    if ( (int)get_post_thumbnail_id($post_id) !== $attachment_id ) {
+        global $wpdb;
+        $meta_id = (int)$wpdb->get_var($wpdb->prepare("SELECT meta_id FROM {$wpdb->postmeta} WHERE post_id=%d AND meta_key='_thumbnail_id' ORDER BY meta_id ASC LIMIT 1",$post_id));
+        if ( $meta_id > 0 ) {
+            $wpdb->update($wpdb->postmeta,array('meta_value'=>(string)$attachment_id),array('meta_id'=>$meta_id),array('%s'),array('%d'));
+            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->postmeta} WHERE post_id=%d AND meta_key='_thumbnail_id' AND meta_id<>%d",$post_id,$meta_id));
+        } else {
+            $wpdb->insert($wpdb->postmeta,array('post_id'=>$post_id,'meta_key'=>'_thumbnail_id','meta_value'=>(string)$attachment_id),array('%d','%s','%s'));
+        }
+        clean_post_cache($post_id);
+    }
+    if ( (int)get_post_thumbnail_id($post_id) !== $attachment_id ) {
+        throw new RuntimeException('Featured image assignment did not persist for post ' . $post_id . '.');
+    }
+}
+
+function mdo_cover_clear_thumbnail_20260824( int $post_id ): void {
+    delete_post_meta($post_id,'_thumbnail_id');
+    clean_post_cache($post_id);
+    if ( (int)get_post_thumbnail_id($post_id) > 0 ) {
+        global $wpdb;
+        $wpdb->delete($wpdb->postmeta,array('post_id'=>$post_id,'meta_key'=>'_thumbnail_id'),array('%d','%s'));
+        clean_post_cache($post_id);
+    }
+}
+
 function mdo_cover_crop_attachment_20260824( int $post_id, array $spec ): int {
     $asset = (string) $spec['asset'];
     $existing = get_posts(array('post_type'=>'attachment','post_status'=>'inherit','posts_per_page'=>1,'fields'=>'ids','meta_key'=>'_emdo_editorial_asset_id','meta_value'=>$asset));
@@ -124,7 +156,7 @@ function mdo_cover_crop_attachment_20260824( int $post_id, array $spec ): int {
         update_post_meta($attachment_id,'_emdo_image_license','El Mercado de Origen owned product photography - editorial crop');
     }
     update_post_meta($attachment_id,'_wp_attachment_image_alt',(string)$spec['alt']);
-    set_post_thumbnail($post_id,$attachment_id);
+    mdo_cover_force_thumbnail_20260824($post_id,$attachment_id);
     update_post_meta($post_id,'_emdo_editorial_cover_asset_id',$asset);
     update_post_meta($post_id,'_emdo_editorial_cover_brand_safe','1');
     update_post_meta($post_id,'_emdo_editorial_cover_updated_at',gmdate('c'));
@@ -148,7 +180,7 @@ function mdo_cover_pexels_attachment_20260824( int $post_id, array $spec ): int 
     update_post_meta($attachment_id,'_emdo_pexels_photographer',(string)$spec['photographer']);
     update_post_meta($attachment_id,'_emdo_image_license','Pexels License - free personal and commercial use');
     update_post_meta($attachment_id,'_emdo_image_license_url','https://www.pexels.com/license/');
-    set_post_thumbnail($post_id,$attachment_id);
+    mdo_cover_force_thumbnail_20260824($post_id,$attachment_id);
     update_post_meta($post_id,'_emdo_editorial_cover_asset_id','pexels-' . $id);
     update_post_meta($post_id,'_emdo_editorial_cover_brand_safe','1');
     update_post_meta($post_id,'_emdo_editorial_cover_updated_at',gmdate('c'));
@@ -172,7 +204,7 @@ if ( 'restore' === $mode ) {
     if ( ! is_array($state) ) { throw new RuntimeException('Invalid restore state'); }
     foreach ($state as $post_id=>$thumb) {
         $post_id=(int)$post_id; $thumb=(int)$thumb;
-        if ($thumb>0) { set_post_thumbnail($post_id,$thumb); } else { delete_post_thumbnail($post_id); }
+        if ($thumb>0) { mdo_cover_force_thumbnail_20260824($post_id,$thumb); } else { mdo_cover_clear_thumbnail_20260824($post_id); }
     }
     echo wp_json_encode(array('status'=>'ok','mode'=>'restore','posts'=>count($state)),JSON_PRETTY_PRINT) . PHP_EOL;
     return;
@@ -196,7 +228,6 @@ foreach ($pexels as $spec) {
     $report['pexels'][] = array('target'=>$spec['value'],'post_id'=>$post_id,'attachment_id'=>$attachment_id,'pexels_id'=>$actual,'url'=>(string)get_permalink($post_id),'image_url'=>(string)wp_get_attachment_url($attachment_id));
 }
 
-// All custom editorial crops must be unique by exact bytes.
 $hashes = array();
 foreach ($report['local'] as $row) {
     $file = get_attached_file((int)$row['attachment_id']);
