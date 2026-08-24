@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.9
+ * Version: 1.4.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -150,6 +150,11 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			if (getComputedStyle(select).paddingRight !== '36px' || select.style.getPropertyPriority('padding-right') !== 'important') {
 				select.style.setProperty('padding-right', '36px', 'important');
 			}
+			if (getComputedStyle(select).paddingLeft !== '36px' || select.style.getPropertyPriority('padding-left') !== 'important') {
+				select.style.setProperty('padding-left', '36px', 'important');
+			}
+			setImportant(select, 'text-align', 'center');
+			setImportant(select, 'text-align-last', 'center');
 		};
 
 		const enforceMobileOrderMatchesDestination = (toolbar, form, select) => {
@@ -177,7 +182,11 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			setImportant(select, 'width', '100%');
 			setImportant(select, 'min-width', '0');
 			setImportant(select, 'max-width', '100%');
-			toolbar.dataset.mdoMobileOrderMatchesDestination = '20260824-v1';
+			setImportant(select, 'padding-left', '36px');
+			setImportant(select, 'padding-right', '36px');
+			setImportant(select, 'text-align', 'center');
+			setImportant(select, 'text-align-last', 'center');
+			toolbar.dataset.mdoMobileOrderMatchesDestination = '20260824-v2';
 		};
 
 		const styleProducerDestination = (toolbar) => {
