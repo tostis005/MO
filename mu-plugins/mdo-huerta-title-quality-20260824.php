@@ -1,6 +1,7 @@
 <?php
 /**
- * Persistent title/slug guard for known La Huerta de Ana Mary source encoding defects.
+ * Persistent title/slug guard for known La Huerta de Ana Mary source encoding
+ * defects and the standardized 10 kg Lamuyo product title.
  */
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
@@ -40,6 +41,8 @@ function mdo_huerta_title_quality_20260824_apply( int $product_id ): void {
         $desired = 'Loras o ñoras';
     } elseif ( str_contains( $source_url, '/alubia-blanca-de-ri-n-200.html' ) ) {
         $desired = 'Alubia blanca de riñón';
+    } elseif ( str_contains( $source_url, '/10-kg-pimientos-lamuyos-rojos-especiales-para-asar-209.html' ) ) {
+        $desired = '10 kg de pimientos lamuyos rojos, especiales para asar';
     }
     if ( '' === $desired ) {
         return;
