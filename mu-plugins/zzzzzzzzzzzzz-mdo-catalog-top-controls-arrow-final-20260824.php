@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
- * Description: Renders the ordering chevron as a non-blocking CSS pseudo-element so the native select remains fully clickable on every browser, and keeps the producer mobile toolbar aligned with the global shop.
- * Version: 1.2.0
+ * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
+ * Version: 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -57,20 +57,106 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			pointer-events:none !important;
 			z-index:2 !important;
 		}
+
 		@media (max-width:640px) {
 			#mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
 				right:14px !important;
 			}
-			/* Producer store pages inherit a narrower WCFM content column. Expand only
-			 * this controls card to the exact 16px viewport gutters used by /tienda/. */
+
+			/* Producer pages sit inside a narrower WCFM column. The controls card,
+			 * filter trigger and product grid all use the shop's 16px viewport gutter. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 {
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824,
+			body.wcfmmp-store-page #wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229,
+			body.wcfm-store-page #wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229,
+			body.wcfmmp-store-page #wcfmmp-store ul.products,
+			body.wcfm-store-page #wcfmmp-store ul.products {
 				position:relative !important;
 				left:50% !important;
+				box-sizing:border-box !important;
 				width:calc(100vw - 32px) !important;
 				min-width:calc(100vw - 32px) !important;
 				max-width:calc(100vw - 32px) !important;
+				margin-left:0 !important;
+				margin-right:0 !important;
 				transform:translateX(-50%) !important;
+			}
+
+			body.wcfmmp-store-page #wcfmmp-store ul.products > li.product,
+			body.wcfm-store-page #wcfmmp-store ul.products > li.product {
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
+				margin-left:0 !important;
+				margin-right:0 !important;
+			}
+
+			/* Both producer controls fill the complete inner width of the shared card. */
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 select[name="orderby"],
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 select[name="orderby"] {
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
+			}
+
+			/* Producer destination uses the exact same CSS chevron geometry as ordering.
+			 * It is decorative only, so it can never block taps/clicks. */
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger {
+				position:relative !important;
+				display:flex !important;
+				align-items:center !important;
+				justify-content:center !important;
+				padding:0 36px 0 13px !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg {
+				display:none !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > span,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > span {
+				width:100% !important;
+				text-align:center !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger::after,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger::after {
+				content:"" !important;
+				display:block !important;
+				position:absolute !important;
+				top:50% !important;
+				right:14px !important;
+				left:auto !important;
+				width:7px !important;
+				height:7px !important;
+				margin:0 !important;
+				padding:0 !important;
+				border:0 !important;
+				border-right:1.5px solid #173f32 !important;
+				border-bottom:1.5px solid #173f32 !important;
+				background:transparent !important;
+				box-shadow:none !important;
+				opacity:.72 !important;
+				transform:translateY(-65%) rotate(45deg) !important;
+				transform-origin:center !important;
+				pointer-events:none !important;
+				z-index:2 !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
+				top:50% !important;
+				right:14px !important;
+				width:7px !important;
+				height:7px !important;
+				margin:0 !important;
+				transform:translateY(-65%) rotate(45deg) !important;
 			}
 		}
 	</style>
