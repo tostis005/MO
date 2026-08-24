@@ -1,0 +1,31 @@
+timestamp_utc=2026-08-24T13:46:38Z
+=== DNS ===
+MX:
+10 mail.elmercadodeorigen.com.
+TXT:
+"google-site-verification=sGbisEGA8IBiNPDHdtn7E9a_J_RHikp-J2ClkRqSdTY"
+DMARC:
+A:
+82.223.25.247
+PTR(82.223.25.247):
+elmercadodeorigen.com.
+=== WORDPRESS ===
+active mail-related plugins:
+all active plugins:
+filtered wp_mail from:
+
+filtered wp_mail from name:
+
+php sendmail_path:
+/usr/sbin/sendmail -t -i
+mail binaries:
+/usr/sbin/sendmail
+/usr/sbin/postfix
+queue:
+Mail queue is empty
+delivery log matches:
+LOG=/var/log/maillog
+Aug 24 13:37:49 cranky-kowalevski plesk-sendmail[206281]: S206281: from=<root@cranky-kowalevski.82-223-25-247.plesk.page> to=<jose.fraga@gmail.com>
+Aug 24 13:37:50 cranky-kowalevski postfix/smtp[206297]: 009DB4A70: to=<jose.fraga@gmail.com>, relay=gmail-smtp-in.l.google.com[66.102.1.27]:25, delay=0.71, delays=0.03/0.03/0.28/0.37, dsn=5.7.26, status=bounced (host gmail-smtp-in.l.google.com[66.102.1.27] said: 550-5.7.26 Your email has been blocked because the sender is unauthenticated. 550-5.7.26 Gmail requires all senders to authenticate with either SPF or DKIM. 550-5.7.26  550-5.7.26  Authentication results: 550-5.7.26  DKIM = did not pass 550-5.7.26  SPF [cranky-kowalevski.82-223-25-247.plesk.page] with ip: 550-5.7.26 [82.223.25.247] = did not pass 550-5.7.26  550-5.7.26  For instructions on setting up authentication, go to 550 5.7.26  https://support.google.com/mail/answer/81126#authentication ffacd0b85a97d-482c9c3801csi9032144f8f.490 - gsmtp (in reply to end of DATA command))
+Aug 24 13:40:01 cranky-kowalevski plesk-sendmail[207087]: S207087: from=<root@cranky-kowalevski.82-223-25-247.plesk.page> to=<jose.fraga@gmail.com>
+Aug 24 13:40:02 cranky-kowalevski postfix/smtp[207126]: 926F84A70: to=<jose.fraga@gmail.com>, relay=gmail-smtp-in.l.google.com[66.102.1.27]:25, delay=0.79, delays=0.06/0.02/0.24/0.46, dsn=5.7.26, status=bounced (host gmail-smtp-in.l.google.com[66.102.1.27] said: 550-5.7.26 Your email has been blocked because the sender is unauthenticated. 550-5.7.26 Gmail requires all senders to authenticate with either SPF or DKIM. 550-5.7.26  550-5.7.26  Authentication results: 550-5.7.26  DKIM = did not pass 550-5.7.26  SPF [cranky-kowalevski.82-223-25-247.plesk.page] with ip: 550-5.7.26 [82.223.25.247] = did not pass 550-5.7.26  550-5.7.26  For instructions on setting up authentication, go to 550 5.7.26  https://support.google.com/mail/answer/81126#authentication ffacd0b85a97d-482c9c13f62si8694192f8f.251 - gsmtp (in reply to end of DATA command))
