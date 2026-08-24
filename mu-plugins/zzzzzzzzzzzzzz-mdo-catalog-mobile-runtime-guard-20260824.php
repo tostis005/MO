@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Mobile Runtime Guard
  * Description: Keeps mobile catalogue controls at stable equal width after late WCFM mutations and localizes destination country names on Spanish catalogue pages.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -95,7 +95,7 @@ function mdo_catalog_mobile_runtime_guard_output_20260824(): void {
 		let watchedDestination = null;
 		let raf = 0;
 
-		const isMobile = () => window.matchMedia('(max-width:640px)').matches;
+		const isMobile = () => window.matchMedia('(max-width:767px)').matches;
 		const setImportant = (el, name, value) => {
 			if (!el?.style) return;
 			if (el.style.getPropertyValue(name) === value && el.style.getPropertyPriority(name) === 'important') return;
@@ -160,7 +160,7 @@ function mdo_catalog_mobile_runtime_guard_output_20260824(): void {
 			const destinationText = destination.querySelector(':scope > span') || destination.querySelector('span');
 			setImportant(destination, 'text-align', 'left');
 			setImportant(destinationText, 'text-align', 'left');
-			toolbar.dataset.mdoCatalogRuntimeGuard = '20260824-v1';
+			toolbar.dataset.mdoCatalogRuntimeGuard = '20260824-v2';
 			return true;
 		};
 

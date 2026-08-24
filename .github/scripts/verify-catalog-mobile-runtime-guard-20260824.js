@@ -18,6 +18,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
     {key:'1957', path:'/tienda/1957/', destination:'[data-mdo-ps-destination-open]', country:'[data-mdo-ps-country]'},
     {key:'hidalgo', path:'/tienda/hidalgo-de-la-jara/', destination:'[data-mdo-ps-destination-open]', country:'[data-mdo-ps-country]'},
   ];
+  const viewports = [390, 709];
   const expectedSpanish = {
     ES:'España', DE:'Alemania', AT:'Austria', BE:'Bélgica', BG:'Bulgaria', FR:'Francia',
     GR:'Grecia', HU:'Hungría', IT:'Italia', LU:'Luxemburgo', NL:'Países Bajos', PL:'Polonia',
@@ -36,6 +37,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
     const orderStyle = getComputedStyle(order);
     const triggerStyle = getComputedStyle(trigger);
     return {
+      viewportWidth: window.innerWidth,
       url:location.href,
       marker:toolbar.dataset.mdoCatalogRuntimeGuard || '',
       toolbar:rect(toolbar), destination:rect(wrap), form:rect(form), order:rect(order),
@@ -51,7 +53,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
 
   const assertState = (label, state) => {
     if (!state) fail(`${label}: runtime-guard controls missing`);
-    if (state.marker !== '20260824-v1') fail(`${label}: runtime guard did not run`, state);
+    if (state.marker !== '20260824-v2') fail(`${label}: runtime guard did not run`, state);
     const geometry = {
       left:Math.abs(state.destination.left-state.form.left),
       width:Math.abs(state.destination.width-state.form.width),
@@ -74,54 +76,58 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
 
   try {
     const page = await browser.newPage();
-    await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:3});
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36');
     await page.setCacheEnabled(false);
     const results = {};
 
-    for (const cfg of surfaces) {
-      await page.goto(`${base}${cfg.path}?_mdo_runtime_guard=${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
-      await page.waitForSelector('.emo-catalog-toolbar-shared-010229', {visible:true, timeout:30000});
-      await page.waitForSelector(cfg.destination, {visible:true, timeout:30000});
-      await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select[name="orderby"]', {visible:true, timeout:30000});
-      await sleep(4500);
-      await page.$eval('.emo-catalog-toolbar-shared-010229', el => el.scrollIntoView({block:'center',inline:'center'}));
-      await sleep(300);
+    for (const width of viewports) {
+      await page.setViewport({width,height:1000,isMobile:true,hasTouch:true,deviceScaleFactor:1});
+      results[width] = {};
 
-      const stable = await snap(page, cfg);
-      assertState(`${cfg.key}/stable`, stable);
+      for (const cfg of surfaces) {
+        await page.goto(`${base}${cfg.path}?_mdo_runtime_guard=${width}-${Date.now()}`, {waitUntil:'networkidle2', timeout:60000});
+        await page.waitForSelector('.emo-catalog-toolbar-shared-010229', {visible:true, timeout:30000});
+        await page.waitForSelector(cfg.destination, {visible:true, timeout:30000});
+        await page.waitForSelector('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering select[name="orderby"]', {visible:true, timeout:30000});
+        await sleep(4500);
+        await page.$eval('.emo-catalog-toolbar-shared-010229', el => el.scrollIntoView({block:'center',inline:'center'}));
+        await sleep(300);
 
-      if (cfg.key !== 'shop') {
-        await page.$eval('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering', form => {
-          form.style.setProperty('width','48%','important');
-          form.style.setProperty('min-width','48%','important');
-          form.style.setProperty('max-width','48%','important');
-          form.style.setProperty('margin-left','auto','important');
-          form.style.setProperty('left','auto','important');
-        });
-        await sleep(700);
-        const recovered = await snap(page, cfg);
-        assertState(`${cfg.key}/after-late-override`, recovered);
-        results[cfg.key] = {stable,recovered};
-      } else {
-        results[cfg.key] = {stable};
+        const stable = await snap(page, cfg);
+        assertState(`${width}px/${cfg.key}/stable`, stable);
+
+        if (cfg.key !== 'shop') {
+          await page.$eval('.emo-catalog-toolbar-shared-010229 .woocommerce-ordering', form => {
+            form.style.setProperty('width','48%','important');
+            form.style.setProperty('min-width','48%','important');
+            form.style.setProperty('max-width','48%','important');
+            form.style.setProperty('margin-left','auto','important');
+            form.style.setProperty('left','auto','important');
+          });
+          await sleep(700);
+          const recovered = await snap(page, cfg);
+          assertState(`${width}px/${cfg.key}/after-late-override`, recovered);
+          results[width][cfg.key] = {stable,recovered};
+        } else {
+          results[width][cfg.key] = {stable};
+        }
+
+        await sleep(1500);
+        const late = await snap(page, cfg);
+        assertState(`${width}px/${cfg.key}/late`, late);
+        results[width][cfg.key].late = late;
+        await page.screenshot({path:`/tmp/catalog-mobile-runtime-guard-${width}-${cfg.key}.png`, fullPage:false});
       }
-
-      await sleep(3500);
-      const late = await snap(page, cfg);
-      assertState(`${cfg.key}/late`, late);
-      results[cfg.key].late = late;
-      await page.screenshot({path:`/tmp/catalog-mobile-runtime-guard-${cfg.key}.png`, fullPage:false});
     }
 
-    const out = {ok:true,revision:'20260824-runtime-guard-v1',results};
+    const out = {ok:true,revision:'20260824-runtime-guard-v2-767',viewports,results};
     fs.writeFileSync('/tmp/catalog-mobile-runtime-guard-20260824.json', JSON.stringify(out,null,2));
-    console.log(JSON.stringify({ok:true,revision:'20260824-runtime-guard-v1',surfaces:Object.keys(results).length}));
+    console.log(JSON.stringify({ok:true,revision:'20260824-runtime-guard-v2-767',viewports,surfaces:surfaces.length}));
   } finally {
     await browser.close();
   }
 })().catch(error => {
-  const out={ok:false,revision:'20260824-runtime-guard-v1',error:String(error.stack||error)};
+  const out={ok:false,revision:'20260824-runtime-guard-v2-767',error:String(error.stack||error)};
   try { fs.writeFileSync('/tmp/catalog-mobile-runtime-guard-20260824.json',JSON.stringify(out,null,2)); } catch (_) {}
   console.error(JSON.stringify(out));
   process.exit(1);
