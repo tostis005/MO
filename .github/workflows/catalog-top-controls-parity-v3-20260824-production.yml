@@ -7,7 +7,9 @@ on:
       - '.github/workflows/catalog-top-controls-parity-v3-20260824-production.yml'
       - '.github/scripts/verify-catalog-top-controls-parity-v3-20260824.js'
       - '.github/scripts/verify-producer-mobile-layout-parity-20260824.js'
+      - '.github/scripts/verify-catalog-mobile-runtime-guard-20260824.js'
       - 'mu-plugins/zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
+      - 'mu-plugins/zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
   workflow_dispatch:
 
 permissions:
@@ -38,6 +40,7 @@ jobs:
           php -l mu-plugins/zzzzzzzzzzz-mdo-catalog-top-controls-parity-20260824.php
           php -l mu-plugins/zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php
           php -l mu-plugins/zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php
+          php -l mu-plugins/zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass google-chrome-stable >/dev/null
           npm install --no-save --no-package-lock puppeteer-core@24 >/dev/null 2>&1
@@ -48,7 +51,7 @@ jobs:
           test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Deploy three owners, verify live UI, rollback automatically on error
+      - name: Deploy catalog control owners, verify live UI, rollback automatically on error
         id: guarded
         run: |
           set -Eeuo pipefail
@@ -59,6 +62,7 @@ jobs:
             'zzzzzzzzzzz-mdo-catalog-top-controls-parity-20260824.php'
             'zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php'
             'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
+            'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
           )
 
           PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
@@ -142,6 +146,7 @@ jobs:
             grep -q 'mdo-catalog-top-controls-parity-20260824' "$html"
             grep -q 'mdo-catalog-top-controls-parity-final-20260824' "$html"
             grep -q 'mdo-catalog-top-controls-arrow-final-20260824' "$html"
+            grep -q 'mdo-catalog-mobile-runtime-guard-20260824' "$html"
           done
 
           BASE_URL="$BASE_URL" node .github/scripts/verify-catalog-top-controls-parity-v3-20260824.js | tee /tmp/catalog-top-controls-browser-v3.log
@@ -149,6 +154,9 @@ jobs:
 
           BASE_URL="$BASE_URL" node .github/scripts/verify-producer-mobile-layout-parity-20260824.js | tee /tmp/producer-mobile-layout-parity.log
           grep -q '"ok":true' /tmp/producer-mobile-layout-parity.log
+
+          BASE_URL="$BASE_URL" node .github/scripts/verify-catalog-mobile-runtime-guard-20260824.js | tee /tmp/catalog-mobile-runtime-guard.log
+          grep -q '"ok":true' /tmp/catalog-mobile-runtime-guard.log
 
           trap - ERR
           for name in "${FILES[@]}"; do
@@ -168,5 +176,8 @@ jobs:
             /tmp/producer-mobile-layout-*.png
             /tmp/producer-mobile-layout-parity-20260824.json
             /tmp/producer-mobile-layout-parity.log
+            /tmp/catalog-mobile-runtime-guard-*.png
+            /tmp/catalog-mobile-runtime-guard-20260824.json
+            /tmp/catalog-mobile-runtime-guard.log
           if-no-files-found: ignore
           retention-days: 7
