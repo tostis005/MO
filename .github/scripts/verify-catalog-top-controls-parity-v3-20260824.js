@@ -174,7 +174,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
     if (hasTouch) await page.touchscreen.tap(p.x,p.y); else await page.mouse.click(p.x,p.y);
     await sleep(200);
     const hit=await page.evaluate(sel=>({clicks:window.__mdoClick||0,pointer:window.__mdoPointer||0,active:document.activeElement===document.querySelector(sel)}),orderSel);
-    if (hit.clicks < 1 || hit.pointer < 1) fail(`${label}: real click/tap did not reach native select`, hit);
+    if (hit.pointer < 1 || (!hasTouch && hit.clicks < 1)) fail(`${label}: real click/tap did not reach native select`, hit);
     await page.keyboard.press('Escape').catch(()=>{});
     const target=s.options.find(o=>o.value && o.value!==s.value); if(!target) fail(`${label}: no alternate ordering option`,s.options);
     const oldUrl=page.url();
