@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.4.0
+ * Version: 1.4.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -150,11 +150,11 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			if (getComputedStyle(select).paddingRight !== '36px' || select.style.getPropertyPriority('padding-right') !== 'important') {
 				select.style.setProperty('padding-right', '36px', 'important');
 			}
-			if (getComputedStyle(select).paddingLeft !== '36px' || select.style.getPropertyPriority('padding-left') !== 'important') {
-				select.style.setProperty('padding-left', '36px', 'important');
+			if (getComputedStyle(select).paddingLeft !== '13px' || select.style.getPropertyPriority('padding-left') !== 'important') {
+				select.style.setProperty('padding-left', '13px', 'important');
 			}
-			setImportant(select, 'text-align', 'center');
-			setImportant(select, 'text-align-last', 'center');
+			setImportant(select, 'text-align', 'left');
+			setImportant(select, 'text-align-last', 'left');
 		};
 
 		const enforceMobileOrderMatchesDestination = (toolbar, form, select) => {
@@ -178,15 +178,18 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			const formRect = form.getBoundingClientRect();
 			setImportant(form, 'left', `${destRect.left - formRect.left}px`);
 
+			const destinationText = destination.querySelector(':scope > span') || destination.querySelector('span');
+			setImportant(destination, 'text-align', 'left');
+			setImportant(destinationText, 'text-align', 'left');
 			setImportant(select, 'box-sizing', 'border-box');
 			setImportant(select, 'width', '100%');
 			setImportant(select, 'min-width', '0');
 			setImportant(select, 'max-width', '100%');
-			setImportant(select, 'padding-left', '36px');
+			setImportant(select, 'padding-left', '13px');
 			setImportant(select, 'padding-right', '36px');
-			setImportant(select, 'text-align', 'center');
-			setImportant(select, 'text-align-last', 'center');
-			toolbar.dataset.mdoMobileOrderMatchesDestination = '20260824-v2';
+			setImportant(select, 'text-align', 'left');
+			setImportant(select, 'text-align-last', 'left');
+			toolbar.dataset.mdoMobileOrderMatchesDestination = '20260824-v3';
 		};
 
 		const styleProducerDestination = (toolbar) => {
@@ -201,16 +204,17 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			setImportant(trigger, 'position', 'relative');
 			setImportant(trigger, 'display', 'flex');
 			setImportant(trigger, 'align-items', 'center');
-			setImportant(trigger, 'justify-content', 'center');
+			setImportant(trigger, 'justify-content', 'flex-start');
 			setImportant(trigger, 'width', '100%');
 			setImportant(trigger, 'min-width', '0');
 			setImportant(trigger, 'max-width', '100%');
 			setImportant(trigger, 'padding', '0 13px');
+			setImportant(trigger, 'text-align', 'left');
 			setImportant(pin, 'display', 'none');
 			setImportant(text, 'display', 'block');
 			setImportant(text, 'width', '100%');
 			setImportant(text, 'min-width', '0');
-			setImportant(text, 'text-align', 'center');
+			setImportant(text, 'text-align', 'left');
 			if (chevron && chevron !== pin) {
 				setImportant(chevron, 'display', 'block');
 				setImportant(chevron, 'position', 'absolute');
