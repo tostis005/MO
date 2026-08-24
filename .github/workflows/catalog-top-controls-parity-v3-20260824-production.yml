@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/catalog-top-controls-parity-v3-20260824-production.yml'
       - '.github/scripts/verify-catalog-top-controls-parity-v3-20260824.js'
+      - '.github/scripts/verify-producer-mobile-layout-parity-20260824.js'
       - 'mu-plugins/zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
   workflow_dispatch:
 
@@ -146,11 +147,14 @@ jobs:
           BASE_URL="$BASE_URL" node .github/scripts/verify-catalog-top-controls-parity-v3-20260824.js | tee /tmp/catalog-top-controls-browser-v3.log
           grep -q '"ok":true' /tmp/catalog-top-controls-browser-v3.log
 
+          BASE_URL="$BASE_URL" node .github/scripts/verify-producer-mobile-layout-parity-20260824.js | tee /tmp/producer-mobile-layout-parity.log
+          grep -q '"ok":true' /tmp/producer-mobile-layout-parity.log
+
           trap - ERR
           for name in "${FILES[@]}"; do
             sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '${BACKUPS[$name]}' '/tmp/${name%.php}-${GITHUB_RUN_ID}.php'" || true
           done
-          echo "Production v3 deployment and browser verification succeeded."
+          echo "Production catalogue layout deployment and browser verification succeeded."
 
       - name: Upload visual verification evidence
         if: always()
@@ -161,5 +165,8 @@ jobs:
             /tmp/catalog-top-controls-v3-*.png
             /tmp/catalog-top-controls-parity-v3-20260824.json
             /tmp/catalog-top-controls-browser-v3.log
+            /tmp/producer-mobile-layout-*.png
+            /tmp/producer-mobile-layout-parity-20260824.json
+            /tmp/producer-mobile-layout-parity.log
           if-no-files-found: ignore
           retention-days: 7

@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
- * Description: Renders the ordering chevron as a non-blocking CSS pseudo-element so the native select remains fully clickable on every browser, and keeps the producer mobile toolbar aligned with the global shop.
- * Version: 1.2.0
+ * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
+ * Version: 1.3.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -57,20 +57,91 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			pointer-events:none !important;
 			z-index:2 !important;
 		}
+
 		@media (max-width:640px) {
 			#mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
 				right:14px !important;
 			}
-			/* Producer store pages inherit a narrower WCFM content column. Expand only
-			 * this controls card to the exact 16px viewport gutters used by /tienda/. */
+
+			/* WCFM adds a second mobile gutter. Only the producer catalogue surfaces
+			 * escape that gutter so they use the same 16px viewport margins as /tienda/. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 {
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824,
+			body.wcfmmp-store-page #wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229,
+			body.wcfm-store-page #wcfmmp-store .emo-mobile-filter-toggle.emo-filter-toggle-shared-010229,
+			body.wcfmmp-store-page #wcfmmp-store ul.products,
+			body.wcfm-store-page #wcfmmp-store ul.products {
 				position:relative !important;
 				left:50% !important;
+				box-sizing:border-box !important;
 				width:calc(100vw - 32px) !important;
 				min-width:calc(100vw - 32px) !important;
 				max-width:calc(100vw - 32px) !important;
+				margin-left:0 !important;
+				margin-right:0 !important;
 				transform:translateX(-50%) !important;
+			}
+
+			/* Both controls fill the complete inner width of the shared card. */
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 select[name="orderby"],
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 select[name="orderby"] {
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
+			}
+
+			/* Keep the native destination chevron, but give its actual V the same visual
+			 * footprint as the ordering chevron. Decorative arrows never receive taps. */
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger {
+				position:relative !important;
+				display:flex !important;
+				align-items:center !important;
+				justify-content:center !important;
+				padding:0 36px 0 13px !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:first-child,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:first-child {
+				display:none !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > span,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > span {
+				width:100% !important;
+				text-align:center !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:last-child,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:last-child {
+				display:block !important;
+				position:absolute !important;
+				top:50% !important;
+				right:10px !important;
+				left:auto !important;
+				width:18px !important;
+				height:18px !important;
+				min-width:18px !important;
+				max-width:18px !important;
+				margin:0 !important;
+				padding:0 !important;
+				opacity:.72 !important;
+				transform:translateY(-50%) !important;
+				transform-origin:center !important;
+				pointer-events:none !important;
+			}
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
+				top:50% !important;
+				right:14px !important;
+				width:7px !important;
+				height:7px !important;
+				margin:0 !important;
+				transform:translateY(-65%) rotate(45deg) !important;
 			}
 		}
 	</style>
@@ -125,7 +196,7 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				toolbar.style.setProperty('min-width', 'calc(100vw - 32px)', 'important');
 				toolbar.style.setProperty('max-width', 'calc(100vw - 32px)', 'important');
 				toolbar.style.setProperty('transform', 'translateX(-50%)', 'important');
-				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v4';
+				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v5';
 				enforceProducerOrderPadding(toolbar, select);
 				watchProducerOrder(toolbar, select);
 			} else {
