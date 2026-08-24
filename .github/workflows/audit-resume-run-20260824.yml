@@ -1,0 +1,38 @@
+name: Audit affiliate outreach workflow run 2026-08-24
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-resume-run-20260824.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record recent campaign workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/resume-affiliate-outreach-20260824.yml/runs?per_page=5"
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$API" > /tmp/runs.json
+          mkdir -p .deploy-status
+          python3 - <<'PY' > .deploy-status/affiliate-outreach-runs-20260824.txt
+          import json
+          data=json.load(open('/tmp/runs.json'))
+          for r in data.get('workflow_runs', []):
+              print(f"run_id={r['id']} status={r['status']} conclusion={r.get('conclusion')} event={r['event']} head_sha={r['head_sha']} created_at={r['created_at']} updated_at={r['updated_at']}")
+          PY
+          cat .deploy-status/affiliate-outreach-runs-20260824.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/affiliate-outreach-runs-20260824.txt
+          git commit -m 'Record affiliate outreach workflow run audit'
+          git pull --rebase origin main || true
+          git push origin HEAD:main
