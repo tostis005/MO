@@ -34,7 +34,6 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
         destSvg,
         orderArrow:{width:parseFloat(pseudo.width),height:parseFloat(pseudo.height),right:parseFloat(pseudo.right),top:pseudo.top,transform:pseudo.transform,pointerEvents:pseudo.pointerEvents},
         orderPaddingRight:getComputedStyle(ordering).paddingRight,
-        fullWidthMarker:toolbar?.dataset?.mdoMobileControlsFullWidth || '',
         href:location.href,
       };
     });
@@ -49,16 +48,19 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
     const producer=await measure('/tienda/1957/','1957');
     const hidalgo=await measure('/tienda/hidalgo-de-la-jara/','hidalgo');
     const surfaces=[['shop',shop],['1957',producer],['hidalgo',hidalgo]];
-    const expectedLeft=16;
-    const expectedWidth=358;
 
     for(const [label,s] of surfaces){
-      if(s.fullWidthMarker!=='20260824-v1') fail(`${label}: mobile full-width owner did not run`,s.fullWidthMarker);
+      if(!s.toolbar) fail(`${label}: missing toolbar`,s);
+      const expectedLeft=s.toolbar.left+12;
+      const expectedWidth=s.toolbar.width-24;
       for(const part of ['destination','ordering']){
         if(!s[part]) fail(`${label}: missing ${part}`,s);
         if(Math.abs(s[part].left-expectedLeft)>1||Math.abs(s[part].width-expectedWidth)>1){
-          fail(`${label}: ${part} is not full mobile width`,{expected:{left:expectedLeft,width:expectedWidth},actual:s[part]});
+          fail(`${label}: ${part} does not respect the 12px inner card gutter`,{expected:{left:expectedLeft,width:expectedWidth},actual:s[part],toolbar:s.toolbar});
         }
+      }
+      if(Math.abs(s.destination.left-s.ordering.left)>1||Math.abs(s.destination.width-s.ordering.width)>1){
+        fail(`${label}: destination and ordering are not equal width`,{destination:s.destination,ordering:s.ordering});
       }
     }
 
@@ -84,6 +86,6 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
       if(p.orderPaddingRight!=='36px') fail(`${label}: ordering padding drifted`,p.orderPaddingRight);
     }
     fs.writeFileSync('/tmp/producer-mobile-layout-parity-20260824.json',JSON.stringify({ok:true,shop,producer,hidalgo},null,2));
-    console.log(JSON.stringify({ok:true,revision:'20260824-layout-v3-full-width'}));
+    console.log(JSON.stringify({ok:true,revision:'20260824-layout-v4-inner-width'}));
   } finally { await browser.close(); }
 })().catch(error=>{try{fs.writeFileSync('/tmp/producer-mobile-layout-parity-20260824.json',JSON.stringify({ok:false,error:String(error.stack||error)},null,2));}catch(_){};console.error(error.stack||error);process.exit(1);});
