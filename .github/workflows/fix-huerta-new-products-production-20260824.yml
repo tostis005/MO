@@ -63,14 +63,23 @@ jobs:
           : "${PROD_PATH:?production path not found}"
 
           REMOTE_SCRIPT="/tmp/fix-huerta-new-products-${GITHUB_RUN_ID}.php"
+          REMOTE_WRAPPER="/tmp/run-fix-huerta-new-products-${GITHUB_RUN_ID}.php"
           REMOTE_GUARD="/tmp/mdo-huerta-title-quality-${GITHUB_RUN_ID}.php"
+          LOCAL_WRAPPER="/tmp/run-fix-huerta-new-products-${GITHUB_RUN_ID}.php"
+
+          printf '%s\n' \
+            '<?php' \
+            '$GLOBALS["table"] = MDO_Database::table("source_products");' \
+            "require '$REMOTE_SCRIPT';" > "$LOCAL_WRAPPER"
+          php -l "$LOCAL_WRAPPER"
+
           sshpass -e scp $SCP_OPTIONS .github/scripts/fix-huerta-new-products-20260824.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e scp $SCP_OPTIONS "$LOCAL_WRAPPER" "$STAGING_USER@$STAGING_HOST:$REMOTE_WRAPPER"
           sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-huerta-title-quality-20260824.php "$STAGING_USER@$STAGING_HOST:$REMOTE_GUARD"
 
           mkdir -p .deploy-status
           set +e
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-            set -e
             mkdir -p '$PROD_PATH/wp-content/mu-plugins'
             cp '$REMOTE_GUARD' '$PROD_PATH/wp-content/mu-plugins/mdo-huerta-title-quality-20260824.php'
             rm -f '$REMOTE_GUARD'
@@ -79,9 +88,10 @@ jobs:
             php_bin=\$(command -v php || true)
             [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
             \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-huerta-title-quality-20260824.php' >/dev/null
-            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" -l '$REMOTE_WRAPPER' >/dev/null
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_WRAPPER' --path='$PROD_PATH' --allow-root
             code=\$?
-            rm -f '$REMOTE_SCRIPT'
+            rm -f '$REMOTE_SCRIPT' '$REMOTE_WRAPPER'
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
             exit \$code
           " > .deploy-status/huerta-new-products-fix-20260824.txt 2>&1
