@@ -5,6 +5,7 @@ if ( ! class_exists( 'MDO_Huerta_Unit_Price' ) ) {
 	exit( 20 );
 }
 
+// Re-audit after the 2026-08-24 La Huerta de Ana Mary product additions.
 /**
  * Detector deliberadamente byte-safe: la web de origen mezcla históricamente
  * cabeceras/entidades y codificaciones, así que no dependemos de que el HTML
