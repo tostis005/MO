@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.4
+ * Version: 1.3.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -82,20 +82,20 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				transform:translateX(-50%) !important;
 			}
 
-			/* Historical WCFM mobile rules use a more specific transform/width on the
-			 * product list. This final CSS-only owner wins that cascade without changing
-			 * product markup or behaviour, matching the global shop's 16px gutters. */
+			/* The live producer product list receives transform:none!important from an
+			 * inline WCFM rule. Position it with left alone so the result stays CSS-only:
+			 * 50% of the WCFM content width minus 50vw plus the shop's 16px gutter. */
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products,
 			html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store ul.products {
 				position:relative !important;
-				left:50% !important;
+				left:calc(50% - 50vw + 16px) !important;
 				box-sizing:border-box !important;
 				width:calc(100vw - 32px) !important;
 				min-width:calc(100vw - 32px) !important;
 				max-width:calc(100vw - 32px) !important;
 				margin-left:0 !important;
 				margin-right:0 !important;
-				transform:translateX(-50%) !important;
+				transform:none !important;
 			}
 			html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store ul.products > li.product,
 			html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store ul.products > li.product {
