@@ -23,59 +23,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Inspect mail delivery
+      - name: Inspect Plesk mail authentication
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set -u
+          set +e
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass dnsutils >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
-
           mkdir -p .deploy-status
-          OUT=.deploy-status/email-diagnostics-20260824.txt
+          OUT=.deploy-status/email-plesk-diagnostics-20260824.txt
           {
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "=== PUBLIC DNS ==="
+            echo "NS:"; dig +short NS elmercadodeorigen.com
             echo "MX:"; dig +short MX elmercadodeorigen.com
-            echo "SPF/TXT:"; dig +short TXT elmercadodeorigen.com
-            echo "DMARC:"; dig +short TXT _dmarc.elmercadodeorigen.com
             echo "A:"; dig +short A elmercadodeorigen.com
-            ip=$(dig +short A elmercadodeorigen.com | head -n1)
-            if [ -n "$ip" ]; then echo "PTR for $ip:"; dig +short -x "$ip"; fi
-            echo "=== PRODUCTION SERVER ==="
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" bash -s -- "$PROD_PATH" <<'REMOTE'
-PROD_PATH="$1"
-wp_bin=$(command -v wp || true)
-php_bin=$(command -v php || true)
-[ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-echo "siteurl:"
-"$php_bin" "$wp_bin" option get siteurl --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
-echo "mail-related active plugins:"
-"$php_bin" "$wp_bin" plugin list --status=active --field=name --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'smtp|mail|email|send|post|ses|brevo|sendinblue|mailgun|postmark|spark|newsletter' || echo '(none detected)'
-echo "php sendmail_path:"
-"$php_bin" -r 'echo ini_get("sendmail_path"), PHP_EOL;' 2>/dev/null || true
-echo "mail binaries:"
-for b in sendmail postfix exim mailq postqueue; do command -v "$b" 2>/dev/null || true; done
-echo "queue matches:"
-(mailq 2>/dev/null || postqueue -p 2>/dev/null || exim -bp 2>/dev/null || true) | grep -Ei 'jose\.fraga@gmail\.com|elmercadodeorigen\.com|empty' | tail -n 80 || true
-echo "delivery log matches:"
-for f in /var/log/maillog /var/log/mail.log /var/log/plesk/maillog; do
-  if [ -r "$f" ]; then
-    echo "LOG=$f"
-    grep -Fi 'jose.fraga@gmail.com' "$f" | tail -n 60 || true
-  fi
-done
-REMOTE
+            echo "MAIL A:"; dig +short A mail.elmercadodeorigen.com
+            echo "TXT/SPF:"; dig +short TXT elmercadodeorigen.com
+            echo "DMARC:"; dig +short TXT _dmarc.elmercadodeorigen.com
+            echo "DKIM default:"; dig +short TXT default._domainkey.elmercadodeorigen.com
+            echo "=== SERVER ==="
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'echo "identity:"; id; echo "hostname:"; hostname -f; echo "plesk:"; command -v plesk || true; echo "mailserver options:"; plesk bin mailserver --info options 2>&1 || true; echo "mailserver spf:"; plesk bin mailserver --info spf 2>&1 || true; echo "domain_pref info:"; plesk bin domain_pref --info elmercadodeorigen.com 2>&1 || true; echo "domain_pref help dkim lines:"; plesk bin domain_pref --help 2>&1 | grep -Ei "sign_outgoing|domain.?keys|dkim" || true; echo "dns zone relevant:"; plesk bin dns --info elmercadodeorigen.com 2>&1 | grep -Ei "domainkey|spf|dmarc|mail\.elmercadodeorigen\.com|MX" || true; echo "postfix identity:"; postconf -h myhostname 2>/dev/null || true; postconf -h myorigin 2>/dev/null || true; postconf -h smtp_helo_name 2>/dev/null || true'
           } > "$OUT" 2>&1
-
           cat "$OUT"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add "$OUT"
-          git commit -m 'Record email delivery diagnostics' || true
+          git commit -m 'Record Plesk email authentication diagnostics' || true
           git pull --rebase origin main || true
           git push origin HEAD:main || true
