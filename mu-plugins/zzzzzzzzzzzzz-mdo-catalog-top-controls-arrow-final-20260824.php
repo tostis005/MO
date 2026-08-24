@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.5
+ * Version: 1.3.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -63,6 +63,30 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				right:14px !important;
 			}
 
+			/* On mobile both catalogue controls use the complete usable viewport width,
+			 * matching the 16px gutters already used by toolbar, filters and products. */
+			#mdo-catalog-parity-final-20260824 .mdo-catalog-destination,
+			#mdo-catalog-parity-final-20260824 .mdo-ps-destination,
+			#mdo-catalog-parity-final-20260824 .woocommerce-ordering {
+				position:relative !important;
+				left:50% !important;
+				box-sizing:border-box !important;
+				width:calc(100vw - 32px) !important;
+				min-width:calc(100vw - 32px) !important;
+				max-width:calc(100vw - 32px) !important;
+				margin-left:0 !important;
+				margin-right:0 !important;
+				transform:translateX(-50%) !important;
+			}
+			#mdo-catalog-parity-final-20260824 .mdo-catalog-destination__trigger,
+			#mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
+			#mdo-catalog-parity-final-20260824 select[name="orderby"] {
+				box-sizing:border-box !important;
+				width:100% !important;
+				min-width:0 !important;
+				max-width:100% !important;
+			}
+
 			/* WCFM adds a second mobile gutter. Only the producer catalogue surfaces
 			 * escape that gutter so they use the same 16px viewport margins as /tienda/. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824,
@@ -107,7 +131,7 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				margin-right:0 !important;
 			}
 
-			/* Both controls fill the complete inner width of the shared card. */
+			/* Both producer controls fill their now full-width wrappers. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
 			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination,
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering,
