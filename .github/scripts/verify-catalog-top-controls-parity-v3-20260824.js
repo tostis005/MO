@@ -72,6 +72,7 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
       destinationText:dest.textContent.replace(/\s+/g,' ').trim(),
       toolbarFinal:toolbar.dataset.mdoCatalogParityFinal || '',
       arrowFinal:toolbar.dataset.mdoCatalogArrowFinal || '',
+      producerMobileWidthParity:toolbar.dataset.mdoProducerMobileWidthParity || '',
       originalMarker:!!document.querySelector('#mdo-catalog-top-controls-parity-20260824'),
       finalMarker:!!document.querySelector('#mdo-catalog-top-controls-parity-final-20260824'),
       arrowMarker:!!document.querySelector('#mdo-catalog-top-controls-arrow-final-20260824'),
@@ -117,6 +118,21 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
       const diff = Object.fromEntries(keys.filter(k => shop[part][k] !== producer[part][k]).map(k => [k,{shop:shop[part][k],producer:producer[part][k]}]));
       if (Object.keys(diff).length) fail(`${label}: ${part} differs from global shop`, diff);
       if (Math.abs(shop[part].rect.height-producer[part].rect.height) > 1) fail(`${label}: ${part} height differs from shop`, {shop:shop[part].rect,producer:producer[part].rect});
+    }
+    if (label.startsWith('mobile/')) {
+      if (producer.producerMobileWidthParity !== '20260824-v4') fail(`${label}: producer mobile width parity owner did not run`, producer);
+      const toolbarGeometry = {
+        left:Math.abs(shop.toolbar.rect.left-producer.toolbar.rect.left),
+        width:Math.abs(shop.toolbar.rect.width-producer.toolbar.rect.width),
+      };
+      if (toolbarGeometry.left > 1 || toolbarGeometry.width > 1) fail(`${label}: producer toolbar does not match global shop mobile width`, {toolbarGeometry,shop:shop.toolbar.rect,producer:producer.toolbar.rect});
+      for (const part of ['destination','order']) {
+        const geometry = {
+          left:Math.abs(shop[part].rect.left-producer[part].rect.left),
+          width:Math.abs(shop[part].rect.width-producer[part].rect.width),
+        };
+        if (geometry.left > 1 || geometry.width > 1) fail(`${label}: ${part} mobile width does not match global shop`, {geometry,shop:shop[part].rect,producer:producer[part].rect});
+      }
     }
     if (JSON.stringify(shop.options) !== JSON.stringify(producer.options)) fail(`${label}: producer ordering options differ from shop`, {shop:shop.options,producer:producer.options});
   };
@@ -196,12 +212,12 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
         results[vp.name][cfg.key]={snapshot:s,modal,ordering};
       }
     }
-    const out={ok:true,revision:'20260824-v3',results};
+    const out={ok:true,revision:'20260824-v4-width-parity',results};
     fs.writeFileSync('/tmp/catalog-top-controls-parity-v3-20260824.json',JSON.stringify(out,null,2));
-    console.log(JSON.stringify({ok:true,revision:'20260824-v3',surfaces:Object.keys(results.mobile).length,viewports:Object.keys(results).length}));
+    console.log(JSON.stringify({ok:true,revision:'20260824-v4-width-parity',surfaces:Object.keys(results.mobile).length,viewports:Object.keys(results).length}));
   } finally { await browser.close(); }
 })().catch(error=>{
-  const out={ok:false,revision:'20260824-v3',error:String(error.stack||error)};
+  const out={ok:false,revision:'20260824-v4-width-parity',error:String(error.stack||error)};
   try{fs.writeFileSync('/tmp/catalog-top-controls-parity-v3-20260824.json',JSON.stringify(out,null,2));}catch(_){}
   console.error(JSON.stringify(out)); process.exit(1);
 });
