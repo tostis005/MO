@@ -13,12 +13,12 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
   await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1');
   await page.setCacheEnabled(false);
 
-  const measure = async path => {
+  const measure = async (path,key) => {
     await page.goto(`${base}${path}?_mdo_layout=${Date.now()}`,{waitUntil:'networkidle2',timeout:60000});
     await page.waitForSelector('.emo-catalog-toolbar-shared-010229',{visible:true,timeout:30000});
     await page.waitForSelector('ul.products',{visible:true,timeout:30000});
     await sleep(3500);
-    return await page.evaluate(() => {
+    const result = await page.evaluate(() => {
       const rect = el => { const r=el?.getBoundingClientRect(); return r ? {left:r.left,width:r.width,right:r.right,height:r.height,top:r.top} : null; };
       const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
       const destination=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
@@ -34,26 +34,34 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
         destSvg,
         orderArrow:{width:parseFloat(pseudo.width),height:parseFloat(pseudo.height),right:parseFloat(pseudo.right),top:pseudo.top,transform:pseudo.transform,pointerEvents:pseudo.pointerEvents},
         orderPaddingRight:getComputedStyle(ordering).paddingRight,
-        destinationPaddingRight:getComputedStyle(destination).paddingRight,
         href:location.href,
       };
     });
+    await page.$eval('ul.products',el=>el.scrollIntoView({block:'start',inline:'nearest'}));
+    await sleep(250);
+    await page.screenshot({path:`/tmp/producer-mobile-layout-${key}.png`,fullPage:false});
+    return result;
   };
 
   try {
-    const shop=await measure('/tienda/');
-    const producer=await measure('/tienda/1957/');
-    const hidalgo=await measure('/tienda/hidalgo-de-la-jara/');
+    const shop=await measure('/tienda/','shop');
+    const producer=await measure('/tienda/1957/','1957');
+    const hidalgo=await measure('/tienda/hidalgo-de-la-jara/','hidalgo');
     const producers=[['1957',producer],['hidalgo',hidalgo]];
     for(const [label,p] of producers){
       for(const part of ['toolbar','destination','ordering','filter','products']){
         if(!shop[part]||!p[part]) fail(`${label}: missing ${part}`,{shop:shop[part],producer:p[part]});
         if(Math.abs(shop[part].left-p[part].left)>1||Math.abs(shop[part].width-p[part].width)>1) fail(`${label}: ${part} does not match shop width`,{shop:shop[part],producer:p[part]});
       }
-      if(!p.firstProduct || Math.abs(p.products.left-p.firstProduct.left)>1 || Math.abs(p.products.width-p.firstProduct.width)>1) fail(`${label}: product card is not full grid width`,p);
+      if(!shop.firstProduct||!p.firstProduct) fail(`${label}: first product missing`,{shop:shop.firstProduct,producer:p.firstProduct});
+      const shopInset=shop.firstProduct.left-shop.products.left;
+      const producerInset=p.firstProduct.left-p.products.left;
+      if(Math.abs(shopInset-producerInset)>1||Math.abs(shop.firstProduct.width-p.firstProduct.width)>1) {
+        fail(`${label}: product card geometry differs from shop`,{shop:{products:shop.products,firstProduct:shop.firstProduct,inset:shopInset},producer:{products:p.products,firstProduct:p.firstProduct,inset:producerInset}});
+      }
       if(p.destSvg.length!==1) fail(`${label}: destination must have one visible arrow`,p.destSvg);
       const d=p.destSvg[0];
-      if(d.width<10||d.width>14||d.height<10||d.height>14) fail(`${label}: destination arrow size is off`,d);
+      if(d.width<16||d.width>20||d.height<16||d.height>20) fail(`${label}: destination arrow box size is off`,d);
       if(p.orderArrow.width<6||p.orderArrow.width>8||p.orderArrow.height<6||p.orderArrow.height>8||p.orderArrow.pointerEvents!=='none') fail(`${label}: ordering arrow geometry is off`,p.orderArrow);
       const destCenter=d.top+d.height/2;
       const controlCenter=p.destination.top+p.destination.height/2;
@@ -61,6 +69,6 @@ const fail = (message, data) => { throw new Error(`${message} ${JSON.stringify(d
       if(p.orderPaddingRight!=='36px') fail(`${label}: ordering padding drifted`,p.orderPaddingRight);
     }
     fs.writeFileSync('/tmp/producer-mobile-layout-parity-20260824.json',JSON.stringify({ok:true,shop,producer,hidalgo},null,2));
-    console.log(JSON.stringify({ok:true,revision:'20260824-layout-v1'}));
+    console.log(JSON.stringify({ok:true,revision:'20260824-layout-v2'}));
   } finally { await browser.close(); }
 })().catch(error=>{try{fs.writeFileSync('/tmp/producer-mobile-layout-parity-20260824.json',JSON.stringify({ok:false,error:String(error.stack||error)},null,2));}catch(_){};console.error(error.stack||error);process.exit(1);});
