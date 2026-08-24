@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.0
+ * Version: 1.3.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -107,8 +107,8 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				max-width:100% !important;
 			}
 
-			/* Producer destination uses the exact same CSS chevron geometry as ordering.
-			 * It is decorative only, so it can never block taps/clicks. */
+			/* Keep the producer destination's native SVG, but size/position it to match
+			 * the ordering chevron. The first SVG is the location pin and stays hidden. */
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger,
 			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger {
 				position:relative !important;
@@ -117,8 +117,8 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				justify-content:center !important;
 				padding:0 36px 0 13px !important;
 			}
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg {
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:first-child,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:first-child {
 				display:none !important;
 			}
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > span,
@@ -126,28 +126,23 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				width:100% !important;
 				text-align:center !important;
 			}
-			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger::after,
-			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger::after {
-				content:"" !important;
+			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:last-child,
+			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .mdo-ps-destination__trigger > svg:last-child {
 				display:block !important;
 				position:absolute !important;
 				top:50% !important;
 				right:14px !important;
 				left:auto !important;
-				width:7px !important;
-				height:7px !important;
+				width:10px !important;
+				height:10px !important;
+				min-width:10px !important;
+				max-width:10px !important;
 				margin:0 !important;
 				padding:0 !important;
-				border:0 !important;
-				border-right:1.5px solid #173f32 !important;
-				border-bottom:1.5px solid #173f32 !important;
-				background:transparent !important;
-				box-shadow:none !important;
 				opacity:.72 !important;
-				transform:translateY(-65%) rotate(45deg) !important;
+				transform:translateY(-50%) scale(1.25,1.8) !important;
 				transform-origin:center !important;
 				pointer-events:none !important;
-				z-index:2 !important;
 			}
 			body.wcfmmp-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after,
 			body.wcfm-store-page #mdo-catalog-parity-final-20260824 .woocommerce-ordering::after {
