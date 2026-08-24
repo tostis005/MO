@@ -1,6 +1,7 @@
 <?php
 /**
  * Read-only compact production audit for La Huerta de Ana Mary.
+ * Re-run after the full unit-price audit on 2026-08-24.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! class_exists( 'MDO_Database' ) ) { fwrite( STDERR, "ERROR: MDO database layer is not loaded.\n" ); exit( 2 ); }
