@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders the ordering chevron as a non-blocking CSS pseudo-element so the native select remains fully clickable on every browser, and keeps the producer mobile toolbar aligned with the global shop.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -77,6 +77,32 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 	<script id="mdo-catalog-top-controls-arrow-final-20260824-js">
 	(() => {
 		'use strict';
+		let observedSelect = null;
+		let observer = null;
+
+		const isProducerMobile = (toolbar) => !!toolbar?.querySelector('[data-mdo-ps-destination-open]') && window.matchMedia('(max-width:640px)').matches;
+
+		const enforceProducerOrderPadding = (toolbar, select) => {
+			if (!toolbar || !select || !isProducerMobile(toolbar)) return;
+			if (getComputedStyle(select).paddingRight !== '36px' || select.style.getPropertyPriority('padding-right') !== 'important') {
+				select.style.setProperty('padding-right', '36px', 'important');
+			}
+		};
+
+		const watchProducerOrder = (toolbar, select) => {
+			if (!toolbar || !select || !isProducerMobile(toolbar)) {
+				observer?.disconnect();
+				observer = null;
+				observedSelect = null;
+				return;
+			}
+			if (observedSelect === select && observer) return;
+			observer?.disconnect();
+			observedSelect = select;
+			observer = new MutationObserver(() => enforceProducerOrderPadding(toolbar, select));
+			observer.observe(select, {attributes:true, attributeFilter:['style','class']});
+		};
+
 		const fix = () => {
 			const toolbar = document.querySelector('.emo-catalog-toolbar-shared-010229');
 			const form = toolbar?.querySelector('.woocommerce-ordering');
@@ -100,10 +126,13 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				toolbar.style.setProperty('max-width', 'calc(100vw - 32px)', 'important');
 				toolbar.style.setProperty('transform', 'translateX(-50%)', 'important');
 				toolbar.dataset.mdoProducerMobileWidthParity = '20260824-v4';
+				enforceProducerOrderPadding(toolbar, select);
+				watchProducerOrder(toolbar, select);
 			} else {
 				toolbar.style.removeProperty('left');
 				toolbar.style.removeProperty('transform');
 				delete toolbar.dataset.mdoProducerMobileWidthParity;
+				watchProducerOrder(null, null);
 			}
 
 			toolbar.dataset.mdoCatalogArrowFinal = '20260824-v3';
@@ -115,6 +144,8 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			requestAnimationFrame(() => requestAnimationFrame(fix));
 			window.setTimeout(fix, 250);
 			window.setTimeout(fix, 1200);
+			window.setTimeout(fix, 2100);
+			window.setTimeout(fix, 3200);
 		};
 		schedule();
 		window.addEventListener('DOMContentLoaded', schedule, {once:true});
