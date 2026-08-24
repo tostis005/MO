@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalog Top Controls Arrow Final Owner
  * Description: Renders non-blocking catalogue chevrons and keeps the producer mobile catalogue aligned with the global shop without changing behaviour.
- * Version: 1.3.8
+ * Version: 1.3.9
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -141,7 +141,8 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 		let observedSelect = null;
 		let observer = null;
 
-		const isProducerMobile = (toolbar) => !!toolbar?.querySelector('[data-mdo-ps-destination-open]') && window.matchMedia('(max-width:640px)').matches;
+		const isMobile = () => window.matchMedia('(max-width:640px)').matches;
+		const isProducerMobile = (toolbar) => !!toolbar?.querySelector('[data-mdo-ps-destination-open]') && isMobile();
 		const setImportant = (el, name, value) => el?.style?.setProperty(name, value, 'important');
 
 		const enforceProducerOrderPadding = (toolbar, select) => {
@@ -149,6 +150,34 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			if (getComputedStyle(select).paddingRight !== '36px' || select.style.getPropertyPriority('padding-right') !== 'important') {
 				select.style.setProperty('padding-right', '36px', 'important');
 			}
+		};
+
+		const enforceMobileOrderMatchesDestination = (toolbar, form, select) => {
+			if (!toolbar || !form || !select || !isMobile()) return;
+			const destination = toolbar.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
+			const destinationWrap = destination?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination') || destination?.parentElement;
+			if (!destination || !destinationWrap) return;
+
+			const destRect = destinationWrap.getBoundingClientRect();
+			if (!destRect.width) return;
+			const width = `${destRect.width}px`;
+			setImportant(form, 'position', 'relative');
+			setImportant(form, 'box-sizing', 'border-box');
+			setImportant(form, 'transform', 'none');
+			setImportant(form, 'width', width);
+			setImportant(form, 'min-width', width);
+			setImportant(form, 'max-width', width);
+			setImportant(form, 'margin-left', '0');
+			setImportant(form, 'margin-right', '0');
+			setImportant(form, 'left', '0px');
+			const formRect = form.getBoundingClientRect();
+			setImportant(form, 'left', `${destRect.left - formRect.left}px`);
+
+			setImportant(select, 'box-sizing', 'border-box');
+			setImportant(select, 'width', '100%');
+			setImportant(select, 'min-width', '0');
+			setImportant(select, 'max-width', '100%');
+			toolbar.dataset.mdoMobileOrderMatchesDestination = '20260824-v1';
 		};
 
 		const styleProducerDestination = (toolbar) => {
@@ -220,7 +249,7 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 			select.style.setProperty('appearance', 'none', 'important');
 
 			const producer = !!toolbar.querySelector('[data-mdo-ps-destination-open]');
-			const mobile = window.matchMedia('(max-width:640px)').matches;
+			const mobile = isMobile();
 			if (producer && mobile) {
 				toolbar.style.setProperty('position', 'relative', 'important');
 				toolbar.style.setProperty('left', '50%', 'important');
@@ -237,6 +266,12 @@ function mdo_catalog_top_controls_arrow_final_output_20260824(): void {
 				toolbar.style.removeProperty('transform');
 				delete toolbar.dataset.mdoProducerMobileWidthParity;
 				watchProducerOrder(null, null);
+			}
+
+			if (mobile) {
+				enforceMobileOrderMatchesDestination(toolbar, form, select);
+			} else {
+				delete toolbar.dataset.mdoMobileOrderMatchesDestination;
 			}
 
 			toolbar.dataset.mdoCatalogArrowFinal = '20260824-v3';
