@@ -15,6 +15,10 @@ on:
         description: Plain-text email body
         required: true
         type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/outreach-queue.env'
 
 permissions:
   contents: read
@@ -44,9 +48,9 @@ jobs:
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-          MAIL_TO: ${{ inputs.recipient }}
-          MAIL_SUBJECT: ${{ inputs.subject }}
-          MAIL_BODY: ${{ inputs.body }}
+          INPUT_MAIL_TO: ${{ inputs.recipient }}
+          INPUT_MAIL_SUBJECT: ${{ inputs.subject }}
+          INPUT_MAIL_BODY: ${{ inputs.body }}
         run: |
           set -euo pipefail
           sudo apt-get update -qq
@@ -69,10 +73,18 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          TO_B64="$(printf '%s' "$MAIL_TO" | base64 -w0)"
-          SUBJECT_B64="$(printf '%s' "$MAIL_SUBJECT" | base64 -w0)"
-          BODY_B64="$(printf '%s' "$MAIL_BODY" | base64 -w0)"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            [ -f .github/outreach-queue.env ] || { echo 'queue file missing' >&2; exit 5; }
+            TO_B64="$(sed -n 's/^TO_B64=//p' .github/outreach-queue.env | head -n1)"
+            SUBJECT_B64="$(sed -n 's/^SUBJECT_B64=//p' .github/outreach-queue.env | head -n1)"
+            BODY_B64="$(sed -n 's/^BODY_B64=//p' .github/outreach-queue.env | head -n1)"
+          else
+            TO_B64="$(printf '%s' "$INPUT_MAIL_TO" | base64 -w0)"
+            SUBJECT_B64="$(printf '%s' "$INPUT_MAIL_SUBJECT" | base64 -w0)"
+            BODY_B64="$(printf '%s' "$INPUT_MAIL_BODY" | base64 -w0)"
+          fi
 
+          [ -n "$TO_B64" ] && [ -n "$SUBJECT_B64" ] && [ -n "$BODY_B64" ]
           REMOTE_SCRIPT="/tmp/emdo-outreach-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/send-emdo-outreach-email.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
 
