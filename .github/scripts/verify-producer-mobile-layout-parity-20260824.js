@@ -1,5 +1,6 @@
 'use strict';
 
+// Strict rerun: production CSS is unchanged; this commit only retriggers the guarded workflow.
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
