@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/email-diagnostics-20260824-production.yml'
+      - '.github/scripts/send-test-email-authenticated-20260824.php'
   workflow_dispatch:
 
 permissions:
@@ -23,35 +24,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Inspect Plesk mail authentication
+      - name: Send authenticated test and inspect delivery
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set +e
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass dnsutils >/dev/null
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="/var/www/vhosts/wizardly-shockley.82-223-25-247.plesk.page/httpdocs"
+          REMOTE_SCRIPT="/tmp/emdo-auth-mail-${GITHUB_RUN_ID}.php"
+          START_MARK="$(date -u '+%b %e %H:%M')"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/send-test-email-authenticated-20260824.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          SEND_OUT=$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc" 2>&1)
+          sleep 3
+          LOG_OUT=$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -Fi 'jose.fraga@gmail.com' /var/log/maillog 2>/dev/null | tail -n 20" 2>&1)
           mkdir -p .deploy-status
-          OUT=.deploy-status/email-plesk-diagnostics-20260824.txt
+          OUT=.deploy-status/email-authenticated-test-20260824.txt
           {
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "=== PUBLIC DNS ==="
-            echo "NS:"; dig +short NS elmercadodeorigen.com
-            echo "MX:"; dig +short MX elmercadodeorigen.com
-            echo "A:"; dig +short A elmercadodeorigen.com
-            echo "MAIL A:"; dig +short A mail.elmercadodeorigen.com
-            echo "TXT/SPF:"; dig +short TXT elmercadodeorigen.com
-            echo "DMARC:"; dig +short TXT _dmarc.elmercadodeorigen.com
-            echo "DKIM default:"; dig +short TXT default._domainkey.elmercadodeorigen.com
-            echo "=== SERVER ==="
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'echo "identity:"; id; echo "hostname:"; hostname -f; echo "plesk:"; command -v plesk || true; echo "mailserver options:"; plesk bin mailserver --info options 2>&1 || true; echo "mailserver spf:"; plesk bin mailserver --info spf 2>&1 || true; echo "domain_pref info:"; plesk bin domain_pref --info elmercadodeorigen.com 2>&1 || true; echo "domain_pref help dkim lines:"; plesk bin domain_pref --help 2>&1 | grep -Ei "sign_outgoing|domain.?keys|dkim" || true; echo "dns zone relevant:"; plesk bin dns --info elmercadodeorigen.com 2>&1 | grep -Ei "domainkey|spf|dmarc|mail\.elmercadodeorigen\.com|MX" || true; echo "postfix identity:"; postconf -h myhostname 2>/dev/null || true; postconf -h myorigin 2>/dev/null || true; postconf -h smtp_helo_name 2>/dev/null || true'
-          } > "$OUT" 2>&1
+            echo "sender=hola@elmercadodeorigen.com"
+            echo "recipient=jose.fraga@gmail.com"
+            echo "=== wp_mail ==="
+            echo "$SEND_OUT"
+            echo "=== postfix/gmail ==="
+            echo "$LOG_OUT"
+          } > "$OUT"
           cat "$OUT"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add "$OUT"
-          git commit -m 'Record Plesk email authentication diagnostics' || true
+          git commit -m 'Record authenticated email delivery test' || true
           git pull --rebase origin main || true
           git push origin HEAD:main || true
