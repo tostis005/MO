@@ -1,0 +1,120 @@
+name: CTX Feed production diagnostic
+
+on:
+  push:
+    branches:
+      - ctx-feed-diagnostic-20260825
+    paths:
+      - .github/workflows/ctx-feed-diagnostic-20260825.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Install SSH helper
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Diagnose CTX Feed on production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$wp_bin" ] || { echo "WPCLI_NOT_FOUND"; exit 2; }
+
+          PROD_PATH=""
+          while IFS= read -r cfg; do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                PROD_PATH="$p"; break ;;
+            esac
+          done < <(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null)
+          [ -n "$PROD_PATH" ] || { echo "PROD_PATH_NOT_FOUND"; exit 3; }
+
+          echo "=== SITE ==="
+          "$php_bin" "$wp_bin" option get siteurl --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root
+          echo "PROD_PATH=$PROD_PATH"
+
+          echo "=== CTX PLUGIN ==="
+          "$php_bin" "$wp_bin" plugin list --path="$PROD_PATH" --allow-root --fields=name,status,version,update,update_version 2>/dev/null | grep -Ei 'woo-feed|ctx|webappick|feed' || true
+
+          echo "=== UPLOAD DIR ==="
+          UPLOAD_INFO=$("$php_bin" "$wp_bin" eval '$u=wp_upload_dir(); echo $u["basedir"]."\n".$u["baseurl"]."\n";' --path="$PROD_PATH" --skip-themes --allow-root)
+          UPLOAD_DIR=$(printf '%s\n' "$UPLOAD_INFO" | sed -n '1p')
+          UPLOAD_URL=$(printf '%s\n' "$UPLOAD_INFO" | sed -n '2p')
+          echo "UPLOAD_DIR=$UPLOAD_DIR"
+          echo "UPLOAD_URL=$UPLOAD_URL"
+          stat -c 'UPLOAD_PERMS=%a OWNER=%U GROUP=%G PATH=%n' "$UPLOAD_DIR" || true
+
+          echo "=== WOO-FEED DIRECTORIES ==="
+          find "$UPLOAD_DIR" -maxdepth 4 \( -type d -o -type f \) \( -iname '*woo-feed*' -o -iname '*ctx*' -o -iname '*.xml' -o -iname '*.csv' \) -printf '%y %m %u:%g %s %TY-%Tm-%Td %TH:%TM %p\n' 2>/dev/null | head -n 250 || true
+
+          echo "=== EXPECTED WOO-FEED ROOT ==="
+          if [ -e "$UPLOAD_DIR/woo-feed" ]; then
+            ls -ld "$UPLOAD_DIR/woo-feed" || true
+            find "$UPLOAD_DIR/woo-feed" -maxdepth 3 -printf '%y %m %u:%g %s %TY-%Tm-%Td %TH:%TM %p\n' 2>/dev/null | head -n 250 || true
+          else
+            echo "MISSING: $UPLOAD_DIR/woo-feed"
+          fi
+
+          echo "=== ACCESS RULES ==="
+          find "$UPLOAD_DIR" -maxdepth 4 -type f -name '.htaccess' -print 2>/dev/null | while read -r f; do
+            case "$f" in
+              *woo-feed*|"$UPLOAD_DIR/.htaccess")
+                echo "--- $f"
+                sed -n '1,160p' "$f" || true
+                ;;
+            esac
+          done
+
+          echo "=== CTX CRON ==="
+          "$php_bin" "$wp_bin" cron event list --path="$PROD_PATH" --allow-root --fields=hook,next_run_gmt,next_run_relative,recurrence 2>/dev/null | grep -Ei 'woo.?feed|ctx|webappick' || true
+
+          echo "=== DISK / WRITABILITY ==="
+          df -h "$UPLOAD_DIR" || true
+          if [ -w "$UPLOAD_DIR" ]; then echo "UPLOAD_DIR_WRITABLE_BY_SSH_USER=yes"; else echo "UPLOAD_DIR_WRITABLE_BY_SSH_USER=no"; fi
+          if [ -d "$UPLOAD_DIR/woo-feed" ]; then
+            if [ -w "$UPLOAD_DIR/woo-feed" ]; then echo "WOO_FEED_WRITABLE_BY_SSH_USER=yes"; else echo "WOO_FEED_WRITABLE_BY_SSH_USER=no"; fi
+          fi
+
+          echo "=== PUBLIC HTTP TESTS ==="
+          if [ -d "$UPLOAD_DIR/woo-feed" ]; then
+            while IFS= read -r f; do
+              rel=${f#"$UPLOAD_DIR"/}
+              url="$UPLOAD_URL/$rel"
+              code=$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)
+              echo "$code $url"
+            done < <(find "$UPLOAD_DIR/woo-feed" -type f \( -iname '*.xml' -o -iname '*.csv' -o -iname '*.txt' \) 2>/dev/null | head -n 30)
+          fi
+
+          echo "=== RECENT PHP ERRORS MENTIONING FEED ==="
+          for log in "$PROD_PATH/wp-content/debug.log" "$PROD_PATH/../logs/error_log" "$PROD_PATH/../logs/proxy_error_log"; do
+            [ -f "$log" ] || continue
+            echo "--- $log"
+            tail -n 1000 "$log" 2>/dev/null | grep -Ei 'woo.?feed|ctx|webappick|permission denied|failed to open stream' | tail -n 80 || true
+          done
+          REMOTE
