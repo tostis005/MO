@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy-and-verify:
@@ -166,3 +166,30 @@ jobs:
           print(f'{country}: {len(items)} offers OK')
           PY
           done
+
+      - name: Record successful production verification
+        shell: bash
+        env:
+          COUNTRIES: ${{ steps.countries.outputs.countries }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/production-status
+          python3 - <<'PY'
+          import json, os, datetime
+          data = {
+              'status': 'ok',
+              'verified_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'source_commit': os.environ['GITHUB_SHA'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'countries': [x for x in os.environ['COUNTRIES'].split(',') if x],
+              'validation': 'All production destination feeds returned XML and passed structural, required-field, price, shipping-country, minimum-order and free-shipping-threshold checks.'
+          }
+          with open('.github/production-status/google-merchant-feeds.json', 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/production-status/google-merchant-feeds.json
+          git commit -m 'Record Merchant feed production verification [skip ci]'
+          git push
