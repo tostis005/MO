@@ -1,0 +1,168 @@
+name: Deploy Google Merchant country feeds to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-google-merchant-feeds-20260825.php'
+      - 'mu-plugins/mdo-google-merchant/**'
+      - '.github/workflows/deploy-google-merchant-feeds-production-20260825.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate feed PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-google-merchant-feeds-20260825.php
+          for f in mu-plugins/mdo-google-merchant/*.php; do php -l "$f"; done
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy MU plugin atomically
+        id: deploy
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "prod_path=$PROD_PATH" >> "$GITHUB_OUTPUT"
+
+          REMOTE_ROOT="$PROD_PATH/wp-content/mu-plugins"
+          REMOTE_TMP="/tmp/emdo-gmf-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_TMP/mdo-google-merchant' '$REMOTE_ROOT/mdo-google-merchant'"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-google-merchant/*.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/mdo-google-merchant/"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-google-merchant-feeds-20260825.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TMP/"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            for f in '$REMOTE_TMP'/mdo-google-merchant/*.php '$REMOTE_TMP'/mdo-google-merchant-feeds-20260825.php; do \"\$php_bin\" -l \"\$f\" >/dev/null; done
+            cp '$REMOTE_TMP'/mdo-google-merchant/*.php '$REMOTE_ROOT/mdo-google-merchant/'
+            cp '$REMOTE_TMP'/mdo-google-merchant-feeds-20260825.php '$REMOTE_ROOT/mdo-google-merchant-feeds-20260825.php'
+            rm -rf '$REMOTE_TMP'
+          "
+
+      - name: Verify WordPress load and enumerate destinations
+        id: countries
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH='${{ steps.deploy.outputs.prod_path }}'
+          COUNTRIES="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval 'if (!function_exists(\"mdo_gmf_actual_country_map_v1\")) { fwrite(STDERR, \"feed module missing\\n\"); exit(3); } echo implode(\",\", array_keys(mdo_gmf_actual_country_map_v1()));' --path='$PROD_PATH' --allow-root
+          ")"
+          COUNTRIES="$(printf '%s' "$COUNTRIES" | tr -d '\r\n ' | tr '[:lower:]' '[:upper:]')"
+          test -n "$COUNTRIES"
+          echo "countries=$COUNTRIES" >> "$GITHUB_OUTPUT"
+          echo "Production destinations: $COUNTRIES"
+
+      - name: Validate every live XML feed
+        shell: bash
+        env:
+          COUNTRIES: ${{ steps.countries.outputs.countries }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/emdo-feeds
+          IFS=',' read -ra CODES <<< "$COUNTRIES"
+          test "${#CODES[@]}" -gt 0
+          for COUNTRY in "${CODES[@]}"; do
+            LOWER="$(printf '%s' "$COUNTRY" | tr '[:upper:]' '[:lower:]')"
+            URL="https://www.elmercadodeorigen.com/emdo-feed/${LOWER}.xml"
+            HDR="/tmp/emdo-feeds/${LOWER}.headers"
+            XML="/tmp/emdo-feeds/${LOWER}.xml"
+            curl --fail --silent --show-error --location --retry 3 --max-time 45 -D "$HDR" -o "$XML" "$URL?emdo_verify=${GITHUB_RUN_ID}"
+            grep -qi '^content-type:.*\(application/xml\|text/xml\)' "$HDR"
+            python3 - "$XML" "$COUNTRY" <<'PY'
+          import re, sys, xml.etree.ElementTree as ET
+          path, country = sys.argv[1], sys.argv[2]
+          ns = {'g': 'http://base.google.com/ns/1.0'}
+          root = ET.parse(path).getroot()
+          if root.tag != 'rss' or root.attrib.get('version') != '2.0':
+              raise SystemExit(f'{country}: invalid RSS root')
+          channel = root.find('channel')
+          if channel is None:
+              raise SystemExit(f'{country}: channel missing')
+          items = channel.findall('item')
+          seen = set()
+          required = ('id','title','description','link','image_link','availability','price')
+          for i, item in enumerate(items, 1):
+              for field in required:
+                  node = item.find(f'g:{field}', ns)
+                  if node is None or not (node.text or '').strip():
+                      raise SystemExit(f'{country}: item {i} missing {field}')
+              pid = item.find('g:id', ns).text.strip()
+              if pid in seen:
+                  raise SystemExit(f'{country}: duplicate id {pid}')
+              seen.add(pid)
+              price = item.find('g:price', ns).text.strip()
+              if not re.fullmatch(r'\d+(?:\.\d{2}) EUR', price):
+                  raise SystemExit(f'{country}: bad price {price}')
+              avail = item.find('g:availability', ns).text.strip()
+              if avail not in {'in_stock','out_of_stock','preorder','backorder'}:
+                  raise SystemExit(f'{country}: bad availability {avail}')
+              shipping = item.find('g:shipping', ns)
+              if shipping is None:
+                  raise SystemExit(f'{country}: shipping missing')
+              c = shipping.find('g:country', ns)
+              p = shipping.find('g:price', ns)
+              if c is None or (c.text or '').strip() != country:
+                  raise SystemExit(f'{country}: wrong shipping country')
+              if p is None or not re.fullmatch(r'\d+(?:\.\d{2}) EUR', (p.text or '').strip()):
+                  raise SystemExit(f'{country}: invalid shipping price')
+              mov = item.find('g:minimum_order_value', ns)
+              if mov is not None:
+                  mc = mov.find('g:country', ns)
+                  mp = mov.find('g:price', ns)
+                  if mc is None or (mc.text or '').strip() != country or mp is None or not re.fullmatch(r'\d+(?:\.\d{2}) EUR', (mp.text or '').strip()):
+                      raise SystemExit(f'{country}: invalid minimum order value')
+              fst = item.find('g:free_shipping_threshold', ns)
+              if fst is not None:
+                  fc = fst.find('g:country', ns)
+                  fp = fst.find('g:price_threshold', ns)
+                  if fc is None or (fc.text or '').strip() != country or fp is None or not re.fullmatch(r'\d+(?:\.\d{2}) EUR', (fp.text or '').strip()):
+                      raise SystemExit(f'{country}: invalid free shipping threshold')
+          print(f'{country}: {len(items)} offers OK')
+          PY
+          done
