@@ -8,104 +8,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Install SSH helper
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-
-      - name: Diagnose CTX Feed on production
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+      - uses: actions/checkout@v4
+      - name: Record Actions execution
         shell: bash
         run: |
           set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          wp_bin=$(command -v wp)
-          php_bin=$(command -v php || true)
-          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          WP="$php_bin -d memory_limit=512M $wp_bin"
-
-          PROD_PATH=""
-          while IFS= read -r cfg; do
-            p=$(dirname "$cfg")
-            url=$($WP option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-            case "$url" in
-              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break ;;
-            esac
-          done < <(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null)
-          [ -n "$PROD_PATH" ] || { echo PROD_PATH_NOT_FOUND; exit 3; }
-
-          UPLOAD_DIR="$PROD_PATH/wp-content/uploads"
-          UPLOAD_URL="https://www.elmercadodeorigen.com/wp-content/uploads"
-
-          echo '=== SITE ==='
-          echo "PROD_PATH=$PROD_PATH"
-          echo "UPLOAD_DIR=$UPLOAD_DIR"
-          stat -c 'UPLOAD_PERMS=%a OWNER=%U GROUP=%G PATH=%n' "$UPLOAD_DIR" || true
-
-          echo '=== FEED PLUGINS ON DISK ==='
-          find "$PROD_PATH/wp-content/plugins" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | grep -Ei 'feed|ctx|webappick' || true
-
-          echo '=== PLUGIN STATUS ==='
-          $WP plugin list --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root --fields=name,status,version,update,update_version 2>/dev/null | grep -Ei 'feed|ctx|webappick' || true
-
-          echo '=== WOO-FEED CONTENT ==='
-          if [ -d "$UPLOAD_DIR/woo-feed" ]; then
-            find "$UPLOAD_DIR/woo-feed" -maxdepth 5 -printf '%y %m %u:%g %s %TY-%Tm-%Td %TH:%TM %p\n' 2>/dev/null | head -n 400
-          else
-            echo "MISSING: $UPLOAD_DIR/woo-feed"
-          fi
-
-          echo '=== FEED-LIKE FILES ELSEWHERE ==='
-          find "$UPLOAD_DIR" -maxdepth 5 -type f \( -iname '*.xml' -o -iname '*.csv' -o -iname '*.txt' \) -printf '%m %u:%g %s %TY-%Tm-%Td %TH:%TM %p\n' 2>/dev/null | grep -Ei 'feed|ctx|google|merchant|woo' | head -n 250 || true
-
-          echo '=== HTACCESS ==='
-          for f in "$UPLOAD_DIR/.htaccess" "$UPLOAD_DIR/woo-feed/.htaccess" "$UPLOAD_DIR/woo-feed/xml/.htaccess"; do
-            [ -f "$f" ] || continue
-            echo "--- $f"
-            cat "$f" || true
-          done
-
-          echo '=== WRITABILITY / DISK ==='
-          df -h "$UPLOAD_DIR" || true
-          [ -w "$UPLOAD_DIR" ] && echo UPLOAD_WRITABLE=yes || echo UPLOAD_WRITABLE=no
-          if [ -d "$UPLOAD_DIR/woo-feed" ]; then
-            [ -w "$UPLOAD_DIR/woo-feed" ] && echo WOO_FEED_WRITABLE=yes || echo WOO_FEED_WRITABLE=no
-          fi
-
-          echo '=== PUBLIC HTTP TESTS ==='
-          if [ -d "$UPLOAD_DIR/woo-feed" ]; then
-            while IFS= read -r f; do
-              rel=${f#"$UPLOAD_DIR"/}
-              url="$UPLOAD_URL/$rel"
-              code=$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)
-              echo "$code $url"
-            done < <(find "$UPLOAD_DIR/woo-feed" -type f \( -iname '*.xml' -o -iname '*.csv' -o -iname '*.txt' \) 2>/dev/null | head -n 60)
-          fi
-
-          echo '=== CTX OPTIONS ==='
-          $WP option list --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root --search='*woo*feed*' --fields=option_name,autoload 2>/dev/null | head -n 100 || true
-
-          echo '=== RECENT SERVER ERRORS ==='
-          for log in "$PROD_PATH/wp-content/debug.log" "$PROD_PATH/../logs/error_log" "$PROD_PATH/../logs/proxy_error_log"; do
-            [ -f "$log" ] || continue
-            echo "--- $log"
-            tail -n 2000 "$log" 2>/dev/null | grep -Ei 'woo.?feed|ctx|webappick|permission denied|failed to open stream' | tail -n 150 || true
-          done
-          REMOTE
+          mkdir -p runtime
+          printf 'actions_ok=true\nrun_id=%s\nverified_at=%s\n' "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/actions-smoke-20260818.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/actions-smoke-20260818.txt
+          git commit -m 'Record Actions smoke execution'
+          git push origin HEAD:main
