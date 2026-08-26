@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/data/featured-image-request.json'
       - '.github/workflows/update-post-featured-image-production.yml'
   workflow_dispatch:
     inputs:
@@ -11,22 +12,18 @@ on:
         description: 'WordPress post slug'
         required: true
         type: string
-        default: 'dop-los-pedroches-que-es-que-garantiza-como-reconocer-jamon-paleta'
       image_url:
         description: 'Direct image URL'
         required: true
         type: string
-        default: 'https://cdn.pixabay.com/photo/2020/03/27/11/48/ham-4973380_1280.jpg'
       image_title:
         description: 'Media title'
         required: true
         type: string
-        default: 'Cerdos ibéricos en la dehesa - DOP Los Pedroches'
       image_alt:
         description: 'Image alt text'
         required: true
         type: string
-        default: 'Cerdos ibéricos en la dehesa de Los Pedroches'
 
 permissions:
   contents: read
@@ -40,12 +37,52 @@ jobs:
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
-      POST_SLUG: ${{ github.event.inputs.slug || 'dop-los-pedroches-que-es-que-garantiza-como-reconocer-jamon-paleta' }}
-      IMAGE_URL: ${{ github.event.inputs.image_url || 'https://cdn.pixabay.com/photo/2020/03/27/11/48/ham-4973380_1280.jpg' }}
-      IMAGE_TITLE: ${{ github.event.inputs.image_title || 'Cerdos ibéricos en la dehesa - DOP Los Pedroches' }}
-      IMAGE_ALT: ${{ github.event.inputs.image_alt || 'Cerdos ibéricos en la dehesa de Los Pedroches' }}
+      INPUT_SLUG: ${{ github.event.inputs.slug || '' }}
+      INPUT_IMAGE_URL: ${{ github.event.inputs.image_url || '' }}
+      INPUT_IMAGE_TITLE: ${{ github.event.inputs.image_title || '' }}
+      INPUT_IMAGE_ALT: ${{ github.event.inputs.image_alt || '' }}
 
     steps:
+      - name: Checkout request
+        uses: actions/checkout@v4
+
+      - name: Resolve image request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            POST_SLUG="$INPUT_SLUG"
+            IMAGE_URL="$INPUT_IMAGE_URL"
+            IMAGE_TITLE="$INPUT_IMAGE_TITLE"
+            IMAGE_ALT="$INPUT_IMAGE_ALT"
+            SOURCE_PAGE=""
+            PHOTOGRAPHER=""
+            LICENSE_NAME=""
+          else
+            REQUEST='.github/data/featured-image-request.json'
+            test -s "$REQUEST"
+            POST_SLUG="$(jq -r '.post_slug' "$REQUEST")"
+            IMAGE_URL="$(jq -r '.image_url' "$REQUEST")"
+            IMAGE_TITLE="$(jq -r '.image_title' "$REQUEST")"
+            IMAGE_ALT="$(jq -r '.image_alt' "$REQUEST")"
+            SOURCE_PAGE="$(jq -r '.source_page // ""' "$REQUEST")"
+            PHOTOGRAPHER="$(jq -r '.photographer // ""' "$REQUEST")"
+            LICENSE_NAME="$(jq -r '.license // ""' "$REQUEST")"
+          fi
+          [ -n "$POST_SLUG" ] && [ "$POST_SLUG" != "null" ]
+          [ -n "$IMAGE_URL" ] && [ "$IMAGE_URL" != "null" ]
+          [ -n "$IMAGE_TITLE" ] && [ "$IMAGE_TITLE" != "null" ]
+          [ -n "$IMAGE_ALT" ] && [ "$IMAGE_ALT" != "null" ]
+          {
+            echo "POST_SLUG=$POST_SLUG"
+            echo "IMAGE_URL=$IMAGE_URL"
+            echo "IMAGE_TITLE=$IMAGE_TITLE"
+            echo "IMAGE_ALT=$IMAGE_ALT"
+            echo "SOURCE_PAGE=$SOURCE_PAGE"
+            echo "PHOTOGRAPHER=$PHOTOGRAPHER"
+            echo "LICENSE_NAME=$LICENSE_NAME"
+          } >> "$GITHUB_ENV"
+
       - name: Update featured image via WP-CLI
         shell: bash
         env:
@@ -80,6 +117,9 @@ jobs:
           URL_B64=$(printf '%s' "$IMAGE_URL" | base64 -w0)
           TITLE_B64=$(printf '%s' "$IMAGE_TITLE" | base64 -w0)
           ALT_B64=$(printf '%s' "$IMAGE_ALT" | base64 -w0)
+          SOURCE_PAGE_B64=$(printf '%s' "$SOURCE_PAGE" | base64 -w0)
+          PHOTOGRAPHER_B64=$(printf '%s' "$PHOTOGRAPHER" | base64 -w0)
+          LICENSE_B64=$(printf '%s' "$LICENSE_NAME" | base64 -w0)
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
             set -e
@@ -87,6 +127,9 @@ jobs:
             IMAGE_URL=\$(printf '%s' '$URL_B64' | base64 -d)
             IMAGE_TITLE=\$(printf '%s' '$TITLE_B64' | base64 -d)
             IMAGE_ALT=\$(printf '%s' '$ALT_B64' | base64 -d)
+            SOURCE_PAGE=\$(printf '%s' '$SOURCE_PAGE_B64' | base64 -d)
+            PHOTOGRAPHER=\$(printf '%s' '$PHOTOGRAPHER_B64' | base64 -d)
+            LICENSE_NAME=\$(printf '%s' '$LICENSE_B64' | base64 -d)
 
             wp_bin=\$(command -v wp || true)
             php_bin=\$(command -v php || true)
@@ -105,12 +148,15 @@ jobs:
 
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post update \"\$ATTACHMENT_ID\" --post_title=\"\$IMAGE_TITLE\" --path='$PROD_PATH' --allow-root >/dev/null
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta update \"\$ATTACHMENT_ID\" _wp_attachment_image_alt \"\$IMAGE_ALT\" --path='$PROD_PATH' --allow-root >/dev/null
+            [ -z \"\$SOURCE_PAGE\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta update \"\$ATTACHMENT_ID\" _mdo_source_page \"\$SOURCE_PAGE\" --path='$PROD_PATH' --allow-root >/dev/null
+            [ -z \"\$PHOTOGRAPHER\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta update \"\$ATTACHMENT_ID\" _mdo_photographer \"\$PHOTOGRAPHER\" --path='$PROD_PATH' --allow-root >/dev/null
+            [ -z \"\$LICENSE_NAME\" ] || \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta update \"\$ATTACHMENT_ID\" _mdo_license \"\$LICENSE_NAME\" --path='$PROD_PATH' --allow-root >/dev/null
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta update \"\$POST_ID\" _thumbnail_id \"\$ATTACHMENT_ID\" --path='$PROD_PATH' --allow-root >/dev/null
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" rocket clean --confirm --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
 
             FEATURED_ID=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta get \"\$POST_ID\" _thumbnail_id --path='$PROD_PATH' --allow-root)
-            FEATURED_URL=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval \"echo get_the_post_thumbnail_url((int) \$POST_ID, 'full');\" --path='$PROD_PATH' --allow-root)
+            FEATURED_URL=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval \"echo get_the_post_thumbnail_url((int) \\\$POST_ID, 'full');\" --path='$PROD_PATH' --allow-root)
             echo \"featured_image_ok post_id=\$POST_ID attachment_id=\$FEATURED_ID url=\$FEATURED_URL\"
             [ \"\$FEATURED_ID\" = \"\$ATTACHMENT_ID\" ]
           "
