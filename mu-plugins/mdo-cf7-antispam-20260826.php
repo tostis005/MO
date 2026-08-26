@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Contact Form 7 Anti-spam Guard
  * Description: Invisible server-side anti-spam guard for Contact Form 7 using short-lived signed browser challenges plus conservative rate limiting.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: El Mercado de Origen
  */
 
@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-const MDO_CF7_GUARD_VERSION = '1.0.0';
+const MDO_CF7_GUARD_VERSION = '1.0.1';
 const MDO_CF7_GUARD_FIELD   = '_mdo_cf7_guard';
 
 /**
@@ -98,11 +98,19 @@ add_action( 'rest_api_init', function() {
     ) );
 } );
 
+// Track whether Contact Form 7 actually rendered a form on this request, so the
+// browser guard is not printed on shop/blog/product pages that do not need it.
+$GLOBALS['mdo_cf7_guard_form_rendered'] = false;
+add_filter( 'wpcf7_form_elements', function( $content ) {
+    $GLOBALS['mdo_cf7_guard_form_rendered'] = true;
+    return $content;
+}, 99, 1 );
+
 /**
  * Add the invisible browser guard to CF7 forms. No CAPTCHA or extra user action is shown.
  */
 function mdo_cf7_guard_print_script() {
-    if ( is_admin() || ! defined( 'WPCF7_VERSION' ) ) {
+    if ( is_admin() || ! defined( 'WPCF7_VERSION' ) || empty( $GLOBALS['mdo_cf7_guard_form_rendered'] ) ) {
         return;
     }
 
@@ -180,10 +188,6 @@ function mdo_cf7_guard_print_script() {
             scan();
         }
 
-        // Covers CF7 forms inserted later by popups/builders.
-        if ('MutationObserver' in window) {
-            new MutationObserver(scan).observe(document.documentElement, {childList: true, subtree: true});
-        }
     })();
     </script>
     <?php
@@ -220,7 +224,7 @@ function mdo_cf7_guard_filter_spam( $spam ) {
     }
 
     // Conservative cap: normal visitors will never approach this. This only affects CF7.
-    if ( mdo_cf7_guard_rate_limited( 'submit', 20, 10 * MINUTE_IN_SECONDS ) ) {
+    if ( mdo_cf7_guard_rate_limited( 'submit', 30, 10 * MINUTE_IN_SECONDS ) ) {
         mdo_cf7_guard_log_spam( 'Rate limit exceeded.' );
         return true;
     }
