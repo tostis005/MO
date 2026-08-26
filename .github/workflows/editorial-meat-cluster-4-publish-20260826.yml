@@ -1,0 +1,102 @@
+name: Editorial meat cluster 4 publish 20260826
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editorial-meat-cluster-4-publish-20260826.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editorial-meat-cluster-4-20260826
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and publish five bilingual meat articles independently
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -u
+          PUB_LOCAL=.github/scripts/publish-editorial-meat-cluster-4-20260826.php
+          DATA_LOCAL=.github/data/editorial-meat-cluster-4-20260826
+          php -l "$PUB_LOCAL"
+          for f in "$DATA_LOCAL"/*.php; do php -l "$f"; done
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE=/tmp/emdo-meat-cluster-4-${GITHUB_RUN_ID}
+          DATA=$REMOTE/data
+          PUB=$REMOTE/publish.php
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
+          sshpass -e scp $SCP "$PUB_LOCAL" "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e scp $SCP "$DATA_LOCAL"/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
+          overall=0
+          echo '--- ISOLATED WORDPRESS UPSERTS ---'
+          for localfile in "$DATA_LOCAL"/*.php; do
+            bn="$(basename "$localfile")"
+            echo "=== $bn ==="
+            set +e
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_MC4_DIR='$DATA' EMDO_MC4_ONLY_FILE='$bn' '$PHP' -d memory_limit=768M -d display_errors=1 -d error_reporting=32767 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root"
+            rc=$?
+            set -e
+            echo "rc=$rc"
+            [ "$rc" -eq 0 ] || overall=1
+          done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" || true
+          echo '--- PUBLIC URL CHECKS ---'
+          check() {
+            key="$1"; url="$2"; tmp=$(mktemp)
+            code=$(curl -k -L -sS --retry 2 --connect-timeout 8 --max-time 60 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -o "$tmp" -w '%{http_code}' "${url}?mc4verify=${GITHUB_RUN_ID}" || true)
+            marker=$(grep -Fc "EMDO_MEAT_CLUSTER_4_20260826:${key}" "$tmp" 2>/dev/null || true)
+            raw=$(grep -Fc '[products ' "$tmp" 2>/dev/null || true)
+            echo "$key | $url | http=$code marker=$marker raw_shortcode=$raw"
+            if [ "$code" != 200 ] || [ "$marker" -lt 1 ] || [ "$raw" -gt 0 ]; then overall=1; fi
+            rm -f "$tmp"
+          }
+          check cow-vs-veal-guide https://www.elmercadodeorigen.com/vaca-vs-ternera-diferencias-sabor-textura-cual-elegir/
+          check cow-vs-veal-guide https://www.elmercadodeorigen.com/en/cow-vs-veal-differences-flavour-texture-which-to-choose/
+          check safe-meat-thawing-guide https://www.elmercadodeorigen.com/como-descongelar-carne-correctamente-nevera-agua-fria-microondas/
+          check safe-meat-thawing-guide https://www.elmercadodeorigen.com/en/how-to-thaw-meat-safely-fridge-cold-water-microwave/
+          check when-to-salt-meat-guide https://www.elmercadodeorigen.com/cuando-salar-carne-antes-despues-cocinar/
+          check when-to-salt-meat-guide https://www.elmercadodeorigen.com/en/when-to-salt-meat-before-or-after-cooking/
+          check meat-releases-water-pan-guide https://www.elmercadodeorigen.com/por-que-carne-suelta-agua-sarten-como-evitarlo/
+          check meat-releases-water-pan-guide https://www.elmercadodeorigen.com/en/why-meat-releases-water-in-pan-how-to-stop-it/
+          check fresh-meat-condition-guide https://www.elmercadodeorigen.com/como-saber-carne-fresca-buen-estado-color-olor-textura-envase/
+          check fresh-meat-condition-guide https://www.elmercadodeorigen.com/en/how-to-tell-fresh-meat-is-good-colour-smell-texture-packaging/
+          exit "$overall"
