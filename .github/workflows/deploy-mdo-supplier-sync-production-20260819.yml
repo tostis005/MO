@@ -9,9 +9,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
-# Never allow two plugin archives to overwrite each other in production.
 concurrency:
   group: deploy-mdo-supplier-sync-production
   cancel-in-progress: false
@@ -34,217 +33,137 @@ jobs:
         run: |
           set -euo pipefail
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          test -f mdo-supplier-sync/includes/class-mdo-home-specials.php
+          test -f mdo-supplier-sync/assets/css/home-specials.css
 
       - name: Deploy and verify production plugin
-        id: deploy
-        continue-on-error: true
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set +e
-          RESULT="success"
-          VERSION="unknown"
-          NOTE=""
-          REMOTE_RESULT=""
+          set -euo pipefail
+
           EXPECTED_VERSION="$(sed -n 's/^ \* Version: //p' mdo-supplier-sync/mdo-supplier-sync.php | head -n1 | tr -d '\r')"
+          test -n "$EXPECTED_VERSION"
+          test -n "${STAGING_HOST:-}"
+          test -n "${STAGING_USER:-}"
+          test -n "${STAGING_PASSWORD:-}"
 
-          fail() {
-            RESULT="$1"
-            NOTE="$2"
-          }
-
-          if [ -z "$EXPECTED_VERSION" ]; then
-            fail "expected_version_not_found" "Could not read EMDO version from plugin header"
-          fi
-
-          if [ -z "${STAGING_HOST:-}" ] || [ -z "${STAGING_USER:-}" ] || [ -z "${STAGING_PASSWORD:-}" ]; then
-            fail "missing_credentials" "Required production SSH secrets are missing"
-          fi
-
-          if [ "$RESULT" = "success" ]; then
-            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-            [ $? -eq 0 ] || fail "sshpass_install_failed" "Could not install sshpass on runner"
-          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
 
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH=""
 
-          if [ "$RESULT" = "success" ]; then
-            PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-              wp_bin=$(command -v wp || true)
-              php_bin=$(command -v php || true)
-              [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-              for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-                p=$(dirname "$cfg")
-                url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-                case "$url" in
-                  https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
-                esac
-              done
-            ' 2>/dev/null)"
-            [ -n "$PROD_PATH" ] || fail "production_path_not_found" "Could not locate elmercadodeorigen.com WordPress root"
-          fi
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            [ -n "$php_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
 
           REMOTE_ARCHIVE="/tmp/mdo-supplier-sync-${GITHUB_RUN_ID}.tar.gz"
-          if [ "$RESULT" = "success" ]; then
-            tar -czf /tmp/mdo-supplier-sync.tar.gz mdo-supplier-sync
-            [ $? -eq 0 ] || fail "package_failed" "Could not package plugin"
-          fi
+          tar -czf /tmp/mdo-supplier-sync.tar.gz mdo-supplier-sync
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-supplier-sync.tar.gz "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
 
-          if [ "$RESULT" = "success" ]; then
-            sshpass -e scp $SCP_OPTIONS /tmp/mdo-supplier-sync.tar.gz "$STAGING_USER@$STAGING_HOST:$REMOTE_ARCHIVE"
-            [ $? -eq 0 ] || fail "upload_failed" "Could not upload plugin archive"
-          fi
-
-          if [ "$RESULT" = "success" ]; then
-            REMOTE_RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
-              set -e
-              wp_bin=\$(command -v wp || true)
-              php_bin=\$(command -v php || true)
-              [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-              [ -n \"\$wp_bin\" ]
-              [ -n \"\$php_bin\" ]
-              mkdir -p '$PROD_PATH/wp-content/plugins'
-              tar -xzf '$REMOTE_ARCHIVE' -C '$PROD_PATH/wp-content/plugins'
-              rm -f '$REMOTE_ARCHIVE'
-              \"\$php_bin\" -l '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php' >/dev/null
-
-              deployed_version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
-              plugin_status=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=status --path='$PROD_PATH' --allow-root)
-
-              # Loading WordPress runs the one-time migration, which must locate the
-              # Tolecarnes 'BURGER 100% TERNERA (2 UNIDADES)' product before passing.
-              promotion_type=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo post_type_exists(\"mdo_promotion\") ? \"1\" : \"0\";' --path='$PROD_PATH' --allow-root)
-              promotion_id=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post list --post_type=mdo_promotion --post_status=publish --name=hamburguesas-ternera-regalo-tolecarnes --format=ids --path='$PROD_PATH' --allow-root | awk '{print \$1}')
-              promotion_product=''
-              promotion_image='0'
-              promotion_product_title=''
-              if [ -n \"\$promotion_id\" ]; then
-                promotion_product=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta get \"\$promotion_id\" _mdo_promo_image_product_id --path='$PROD_PATH' --allow-root 2>/dev/null || true)
-              fi
-              if [ -n \"\$promotion_product\" ]; then
-                promotion_product_title=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post get \"\$promotion_product\" --field=post_title --path='$PROD_PATH' --allow-root 2>/dev/null || true)
-                promotion_image=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta get \"\$promotion_product\" _thumbnail_id --path='$PROD_PATH' --allow-root 2>/dev/null || true)
-              fi
-
-              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" rewrite flush --hard --path='$PROD_PATH' --allow-root >/dev/null
-              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
-
-              home_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-home-check.html -w '%{http_code}' https://www.elmercadodeorigen.com/ || true)
-              es_archive_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-specials-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/ || true)
-              es_single_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-special-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/hamburguesas-ternera-regalo-tolecarnes/ || true)
-              en_archive_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-specials-en.html -w '%{http_code}' https://www.elmercadodeorigen.com/en/specials/ || true)
-              en_single_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-special-en.html -w '%{http_code}' https://www.elmercadodeorigen.com/en/specials/free-beef-burgers-tolecarnes/ || true)
-              legacy_http=\$(curl -k -sS --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}|%{redirect_url}' https://www.elmercadodeorigen.com/ofertas/ || true)
-
-              es_archive_text=0; es_single_text=0; en_archive_text=0; en_single_text=0; product_title_ok=0; legacy_ok=0
-              grep -Fq 'Especiales del Mercado' /tmp/emdo-specials-es.html && es_archive_text=1 || true
-              grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/emdo-special-es.html && es_single_text=1 || true
-              grep -Fq 'Market Specials' /tmp/emdo-specials-en.html && en_archive_text=1 || true
-              grep -Fq 'Two free beef burgers' /tmp/emdo-special-en.html && en_single_text=1 || true
-              printf '%s' \"\$promotion_product_title\" | grep -Eqi 'ternera' && printf '%s' \"\$promotion_product_title\" | grep -Eqi 'burger|burguer|hamburgues' && product_title_ok=1 || true
-              case \"\$legacy_http\" in 301\|*'/especiales/'*) legacy_ok=1 ;; esac
-
-              printf 'VERSION=%s\\nSTATUS=%s\\nPROMOTION_TYPE=%s\\nPROMOTION_ID=%s\\nPROMOTION_PRODUCT=%s\\nPROMOTION_IMAGE=%s\\nPROMOTION_PRODUCT_TITLE=%s\\nPRODUCT_TITLE_OK=%s\\nHOME_HTTP=%s\\nES_ARCHIVE_HTTP=%s\\nES_SINGLE_HTTP=%s\\nEN_ARCHIVE_HTTP=%s\\nEN_SINGLE_HTTP=%s\\nES_ARCHIVE_TEXT=%s\\nES_SINGLE_TEXT=%s\\nEN_ARCHIVE_TEXT=%s\\nEN_SINGLE_TEXT=%s\\nLEGACY_OK=%s\\n' \\
-                \"\$deployed_version\" \"\$plugin_status\" \"\$promotion_type\" \"\$promotion_id\" \"\$promotion_product\" \"\$promotion_image\" \"\$promotion_product_title\" \"\$product_title_ok\" \"\$home_http\" \"\$es_archive_http\" \"\$es_single_http\" \"\$en_archive_http\" \"\$en_single_http\" \"\$es_archive_text\" \"\$es_single_text\" \"\$en_archive_text\" \"\$en_single_text\" \"\$legacy_ok\"
-            " 2>&1)"
-            REMOTE_CODE=$?
-            if [ $REMOTE_CODE -ne 0 ]; then
-              fail "remote_deploy_failed" "Remote extraction or WordPress runtime verification failed"
-            else
-              VERSION="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^VERSION=//p' | tail -n1)"
-              PLUGIN_STATUS="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^STATUS=//p' | tail -n1)"
-              PROMOTION_TYPE="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_TYPE=//p' | tail -n1)"
-              PROMOTION_ID="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_ID=//p' | tail -n1)"
-              PROMOTION_PRODUCT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_PRODUCT=//p' | tail -n1)"
-              PROMOTION_IMAGE="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_IMAGE=//p' | tail -n1)"
-              PRODUCT_TITLE_OK="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PRODUCT_TITLE_OK=//p' | tail -n1)"
-              HOME_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^HOME_HTTP=//p' | tail -n1)"
-              ES_ARCHIVE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_ARCHIVE_HTTP=//p' | tail -n1)"
-              ES_SINGLE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_SINGLE_HTTP=//p' | tail -n1)"
-              EN_ARCHIVE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_ARCHIVE_HTTP=//p' | tail -n1)"
-              EN_SINGLE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_SINGLE_HTTP=//p' | tail -n1)"
-              ES_ARCHIVE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_ARCHIVE_TEXT=//p' | tail -n1)"
-              ES_SINGLE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_SINGLE_TEXT=//p' | tail -n1)"
-              EN_ARCHIVE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_ARCHIVE_TEXT=//p' | tail -n1)"
-              EN_SINGLE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_SINGLE_TEXT=//p' | tail -n1)"
-              LEGACY_OK="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^LEGACY_OK=//p' | tail -n1)"
-              [ -n "$VERSION" ] || VERSION="unknown"
-
-              if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
-                fail "version_mismatch" "Production reports EMDO $VERSION but repository expects $EXPECTED_VERSION"
-              elif [ "$PLUGIN_STATUS" != "active" ]; then
-                fail "plugin_not_active" "EMDO is deployed but WordPress does not report it active"
-              elif [ "$PROMOTION_TYPE" != "1" ] || [ -z "$PROMOTION_ID" ]; then
-                fail "promotion_missing" "The bilingual Tolecarnes promotion was not created"
-              elif [ -z "$PROMOTION_PRODUCT" ] || [ "$PRODUCT_TITLE_OK" != "1" ]; then
-                fail "tolecarnes_beef_burger_missing" "The Tolecarnes beef-burger product was not linked"
-              elif [ -z "$PROMOTION_IMAGE" ] || [ "$PROMOTION_IMAGE" = "0" ]; then
-                fail "promotion_image_missing" "The Tolecarnes beef-burger image was not inherited"
-              elif [ "$HOME_HTTP" != "200" ]; then
-                fail "homepage_check_failed" "Homepage returned HTTP $HOME_HTTP"
-              elif [ "$ES_ARCHIVE_HTTP" != "200" ] || [ "$ES_ARCHIVE_TEXT" != "1" ] || [ "$ES_SINGLE_HTTP" != "200" ] || [ "$ES_SINGLE_TEXT" != "1" ]; then
-                fail "spanish_specials_check_failed" "Spanish /especiales/ routes did not return expected content"
-              elif [ "$EN_ARCHIVE_HTTP" != "200" ] || [ "$EN_ARCHIVE_TEXT" != "1" ] || [ "$EN_SINGLE_HTTP" != "200" ] || [ "$EN_SINGLE_TEXT" != "1" ]; then
-                fail "english_specials_check_failed" "English /en/specials/ routes did not return expected content"
-              elif [ "$LEGACY_OK" != "1" ]; then
-                fail "legacy_redirect_failed" "/ofertas/ did not redirect to /especiales/"
-              else
-                NOTE="EMDO $EXPECTED_VERSION active; bilingual Especiales/Specials and Tolecarnes ternera promo verified"
-              fi
-            fi
-          fi
-
-          mkdir -p .deploy-status
-          printf 'result=%s\nversion=%s\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nnote=%s\n' \
-            "$RESULT" "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NOTE" \
-            > .deploy-status/mdo-supplier-sync.txt
-
-          if [ "$RESULT" = "success" ]; then
-            exit 0
-          fi
-          echo "Deployment verification failed: $RESULT - $NOTE"
-          echo "$REMOTE_RESULT"
-          exit 1
-
-      - name: Record deployment result
-        if: always()
-        shell: bash
-        run: |
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_ARCHIVE' '$EXPECTED_VERSION'" <<'REMOTE'
           set -euo pipefail
-          if [ ! -f .deploy-status/mdo-supplier-sync.txt ]; then
-            mkdir -p .deploy-status
-            printf 'result=runner_failed\nversion=unknown\nsource_commit=%s\nworkflow_run=%s\nchecked_at=%s\nnote=Deployment step did not produce a status file\n' \
-              "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              > .deploy-status/mdo-supplier-sync.txt
+          PROD_PATH="$1"
+          REMOTE_ARCHIVE="$2"
+          EXPECTED_VERSION="$3"
+
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          test -n "$wp_bin"
+          test -n "$php_bin"
+
+          mkdir -p "$PROD_PATH/wp-content/plugins"
+          tar -xzf "$REMOTE_ARCHIVE" -C "$PROD_PATH/wp-content/plugins"
+          rm -f "$REMOTE_ARCHIVE"
+
+          "$php_bin" -l "$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php" >/dev/null
+          "$php_bin" -l "$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-home-specials.php" >/dev/null
+
+          deployed_version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root)
+          plugin_status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=status --path="$PROD_PATH" --allow-root)
+          test "$deployed_version" = "$EXPECTED_VERSION"
+          test "$plugin_status" = 'active'
+
+          promotion_type=$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo post_type_exists("mdo_promotion") ? "1" : "0";' --path="$PROD_PATH" --allow-root)
+          test "$promotion_type" = '1'
+
+          promotion_id=$("$php_bin" -d memory_limit=512M "$wp_bin" post list --post_type=mdo_promotion --post_status=publish --name=hamburguesas-ternera-regalo-tolecarnes --format=ids --path="$PROD_PATH" --allow-root | awk '{print $1}')
+          test -n "$promotion_id"
+
+          promotion_product=$("$php_bin" -d memory_limit=512M "$wp_bin" post meta get "$promotion_id" _mdo_promo_image_product_id --path="$PROD_PATH" --allow-root 2>/dev/null || true)
+          test -n "$promotion_product"
+          promotion_product_title=$("$php_bin" -d memory_limit=512M "$wp_bin" post get "$promotion_product" --field=post_title --path="$PROD_PATH" --allow-root)
+          printf '%s' "$promotion_product_title" | grep -Eqi 'ternera'
+          printf '%s' "$promotion_product_title" | grep -Eqi 'burger|burguer|hamburgues'
+          promotion_image=$("$php_bin" -d memory_limit=512M "$wp_bin" post meta get "$promotion_product" _thumbnail_id --path="$PROD_PATH" --allow-root 2>/dev/null || true)
+          test -n "$promotion_image"
+          test "$promotion_image" != '0'
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" rewrite flush --hard --path="$PROD_PATH" --allow-root >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
+          if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
           fi
 
-          STATUS_B64="$(base64 -w0 .deploy-status/mdo-supplier-sync.txt)"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          cachebust=$(date +%s)
+          curl -k -L -sS --connect-timeout 5 --max-time 30 "https://www.elmercadodeorigen.com/?mdo_home_specials=$cachebust" -o /tmp/emdo-home-es.html
+          curl -k -L -sS --connect-timeout 5 --max-time 30 "https://www.elmercadodeorigen.com/en/?mdo_home_specials=$cachebust" -o /tmp/emdo-home-en.html
+          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/especiales/ -o /tmp/emdo-specials-es.html
+          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/especiales/hamburguesas-ternera-regalo-tolecarnes/ -o /tmp/emdo-special-es.html
+          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/en/specials/ -o /tmp/emdo-specials-en.html
+          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/en/specials/free-beef-burgers-tolecarnes/ -o /tmp/emdo-special-en.html
 
-          for attempt in 1 2 3 4; do
-            git fetch origin main
-            git reset --hard origin/main
-            mkdir -p .deploy-status
-            printf '%s' "$STATUS_B64" | base64 -d > .deploy-status/mdo-supplier-sync.txt
-            git add .deploy-status/mdo-supplier-sync.txt
-            if git diff --cached --quiet; then
-              exit 0
-            fi
-            git commit -m 'Record EMDO production deployment result [skip ci]'
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            sleep $((attempt * 2))
-          done
+          grep -Fq 'Especiales del Mercado de Origen' /tmp/emdo-specials-es.html
+          ! grep -Fq 'Ahora en El Mercado' /tmp/emdo-specials-es.html
+          grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/emdo-special-es.html
+          ! grep -Fq 'Una ventaja especial al comprar productos de Tolecarnes' /tmp/emdo-special-es.html
+          grep -Fq 'Two free beef burgers' /tmp/emdo-special-en.html
 
-          echo '::warning::Deployment completed, but the status file could not be persisted after retries.'
-          exit 0
+          grep -Fq 'AHORA EN EL MERCADO DE ORIGEN' /tmp/emdo-home-es.html
+          grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/emdo-home-es.html
+          grep -Fq 'Ver especial' /tmp/emdo-home-es.html
+          grep -Fq '/especiales/hamburguesas-ternera-regalo-tolecarnes/' /tmp/emdo-home-es.html
+          grep -Fq 'mdo-home-specials' /tmp/emdo-home-es.html
 
-      - name: Fail workflow when deployment failed
-        if: steps.deploy.outcome != 'success'
-        run: exit 1
+          grep -Fq 'NOW AT EL MERCADO DE ORIGEN' /tmp/emdo-home-en.html
+          grep -Fq 'Two free beef burgers' /tmp/emdo-home-en.html
+          grep -Fq 'View special' /tmp/emdo-home-en.html
+          grep -Fq '/en/specials/free-beef-burgers-tolecarnes/' /tmp/emdo-home-en.html
+          grep -Fq 'mdo-home-specials' /tmp/emdo-home-en.html
+
+          "$php_bin" -r '
+          foreach (["/tmp/emdo-home-es.html", "/tmp/emdo-home-en.html"] as $file) {
+              $html = file_get_contents($file);
+              $special = strpos($html, "id=\"mdo-home-specials\"");
+              $categories = strpos($html, "emo-categories");
+              if ($special === false || $categories === false || $special >= $categories) {
+                  fwrite(STDERR, "Homepage Specials is not before the categories section.\n");
+                  exit(1);
+              }
+          }
+          '
+
+          legacy=$(curl -k -sS --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}|%{redirect_url}' https://www.elmercadodeorigen.com/ofertas/)
+          case "$legacy" in
+            301\|*'/especiales/'*) ;;
+            *) echo "Legacy /ofertas/ redirect failed: $legacy" >&2; exit 1 ;;
+          esac
+
+          echo "EMDO $deployed_version active; ES/EN homepage Specials verified before categories."
+          REMOTE
