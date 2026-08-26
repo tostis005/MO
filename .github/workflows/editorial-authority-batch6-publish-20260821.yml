@@ -1,4 +1,4 @@
-name: Editorial authority batch 10 diagnostic 20260821
+name: Editorial authority batch 12 publication 20260826
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: editorial-authority-batch10-diagnostic-20260821
+  group: editorial-authority-batch12-20260826
   cancel-in-progress: false
 
 jobs:
-  diagnose:
+  publish:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -27,70 +27,147 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Publish and capture diagnostics
+
+      - name: Publish five bilingual articles and verify production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set +e
           mkdir -p .deploy-status
-          : >/tmp/ab10-log; : >/tmp/ab10-db; : >/tmp/ab10-public
-          php -l .github/scripts/publish-editorial-authority-batch10-20260821.php >>/tmp/ab10-log 2>&1
-          for f in .github/data/editorial-authority-batch10-20260821/*.php; do php -l "$f" >>/tmp/ab10-log 2>&1; done
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
-          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
-          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
-            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
-            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
-          ')"
-          INFO_RC=$?
-          echo "info_rc=$INFO_RC" >>/tmp/ab10-log
-          if [ "$INFO_RC" -eq 0 ]; then
-            PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-            REMOTE=/tmp/emdo-ab10-diag-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
-            sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch10-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
-            sshpass -e scp $SCP .github/data/editorial-authority-batch10-20260821/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
-            for localfile in .github/data/editorial-authority-batch10-20260821/*.php; do
-              bn="$(basename "$localfile")"
-              echo "=== $bn ===" >>/tmp/ab10-log
-              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH10_DIR='$DATA' EMDO_BATCH10_ONLY_FILE='$bn' '$PHP' -d memory_limit=768M -d display_errors=1 -d error_reporting=32767 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" >>/tmp/ab10-log 2>&1
-              echo "rc=$?" >>/tmp/ab10-log
-            done
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT pm2.meta_value,p.ID,p.post_status,p.post_name,thumb.meta_value AS thumbnail_id FROM wp_posts p JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' AND b.meta_value='10' JOIN wp_postmeta pm2 ON pm2.post_id=p.ID AND pm2.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root" >/tmp/ab10-db 2>>/tmp/ab10-log
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1
+          : >/tmp/ab12-log
+          : >/tmp/ab12-report.json
+          : >/tmp/ab12-db
+          : >/tmp/ab12-public
+          FINAL_RC=0
+          PUBLISH_RC=999
+
+          php -l .github/scripts/publish-editorial-authority-batch12-20260826.php >>/tmp/ab12-log 2>&1 || FINAL_RC=10
+          FILE_COUNT="$(find .github/data/editorial-authority-batch12-20260826 -maxdepth 1 -type f -name '*.php' | wc -l)"
+          echo "article_file_count=$FILE_COUNT" >>/tmp/ab12-log
+          [ "$FILE_COUNT" -eq 5 ] || FINAL_RC=11
+          for f in .github/data/editorial-authority-batch12-20260826/*.php; do
+            php -l "$f" >>/tmp/ab12-log 2>&1 || FINAL_RC=12
+          done
+
+          if [ "$FINAL_RC" -eq 0 ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+            PORT="${STAGING_PORT:-22}"
+            SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+            SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+            INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+              wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+              [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+              prod=""
+              for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+                p=$(dirname "$cfg")
+                u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+                case "$u" in
+                  https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+                esac
+              done
+              [ -n "$prod" ] || exit 4
+              printf "%s|%s|%s" "$prod" "$php" "$wp"
+            ')"
+            INFO_RC=$?
+            echo "production_lookup_rc=$INFO_RC" >>/tmp/ab12-log
+            if [ "$INFO_RC" -ne 0 ]; then
+              FINAL_RC=20
+            else
+              PROD="${INFO%%|*}"
+              REST="${INFO#*|}"
+              PHP="${REST%%|*}"
+              WP="${REST#*|}"
+              REMOTE=/tmp/emdo-ab12-${GITHUB_RUN_ID}
+              DATA=$REMOTE/data
+              PUB=$REMOTE/publish.php
+
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'" >>/tmp/ab12-log 2>&1 || FINAL_RC=21
+              sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch12-20260826.php "$STAGING_USER@$STAGING_HOST:$PUB" >>/tmp/ab12-log 2>&1 || FINAL_RC=22
+              sshpass -e scp $SCP .github/data/editorial-authority-batch12-20260826/*.php "$STAGING_USER@$STAGING_HOST:$DATA/" >>/tmp/ab12-log 2>&1 || FINAL_RC=23
+
+              if [ "$FINAL_RC" -eq 0 ]; then
+                sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH12_DIR='$DATA' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" >/tmp/ab12-report.json 2>>/tmp/ab12-log
+                PUBLISH_RC=$?
+                echo "publish_rc=$PUBLISH_RC" >>/tmp/ab12-log
+                [ "$PUBLISH_RC" -eq 0 ] || FINAL_RC=24
+              fi
+
+              if [ "$PUBLISH_RC" -eq 0 ]; then
+                sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT k.meta_value,p.ID,p.post_status,p.post_name,en.meta_value AS en_slug,thumb.meta_value AS thumbnail_id FROM wp_posts p JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' AND b.meta_value='12' JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta en ON en.post_id=p.ID AND en.meta_key='_en_US_post_name' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root" >/tmp/ab12-db 2>>/tmp/ab12-log
+                DB_RC=$?
+                [ "$DB_RC" -eq 0 ] || FINAL_RC=25
+                DB_COUNT="$(grep -c . /tmp/ab12-db 2>/dev/null || true)"
+                echo "db_count=$DB_COUNT" >>/tmp/ab12-log
+                [ "$DB_COUNT" -eq 5 ] || FINAL_RC=26
+                if grep -v $'\tpublish\t' /tmp/ab12-db | grep -q .; then FINAL_RC=27; fi
+              fi
+
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1 || true
+            fi
           fi
-          check(){ key="$1"; url="$2"; f=/tmp/ab10-page.html; c=$(curl -k -L -sS --retry 2 --connect-timeout 8 --max-time 45 -A 'Mozilla/5.0 EMDO batch10 diagnostic' -H 'Cache-Control: no-cache' -o "$f" -w '%{http_code}' "$url?ab10diag=$GITHUB_RUN_ID" 2>/dev/null); m=$(grep -Fc "EMDO_AUTHORITY_BATCH10:$key" "$f" 2>/dev/null || true); raw=$(grep -Fc '[products ' "$f" 2>/dev/null || true); products=$(grep -Ec 'class="[^"]*products|class="[^"]*product' "$f" 2>/dev/null || true); printf '%s|%s|http=%s|marker=%s|raw=%s|products=%s\n' "$key" "$url" "$c" "$m" "$raw" "$products" >>/tmp/ab10-public; }
-          check montanera-iberian-ham-guide https://www.elmercadodeorigen.com/que-es-montanera-jamon-iberico-por-que-importa/
-          check montanera-iberian-ham-guide https://www.elmercadodeorigen.com/en/what-is-montanera-in-iberian-ham-and-why-it-matters/
-          check serve-iberian-ham-guide https://www.elmercadodeorigen.com/como-servir-jamon-iberico-temperatura-corte-emplatado/
-          check serve-iberian-ham-guide https://www.elmercadodeorigen.com/en/how-to-serve-iberian-ham-temperature-slicing-and-plating/
-          check green-vs-ripe-fruity-evoo-guide https://www.elmercadodeorigen.com/frutado-verde-frutado-maduro-aove-diferencias/
-          check green-vs-ripe-fruity-evoo-guide https://www.elmercadodeorigen.com/en/green-fruity-vs-ripe-fruity-evoo-whats-the-difference/
-          check rest-cooked-beef-guide https://www.elmercadodeorigen.com/por-que-dejar-reposar-carne-ternera-despues-cocinar/
-          check rest-cooked-beef-guide https://www.elmercadodeorigen.com/en/why-rest-beef-after-cooking-and-what-actually-happens/
-          check commercial-preserve-sterilisation-guide https://www.elmercadodeorigen.com/esterilizacion-conservas-vegetales-por-que-duran-despensa/
-          check commercial-preserve-sterilisation-guide https://www.elmercadodeorigen.com/en/how-commercial-vegetable-preserves-are-sterilised-and-why-they-are-shelf-stable/
-          python3 - <<'PY'
-          import json,os
-          def read(p):
-              try:return open(p,encoding='utf-8',errors='ignore').read()
-              except:return ''
-          d={'batch':10,'run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'log':read('/tmp/ab10-log')[-40000:],'db_rows':read('/tmp/ab10-db'),'public_checks':read('/tmp/ab10-public')}
-          open('.deploy-status/editorial-authority-batch10-diagnostic-20260821.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+
+          if [ "$PUBLISH_RC" -eq 0 ]; then
+            check(){
+              key="$1"; url="$2"; f=/tmp/ab12-page.html
+              code=$(curl -k -L -sS --retry 2 --connect-timeout 8 --max-time 45 -A 'Mozilla/5.0 EMDO batch12 verifier' -H 'Cache-Control: no-cache' -o "$f" -w '%{http_code}' "$url?ab12verify=$GITHUB_RUN_ID" 2>/dev/null)
+              marker=$(grep -Fc "EMDO_AUTHORITY_BATCH12:$key" "$f" 2>/dev/null || true)
+              raw=$(grep -Fc '[products ' "$f" 2>/dev/null || true)
+              products=$(grep -Ec 'class="[^"]*products|class="[^"]*product' "$f" 2>/dev/null || true)
+              printf '%s|%s|http=%s|marker=%s|raw_shortcode=%s|products=%s\n' "$key" "$url" "$code" "$marker" "$raw" "$products" >>/tmp/ab12-public
+              if [ "$code" != "200" ] || [ "$marker" -lt 1 ] || [ "$raw" -ne 0 ]; then FINAL_RC=30; fi
+            }
+            check dop-los-pedroches-guide https://www.elmercadodeorigen.com/dop-los-pedroches-que-es-que-garantiza-como-reconocer-jamon-paleta/
+            check dop-los-pedroches-guide https://www.elmercadodeorigen.com/en/los-pedroches-pdo-what-it-guarantees-how-to-recognise-certified-ham/
+            check iberian-ham-hand-vs-machine-slicing-guide https://www.elmercadodeorigen.com/jamon-iberico-cortado-cuchillo-o-maquina-diferencias-cual-elegir/
+            check iberian-ham-hand-vs-machine-slicing-guide https://www.elmercadodeorigen.com/en/iberian-ham-hand-sliced-or-machine-sliced-differences-which-to-choose/
+            check iberian-ham-yield-packs-guide https://www.elmercadodeorigen.com/cuantos-sobres-salen-jamon-iberico-rendimiento-real-pieza/
+            check iberian-ham-yield-packs-guide https://www.elmercadodeorigen.com/en/how-many-packs-from-an-iberian-ham-real-yield-of-a-whole-leg/
+            check iberian-ham-mould-guide https://www.elmercadodeorigen.com/moho-jamon-iberico-cuando-normal-cuando-preocuparse-que-hacer/
+            check iberian-ham-mould-guide https://www.elmercadodeorigen.com/en/mould-on-iberian-ham-when-normal-when-to-worry-what-to-do/
+            check freeze-iberian-ham-storage-guide https://www.elmercadodeorigen.com/se-puede-congelar-jamon-iberico-que-ocurre-como-conservarlo/
+            check freeze-iberian-ham-storage-guide https://www.elmercadodeorigen.com/en/can-you-freeze-iberian-ham-what-happens-and-how-to-store-it/
+          fi
+
+          FINAL_RC="$FINAL_RC" PUBLISH_RC="$PUBLISH_RC" python3 - <<'PY'
+          import json, os
+          def read(path):
+              try:
+                  return open(path, encoding='utf-8', errors='ignore').read()
+              except Exception:
+                  return ''
+          report_raw=read('/tmp/ab12-report.json')
+          try:
+              report=json.loads(report_raw) if report_raw.strip() else None
+          except Exception:
+              report=None
+          data={
+              'batch':12,
+              'release':'20260826',
+              'run_id':os.environ.get('GITHUB_RUN_ID'),
+              'source_sha':os.environ.get('GITHUB_SHA'),
+              'publish_rc':int(os.environ.get('PUBLISH_RC','999')),
+              'exit_code':int(os.environ.get('FINAL_RC','99')),
+              'report':report,
+              'report_raw':report_raw[-30000:],
+              'db_rows':read('/tmp/ab12-db'),
+              'public_checks':read('/tmp/ab12-public'),
+              'log':read('/tmp/ab12-log')[-40000:]
+          }
+          open('.deploy-status/editorial-authority-batch12-20260826.json','w',encoding='utf-8').write(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
           PY
-      - name: Record diagnostics
+          exit "$FINAL_RC"
+
+      - name: Record batch 12 production result
         if: always()
         shell: bash
         run: |
           set -e
-          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/editorial-authority-batch10-diagnostic-20260821.json || true
-          git commit -m 'Record editorial authority batch 10 diagnostics [skip ci]' || exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch12-20260826.json || true
+          git commit -m 'Record editorial authority batch 12 production result [skip ci]' || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
