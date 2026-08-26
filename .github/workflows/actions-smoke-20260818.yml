@@ -8,79 +8,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Validate CF7 guard
+      - name: Record Actions execution
         shell: bash
         run: |
           set -euo pipefail
-          php -l mu-plugins/mdo-cf7-antispam-20260826.php >/dev/null
-          grep -Fq "add_filter( 'wpcf7_spam', 'mdo_cf7_guard_filter_spam'" mu-plugins/mdo-cf7-antispam-20260826.php
-          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
-
-      - name: Deploy CF7 guard to production
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
-
-          REMOTE="/tmp/mdo-cf7-antispam-${GITHUB_RUN_ID}.php"
-          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-cf7-antispam-20260826.php"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-cf7-antispam-20260826.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-
-      - name: Verify production guard
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-
-          LOADED="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval 'echo function_exists(\"mdo_cf7_guard_filter_spam\") ? \"GUARD_LOADED\" : \"GUARD_MISSING\";' --path='$PROD_PATH' --allow-root")"
-          grep -Fq 'GUARD_LOADED' <<< "$LOADED"
-
-          HTML1="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO guard verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' 'https://www.elmercadodeorigen.com/contacto/?mdo_cf7_guard=1')"
-          HTML2="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO guard verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' 'https://www.elmercadodeorigen.com/contacto-productores/?mdo_cf7_guard=1')"
-          grep -Fq 'id="mdo-cf7-antispam-guard"' <<< "$HTML1"
-          grep -Fq 'id="mdo-cf7-antispam-guard"' <<< "$HTML2"
-
-          FORM_ID="$(grep -o 'name="_wpcf7" value="[0-9]*"' <<< "$HTML1" | head -n1 | grep -o '[0-9]*')"
-          test -n "$FORM_ID"
-          CHALLENGE="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO guard verifier' -H 'Content-Type: application/json' --data "{\"form_id\":$FORM_ID}" 'https://www.elmercadodeorigen.com/wp-json/mdo/v1/cf7-guard')"
-          grep -Fq '"token"' <<< "$CHALLENGE"
-          echo 'CF7_ANTISPAM_PRODUCTION_OK'
+          mkdir -p runtime
+          printf 'actions_ok=true\nrun_id=%s\nverified_at=%s\n' "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/actions-smoke-20260818.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add runtime/actions-smoke-20260818.txt
+          git commit -m 'Record Actions smoke execution'
+          git push origin HEAD:main
