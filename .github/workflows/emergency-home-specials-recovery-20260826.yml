@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: emergency-home-specials-recovery-20260826
+  group: emergency-home-specials-recovery-20260826-alt
   cancel-in-progress: true
 
 jobs:
   recover:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
