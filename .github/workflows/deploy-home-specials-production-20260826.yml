@@ -1,0 +1,120 @@
+name: Deploy homepage Specials to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-home-specials-production-20260826.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-home-specials-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate EMDO PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          test -f mdo-supplier-sync/includes/class-mdo-home-specials.php
+          test -f mdo-supplier-sync/assets/css/home-specials.css
+          grep -Fq 'Version: 1.0.27' mdo-supplier-sync/mdo-supplier-sync.php
+
+      - name: Deploy EMDO 1.0.27 and verify homepage Specials
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          ARCHIVE="/tmp/mdo-home-specials-${GITHUB_RUN_ID}.tar.gz"
+          tar -czf /tmp/mdo-home-specials.tar.gz mdo-supplier-sync
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-home-specials.tar.gz "$STAGING_USER@$STAGING_HOST:$ARCHIVE"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -euo pipefail
+            wp_bin=\$(command -v wp || true)
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            test -n \"\$wp_bin\"
+            test -n \"\$php_bin\"
+
+            mkdir -p '$PROD_PATH/wp-content/plugins'
+            tar -xzf '$ARCHIVE' -C '$PROD_PATH/wp-content/plugins'
+            rm -f '$ARCHIVE'
+
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php' >/dev/null
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-home-specials.php' >/dev/null
+
+            version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
+            status=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=status --path='$PROD_PATH' --allow-root)
+            test \"\$version\" = '1.0.27'
+            test \"\$status\" = 'active'
+
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+            if \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin is-active wp-rocket --path='$PROD_PATH' --allow-root >/dev/null 2>&1; then
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" rocket clean --confirm --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            fi
+
+            cachebust=\$(date +%s)
+            curl -k -L -sS --connect-timeout 5 --max-time 30 'https://www.elmercadodeorigen.com/?mdo_home_specials='\"\$cachebust\" -o /tmp/mdo-home-es.html
+            curl -k -L -sS --connect-timeout 5 --max-time 30 'https://www.elmercadodeorigen.com/en/?mdo_home_specials='\"\$cachebust\" -o /tmp/mdo-home-en.html
+
+            grep -Fq 'AHORA EN EL MERCADO DE ORIGEN' /tmp/mdo-home-es.html
+            grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/mdo-home-es.html
+            grep -Fq 'Ver especial' /tmp/mdo-home-es.html
+            grep -Fq 'NOW AT EL MERCADO DE ORIGEN' /tmp/mdo-home-en.html
+            grep -Fq 'Two free beef burgers' /tmp/mdo-home-en.html
+            grep -Fq 'View special' /tmp/mdo-home-en.html
+            grep -Fq 'mdo-home-specials' /tmp/mdo-home-es.html
+            grep -Fq 'mdo-home-specials' /tmp/mdo-home-en.html
+
+            \"\$php_bin\" -r '
+              foreach (["/tmp/mdo-home-es.html", "/tmp/mdo-home-en.html"] as $file) {
+                $html = file_get_contents($file);
+                $special = strpos($html, "id=\\\"mdo-home-specials\\\"");
+                $categories = strpos($html, "emo-categories");
+                if ($special === false || $categories === false || $special >= $categories) {
+                  fwrite(STDERR, "Homepage Specials is not immediately before the categories area.\\n");
+                  exit(1);
+                }
+              }
+            '
+
+            echo 'EMDO 1.0.27 active; homepage Specials verified in Spanish and English before categories.'
+          "
