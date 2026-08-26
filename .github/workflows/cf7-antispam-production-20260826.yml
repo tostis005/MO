@@ -1,0 +1,117 @@
+name: CF7 anti-spam guard production 20260826
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cf7-antispam-production-20260826.yml'
+      - 'mu-plugins/mdo-cf7-antispam-20260826.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate anti-spam plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-cf7-antispam-20260826.php >/dev/null
+          grep -Fq "add_filter( 'wpcf7_spam', 'mdo_cf7_guard_filter_spam'" mu-plugins/mdo-cf7-antispam-20260826.php
+          grep -Fq "register_rest_route( 'mdo/v1', '/cf7-guard'" mu-plugins/mdo-cf7-antispam-20260826.php
+          grep -Fq 'mdo-cf7-antispam-guard' mu-plugins/mdo-cf7-antispam-20260826.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy guard to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          REMOTE="/tmp/mdo-cf7-antispam-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-cf7-antispam-20260826.php"
+          BACKUP="/tmp/mdo-cf7-antispam-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-cf7-antispam-20260826.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+
+      - name: Verify guard in WordPress and public page
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          LOADED="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval 'echo function_exists(\"mdo_cf7_guard_filter_spam\") ? \"GUARD_LOADED\" : \"GUARD_MISSING\";' --path='$PROD_PATH' --allow-root")"
+          grep -Fq 'GUARD_LOADED' <<< "$LOADED"
+
+          FORM_ID="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" post list --post_type=wpcf7_contact_form --post_status=publish --posts_per_page=1 --field=ID --path='$PROD_PATH' --allow-root | head -n1")"
+          test -n "$FORM_ID"
+
+          BLOCKED="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval '\$_POST[\"_wpcf7\"] = $FORM_ID; echo mdo_cf7_guard_filter_spam(false) ? \"MISSING_TOKEN_BLOCKED\" : \"MISSING_TOKEN_ALLOWED\";' --path='$PROD_PATH' --allow-root")"
+          grep -Fq 'MISSING_TOKEN_BLOCKED' <<< "$BLOCKED"
+
+          CHALLENGE="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO guard verifier' -H 'Cache-Control: no-cache' -H 'Content-Type: application/json' --data "{\"form_id\":$FORM_ID}" 'https://www.elmercadodeorigen.com/wp-json/mdo/v1/cf7-guard')"
+          jq -e '.token | strings | length > 40' <<< "$CHALLENGE" >/dev/null
+
+          HTML="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO guard verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "https://www.elmercadodeorigen.com/contacto/?mdo_guard_verify=${GITHUB_RUN_ID}")"
+          grep -Fq 'id="mdo-cf7-antispam-guard"' <<< "$HTML"
+          echo 'CF7_ANTISPAM_PUBLIC_VERIFY_OK'
+
+      - name: Roll back guard if verification fails
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-cf7-antispam-20260826.php"
+          BACKUP="/tmp/mdo-cf7-antispam-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+
+      - name: Remove remote backup after success
+        if: success()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '/tmp/mdo-cf7-antispam-backup-${GITHUB_RUN_ID}.php'"
