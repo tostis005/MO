@@ -17,6 +17,78 @@ final class MDO_Specials_Router {
 	public static function init(): void {
 		add_action( 'parse_request', array( __CLASS__, 'parse_request' ), 1 );
 		add_filter( 'redirect_canonical', array( __CLASS__, 'disable_canonical' ), 5, 2 );
+		add_action( 'init', array( __CLASS__, 'migrate_tolecarnes_copy' ), 32 );
+	}
+
+	/**
+	 * One-time content migration for the already-published Tolecarnes special.
+	 *
+	 * The copy must make it explicit that the purchase happens inside El Mercado
+	 * de Origen, rather than sounding like an off-platform order to the producer.
+	 */
+	public static function migrate_tolecarnes_copy(): void {
+		if ( get_option( 'mdo_specials_tolecarnes_copy_v3' ) ) {
+			return;
+		}
+
+		$ids = get_posts(
+			array(
+				'post_type'      => self::POST_TYPE,
+				'post_status'    => 'any',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'meta_key'       => '_mdo_promo_seed_key',
+				'meta_value'     => 'tolecarnes-hamburguesas-v2',
+			)
+		);
+
+		if ( ! $ids ) {
+			$post = get_page_by_path( 'hamburguesas-ternera-regalo-tolecarnes', OBJECT, self::POST_TYPE );
+			if ( $post ) {
+				$ids = array( $post->ID );
+			}
+		}
+
+		if ( ! $ids ) {
+			return;
+		}
+
+		$post_id = (int) $ids[0];
+		$es      = array(
+			'summary'    => 'Compra productos de Tolecarnes en El Mercado de Origen y recibe dos hamburguesas 100% ternera de regalo.',
+			'benefit'    => 'No tienes que introducir ningún código ni hacer nada especial. Al comprar productos de Tolecarnes en El Mercado de Origen, recibirás dos hamburguesas 100% ternera de regalo junto a tu pedido.',
+			'content'    => '<p>Una ventaja especial al comprar productos de Tolecarnes en El Mercado de Origen: dos hamburguesas 100% ternera de regalo con tu pedido.</p>',
+			'cta_label'  => 'Ver productos de Tolecarnes',
+			'conditions' => 'Promoción válida para compras de productos de Tolecarnes realizadas en El Mercado de Origen hasta el 31 de agosto de 2026 incluido. No requiere código promocional.',
+		);
+		$en      = array(
+			'summary'    => 'Buy Tolecarnes products on El Mercado de Origen and receive two 100% beef burgers as a gift.',
+			'benefit'    => 'No code or special action is required. When you buy Tolecarnes products on El Mercado de Origen, two 100% beef burgers will be included as a gift with your order.',
+			'content'    => '<p>A special benefit when buying Tolecarnes products on El Mercado de Origen: receive two 100% beef burgers as a gift with your order.</p>',
+			'cta_label'  => 'See Tolecarnes products',
+			'conditions' => 'Valid for purchases of Tolecarnes products made on El Mercado de Origen through 31 August 2026 inclusive. No promotional code is required.',
+		);
+
+		foreach ( array( 'es' => $es, 'en' => $en ) as $lang => $copy ) {
+			foreach ( $copy as $field => $value ) {
+				update_post_meta( $post_id, '_mdo_promo_' . $field . '_' . $lang, $value );
+			}
+		}
+
+		// Keep the legacy Spanish fields aligned with the bilingual source of truth.
+		update_post_meta( $post_id, '_mdo_promo_summary', $es['summary'] );
+		update_post_meta( $post_id, '_mdo_promo_benefit', $es['benefit'] );
+		update_post_meta( $post_id, '_mdo_promo_cta_label', $es['cta_label'] );
+		update_post_meta( $post_id, '_mdo_promo_conditions', $es['conditions'] );
+		wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_excerpt' => $es['summary'],
+				'post_content' => $es['content'],
+			)
+		);
+
+		update_option( 'mdo_specials_tolecarnes_copy_v3', 1, false );
 	}
 
 	public static function parse_request( WP $wp ): void {
