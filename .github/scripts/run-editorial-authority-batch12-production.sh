@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+php -l .github/scripts/publish-editorial-authority-batch12-20260826.php
+test "$(find .github/data/editorial-authority-batch12-20260826 -maxdepth 1 -type f -name '*.php' | wc -l)" -eq 5
+for f in .github/data/editorial-authority-batch12-20260826/*.php; do php -l "$f"; done
+
+sudo apt-get update -qq
+sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+PORT="${STAGING_PORT:-22}"
+SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+  wp=$(command -v wp || true)
+  php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+  [ -n "$wp" ] || exit 2
+  [ -n "$php" ] || exit 3
+  prod=""
+  for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+    p=$(dirname "$cfg")
+    u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+    case "$u" in
+      https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+    esac
+  done
+  [ -n "$prod" ] || exit 4
+  printf "%s|%s|%s" "$prod" "$php" "$wp"
+')"
+PROD="${INFO%%|*}"
+REST="${INFO#*|}"
+PHP="${REST%%|*}"
+WP="${REST#*|}"
+REMOTE=/tmp/emdo-ab12-${GITHUB_RUN_ID}
+DATA=$REMOTE/data
+PUB=$REMOTE/publish.php
+
+sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
+sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch12-20260826.php "$STAGING_USER@$STAGING_HOST:$PUB"
+sshpass -e scp $SCP .github/data/editorial-authority-batch12-20260826/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
+
+for localfile in .github/data/editorial-authority-batch12-20260826/*.php; do
+  bn="$(basename "$localfile")"
+  echo "Publishing $bn"
+  sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH12_DIR='$DATA' EMDO_BATCH12_ONLY_FILE='$bn' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root"
+done
+
+sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT k.meta_value,p.ID,p.post_status,p.post_name,en.meta_value AS en_slug,thumb.meta_value AS thumbnail_id FROM wp_posts p JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' AND b.meta_value='12' JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta en ON en.post_id=p.ID AND en.meta_key='_en_US_post_name' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/ab12-db.txt
+
+test "$(grep -c $'\tpublish\t' /tmp/ab12-db.txt)" -eq 5
+test "$(awk -F '\t' '{print $6}' /tmp/ab12-db.txt | grep -E '^[0-9]+$' | sort -u | wc -l)" -eq 5
+
+BASE=https://www.elmercadodeorigen.com
+stamp="$GITHUB_RUN_ID"
+check(){
+  url="$1"; marker="$2"; f=/tmp/ab12-page.html
+  code=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab12=$stamp")
+  test "$code" = 200
+  grep -Fq "EMDO_AUTHORITY_BATCH12:$marker" "$f"
+  ! grep -Fq '[products ' "$f"
+}
+check "$BASE/dop-los-pedroches-que-es-que-garantiza-como-reconocer-jamon-paleta/" dop-los-pedroches-guide
+check "$BASE/en/los-pedroches-pdo-what-it-guarantees-how-to-recognise-certified-ham/" dop-los-pedroches-guide
+check "$BASE/jamon-iberico-cortado-cuchillo-o-maquina-diferencias-cual-elegir/" iberian-ham-hand-vs-machine-slicing-guide
+check "$BASE/en/iberian-ham-hand-sliced-or-machine-sliced-differences-which-to-choose/" iberian-ham-hand-vs-machine-slicing-guide
+check "$BASE/cuantos-sobres-salen-jamon-iberico-rendimiento-real-pieza/" iberian-ham-yield-packs-guide
+check "$BASE/en/how-many-packs-from-an-iberian-ham-real-yield-of-a-whole-leg/" iberian-ham-yield-packs-guide
+check "$BASE/moho-jamon-iberico-cuando-normal-cuando-preocuparse-que-hacer/" iberian-ham-mould-guide
+check "$BASE/en/mould-on-iberian-ham-when-normal-when-to-worry-what-to-do/" iberian-ham-mould-guide
+check "$BASE/se-puede-congelar-jamon-iberico-que-ocurre-como-conservarlo/" freeze-iberian-ham-storage-guide
+check "$BASE/en/can-you-freeze-iberian-ham-what-happens-and-how-to-store-it/" freeze-iberian-ham-storage-guide
+
+echo "Batch 12 production publication verified"
