@@ -135,6 +135,27 @@ add_action(
 
 			const path = (window.location.pathname || '').toLowerCase();
 			const isEnglish = (document.documentElement.lang || '').toLowerCase().startsWith('en') || /^\/en(?:\/|$)/i.test(path);
+			const isRegularContact = document.body.classList.contains('page-id-1345')
+				|| /^\/(?:en\/)?contacto\/?$/i.test(path)
+				|| /^\/(?:en\/)?contact\/?$/i.test(path);
+
+			const trimRegularContactAfterForm = () => {
+				if (!isRegularContact) return;
+				const content = document.querySelector('.entry-content');
+				const form = content?.querySelector('.wpcf7');
+				if (!content || !form) return;
+
+				let node = form;
+				while (node && node !== content) {
+					let sibling = node.nextSibling;
+					while (sibling) {
+						const next = sibling.nextSibling;
+						sibling.remove();
+						sibling = next;
+					}
+					node = node.parentNode;
+				}
+			};
 
 			const normalizeCartDestination = (root = document) => {
 				if (!document.body.classList.contains('woocommerce-cart')) return;
@@ -193,6 +214,7 @@ add_action(
 			};
 
 			const scan = (root = document) => {
+				trimRegularContactAfterForm();
 				normalizeCartDestination(root);
 				scanContactFieldsets(root);
 			};
