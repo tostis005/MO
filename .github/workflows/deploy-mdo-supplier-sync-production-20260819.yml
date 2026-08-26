@@ -124,10 +124,10 @@ jobs:
               promotion_product_title=''
               if [ -n \"\$promotion_id\" ]; then
                 promotion_product=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta get \"\$promotion_id\" _mdo_promo_image_product_id --path='$PROD_PATH' --allow-root 2>/dev/null || true)
-                promotion_image=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval \"echo MDO_Specials::image_id((int) \\\$argv[1]);\" \"\$promotion_id\" --path='$PROD_PATH' --allow-root 2>/dev/null || true)
               fi
               if [ -n \"\$promotion_product\" ]; then
                 promotion_product_title=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post get \"\$promotion_product\" --field=post_title --path='$PROD_PATH' --allow-root 2>/dev/null || true)
+                promotion_image=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta get \"\$promotion_product\" _thumbnail_id --path='$PROD_PATH' --allow-root 2>/dev/null || true)
               fi
 
               \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" rewrite flush --hard --path='$PROD_PATH' --allow-root >/dev/null
