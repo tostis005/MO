@@ -8,7 +8,6 @@ get_header();
 <main class="mdo-promotions" id="main">
 	<section class="mdo-promotions__intro">
 		<div class="mdo-promotions__shell">
-			<p class="mdo-promotions__kicker"><?php echo esc_html( MDO_Specials::strings( 'kicker', $lang ) ); ?></p>
 			<h1><?php echo esc_html( 'en' === $lang ? MDO_Specials::strings( 'title', $lang ) : 'Especiales del Mercado de Origen' ); ?></h1>
 		</div>
 	</section>
