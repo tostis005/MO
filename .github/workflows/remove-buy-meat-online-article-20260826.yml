@@ -60,7 +60,7 @@ jobs:
           WP="${REST#*|}"
           REMOTE=/tmp/remove-buy-meat-online-${GITHUB_RUN_ID}.php
           sshpass -e scp $SCP "$CLEAN_LOCAL" "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --skip-plugins --skip-themes --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE'"
 
           check_absent() {
             url="$1"; tmp=$(mktemp)
