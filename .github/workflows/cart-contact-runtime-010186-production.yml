@@ -62,7 +62,7 @@ jobs:
             rm -f '$PROD_PATH/wp-content/uploads/elmercado-home-static/index.html' '$REMOTE'
           "
 
-      - name: Verify Home and cart script
+      - name: Verify Home, cart and contact script
         id: verify
         shell: bash
         run: |
@@ -71,8 +71,10 @@ jobs:
           : > "$OUT"
           HOME_HTML="$(mktemp)"
           CART_HTML="$(mktemp)"
+          CONTACT_HTML="$(mktemp)"
           curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/' -o "$HOME_HTML"
           curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/carrito/' -o "$CART_HTML"
+          curl -fsS --compressed --max-time 45 'https://www.elmercadodeorigen.com/contacto/?emo_runtime_check=010187' -o "$CONTACT_HTML"
           if grep -q 'elmercado-cart-contact-runtime-guard-010186' "$HOME_HTML"; then
             echo 'home_runtime=present' | tee -a "$OUT"
             exit 12
@@ -94,6 +96,16 @@ jobs:
           if p.returncode:
               print((p.stderr or p.stdout)[:1200]); sys.exit(13)
           PY
+          if ! grep -q 'elmercado-cart-contact-runtime-guard-010186' "$CONTACT_HTML"; then
+            echo 'contact_runtime=not_found' | tee -a "$OUT"
+            exit 14
+          fi
+          if ! grep -Fq "main .wpcf7, #primary .wpcf7, .site-main .wpcf7, article .wpcf7, .wpcf7" "$CONTACT_HTML"; then
+            echo 'contact_trim_logic=stale' | tee -a "$OUT"
+            exit 15
+          fi
+          echo 'contact_runtime=present' | tee -a "$OUT"
+          echo 'contact_trim_logic=current' | tee -a "$OUT"
 
       - name: Record result
         if: always()
