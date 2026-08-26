@@ -7,15 +7,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Editorial Specials block for the current homepage.
  *
- * The block is injected immediately before the existing emo-categories section
- * in the final HTML, so it stays after the current trust/social-proof area even
- * when the child theme evolves its internal content filters.
+ * The block is injected into the homepage content immediately before the
+ * existing emo-categories section. This avoids buffering the complete HTTP
+ * response, which is unsafe on the current production homepage stack.
  */
 final class MDO_Home_Specials {
 	private const POST_TYPE = 'mdo_promotion';
 
 	public static function init(): void {
-		add_action( 'template_redirect', array( __CLASS__, 'start_buffer' ), 1 );
+		add_filter( 'the_content', array( __CLASS__, 'inject_block' ), 9999 );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ), 90 );
 	}
 
@@ -32,16 +32,15 @@ final class MDO_Home_Specials {
 		);
 	}
 
-	public static function start_buffer(): void {
-		if ( is_admin() || wp_doing_ajax() || ! self::is_home_request() ) {
-			return;
-		}
-
-		ob_start( array( __CLASS__, 'inject_block' ) );
-	}
-
 	public static function inject_block( string $html ): string {
-		if ( '' === $html || false !== strpos( $html, 'id="mdo-home-specials"' ) ) {
+		if (
+			is_admin()
+			|| ! self::is_home_request()
+			|| ! in_the_loop()
+			|| ! is_main_query()
+			|| '' === $html
+			|| false !== strpos( $html, 'id="mdo-home-specials"' )
+		) {
 			return $html;
 		}
 
@@ -66,8 +65,8 @@ final class MDO_Home_Specials {
 			return true;
 		}
 
-		// Some multilingual stacks resolve /en/ through their own routing layer and
-		// do not always expose it as is_front_page() at every hook priority.
+		// Falang can resolve /en/ through its own routing layer and does not always
+		// expose it as is_front_page() at every hook priority.
 		$path = trim( (string) wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ), '/' );
 		return 'en' === $path;
 	}
@@ -109,7 +108,6 @@ final class MDO_Home_Specials {
 			if ( 'active' === MDO_Specials::status( (int) $id ) ) {
 				return (int) $id;
 			}
-		}
 
 		return 0;
 	}
