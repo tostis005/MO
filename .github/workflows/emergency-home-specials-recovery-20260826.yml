@@ -1,0 +1,126 @@
+name: Emergency recover homepage Specials
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-home-specials-recovery-20260826.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emergency-home-specials-recovery-20260826
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate recovery files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mdo-supplier-sync/mdo-supplier-sync.php
+          php -l mdo-supplier-sync/includes/class-mdo-home-specials.php
+          test -f mdo-supplier-sync/assets/css/home-specials.css
+
+      - name: Recover production homepage
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            [ -n "$php_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf '%s' "$p"; break ;;
+              esac
+            done
+          ')"
+          test -n "$PROD_PATH"
+
+          REMOTE_MAIN="/tmp/mdo-main-${GITHUB_RUN_ID}.php"
+          REMOTE_HOME="/tmp/mdo-home-specials-${GITHUB_RUN_ID}.php"
+          REMOTE_CSS="/tmp/mdo-home-specials-${GITHUB_RUN_ID}.css"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MAIN"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-home-specials.php "$STAGING_USER@$STAGING_HOST:$REMOTE_HOME"
+          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/assets/css/home-specials.css "$STAGING_USER@$STAGING_HOST:$REMOTE_CSS"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_MAIN' '$REMOTE_HOME' '$REMOTE_CSS'" <<'REMOTE'
+          set -euo pipefail
+          PROD_PATH="$1"; REMOTE_MAIN="$2"; REMOTE_HOME="$3"; REMOTE_CSS="$4"
+          PLUGIN_DIR="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          test -n "$wp_bin"; test -n "$php_bin"; test -d "$PLUGIN_DIR"
+
+          mkdir -p "$PLUGIN_DIR/includes" "$PLUGIN_DIR/assets/css"
+          cp "$PLUGIN_DIR/mdo-supplier-sync.php" "/tmp/mdo-main-before-home-recovery-${GITHUB_RUN_ID}.php"
+          cp "$REMOTE_MAIN" "$PLUGIN_DIR/mdo-supplier-sync.php"
+          cp "$REMOTE_HOME" "$PLUGIN_DIR/includes/class-mdo-home-specials.php"
+          cp "$REMOTE_CSS" "$PLUGIN_DIR/assets/css/home-specials.css"
+          rm -f "$REMOTE_MAIN" "$REMOTE_HOME" "$REMOTE_CSS"
+
+          "$php_bin" -l "$PLUGIN_DIR/mdo-supplier-sync.php" >/dev/null
+          "$php_bin" -l "$PLUGIN_DIR/includes/class-mdo-home-specials.php" >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
+          if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+          fi
+
+          check_home() {
+            stamp=$(date +%s%N)
+            es=$(curl -k -L -sS --connect-timeout 5 --max-time 15 -o /tmp/home-recovery-es.html -w '%{http_code}' "https://www.elmercadodeorigen.com/?home_recovery=$stamp" || true)
+            en=$(curl -k -L -sS --connect-timeout 5 --max-time 15 -o /tmp/home-recovery-en.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/?home_recovery=$stamp" || true)
+            [ "$es" = '200' ] && [ "$en" = '200' ]
+          }
+
+          if check_home; then
+            echo 'RECOVERY_MODE=safe_specials_module'
+            grep -Fq 'mdo-home-specials' /tmp/home-recovery-es.html && echo 'HOME_SPECIALS_ES=present' || echo 'HOME_SPECIALS_ES=not_present'
+            grep -Fq 'mdo-home-specials' /tmp/home-recovery-en.html && echo 'HOME_SPECIALS_EN=present' || echo 'HOME_SPECIALS_EN=not_present'
+            echo 'HOME_ES=200'
+            echo 'HOME_EN=200'
+            exit 0
+          fi
+
+          echo 'Safe Specials module did not restore the homepage quickly; disabling only homepage Specials.' >&2
+          sed -i "/class-mdo-home-specials\.php/d; /MDO_Home_Specials::init()/d" "$PLUGIN_DIR/mdo-supplier-sync.php"
+          "$php_bin" -l "$PLUGIN_DIR/mdo-supplier-sync.php" >/dev/null
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
+          if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+          fi
+
+          check_home
+          echo 'RECOVERY_MODE=homepage_specials_disabled'
+          echo 'HOME_ES=200'
+          echo 'HOME_EN=200'
+          REMOTE
