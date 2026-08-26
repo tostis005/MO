@@ -13,6 +13,9 @@ return array(
     'sliced-ham-storage-guide' => array(
         'id'=>'6995300','direct'=>'https://images.pexels.com/photos/6995300/pexels-photo-6995300.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/packed-food-in-containers-6995300/','photographer'=>'Julia M Cameron','alt_es'=>'Alimentos repartidos en recipientes cerrados para conservar porciones de forma ordenada','alt_en'=>'Food portioned into closed containers for organised storage'
     ),
+    'iberian-ham-yield-packs-guide' => array(
+        'id'=>'91026510','direct'=>'https://upload.wikimedia.org/wikipedia/commons/a/ac/Barcelona_Mercat_Boqueria_9_%288271967087%29.jpg','page'=>'https://commons.wikimedia.org/wiki/File:Barcelona_Mercat_Boqueria_9_(8271967087).jpg','photographer'=>'Alain Rouiller','license'=>'CC BY-SA 2.0','license_url'=>'https://creativecommons.org/licenses/by-sa/2.0/','alt_es'=>'Varios paquetes de jamón envasados al vacío expuestos en un mercado, imagen relacionada con el rendimiento de una pieza en sobres','alt_en'=>'Several vacuum-packed ham products displayed at a market, illustrating the yield of a whole ham into packs'
+    ),
     'bellota-100-iberico-guide' => array(
         'id'=>'34100094','direct'=>'https://images.pexels.com/photos/34100094/pexels-photo-34100094.jpeg?auto=compress&cs=tinysrgb&w=2400','page'=>'https://www.pexels.com/photo/close-up-of-acorns-on-oak-branch-in-autumn-34100094/','photographer'=>'Nathan J Hilton','alt_es'=>'Bellotas maduras en una rama de encina, recurso clave de la montanera','alt_en'=>'Ripe acorns on an oak branch, a key resource of the montanera'
     ),
