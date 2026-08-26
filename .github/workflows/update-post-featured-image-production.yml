@@ -110,7 +110,7 @@ jobs:
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" rocket clean --confirm --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
 
             FEATURED_ID=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta get \"\$POST_ID\" _thumbnail_id --path='$PROD_PATH' --allow-root)
-            FEATURED_URL=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval \"echo get_the_post_thumbnail_url((int) \\\$argv[1], 'full');\" \"\$POST_ID\" --path='$PROD_PATH' --allow-root)
+            FEATURED_URL=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval \"echo get_the_post_thumbnail_url((int) \$POST_ID, 'full');\" --path='$PROD_PATH' --allow-root)
             echo \"featured_image_ok post_id=\$POST_ID attachment_id=\$FEATURED_ID url=\$FEATURED_URL\"
             [ \"\$FEATURED_ID\" = \"\$ATTACHMENT_ID\" ]
           "
