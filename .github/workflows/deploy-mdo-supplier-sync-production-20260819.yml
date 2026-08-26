@@ -28,15 +28,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate plugin PHP
+      - name: Validate rollback plugin PHP
         shell: bash
         run: |
           set -euo pipefail
           find mdo-supplier-sync -type f -name '*.php' -print0 | xargs -0 -n1 php -l
-          test -f mdo-supplier-sync/includes/class-mdo-home-specials.php
-          test -f mdo-supplier-sync/assets/css/home-specials.css
+          ! test -f mdo-supplier-sync/includes/class-mdo-home-specials.php
+          ! test -f mdo-supplier-sync/assets/css/home-specials.css
 
-      - name: Deploy and verify production plugin
+      - name: Deploy rollback and verify production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -88,84 +88,40 @@ jobs:
           test -n "$wp_bin"
           test -n "$php_bin"
 
+          PLUGIN_PATH="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
           mkdir -p "$PROD_PATH/wp-content/plugins"
           tar -xzf "$REMOTE_ARCHIVE" -C "$PROD_PATH/wp-content/plugins"
           rm -f "$REMOTE_ARCHIVE"
 
-          "$php_bin" -l "$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php" >/dev/null
-          "$php_bin" -l "$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-home-specials.php" >/dev/null
+          # Remove every file introduced by the failed homepage integration.
+          rm -f "$PLUGIN_PATH/includes/class-mdo-home-specials.php"
+          rm -f "$PLUGIN_PATH/assets/css/home-specials.css"
 
+          "$php_bin" -l "$PLUGIN_PATH/mdo-supplier-sync.php" >/dev/null
           deployed_version=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=version --path="$PROD_PATH" --allow-root)
           plugin_status=$("$php_bin" -d memory_limit=512M "$wp_bin" plugin get mdo-supplier-sync --field=status --path="$PROD_PATH" --allow-root)
           test "$deployed_version" = "$EXPECTED_VERSION"
           test "$plugin_status" = 'active'
 
-          promotion_type=$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo post_type_exists("mdo_promotion") ? "1" : "0";' --path="$PROD_PATH" --allow-root)
-          test "$promotion_type" = '1'
-
-          promotion_id=$("$php_bin" -d memory_limit=512M "$wp_bin" post list --post_type=mdo_promotion --post_status=publish --name=hamburguesas-ternera-regalo-tolecarnes --format=ids --path="$PROD_PATH" --allow-root | awk '{print $1}')
-          test -n "$promotion_id"
-
-          promotion_product=$("$php_bin" -d memory_limit=512M "$wp_bin" post meta get "$promotion_id" _mdo_promo_image_product_id --path="$PROD_PATH" --allow-root 2>/dev/null || true)
-          test -n "$promotion_product"
-          promotion_product_title=$("$php_bin" -d memory_limit=512M "$wp_bin" post get "$promotion_product" --field=post_title --path="$PROD_PATH" --allow-root)
-          printf '%s' "$promotion_product_title" | grep -Eqi 'ternera'
-          printf '%s' "$promotion_product_title" | grep -Eqi 'burger|burguer|hamburgues'
-          promotion_image=$("$php_bin" -d memory_limit=512M "$wp_bin" post meta get "$promotion_product" _thumbnail_id --path="$PROD_PATH" --allow-root 2>/dev/null || true)
-          test -n "$promotion_image"
-          test "$promotion_image" != '0'
-
-          "$php_bin" -d memory_limit=512M "$wp_bin" rewrite flush --hard --path="$PROD_PATH" --allow-root >/dev/null
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
           if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
             "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
           fi
 
           cachebust=$(date +%s)
-          curl -k -L -sS --connect-timeout 5 --max-time 30 "https://www.elmercadodeorigen.com/?mdo_home_specials=$cachebust" -o /tmp/emdo-home-es.html
-          curl -k -L -sS --connect-timeout 5 --max-time 30 "https://www.elmercadodeorigen.com/en/?mdo_home_specials=$cachebust" -o /tmp/emdo-home-en.html
-          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/especiales/ -o /tmp/emdo-specials-es.html
-          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/especiales/hamburguesas-ternera-regalo-tolecarnes/ -o /tmp/emdo-special-es.html
-          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/en/specials/ -o /tmp/emdo-specials-en.html
-          curl -k -L -sS --connect-timeout 5 --max-time 30 https://www.elmercadodeorigen.com/en/specials/free-beef-burgers-tolecarnes/ -o /tmp/emdo-special-en.html
+          home_es=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/home-es.html -w '%{http_code}' "https://www.elmercadodeorigen.com/?rollback=$cachebust")
+          home_en=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/home-en.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/?rollback=$cachebust")
+          specials_es=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/specials-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/)
+          special_es=$(curl -k -L -sS --connect-timeout 5 --max-time 30 -o /tmp/special-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/hamburguesas-ternera-regalo-tolecarnes/)
 
-          grep -Fq 'Especiales del Mercado de Origen' /tmp/emdo-specials-es.html
-          ! grep -Fq 'Ahora en El Mercado' /tmp/emdo-specials-es.html
-          grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/emdo-special-es.html
-          ! grep -Fq 'Una ventaja especial al comprar productos de Tolecarnes' /tmp/emdo-special-es.html
-          grep -Fq 'Two free beef burgers' /tmp/emdo-special-en.html
+          test "$home_es" = '200'
+          test "$home_en" = '200'
+          test "$specials_es" = '200'
+          test "$special_es" = '200'
+          grep -Fq 'Especiales del Mercado de Origen' /tmp/specials-es.html
+          grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/special-es.html
+          ! grep -Fq 'mdo-home-specials' /tmp/home-es.html
+          ! grep -Fq 'mdo-home-specials' /tmp/home-en.html
 
-          grep -Fq 'AHORA EN EL MERCADO DE ORIGEN' /tmp/emdo-home-es.html
-          grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/emdo-home-es.html
-          grep -Fq 'Ver especial' /tmp/emdo-home-es.html
-          grep -Fq '/especiales/hamburguesas-ternera-regalo-tolecarnes/' /tmp/emdo-home-es.html
-          grep -Fq 'mdo-home-specials' /tmp/emdo-home-es.html
-
-          grep -Fq 'NOW AT EL MERCADO DE ORIGEN' /tmp/emdo-home-en.html
-          grep -Fq 'Two free beef burgers' /tmp/emdo-home-en.html
-          grep -Fq 'View special' /tmp/emdo-home-en.html
-          grep -Fq '/en/specials/free-beef-burgers-tolecarnes/' /tmp/emdo-home-en.html
-          grep -Fq 'mdo-home-specials' /tmp/emdo-home-en.html
-
-          "$php_bin" -r '
-          foreach (["/tmp/emdo-home-es.html", "/tmp/emdo-home-en.html"] as $file) {
-              $html = file_get_contents($file);
-              $special = strpos($html, "id=\"mdo-home-specials\"");
-              $categories = strpos($html, "emo-categories");
-              if ($special === false || $categories === false || $special >= $categories) {
-                  fwrite(STDERR, "Homepage Specials is not before the categories section.\n");
-                  exit(1);
-              }
-          }
-          '
-
-          legacy=$(curl -k -sS --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}|%{redirect_url}' https://www.elmercadodeorigen.com/ofertas/)
-          case "$legacy" in
-            301\|*'/especiales/'*) ;;
-            *) echo "Legacy /ofertas/ redirect failed: $legacy" >&2; exit 1 ;;
-          esac
-
-          echo "EMDO $deployed_version active; ES/EN homepage Specials verified before categories."
+          echo "Rollback verified: EMDO $deployed_version active; ES/EN home HTTP 200; failed homepage Specials integration removed."
           REMOTE
-
-# Manual recovery trigger: 2026-08-26
