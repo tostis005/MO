@@ -46,6 +46,7 @@ jobs:
           RESULT="success"
           VERSION="unknown"
           NOTE=""
+          REMOTE_RESULT=""
           EXPECTED_VERSION="$(sed -n 's/^ \* Version: //p' mdo-supplier-sync/mdo-supplier-sync.php | head -n1 | tr -d '\r')"
 
           fail() {
@@ -114,23 +115,41 @@ jobs:
               deployed_version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
               plugin_status=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=status --path='$PROD_PATH' --allow-root)
 
-              # Loading WordPress here runs init, registers the promotion CPT and creates
-              # the one-time Tole Carnes seed if it does not exist yet.
+              # Loading WordPress runs the one-time migration, which must locate the
+              # Tolecarnes 'BURGER 100% TERNERA (2 UNIDADES)' product before passing.
               promotion_type=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo post_type_exists(\"mdo_promotion\") ? \"1\" : \"0\";' --path='$PROD_PATH' --allow-root)
-              promotion_id=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post list --post_type=mdo_promotion --post_status=publish --name=hamburguesas-regalo-tole-carnes --format=ids --path='$PROD_PATH' --allow-root | awk '{print \$1}')
+              promotion_id=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post list --post_type=mdo_promotion --post_status=publish --name=hamburguesas-ternera-regalo-tolecarnes --format=ids --path='$PROD_PATH' --allow-root | awk '{print \$1}')
+              promotion_product=''
+              promotion_image='0'
+              promotion_product_title=''
+              if [ -n \"\$promotion_id\" ]; then
+                promotion_product=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta get \"\$promotion_id\" _mdo_promo_image_product_id --path='$PROD_PATH' --allow-root 2>/dev/null || true)
+                promotion_image=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval \"echo MDO_Specials::image_id((int) \\\$argv[1]);\" \"\$promotion_id\" --path='$PROD_PATH' --allow-root 2>/dev/null || true)
+              fi
+              if [ -n \"\$promotion_product\" ]; then
+                promotion_product_title=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post get \"\$promotion_product\" --field=post_title --path='$PROD_PATH' --allow-root 2>/dev/null || true)
+              fi
+
               \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" rewrite flush --hard --path='$PROD_PATH' --allow-root >/dev/null
               \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
 
               home_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-home-check.html -w '%{http_code}' https://www.elmercadodeorigen.com/ || true)
-              archive_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-offers-check.html -w '%{http_code}' https://www.elmercadodeorigen.com/ofertas/ || true)
-              single_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-offer-check.html -w '%{http_code}' https://www.elmercadodeorigen.com/ofertas/hamburguesas-regalo-tole-carnes/ || true)
-              archive_text=0
-              single_text=0
-              grep -Fq 'Ofertas y propuestas especiales' /tmp/emdo-offers-check.html && archive_text=1 || true
-              grep -Fq 'Dos hamburguesas de vaca madurada de regalo' /tmp/emdo-offer-check.html && single_text=1 || true
+              es_archive_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-specials-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/ || true)
+              es_single_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-special-es.html -w '%{http_code}' https://www.elmercadodeorigen.com/especiales/hamburguesas-ternera-regalo-tolecarnes/ || true)
+              en_archive_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-specials-en.html -w '%{http_code}' https://www.elmercadodeorigen.com/en/specials/ || true)
+              en_single_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-special-en.html -w '%{http_code}' https://www.elmercadodeorigen.com/en/specials/free-beef-burgers-tolecarnes/ || true)
+              legacy_http=\$(curl -k -sS --connect-timeout 5 --max-time 20 -o /dev/null -w '%{http_code}|%{redirect_url}' https://www.elmercadodeorigen.com/ofertas/ || true)
 
-              printf 'VERSION=%s\\nSTATUS=%s\\nPROMOTION_TYPE=%s\\nPROMOTION_ID=%s\\nHOME_HTTP=%s\\nARCHIVE_HTTP=%s\\nSINGLE_HTTP=%s\\nARCHIVE_TEXT=%s\\nSINGLE_TEXT=%s\\n' \
-                \"\$deployed_version\" \"\$plugin_status\" \"\$promotion_type\" \"\$promotion_id\" \"\$home_http\" \"\$archive_http\" \"\$single_http\" \"\$archive_text\" \"\$single_text\"
+              es_archive_text=0; es_single_text=0; en_archive_text=0; en_single_text=0; product_title_ok=0; legacy_ok=0
+              grep -Fq 'Especiales del Mercado' /tmp/emdo-specials-es.html && es_archive_text=1 || true
+              grep -Fq 'Dos hamburguesas de ternera de regalo' /tmp/emdo-special-es.html && es_single_text=1 || true
+              grep -Fq 'Market Specials' /tmp/emdo-specials-en.html && en_archive_text=1 || true
+              grep -Fq 'Two free beef burgers' /tmp/emdo-special-en.html && en_single_text=1 || true
+              printf '%s' \"\$promotion_product_title\" | grep -Eqi 'ternera' && printf '%s' \"\$promotion_product_title\" | grep -Eqi 'burger|burguer|hamburgues' && product_title_ok=1 || true
+              case \"\$legacy_http\" in 301\|*'/especiales/'*) legacy_ok=1 ;; esac
+
+              printf 'VERSION=%s\\nSTATUS=%s\\nPROMOTION_TYPE=%s\\nPROMOTION_ID=%s\\nPROMOTION_PRODUCT=%s\\nPROMOTION_IMAGE=%s\\nPROMOTION_PRODUCT_TITLE=%s\\nPRODUCT_TITLE_OK=%s\\nHOME_HTTP=%s\\nES_ARCHIVE_HTTP=%s\\nES_SINGLE_HTTP=%s\\nEN_ARCHIVE_HTTP=%s\\nEN_SINGLE_HTTP=%s\\nES_ARCHIVE_TEXT=%s\\nES_SINGLE_TEXT=%s\\nEN_ARCHIVE_TEXT=%s\\nEN_SINGLE_TEXT=%s\\nLEGACY_OK=%s\\n' \\
+                \"\$deployed_version\" \"\$plugin_status\" \"\$promotion_type\" \"\$promotion_id\" \"\$promotion_product\" \"\$promotion_image\" \"\$promotion_product_title\" \"\$product_title_ok\" \"\$home_http\" \"\$es_archive_http\" \"\$es_single_http\" \"\$en_archive_http\" \"\$en_single_http\" \"\$es_archive_text\" \"\$es_single_text\" \"\$en_archive_text\" \"\$en_single_text\" \"\$legacy_ok\"
             " 2>&1)"
             REMOTE_CODE=$?
             if [ $REMOTE_CODE -ne 0 ]; then
@@ -140,29 +159,41 @@ jobs:
               PLUGIN_STATUS="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^STATUS=//p' | tail -n1)"
               PROMOTION_TYPE="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_TYPE=//p' | tail -n1)"
               PROMOTION_ID="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_ID=//p' | tail -n1)"
+              PROMOTION_PRODUCT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_PRODUCT=//p' | tail -n1)"
+              PROMOTION_IMAGE="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_IMAGE=//p' | tail -n1)"
+              PRODUCT_TITLE_OK="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PRODUCT_TITLE_OK=//p' | tail -n1)"
               HOME_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^HOME_HTTP=//p' | tail -n1)"
-              ARCHIVE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ARCHIVE_HTTP=//p' | tail -n1)"
-              SINGLE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^SINGLE_HTTP=//p' | tail -n1)"
-              ARCHIVE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ARCHIVE_TEXT=//p' | tail -n1)"
-              SINGLE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^SINGLE_TEXT=//p' | tail -n1)"
+              ES_ARCHIVE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_ARCHIVE_HTTP=//p' | tail -n1)"
+              ES_SINGLE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_SINGLE_HTTP=//p' | tail -n1)"
+              EN_ARCHIVE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_ARCHIVE_HTTP=//p' | tail -n1)"
+              EN_SINGLE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_SINGLE_HTTP=//p' | tail -n1)"
+              ES_ARCHIVE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_ARCHIVE_TEXT=//p' | tail -n1)"
+              ES_SINGLE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ES_SINGLE_TEXT=//p' | tail -n1)"
+              EN_ARCHIVE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_ARCHIVE_TEXT=//p' | tail -n1)"
+              EN_SINGLE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^EN_SINGLE_TEXT=//p' | tail -n1)"
+              LEGACY_OK="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^LEGACY_OK=//p' | tail -n1)"
               [ -n "$VERSION" ] || VERSION="unknown"
 
               if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
                 fail "version_mismatch" "Production reports EMDO $VERSION but repository expects $EXPECTED_VERSION"
               elif [ "$PLUGIN_STATUS" != "active" ]; then
                 fail "plugin_not_active" "EMDO is deployed but WordPress does not report it active"
-              elif [ "$PROMOTION_TYPE" != "1" ]; then
-                fail "promotion_type_missing" "WordPress did not register mdo_promotion"
-              elif [ -z "$PROMOTION_ID" ]; then
-                fail "promotion_seed_missing" "The Tole Carnes promotion seed was not created"
+              elif [ "$PROMOTION_TYPE" != "1" ] || [ -z "$PROMOTION_ID" ]; then
+                fail "promotion_missing" "The bilingual Tolecarnes promotion was not created"
+              elif [ -z "$PROMOTION_PRODUCT" ] || [ "$PRODUCT_TITLE_OK" != "1" ]; then
+                fail "tolecarnes_beef_burger_missing" "The Tolecarnes beef-burger product was not linked"
+              elif [ -z "$PROMOTION_IMAGE" ] || [ "$PROMOTION_IMAGE" = "0" ]; then
+                fail "promotion_image_missing" "The Tolecarnes beef-burger image was not inherited"
               elif [ "$HOME_HTTP" != "200" ]; then
                 fail "homepage_check_failed" "Homepage returned HTTP $HOME_HTTP"
-              elif [ "$ARCHIVE_HTTP" != "200" ] || [ "$ARCHIVE_TEXT" != "1" ]; then
-                fail "offers_archive_check_failed" "/ofertas/ did not return the expected promotion archive"
-              elif [ "$SINGLE_HTTP" != "200" ] || [ "$SINGLE_TEXT" != "1" ]; then
-                fail "offer_single_check_failed" "The Tole Carnes promotion page did not return the expected content"
+              elif [ "$ES_ARCHIVE_HTTP" != "200" ] || [ "$ES_ARCHIVE_TEXT" != "1" ] || [ "$ES_SINGLE_HTTP" != "200" ] || [ "$ES_SINGLE_TEXT" != "1" ]; then
+                fail "spanish_specials_check_failed" "Spanish /especiales/ routes did not return expected content"
+              elif [ "$EN_ARCHIVE_HTTP" != "200" ] || [ "$EN_ARCHIVE_TEXT" != "1" ] || [ "$EN_SINGLE_HTTP" != "200" ] || [ "$EN_SINGLE_TEXT" != "1" ]; then
+                fail "english_specials_check_failed" "English /en/specials/ routes did not return expected content"
+              elif [ "$LEGACY_OK" != "1" ]; then
+                fail "legacy_redirect_failed" "/ofertas/ did not redirect to /especiales/"
               else
-                NOTE="EMDO $EXPECTED_VERSION active; promotions registered; /ofertas/ and Tole Carnes offer verified"
+                NOTE="EMDO $EXPECTED_VERSION active; bilingual Especiales/Specials and Tolecarnes ternera promo verified"
               fi
             fi
           fi
