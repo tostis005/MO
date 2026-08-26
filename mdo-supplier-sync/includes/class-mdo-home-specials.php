@@ -20,7 +20,7 @@ final class MDO_Home_Specials {
 	}
 
 	public static function enqueue_assets(): void {
-		if ( is_admin() || ! is_front_page() ) {
+		if ( is_admin() || ! self::is_home_request() ) {
 			return;
 		}
 
@@ -33,7 +33,7 @@ final class MDO_Home_Specials {
 	}
 
 	public static function start_buffer(): void {
-		if ( is_admin() || wp_doing_ajax() || ! is_front_page() ) {
+		if ( is_admin() || wp_doing_ajax() || ! self::is_home_request() ) {
 			return;
 		}
 
@@ -59,6 +59,17 @@ final class MDO_Home_Specials {
 		$result  = preg_replace( $pattern, $block . '$1', $html, 1 );
 
 		return is_string( $result ) ? $result : $html;
+	}
+
+	private static function is_home_request(): bool {
+		if ( is_front_page() ) {
+			return true;
+		}
+
+		// Some multilingual stacks resolve /en/ through their own routing layer and
+		// do not always expose it as is_front_page() at every hook priority.
+		$path = trim( (string) wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ), '/' );
+		return 'en' === $path;
 	}
 
 	private static function active_special_id(): int {
