@@ -27,15 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate recovery files
+      - name: Validate rollback main plugin
         shell: bash
         run: |
           set -euo pipefail
           php -l mdo-supplier-sync/mdo-supplier-sync.php
-          php -l mdo-supplier-sync/includes/class-mdo-home-specials.php
-          test -f mdo-supplier-sync/assets/css/home-specials.css
+          ! grep -Fq 'class-mdo-home-specials.php' mdo-supplier-sync/mdo-supplier-sync.php
+          ! grep -Fq 'MDO_Home_Specials::init' mdo-supplier-sync/mdo-supplier-sync.php
 
-      - name: Recover production homepage
+      - name: Restore production homepage immediately
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -65,64 +65,41 @@ jobs:
           ')"
           test -n "$PROD_PATH"
 
-          REMOTE_MAIN="/tmp/mdo-main-${GITHUB_RUN_ID}.php"
-          REMOTE_HOME="/tmp/mdo-home-specials-${GITHUB_RUN_ID}.php"
-          REMOTE_CSS="/tmp/mdo-home-specials-${GITHUB_RUN_ID}.css"
+          REMOTE_MAIN="/tmp/mdo-main-rollback-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/mdo-supplier-sync.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MAIN"
-          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/includes/class-mdo-home-specials.php "$STAGING_USER@$STAGING_HOST:$REMOTE_HOME"
-          sshpass -e scp $SCP_OPTIONS mdo-supplier-sync/assets/css/home-specials.css "$STAGING_USER@$STAGING_HOST:$REMOTE_CSS"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_MAIN' '$REMOTE_HOME' '$REMOTE_CSS'" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH' '$REMOTE_MAIN'" <<'REMOTE'
           set -euo pipefail
-          PROD_PATH="$1"; REMOTE_MAIN="$2"; REMOTE_HOME="$3"; REMOTE_CSS="$4"
+          PROD_PATH="$1"
+          REMOTE_MAIN="$2"
           PLUGIN_DIR="$PROD_PATH/wp-content/plugins/mdo-supplier-sync"
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          test -n "$wp_bin"; test -n "$php_bin"; test -d "$PLUGIN_DIR"
+          test -n "$wp_bin"
+          test -n "$php_bin"
+          test -d "$PLUGIN_DIR"
 
-          mkdir -p "$PLUGIN_DIR/includes" "$PLUGIN_DIR/assets/css"
-          cp "$PLUGIN_DIR/mdo-supplier-sync.php" "/tmp/mdo-main-before-home-recovery-${GITHUB_RUN_ID}.php"
           cp "$REMOTE_MAIN" "$PLUGIN_DIR/mdo-supplier-sync.php"
-          cp "$REMOTE_HOME" "$PLUGIN_DIR/includes/class-mdo-home-specials.php"
-          cp "$REMOTE_CSS" "$PLUGIN_DIR/assets/css/home-specials.css"
-          rm -f "$REMOTE_MAIN" "$REMOTE_HOME" "$REMOTE_CSS"
+          rm -f "$REMOTE_MAIN"
+          rm -f "$PLUGIN_DIR/includes/class-mdo-home-specials.php"
+          rm -f "$PLUGIN_DIR/assets/css/home-specials.css"
 
-          "$php_bin" -l "$PLUGIN_DIR/mdo-supplier-sync.php" >/dev/null
-          "$php_bin" -l "$PLUGIN_DIR/includes/class-mdo-home-specials.php" >/dev/null
-          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
-          if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
-            "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
-          fi
-
-          check_home() {
-            stamp=$(date +%s%N)
-            es=$(curl -k -L -sS --connect-timeout 5 --max-time 15 -o /tmp/home-recovery-es.html -w '%{http_code}' "https://www.elmercadodeorigen.com/?home_recovery=$stamp" || true)
-            en=$(curl -k -L -sS --connect-timeout 5 --max-time 15 -o /tmp/home-recovery-en.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/?home_recovery=$stamp" || true)
-            [ "$es" = '200' ] && [ "$en" = '200' ]
-          }
-
-          if check_home; then
-            echo 'RECOVERY_MODE=safe_specials_module'
-            grep -Fq 'mdo-home-specials' /tmp/home-recovery-es.html && echo 'HOME_SPECIALS_ES=present' || echo 'HOME_SPECIALS_ES=not_present'
-            grep -Fq 'mdo-home-specials' /tmp/home-recovery-en.html && echo 'HOME_SPECIALS_EN=present' || echo 'HOME_SPECIALS_EN=not_present'
-            echo 'HOME_ES=200'
-            echo 'HOME_EN=200'
-            exit 0
-          fi
-
-          echo 'Safe Specials module did not restore the homepage quickly; disabling only homepage Specials.' >&2
-          sed -i "/class-mdo-home-specials\.php/d; /MDO_Home_Specials::init()/d" "$PLUGIN_DIR/mdo-supplier-sync.php"
           "$php_bin" -l "$PLUGIN_DIR/mdo-supplier-sync.php" >/dev/null
           "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null || true
           if "$php_bin" -d memory_limit=512M "$wp_bin" plugin is-active wp-rocket --path="$PROD_PATH" --allow-root >/dev/null 2>&1; then
             "$php_bin" -d memory_limit=512M "$wp_bin" rocket clean --confirm --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
           fi
 
-          check_home
-          echo 'RECOVERY_MODE=homepage_specials_disabled'
+          stamp=$(date +%s%N)
+          es=$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/home-rollback-es.html -w '%{http_code}' "https://www.elmercadodeorigen.com/?rollback=$stamp" || true)
+          en=$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/home-rollback-en.html -w '%{http_code}' "https://www.elmercadodeorigen.com/en/?rollback=$stamp" || true)
+          test "$es" = '200'
+          test "$en" = '200'
+          ! grep -Fq 'mdo-home-specials' /tmp/home-rollback-es.html
+          ! grep -Fq 'mdo-home-specials' /tmp/home-rollback-en.html
+
+          echo 'ROLLBACK=success'
           echo 'HOME_ES=200'
           echo 'HOME_EN=200'
           REMOTE
-
-# recovery trigger 2
