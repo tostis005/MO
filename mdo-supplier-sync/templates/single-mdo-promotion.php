@@ -2,6 +2,7 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 $lang=MDO_Promotions::language(); get_header();
 while(have_posts()): the_post(); $id=get_the_ID(); $m=MDO_Promotions::localized($id,$lang); $status=MDO_Promotions::status($id); $supplier=MDO_Promotions::supplier($id); $cta=MDO_Promotions::cta_url($id,$lang); $products=MDO_Promotions::product_ids($id); $img=MDO_Promotions::image_html($id,'large'); ?>
+<!-- Especiales v2 -->
 <!-- Dos hamburguesas de vaca madurada de regalo -->
 <main class="mdo-promotions mdo-promo-single" id="main"><section class="mdo-promo-hero"><div class="mdo-promotions__shell mdo-promo-hero__grid"><div class="mdo-promo-hero__content">
 <?php if($m['eyebrow']): ?><p class="mdo-promotions__kicker"><?php echo esc_html($m['eyebrow']); ?></p><?php endif; ?><h1><?php echo esc_html($m['title']); ?></h1>
