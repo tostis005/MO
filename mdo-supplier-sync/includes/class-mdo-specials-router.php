@@ -24,11 +24,11 @@ final class MDO_Specials_Router {
 	/**
 	 * One-time content migration for the already-published Tolecarnes special.
 	 *
-	 * The copy must make it explicit that the purchase happens inside El Mercado
-	 * de Origen, rather than sounding like an off-platform order to the producer.
+	 * Keep the offer concise: the explanatory "Cómo funciona" block contains the
+	 * useful mechanics, so the separate expanded paragraph remains intentionally empty.
 	 */
 	public static function migrate_tolecarnes_copy(): void {
-		if ( get_option( 'mdo_specials_tolecarnes_copy_v3' ) ) {
+		if ( get_option( 'mdo_specials_tolecarnes_copy_v4' ) ) {
 			return;
 		}
 
@@ -58,14 +58,14 @@ final class MDO_Specials_Router {
 		$es      = array(
 			'summary'    => 'Compra productos de Tolecarnes en El Mercado de Origen y recibe dos hamburguesas 100% ternera de regalo.',
 			'benefit'    => 'No tienes que introducir ningún código ni hacer nada especial. Al comprar productos de Tolecarnes en El Mercado de Origen, recibirás dos hamburguesas 100% ternera de regalo junto a tu pedido.',
-			'content'    => '<p>Una ventaja especial al comprar productos de Tolecarnes en El Mercado de Origen: dos hamburguesas 100% ternera de regalo con tu pedido.</p>',
+			'content'    => '',
 			'cta_label'  => 'Ver productos de Tolecarnes',
 			'conditions' => 'Promoción válida para compras de productos de Tolecarnes realizadas en El Mercado de Origen hasta el 31 de agosto de 2026 incluido. No requiere código promocional.',
 		);
 		$en      = array(
 			'summary'    => 'Buy Tolecarnes products on El Mercado de Origen and receive two 100% beef burgers as a gift.',
 			'benefit'    => 'No code or special action is required. When you buy Tolecarnes products on El Mercado de Origen, two 100% beef burgers will be included as a gift with your order.',
-			'content'    => '<p>A special benefit when buying Tolecarnes products on El Mercado de Origen: receive two 100% beef burgers as a gift with your order.</p>',
+			'content'    => '',
 			'cta_label'  => 'See Tolecarnes products',
 			'conditions' => 'Valid for purchases of Tolecarnes products made on El Mercado de Origen through 31 August 2026 inclusive. No promotional code is required.',
 		);
@@ -85,11 +85,11 @@ final class MDO_Specials_Router {
 			array(
 				'ID'           => $post_id,
 				'post_excerpt' => $es['summary'],
-				'post_content' => $es['content'],
+				'post_content' => '',
 			)
 		);
 
-		update_option( 'mdo_specials_tolecarnes_copy_v3', 1, false );
+		update_option( 'mdo_specials_tolecarnes_copy_v4', 1, false );
 	}
 
 	/**
