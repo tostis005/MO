@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO
  * Description: Gestión y sincronización de catálogos de proveedores con WooCommerce/WCFM.
- * Version: 1.0.29
+ * Version: 1.0.30
  * Author: El Mercado de Origen
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.29' );
+define( 'MDO_SUPPLIER_SYNC_VERSION', '1.0.30' );
 define( 'MDO_SUPPLIER_SYNC_DB_VERSION', '1.2.0' );
 define( 'MDO_SUPPLIER_SYNC_FILE', __FILE__ );
 define( 'MDO_SUPPLIER_SYNC_PATH', plugin_dir_path( __FILE__ ) );
@@ -64,7 +64,6 @@ require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-tolecarnes-weight-info
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-promotions.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-specials.php';
 require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-specials-router.php';
-require_once MDO_SUPPLIER_SYNC_PATH . 'includes/class-mdo-home-specials.php';
 
 register_activation_hook( __FILE__, array( 'MDO_Database', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'MDO_Scheduler', 'deactivate' ) );
@@ -114,7 +113,6 @@ add_action(
 		MDO_Tolecarnes_Weight_Info::init();
 		MDO_Specials::init();
 		MDO_Specials_Router::init();
-		MDO_Home_Specials::init();
 		MDO_Promotions::init();
 		if ( is_admin() ) {
 			MDO_Admin::init();
