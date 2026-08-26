@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+# Never allow two plugin archives to overwrite each other in production.
+concurrency:
+  group: deploy-mdo-supplier-sync-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
@@ -105,24 +110,59 @@ jobs:
               tar -xzf '$REMOTE_ARCHIVE' -C '$PROD_PATH/wp-content/plugins'
               rm -f '$REMOTE_ARCHIVE'
               \"\$php_bin\" -l '$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php' >/dev/null
+
               deployed_version=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=version --path='$PROD_PATH' --allow-root)
               plugin_status=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" plugin get mdo-supplier-sync --field=status --path='$PROD_PATH' --allow-root)
-              printf 'VERSION=%s\\nSTATUS=%s\\n' \"\$deployed_version\" \"\$plugin_status\"
+
+              # Loading WordPress here runs init, registers the promotion CPT and creates
+              # the one-time Tole Carnes seed if it does not exist yet.
+              promotion_type=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo post_type_exists(\"mdo_promotion\") ? \"1\" : \"0\";' --path='$PROD_PATH' --allow-root)
+              promotion_id=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post list --post_type=mdo_promotion --post_status=publish --name=hamburguesas-regalo-tole-carnes --format=ids --path='$PROD_PATH' --allow-root | awk '{print \$1}')
+              \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" rewrite flush --hard --path='$PROD_PATH' --allow-root >/dev/null
               \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null || true
+
+              home_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-home-check.html -w '%{http_code}' https://www.elmercadodeorigen.com/ || true)
+              archive_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-offers-check.html -w '%{http_code}' https://www.elmercadodeorigen.com/ofertas/ || true)
+              single_http=\$(curl -k -L -sS --connect-timeout 5 --max-time 20 -o /tmp/emdo-offer-check.html -w '%{http_code}' https://www.elmercadodeorigen.com/ofertas/hamburguesas-regalo-tole-carnes/ || true)
+              archive_text=0
+              single_text=0
+              grep -Fq 'Ofertas y propuestas especiales' /tmp/emdo-offers-check.html && archive_text=1 || true
+              grep -Fq 'Dos hamburguesas de vaca madurada de regalo' /tmp/emdo-offer-check.html && single_text=1 || true
+
+              printf 'VERSION=%s\\nSTATUS=%s\\nPROMOTION_TYPE=%s\\nPROMOTION_ID=%s\\nHOME_HTTP=%s\\nARCHIVE_HTTP=%s\\nSINGLE_HTTP=%s\\nARCHIVE_TEXT=%s\\nSINGLE_TEXT=%s\\n' \
+                \"\$deployed_version\" \"\$plugin_status\" \"\$promotion_type\" \"\$promotion_id\" \"\$home_http\" \"\$archive_http\" \"\$single_http\" \"\$archive_text\" \"\$single_text\"
             " 2>&1)"
             REMOTE_CODE=$?
             if [ $REMOTE_CODE -ne 0 ]; then
-              fail "remote_deploy_failed" "Remote extraction or WordPress verification failed"
+              fail "remote_deploy_failed" "Remote extraction or WordPress runtime verification failed"
             else
               VERSION="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^VERSION=//p' | tail -n1)"
               PLUGIN_STATUS="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^STATUS=//p' | tail -n1)"
+              PROMOTION_TYPE="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_TYPE=//p' | tail -n1)"
+              PROMOTION_ID="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^PROMOTION_ID=//p' | tail -n1)"
+              HOME_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^HOME_HTTP=//p' | tail -n1)"
+              ARCHIVE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ARCHIVE_HTTP=//p' | tail -n1)"
+              SINGLE_HTTP="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^SINGLE_HTTP=//p' | tail -n1)"
+              ARCHIVE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^ARCHIVE_TEXT=//p' | tail -n1)"
+              SINGLE_TEXT="$(printf '%s\n' "$REMOTE_RESULT" | sed -n 's/^SINGLE_TEXT=//p' | tail -n1)"
               [ -n "$VERSION" ] || VERSION="unknown"
+
               if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
                 fail "version_mismatch" "Production reports EMDO $VERSION but repository expects $EXPECTED_VERSION"
               elif [ "$PLUGIN_STATUS" != "active" ]; then
                 fail "plugin_not_active" "EMDO is deployed but WordPress does not report it active"
+              elif [ "$PROMOTION_TYPE" != "1" ]; then
+                fail "promotion_type_missing" "WordPress did not register mdo_promotion"
+              elif [ -z "$PROMOTION_ID" ]; then
+                fail "promotion_seed_missing" "The Tole Carnes promotion seed was not created"
+              elif [ "$HOME_HTTP" != "200" ]; then
+                fail "homepage_check_failed" "Homepage returned HTTP $HOME_HTTP"
+              elif [ "$ARCHIVE_HTTP" != "200" ] || [ "$ARCHIVE_TEXT" != "1" ]; then
+                fail "offers_archive_check_failed" "/ofertas/ did not return the expected promotion archive"
+              elif [ "$SINGLE_HTTP" != "200" ] || [ "$SINGLE_TEXT" != "1" ]; then
+                fail "offer_single_check_failed" "The Tole Carnes promotion page did not return the expected content"
               else
-                NOTE="EMDO $EXPECTED_VERSION deployed and active in production"
+                NOTE="EMDO $EXPECTED_VERSION active; promotions registered; /ofertas/ and Tole Carnes offer verified"
               fi
             fi
           fi
@@ -135,6 +175,8 @@ jobs:
           if [ "$RESULT" = "success" ]; then
             exit 0
           fi
+          echo "Deployment verification failed: $RESULT - $NOTE"
+          echo "$REMOTE_RESULT"
           exit 1
 
       - name: Record deployment result
@@ -148,12 +190,29 @@ jobs:
               "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               > .deploy-status/mdo-supplier-sync.txt
           fi
+
+          STATUS_B64="$(base64 -w0 .deploy-status/mdo-supplier-sync.txt)"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/mdo-supplier-sync.txt
-          git commit -m 'Record EMDO production deployment result [skip ci]' || exit 0
-          git pull --rebase origin main
-          git push origin HEAD:main
+
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            git reset --hard origin/main
+            mkdir -p .deploy-status
+            printf '%s' "$STATUS_B64" | base64 -d > .deploy-status/mdo-supplier-sync.txt
+            git add .deploy-status/mdo-supplier-sync.txt
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+            git commit -m 'Record EMDO production deployment result [skip ci]'
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep $((attempt * 2))
+          done
+
+          echo '::warning::Deployment completed, but the status file could not be persisted after retries.'
+          exit 0
 
       - name: Fail workflow when deployment failed
         if: steps.deploy.outcome != 'success'
