@@ -1,0 +1,167 @@
+/* Homepage · Ahora en El Mercado de Origen */
+.mdo-home-specials {
+	padding: clamp(3.25rem, 6vw, 5.5rem) 0;
+	background: #fbfaf6;
+}
+
+.mdo-home-specials__shell {
+	width: min(calc(100% - 40px), var(--emo-shell, 1240px));
+	margin: 0 auto;
+}
+
+.mdo-home-specials__heading {
+	margin: 0 0 clamp(1.35rem, 2.5vw, 2rem);
+	color: #173d33;
+	font-family: inherit;
+	font-size: clamp(1.35rem, 2.3vw, 2rem);
+	font-weight: 760;
+	letter-spacing: 0.04em;
+	line-height: 1.15;
+}
+
+.mdo-home-specials__card {
+	display: grid;
+	grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+	min-height: 360px;
+	overflow: hidden;
+	background: #f3eee5;
+	border: 1px solid rgba(33, 59, 50, 0.13);
+	border-radius: 22px;
+	box-shadow: 0 18px 45px rgba(30, 45, 38, 0.07);
+}
+
+.mdo-home-specials__media {
+	display: block;
+	min-height: 100%;
+	background: #eee7dc;
+	overflow: hidden;
+}
+
+.mdo-home-specials__media img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	min-height: 360px;
+	max-height: 440px;
+	padding: clamp(1.25rem, 2.5vw, 2.2rem);
+	box-sizing: border-box;
+	object-fit: contain;
+	object-position: center;
+	transition: transform 220ms ease;
+}
+
+.mdo-home-specials__media:hover img {
+	transform: scale(1.018);
+}
+
+.mdo-home-specials__content {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding: clamp(2rem, 5vw, 4.5rem);
+}
+
+.mdo-home-specials__content h3 {
+	margin: 0;
+	font-size: clamp(2rem, 4vw, 3.65rem);
+	font-weight: 650;
+	letter-spacing: -0.035em;
+	line-height: 1.02;
+}
+
+.mdo-home-specials__content h3 a {
+	color: #183c32;
+	text-decoration: none;
+}
+
+.mdo-home-specials__summary {
+	max-width: 720px;
+	margin: 1.25rem 0 0;
+	color: #4f5b55;
+	font-size: clamp(1rem, 1.45vw, 1.12rem);
+	line-height: 1.7;
+}
+
+.mdo-home-specials__footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1.5rem;
+	margin-top: clamp(1.8rem, 3vw, 2.7rem);
+	padding-top: 1.35rem;
+	border-top: 1px solid rgba(33, 59, 50, 0.16);
+}
+
+.mdo-home-specials__date {
+	margin: 0;
+	color: #716552;
+	font-size: 0.92rem;
+	font-weight: 650;
+}
+
+.mdo-home-specials__link {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex: 0 0 auto;
+	color: #173d33;
+	font-size: 0.98rem;
+	font-weight: 760;
+	text-decoration: none;
+}
+
+.mdo-home-specials__link span {
+	transition: transform 180ms ease;
+}
+
+.mdo-home-specials__link:hover span {
+	transform: translateX(4px);
+}
+
+@media (max-width: 820px) {
+	.mdo-home-specials {
+		padding: 2.75rem 0 3.25rem;
+	}
+
+	.mdo-home-specials__shell {
+		width: min(calc(100% - 28px), var(--emo-shell, 1240px));
+	}
+
+	.mdo-home-specials__card {
+		grid-template-columns: 1fr;
+		min-height: 0;
+		border-radius: 18px;
+	}
+
+	.mdo-home-specials__media,
+	.mdo-home-specials__media img {
+		min-height: 230px;
+	}
+
+	.mdo-home-specials__media img {
+		height: 250px;
+		max-height: 250px;
+		padding: 1.15rem;
+	}
+
+	.mdo-home-specials__content {
+		padding: 1.65rem;
+	}
+
+	.mdo-home-specials__content h3 {
+		font-size: clamp(1.75rem, 8vw, 2.5rem);
+	}
+
+	.mdo-home-specials__footer {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 1rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.mdo-home-specials__media img,
+	.mdo-home-specials__link span {
+		transition: none;
+	}
+}
