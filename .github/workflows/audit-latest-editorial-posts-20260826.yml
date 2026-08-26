@@ -48,7 +48,7 @@ jobs:
               esac
             done
             [ -n "$prod" ] || exit 4
-            "$php" -d memory_limit=512M "$wp" post list --post_type=post --post_status=publish,draft,pending,future,private --orderby=ID --order=DESC --posts_per_page=40 --fields=ID,post_status,post_date,post_modified,post_name,post_title --format=json --path="$prod" --allow-root
+            "$php" -d memory_limit=512M "$wp" post list --post_type=post --post_status=publish,draft,pending,future,private --orderby=ID --order=DESC --posts_per_page=300 --fields=ID,post_status,post_date,post_modified,post_name,post_title --format=json --path="$prod" --allow-root
           ' > /tmp/latest-posts.json
           mkdir -p .deploy-status
           cp /tmp/latest-posts.json .deploy-status/latest-editorial-posts-20260826.json
@@ -58,5 +58,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add .deploy-status/latest-editorial-posts-20260826.json
-          git commit -m 'Record latest editorial posts audit [skip ci]' || exit 0
+          git commit -m 'Record expanded editorial posts audit [skip ci]' || exit 0
           git push
