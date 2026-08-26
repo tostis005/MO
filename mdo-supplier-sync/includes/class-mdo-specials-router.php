@@ -93,50 +93,70 @@ final class MDO_Specials_Router {
 	}
 
 	/**
-	 * Remove the obsolete v1 Tolecarnes promotion if it survived the bilingual
-	 * migration. The v2 record is the only source of truth that should remain.
+	 * Keep exactly one canonical Tolecarnes burger special and permanently remove
+	 * any legacy/test duplicate left by the v1 -> bilingual v2 migration.
 	 */
 	public static function cleanup_legacy_tolecarnes_special(): void {
-		if ( get_option( 'mdo_specials_tolecarnes_cleanup_v4' ) ) {
+		if ( get_option( 'mdo_specials_tolecarnes_cleanup_v5' ) ) {
 			return;
 		}
 
-		$canonical_ids = get_posts(
+		$posts = get_posts(
 			array(
 				'post_type'      => self::POST_TYPE,
 				'post_status'    => 'any',
 				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'meta_key'       => '_mdo_promo_seed_key',
-				'meta_value'     => 'tolecarnes-hamburguesas-v2',
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
 			)
 		);
-		$canonical_ids = array_map( 'intval', $canonical_ids );
+		$candidates = array();
 
-		$legacy_ids = get_posts(
-			array(
-				'post_type'      => self::POST_TYPE,
-				'post_status'    => 'any',
-				'posts_per_page' => -1,
-				'fields'         => 'ids',
-				'meta_key'       => '_mdo_promo_seed_key',
-				'meta_value'     => 'tolecarnes-hamburguesas-v1',
-			)
-		);
+		foreach ( $posts as $post ) {
+			$seed    = (string) get_post_meta( $post->ID, '_mdo_promo_seed_key', true );
+			$slug_es = (string) get_post_meta( $post->ID, '_mdo_promo_slug_es', true );
+			$slug_en = (string) get_post_meta( $post->ID, '_mdo_promo_slug_en', true );
+			$is_match = in_array( $seed, array( 'tolecarnes-hamburguesas-v1', 'tolecarnes-hamburguesas-v2' ), true )
+				|| in_array( $post->post_name, array( 'hamburguesas-regalo-tole-carnes', 'hamburguesas-ternera-regalo-tolecarnes' ), true )
+				|| 'hamburguesas-ternera-regalo-tolecarnes' === $slug_es
+				|| 'free-beef-burgers-tolecarnes' === $slug_en;
 
-		$legacy_slug = get_page_by_path( 'hamburguesas-regalo-tole-carnes', OBJECT, self::POST_TYPE );
-		if ( $legacy_slug ) {
-			$legacy_ids[] = (int) $legacy_slug->ID;
-		}
-
-		foreach ( array_unique( array_map( 'intval', $legacy_ids ) ) as $legacy_id ) {
-			if ( ! $legacy_id || in_array( $legacy_id, $canonical_ids, true ) ) {
+			if ( ! $is_match ) {
 				continue;
 			}
-			wp_delete_post( $legacy_id, true );
+
+			$summary_es = (string) get_post_meta( $post->ID, '_mdo_promo_summary_es', true );
+			$score      = 0;
+			$score     += 'tolecarnes-hamburguesas-v2' === $seed ? 100 : 0;
+			$score     += 'hamburguesas-ternera-regalo-tolecarnes' === $post->post_name ? 80 : 0;
+			$score     += 'hamburguesas-ternera-regalo-tolecarnes' === $slug_es ? 60 : 0;
+			$score     += 'free-beef-burgers-tolecarnes' === $slug_en ? 30 : 0;
+			$score     += false !== strpos( $summary_es, 'El Mercado de Origen' ) ? 40 : 0;
+			$score     += (int) get_post_meta( $post->ID, '_mdo_promo_image_product_id', true ) > 0 ? 20 : 0;
+			$score     += 'publish' === $post->post_status ? 10 : 0;
+			$candidates[] = array( 'id' => (int) $post->ID, 'score' => $score );
 		}
 
-		update_option( 'mdo_specials_tolecarnes_cleanup_v4', 1, false );
+		if ( count( $candidates ) > 1 ) {
+			usort(
+				$candidates,
+				static function ( array $a, array $b ): int {
+					if ( $a['score'] === $b['score'] ) {
+						return $a['id'] <=> $b['id'];
+					}
+					return $b['score'] <=> $a['score'];
+				}
+			);
+			$keep_id = (int) $candidates[0]['id'];
+			foreach ( $candidates as $candidate ) {
+				$id = (int) $candidate['id'];
+				if ( $id !== $keep_id ) {
+					wp_delete_post( $id, true );
+				}
+			}
+		}
+
+		update_option( 'mdo_specials_tolecarnes_cleanup_v5', 1, false );
 	}
 
 	public static function parse_request( WP $wp ): void {
