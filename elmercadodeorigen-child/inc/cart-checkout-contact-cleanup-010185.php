@@ -141,9 +141,11 @@ add_action(
 
 			const trimRegularContactAfterForm = () => {
 				if (!isRegularContact) return;
-				const content = document.querySelector('.entry-content');
-				const form = content?.querySelector('.wpcf7');
-				if (!content || !form) return;
+				const form = document.querySelector('main .wpcf7, #primary .wpcf7, .site-main .wpcf7, article .wpcf7, .wpcf7');
+				if (!form) return;
+
+				const content = form.closest('article, main, #primary, .site-main, .content-area, .site-content');
+				if (!content || content === document.body || content === document.documentElement) return;
 
 				let node = form;
 				while (node && node !== content) {
