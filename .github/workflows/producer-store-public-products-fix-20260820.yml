@@ -1,13 +1,8 @@
 name: EMDO emergency rollback 20260821
 
+# Historical emergency recovery only. Keep it available for an explicit manual
+# run, but never let it race normal EMDO deployments on pushes to main.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'mu-plugins/mdo-product-category-public-products-20260821.php'
-      - 'mu-plugins/mdo-english-home-categories-producers-20260820.php'
-      - 'mdo-supplier-sync/mdo-supplier-sync.php'
-      - '.github/workflows/producer-store-public-products-fix-20260820.yml'
   workflow_dispatch:
 
 permissions:
