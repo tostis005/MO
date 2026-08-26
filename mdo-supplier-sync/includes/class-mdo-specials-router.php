@@ -18,6 +18,7 @@ final class MDO_Specials_Router {
 		add_action( 'parse_request', array( __CLASS__, 'parse_request' ), 1 );
 		add_filter( 'redirect_canonical', array( __CLASS__, 'disable_canonical' ), 5, 2 );
 		add_action( 'init', array( __CLASS__, 'migrate_tolecarnes_copy' ), 32 );
+		add_action( 'init', array( __CLASS__, 'cleanup_legacy_tolecarnes_special' ), 33 );
 	}
 
 	/**
@@ -89,6 +90,53 @@ final class MDO_Specials_Router {
 		);
 
 		update_option( 'mdo_specials_tolecarnes_copy_v3', 1, false );
+	}
+
+	/**
+	 * Remove the obsolete v1 Tolecarnes promotion if it survived the bilingual
+	 * migration. The v2 record is the only source of truth that should remain.
+	 */
+	public static function cleanup_legacy_tolecarnes_special(): void {
+		if ( get_option( 'mdo_specials_tolecarnes_cleanup_v4' ) ) {
+			return;
+		}
+
+		$canonical_ids = get_posts(
+			array(
+				'post_type'      => self::POST_TYPE,
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_key'       => '_mdo_promo_seed_key',
+				'meta_value'     => 'tolecarnes-hamburguesas-v2',
+			)
+		);
+		$canonical_ids = array_map( 'intval', $canonical_ids );
+
+		$legacy_ids = get_posts(
+			array(
+				'post_type'      => self::POST_TYPE,
+				'post_status'    => 'any',
+				'posts_per_page' => -1,
+				'fields'         => 'ids',
+				'meta_key'       => '_mdo_promo_seed_key',
+				'meta_value'     => 'tolecarnes-hamburguesas-v1',
+			)
+		);
+
+		$legacy_slug = get_page_by_path( 'hamburguesas-regalo-tole-carnes', OBJECT, self::POST_TYPE );
+		if ( $legacy_slug ) {
+			$legacy_ids[] = (int) $legacy_slug->ID;
+		}
+
+		foreach ( array_unique( array_map( 'intval', $legacy_ids ) ) as $legacy_id ) {
+			if ( ! $legacy_id || in_array( $legacy_id, $canonical_ids, true ) ) {
+				continue;
+			}
+			wp_delete_post( $legacy_id, true );
+		}
+
+		update_option( 'mdo_specials_tolecarnes_cleanup_v4', 1, false );
 	}
 
 	public static function parse_request( WP $wp ): void {
