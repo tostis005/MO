@@ -1,0 +1,125 @@
+.mdo-home-featured-special {
+	padding-block: clamp(42px, 5.5vw, 76px);
+	background: #f5f0e8;
+}
+
+.mdo-home-featured-special__heading {
+	margin-bottom: 18px;
+}
+
+.mdo-home-featured-special__card {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	overflow: hidden;
+	background: #fff;
+	border: 1px solid rgba(28, 38, 31, 0.1);
+	border-radius: 18px;
+	box-shadow: 0 18px 50px rgba(28, 38, 31, 0.08);
+}
+
+.mdo-home-featured-special__card.has-media {
+	grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.05fr);
+}
+
+.mdo-home-featured-special__media {
+	display: block;
+	min-height: 100%;
+	background: #eee8de;
+}
+
+.mdo-home-featured-special__media img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	min-height: 330px;
+	max-height: 440px;
+	object-fit: cover;
+}
+
+.mdo-home-featured-special__content {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: center;
+	padding: clamp(30px, 5vw, 64px);
+}
+
+.mdo-home-featured-special__content h2 {
+	max-width: 720px;
+	margin: 0;
+	font-size: clamp(30px, 4vw, 52px);
+	line-height: 1.03;
+	letter-spacing: -0.035em;
+}
+
+.mdo-home-featured-special__content h2 a {
+	color: inherit;
+	text-decoration: none;
+}
+
+.mdo-home-featured-special__summary {
+	max-width: 650px;
+	margin: 20px 0 0;
+	font-size: clamp(16px, 1.5vw, 19px);
+	line-height: 1.6;
+}
+
+.mdo-home-featured-special__deadline {
+	margin: 22px 0 0;
+	font-size: 14px;
+	line-height: 1.4;
+}
+
+.mdo-home-featured-special__deadline span {
+	opacity: 0.68;
+}
+
+.mdo-home-featured-special__deadline strong {
+	font-weight: 700;
+}
+
+.mdo-home-featured-special__button {
+	margin-top: 28px;
+}
+
+@media (max-width: 780px) {
+	.mdo-home-featured-special {
+		padding-block: 34px;
+	}
+
+	.mdo-home-featured-special__heading {
+		margin-bottom: 14px;
+	}
+
+	.mdo-home-featured-special__card.has-media {
+		grid-template-columns: 1fr;
+	}
+
+	.mdo-home-featured-special__media img {
+		min-height: 0;
+		max-height: none;
+		aspect-ratio: 4 / 3;
+	}
+
+	.mdo-home-featured-special__content {
+		padding: 26px 22px 28px;
+	}
+
+	.mdo-home-featured-special__content h2 {
+		font-size: clamp(28px, 9vw, 38px);
+	}
+
+	.mdo-home-featured-special__summary {
+		margin-top: 16px;
+	}
+
+	.mdo-home-featured-special__deadline {
+		margin-top: 18px;
+	}
+
+	.mdo-home-featured-special__button {
+		width: 100%;
+		margin-top: 24px;
+		text-align: center;
+	}
+}
