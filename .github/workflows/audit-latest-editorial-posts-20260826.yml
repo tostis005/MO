@@ -48,19 +48,15 @@ jobs:
               esac
             done
             [ -n "$prod" ] || exit 4
-            "$php" -d memory_limit=512M "$wp" db query "SELECT p.ID,p.post_status,p.post_date,p.post_modified,p.post_name,REPLACE(REPLACE(p.post_title, CHAR(9), ' '), CHAR(10), ' ') AS title,COALESCE(b.meta_value,''),COALESCE(k.meta_value,'') FROM wp_posts p LEFT JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' LEFT JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' WHERE p.post_type='post' AND p.post_status IN ('publish','draft','pending','future','private') ORDER BY p.ID DESC LIMIT 40;" --skip-column-names --path="$prod" --allow-root
-          ' > /tmp/latest-posts.tsv
+            "$php" -d memory_limit=512M "$wp" post list --post_type=post --post_status=publish,draft,pending,future,private --orderby=ID --order=DESC --posts_per_page=40 --fields=ID,post_status,post_date,post_modified,post_name,post_title --format=json --path="$prod" --allow-root
+          ' > /tmp/latest-posts.json
           mkdir -p .deploy-status
-          {
-            echo "audit_date=2026-08-26"
-            echo "columns=id status post_date modified slug title authority_batch authority_key"
-            cat /tmp/latest-posts.tsv
-          } > .deploy-status/latest-editorial-posts-20260826.tsv
+          cp /tmp/latest-posts.json .deploy-status/latest-editorial-posts-20260826.json
       - name: Record audit result
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .deploy-status/latest-editorial-posts-20260826.tsv
+          git add .deploy-status/latest-editorial-posts-20260826.json
           git commit -m 'Record latest editorial posts audit [skip ci]' || exit 0
           git push
