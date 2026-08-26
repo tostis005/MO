@@ -142,7 +142,15 @@ jobs:
 
             ATTACHMENT_ID=\$(\"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post list --post_type=attachment --post_status=inherit --meta_key=_mdo_source_url --meta_value=\"\$IMAGE_URL\" --field=ID --path='$PROD_PATH' --allow-root | head -n1)
             if [ -z \"\$ATTACHMENT_ID\" ]; then
-              ATTACHMENT_ID=\$(\"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" media import \"\$IMAGE_URL\" --post_id=\"\$POST_ID\" --title=\"\$IMAGE_TITLE\" --porcelain --path='$PROD_PATH' --allow-root)
+              TMP_FILE=\"/tmp/mdo-featured-\$POST_ID-\$(date +%s).jpg\"
+              if command -v curl >/dev/null 2>&1; then
+                curl -LfsS --max-time 90 \"\$IMAGE_URL\" -o \"\$TMP_FILE\"
+              else
+                wget -q --timeout=90 -O \"\$TMP_FILE\" \"\$IMAGE_URL\"
+              fi
+              test -s \"\$TMP_FILE\"
+              ATTACHMENT_ID=\$(\"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" media import \"\$TMP_FILE\" --post_id=\"\$POST_ID\" --title=\"\$IMAGE_TITLE\" --porcelain --path='$PROD_PATH' --allow-root)
+              rm -f \"\$TMP_FILE\"
               \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" post meta update \"\$ATTACHMENT_ID\" _mdo_source_url \"\$IMAGE_URL\" --path='$PROD_PATH' --allow-root >/dev/null
             fi
 
