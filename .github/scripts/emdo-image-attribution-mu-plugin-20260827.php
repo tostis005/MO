@@ -68,23 +68,25 @@ function emdo_image_attribution_credit_html(int $image_id): string {
             ? ' The site may resize or crop the image to fit the layout.'
             : ' La web puede redimensionar o recortar la imagen para adaptarla al diseño.';
     }
-    return '<p class="emdo-image-credit"><small>'.$prefix.$creator_html.$join.$license_html.'.'.$change_text.'</small></p>';
+    return '<p id="emdo-featured-image-credit" class="emdo-image-credit"><small>'.$prefix.$creator_html.$join.$license_html.'.'.$change_text.'</small></p>';
 }
-
-add_filter('the_content', function($content) {
-    if (is_admin() || is_feed() || !is_singular('post') || !in_the_loop() || !is_main_query()) { return $content; }
-    $post_id = (int)get_queried_object_id();
-    if ($post_id <= 0) { return $content; }
-    $image_id = (int)get_post_thumbnail_id($post_id);
-    if ($image_id <= 0) { return $content; }
-    $credit = emdo_image_attribution_credit_html($image_id);
-    if ($credit === '') { return $content; }
-    if (strpos($content, 'class="emdo-image-credit"') !== false || strpos($content, "class='emdo-image-credit'") !== false) { return $content; }
-    return $credit . "\n" . $content;
-// Deliberately run at the last possible priority so the site's ES→EN content replacement cannot overwrite the credit.
-}, PHP_INT_MAX);
 
 add_action('wp_head', function() {
     if (!is_singular('post')) { return; }
     echo '<style id="emdo-image-attribution-css">.emdo-image-credit{margin:.25rem 0 1.35rem;font-size:.78rem;line-height:1.45;color:#6b6b6b}.emdo-image-credit small{font-size:inherit}.emdo-image-credit a{color:inherit;text-decoration:underline;text-underline-offset:2px}.emdo-image-credit a:hover{color:#222}</style>';
 }, 40);
+
+// Render independently from the translated article body. The credit is present in server HTML
+// and is moved beneath the featured image when that container exists. Without JavaScript it
+// remains visible at the end of the page, so attribution is never lost.
+add_action('wp_footer', function() {
+    if (is_admin() || !is_singular('post')) { return; }
+    $post_id = (int)get_queried_object_id();
+    if ($post_id <= 0) { return; }
+    $image_id = (int)get_post_thumbnail_id($post_id);
+    if ($image_id <= 0) { return; }
+    $credit = emdo_image_attribution_credit_html($image_id);
+    if ($credit === '') { return; }
+    echo $credit;
+    echo '<script id="emdo-image-attribution-js">(function(){var c=document.getElementById("emdo-featured-image-credit");if(!c){return;}var t=document.querySelector(".emo-article-featured");if(t){t.insertAdjacentElement("afterend",c);}})();</script>';
+}, 5);
