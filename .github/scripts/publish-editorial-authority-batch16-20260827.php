@@ -53,6 +53,14 @@ function emdo_ab16_products(string $html):string {
     ));
 }
 
+function emdo_ab16_fix_internal_links(string $html):string {
+    return strtr($html,array(
+        '/cuantos-sobres-salen-jamon-iberico-rendimiento-pieza/' => '/cuantos-sobres-salen-jamon-iberico-rendimiento-real-pieza/',
+        '/en/iberian-ham-hand-carved-vs-machine-sliced-differences-which-to-choose/' => '/en/iberian-ham-hand-sliced-or-machine-sliced-differences-which-to-choose/',
+        '/en/how-many-packs-from-an-iberian-ham-real-yield/' => '/en/how-many-packs-from-an-iberian-ham-real-yield-of-a-whole-leg/',
+    ));
+}
+
 function emdo_ab16_default_image(int $post_id,bool $is_new):array {
     $default_id=(int)get_option('emdo_default_blog_featured_attachment_id',0);
     $default_hash=(string)get_option('emdo_default_blog_featured_hash','');
@@ -108,7 +116,8 @@ $report=array('batch'=>16,'release'=>'20260827','posts'=>array());
 foreach($articles as $a){
     foreach(array('key','slug','en_slug','topic','title','en_title','excerpt','en_excerpt','content','en_content') as $field){if(!isset($a[$field])||''===$a[$field]){throw new RuntimeException(($a['key']??'article').': missing '.$field);}}
     if(!isset($topic_cats[$a['topic']])){throw new RuntimeException($a['key'].': unexpected topic '.$a['topic']);}
-    $content=emdo_ab16_products($a['content']);$en_content=emdo_ab16_products($a['en_content']);
+    $content=emdo_ab16_fix_internal_links(emdo_ab16_products($a['content']));
+    $en_content=emdo_ab16_fix_internal_links(emdo_ab16_products($a['en_content']));
     $words_es=emdo_ab16_words($content);$words_en=emdo_ab16_words($en_content);
     if($words_es<850||$words_en<750){throw new RuntimeException($a['key'].': article too short ES='.$words_es.' EN='.$words_en);}
 
