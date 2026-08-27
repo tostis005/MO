@@ -45,7 +45,13 @@ jobs:
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/data'"
           sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/scripts/publish-editorial-priority-batch01-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE/publisher.php"
           sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/data/editorial-priority-batch01-20260827/*.php "$STAGING_USER@$STAGING_HOST:$REMOTE/data/"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_PRIORITY_BATCH01_DIR='$REMOTE/data'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publisher.php' --path='$PROD' --skip-plugins --skip-themes --allow-root; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" > /tmp/publish.json
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; export EMDO_PRIORITY_BATCH01_DIR='$REMOTE/data'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publisher.php' --path='$PROD' --skip-plugins --skip-themes --allow-root; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" > /tmp/publish.json
+          publish_rc=$?
+          set -e
+          echo '--- WordPress publisher result ---'
+          cat /tmp/publish.json || true
+          [ "$publish_rc" -eq 0 ] || exit "$publish_rc"
 
           jq -e '.posts|length==5' /tmp/publish.json >/dev/null
           jq -e '.posts|all(.status=="publish" and .thumbnail_id==13359 and .provisional=="1" and .words_es>=1150 and .words_en>=950 and .has_products_es==true and .has_products_en==true)' /tmp/publish.json >/dev/null
