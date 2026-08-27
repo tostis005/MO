@@ -1,5 +1,5 @@
 <?php
-/** Production verification for blog discovery/category deployment. */
+/** Production verification for blog discovery/category deployment; explicit deployment trigger. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 $required = array(
