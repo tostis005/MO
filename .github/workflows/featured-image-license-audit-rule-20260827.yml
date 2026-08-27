@@ -1,0 +1,164 @@
+name: Featured image license audit and attribution rule 20260827
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/audit-featured-image-licenses-20260827.php'
+      - '.github/scripts/emdo-image-attribution-mu-plugin-20260827.php'
+      - '.github/scripts/normalize-featured-image-credit-content-20260827.php'
+      - '.github/workflows/featured-image-license-audit-rule-20260827.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: featured-image-license-audit-rule-20260827
+  cancel-in-progress: false
+
+jobs:
+  audit-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/audit-featured-image-licenses-20260827.php
+          php -l .github/scripts/emdo-image-attribution-mu-plugin-20260827.php
+          php -l .github/scripts/normalize-featured-image-credit-content-20260827.php
+
+      - name: Install global rule and audit production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE=/tmp/emdo-image-license-${GITHUB_RUN_ID}
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$REMOTE' '$PROD/wp-content/mu-plugins'"
+          sshpass -e scp $SCP .github/scripts/audit-featured-image-licenses-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE/audit.php"
+          sshpass -e scp $SCP .github/scripts/normalize-featured-image-credit-content-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE/normalize.php"
+          sshpass -e scp $SCP .github/scripts/emdo-image-attribution-mu-plugin-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE/emdo-featured-image-attribution.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            '$PHP' -l '$REMOTE/emdo-featured-image-attribution.php' >/dev/null
+            install -m 0644 '$REMOTE/emdo-featured-image-attribution.php' '$PROD/wp-content/mu-plugins/emdo-featured-image-attribution.php'
+            '$PHP' -l '$PROD/wp-content/mu-plugins/emdo-featured-image-attribution.php' >/dev/null
+            export PATH='$(dirname "$PHP")':\$PATH
+            '$PHP' -d memory_limit=512M '$WP' eval 'require \"$REMOTE/normalize.php\";' --path='$PROD' --allow-root
+            '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true
+            '$PHP' '$WP' eval 'echo function_exists(\"emdo_image_attribution_credit_html\") ? \"ATTRIBUTION_RULE_OK\" : \"ATTRIBUTION_RULE_MISSING\";' --path='$PROD' --allow-root
+          " | tee /tmp/emdo-attribution-install.txt
+          grep -Fq 'ATTRIBUTION_RULE_OK' /tmp/emdo-attribution-install.txt
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=512M '$WP' eval 'require \"$REMOTE/audit.php\";' --path='$PROD' --allow-root" > /tmp/featured-image-license-audit.json
+          python3 -m json.tool /tmp/featured-image-license-audit.json >/dev/null
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
+
+          python3 - <<'PY'
+          import json
+          p='/tmp/featured-image-license-audit.json'
+          data=json.load(open(p,encoding='utf-8'))
+          print('AUDIT COUNTS:', json.dumps(data['counts'],ensure_ascii=False,sort_keys=True))
+          required=[]
+          problems=[]
+          for row in data['posts']:
+              if row.get('class')=='required':
+                  if row.get('url'): required.append(row['url'])
+                  if row.get('en_url'): required.append(row['en_url'])
+              if row.get('class') in ('forbidden','unknown'):
+                  problems.append({k:row.get(k) for k in ('post_id','title','slug','image_id','class','license','creator','source_page','source_key')})
+          open('/tmp/required-credit-urls.txt','w',encoding='utf-8').write('\n'.join(required)+('\n' if required else ''))
+          open('/tmp/license-problems.json','w',encoding='utf-8').write(json.dumps(problems,ensure_ascii=False,indent=2)+'\n')
+          print('REQUIRED CREDIT URLS:',len(required))
+          print('FORBIDDEN/UNKNOWN:',len(problems))
+          PY
+
+      - name: Verify global attribution behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          stamp="$GITHUB_RUN_ID"
+          while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            f=/tmp/credit-required.html
+            code=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO license verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?licenseaudit=$stamp")
+            test "$code" = 200
+            grep -Fq 'class="emdo-image-credit"' "$f"
+            grep -Fq 'emdo-image-credit-source' "$f"
+            grep -Fq 'emdo-image-credit-license' "$f"
+            grep -Fq 'rel="license noopener noreferrer"' "$f"
+          done < /tmp/required-credit-urls.txt
+
+          # Pexels image: no attribution should be injected by the rule.
+          f=/tmp/credit-optional.html
+          code=$(curl -k -L -sS --retry 4 --retry-delay 2 -o "$f" -w '%{http_code}' "https://www.elmercadodeorigen.com/tipos-de-cebolla-blanca-dulce-morada-amarilla-cebolleta-diferencias/?licenseaudit=$stamp")
+          test "$code" = 200
+          ! grep -Fq 'class="emdo-image-credit"' "$f"
+
+          # Sobrasada CC BY must have exactly one centrally generated credit in both languages.
+          for url in \
+            'https://www.elmercadodeorigen.com/sobrasada-iberica-que-es-como-se-elabora-que-mirar-al-comprarla/' \
+            'https://www.elmercadodeorigen.com/en/iberian-sobrasada-what-it-is-how-made-what-to-look-for-when-buying/'; do
+            f=/tmp/sob-credit.html
+            code=$(curl -k -L -sS --retry 4 --retry-delay 2 -o "$f" -w '%{http_code}' "$url?licenseaudit=$stamp")
+            test "$code" = 200
+            test "$(grep -o 'class="emdo-image-credit"' "$f" | wc -l)" -eq 1
+            grep -Fq 'Jonathan Pincas' "$f"
+            grep -Fq 'CC BY 2.0' "$f"
+            grep -Fq 'commons.wikimedia.org/wiki/File:Sobrasada_y_pan.jpg' "$f"
+          done
+
+          # Never expose article credits on the homepage.
+          f=/tmp/home-credit-check.html
+          code=$(curl -k -L -sS --retry 4 --retry-delay 2 -o "$f" -w '%{http_code}' "https://www.elmercadodeorigen.com/?licenseaudit=$stamp")
+          test "$code" = 200
+          ! grep -Fq 'class="emdo-image-credit"' "$f"
+
+      - name: Persist audit and centralize existing manual credit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cp /tmp/featured-image-license-audit.json .deploy-status/featured-image-license-audit-20260827.json
+          cp /tmp/license-problems.json .deploy-status/featured-image-license-problems-20260827.json
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('.github/data/editorial-authority-batch14-20260826/02-sobrasada-iberica.php')
+          s=p.read_text(encoding='utf-8')
+          s2=re.sub(r'\s*<p class="emdo-image-credit">.*?</p>\s*','\n',s,flags=re.S)
+          if s2!=s:
+              p.write_text(s2,encoding='utf-8')
+          PY
+          php -l .github/data/editorial-authority-batch14-20260826/02-sobrasada-iberica.php
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/featured-image-license-audit-20260827.json .deploy-status/featured-image-license-problems-20260827.json .github/data/editorial-authority-batch14-20260826/02-sobrasada-iberica.php
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record featured image license audit and centralize attribution [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
