@@ -1,0 +1,37 @@
+name: Editorial authority batch 24 DB diagnostic 20260827
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editorial-authority-batch24-db-diagnostic-20260827.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect production DB for batch 24 traces
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; echo '--- PREFIX ---'; '$PHP' '$WP' db prefix --path='$PROD' --allow-root; echo '--- RECENT POSTS ---'; '$PHP' '$WP' db query \"SELECT ID,post_status,post_type,post_name,LEFT(post_title,100) FROM wp_posts WHERE post_type='post' ORDER BY ID DESC LIMIT 30;\" --skip-column-names --path='$PROD' --allow-root; echo '--- BATCH24 META ---'; '$PHP' '$WP' db query \"SELECT pm.post_id,pm.meta_key,pm.meta_value FROM wp_postmeta pm WHERE (pm.meta_key='_emdo_authority_batch' AND pm.meta_value='24') OR (pm.meta_key='_emdo_authority_key' AND pm.meta_value IN ('mealy-tomato-guide','seasonal-vegetables-spain-calendar-guide','how-to-wash-vegetables-guide','morcon-vs-chorizo-guide','cana-de-lomo-vs-lomo-embuchado-guide')) ORDER BY pm.post_id,pm.meta_key;\" --skip-column-names --path='$PROD' --allow-root; echo '--- TITLE SEARCH ---'; '$PHP' '$WP' db query \"SELECT ID,post_status,post_type,post_name,LEFT(post_title,120) FROM wp_posts WHERE post_title LIKE '%harinoso%' OR post_title LIKE '%temporada en España%' OR post_title LIKE '%lavar verduras%' OR post_title LIKE '%Morcón vs chorizo%' OR post_title LIKE '%Caña de lomo%' ORDER BY ID DESC LIMIT 30;\" --skip-column-names --path='$PROD' --allow-root"
