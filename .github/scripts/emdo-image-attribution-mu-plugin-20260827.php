@@ -39,9 +39,8 @@ function emdo_image_attribution_credit_html(int $image_id): string {
     emdo_image_attribution_fallback_caption($image_id, $creator, $source, $license);
 
     if (!emdo_image_attribution_license_requires_credit($license)) { return ''; }
-
-    // Attribution-required images must have enough information to render a meaningful credit.
     if ($creator === '') { $creator = emdo_image_attribution_is_english() ? 'Image author' : 'Autor de la imagen'; }
+
     $source_label = '';
     if ($source !== '') {
         $host = (string)wp_parse_url($source, PHP_URL_HOST);
@@ -69,19 +68,22 @@ function emdo_image_attribution_credit_html(int $image_id): string {
             ? ' The site may resize or crop the image to fit the layout.'
             : ' La web puede redimensionar o recortar la imagen para adaptarla al diseño.';
     }
-
     return '<p class="emdo-image-credit"><small>'.$prefix.$creator_html.$join.$license_html.'.'.$change_text.'</small></p>';
 }
 
-add_filter('post_thumbnail_html', function($html, $post_id, $post_thumbnail_id) {
-    if (is_admin() || is_feed() || !is_singular('post')) { return $html; }
-    if ((int)$post_id !== (int)get_queried_object_id()) { return $html; }
-    $credit = emdo_image_attribution_credit_html((int)$post_thumbnail_id);
-    if ($credit === '') { return $html; }
-    return $html . $credit;
-}, 30, 3);
+add_filter('the_content', function($content) {
+    if (is_admin() || is_feed() || !is_singular('post') || !in_the_loop() || !is_main_query()) { return $content; }
+    $post_id = (int)get_queried_object_id();
+    if ($post_id <= 0) { return $content; }
+    $image_id = (int)get_post_thumbnail_id($post_id);
+    if ($image_id <= 0) { return $content; }
+    $credit = emdo_image_attribution_credit_html($image_id);
+    if ($credit === '') { return $content; }
+    if (strpos($content, 'class="emdo-image-credit"') !== false || strpos($content, "class='emdo-image-credit'") !== false) { return $content; }
+    return $credit . "\n" . $content;
+}, 8);
 
 add_action('wp_head', function() {
     if (!is_singular('post')) { return; }
-    echo '<style id="emdo-image-attribution-css">.emdo-image-credit{margin:.45rem 0 1.35rem;font-size:.78rem;line-height:1.45;color:#6b6b6b}.emdo-image-credit small{font-size:inherit}.emdo-image-credit a{color:inherit;text-decoration:underline;text-underline-offset:2px}.emdo-image-credit a:hover{color:#222}</style>';
+    echo '<style id="emdo-image-attribution-css">.emdo-image-credit{margin:.25rem 0 1.35rem;font-size:.78rem;line-height:1.45;color:#6b6b6b}.emdo-image-credit small{font-size:inherit}.emdo-image-credit a{color:inherit;text-decoration:underline;text-underline-offset:2px}.emdo-image-credit a:hover{color:#222}</style>';
 }, 40);
