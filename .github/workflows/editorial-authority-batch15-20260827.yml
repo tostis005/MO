@@ -1,11 +1,9 @@
-name: Editorial authority batch 15 isolated publish 20260827
+name: Editorial authority batch 15 shared provisional image 20260827
 
 on:
   push:
     branches: [main]
     paths:
-      - '.github/scripts/publish-editorial-authority-batch15-20260827.php'
-      - '.github/data/editorial-authority-batch15-20260827/**'
       - '.github/workflows/editorial-authority-batch15-20260827.yml'
   workflow_dispatch:
 
@@ -13,13 +11,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: editorial-authority-batch15-20260827-isolated
+  group: editorial-authority-batch15-provisional-image
   cancel-in-progress: false
 
 jobs:
-  publish:
+  apply:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 30
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -30,15 +28,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Publish five articles independently
+      - name: Reconstruct and validate shared image
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/apply-default-blog-featured-image-20260827.php
+          php -l mu-plugins/mdo-default-blog-featured-image-20260827.php
+          cat .github/assets/blog-default-featured/part-*.b64 | tr -d '\n\r ' | base64 -d > /tmp/emdo-blog-default.webp
+          test -s /tmp/emdo-blog-default.webp
+          echo '1f29e080a4628964818db7ea91e658ab87941ce1aad7397688c6cd167e4310c9  /tmp/emdo-blog-default.webp' | sha256sum -c -
+
+      - name: Apply shared provisional image to batch 15
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          php -l .github/scripts/publish-editorial-authority-batch15-20260827.php
-          test "$(find .github/data/editorial-authority-batch15-20260827 -maxdepth 1 -type f -name '*.php' | wc -l)" -eq 5
-          for f in .github/data/editorial-authority-batch15-20260827/*.php; do php -l "$f"; done
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -51,54 +56,50 @@ jobs:
             [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE=/tmp/emdo-ab15-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
-          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch15-20260827.php "$STAGING_USER@$STAGING_HOST:$PUB"
-          sshpass -e scp $SCP .github/data/editorial-authority-batch15-20260827/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
-          : >/tmp/ab15-publish.txt
-          for localfile in .github/data/editorial-authority-batch15-20260827/*.php; do
-            bn="$(basename "$localfile")"
-            echo "=== $bn ===" | tee -a /tmp/ab15-publish.txt
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH15_DIR='$DATA' EMDO_BATCH15_ONLY_FILE='$bn' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" | tee -a /tmp/ab15-publish.txt
-          done
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT k.meta_value,p.ID,p.post_status,p.post_name,en.meta_value AS en_slug,thumb.meta_value AS thumbnail_id FROM wp_posts p JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' AND b.meta_value='15' JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta en ON en.post_id=p.ID AND en.meta_key='_en_US_post_name' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/ab15-db.txt
-          test "$(grep -c $'\tpublish\t' /tmp/ab15-db.txt)" -eq 5
-          test "$(awk -F '\t' '{print $6}' /tmp/ab15-db.txt | grep -E '^[0-9]+$' | sort -u | wc -l)" -eq 5
+          REMOTE=/tmp/emdo-default-blog-${GITHUB_RUN_ID}; IMG=$REMOTE/default.webp; PUB=$REMOTE/apply.php; PLUGIN=$REMOTE/default-plugin.php
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$REMOTE' '$PROD/wp-content/mu-plugins'"
+          sshpass -e scp $SCP /tmp/emdo-blog-default.webp "$STAGING_USER@$STAGING_HOST:$IMG"
+          sshpass -e scp $SCP .github/scripts/apply-default-blog-featured-image-20260827.php "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e scp $SCP mu-plugins/mdo-default-blog-featured-image-20260827.php "$STAGING_USER@$STAGING_HOST:$PLUGIN"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "install -m 0644 '$PLUGIN' '$PROD/wp-content/mu-plugins/mdo-default-blog-featured-image-20260827.php'; export PATH='$(dirname "$PHP")':\$PATH; EMDO_DEFAULT_BLOG_IMAGE_FILE='$IMG' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" | tee /tmp/default-blog-apply.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT p.ID,p.post_name,thumb.meta_value,marker.meta_value FROM wp_posts p JOIN wp_postmeta marker ON marker.post_id=p.ID AND marker.meta_key='_emdo_uses_default_featured' AND marker.meta_value='1' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' WHERE p.post_type='post' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/default-blog-db.txt
+          test "$(wc -l < /tmp/default-blog-db.txt)" -eq 5
+          test "$(awk -F '\t' '{print $3}' /tmp/default-blog-db.txt | grep -E '^[0-9]+$' | sort -u | wc -l)" -eq 1
 
-      - name: Verify ten public views
+      - name: Verify ten public views use shared image
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://www.elmercadodeorigen.com; stamp="$GITHUB_RUN_ID"
-          check(){ url="$1"; marker="$2"; f=/tmp/ab15-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab15=$stamp"); test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH15:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; }
-          check "$BASE/jamon-iberico-o-paleta-iberica-diferencias-cual-elegir/" ham-vs-shoulder-buying-guide
-          check "$BASE/en/iberian-ham-vs-iberian-shoulder-differences-which-to-choose/" ham-vs-shoulder-buying-guide
-          check "$BASE/jamon-iberico-vs-jamon-serrano-diferencias-como-elegir/" iberian-vs-serrano-ham-guide
-          check "$BASE/en/iberian-ham-vs-serrano-ham-differences-how-to-choose/" iberian-vs-serrano-ham-guide
-          check "$BASE/lomo-iberico-vs-lomito-iberico-diferencias-cual-elegir/" iberian-lomo-vs-lomito-guide
-          check "$BASE/en/iberian-lomo-vs-lomito-differences-which-to-choose/" iberian-lomo-vs-lomito-guide
-          check "$BASE/chorizo-vs-salchichon-diferencias-ingredientes-sabor-curacion/" chorizo-vs-salchichon-guide
-          check "$BASE/en/chorizo-vs-salchichon-differences-ingredients-flavour-curing/" chorizo-vs-salchichon-guide
-          check "$BASE/jamon-entero-o-deshuesado-diferencias-cual-elegir/" whole-vs-boneless-iberian-ham-guide
-          check "$BASE/en/whole-vs-boneless-iberian-ham-differences-which-to-choose/" whole-vs-boneless-iberian-ham-guide
+          check(){ url="$1"; f=/tmp/ab15-default.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO shared image verifier' -H 'Cache-Control: no-cache' -o "$f" -w '%{http_code}' "$url?sharedimg=$stamp"); test "$c" = 200; grep -Fq 'emo-article-featured' "$f"; grep -Fq 'el-mercado-de-origen-blog-provisional-' "$f"; }
+          check "$BASE/jamon-iberico-o-paleta-iberica-diferencias-cual-elegir/"
+          check "$BASE/en/iberian-ham-vs-iberian-shoulder-differences-which-to-choose/"
+          check "$BASE/jamon-iberico-vs-jamon-serrano-diferencias-como-elegir/"
+          check "$BASE/en/iberian-ham-vs-serrano-ham-differences-how-to-choose/"
+          check "$BASE/lomo-iberico-vs-lomito-iberico-diferencias-cual-elegir/"
+          check "$BASE/en/iberian-lomo-vs-lomito-differences-which-to-choose/"
+          check "$BASE/chorizo-vs-salchichon-diferencias-ingredientes-sabor-curacion/"
+          check "$BASE/en/chorizo-vs-salchichon-differences-ingredients-flavour-curing/"
+          check "$BASE/jamon-entero-o-deshuesado-diferencias-cual-elegir/"
+          check "$BASE/en/whole-vs-boneless-iberian-ham-differences-which-to-choose/"
 
-      - name: Record verified publication
+      - name: Record verified shared image
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p .deploy-status
           python3 - <<'PY'
           import json,os
+          apply=json.load(open('/tmp/default-blog-apply.json',encoding='utf-8'))
           rows=[]
-          for line in open('/tmp/ab15-db.txt',encoding='utf-8'):
+          for line in open('/tmp/default-blog-db.txt',encoding='utf-8'):
               p=line.rstrip('\n').split('\t')
-              if len(p)>=6:
-                  rows.append({'key':p[0],'id':int(p[1]),'status':p[2],'slug':p[3],'en_slug':p[4],'thumbnail_id':int(p[5])})
-          data={'batch':15,'release':'20260827','run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'verified':True,'posts':rows}
-          open('.deploy-status/editorial-authority-batch15-20260827.json','w',encoding='utf-8').write(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+              if len(p)>=4: rows.append({'id':int(p[0]),'slug':p[1],'thumbnail_id':int(p[2]),'default_marker':p[3]})
+          out={'release':'20260827','run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'verified':True,'default_attachment_id':apply['default_attachment_id'],'default_hash':apply['default_hash'],'image_width':apply['image_width'],'image_height':apply['image_height'],'image_url':apply['image_url'],'posts':rows}
+          open('.deploy-status/default-blog-featured-image-20260827.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
           PY
           git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/editorial-authority-batch15-20260827.json
-          git commit -m 'Record verified editorial authority batch 15 publication [skip ci]'
+          git add .deploy-status/default-blog-featured-image-20260827.json
+          git commit -m 'Record verified central default blog image [skip ci]'
           git pull --rebase origin main
           git push origin HEAD:main
