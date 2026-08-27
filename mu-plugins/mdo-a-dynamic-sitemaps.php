@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO - Dynamic multilingual sitemaps
- * Description: Canonical dynamic XML sitemaps for public ES/EN pages, product categories and products.
- * Version: 1.0.1
+ * Description: Canonical dynamic XML sitemaps for public ES/EN pages, blog posts, blog categories, product categories and products.
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -11,10 +11,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 	final class MDO_Dynamic_Multilingual_Sitemaps_20260818 {
-		private const INDEX_FILE      = 'sitemap_index.xml';
-		private const PAGES_FILE      = 'mdo-sitemap-pages.xml';
-		private const CATEGORIES_FILE = 'mdo-sitemap-categories.xml';
-		private const PRODUCTS_FILE   = 'mdo-sitemap-products.xml';
+		private const INDEX_FILE           = 'sitemap_index.xml';
+		private const PAGES_FILE           = 'mdo-sitemap-pages.xml';
+		private const POSTS_FILE           = 'mdo-sitemap-posts.xml';
+		private const BLOG_CATEGORIES_FILE = 'mdo-sitemap-blog-categories.xml';
+		private const CATEGORIES_FILE      = 'mdo-sitemap-categories.xml';
+		private const PRODUCTS_FILE        = 'mdo-sitemap-products.xml';
 
 		/** @var int[]|null */
 		private static $eligible_product_ids = null;
@@ -46,6 +48,8 @@ if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 				'wp-sitemap.xml'               => self::INDEX_FILE,
 				'english-sitemap.xml'          => self::INDEX_FILE,
 				'page-sitemap.xml'             => self::PAGES_FILE,
+				'post-sitemap.xml'             => self::POSTS_FILE,
+				'category-sitemap.xml'         => self::BLOG_CATEGORIES_FILE,
 				'product-sitemap.xml'          => self::PRODUCTS_FILE,
 				'product_cat-sitemap.xml'      => self::CATEGORIES_FILE,
 				'product-category-sitemap.xml' => self::CATEGORIES_FILE,
@@ -66,6 +70,12 @@ if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 					break;
 				case self::PAGES_FILE:
 					self::serve_pages();
+					break;
+				case self::POSTS_FILE:
+					self::serve_posts();
+					break;
+				case self::BLOG_CATEGORIES_FILE:
+					self::serve_blog_categories();
 					break;
 				case self::CATEGORIES_FILE:
 					self::serve_categories();
@@ -103,7 +113,7 @@ if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 			self::send_xml_headers();
 			echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 			echo '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
-			foreach ( array( self::PAGES_FILE, self::CATEGORIES_FILE, self::PRODUCTS_FILE ) as $file ) {
+			foreach ( array( self::PAGES_FILE, self::POSTS_FILE, self::BLOG_CATEGORIES_FILE, self::CATEGORIES_FILE, self::PRODUCTS_FILE ) as $file ) {
 				echo "  <sitemap><loc>" . self::xml( home_url( '/' . $file ) ) . "</loc></sitemap>\n";
 			}
 			echo '</sitemapindex>';
@@ -149,6 +159,92 @@ if ( ! class_exists( 'MDO_Dynamic_Multilingual_Sitemaps_20260818' ) ) {
 				self::render_language_pair( $es, $en, self::post_lastmod( $page ) );
 			}
 			self::urlset_close();
+		}
+
+		private static function serve_posts(): void {
+			$posts = get_posts(
+				array(
+					'post_type'        => 'post',
+					'post_status'      => 'publish',
+					'posts_per_page'   => -1,
+					'orderby'          => 'ID',
+					'order'            => 'ASC',
+					'has_password'     => false,
+					'suppress_filters' => true,
+				)
+			);
+
+			self::urlset_open();
+			foreach ( $posts as $post ) {
+				if ( ! $post instanceof WP_Post || '' !== (string) $post->post_password ) {
+					continue;
+				}
+
+				$es = get_permalink( $post );
+				if ( ! is_string( $es ) || '' === $es ) {
+					continue;
+				}
+
+				$en = self::english_post_url( $post );
+				self::render_language_pair( $es, $en, self::post_lastmod( $post ) );
+			}
+			self::urlset_close();
+		}
+
+		private static function serve_blog_categories(): void {
+			$terms = self::eligible_blog_categories();
+
+			self::urlset_open();
+			foreach ( $terms as $term ) {
+				$es = get_term_link( $term );
+				if ( is_wp_error( $es ) || ! is_string( $es ) || '' === $es ) {
+					continue;
+				}
+
+				// Blog category archives currently use one canonical public URL.
+				self::render_language_pair( $es, '', '' );
+			}
+			self::urlset_close();
+		}
+
+		/** @return WP_Term[] */
+		private static function eligible_blog_categories(): array {
+			if ( function_exists( 'elmercado_blog_categories_010263' ) ) {
+				$terms = elmercado_blog_categories_010263();
+				return array_values(
+					array_filter(
+						(array) $terms,
+						static function( $term ): bool {
+							return $term instanceof WP_Term && 'category' === $term->taxonomy && (int) $term->count > 0;
+						}
+					)
+				);
+			}
+
+			$terms = get_terms(
+				array(
+					'taxonomy'   => 'category',
+					'hide_empty' => true,
+					'orderby'    => 'term_id',
+					'order'      => 'ASC',
+				)
+			);
+			if ( is_wp_error( $terms ) ) {
+				return array();
+			}
+
+			$default_id = (int) get_option( 'default_category' );
+			$output     = array();
+			foreach ( $terms as $term ) {
+				if ( ! $term instanceof WP_Term || (int) $term->term_id === $default_id ) {
+					continue;
+				}
+				if ( in_array( sanitize_title( $term->slug ), array( 'sin-categoria', 'uncategorized' ), true ) ) {
+					continue;
+				}
+				$output[] = $term;
+			}
+			return $output;
 		}
 
 		private static function serve_products(): void {
