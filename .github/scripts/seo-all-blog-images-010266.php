@@ -1,5 +1,5 @@
 <?php
-/** Complete missing ALT metadata for images used by published blog posts. */
+/** Complete and audit ALT metadata for every image used by published blog posts. */
 if ( ! defined( 'ABSPATH' ) ) { return; }
 if ( ! function_exists( 'elmercado_blog_image_alt_010266' ) ) { throw new RuntimeException( 'Blog image SEO module is not loaded.' ); }
 
@@ -8,32 +8,52 @@ $posts = get_posts( array(
 	'fields' => 'ids', 'orderby' => 'ID', 'order' => 'ASC', 'no_found_rows' => true,
 ) );
 $seen = array();
+$manual_alts = array(
+	13318 => 'Pieza de jamón curado en primer plano, lista para el corte',
+	13320 => 'Pieza de jamón preparada para su conservación en el congelador',
+);
 $result = array(
 	'posts_scanned' => 0, 'unique_attachments' => 0, 'alt_added' => 0,
-	'alt_preserved' => 0, 'unresolved' => 0, 'external_images' => 0,
+	'alt_refined' => 0, 'alt_preserved' => 0, 'unresolved' => 0, 'external_images' => 0,
 	'blog_url' => '', 'sample_post_url' => '', 'items' => array(),
 );
 
-$apply = static function ( int $attachment_id, int $post_id, string $source ) use ( &$seen, &$result ): void {
+$apply = static function ( int $attachment_id, int $post_id, string $source ) use ( &$seen, &$result, $manual_alts ): void {
 	if ( $attachment_id <= 0 || 'attachment' !== get_post_type( $attachment_id ) ) { $result['unresolved']++; return; }
 	if ( isset( $seen[ $attachment_id ] ) ) { return; }
 	$seen[ $attachment_id ] = true;
 	$result['unique_attachments']++;
 	$current = elmercado_clean_image_alt_010266( (string) get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ) );
+	$post_title = elmercado_clean_image_alt_010266( (string) get_the_title( $post_id ) );
+
+	if ( isset( $manual_alts[ $attachment_id ] ) ) {
+		$alt = $manual_alts[ $attachment_id ];
+		if ( $current !== $alt ) {
+			update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
+			$result['alt_refined']++;
+			$action = 'refined';
+		} else {
+			$result['alt_preserved']++;
+			$action = 'preserved';
+		}
+		$result['items'][] = array( 'id' => $attachment_id, 'post_id' => $post_id, 'post_title' => $post_title, 'source' => $source, 'action' => $action, 'alt' => $alt );
+		return;
+	}
+
 	if ( '' !== $current ) {
 		$result['alt_preserved']++;
-		$result['items'][] = array( 'id' => $attachment_id, 'post_id' => $post_id, 'source' => $source, 'action' => 'preserved', 'alt' => $current );
+		$result['items'][] = array( 'id' => $attachment_id, 'post_id' => $post_id, 'post_title' => $post_title, 'source' => $source, 'action' => 'preserved', 'alt' => $current );
 		return;
 	}
 	$alt = elmercado_blog_image_alt_010266( $attachment_id, $post_id );
 	if ( '' === $alt ) {
 		$result['unresolved']++;
-		$result['items'][] = array( 'id' => $attachment_id, 'post_id' => $post_id, 'source' => $source, 'action' => 'unresolved', 'alt' => '' );
+		$result['items'][] = array( 'id' => $attachment_id, 'post_id' => $post_id, 'post_title' => $post_title, 'source' => $source, 'action' => 'unresolved', 'alt' => '' );
 		return;
 	}
 	update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
 	$result['alt_added']++;
-	$result['items'][] = array( 'id' => $attachment_id, 'post_id' => $post_id, 'source' => $source, 'action' => 'added', 'alt' => $alt );
+	$result['items'][] = array( 'id' => $attachment_id, 'post_id' => $post_id, 'post_title' => $post_title, 'source' => $source, 'action' => 'added', 'alt' => $alt );
 };
 
 foreach ( $posts as $post_id ) {
@@ -58,14 +78,9 @@ $page_for_posts = (int) get_option( 'page_for_posts' );
 $result['blog_url'] = $page_for_posts > 0 ? get_permalink( $page_for_posts ) : home_url( '/blog/' );
 $sample_id = 0;
 foreach ( array_reverse( $posts ) as $candidate_id ) {
-	if ( (int) get_post_thumbnail_id( (int) $candidate_id ) > 0 ) {
-		$sample_id = (int) $candidate_id;
-		break;
-	}
+	if ( (int) get_post_thumbnail_id( (int) $candidate_id ) > 0 ) { $sample_id = (int) $candidate_id; break; }
 }
-if ( 0 === $sample_id && ! empty( $posts ) ) {
-	$sample_id = (int) end( $posts );
-}
+if ( 0 === $sample_id && ! empty( $posts ) ) { $sample_id = (int) end( $posts ); }
 $result['sample_post_url'] = $sample_id > 0 ? get_permalink( $sample_id ) : '';
 $result['ok'] = $result['posts_scanned'] > 0;
 echo wp_json_encode( $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
