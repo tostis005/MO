@@ -155,8 +155,9 @@ add_filter(
 				$attr['sizes'] = '(max-width: 820px) calc(100vw - 32px), 100vw';
 			}
 		} else {
-			if ( empty( $attr['loading'] ) ) {
-				$attr['loading'] = 'lazy';
+			$attr['loading'] = 'lazy';
+			if ( isset( $attr['fetchpriority'] ) && 'high' === $attr['fetchpriority'] ) {
+				unset( $attr['fetchpriority'] );
 			}
 			if ( empty( $attr['sizes'] ) ) {
 				$attr['sizes'] = '(max-width: 860px) calc(100vw - 36px), 800px';
@@ -212,8 +213,9 @@ add_filter(
 			}
 
 			$processor->set_attribute( 'decoding', 'async' );
-			if ( null === $processor->get_attribute( 'loading' ) ) {
-				$processor->set_attribute( 'loading', 'lazy' );
+			$processor->set_attribute( 'loading', 'lazy' );
+			if ( 'high' === (string) $processor->get_attribute( 'fetchpriority' ) ) {
+				$processor->remove_attribute( 'fetchpriority' );
 			}
 			if ( null === $processor->get_attribute( 'sizes' ) ) {
 				$processor->set_attribute( 'sizes', '(max-width: 860px) calc(100vw - 36px), 800px' );
