@@ -1,0 +1,92 @@
+name: Editorial authority batch 24 repair and verify 20260827
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editorial-authority-batch24-repair-20260827.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repair shared provisional image and inspect posts
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval '
+            \$default=(int)get_option(\"emdo_default_blog_featured_attachment_id\",0);
+            if(\$default<=0 || \"attachment\"!==get_post_type(\$default)){throw new RuntimeException(\"Default image missing\");}
+            \$ids=get_posts(array(\"post_type\"=>\"post\",\"post_status\"=>\"publish\",\"posts_per_page\"=>-1,\"fields\"=>\"ids\",\"meta_key\"=>\"_emdo_authority_batch\",\"meta_value\"=>\"24\"));
+            if(count(\$ids)!==5){throw new RuntimeException(\"Expected 5 batch24 posts, found \".count(\$ids));}
+            foreach(\$ids as \$id){update_post_meta(\$id,\"_thumbnail_id\",\$default);update_post_meta(\$id,\"_emdo_uses_default_featured\",\"1\");update_post_meta(\$id,\"_emdo_editorial_image_approved_id\",\$default);update_post_meta(\$id,\"_emdo_editorial_cover_asset_id\",\"emdo-blog-default-featured\");update_post_meta(\$id,\"_emdo_editorial_cover_brand_safe\",\"1\");clean_post_cache(\$id);} echo \"repaired=\".count(\$ids).\" default=\".\$default.PHP_EOL;
+          ' --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT k.meta_value,p.ID,p.post_status,p.post_name,en.meta_value AS en_slug,thumb.meta_value AS thumbnail_id,marker.meta_value AS provisional FROM wp_posts p JOIN wp_postmeta b ON b.post_id=p.ID AND b.meta_key='_emdo_authority_batch' AND b.meta_value='24' JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' LEFT JOIN wp_postmeta en ON en.post_id=p.ID AND en.meta_key='_en_US_post_name' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' LEFT JOIN wp_postmeta marker ON marker.post_id=p.ID AND marker.meta_key='_emdo_uses_default_featured' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true" | tee /tmp/ab24-repair.txt
+          grep -E $'^[^\t]+\t[0-9]+\tpublish\t' /tmp/ab24-repair.txt > /tmp/ab24-db.txt
+          cat /tmp/ab24-db.txt
+          test "$(wc -l < /tmp/ab24-db.txt)" -eq 5
+          test "$(awk -F '\t' '$7==1{n++} END{print n+0}' /tmp/ab24-db.txt)" -eq 5
+          test "$(awk -F '\t' '{print $6}' /tmp/ab24-db.txt | sort -u | wc -l)" -eq 1
+
+      - name: Verify ten public views
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://www.elmercadodeorigen.com; stamp="$GITHUB_RUN_ID"
+          check(){ url="$1"; marker="$2"; f=/tmp/ab24-page.html; echo "checking $url"; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab24repair=$stamp"); test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH24:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; grep -Fq 'el-mercado-de-origen-blog-provisional-' "$f"; }
+          check "$BASE/tomate-harinoso-por-que-ocurre-textura-como-evitarlo/" mealy-tomato-guide
+          check "$BASE/en/mealy-tomato-why-it-happens-texture-how-to-avoid-it/" mealy-tomato-guide
+          check "$BASE/verduras-temporada-espana-calendario-meses-que-comprar/" seasonal-vegetables-spain-calendar-guide
+          check "$BASE/en/seasonal-vegetables-in-spain-calendar-by-month-what-to-buy/" seasonal-vegetables-spain-calendar-guide
+          check "$BASE/como-lavar-verduras-correctamente-agua-vinagre-bicarbonato/" how-to-wash-vegetables-guide
+          check "$BASE/en/how-to-wash-vegetables-properly-water-vinegar-baking-soda/" how-to-wash-vegetables-guide
+          check "$BASE/morcon-vs-chorizo-diferencias-carne-tripa-curacion-sabor/" morcon-vs-chorizo-guide
+          check "$BASE/en/morcon-vs-chorizo-differences-meat-casing-curing-flavour/" morcon-vs-chorizo-guide
+          check "$BASE/cana-de-lomo-y-lomo-embuchado-son-lo-mismo-diferencias/" cana-de-lomo-vs-lomo-embuchado-guide
+          check "$BASE/en/cana-de-lomo-vs-lomo-embuchado-are-they-the-same/" cana-de-lomo-vs-lomo-embuchado-guide
+
+      - name: Record verified publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os
+          rows=[]
+          for line in open('/tmp/ab24-db.txt',encoding='utf-8'):
+              p=line.rstrip('\n').split('\t')
+              rows.append({'key':p[0],'id':int(p[1]),'status':p[2],'slug':p[3],'en_slug':p[4],'thumbnail_id':int(p[5]),'provisional':p[6]})
+          data={'batch':24,'release':'20260827','run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'verified':True,'uses_shared_provisional_image':True,'repaired_shared_provisional':True,'posts':rows}
+          open('.deploy-status/editorial-authority-batch24-20260827.json','w',encoding='utf-8').write(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/editorial-authority-batch24-20260827.json
+          git commit -m 'Record verified editorial authority batch 24 publication [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
