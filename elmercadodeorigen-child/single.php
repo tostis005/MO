@@ -172,7 +172,6 @@ while ( have_posts() ) :
 	$category   = ! empty( $categories ) ? $categories[0] : null;
 	$previous   = get_previous_post();
 	$next       = get_next_post();
-	$blog_url   = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_blog_public_url_010263() : elmercado_blog_url();
 	?>
 	<main id="primary" class="site-main emo-article-page">
 		<article <?php post_class( 'emo-article' ); ?>>
@@ -184,7 +183,7 @@ while ( have_posts() ) :
 								<a href="<?php echo esc_url( get_category_link( $category ) ); ?>"><?php echo esc_html( $category->name ); ?></a>
 							<?php endif; ?>
 							<span><?php echo esc_html( get_the_date( 'j F Y' ) ); ?></span>
-							<span><?php echo esc_html( (string) elmercado_reading_time( $post_id ) ); ?> <?php echo esc_html( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'min de lectura', 'min read' ) : 'min de lectura' ); ?></span>
+							<span><?php echo esc_html( (string) elmercado_reading_time( $post_id ) ); ?> <?php esc_html_e( 'min de lectura', 'elmercadodeorigen' ); ?></span>
 						</div>
 						<h1><?php the_title(); ?></h1>
 					</div>
@@ -263,13 +262,13 @@ while ( have_posts() ) :
 					</div>
 
 					<footer class="emo-article-footer">
-						<a class="emo-article-back" href="<?php echo esc_url( $blog_url ); ?>">← <?php echo esc_html( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'Volver al blog', 'Back to the blog' ) : 'Volver al blog' ); ?></a>
-						<nav class="emo-article-navigation" aria-label="<?php echo esc_attr( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'Otros artículos', 'Other articles' ) : 'Otros artículos' ); ?>">
+						<a class="emo-article-back" href="<?php echo esc_url( elmercado_blog_url() ); ?>">← <?php esc_html_e( 'Volver al blog', 'elmercadodeorigen' ); ?></a>
+						<nav class="emo-article-navigation" aria-label="<?php esc_attr_e( 'Otras entradas', 'elmercadodeorigen' ); ?>">
 							<?php if ( $previous instanceof WP_Post ) : ?>
-								<a href="<?php echo esc_url( get_permalink( $previous ) ); ?>"><?php echo esc_html( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'Anterior', 'Previous' ) : 'Anterior' ); ?></a>
+								<a href="<?php echo esc_url( get_permalink( $previous ) ); ?>"><?php esc_html_e( 'Anterior', 'elmercadodeorigen' ); ?></a>
 							<?php endif; ?>
 							<?php if ( $next instanceof WP_Post ) : ?>
-								<a href="<?php echo esc_url( get_permalink( $next ) ); ?>"><?php echo esc_html( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'Siguiente', 'Next' ) : 'Siguiente' ); ?></a>
+								<a href="<?php echo esc_url( get_permalink( $next ) ); ?>"><?php esc_html_e( 'Siguiente', 'elmercadodeorigen' ); ?></a>
 							<?php endif; ?>
 						</nav>
 					</footer>
@@ -303,10 +302,10 @@ while ( have_posts() ) :
 				<div class="emo-shell">
 					<header class="emo-related-reading__heading">
 						<div>
-							<span class="emo-kicker"><?php echo esc_html( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'Artículos relacionados', 'Related articles' ) : 'Artículos relacionados' ); ?></span>
-							<h2><?php echo esc_html( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'También te puede interesar', 'You may also be interested' ) : 'También te puede interesar' ); ?></h2>
+							<span class="emo-kicker"><?php esc_html_e( 'Seguir descubriendo', 'elmercadodeorigen' ); ?></span>
+							<h2><?php esc_html_e( 'Más historias del mercado', 'elmercadodeorigen' ); ?></h2>
 						</div>
-						<a class="emo-text-link" href="<?php echo esc_url( $blog_url ); ?>"><?php echo esc_html( function_exists( 'elmercado_blog_copy_010263' ) ? elmercado_blog_copy_010263( 'Ver todos los artículos', 'View all articles' ) : 'Ver todos los artículos' ); ?> <span aria-hidden="true">→</span></a>
+						<a class="emo-text-link" href="<?php echo esc_url( elmercado_blog_url() ); ?>"><?php esc_html_e( 'Ver todos los artículos', 'elmercadodeorigen' ); ?> <span aria-hidden="true">→</span></a>
 					</header>
 					<div class="emo-journal-grid">
 						<?php
