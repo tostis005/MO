@@ -56,7 +56,16 @@ foreach ( $posts as $post_id ) {
 
 $page_for_posts = (int) get_option( 'page_for_posts' );
 $result['blog_url'] = $page_for_posts > 0 ? get_permalink( $page_for_posts ) : home_url( '/blog/' );
-$sample_id = ! empty( $posts ) ? (int) end( $posts ) : 0;
+$sample_id = 0;
+foreach ( array_reverse( $posts ) as $candidate_id ) {
+	if ( (int) get_post_thumbnail_id( (int) $candidate_id ) > 0 ) {
+		$sample_id = (int) $candidate_id;
+		break;
+	}
+}
+if ( 0 === $sample_id && ! empty( $posts ) ) {
+	$sample_id = (int) end( $posts );
+}
 $result['sample_post_url'] = $sample_id > 0 ? get_permalink( $sample_id ) : '';
 $result['ok'] = $result['posts_scanned'] > 0;
 echo wp_json_encode( $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
