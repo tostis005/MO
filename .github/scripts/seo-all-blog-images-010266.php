@@ -8,7 +8,11 @@ $posts = get_posts( array(
 	'fields' => 'ids', 'orderby' => 'ID', 'order' => 'ASC', 'no_found_rows' => true,
 ) );
 $seen = array();
-$result = array( 'posts_scanned' => 0, 'unique_attachments' => 0, 'alt_added' => 0, 'alt_preserved' => 0, 'unresolved' => 0, 'external_images' => 0, 'items' => array() );
+$result = array(
+	'posts_scanned' => 0, 'unique_attachments' => 0, 'alt_added' => 0,
+	'alt_preserved' => 0, 'unresolved' => 0, 'external_images' => 0,
+	'blog_url' => '', 'sample_post_url' => '', 'items' => array(),
+);
 
 $apply = static function ( int $attachment_id, int $post_id, string $source ) use ( &$seen, &$result ): void {
 	if ( $attachment_id <= 0 || 'attachment' !== get_post_type( $attachment_id ) ) { $result['unresolved']++; return; }
@@ -49,5 +53,10 @@ foreach ( $posts as $post_id ) {
 		}
 	}
 }
+
+$page_for_posts = (int) get_option( 'page_for_posts' );
+$result['blog_url'] = $page_for_posts > 0 ? get_permalink( $page_for_posts ) : home_url( '/blog/' );
+$sample_id = ! empty( $posts ) ? (int) end( $posts ) : 0;
+$result['sample_post_url'] = $sample_id > 0 ? get_permalink( $sample_id ) : '';
 $result['ok'] = $result['posts_scanned'] > 0;
 echo wp_json_encode( $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) . PHP_EOL;
