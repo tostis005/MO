@@ -39,9 +39,9 @@ $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_bl
 <main id="primary" class="site-main emo-journal emo-journal--discovery">
 	<section class="emo-journal-hero">
 		<div class="emo-shell emo-journal-hero__inner">
-			<span class="emo-kicker emo-kicker--light"><?php esc_html_e( 'El cuaderno de origen', 'elmercadodeorigen' ); ?></span>
-			<h1><?php esc_html_e( 'Historias para elegir con más criterio.', 'elmercadodeorigen' ); ?></h1>
-			<p><?php esc_html_e( 'Ideas, procesos y personas para entender qué hay detrás de un producto y por qué su origen importa.', 'elmercadodeorigen' ); ?></p>
+			<span class="emo-kicker emo-kicker--light"><?php echo esc_html( elmercado_blog_copy_010263( 'Blog', 'Blog' ) ); ?></span>
+			<h1><?php echo esc_html( elmercado_blog_copy_010263( 'Todo lo que necesitas saber sobre nuestros productos', 'Everything you need to know about our products' ) ); ?></h1>
+			<p><?php echo esc_html( elmercado_blog_copy_010263( 'Artículos sobre jamón ibérico, carnes, aceite de oliva, conservas y otros productos: cómo elegirlos, conservarlos, prepararlos y conocer mejor su origen.', 'Articles about Iberian ham, meat, olive oil, preserves and other products: how to choose them, store them, prepare them and understand their origin.' ) ); ?></p>
 		</div>
 	</section>
 
@@ -50,7 +50,7 @@ $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_bl
 
 		<?php if ( ! $is_filtered && ! empty( $featured_ids ) ) : ?>
 			<section class="emo-blog-featured">
-				<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Destacados', 'Featured' ) ); ?></span><h2><?php echo esc_html( elmercado_blog_copy_010263( 'Para empezar por lo más relevante', 'A good place to start' ) ); ?></h2></div></header>
+				<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Artículos destacados', 'Featured articles' ) ); ?></span><h2><?php echo esc_html( elmercado_blog_copy_010263( 'Una selección para empezar', 'A selection to get you started' ) ); ?></h2></div></header>
 				<div class="emo-blog-featured-grid"><?php foreach ( $featured_ids as $featured_id ) { echo elmercado_render_post_card( (int) $featured_id ); } // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
 			</section>
 		<?php endif; ?>
@@ -58,7 +58,7 @@ $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_bl
 		<section class="emo-blog-results">
 			<header class="emo-blog-section-heading"><div>
 				<span class="emo-kicker"><?php echo esc_html( $is_filtered ? elmercado_blog_copy_010263( 'Resultados', 'Results' ) : elmercado_blog_copy_010263( 'Últimos artículos', 'Latest articles' ) ); ?></span>
-				<h2><?php echo esc_html( $is_filtered ? elmercado_blog_copy_010263( 'Artículos relacionados con tu búsqueda', 'Articles matching your search' ) : elmercado_blog_copy_010263( 'Sigue descubriendo el origen', 'Keep exploring the origin' ) ); ?></h2>
+				<h2><?php echo esc_html( $is_filtered ? elmercado_blog_copy_010263( 'Artículos relacionados con tu búsqueda', 'Articles matching your search' ) : elmercado_blog_copy_010263( 'Lo último que hemos publicado', 'What we have published recently' ) ); ?></h2>
 			</div><?php if ( $is_filtered ) : ?><span class="emo-blog-result-count"><?php echo esc_html( sprintf( _n( '%s artículo', '%s artículos', (int) $articles_query->found_posts, 'elmercadodeorigen' ), number_format_i18n( (int) $articles_query->found_posts ) ) ); ?></span><?php endif; ?></header>
 
 			<?php if ( $articles_query->have_posts() ) : ?>
