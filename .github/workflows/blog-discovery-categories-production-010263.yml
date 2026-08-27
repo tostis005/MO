@@ -13,6 +13,7 @@ on:
       - 'elmercadodeorigen-child/assets/js/blog-discovery-010263.js'
       - 'mu-plugins/mdo-blog-discovery-loader-010263.php'
       - 'mu-plugins/mdo-blog-category-guard-010263.php'
+      - 'mu-plugins/mdo-blog-language-standard-010265.php'
       - '.github/scripts/migrate-blog-product-categories-010263.php'
       - '.github/scripts/verify-blog-discovery-010263.php'
       - '.github/workflows/blog-discovery-categories-production-010263.yml'
@@ -91,6 +92,7 @@ jobs:
           sshpass -e scp $SCP_OPTS elmercadodeorigen-child/assets/js/blog-discovery-010263.js "$STAGING_USER@$STAGING_HOST:$THEME/assets/js/blog-discovery-010263.js"
           sshpass -e scp $SCP_OPTS mu-plugins/mdo-blog-discovery-loader-010263.php "$STAGING_USER@$STAGING_HOST:$MU/mdo-blog-discovery-loader-010263.php"
           sshpass -e scp $SCP_OPTS mu-plugins/mdo-blog-category-guard-010263.php "$STAGING_USER@$STAGING_HOST:$MU/mdo-blog-category-guard-010263.php"
+          sshpass -e scp $SCP_OPTS mu-plugins/mdo-blog-language-standard-010265.php "$STAGING_USER@$STAGING_HOST:$MU/mdo-blog-language-standard-010265.php"
           sshpass -e scp $SCP_OPTS .github/scripts/migrate-blog-product-categories-010263.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MIGRATE"
           sshpass -e scp $SCP_OPTS .github/scripts/verify-blog-discovery-010263.php "$STAGING_USER@$STAGING_HOST:$REMOTE_VERIFY"
 
@@ -103,6 +105,7 @@ jobs:
             '$PHP' -l '$THEME/inc/blog-discovery-010263.php'
             '$PHP' -l '$MU/mdo-blog-discovery-loader-010263.php'
             '$PHP' -l '$MU/mdo-blog-category-guard-010263.php'
+            '$PHP' -l '$MU/mdo-blog-language-standard-010265.php'
             '$PHP' -l '$REMOTE_MIGRATE'
             '$PHP' -l '$REMOTE_VERIFY'
             export PATH='$(dirname "$PHP")':\$PATH
