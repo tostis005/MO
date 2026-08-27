@@ -1,0 +1,112 @@
+name: Blog discovery categories production 010263
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/home.php'
+      - 'elmercadodeorigen-child/category.php'
+      - 'elmercadodeorigen-child/inc/blog-discovery-010263.php'
+      - 'elmercadodeorigen-child/assets/css/blog-discovery-010263.css'
+      - 'elmercadodeorigen-child/assets/js/blog-discovery-010263.js'
+      - 'mu-plugins/mdo-blog-discovery-loader-010263.php'
+      - 'mu-plugins/mdo-blog-category-guard-010263.php'
+      - '.github/scripts/migrate-blog-product-categories-010263.php'
+      - '.github/scripts/verify-blog-discovery-010263.php'
+      - '.github/workflows/blog-discovery-categories-production-010263.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Deploy blog files, migrate categories and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP_OPTS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          INFO="$(sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp=$(command -v wp || true)
+            php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            if [ -z "$wp" ] || [ -z "$php" ]; then exit 20; fi
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;;
+              esac
+            done
+            if [ -z "$prod" ]; then exit 21; fi
+            style=$("$php" "$wp" option get stylesheet --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            if [ -z "$style" ]; then exit 22; fi
+            printf "%s|%s|%s|%s" "$prod" "$php" "$wp" "$style"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          REST="${REST#*|}"
+          WP="${REST%%|*}"
+          STYLE="${REST#*|}"
+          THEME="$PROD/wp-content/themes/$STYLE"
+          MU="$PROD/wp-content/mu-plugins"
+          REMOTE_MIGRATE="/tmp/migrate-blog-product-categories-010263.php"
+          REMOTE_VERIFY="/tmp/verify-blog-discovery-010263.php"
+
+          echo "Production: $PROD"
+          echo "Active stylesheet: $STYLE"
+
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$THEME/inc' '$THEME/assets/css' '$THEME/assets/js' '$MU'"
+
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/home.php "$STAGING_USER@$STAGING_HOST:$THEME/home.php"
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/category.php "$STAGING_USER@$STAGING_HOST:$THEME/category.php"
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/inc/blog-discovery-010263.php "$STAGING_USER@$STAGING_HOST:$THEME/inc/blog-discovery-010263.php"
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/assets/css/blog-discovery-010263.css "$STAGING_USER@$STAGING_HOST:$THEME/assets/css/blog-discovery-010263.css"
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/assets/js/blog-discovery-010263.js "$STAGING_USER@$STAGING_HOST:$THEME/assets/js/blog-discovery-010263.js"
+          sshpass -e scp $SCP_OPTS mu-plugins/mdo-blog-discovery-loader-010263.php "$STAGING_USER@$STAGING_HOST:$MU/mdo-blog-discovery-loader-010263.php"
+          sshpass -e scp $SCP_OPTS mu-plugins/mdo-blog-category-guard-010263.php "$STAGING_USER@$STAGING_HOST:$MU/mdo-blog-category-guard-010263.php"
+          sshpass -e scp $SCP_OPTS .github/scripts/migrate-blog-product-categories-010263.php "$STAGING_USER@$STAGING_HOST:$REMOTE_MIGRATE"
+          sshpass -e scp $SCP_OPTS .github/scripts/verify-blog-discovery-010263.php "$STAGING_USER@$STAGING_HOST:$REMOTE_VERIFY"
+
+          sshpass -e ssh $SSH_OPTS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            '$PHP' -l '$THEME/home.php'
+            '$PHP' -l '$THEME/category.php'
+            '$PHP' -l '$THEME/inc/blog-discovery-010263.php'
+            '$PHP' -l '$MU/mdo-blog-discovery-loader-010263.php'
+            '$PHP' -l '$MU/mdo-blog-category-guard-010263.php'
+            '$PHP' -l '$REMOTE_MIGRATE'
+            '$PHP' -l '$REMOTE_VERIFY'
+            export PATH='$(dirname "$PHP")':\$PATH
+            echo '--- CATEGORY MIGRATION ---'
+            '$PHP' '$WP' eval-file '$REMOTE_MIGRATE' --path='$PROD' --skip-plugins --skip-themes --allow-root
+            '$PHP' '$WP' cache flush --path='$PROD' --allow-root || true
+            echo '--- PRODUCTION VERIFICATION ---'
+            '$PHP' '$WP' eval-file '$REMOTE_VERIFY' --path='$PROD' --skip-plugins --allow-root
+            echo '--- BLOG URL ---'
+            page_id=\$('$PHP' '$WP' option get page_for_posts --path='$PROD' --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            if [ -n \"\$page_id\" ] && [ \"\$page_id\" != '0' ]; then '$PHP' '$WP' post url \"\$page_id\" --path='$PROD' --skip-plugins --skip-themes --allow-root || true; fi
+            rm -f '$REMOTE_MIGRATE' '$REMOTE_VERIFY'
+          "
