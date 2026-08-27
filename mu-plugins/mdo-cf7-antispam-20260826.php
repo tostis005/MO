@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Contact Form 7 Anti-spam Guard
- * Description: Invisible server-side anti-spam guard for Contact Form 7 using short-lived signed browser challenges plus conservative rate limiting.
- * Version: 1.0.1
+ * Description: Invisible server-side anti-spam guard for Contact Form 7 using signed browser challenges, conservative rate limiting and generated-text detection.
+ * Version: 1.1.0
  * Author: El Mercado de Origen
  */
 
@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-const MDO_CF7_GUARD_VERSION = '1.0.1';
+const MDO_CF7_GUARD_VERSION = '1.1.0';
 const MDO_CF7_GUARD_FIELD   = '_mdo_cf7_guard';
 
 /**
@@ -210,6 +210,161 @@ function mdo_cf7_guard_log_spam( $reason ) {
 }
 
 /**
+ * Shannon entropy for a short ASCII token.
+ */
+function mdo_cf7_guard_entropy( $value ) {
+    $length = strlen( $value );
+    if ( $length < 1 ) {
+        return 0.0;
+    }
+
+    $counts  = count_chars( strtolower( $value ), 1 );
+    $entropy = 0.0;
+
+    foreach ( $counts as $count ) {
+        $probability = $count / $length;
+        $entropy    -= $probability * log( $probability, 2 );
+    }
+
+    return $entropy;
+}
+
+/**
+ * Identify the characteristic pseudo-random letter strings currently used by the
+ * spam bot (for example mixed-case 15-25 character tokens). This deliberately
+ * requires several independent signals so normal names, brands and product codes
+ * are not rejected just because they contain mixed case.
+ */
+function mdo_cf7_guard_looks_generated_token( $raw_value ) {
+    if ( ! is_scalar( $raw_value ) ) {
+        return false;
+    }
+
+    $value  = trim( wp_strip_all_tags( (string) wp_unslash( $raw_value ) ) );
+    $length = strlen( $value );
+
+    // The observed spam tokens are long, unbroken ASCII-letter strings.
+    if ( $length < 14 || $length > 40 || ! preg_match( '/^[A-Za-z]+$/', $value ) ) {
+        return false;
+    }
+
+    $upper = preg_match_all( '/[A-Z]/', $value, $unused );
+    $lower = preg_match_all( '/[a-z]/', $value, $unused );
+
+    // A normal all-lowercase word or simple CamelCase label should not be enough.
+    if ( $upper < 2 || $lower < 5 ) {
+        return false;
+    }
+
+    $case_transitions  = 0;
+    $consecutive_upper = 0;
+    $vowels            = 0;
+    $unique_letters    = count( array_unique( str_split( strtolower( $value ) ) ) );
+    $characters        = str_split( $value );
+    $character_count   = count( $characters );
+
+    foreach ( $characters as $index => $character ) {
+        if ( false !== strpos( 'aeiouAEIOU', $character ) ) {
+            $vowels++;
+        }
+
+        if ( 0 === $index ) {
+            continue;
+        }
+
+        $previous = $characters[ $index - 1 ];
+        $prev_up  = ctype_upper( $previous );
+        $curr_up  = ctype_upper( $character );
+
+        if ( $prev_up !== $curr_up ) {
+            $case_transitions++;
+        }
+
+        if ( $prev_up && $curr_up ) {
+            $consecutive_upper++;
+        }
+    }
+
+    // Random generator output tends to switch case often and contains uppercase
+    // runs in the middle, unlike ordinary CamelCase names such as ElMercadoDeOrigen.
+    if ( $case_transitions < 5 || $consecutive_upper < 1 ) {
+        return false;
+    }
+
+    $unique_ratio = $unique_letters / $length;
+    if ( $unique_ratio < 0.55 ) {
+        return false;
+    }
+
+    $entropy = mdo_cf7_guard_entropy( $value );
+    if ( $entropy < 3.25 ) {
+        return false;
+    }
+
+    // Vowel balance is only an additional signal, not a standalone block.
+    $vowel_ratio = $vowels / max( 1, $character_count );
+    $score       = 0;
+
+    if ( $case_transitions >= 7 ) {
+        $score++;
+    }
+    if ( $consecutive_upper >= 2 ) {
+        $score++;
+    }
+    if ( $entropy >= 3.45 ) {
+        $score++;
+    }
+    if ( $unique_ratio >= 0.65 ) {
+        $score++;
+    }
+    if ( $vowel_ratio <= 0.30 || $vowel_ratio >= 0.62 ) {
+        $score++;
+    }
+
+    return $score >= 2;
+}
+
+/**
+ * Detect a submission where multiple human-readable fields independently look
+ * machine-generated. One odd value is intentionally allowed; two separate strong
+ * random-looking values are required to classify the submission as spam.
+ */
+function mdo_cf7_guard_generated_text_fields() {
+    $matches = array();
+
+    foreach ( $_POST as $field => $raw_value ) {
+        if ( ! is_string( $field ) || 0 === strpos( $field, '_' ) || MDO_CF7_GUARD_FIELD === $field ) {
+            continue;
+        }
+
+        if ( ! is_scalar( $raw_value ) ) {
+            continue;
+        }
+
+        $value = trim( (string) wp_unslash( $raw_value ) );
+        if ( '' === $value ) {
+            continue;
+        }
+
+        // Email addresses, URLs and telephone/number-like values are legitimate
+        // machine-shaped strings and are intentionally excluded from this detector.
+        if (
+            is_email( $value ) ||
+            preg_match( '#^https?://#i', $value ) ||
+            preg_match( '/^[+()\d\s.\-]{5,}$/', $value )
+        ) {
+            continue;
+        }
+
+        if ( mdo_cf7_guard_looks_generated_token( $value ) ) {
+            $matches[] = sanitize_key( $field );
+        }
+    }
+
+    return array_values( array_unique( $matches ) );
+}
+
+/**
  * Validate the signed challenge in Contact Form 7's official spam hook.
  * Returning true prevents CF7 from sending the mail.
  */
@@ -221,6 +376,14 @@ function mdo_cf7_guard_filter_spam( $spam ) {
     $form_id = isset( $_POST['_wpcf7'] ) ? absint( wp_unslash( $_POST['_wpcf7'] ) ) : 0;
     if ( ! $form_id ) {
         return $spam;
+    }
+
+    // Block the observed bot pattern by content characteristics, not by email,
+    // country, IP address or whether the visitor used both contact forms.
+    $generated_fields = mdo_cf7_guard_generated_text_fields();
+    if ( count( $generated_fields ) >= 2 ) {
+        mdo_cf7_guard_log_spam( 'Multiple generated-looking text fields: ' . implode( ', ', $generated_fields ) . '.' );
+        return true;
     }
 
     // Conservative cap: normal visitors will never approach this. This only affects CF7.
