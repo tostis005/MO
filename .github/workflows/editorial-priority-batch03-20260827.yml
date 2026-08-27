@@ -1,5 +1,4 @@
-name: Editorial priority batch 03 publish 20260827
-# rerun: 1
+name: Live priority editorial batch 05 publish 20260827
 
 on:
   push:
@@ -25,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Publish and verify priority articles 11 through 15
+      - name: Publish and verify priority articles 21 through 25
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -42,13 +41,13 @@ jobs:
             [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE="/tmp/emdo-priority-b03-${GITHUB_RUN_ID}"
+          REMOTE="/tmp/emdo-priority-b05-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/data'"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/scripts/publish-editorial-priority-batch03-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE/publisher.php"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/data/editorial-priority-batch03-20260827/*.php "$STAGING_USER@$STAGING_HOST:$REMOTE/data/"
+          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/scripts/publish-editorial-priority-batch05-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE/publisher.php"
+          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/data/editorial-priority-batch05-20260827/*.php "$STAGING_USER@$STAGING_HOST:$REMOTE/data/"
 
           set +e
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_PRIORITY_BATCH03_DIR='$REMOTE/data'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publisher.php' --path='$PROD' --skip-plugins --skip-themes --allow-root" > /tmp/publish.json 2> /tmp/publish.err
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_PRIORITY_BATCH05_DIR='$REMOTE/data'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publisher.php' --path='$PROD' --skip-plugins --skip-themes --allow-root" > /tmp/publish.json 2> /tmp/publish.err
           RC=$?
           set -e
           if [ "$RC" -ne 0 ]; then
@@ -59,7 +58,7 @@ jobs:
             exit "$RC"
           fi
           cat /tmp/publish.json
-          jq -e '. as $r | ($r.batch=="priority-03") and ($r.default>0) and ($r.posts|length==5) and ($r.posts|map(.priority)==[11,12,13,14,15]) and ($r.posts|all(.status=="publish" and .thumbnail_id==$r.default and .provisional=="1" and .words_es>=.min_es and .words_en>=.min_en and .has_products_es==true and .has_products_en==true))' /tmp/publish.json >/dev/null
+          jq -e '. as $r | ($r.batch=="priority-05") and ($r.default>0) and ($r.posts|length==5) and ($r.posts|map(.priority)==[21,22,23,24,25]) and ($r.posts|all(.status=="publish" and .thumbnail_id==$r.default and .provisional=="1" and .words_es>=.min_es and .words_en>=.min_en and .has_products_es==true and .has_products_en==true))' /tmp/publish.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
 
@@ -86,13 +85,13 @@ jobs:
             --arg source_sha "$GITHUB_SHA" \
             --slurpfile pub /tmp/publish.json \
             --slurpfile urls /tmp/verified-urls.json \
-            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,priority_plan_total:38,priority_articles_through:15,remaining_priority_articles:23,verified:true,active_provisional_attachment:$pub[0].default,articles:$pub[0].posts,public_urls:$urls[0]}' \
-            > .deploy-status/editorial-priority-batch03-20260827.json
-          jq -e '.verified==true and .priority_articles_through==15 and .remaining_priority_articles==23 and (.articles|length)==5 and (.public_urls|length)==10' .deploy-status/editorial-priority-batch03-20260827.json >/dev/null
+            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,priority_plan_total:38,priority_articles_through:25,remaining_priority_articles:13,verified:true,active_provisional_attachment:$pub[0].default,articles:$pub[0].posts,public_urls:$urls[0]}' \
+            > .deploy-status/editorial-priority-batch05-20260827.json
+          jq -e '.verified==true and .priority_articles_through==25 and .remaining_priority_articles==13 and (.articles|length)==5 and (.public_urls|length)==10' .deploy-status/editorial-priority-batch05-20260827.json >/dev/null
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/editorial-priority-batch03-20260827.json
-          git commit -m 'Record verified priority editorial batch 03 [skip ci]'
+          git add .deploy-status/editorial-priority-batch05-20260827.json
+          git commit -m 'Record verified priority editorial batch 05 [skip ci]'
           git pull --rebase origin main
           git push origin HEAD:main
