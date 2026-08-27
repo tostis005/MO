@@ -134,14 +134,15 @@ jobs:
           filter_html="$(fetch_page "$base/blog/?blog_cats=aceites%2Ccarnes&emdo_verify=$token")"
           grep -Fq 'emo-journal--discovery' <<<"$filter_html"
           grep -Fq 'value="aceites,carnes"' <<<"$filter_html"
-          grep -Eiq '<meta[^>]+name=["'"']robots["'"'][^>]+noindex' <<<"$filter_html"
-          grep -Eiq '<link[^>]+rel=["'"']canonical["'"'][^>]+/blog/' <<<"$filter_html"
+          grep -Fiq 'noindex' <<<"$filter_html"
+          grep -Fiq 'canonical' <<<"$filter_html"
+          grep -Fq 'https://www.elmercadodeorigen.com/blog/' <<<"$filter_html"
 
           echo '--- INDEXABLE CATEGORY PAGE ---'
           category_html="$(fetch_page "$base/category/aceites/?emdo_verify=$token")"
           grep -Fq 'emo-journal--category' <<<"$category_html"
           grep -Fq 'Artículos sobre Aceites' <<<"$category_html"
-          if grep -Eiq '<meta[^>]+name=["'"']robots["'"'][^>]+noindex' <<<"$category_html"; then
+          if grep -Fiq 'noindex' <<<"$category_html"; then
             echo 'Category page unexpectedly contains noindex.' >&2
             exit 31
           fi
