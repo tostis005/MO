@@ -72,6 +72,11 @@ HTML,
 <p>It depends on the casing. Natural casings may be edible; collagen and other manufactured casings vary. Check the label or producer instructions rather than assuming.</p>
 <h2>Which is better for a charcuterie board?</h2>
 <p>Fuet is easy to slice and approachable, while a good Iberian salchichón can offer greater richness and a more premium charcuterie character. They can also be served together to create contrast.</p>
+<h2>How fermentation and drying shape the flavour</h2>
+<p>Both products develop flavour through a combination of fermentation, moisture loss and maturation. The balance is influenced by recipe, starter cultures or naturally occurring microorganisms, temperature, humidity and time. A narrow sausage changes more quickly because it has more surface area in relation to its volume, while a larger salchichón can mature more gradually through the centre. This helps explain why two sausages made from broadly similar ingredients can taste surprisingly different.</p>
+<p>Drying also concentrates salt, fat and aromatic compounds. A very dry fuet may therefore taste more intense than a softer example even if its seasoning was initially milder.</p>
+<h2>How to choose between them in a shop</h2>
+<p>Think first about how you plan to serve the product. Fuet is convenient for informal snacking, sandwiches and boards where a small easy-to-slice piece is useful. Salchichón offers a wider choice of diameters and is particularly interesting when you want thin slices from a larger cured piece. For Iberian salchichón, the quality and character of the pork and fat can be a central part of the purchase decision.</p>
 <h2>How to slice them</h2>
 <p>A slight diagonal cut works well for narrow fuet because it creates a broader slice. Large salchichón should generally be cut at a moderate thickness so neither chewiness nor fragility dominates.</p>
 <h2>Storage after opening</h2>
