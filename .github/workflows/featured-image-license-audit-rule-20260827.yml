@@ -68,13 +68,13 @@ jobs:
             install -m 0644 '$REMOTE/emdo-featured-image-attribution.php' '$PROD/wp-content/mu-plugins/emdo-featured-image-attribution.php'
             '$PHP' -l '$PROD/wp-content/mu-plugins/emdo-featured-image-attribution.php' >/dev/null
             export PATH='$(dirname "$PHP")':\$PATH
-            '$PHP' -d memory_limit=512M '$WP' eval 'require \"$REMOTE/normalize.php\";' --path='$PROD' --allow-root
-            '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true
-            '$PHP' '$WP' eval 'echo function_exists(\"emdo_image_attribution_credit_html\") ? \"ATTRIBUTION_RULE_OK\" : \"ATTRIBUTION_RULE_MISSING\";' --path='$PROD' --allow-root
+            '$PHP' -d memory_limit=768M '$WP' eval 'require \"$REMOTE/normalize.php\";' --path='$PROD' --skip-plugins --skip-themes --allow-root
+            '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true
+            '$PHP' -d memory_limit=768M '$WP' eval 'echo function_exists(\"emdo_image_attribution_credit_html\") ? \"ATTRIBUTION_RULE_OK\" : \"ATTRIBUTION_RULE_MISSING\";' --path='$PROD' --skip-plugins --skip-themes --allow-root
           " | tee /tmp/emdo-attribution-install.txt
           grep -Fq 'ATTRIBUTION_RULE_OK' /tmp/emdo-attribution-install.txt
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=512M '$WP' eval 'require \"$REMOTE/audit.php\";' --path='$PROD' --allow-root" > /tmp/featured-image-license-audit.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval 'require \"$REMOTE/audit.php\";' --path='$PROD' --skip-plugins --skip-themes --allow-root" > /tmp/featured-image-license-audit.json
           python3 -m json.tool /tmp/featured-image-license-audit.json >/dev/null
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
 
@@ -113,13 +113,11 @@ jobs:
             grep -Fq 'rel="license noopener noreferrer"' "$f"
           done < /tmp/required-credit-urls.txt
 
-          # Pexels image: no attribution should be injected by the rule.
           f=/tmp/credit-optional.html
           code=$(curl -k -L -sS --retry 4 --retry-delay 2 -o "$f" -w '%{http_code}' "https://www.elmercadodeorigen.com/tipos-de-cebolla-blanca-dulce-morada-amarilla-cebolleta-diferencias/?licenseaudit=$stamp")
           test "$code" = 200
           ! grep -Fq 'class="emdo-image-credit"' "$f"
 
-          # Sobrasada CC BY must have exactly one centrally generated credit in both languages.
           for url in \
             'https://www.elmercadodeorigen.com/sobrasada-iberica-que-es-como-se-elabora-que-mirar-al-comprarla/' \
             'https://www.elmercadodeorigen.com/en/iberian-sobrasada-what-it-is-how-made-what-to-look-for-when-buying/'; do
@@ -132,7 +130,6 @@ jobs:
             grep -Fq 'commons.wikimedia.org/wiki/File:Sobrasada_y_pan.jpg' "$f"
           done
 
-          # Never expose article credits on the homepage.
           f=/tmp/home-credit-check.html
           code=$(curl -k -L -sS --retry 4 --retry-delay 2 -o "$f" -w '%{http_code}' "https://www.elmercadodeorigen.com/?licenseaudit=$stamp")
           test "$code" = 200
