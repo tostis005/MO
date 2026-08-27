@@ -148,7 +148,7 @@ function elmercado_render_blog_discovery_controls_010263( string $query = '', ar
 	$active_categories = array_values( array_unique( array_map( 'sanitize_title', $active_categories ) ) );
 	?>
 	<section class="emo-blog-discovery" aria-label="<?php echo esc_attr( elmercado_blog_copy_010263( 'Buscar y filtrar artículos', 'Search and filter articles' ) ); ?>">
-		<div class="emo-blog-discovery__heading"><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Explora el cuaderno', 'Explore the journal' ) ); ?></span><h2><?php echo esc_html( elmercado_blog_copy_010263( 'Encuentra la guía que necesitas', 'Find the guide you need' ) ); ?></h2></div>
+		<div class="emo-blog-discovery__heading"><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Buscar artículos', 'Search articles' ) ); ?></span><h2><?php echo esc_html( elmercado_blog_copy_010263( 'Encuentra el artículo que necesitas', 'Find the article you need' ) ); ?></h2></div>
 		<form class="emo-blog-filter-form" action="<?php echo esc_url( elmercado_blog_public_url_010263() ); ?>" method="get" data-blog-filter-form="010263">
 			<div class="emo-blog-search-row">
 				<label class="screen-reader-text" for="emo-blog-search-010263"><?php echo esc_html( elmercado_blog_copy_010263( 'Buscar artículos', 'Search articles' ) ); ?></label>
@@ -179,7 +179,7 @@ function elmercado_render_blog_category_navigation_010263(): void {
 	}
 	?>
 	<section class="emo-blog-category-navigation">
-		<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Navegar por categoría', 'Browse by category' ) ); ?></span><h2><?php echo esc_html( elmercado_blog_copy_010263( 'Guías agrupadas por producto', 'Guides grouped by product' ) ); ?></h2></div></header>
+		<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Explorar por categoría', 'Explore by category' ) ); ?></span><h2><?php echo esc_html( elmercado_blog_copy_010263( 'Artículos agrupados por categoría', 'Articles grouped by category' ) ); ?></h2></div></header>
 		<div class="emo-blog-category-grid">
 			<?php foreach ( $categories as $category ) :
 				$link = get_category_link( $category );
