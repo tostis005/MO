@@ -1,12 +1,6 @@
 name: Editorial authority batch 27 core publish 20260827
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/scripts/publish-editorial-authority-batch27-core-20260827.php'
-      - '.github/data/editorial-authority-batch27-20260827/*.php'
-      - '.github/workflows/editorial-authority-batch27-core-publish-20260827.yml'
   workflow_dispatch:
 
 permissions:
