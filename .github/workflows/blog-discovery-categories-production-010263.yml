@@ -6,6 +6,8 @@ on:
     paths:
       - 'elmercadodeorigen-child/home.php'
       - 'elmercadodeorigen-child/category.php'
+      - 'elmercadodeorigen-child/archive.php'
+      - 'elmercadodeorigen-child/single.php'
       - 'elmercadodeorigen-child/inc/blog-discovery-010263.php'
       - 'elmercadodeorigen-child/assets/css/blog-discovery-010263.css'
       - 'elmercadodeorigen-child/assets/js/blog-discovery-010263.js'
@@ -82,6 +84,8 @@ jobs:
 
           sshpass -e scp $SCP_OPTS elmercadodeorigen-child/home.php "$STAGING_USER@$STAGING_HOST:$THEME/home.php"
           sshpass -e scp $SCP_OPTS elmercadodeorigen-child/category.php "$STAGING_USER@$STAGING_HOST:$THEME/category.php"
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/archive.php "$STAGING_USER@$STAGING_HOST:$THEME/archive.php"
+          sshpass -e scp $SCP_OPTS elmercadodeorigen-child/single.php "$STAGING_USER@$STAGING_HOST:$THEME/single.php"
           sshpass -e scp $SCP_OPTS elmercadodeorigen-child/inc/blog-discovery-010263.php "$STAGING_USER@$STAGING_HOST:$THEME/inc/blog-discovery-010263.php"
           sshpass -e scp $SCP_OPTS elmercadodeorigen-child/assets/css/blog-discovery-010263.css "$STAGING_USER@$STAGING_HOST:$THEME/assets/css/blog-discovery-010263.css"
           sshpass -e scp $SCP_OPTS elmercadodeorigen-child/assets/js/blog-discovery-010263.js "$STAGING_USER@$STAGING_HOST:$THEME/assets/js/blog-discovery-010263.js"
@@ -94,6 +98,8 @@ jobs:
             set -e
             '$PHP' -l '$THEME/home.php'
             '$PHP' -l '$THEME/category.php'
+            '$PHP' -l '$THEME/archive.php'
+            '$PHP' -l '$THEME/single.php'
             '$PHP' -l '$THEME/inc/blog-discovery-010263.php'
             '$PHP' -l '$MU/mdo-blog-discovery-loader-010263.php'
             '$PHP' -l '$MU/mdo-blog-category-guard-010263.php'
@@ -129,6 +135,13 @@ jobs:
           grep -Fq 'data-blog-filter-form="010263"' <<<"$home_html"
           grep -Fq 'emo-blog-featured-grid' <<<"$home_html"
           grep -Fq 'emo-blog-category-navigation' <<<"$home_html"
+          grep -Fq 'Todo lo que necesitas saber sobre nuestros productos' <<<"$home_html"
+          grep -Fq 'Encuentra el artículo que necesitas' <<<"$home_html"
+          grep -Fq 'Artículos agrupados por categoría' <<<"$home_html"
+          if grep -Fq 'Explora el cuaderno' <<<"$home_html" || grep -Fq 'Encuentra la guía que necesitas' <<<"$home_html" || grep -Fq 'Guías agrupadas por producto' <<<"$home_html"; then
+            echo 'Legacy blog vocabulary is still visible on the public blog home.' >&2
+            exit 32
+          fi
 
           echo '--- MULTI-CATEGORY FILTER + SEO ---'
           filter_html="$(fetch_page "$base/blog/?blog_cats=aceites%2Ccarnes&emdo_verify=$token")"
@@ -142,14 +155,21 @@ jobs:
           category_html="$(fetch_page "$base/category/aceites/?emdo_verify=$token")"
           grep -Fq 'emo-journal--category' <<<"$category_html"
           grep -Fq 'Artículos sobre Aceites' <<<"$category_html"
+          grep -Fq '>Blog<' <<<"$category_html"
           if grep -Fiq 'noindex' <<<"$category_html"; then
             echo 'Category page unexpectedly contains noindex.' >&2
             exit 31
           fi
 
-          echo '--- ENGLISH JOURNAL ---'
+          echo '--- ENGLISH BLOG ---'
           english_html="$(fetch_page "$base/en/journal/?emdo_verify=$token")"
           grep -Fq 'emo-journal--discovery' <<<"$english_html"
-          grep -Fq 'Find the guide you need' <<<"$english_html"
+          grep -Fq 'Everything you need to know about our products' <<<"$english_html"
+          grep -Fq 'Find the article you need' <<<"$english_html"
+          grep -Fq 'Articles grouped by category' <<<"$english_html"
+          if grep -Fq 'Explore the journal' <<<"$english_html" || grep -Fq 'Find the guide you need' <<<"$english_html" || grep -Fq 'Guides grouped by product' <<<"$english_html"; then
+            echo 'Legacy English blog vocabulary is still visible.' >&2
+            exit 33
+          fi
 
-          echo 'Public blog smoke tests passed.'
+          echo 'Public blog language and discovery smoke tests passed.'
