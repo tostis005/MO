@@ -1,0 +1,73 @@
+name: Featured image license audit snapshot 20260827
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/featured-image-license-audit-snapshot-20260827.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit production featured images
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/audit-featured-image-licenses-20260827.php
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE=/tmp/emdo-license-audit-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP .github/scripts/audit-featured-image-licenses-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval 'require \"$REMOTE\";' --path='$PROD' --skip-plugins --skip-themes --allow-root; rm -f '$REMOTE'" > /tmp/featured-image-license-audit.json
+          python3 -m json.tool /tmp/featured-image-license-audit.json >/dev/null
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/featured-image-license-audit.json',encoding='utf-8'))
+          probs=[r for r in data['posts'] if r.get('class') in ('forbidden','unknown')]
+          req=[r for r in data['posts'] if r.get('class')=='required']
+          json.dump(probs,open('/tmp/featured-image-license-problems.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          json.dump(req,open('/tmp/featured-image-license-required.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+          print('COUNTS',json.dumps(data['counts'],ensure_ascii=False,sort_keys=True))
+          for r in req: print('REQUIRED',r['post_id'],r['title'],r['license'],r['creator'],r['source_page'])
+          for r in probs: print('PROBLEM',r['post_id'],r['class'],r['title'],r['license'],r['source_key'])
+          PY
+      - name: Save audit snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          cp /tmp/featured-image-license-audit.json .deploy-status/featured-image-license-audit-20260827.json
+          cp /tmp/featured-image-license-problems.json .deploy-status/featured-image-license-problems-20260827.json
+          cp /tmp/featured-image-license-required.json .deploy-status/featured-image-license-required-20260827.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/featured-image-license-audit-20260827.json .deploy-status/featured-image-license-problems-20260827.json .deploy-status/featured-image-license-required-20260827.json
+          git commit -m 'Record featured image license audit snapshot [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
