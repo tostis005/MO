@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/assets/blog-default-featured.webp.b64'
+      - '.github/assets/blog-default-featured/**'
       - '.github/scripts/apply-default-blog-featured-image-20260827.php'
       - 'mu-plugins/mdo-default-blog-featured-image-20260827.php'
       - '.github/workflows/default-blog-featured-image-20260827.yml'
@@ -37,9 +37,9 @@ jobs:
           set -euo pipefail
           php -l .github/scripts/apply-default-blog-featured-image-20260827.php
           php -l mu-plugins/mdo-default-blog-featured-image-20260827.php
-          base64 -d .github/assets/blog-default-featured.webp.b64 > /tmp/emdo-blog-default.webp
+          cat .github/assets/blog-default-featured/part-*.b64 | tr -d '\n\r ' | base64 -d > /tmp/emdo-blog-default.webp
           test -s /tmp/emdo-blog-default.webp
-          echo '95bd75e2b6194beb49bec2e7644a1abf147bb22e71517eaf020e8ce00b251d60  /tmp/emdo-blog-default.webp' | sha256sum -c -
+          echo '1f29e080a4628964818db7ea91e658ab87941ce1aad7397688c6cd167e4310c9  /tmp/emdo-blog-default.webp' | sha256sum -c -
 
       - name: Deploy central image and apply to provisional posts
         shell: bash
