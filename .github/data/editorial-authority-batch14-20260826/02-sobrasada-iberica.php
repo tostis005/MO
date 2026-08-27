@@ -63,7 +63,6 @@ return array(
 <h3>¿Se puede cocinar?</h3>
 <p>Sí, aunque no es necesario para consumirla. Puede utilizarse como ingrediente caliente, pero el objetivo de esta guía es entender el producto y su etiqueta, no sus recetas.</p>
 <p>En El Mercado de Origen puedes ver nuestra <a href="https://www.elmercadodeorigen.com/producto/sobrasada-de-bellota-100-iberica/">sobrasada de bellota 100 % ibérica</a>, elaborada con carne de cerdos criados en dehesas de Los Pedroches, y comparar otros <a href="https://www.elmercadodeorigen.com/categoria-producto/embutidos/">embutidos</a> del productor.</p>
-<p class="emdo-image-credit"><small>Imagen destacada: <a href="https://commons.wikimedia.org/wiki/File:Sobrasada_y_pan.jpg" rel="noopener noreferrer">Jonathan Pincas / Wikimedia Commons</a>, licencia <a href="https://creativecommons.org/licenses/by/2.0/" rel="license noopener noreferrer">CC BY 2.0</a>. La web puede mostrar una versión redimensionada o recortada para adaptarla al diseño.</small></p>
 [products limit="4" columns="4" category="__CURED_MEATS__"]
 HTML,
 'en_content'=><<<'HTML'
@@ -119,7 +118,6 @@ HTML,
 <h3>Can it be cooked?</h3>
 <p>Yes, although cooking is not required for a ready-to-eat cured product. It can be used hot as an ingredient, but this guide focuses on understanding the product rather than recipes.</p>
 <p>At El Mercado de Origen you can see our <a href="https://www.elmercadodeorigen.com/en/product/100-iberian-acorn-fed-sobrasada/">100% Iberian acorn-fed sobrasada</a>, made from pigs raised in the Los Pedroches dehesas, and compare it with other <a href="https://www.elmercadodeorigen.com/en/product-category/cured-meats/">cured meats</a> from the producer.</p>
-<p class="emdo-image-credit"><small>Featured image: <a href="https://commons.wikimedia.org/wiki/File:Sobrasada_y_pan.jpg" rel="noopener noreferrer">Jonathan Pincas / Wikimedia Commons</a>, licensed under <a href="https://creativecommons.org/licenses/by/2.0/" rel="license noopener noreferrer">CC BY 2.0</a>. The site may display a resized or cropped version to fit the layout.</small></p>
 [products limit="4" columns="4" category="__CURED_MEATS__"]
 HTML,
 );
