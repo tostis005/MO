@@ -22,7 +22,7 @@ jobs:
       - name: Verify every attribution-required article
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           python3 - <<'PY'
           import json
           rows=json.load(open('.deploy-status/featured-image-license-required-20260827.json',encoding='utf-8'))
@@ -38,23 +38,35 @@ jobs:
 
           stamp="$GITHUB_RUN_ID"
           : > /tmp/verified.tsv
+          failures=0
           while IFS=$'\t' read -r post_id lang url creator license; do
+            echo "CHECK post=$post_id lang=$lang url=$url creator=$creator license=$license"
             f="/tmp/credit-${post_id}-${lang}.html"
             code=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 \
               -A 'Mozilla/5.0 EMDO attribution verifier' \
               -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
               -o "$f" -w '%{http_code}' "${url}?creditverify=${stamp}")
-            test "$code" = 200
-            count=$(grep -o 'class="emdo-image-credit"' "$f" | wc -l)
-            test "$count" -eq 1
-            grep -Fq 'emdo-image-credit-source' "$f"
-            grep -Fq 'emdo-image-credit-license' "$f"
-            grep -Fq "$creator" "$f"
-            grep -Fq "$license" "$f"
-            grep -Fq 'commons.wikimedia.org' "$f"
-            grep -Fq 'creativecommons.org/licenses/' "$f"
-            printf '%s\t%s\t%s\t%s\n' "$post_id" "$lang" "$url" "$code" >> /tmp/verified.tsv
+            ok=1
+            if [ "$code" != 200 ]; then echo "FAIL http=$code"; ok=0; fi
+            count=$(grep -o 'class="emdo-image-credit"' "$f" 2>/dev/null | wc -l)
+            if [ "$count" -ne 1 ]; then echo "FAIL credit_count=$count"; ok=0; fi
+            grep -Fq 'emdo-image-credit-source' "$f" || { echo 'FAIL source_class'; ok=0; }
+            grep -Fq 'emdo-image-credit-license' "$f" || { echo 'FAIL license_class'; ok=0; }
+            grep -Fq "$creator" "$f" || { echo "FAIL creator=$creator"; ok=0; }
+            grep -Fq "$license" "$f" || { echo "FAIL license_text=$license"; ok=0; }
+            grep -Fq 'commons.wikimedia.org' "$f" || { echo 'FAIL commons_link'; ok=0; }
+            grep -Fq 'creativecommons.org/licenses/' "$f" || { echo 'FAIL cc_link'; ok=0; }
+            if [ "$ok" -eq 1 ]; then
+              echo 'PASS'
+              printf '%s\t%s\t%s\t%s\n' "$post_id" "$lang" "$url" "$code" >> /tmp/verified.tsv
+            else
+              echo 'CREDIT_SNIPPET:'
+              grep -o -E '.{0,180}emdo-image-credit.{0,600}' "$f" | head -n 2 || true
+              failures=$((failures+1))
+            fi
           done < /tmp/required.tsv
+          echo "verified=$(wc -l < /tmp/verified.tsv) failures=$failures"
+          test "$failures" -eq 0
           test "$(wc -l < /tmp/verified.tsv)" -eq 14
 
       - name: Verify no unnecessary attribution
