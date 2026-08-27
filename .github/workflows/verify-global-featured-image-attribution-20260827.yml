@@ -1,0 +1,105 @@
+name: Verify global featured image attribution 20260827
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-global-featured-image-attribution-20260827.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify every attribution-required article
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          rows=json.load(open('.deploy-status/featured-image-license-required-20260827.json',encoding='utf-8'))
+          assert len(rows)==7, f'Expected 7 attribution-required posts, got {len(rows)}'
+          with open('/tmp/required.tsv','w',encoding='utf-8') as f:
+              for r in rows:
+                  assert r.get('metadata_complete') is True, f"Incomplete metadata for {r['post_id']}"
+                  for lang,key in [('es','url'),('en','en_url')]:
+                      url=r.get(key,'')
+                      assert url, f"Missing {lang} URL for {r['post_id']}"
+                      f.write('\t'.join([str(r['post_id']),lang,url,r['creator'],r['license']])+'\n')
+          PY
+
+          stamp="$GITHUB_RUN_ID"
+          : > /tmp/verified.tsv
+          while IFS=$'\t' read -r post_id lang url creator license; do
+            f="/tmp/credit-${post_id}-${lang}.html"
+            code=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 \
+              -A 'Mozilla/5.0 EMDO attribution verifier' \
+              -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+              -o "$f" -w '%{http_code}' "${url}?creditverify=${stamp}")
+            test "$code" = 200
+            count=$(grep -o 'class="emdo-image-credit"' "$f" | wc -l)
+            test "$count" -eq 1
+            grep -Fq 'emdo-image-credit-source' "$f"
+            grep -Fq 'emdo-image-credit-license' "$f"
+            grep -Fq "$creator" "$f"
+            grep -Fq "$license" "$f"
+            grep -Fq 'commons.wikimedia.org' "$f"
+            grep -Fq 'creativecommons.org/licenses/' "$f"
+            printf '%s\t%s\t%s\t%s\n' "$post_id" "$lang" "$url" "$code" >> /tmp/verified.tsv
+          done < /tmp/required.tsv
+          test "$(wc -l < /tmp/verified.tsv)" -eq 14
+
+      - name: Verify no unnecessary attribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          stamp="$GITHUB_RUN_ID"
+          for url in \
+            'https://www.elmercadodeorigen.com/tipos-de-cebolla-blanca-dulce-morada-amarilla-cebolleta-diferencias/' \
+            'https://www.elmercadodeorigen.com/en/types-of-onions-white-sweet-red-yellow-spring-onion-differences/' \
+            'https://www.elmercadodeorigen.com/'; do
+            f=/tmp/no-credit.html
+            code=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 \
+              -A 'Mozilla/5.0 EMDO attribution verifier' \
+              -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+              -o "$f" -w '%{http_code}' "${url}?creditverify=${stamp}")
+            test "$code" = 200
+            ! grep -Fq 'class="emdo-image-credit"' "$f"
+          done
+
+      - name: Record verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json,os
+          checked=[]
+          for line in open('/tmp/verified.tsv',encoding='utf-8'):
+              post_id,lang,url,code=line.rstrip('\n').split('\t')
+              checked.append({'post_id':int(post_id),'language':lang,'url':url,'http_code':int(code)})
+          out={
+              'verified':True,
+              'run_id':os.environ['GITHUB_RUN_ID'],
+              'required_posts':7,
+              'required_public_views_checked':len(checked),
+              'optional_controls_checked':2,
+              'homepage_checked':True,
+              'checks':checked,
+          }
+          open('.deploy-status/featured-image-attribution-verification-20260827.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/featured-image-attribution-verification-20260827.json
+          git commit -m 'Record global featured image attribution verification [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
