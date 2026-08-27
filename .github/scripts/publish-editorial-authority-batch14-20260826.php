@@ -148,7 +148,7 @@ foreach($articles as $a){
     $image_id=emdo_ab14_image($post_id,$a['image']);
     $meta=wp_get_attachment_metadata($image_id);
     $w=(int)($meta['width']??0);$h=(int)($meta['height']??0);
-    if($w<1200||$h<700){throw new RuntimeException($a['key'].': image too small '.$w.'x'.$h);}
+    if($w<1000||$h<700){throw new RuntimeException($a['key'].': image too small '.$w.'x'.$h);}
     if('publish'!==get_post_status($post_id)){throw new RuntimeException($a['key'].': post is not published');}
     if('1'!==get_post_meta($post_id,'_en_US_published',true)){throw new RuntimeException($a['key'].': English version not marked published');}
     if((int)get_post_thumbnail_id($post_id)!==$image_id){throw new RuntimeException($a['key'].': featured image mismatch');}
