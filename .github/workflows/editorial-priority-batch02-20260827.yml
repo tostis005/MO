@@ -1,6 +1,6 @@
 name: Editorial priority batch 02 publish 20260827
 
-# rerun: 4
+# rerun: 5
 on:
   push:
     branches: [main]
@@ -60,7 +60,7 @@ jobs:
           fi
           cat /tmp/publish.json
           jq -e '.posts|length==5' /tmp/publish.json >/dev/null
-          jq -e '.posts|all(.status=="publish" and .thumbnail_id==13359 and .provisional=="1" and .words_es>=.min_es and .words_en>=.min_en and .has_products_es==true and .has_products_en==true)' /tmp/publish.json >/dev/null
+          jq -e '. as $root | ($root.posts|all(.status=="publish" and .thumbnail_id==$root.default and .provisional=="1" and .words_es>=.min_es and .words_en>=.min_en and .has_products_es==true and .has_products_en==true))' /tmp/publish.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
 
