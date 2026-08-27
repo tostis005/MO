@@ -1,5 +1,5 @@
 name: Live priority editorial batch 04 publish 20260827
-# rerun: expanded-chickpeas
+# rerun: final-expansions
 
 on:
   push:
@@ -44,12 +44,9 @@ jobs:
           REMOTE="/tmp/emdo-priority-b04-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/data'"
           sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/scripts/publish-editorial-priority-batch04-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE/publisher.php"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/data/editorial-priority-batch04-20260827/16-evoo-heating-properties.php "$STAGING_USER@$STAGING_HOST:$REMOTE/data/16-evoo-heating-properties-base.php"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/data/editorial-priority-batch04-20260827/16-evoo-heating-properties-v2.php "$STAGING_USER@$STAGING_HOST:$REMOTE/data/16-evoo-heating-properties.php"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/data/editorial-priority-batch04-20260827/17-chickpeas-soak-cook.php "$STAGING_USER@$STAGING_HOST:$REMOTE/data/17-chickpeas-soak-cook-base.php"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/data/editorial-priority-batch04-20260827/17-chickpeas-soak-cook-v2.php "$STAGING_USER@$STAGING_HOST:$REMOTE/data/17-chickpeas-soak-cook.php"
-          for f in 18-ham-weight-choice.php 19-freeze-cooked-meat.php 20-fresh-vs-frozen-vegetables.php; do
-            sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 ".github/data/editorial-priority-batch04-20260827/$f" "$STAGING_USER@$STAGING_HOST:$REMOTE/data/$f"
+          for n in 16-evoo-heating-properties 17-chickpeas-soak-cook 18-ham-weight-choice 19-freeze-cooked-meat 20-fresh-vs-frozen-vegetables; do
+            sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 ".github/data/editorial-priority-batch04-20260827/${n}.php" "$STAGING_USER@$STAGING_HOST:$REMOTE/data/${n}-base.php"
+            sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 ".github/data/editorial-priority-batch04-20260827/${n}-v2.php" "$STAGING_USER@$STAGING_HOST:$REMOTE/data/${n}.php"
           done
           set +e
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_PRIORITY_BATCH04_DIR='$REMOTE/data'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publisher.php' --path='$PROD' --skip-plugins --skip-themes --allow-root" > /tmp/publish.json 2> /tmp/publish.err
