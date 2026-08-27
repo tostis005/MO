@@ -1,5 +1,5 @@
 name: Live priority editorial batch 03 publish 20260827
-# rerun: 2
+# rerun: 3
 
 on:
   push:
@@ -54,6 +54,7 @@ jobs:
           jq -e '. as $r | ($r.batch=="priority-03") and ($r.default>0) and ($r.posts|length==5) and ($r.posts|map(.priority)==[11,12,13,14,15]) and ($r.posts|all(.status=="publish" and .thumbnail_id==$r.default and .provisional=="1" and .words_es>=.min_es and .words_en>=.min_en and .has_products_es==true and .has_products_en==true))' /tmp/publish.json >/dev/null
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
           printf '[]' > /tmp/verified-urls.json
+          jq -r '.posts[] | [.slug,.en_slug,.key] | @tsv' /tmp/publish.json > /tmp/posts.tsv
           while IFS=$'\t' read -r slug en_slug key; do
             for lang in es en; do
               if [ "$lang" = es ]; then url="https://www.elmercadodeorigen.com/${slug}/"; else url="https://www.elmercadodeorigen.com/en/${en_slug}/"; fi
@@ -61,11 +62,11 @@ jobs:
               code="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO editorial verification' -o "$out" -w '%{http_code}' "${url}?emdo_verify=${GITHUB_RUN_ID}")"
               [ "$code" = "200" ] || { echo "HTTP $code for $url" >&2; exit 20; }
               ! grep -Fq '[products ' "$out" || { echo "Unrendered product shortcode at $url" >&2; exit 21; }
-              grep -Eqi 'woocommerce-loop-product|class=["'"'][^"'"']*products' "$out" || { echo "Product grid missing at $url" >&2; exit 22; }
+              grep -Eqi 'woocommerce-loop-product|products columns-' "$out" || { echo "Product grid missing at $url" >&2; exit 22; }
               jq --arg url "$url" --arg lang "$lang" --arg code "$code" '. + [{url:$url,lang:$lang,http:($code|tonumber),products_rendered:true}]' /tmp/verified-urls.json > /tmp/urls-next.json
               mv /tmp/urls-next.json /tmp/verified-urls.json
             done
-          done < <(jq -r '.posts[] | [.slug,.en_slug,.key] | @tsv' /tmp/publish.json)
+          done < /tmp/posts.tsv
           jq -e 'length==10 and all(.http==200 and .products_rendered==true)' /tmp/verified-urls.json >/dev/null
           mkdir -p .deploy-status
           jq -n --arg generated_at "$(date -u +%FT%TZ)" --arg run_id "$GITHUB_RUN_ID" --arg source_sha "$GITHUB_SHA" --slurpfile pub /tmp/publish.json --slurpfile urls /tmp/verified-urls.json '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,priority_plan_total:38,priority_articles_through:15,remaining_priority_articles:23,verified:true,active_provisional_attachment:$pub[0].default,articles:$pub[0].posts,public_urls:$urls[0]}' > .deploy-status/editorial-priority-batch03-20260827.json
