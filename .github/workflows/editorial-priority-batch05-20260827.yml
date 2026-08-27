@@ -1,3 +1,4 @@
+# launch batch05
 name: Editorial priority batch 05 publish 20260827
 
 on:
@@ -70,7 +71,7 @@ jobs:
               code="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO editorial verification' -o "$out" -w '%{http_code}' "${url}?emdo_verify=${GITHUB_RUN_ID}")"
               [ "$code" = "200" ] || { echo "HTTP $code for $url" >&2; exit 20; }
               ! grep -Fq '[products ' "$out" || { echo "Unrendered product shortcode at $url" >&2; exit 21; }
-              grep -Eqi 'woocommerce-loop-product|class=["'\"'][^"'\"']*products' "$out" || { echo "Product grid missing at $url" >&2; exit 22; }
+              grep -Eqi 'woocommerce-loop-product|class=["'"'][^"'"']*products' "$out" || { echo "Product grid missing at $url" >&2; exit 22; }
               grep -Eqi '<article|entry-content|emdo-blog' "$out" || { echo "Article body marker missing at $url" >&2; exit 23; }
               jq --arg url "$url" --arg lang "$lang" --arg code "$code" '. + [{url:$url,lang:$lang,http:($code|tonumber),products_rendered:true}]' /tmp/verified-urls.json > /tmp/urls-next.json
               mv /tmp/urls-next.json /tmp/verified-urls.json
