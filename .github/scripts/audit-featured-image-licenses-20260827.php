@@ -5,12 +5,17 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 function emdo_img_audit_classify(string $license): string {
     $l = strtolower(trim($license));
     if ($l === '') { return 'unknown'; }
-    if (preg_match('/\b(cc\s*by(?:-sa)?|creative commons attribution(?:-sharealike)?)\b/i', $license)) {
-        if (preg_match('/\b(nc|noncommercial|non-commercial)\b/i', $license)) { return 'forbidden'; }
-        return 'required';
-    }
-    if (preg_match('/\b(cc\s*by-nc|cc\s*by-nc-sa|noncommercial|non-commercial)\b/i', $license)) { return 'forbidden'; }
+
+    // First recognise sources/rights that explicitly allow commercial use.
     if (preg_match('/\b(pexels|unsplash|pixabay|cc0|public domain|dominio p[uú]blico)\b/i', $license)) { return 'optional'; }
+    if (preg_match('/el mercado de origen owned product photography|owned product photography|fotograf[ií]a propia/i', $license)) { return 'optional'; }
+
+    // Creative Commons licences containing NC are not suitable for this commercial site.
+    if (preg_match('/\bcc\s*by-nc(?:-sa|-nd)?\b|creative commons[^,;]*noncommercial/i', $license)) { return 'forbidden'; }
+
+    // BY and BY-SA permit commercial reuse but require attribution.
+    if (preg_match('/\bcc\s*by(?:-sa)?(?:\s+[0-9.]+)?\b|creative commons attribution(?:-sharealike)?/i', $license)) { return 'required'; }
+
     return 'unknown';
 }
 
@@ -72,7 +77,7 @@ foreach ($posts as $post) {
         'changes'=>$changes,
         'url'=>get_permalink($post_id),
         'en_url'=>($en_pub && $en_slug !== '') ? home_url('/en/'.sanitize_title($en_slug).'/') : '',
-        'metadata_complete'=>($license !== '' && $creator !== '' && $source_page !== '' && $license_url !== ''),
+        'metadata_complete'=>($license !== '' && ($class === 'optional' || ($creator !== '' && $source_page !== '' && $license_url !== ''))),
     );
 }
 
