@@ -26,3 +26,4 @@ foreach($files as $file){
   clean_post_cache($id);$rows[]=array('key'=>$a['key'],'id'=>$id,'status'=>get_post_status($id),'slug'=>get_post_field('post_name',$id),'en_slug'=>sanitize_title($a['en_slug']),'thumbnail_id'=>(int)get_post_thumbnail_id($id),'provisional'=>(string)get_post_meta($id,'_emdo_uses_default_featured',true),'words_es'=>$wes,'words_en'=>$wen,'topic'=>$a['topic']);
 }
 echo wp_json_encode(array('batch'=>26,'default'=>$default,'posts'=>$rows),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL;
+// trigger after workflow registration
