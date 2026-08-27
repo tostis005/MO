@@ -110,3 +110,45 @@ jobs:
             if [ -n \"\$page_id\" ] && [ \"\$page_id\" != '0' ]; then '$PHP' '$WP' post url \"\$page_id\" --path='$PROD' --skip-plugins --skip-themes --allow-root || true; fi
             rm -f '$REMOTE_MIGRATE' '$REMOTE_VERIFY'
           "
+
+      - name: Smoke-test public blog HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          token="${GITHUB_SHA:0:12}"
+          fetch_page() {
+            curl --fail --silent --show-error --location --retry 3 --retry-delay 2 \
+              -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+              "$1"
+          }
+
+          echo '--- PUBLIC BLOG HOME ---'
+          home_html="$(fetch_page "$base/blog/?emdo_verify=$token")"
+          grep -Fq 'emo-journal--discovery' <<<"$home_html"
+          grep -Fq 'data-blog-filter-form="010263"' <<<"$home_html"
+          grep -Fq 'emo-blog-featured-grid' <<<"$home_html"
+          grep -Fq 'emo-blog-category-navigation' <<<"$home_html"
+
+          echo '--- MULTI-CATEGORY FILTER + SEO ---'
+          filter_html="$(fetch_page "$base/blog/?blog_cats=aceites%2Ccarnes&emdo_verify=$token")"
+          grep -Fq 'emo-journal--discovery' <<<"$filter_html"
+          grep -Fq 'value="aceites,carnes"' <<<"$filter_html"
+          grep -Eiq '<meta[^>]+name=["'"']robots["'"'][^>]+noindex' <<<"$filter_html"
+          grep -Eiq '<link[^>]+rel=["'"']canonical["'"'][^>]+/blog/' <<<"$filter_html"
+
+          echo '--- INDEXABLE CATEGORY PAGE ---'
+          category_html="$(fetch_page "$base/category/aceites/?emdo_verify=$token")"
+          grep -Fq 'emo-journal--category' <<<"$category_html"
+          grep -Fq 'Artículos sobre Aceites' <<<"$category_html"
+          if grep -Eiq '<meta[^>]+name=["'"']robots["'"'][^>]+noindex' <<<"$category_html"; then
+            echo 'Category page unexpectedly contains noindex.' >&2
+            exit 31
+          fi
+
+          echo '--- ENGLISH JOURNAL ---'
+          english_html="$(fetch_page "$base/en/journal/?emdo_verify=$token")"
+          grep -Fq 'emo-journal--discovery' <<<"$english_html"
+          grep -Fq 'Find the guide you need' <<<"$english_html"
+
+          echo 'Public blog smoke tests passed.'
