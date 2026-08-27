@@ -1,0 +1,101 @@
+name: Update selected editorial batch 14 images 20260827
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/update-editorial-batch14-selected-images-20260827.php'
+      - '.github/workflows/update-editorial-batch14-selected-images-20260827.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-editorial-batch14-selected-images-20260827
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate updater
+        run: php -l .github/scripts/update-editorial-batch14-selected-images-20260827.php
+
+      - name: Update three production featured images
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE=/tmp/emdo-ab14-images-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP .github/scripts/update-editorial-batch14-selected-images-20260827.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$REMOTE\";' --path='$PROD' --allow-root; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE'" | tee /tmp/ab14-images-report.txt
+          grep -Fq '"updated": true' /tmp/ab14-images-report.txt
+          test "$(grep -c '"post_id"' /tmp/ab14-images-report.txt)" -eq 3
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' db query \"SELECT k.meta_value,p.ID,t.meta_value,s.meta_value FROM wp_posts p JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' JOIN wp_postmeta t ON t.post_id=p.ID AND t.meta_key='_thumbnail_id' JOIN wp_postmeta s ON s.post_id=CAST(t.meta_value AS UNSIGNED) AND s.meta_key='_emdo_image_source_key' WHERE k.meta_value IN ('what-is-cured-sausage-guide','pepper-types-guide','onion-types-guide') ORDER BY k.meta_value;\" --skip-column-names --path='$PROD' --allow-root" | tee /tmp/ab14-images-db.txt
+          grep -Fq $'what-is-cured-sausage-guide\t13335\t' /tmp/ab14-images-db.txt
+          grep -Fq 'pexels-eduard-perez-37256489' /tmp/ab14-images-db.txt
+          grep -Fq 'pexels-bell-peppers-38541828' /tmp/ab14-images-db.txt
+          grep -Fq 'pexels-kindel-media-7456550' /tmp/ab14-images-db.txt
+
+      - name: Verify six public article views
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://www.elmercadodeorigen.com; stamp="$GITHUB_RUN_ID"
+          check(){ url="$1"; marker="$2"; f=/tmp/ab14-image-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO image verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab14img=$stamp"); test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH14:$marker" "$f"; grep -Fq 'emo-article-featured' "$f"; }
+          check "$BASE/que-es-embutido-curado-como-se-elabora-diferencia-embutido-fresco/" what-is-cured-sausage-guide
+          check "$BASE/en/what-is-cured-sausage-how-it-is-made-difference-fresh-sausage/" what-is-cured-sausage-guide
+          check "$BASE/tipos-de-pimientos-lamuyo-california-italiano-morron-variedades/" pepper-types-guide
+          check "$BASE/en/types-of-peppers-lamuyo-california-italian-bell-pepper-varieties/" pepper-types-guide
+          check "$BASE/tipos-de-cebolla-blanca-dulce-morada-amarilla-cebolleta-diferencias/" onion-types-guide
+          check "$BASE/en/types-of-onions-white-sweet-red-yellow-spring-onion-differences/" onion-types-guide
+
+      - name: Persist selected image sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          reps={
+          '.github/data/editorial-authority-batch14-20260826/01-que-es-embutido-curado.php': """'image'=>array(\n'id'=>'pexels-eduard-perez-37256489','direct'=>'https://images.pexels.com/photos/37256489/pexels-photo-37256489.jpeg?cs=srgb&dl=pexels-eduard-perez-2158828645-37256489.jpg&fm=jpg','page'=>'https://www.pexels.com/photo/rustic-hanging-sausages-in-sunlit-workshop-37256489/','photographer'=>'Eduard Perez','license'=>'Pexels License','license_url'=>'https://www.pexels.com/license/','alt_es'=>'Embutidos curados colgados en un obrador rústico iluminado por el sol','alt_en'=>'Cured sausages hanging in a sunlit rustic workshop'),\n""",
+          '.github/data/editorial-authority-batch14-20260826/03-tipos-de-pimientos.php': """'image'=>array(\n'id'=>'pexels-bell-peppers-38541828','direct'=>'https://images.pexels.com/photos/38541828/pexels-photo-38541828.jpeg','page'=>'https://www.pexels.com/photo/colorful-assortment-of-fresh-bell-peppers-displayed-38541828/','photographer'=>'Pexels contributor','license'=>'Pexels License','license_url'=>'https://www.pexels.com/license/','alt_es'=>'Surtido de pimientos frescos de distintos colores','alt_en'=>'Colorful assortment of fresh bell peppers'),\n""",
+          '.github/data/editorial-authority-batch14-20260826/04-tipos-de-cebolla.php': """'image'=>array(\n'id'=>'pexels-kindel-media-7456550','direct'=>'https://images.pexels.com/photos/7456550/pexels-photo-7456550.jpeg?cs=srgb&dl=pexels-kindelmedia-7456550.jpg&fm=jpg','page'=>'https://www.pexels.com/photo/a-close-up-shot-of-red-onions-7456550/','photographer'=>'Kindel Media','license'=>'Pexels License','license_url'=>'https://www.pexels.com/license/','alt_es'=>'Primer plano de cebollas rojas y amarillas frescas','alt_en'=>'Close-up of fresh red and yellow onions'),\n""",
+          }
+          pat=re.compile(r"'image'=>array\(\n.*?\),\n(?='content'=>)",re.S)
+          for fn,repl in reps.items():
+              p=Path(fn); txt=p.read_text(encoding='utf-8'); new,n=pat.subn(repl,txt,count=1)
+              if n!=1: raise SystemExit(f'Could not replace image block in {fn}: {n}')
+              p.write_text(new,encoding='utf-8')
+          PY
+          for f in .github/data/editorial-authority-batch14-20260826/{01-que-es-embutido-curado,03-tipos-de-pimientos,04-tipos-de-cebolla}.php; do php -l "$f"; done
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/data/editorial-authority-batch14-20260826/01-que-es-embutido-curado.php .github/data/editorial-authority-batch14-20260826/03-tipos-de-pimientos.php .github/data/editorial-authority-batch14-20260826/04-tipos-de-cebolla.php
+          git commit -m 'Persist selected editorial batch 14 images [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
