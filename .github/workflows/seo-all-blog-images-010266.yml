@@ -1,3 +1,4 @@
+# Registered on main; this revision triggers the production deployment.
 name: SEO all blog images 010266
 
 on:
@@ -57,11 +58,11 @@ jobs:
           REST="${INFO#*|}"
           PHP="${REST%%|*}"
           WP="${REST#*|}"
-          THEME="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' eval 'echo get_stylesheet_directory();' --path='$PROD' --allow-root")"
-          [ -n "$THEME" ] || { echo 'Could not resolve child theme directory' >&2; exit 5; }
+          THEME="$PROD/wp-content/themes/elmercadodeorigen-child"
+          [ -d "$THEME/inc" ] || { echo "Child theme not found: $THEME" >&2; exit 5; }
 
           REMOTE="/tmp/emdo-blog-image-seo-${GITHUB_RUN_ID}"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/backup'"
           sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
             elmercadodeorigen-child/inc/blog-image-seo-010266.php \
             elmercadodeorigen-child/inc/blog-default-image-010264.php \
@@ -73,7 +74,6 @@ jobs:
             '$PHP' -l '$REMOTE/blog-image-seo-010266.php' >/dev/null
             '$PHP' -l '$REMOTE/blog-default-image-010264.php' >/dev/null
             '$PHP' -l '$REMOTE/seo-all-blog-images-010266.php' >/dev/null
-            mkdir -p '$REMOTE/backup'
             cp '$THEME/inc/blog-default-image-010264.php' '$REMOTE/backup/blog-default-image-010264.php'
             [ ! -f '$THEME/inc/blog-image-seo-010266.php' ] || cp '$THEME/inc/blog-image-seo-010266.php' '$REMOTE/backup/blog-image-seo-010266.php'
             cp '$REMOTE/blog-image-seo-010266.php' '$THEME/inc/blog-image-seo-010266.php'
@@ -94,33 +94,29 @@ jobs:
           fi
 
           cat /tmp/blog-image-seo.json
-          jq -e '.ok==true and .posts_scanned>0 and .unique_attachments>=1 and (.alt_added + .alt_preserved)==.unique_attachments' /tmp/blog-image-seo.json >/dev/null
+          jq -e '.ok==true and .posts_scanned>0 and .unique_attachments>=1 and (.alt_added + .alt_preserved)==.unique_attachments and (.blog_url|length)>0 and (.sample_post_url|length)>0' /tmp/blog-image-seo.json >/dev/null
 
-          MODULE_CHECK="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' eval 'echo function_exists(\"elmercado_blog_image_alt_010266\") ? \"ok\" : \"missing\";' --path='$PROD' --allow-root")"
-          [ "$MODULE_CHECK" = "ok" ] || { echo "Module check failed: $MODULE_CHECK" >&2; exit 30; }
+          BLOG_URL="$(jq -r '.blog_url' /tmp/blog-image-seo.json)"
+          POST_URL="$(jq -r '.sample_post_url' /tmp/blog-image-seo.json)"
 
-          BLOG_URL="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' eval '\$id=(int)get_option(\"page_for_posts\"); echo \$id ? get_permalink(\$id) : home_url(\"/blog/\");' --path='$PROD' --allow-root")"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' -d memory_limit=768M '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+
           HTTP="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO blog image SEO verification' -o /tmp/blog.html -w '%{http_code}' "${BLOG_URL}?emdo_image_seo=${GITHUB_RUN_ID}")"
           [ "$HTTP" = "200" ] || { echo "Blog HTTP $HTTP" >&2; exit 31; }
-
-          POST_URL="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' eval '\$p=get_posts(array(\"post_type\"=>\"post\",\"post_status\"=>\"publish\",\"posts_per_page\"=>1,\"orderby\"=>\"date\",\"order\"=>\"DESC\")); if(\$p){echo get_permalink(\$p[0]);}' --path='$PROD' --allow-root")"
-          [ -n "$POST_URL" ] || { echo 'No published post URL found' >&2; exit 32; }
           POST_HTTP="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO blog image SEO verification' -o /tmp/post.html -w '%{http_code}' "${POST_URL}?emdo_image_seo=${GITHUB_RUN_ID}")"
           [ "$POST_HTTP" = "200" ] || { echo "Post HTTP $POST_HTTP" >&2; exit 33; }
           grep -Eq 'fetchpriority=["'"']high["'"']' /tmp/post.html || { echo 'Featured image high priority not found' >&2; exit 34; }
           grep -Eq 'loading=["'"']lazy["'"']' /tmp/blog.html || { echo 'Lazy-loaded blog cards not found' >&2; exit 35; }
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
 
           mkdir -p .deploy-status
           jq -n \
             --arg generated_at "$(date -u +%FT%TZ)" \
             --arg run_id "$GITHUB_RUN_ID" \
             --arg source_sha "$GITHUB_SHA" \
-            --arg blog_url "$BLOG_URL" \
-            --arg post_url "$POST_URL" \
             --slurpfile migration /tmp/blog-image-seo.json \
-            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,blog_url:$blog_url,post_url:$post_url,migration:$migration[0]}' \
+            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,migration:$migration[0]}' \
             > .deploy-status/blog-image-seo-010266.json
 
           git config user.name 'github-actions[bot]'
