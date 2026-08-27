@@ -21,9 +21,9 @@ $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_bl
 
 <main id="primary" class="site-main emo-journal emo-journal--category">
 	<section class="emo-journal-hero"><div class="emo-shell emo-journal-hero__inner">
-		<span class="emo-kicker emo-kicker--light"><?php echo esc_html( elmercado_blog_copy_010263( 'El cuaderno de origen', 'The origin journal' ) ); ?></span>
+		<span class="emo-kicker emo-kicker--light"><?php echo esc_html( elmercado_blog_copy_010263( 'Blog', 'Blog' ) ); ?></span>
 		<h1><?php echo esc_html( $title ); ?></h1>
-		<?php if ( '' !== trim( wp_strip_all_tags( $description ) ) ) : ?><div class="emo-article-hero__lead"><?php echo wp_kses_post( $description ); ?></div><?php else : ?><p><?php echo esc_html( elmercado_blog_copy_010263( 'Guías y artículos para conocer mejor esta familia de productos y elegir con más criterio.', 'Guides and articles to understand this product family and choose with more confidence.' ) ); ?></p><?php endif; ?>
+		<?php if ( '' !== trim( wp_strip_all_tags( $description ) ) ) : ?><div class="emo-article-hero__lead"><?php echo wp_kses_post( $description ); ?></div><?php else : ?><p><?php echo esc_html( elmercado_blog_copy_010263( 'Artículos para conocer mejor esta categoría, sus productos y sus principales características.', 'Articles to learn more about this category, its products and their main characteristics.' ) ); ?></p><?php endif; ?>
 	</div></section>
 
 	<section class="emo-journal-listing emo-journal-listing--discovery"><div class="emo-shell">
