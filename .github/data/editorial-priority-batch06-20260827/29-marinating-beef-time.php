@@ -84,6 +84,9 @@ HTML,
 <p>US food-safety guidance allows beef to be refrigerated in marinade for several days within its normal storage window, but many recipes gain little from such a long time. Strong marinades can make texture worse.</p>
 <h2>Salt is a separate tool</h2>
 <p>If the main goal is to give salt time to work, a liquid marinade is not essential. <strong>Dry brining</strong> means salting the meat and resting it in the refrigerator, which can be especially useful for thick steaks that will later be seared.</p>
+<h2>When is dry brining a better choice?</h2>
+<p>If you want the beef itself to remain the dominant flavour and your main goals are even seasoning plus a dry surface for browning, dry brining is often simpler than a wet marinade. A marinade makes more sense when herbs, garlic, spices, wine, citrus or another recognisable flavour profile is part of the recipe. Neither method is automatically superior: they solve different culinary problems.</p>
+<p>For a premium steak, keeping the treatment simple can also make it easier to taste the character of the cut rather than masking it with a very strong marinade.</p>
 <h2>Safety: always refrigerate</h2>
 <p>Marinate beef <strong>in the refrigerator, never for hours on the counter</strong>. Use a food-safe covered container or suitable bag.</p>
 <h2>Can marinade be reused?</h2>
