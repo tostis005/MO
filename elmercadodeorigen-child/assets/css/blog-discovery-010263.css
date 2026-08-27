@@ -87,10 +87,10 @@
 .emo-blog-chip {
 	min-height: 38px;
 	padding: 8px 14px;
-	border: 1px solid rgba(20, 52, 43, 0.15);
+	border: 1px solid rgba(23, 54, 46, 0.16);
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.74);
-	color: #28483f;
+	background: #e4eee8;
+	color: #17362e;
 	font-size: 14px;
 	font-weight: 650;
 	line-height: 1;
@@ -100,13 +100,19 @@
 
 .emo-blog-chip:hover {
 	transform: translateY(-1px);
-	border-color: rgba(20, 52, 43, 0.35);
+	background: #d8e7de;
+	border-color: rgba(23, 54, 46, 0.3);
 }
 
 .emo-blog-chip.is-active {
 	background: #17362e;
 	border-color: #17362e;
 	color: #fff;
+}
+
+.emo-blog-chip.is-active:hover {
+	background: #21483d;
+	border-color: #21483d;
 }
 
 .emo-blog-filter-actions {
