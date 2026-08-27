@@ -1,0 +1,116 @@
+name: Replace central default blog image 20260827
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/assets/blog-default-featured-new/**'
+      - '.github/scripts/replace-default-blog-featured-image-20260827.php'
+      - '.github/workflows/replace-default-blog-featured-image-20260827.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: replace-central-default-blog-image-20260827
+  cancel-in-progress: false
+
+jobs:
+  replace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate replacement files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/replace-default-blog-featured-image-20260827.php
+          cat .github/assets/blog-default-featured-new/part-*.b64 | tr -d '\n\r ' | base64 -d > /tmp/emdo-blog-default-new.webp
+          test -s /tmp/emdo-blog-default-new.webp
+          echo 'a8e8da4124b2d6a1692db12e1ed1b23b82407306479d7d87708fe80b29d8fb82  /tmp/emdo-blog-default-new.webp' | sha256sum -c -
+          php -r '$i=getimagesize("/tmp/emdo-blog-default-new.webp"); if(!$i || $i[0] < 1200 || $i[1] < 675){fwrite(STDERR,"Image too small\n"); exit(1);} echo $i[0]."x".$i[1].PHP_EOL;'
+
+      - name: Replace only posts still using the old provisional attachment
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""; for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac; done
+            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
+          REMOTE=/tmp/emdo-default-replace-${GITHUB_RUN_ID}; IMG=$REMOTE/default.webp; PUB=$REMOTE/replace.php
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$REMOTE'"
+          sshpass -e scp $SCP /tmp/emdo-blog-default-new.webp "$STAGING_USER@$STAGING_HOST:$IMG"
+          sshpass -e scp $SCP .github/scripts/replace-default-blog-featured-image-20260827.php "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_DEFAULT_BLOG_IMAGE_FILE='$IMG' EMDO_EXPECTED_OLD_DEFAULT_ATTACHMENT_ID='13359' '$PHP' -d memory_limit=768M -d display_errors=0 '$WP' eval 'require \"$PUB\";' --path='$PROD' --allow-root" | tee /tmp/default-blog-replace.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/default-blog-replace.json', encoding='utf-8'))
+          assert d['new_hash']=='a8e8da4124b2d6a1692db12e1ed1b23b82407306479d7d87708fe80b29d8fb82'
+          assert d['image_width'] >= 1200 and d['image_height'] >= 675
+          assert len(d['marked_posts']) >= 1
+          assert all(int(p['thumbnail_id']) == int(d['new_attachment_id']) for p in d['marked_posts'])
+          if not d['already_current']:
+              assert d['old_attachment_id'] == 13359
+              assert len(d['updated_ids']) >= 1
+          print('verified marked posts:', len(d['marked_posts']))
+          print('updated this run:', len(d['updated_ids']))
+          print('new attachment:', d['new_attachment_id'])
+          print('new image:', d['image_url'])
+          PY
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
+
+      - name: Verify public article covers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, subprocess, urllib.parse
+          d=json.load(open('/tmp/default-blog-replace.json', encoding='utf-8'))
+          needle=urllib.parse.urlparse(d['image_url']).path.rsplit('/',1)[-1]
+          for post in d['marked_posts']:
+              if post['status'] != 'publish':
+                  continue
+              url=post['permalink'] + ('&' if '?' in post['permalink'] else '?') + 'defaultimg=' + str(d['new_attachment_id'])
+              html=subprocess.check_output(['curl','-k','-L','-sS','--retry','4','--retry-delay','2','--connect-timeout','10','--max-time','75','-A','Mozilla/5.0 EMDO default image replacement verifier','-H','Cache-Control: no-cache',url], text=True)
+              if 'emo-article-featured' not in html or needle not in html:
+                  raise SystemExit('Public cover verification failed for ' + post['slug'])
+          print('public covers verified')
+          PY
+
+      - name: Record verified replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-status
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open('/tmp/default-blog-replace.json', encoding='utf-8'))
+          d.update({'release':'20260827-new-default','run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'verified':True})
+          open('.deploy-status/default-blog-featured-image-replacement-20260827.json','w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          PY
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/default-blog-featured-image-replacement-20260827.json
+          git commit -m 'Record verified default blog image replacement [skip ci]' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
