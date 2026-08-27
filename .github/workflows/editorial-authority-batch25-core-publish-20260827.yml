@@ -1,11 +1,11 @@
-name: Editorial authority batch 27 registered publish 20260827
+name: Editorial authority batch 25 core publish 20260827
 
 on:
   push:
     branches: [main]
     paths:
-      - '.github/scripts/publish-editorial-authority-batch27-core-20260827.php'
-      - '.github/data/editorial-authority-batch27-20260827/*.php'
+      - '.github/scripts/publish-editorial-authority-batch25-core-20260827.php'
+      - '.github/data/editorial-authority-batch25-20260827/*.php'
       - '.github/workflows/editorial-authority-batch25-core-publish-20260827.yml'
   workflow_dispatch:
 
@@ -25,15 +25,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Publish final four posts with WordPress core only
+
+      - name: Publish five posts with WordPress core only
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          php -l .github/scripts/publish-editorial-authority-batch27-core-20260827.php
-          test "$(find .github/data/editorial-authority-batch27-20260827 -maxdepth 1 -type f -name '*.php' | wc -l)" -eq 4
-          for f in .github/data/editorial-authority-batch27-20260827/*.php; do php -l "$f"; done
+          php -l .github/scripts/publish-editorial-authority-batch25-core-20260827.php
+          test "$(find .github/data/editorial-authority-batch25-20260827 -maxdepth 1 -type f -name '*.php' | wc -l)" -eq 5
+          for f in .github/data/editorial-authority-batch25-20260827/*.php; do php -l "$f"; done
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
@@ -46,32 +47,36 @@ jobs:
             [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE=/tmp/emdo-ab27core-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
+          REMOTE=/tmp/emdo-ab25core-${GITHUB_RUN_ID}; DATA=$REMOTE/data; PUB=$REMOTE/publish.php
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'; mkdir -p '$DATA'"
-          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch27-core-20260827.php "$STAGING_USER@$STAGING_HOST:$PUB"
-          sshpass -e scp $SCP .github/data/editorial-authority-batch27-20260827/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH27_CORE_DIR='$DATA' '$PHP' -d memory_limit=768M -d display_errors=1 '$WP' eval 'require \"$PUB\";' --path='$PROD' --skip-plugins --skip-themes --allow-root; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT k.meta_value,p.ID,p.post_status,p.post_name,en.meta_value,thumb.meta_value,marker.meta_value FROM wp_posts p JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' AND k.meta_value IN ('freeze-opened-preserves-guide','too-dry-ham-guide','ham-cala-testing-guide','dark-ham-slices-guide') LEFT JOIN wp_postmeta en ON en.post_id=p.ID AND en.meta_key='_en_US_post_name' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' LEFT JOIN wp_postmeta marker ON marker.post_id=p.ID AND marker.meta_key='_emdo_uses_default_featured' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/ab27-core-output.txt
-          grep -E $'^(freeze-opened-preserves-guide|too-dry-ham-guide|ham-cala-testing-guide|dark-ham-slices-guide)\t' /tmp/ab27-core-output.txt > /tmp/ab27-db.txt
-          cat /tmp/ab27-db.txt
-          test "$(wc -l < /tmp/ab27-db.txt)" -eq 4
-          test "$(awk -F '\t' '$3=="publish"{n++} END{print n+0}' /tmp/ab27-db.txt)" -eq 4
-          test "$(awk -F '\t' '$7==1{n++} END{print n+0}' /tmp/ab27-db.txt)" -eq 4
-          test "$(awk -F '\t' '$6==13359{n++} END{print n+0}' /tmp/ab27-db.txt)" -eq 4
-      - name: Verify eight public views
+          sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch25-core-20260827.php "$STAGING_USER@$STAGING_HOST:$PUB"
+          sshpass -e scp $SCP .github/data/editorial-authority-batch25-20260827/*.php "$STAGING_USER@$STAGING_HOST:$DATA/"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; EMDO_BATCH25_CORE_DIR='$DATA' '$PHP' -d memory_limit=768M -d display_errors=1 '$WP' eval 'require \"$PUB\";' --path='$PROD' --skip-plugins --skip-themes --allow-root; '$PHP' -d memory_limit=768M '$WP' db query \"SELECT k.meta_value,p.ID,p.post_status,p.post_name,en.meta_value,thumb.meta_value,marker.meta_value FROM wp_posts p JOIN wp_postmeta k ON k.post_id=p.ID AND k.meta_key='_emdo_authority_key' AND k.meta_value IN ('freeze-cured-meats-guide','cured-sausage-casing-edible-guide','temper-meat-before-cooking-guide','white-foam-cooking-meat-guide','searing-seals-juices-myth-guide') LEFT JOIN wp_postmeta en ON en.post_id=p.ID AND en.meta_key='_en_US_post_name' LEFT JOIN wp_postmeta thumb ON thumb.post_id=p.ID AND thumb.meta_key='_thumbnail_id' LEFT JOIN wp_postmeta marker ON marker.post_id=p.ID AND marker.meta_key='_emdo_uses_default_featured' ORDER BY p.ID;\" --skip-column-names --path='$PROD' --allow-root; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" | tee /tmp/ab25-core-output.txt
+          grep -E $'^(freeze-cured-meats-guide|cured-sausage-casing-edible-guide|temper-meat-before-cooking-guide|white-foam-cooking-meat-guide|searing-seals-juices-myth-guide)\t' /tmp/ab25-core-output.txt > /tmp/ab25-db.txt
+          cat /tmp/ab25-db.txt
+          test "$(wc -l < /tmp/ab25-db.txt)" -eq 5
+          test "$(awk -F '\t' '$3=="publish"{n++} END{print n+0}' /tmp/ab25-db.txt)" -eq 5
+          test "$(awk -F '\t' '$7==1{n++} END{print n+0}' /tmp/ab25-db.txt)" -eq 5
+          test "$(awk -F '\t' '{print $6}' /tmp/ab25-db.txt | sort -u | wc -l)" -eq 1
+
+      - name: Verify ten public views
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://www.elmercadodeorigen.com; stamp="$GITHUB_RUN_ID"
-          check(){ url="$1"; marker="$2"; f=/tmp/ab27-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab27core=$stamp"); echo "$c $url"; test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH27:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; grep -Fq 'el-mercado-de-origen-blog-provisional-' "$f"; }
-          check "$BASE/se-pueden-congelar-conservas-una-vez-abiertas-que-productos-toleran-mejor/" freeze-opened-preserves-guide
-          check "$BASE/en/can-you-freeze-preserves-after-opening-which-products-freeze-best/" freeze-opened-preserves-guide
-          check "$BASE/jamon-demasiado-seco-por-que-ocurre-que-hacer-con-pieza/" too-dry-ham-guide
-          check "$BASE/en/ham-too-dry-why-it-happens-what-to-do-with-the-piece/" too-dry-ham-guide
-          check "$BASE/que-es-cala-jamon-como-se-comprueba-pieza-sin-cortarla/" ham-cala-testing-guide
-          check "$BASE/en/what-is-ham-cala-how-a-piece-is-checked-without-cutting-it/" ham-cala-testing-guide
-          check "$BASE/por-que-lonchas-jamon-mas-oscuras-zona-pieza-color-curacion/" dark-ham-slices-guide
-          check "$BASE/en/why-some-ham-slices-are-darker-section-colour-curing/" dark-ham-slices-guide
-      - name: Record verified final publication
+          check(){ url="$1"; marker="$2"; f=/tmp/ab25-page.html; c=$(curl -k -L -sS --retry 4 --retry-delay 2 --connect-timeout 10 --max-time 75 -A 'Mozilla/5.0 EMDO editorial verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -o "$f" -w '%{http_code}' "$url?ab25core=$stamp"); echo "$c $url"; test "$c" = 200; grep -Fq "EMDO_AUTHORITY_BATCH25:$marker" "$f"; grep -Eq 'class="[^"]*products|class="[^"]*product' "$f"; ! grep -Fq '[products ' "$f"; grep -Fq 'emo-article-featured' "$f"; grep -Fq 'el-mercado-de-origen-blog-provisional-' "$f"; }
+          check "$BASE/se-pueden-congelar-chorizo-salchichon-lomo-curado-como-hacerlo/" freeze-cured-meats-guide
+          check "$BASE/en/can-you-freeze-chorizo-salchichon-cured-loin-how-to-do-it/" freeze-cured-meats-guide
+          check "$BASE/se-come-tripa-chorizo-salchichon-natural-colageno-artificial/" cured-sausage-casing-edible-guide
+          check "$BASE/en/can-you-eat-chorizo-salchichon-casing-natural-collagen-artificial/" cured-sausage-casing-edible-guide
+          check "$BASE/atemperar-carne-antes-cocinar-hace-falta-cuanto-tiempo/" temper-meat-before-cooking-guide
+          check "$BASE/en/should-you-bring-meat-to-room-temperature-before-cooking/" temper-meat-before-cooking-guide
+          check "$BASE/espuma-blanca-cocinar-carne-que-es-por-que-sale/" white-foam-cooking-meat-guide
+          check "$BASE/en/white-foam-when-cooking-meat-what-it-is-why-it-appears/" white-foam-cooking-meat-guide
+          check "$BASE/sellar-carne-encierra-jugos-mito-que-ocurre/" searing-seals-juices-myth-guide
+          check "$BASE/en/does-searing-meat-seal-in-juices-myth-what-really-happens/" searing-seals-juices-myth-guide
+
+      - name: Record verified publication
         shell: bash
         run: |
           set -euo pipefail
@@ -79,14 +84,14 @@ jobs:
           python3 - <<'PY'
           import json,os
           rows=[]
-          for line in open('/tmp/ab27-db.txt',encoding='utf-8'):
+          for line in open('/tmp/ab25-db.txt',encoding='utf-8'):
               p=line.rstrip('\n').split('\t')
               rows.append({'key':p[0],'id':int(p[1]),'status':p[2],'slug':p[3],'en_slug':p[4],'thumbnail_id':int(p[5]),'provisional':p[6]})
-          data={'batch':27,'release':'20260827','run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'verified':True,'uses_shared_provisional_image':True,'core_only_writer':True,'posts':rows,'public_http_200':8,'rendered_product_shortcodes':8,'remaining_plan_articles':0,'editorial_plan_complete':True,'completed_articles':64}
-          open('.deploy-status/editorial-authority-batch27-20260827.json','w',encoding='utf-8').write(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+          data={'batch':25,'release':'20260827','run_id':os.environ['GITHUB_RUN_ID'],'source_sha':os.environ['GITHUB_SHA'],'verified':True,'uses_shared_provisional_image':True,'core_only_writer':True,'posts':rows}
+          open('.deploy-status/editorial-authority-batch25-20260827.json','w',encoding='utf-8').write(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
           PY
           git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/editorial-authority-batch27-20260827.json
-          git commit -m 'Record verified editorial authority batch 27 publication [skip ci]'
+          git add .deploy-status/editorial-authority-batch25-20260827.json
+          git commit -m 'Record verified editorial authority batch 25 publication [skip ci]'
           git pull --rebase origin main
           git push origin HEAD:main
