@@ -81,7 +81,8 @@ add_filter('the_content', function($content) {
     if ($credit === '') { return $content; }
     if (strpos($content, 'class="emdo-image-credit"') !== false || strpos($content, "class='emdo-image-credit'") !== false) { return $content; }
     return $credit . "\n" . $content;
-}, 8);
+// Run after the site's ES→EN content substitution filters so the credit is not overwritten.
+}, 999);
 
 add_action('wp_head', function() {
     if (!is_singular('post')) { return; }
