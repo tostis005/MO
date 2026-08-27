@@ -32,3 +32,12 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/*
+ * 0.10.266: la capa SEO de imágenes se carga desde este módulo ya registrado
+ * para mantener el bootstrap estable y limitar el cambio al sistema editorial.
+ */
+$elmercado_blog_image_seo_010266 = __DIR__ . '/blog-image-seo-010266.php';
+if ( is_readable( $elmercado_blog_image_seo_010266 ) ) {
+	require_once $elmercado_blog_image_seo_010266;
+}
