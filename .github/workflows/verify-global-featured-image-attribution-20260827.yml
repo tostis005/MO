@@ -48,7 +48,7 @@ jobs:
               -o "$f" -w '%{http_code}' "${url}?creditverify=${stamp}")
             ok=1
             if [ "$code" != 200 ]; then echo "FAIL http=$code"; ok=0; fi
-            count=$(grep -o 'class="emdo-image-credit"' "$f" 2>/dev/null | wc -l)
+            count=$(grep -c 'class="emdo-image-credit"' "$f" 2>/dev/null || true)
             if [ "$count" -ne 1 ]; then echo "FAIL credit_count=$count"; ok=0; fi
             grep -Fq 'emdo-image-credit-source' "$f" || { echo 'FAIL source_class'; ok=0; }
             grep -Fq 'emdo-image-credit-license' "$f" || { echo 'FAIL license_class'; ok=0; }
