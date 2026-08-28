@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.260' );
-/* 0.10.260 difiere la cadena wp-hooks -> gtag-events de Google for WooCommerce en Home. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.265' );
+/* 0.10.265 mejora meta descriptions SEO de productos y artículos. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -164,6 +164,7 @@ $elmercado_modules = array(
 	'inc/blog-footer-layout-polish-010246.php',
 	'inc/blog-design-force-010250.php',
 	'inc/blog-default-image-010264.php',
+	'inc/seo-meta-descriptions-010265.php',
 );
 
 foreach ( $elmercado_modules as $elmercado_module ) {
