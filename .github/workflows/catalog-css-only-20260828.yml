@@ -1,0 +1,202 @@
+name: Verify CSS-only producer catalogue 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-css-only-20260828.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate CSS-only owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES=(
+            'mu-plugins/zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php'
+            'mu-plugins/zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
+            'mu-plugins/zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
+            'mu-plugins/zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+          )
+          for f in "${FILES[@]}"; do php -l "$f" >/dev/null; done
+          ! grep -E 'MutationObserver|ResizeObserver|requestAnimationFrame|setTimeout|addEventListener\(.resize' "${FILES[@]}"
+          grep -Fq 'mdo-catalog-control-widths-css-only-20260828' "${FILES[3]}"
+
+      - name: Deploy four catalogue presentation files
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          BACKUP_DIR="/tmp/mdo-css-only-${GITHUB_RUN_ID}"
+          echo "BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$BACKUP_DIR'"
+          FILES=(
+            'zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php'
+            'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
+            'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
+            'zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+          )
+          for name in "${FILES[@]}"; do
+            src="mu-plugins/$name"
+            target="$PROD_PATH/wp-content/mu-plugins/$name"
+            remote="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "cp -p '$target' '$BACKUP_DIR/$name'"
+            sshpass -e scp $SCP_OPTIONS "$src" "$STAGING_USER@$STAGING_HOST:$remote"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; install -m 0644 '$remote' '$target'; rm -f '$remote'"
+          done
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Install Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+
+      - name: Verify 335px width and responsiveness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import json, time, sys
+
+          urls={
+            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_css_only_verify=1',
+            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_css_only_verify=1',
+          }
+          sizes=[335,360,390]
+          errors=[]; report={}
+
+          def snapshot(page):
+            return page.evaluate('''() => {
+              const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+              const form=toolbar?.querySelector('.woocommerce-ordering')||document.querySelector('.woocommerce-ordering');
+              const select=form?.querySelector('select[name="orderby"]')||null;
+              const dest=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
+              const b=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
+              const s=select?getComputedStyle(select):null;
+              return {
+                ready:!!(toolbar&&form&&select&&dest),
+                toolbar:b(toolbar),form:b(form),select:b(select),dest:b(dest),
+                cssOnly:!!document.getElementById('mdo-catalog-control-widths-css-only-20260828'),
+                oldWidthScript:!!document.getElementById('mdo-catalog-control-widths-20260828'),
+                runtimeGuardScript:!!document.getElementById('mdo-catalog-mobile-runtime-guard-20260824'),
+                parityFinalScript:!!document.getElementById('mdo-catalog-top-controls-parity-final-20260824-js'),
+                arrowFinalScript:!!document.getElementById('mdo-catalog-top-controls-arrow-final-20260824-js'),
+                overflow:document.documentElement.scrollWidth-innerWidth,
+                selectDisplay:s?.display||null, selectWidth:s?.width||null, inlineSize:s?.inlineSize||null,
+                pointerEvents:s?.pointerEvents||null, disabled:!!select?.disabled,
+                bodyClass:document.body?.className||''
+              };
+            }''')
+
+          with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True)
+            for width in sizes:
+              report[str(width)]={}
+              for kind,url in urls.items():
+                page=browser.new_page(viewport={'width':width,'height':820})
+                page.route('**/*', lambda route: route.abort() if route.request.resource_type in ('image','media','font') else route.continue_())
+                page.goto(url,wait_until='commit',timeout=30000)
+                data=None
+                for _ in range(30):
+                  try:
+                    time.sleep(0.5)
+                    d=snapshot(page)
+                    if d.get('ready'):
+                      data=d; break
+                  except Exception:
+                    pass
+                if data is None:
+                  errors.append(f'{kind} {width}: controls never became measurable')
+                  page.close(); continue
+                report[str(width)][kind]=data
+                if not data['cssOnly']: errors.append(f'{kind} {width}: CSS-only owner missing')
+                if data['oldWidthScript'] or data['runtimeGuardScript'] or data['parityFinalScript'] or data['arrowFinalScript']:
+                  errors.append(f'{kind} {width}: dynamic style runtime still present')
+                if data['overflow'] > 1: errors.append(f'{kind} {width}: horizontal overflow {data["overflow"]}')
+                if abs(data['form']['w']-data['select']['w']) > 2.5:
+                  errors.append(f'{kind} {width}: select width {data["select"]["w"]} != form {data["form"]["w"]}')
+                if width == 335 and data['select']['w'] < 260:
+                  errors.append(f'{kind} 335: select still too narrow ({data["select"]["w"]})')
+                if data['pointerEvents']=='none' or data['disabled']:
+                  errors.append(f'{kind} {width}: ordering control is not interactive')
+                # Event loop / DOM responsiveness check.
+                t0=time.time(); title=page.title(); elapsed=time.time()-t0
+                if elapsed > 2.0: errors.append(f'{kind} {width}: page evaluation sluggish ({elapsed:.2f}s)')
+                page.close()
+            browser.close()
+
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if errors:
+            print('ERRORS:')
+            print('\n'.join('- '+x for x in errors))
+            sys.exit(1)
+          print('CSS_ONLY_CATALOGUE_VERIFIED=true')
+          PY
+
+      - name: Roll back all four files on failure
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          FILES=(
+            'zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php'
+            'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
+            'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
+            'zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+          )
+          for name in "${FILES[@]}"; do
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "install -m 0644 '$BACKUP_DIR/$name' '$PROD_PATH/wp-content/mu-plugins/$name'"
+          done
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR'"
+
+      - name: Remove deployment backups
+        if: success()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR'"
