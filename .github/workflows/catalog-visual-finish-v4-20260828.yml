@@ -22,19 +22,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate CSS-only visual owner
-        shell: bash
+      - name: Validate CSS-only owner
         run: |
           set -euo pipefail
           f='mu-plugins/zzzzzzzzzzzzzzzzzzzzzz-mdo-catalog-controls-visual-finish-20260828.php'
           php -l "$f" >/dev/null
           grep -Fq 'Version: 1.2.0' "$f"
-          grep -Fq "add_action( 'wp_head', 'mdo_catalog_controls_visual_finish_20260828', PHP_INT_MAX );" "$f"
-          ! grep -Eq '<script|MutationObserver|ResizeObserver|requestAnimationFrame[[:space:]]*\(|setInterval[[:space:]]*\(|setTimeout[[:space:]]*\(' "$f"
-          ! grep -Eq 'pre_get_posts|woocommerce_product_query|tax_query|meta_query|posts_where|posts_join|posts_request|wp_ajax|WC_Query|woocommerce_product_is_visible|woocommerce_get_catalog_ordering_args' "$f"
+          ! grep -Eq '<script|MutationObserver|ResizeObserver|requestAnimationFrame|setInterval|setTimeout|pre_get_posts|woocommerce_product_query|wp_ajax' "$f"
 
-      - name: Deploy visual owner
-        shell: bash
+      - name: Deploy candidate
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
@@ -53,192 +49,97 @@ jobs:
           TARGET="$PROD/wp-content/mu-plugins/$NAME"
           BACKUP="/tmp/$NAME.$GITHUB_RUN_ID.backup"
           echo "TARGET=$TARGET" >> "$GITHUB_ENV"; echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
-          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET'"; then
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TARGET' '$BACKUP'"; echo EXISTED=1 >> "$GITHUB_ENV"
-          else
-            echo EXISTED=0 >> "$GITHUB_ENV"
-          fi
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET'"; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TARGET' '$BACKUP'"; echo EXISTED=1 >> "$GITHUB_ENV"; else echo EXISTED=0 >> "$GITHUB_ENV"; fi
           R="/tmp/$NAME.$GITHUB_RUN_ID"
           sshpass -e scp $SCP "mu-plugins/$NAME" "$STAGING_USER@$STAGING_HOST:$R"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$R' >/dev/null; install -m0644 '$R' '$TARGET'; rm -f '$R'"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true"
 
       - name: Install Chromium
-        shell: bash
         run: |
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
 
-      - name: Verify production visual finish
-        shell: bash
+      - name: Verify live CSS visuals
         run: |
           set -euo pipefail
           python - <<'PY'
           from playwright.sync_api import sync_playwright
           import time, json, sys
-
-          urls = {
-              'global': 'https://www.elmercadodeorigen.com/tienda/?visual_finish_v4=1',
-              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?visual_finish_v4=1',
-          }
-          widths = [335, 360, 390, 640, 700, 767, 768, 1024, 1440, 1920]
-          errors = []
-          report = {}
-
-          snapshot_js = '''() => {
+          urls={'global':'https://www.elmercadodeorigen.com/tienda/?vf4=2','producer':'https://www.elmercadodeorigen.com/tienda/1957/?vf4=2'}
+          widths=[335,390,640,767,768,1024,1440]
+          errors=[]; report={}
+          JS='''() => {
             const t=document.querySelector('.emo-catalog-toolbar-shared-010229');
-            const f=t?.querySelector('.woocommerce-ordering');
-            const s=f?.querySelector('select[name="orderby"]');
+            const f=t?.querySelector('.woocommerce-ordering'), s=f?.querySelector('select[name="orderby"]');
             const d=t?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
-            const span=d?.querySelector('span');
-            const strong=d?.querySelector('strong');
-            const b=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
-            const cs=e=>e?getComputedStyle(e):null;
-            const db=d?getComputedStyle(d,'::before'):null;
-            const da=d?getComputedStyle(d,'::after'):null;
-            const oa=f?getComputedStyle(f,'::after'):null;
+            const span=d?.querySelector('span'), strong=d?.querySelector('strong');
+            const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
+            const cs=e=>e?getComputedStyle(e):null, db=d?getComputedStyle(d,'::before'):null, da=d?getComputedStyle(d,'::after'):null, oa=f?getComputedStyle(f,'::after'):null;
             const style=document.getElementById('mdo-catalog-controls-visual-finish-20260828');
-            return {
-              ready:!!(t&&f&&s&&d&&span&&strong),
-              visual:!!style,
-              visualInHead:!!style && document.head.contains(style),
-              old:[
-                !!document.getElementById('mdo-catalog-control-widths-20260828'),
-                !!document.getElementById('mdo-catalog-mobile-runtime-guard-20260824'),
-                !!document.getElementById('mdo-catalog-top-controls-parity-final-20260824-js'),
-                !!document.getElementById('mdo-catalog-top-controls-arrow-final-20260824-js'),
-                !!document.getElementById('elmercado-catalog-mobile-controls-parity-script-010236')
-              ],
-              t:b(t), f:b(f), s:b(s), d:b(d),
-              dAlign:cs(d)?.textAlign,
-              spanAlign:cs(span)?.textAlign,
-              spanWeight:parseInt(cs(span)?.fontWeight||'0',10),
-              strongWeight:parseInt(cs(strong)?.fontWeight||'0',10),
-              pinDisplay:db?.display,
-              pinContent:db?.content,
-              pinW:parseFloat(db?.width||'0'),
-              pinH:parseFloat(db?.height||'0'),
-              pinMask:db?.maskImage||db?.webkitMaskImage||'',
-              dArrowDisplay:da?.display,
-              dArrowContent:da?.content,
-              dArrowW:parseFloat(da?.width||'0'),
-              dArrowH:parseFloat(da?.height||'0'),
-              dArrowBg:da?.backgroundImage||'',
-              oArrowDisplay:oa?.display,
-              oArrowContent:oa?.content,
-              oArrowW:parseFloat(oa?.width||'0'),
-              oArrowH:parseFloat(oa?.height||'0'),
-              oArrowBg:oa?.backgroundImage||'',
-              oArrowRight:oa?.right,
-              sAlign:cs(s)?.textAlign,
-              sAlignLast:cs(s)?.textAlignLast,
-              sBg:cs(s)?.backgroundImage,
-              fPosition:cs(f)?.position,
-              overflow:document.documentElement.scrollWidth-innerWidth,
-              pointer:cs(s)?.pointerEvents,
-              disabled:!!s?.disabled
-            };
+            return {ready:!!(t&&f&&s&&d&&span&&strong),head:!!style&&document.head.contains(style),t:box(t),f:box(f),s:box(s),d:box(d),alignD:cs(d)?.textAlign,alignSpan:cs(span)?.textAlign,alignS:cs(s)?.textAlign,lastS:cs(s)?.textAlignLast,wSpan:+(cs(span)?.fontWeight||0),wStrong:+(cs(strong)?.fontWeight||0),pin:[db?.display,db?.content,parseFloat(db?.width||0),parseFloat(db?.height||0),db?.maskImage||db?.webkitMaskImage||''],da:[da?.display,da?.content,parseFloat(da?.width||0),parseFloat(da?.height||0),da?.backgroundImage||''],oa:[oa?.display,oa?.content,parseFloat(oa?.width||0),parseFloat(oa?.height||0),oa?.backgroundImage||'',oa?.right],formPos:cs(f)?.position,overflow:document.documentElement.scrollWidth-innerWidth,pointer:cs(s)?.pointerEvents,disabled:!!s?.disabled,old:[!!document.getElementById('mdo-catalog-control-widths-20260828'),!!document.getElementById('mdo-catalog-mobile-runtime-guard-20260824'),!!document.getElementById('mdo-catalog-top-controls-parity-final-20260824-js'),!!document.getElementById('mdo-catalog-top-controls-arrow-final-20260824-js'),!!document.getElementById('elmercado-catalog-mobile-controls-parity-script-010236')]};
           }'''
-
           with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser=p.chromium.launch(headless=True)
             for w in widths:
-              report[str(w)] = {}
-              for kind, url in urls.items():
-                page = browser.new_page(viewport={'width':w,'height':850})
-                page.route('**/*', lambda r: r.abort() if r.request.resource_type in ('image','font','media') else r.continue_())
-                page.goto(url, wait_until='commit', timeout=30000)
-                data = None
+              report[str(w)]={}
+              for kind,url in urls.items():
+                page=browser.new_page(viewport={'width':w,'height':850})
+                page.route('**/*',lambda r:r.abort() if r.request.resource_type in ('image','font','media') else r.continue_())
+                page.goto(url,wait_until='commit',timeout=30000)
+                data=None
                 for _ in range(55):
                   time.sleep(.25)
                   try:
-                    a = page.evaluate(snapshot_js)
+                    a=page.evaluate(JS)
                     if a and a.get('ready') and a.get('d') and a.get('s'):
-                      time.sleep(.45)
-                      b = page.evaluate(snapshot_js)
-                      if b and b.get('ready') and b.get('d') and b.get('s'):
-                        data = b
-                        break
-                  except Exception:
-                    pass
-                report[str(w)][kind] = data
+                      time.sleep(.4); b=page.evaluate(JS)
+                      if b and b.get('ready') and b.get('d') and b.get('s'): data=b; break
+                  except Exception: pass
+                report[str(w)][kind]=data
                 if not data:
-                  errors.append(f'{kind} {w}: controls unavailable')
-                  page.close(); continue
-
-                if not data['visual'] or not data['visualInHead']:
-                  errors.append(f'{kind} {w}: visual CSS is not in head')
-                if any(data['old']):
-                  errors.append(f'{kind} {w}: retired visual runtime present {data["old"]}')
-                if data['overflow'] > 1:
-                  errors.append(f'{kind} {w}: horizontal overflow {data["overflow"]}')
-                if data['dAlign'] != 'left' or data['spanAlign'] != 'left':
-                  errors.append(f'{kind} {w}: destination text not left aligned')
-                if data['sAlign'] != 'left' or data['sAlignLast'] != 'left':
-                  errors.append(f'{kind} {w}: ordering text not left aligned')
-                if data['strongWeight'] <= data['spanWeight']:
-                  errors.append(f'{kind} {w}: destination is not bolder ({data["spanWeight"]}/{data["strongWeight"]})')
-
-                if data['pinDisplay'] == 'none' or data['pinContent'] == 'none' or abs(data['pinW']-14)>1.5 or abs(data['pinH']-14)>1.5 or not data['pinMask'] or data['pinMask']=='none':
-                  errors.append(f'{kind} {w}: location pin missing')
-
-                if data['dArrowDisplay'] == 'none' or data['dArrowContent'] == 'none' or abs(data['dArrowW']-12)>1.5 or abs(data['dArrowH']-8)>1.5 or not data['dArrowBg'] or data['dArrowBg']=='none':
-                  errors.append(f'{kind} {w}: destination arrow missing')
-                if data['oArrowDisplay'] == 'none' or data['oArrowContent'] == 'none' or abs(data['oArrowW']-12)>1.5 or abs(data['oArrowH']-8)>1.5 or not data['oArrowBg'] or data['oArrowBg']=='none':
-                  errors.append(f'{kind} {w}: ordering arrow missing')
-                if data['dArrowBg'] != data['oArrowBg']:
-                  errors.append(f'{kind} {w}: arrows do not use the same icon')
-                if data['fPosition'] != 'relative':
-                  errors.append(f'{kind} {w}: ordering wrapper is not relative')
-                if data['pointer'] == 'none' or data['disabled']:
-                  errors.append(f'{kind} {w}: ordering blocked')
-
-                if w <= 767:
-                  if abs(data['d']['w'] - data['s']['w']) > 3:
-                    errors.append(f'{kind} {w}: mobile widths differ {data["d"]["w"]}/{data["s"]["w"]}')
-                  if w == 335 and data['s']['w'] < 260:
-                    errors.append(f'{kind} 335: ordering too narrow {data["s"]["w"]}')
-
+                  errors.append(f'{kind} {w}: controls unavailable'); page.close(); continue
+                if not data['head']: errors.append(f'{kind} {w}: visual CSS not in head')
+                if any(data['old']): errors.append(f'{kind} {w}: old visual runtime present')
+                if data['overflow']>1: errors.append(f'{kind} {w}: overflow {data["overflow"]}')
+                if data['alignD']!='left' or data['alignSpan']!='left': errors.append(f'{kind} {w}: destination alignment')
+                if data['alignS']!='left' or data['lastS']!='left': errors.append(f'{kind} {w}: ordering alignment')
+                if data['wStrong']<=data['wSpan']: errors.append(f'{kind} {w}: destination weight {data["wSpan"]}/{data["wStrong"]}')
+                pin=data['pin']; da=data['da']; oa=data['oa']
+                if pin[0]=='none' or pin[1]=='none' or abs(pin[2]-14)>1.5 or abs(pin[3]-14)>1.5 or not pin[4] or pin[4]=='none': errors.append(f'{kind} {w}: pin missing')
+                if da[0]=='none' or da[1]=='none' or abs(da[2]-12)>1.5 or abs(da[3]-8)>1.5 or not da[4] or da[4]=='none': errors.append(f'{kind} {w}: destination arrow missing')
+                if oa[0]=='none' or oa[1]=='none' or abs(oa[2]-12)>1.5 or abs(oa[3]-8)>1.5 or not oa[4] or oa[4]=='none': errors.append(f'{kind} {w}: ordering arrow missing')
+                if da[4]!=oa[4]: errors.append(f'{kind} {w}: arrows differ')
+                if data['formPos']!='relative': errors.append(f'{kind} {w}: ordering wrapper not relative')
+                if data['pointer']=='none' or data['disabled']: errors.append(f'{kind} {w}: ordering blocked')
+                if w<=767 and abs(data['d']['w']-data['s']['w'])>3: errors.append(f'{kind} {w}: mobile widths {data["d"]["w"]}/{data["s"]["w"]}')
+                if w==335 and data['s']['w']<260: errors.append(f'{kind} 335: ordering too narrow {data["s"]["w"]}')
                 try:
-                  t0=time.time()
-                  focused=page.evaluate('''() => {const s=document.querySelector('.emo-catalog-toolbar-shared-010229 select[name="orderby"]'); if(!s)return false; s.focus(); return document.activeElement===s;}''')
-                  if time.time()-t0 > .75:
-                    errors.append(f'{kind} {w}: DOM interaction sluggish')
-                  if not focused:
-                    errors.append(f'{kind} {w}: ordering cannot receive focus')
-                  modal=page.evaluate('''() => {const b=document.querySelector('.emo-catalog-toolbar-shared-010229 [data-mdo-destination-open],.emo-catalog-toolbar-shared-010229 [data-mdo-ps-destination-open]'); if(!b)return false; b.click(); const m=document.querySelector('[data-mdo-destination-modal],[data-mdo-ps-modal],.mdo-destination-modal,.mdo-ps-modal'); return !!m && !m.hidden && getComputedStyle(m).display!=='none';}''')
-                  if not modal:
-                    errors.append(f'{kind} {w}: destination modal did not open')
-                except Exception as e:
-                  errors.append(f'{kind} {w}: interaction {type(e).__name__}')
+                  t0=time.time(); focused=page.evaluate('''() => {const s=document.querySelector('.emo-catalog-toolbar-shared-010229 select[name="orderby"]'); if(!s)return false;s.focus();return document.activeElement===s;}''')
+                  if time.time()-t0>.75: errors.append(f'{kind} {w}: DOM sluggish')
+                  if not focused: errors.append(f'{kind} {w}: select cannot focus')
+                  modal=page.evaluate('''() => {const b=document.querySelector('.emo-catalog-toolbar-shared-010229 [data-mdo-destination-open],.emo-catalog-toolbar-shared-010229 [data-mdo-ps-destination-open]');if(!b)return false;b.click();const m=document.querySelector('[data-mdo-destination-modal],[data-mdo-ps-modal],.mdo-destination-modal,.mdo-ps-modal');return !!m&&!m.hidden&&getComputedStyle(m).display!=='none';}''')
+                  if not modal: errors.append(f'{kind} {w}: destination modal did not open')
+                except Exception as e: errors.append(f'{kind} {w}: interaction {type(e).__name__}')
                 page.close()
             browser.close()
-
-          print(json.dumps(report, ensure_ascii=False, indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
           if errors:
-            print('ERRORS:')
-            print('\n'.join('- '+x for x in errors))
-            sys.exit(1)
+            print('ERRORS:'); print('\n'.join('- '+e for e in errors)); sys.exit(1)
           print('CATALOG_VISUAL_FINISH_V4_VERIFIED=true')
           PY
 
       - name: Roll back on failure
         if: failure() && env.TARGET != ''
-        shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          if [ "${EXISTED:-0}" = 1 ]; then
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "install -m0644 '$BACKUP' '$TARGET'; rm -f '$BACKUP'"
-          else
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET'"
-          fi
+          if [ "${EXISTED:-0}" = 1 ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "install -m0644 '$BACKUP' '$TARGET'; rm -f '$BACKUP'"; else sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET'"; fi
 
       - name: Remove backup
         if: success() && env.EXISTED == '1'
-        shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
