@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Shared Destination Modal 2026-08-28
  * Description: One shared destination form, stylesheet and interaction owner for the global and producer catalogues.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: El Mercado de Origen
  */
 
@@ -91,13 +91,13 @@ function mdo_shared_destination_trigger_markup_20260828( bool $producer ): void 
 	if ( ! class_exists( 'MDO_Catalog_Destination_Frontend' ) ) {
 		return;
 	}
-	$destination = mdo_shared_destination_current_20260828();
-	$countries   = mdo_shared_destination_countries_20260828();
-	$label       = (string) ( $countries[ $destination['country'] ] ?? $destination['country'] );
-	$suffix      = 'ES' === $destination['country'] && '' !== $destination['postcode'] ? ' · ' . $destination['postcode'] : '';
-	$wrap_class  = $producer ? 'mdo-ps-destination' : 'mdo-catalog-destination';
+	$destination  = mdo_shared_destination_current_20260828();
+	$countries    = mdo_shared_destination_countries_20260828();
+	$label        = (string) ( $countries[ $destination['country'] ] ?? $destination['country'] );
+	$suffix       = 'ES' === $destination['country'] && '' !== $destination['postcode'] ? ' · ' . $destination['postcode'] : '';
+	$wrap_class   = $producer ? 'mdo-ps-destination' : 'mdo-catalog-destination';
 	$button_class = $producer ? 'mdo-ps-destination__trigger' : 'mdo-catalog-destination__trigger';
-	$open_attr   = $producer ? 'data-mdo-ps-destination-open' : 'data-mdo-destination-open';
+	$open_attr    = $producer ? 'data-mdo-ps-destination-open' : 'data-mdo-destination-open';
 	?>
 	<div class="<?php echo esc_attr( $wrap_class ); ?>" data-mdo-shared-destination-trigger-wrap>
 		<button type="button" class="<?php echo esc_attr( $button_class ); ?>" <?php echo esc_attr( $open_attr ); ?> aria-haspopup="dialog" aria-controls="mdo-shared-destination-dialog">
@@ -121,10 +121,7 @@ function mdo_shared_destination_render_producer_trigger_20260828(): void {
 	}
 }
 
-/**
- * The destination form exists in exactly one PHP renderer. Both catalogue
- * surfaces open this same DOM component and therefore cannot drift visually.
- */
+/** Both catalogue surfaces open this exact same DOM form. */
 function mdo_shared_destination_render_modal_20260828(): void {
 	if ( ! mdo_shared_destination_is_surface_20260828() || ! class_exists( 'MDO_Catalog_Destination_Frontend' ) ) {
 		return;
@@ -138,7 +135,6 @@ function mdo_shared_destination_render_modal_20260828(): void {
 			<button type="button" class="mdo-shared-destination-modal__close" data-mdo-shared-destination-close aria-label="<?php echo esc_attr( mdo_shared_destination_text_20260828( 'Cerrar', 'Close' ) ); ?>">×</button>
 			<h2 id="mdo-shared-destination-title"><?php echo esc_html( mdo_shared_destination_text_20260828( '¿Dónde quieres recibir tu pedido?', 'Where do you want to receive your order?' ) ); ?></h2>
 			<p class="mdo-shared-destination-modal__intro"><?php echo esc_html( mdo_shared_destination_text_20260828( 'Mostramos solo los productos que pueden enviarse al destino elegido.', 'We only show products that can be shipped to your selected destination.' ) ); ?></p>
-
 			<form data-mdo-shared-destination-form>
 				<label for="mdo-shared-destination-country"><?php echo esc_html( mdo_shared_destination_text_20260828( 'País', 'Country' ) ); ?></label>
 				<select id="mdo-shared-destination-country" name="country" data-mdo-shared-country>
@@ -146,13 +142,11 @@ function mdo_shared_destination_render_modal_20260828(): void {
 						<option value="<?php echo esc_attr( (string) $code ); ?>" <?php selected( $destination['country'], (string) $code ); ?>><?php echo esc_html( (string) $country_label ); ?></option>
 					<?php endforeach; ?>
 				</select>
-
 				<div class="mdo-shared-destination-modal__postcode" data-mdo-shared-postcode-wrap <?php echo 'ES' === $destination['country'] ? '' : 'hidden'; ?>>
 					<label for="mdo-shared-destination-postcode"><?php echo esc_html( mdo_shared_destination_text_20260828( 'Código postal', 'Postcode' ) ); ?> <span><?php echo esc_html( mdo_shared_destination_text_20260828( '(opcional)', '(optional)' ) ); ?></span></label>
 					<input id="mdo-shared-destination-postcode" name="postcode" data-mdo-shared-postcode inputmode="numeric" autocomplete="postal-code" maxlength="5" pattern="[0-9]{5}" value="<?php echo esc_attr( $destination['postcode'] ); ?>" placeholder="28001">
 					<small><?php echo esc_html( mdo_shared_destination_text_20260828( 'Úsalo para ajustar Península, Baleares o Canarias. Actualmente no enviamos a Ceuta ni Melilla.', 'Use it to refine Mainland Spain, Balearic Islands or Canary Islands. We currently do not ship to Ceuta or Melilla.' ) ); ?></small>
 				</div>
-
 				<p class="mdo-shared-destination-modal__error" data-mdo-shared-destination-error role="alert" hidden></p>
 				<button type="submit" class="mdo-shared-destination-modal__save" data-mdo-shared-destination-save><?php echo esc_html( mdo_shared_destination_text_20260828( 'Guardar destino', 'Save destination' ) ); ?></button>
 			</form>
@@ -202,7 +196,6 @@ function mdo_shared_destination_render_script_20260828(): void {
 		'use strict';
 		const modal = document.querySelector('[data-mdo-shared-destination-modal]');
 		if (!modal) return;
-		const panel = modal.querySelector('.mdo-shared-destination-modal__panel');
 		const form = modal.querySelector('[data-mdo-shared-destination-form]');
 		const country = modal.querySelector('[data-mdo-shared-country]');
 		const postcodeWrap = modal.querySelector('[data-mdo-shared-postcode-wrap]');
@@ -210,106 +203,64 @@ function mdo_shared_destination_render_script_20260828(): void {
 		const error = modal.querySelector('[data-mdo-shared-destination-error]');
 		const save = modal.querySelector('[data-mdo-shared-destination-save]');
 		let returnFocus = null;
-
-		const syncPostcode = () => {
-			const spanish = country.value === 'ES';
-			postcodeWrap.hidden = !spanish;
-			if (!spanish) postcode.value = '';
-		};
-		const showError = (message) => {
-			error.textContent = message || '';
-			error.hidden = !message;
-		};
-		const open = (trigger) => {
-			returnFocus = trigger || document.activeElement;
-			modal.hidden = false;
-			modal.setAttribute('aria-hidden', 'false');
-			document.body.classList.add('mdo-shared-destination-modal-open');
-			syncPostcode();
-			showError('');
-			country.focus({preventScroll:true});
-		};
-		const close = () => {
-			modal.hidden = true;
-			modal.setAttribute('aria-hidden', 'true');
-			document.body.classList.remove('mdo-shared-destination-modal-open');
-			if (returnFocus && typeof returnFocus.focus === 'function') returnFocus.focus({preventScroll:true});
-		};
-
+		const syncPostcode = () => { const spanish = country.value === 'ES'; postcodeWrap.hidden = !spanish; if (!spanish) postcode.value = ''; };
+		const showError = (message) => { error.textContent = message || ''; error.hidden = !message; };
+		const open = (trigger) => { returnFocus = trigger || document.activeElement; modal.hidden = false; modal.setAttribute('aria-hidden','false'); document.body.classList.add('mdo-shared-destination-modal-open'); syncPostcode(); showError(''); country.focus({preventScroll:true}); };
+		const close = () => { modal.hidden = true; modal.setAttribute('aria-hidden','true'); document.body.classList.remove('mdo-shared-destination-modal-open'); if (returnFocus && typeof returnFocus.focus === 'function') returnFocus.focus({preventScroll:true}); };
 		document.addEventListener('click', (event) => {
 			const openButton = event.target.closest('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
-			if (openButton) {
-				event.preventDefault();
-				open(openButton);
-				return;
-			}
-			if (event.target.closest('[data-mdo-shared-destination-close]')) {
-				event.preventDefault();
-				close();
-			}
-		});
-		document.addEventListener('keydown', (event) => {
-			if (event.key === 'Escape' && !modal.hidden) close();
-		});
+			if (openButton) { event.preventDefault(); event.stopImmediatePropagation(); open(openButton); return; }
+			if (event.target.closest('[data-mdo-shared-destination-close]')) { event.preventDefault(); close(); }
+		}, true);
+		document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !modal.hidden) close(); });
 		country.addEventListener('change', syncPostcode);
-
 		form.addEventListener('submit', async (event) => {
-			event.preventDefault();
-			showError('');
-			const postcodeValue = country.value === 'ES' ? postcode.value.replace(/\D+/g, '') : '';
-			if (country.value === 'ES' && postcodeValue && postcodeValue.length !== 5) {
-				showError(<?php echo wp_json_encode( mdo_shared_destination_text_20260828( 'Introduce un código postal español de 5 cifras o déjalo vacío.', 'Enter a 5-digit Spanish postcode or leave it blank.' ) ); ?>);
-				postcode.focus();
-				return;
-			}
+			event.preventDefault(); showError('');
+			const postcodeValue = country.value === 'ES' ? postcode.value.replace(/\D+/g,'') : '';
+			if (country.value === 'ES' && postcodeValue && postcodeValue.length !== 5) { showError(<?php echo wp_json_encode( mdo_shared_destination_text_20260828( 'Introduce un código postal español de 5 cifras o déjalo vacío.', 'Enter a 5-digit Spanish postcode or leave it blank.' ) ); ?>); postcode.focus(); return; }
 			save.disabled = true;
-			const body = new URLSearchParams();
-			body.set('action', 'mdo_set_shipping_destination');
-			body.set('nonce', modal.dataset.mdoNonce || '');
-			body.set('country', country.value);
-			body.set('postcode', postcodeValue);
+			const body = new URLSearchParams(); body.set('action','mdo_set_shipping_destination'); body.set('nonce',modal.dataset.mdoNonce || ''); body.set('country',country.value); body.set('postcode',postcodeValue);
 			try {
-				const response = await fetch(modal.dataset.mdoAjaxUrl, {
-					method: 'POST',
-					credentials: 'same-origin',
-					headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-					body: body.toString()
-				});
+				const response = await fetch(modal.dataset.mdoAjaxUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:body.toString()});
 				const json = await response.json();
-				if (!response.ok || !json || !json.success) {
-					throw new Error(json?.data?.message || <?php echo wp_json_encode( mdo_shared_destination_text_20260828( 'No hemos podido guardar el destino.', 'We could not save the destination.' ) ); ?>);
-				}
+				if (!response.ok || !json || !json.success) throw new Error(json?.data?.message || <?php echo wp_json_encode( mdo_shared_destination_text_20260828( 'No hemos podido guardar el destino.', 'We could not save the destination.' ) ); ?>);
 				window.location.reload();
-			} catch (err) {
-				showError(err?.message || <?php echo wp_json_encode( mdo_shared_destination_text_20260828( 'No hemos podido guardar el destino.', 'We could not save the destination.' ) ); ?>);
-				save.disabled = false;
-			}
+			} catch (err) { showError(err?.message || <?php echo wp_json_encode( mdo_shared_destination_text_20260828( 'No hemos podido guardar el destino.', 'We could not save the destination.' ) ); ?>); save.disabled = false; }
 		});
 	})();
 	</script>
 	<?php
 }
 
-/*
- * Retire only the duplicated UI owners. Destination filtering, AJAX handling,
- * cookies and catalogue query logic remain owned by their existing plugins.
- */
-add_action(
-	'wp_loaded',
-	static function (): void {
-		if ( class_exists( 'MDO_Catalog_Destination_Frontend' ) ) {
-			remove_action( 'woocommerce_before_shop_loop', array( 'MDO_Catalog_Destination_Frontend', 'render_destination_control' ), 22 );
-			remove_action( 'wp_head', array( 'MDO_Catalog_Destination_Frontend', 'render_styles' ), PHP_INT_MAX );
-			remove_action( 'wp_footer', array( 'MDO_Catalog_Destination_Frontend', 'render_script' ), PHP_INT_MAX );
-		}
-		remove_action( 'woocommerce_before_shop_loop', 'mdo_ps_safe_render_trigger_20260821', 21 );
-		remove_action( 'wp_footer', 'mdo_ps_safe_footer_20260821', PHP_INT_MAX );
+/** Remove only duplicated UI callbacks; all destination/query/AJAX logic stays intact. */
+function mdo_shared_destination_remove_legacy_ui_20260828(): void {
+	if ( class_exists( 'MDO_Catalog_Destination_Frontend' ) ) {
+		remove_action( 'woocommerce_before_shop_loop', array( 'MDO_Catalog_Destination_Frontend', 'render_destination_control' ), 22 );
+		remove_action( 'wp_head', array( 'MDO_Catalog_Destination_Frontend', 'render_styles' ), PHP_INT_MAX );
+		remove_action( 'wp_footer', array( 'MDO_Catalog_Destination_Frontend', 'render_script' ), PHP_INT_MAX );
+	}
+	remove_action( 'woocommerce_before_shop_loop', 'mdo_ps_safe_render_trigger_20260821', 21 );
+	remove_action( 'wp_footer', 'mdo_ps_safe_footer_20260821', PHP_INT_MAX );
+}
 
-		add_action( 'woocommerce_before_shop_loop', 'mdo_shared_destination_render_producer_trigger_20260828', 21 );
-		add_action( 'woocommerce_before_shop_loop', 'mdo_shared_destination_render_global_trigger_20260828', 22 );
-		add_action( 'wp_head', 'mdo_shared_destination_render_styles_20260828', PHP_INT_MAX );
-		add_action( 'wp_footer', 'mdo_shared_destination_render_modal_20260828', PHP_INT_MAX - 2 );
-		add_action( 'wp_footer', 'mdo_shared_destination_render_script_20260828', PHP_INT_MAX );
-	},
-	PHP_INT_MAX
-);
+function mdo_shared_destination_register_ui_20260828(): void {
+	static $registered = false;
+	if ( $registered ) {
+		return;
+	}
+	$registered = true;
+	add_action( 'woocommerce_before_shop_loop', 'mdo_shared_destination_render_producer_trigger_20260828', 21 );
+	add_action( 'woocommerce_before_shop_loop', 'mdo_shared_destination_render_global_trigger_20260828', 22 );
+	add_action( 'wp_head', 'mdo_shared_destination_render_styles_20260828', PHP_INT_MAX );
+	add_action( 'wp_footer', 'mdo_shared_destination_render_modal_20260828', PHP_INT_MAX - 2 );
+	add_action( 'wp_footer', 'mdo_shared_destination_render_script_20260828', PHP_INT_MAX );
+}
+
+/* Cleanup repeatedly at safe lifecycle boundaries so late compatibility layers
+ * cannot restore either legacy modal before head, loop or footer rendering. */
+add_action( 'wp_loaded', 'mdo_shared_destination_remove_legacy_ui_20260828', PHP_INT_MAX );
+add_action( 'wp_loaded', 'mdo_shared_destination_register_ui_20260828', PHP_INT_MAX );
+add_action( 'wp', 'mdo_shared_destination_remove_legacy_ui_20260828', PHP_INT_MAX );
+add_action( 'template_redirect', 'mdo_shared_destination_remove_legacy_ui_20260828', PHP_INT_MAX );
+add_action( 'wp_head', 'mdo_shared_destination_remove_legacy_ui_20260828', 0 );
+add_action( 'wp_footer', 'mdo_shared_destination_remove_legacy_ui_20260828', 0 );
