@@ -1,4 +1,4 @@
-# Trigger registered production deployment.
+# Idempotent production verification after SEO update.
 name: Optimize sterilization article SEO 20260828
 
 on:
@@ -59,12 +59,18 @@ jobs:
           WP="${REST#*|}"
           REMOTE="/tmp/emdo-optimize-sterilization-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
-          sshpass -e scp $SCP .github/scripts/optimize-sterilization-article-20260828.php "$STAGING_USER@$STAGING_HOST:$REMOTE/apply.php"
+          sshpass -e scp $SCP \
+            .github/scripts/optimize-sterilization-article-20260828.php \
+            .github/scripts/fix-sterilization-related-link-20260828.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "'$PHP' -l '$REMOTE/apply.php' >/dev/null"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            '$PHP' -l '$REMOTE/optimize-sterilization-article-20260828.php' >/dev/null
+            '$PHP' -l '$REMOTE/fix-sterilization-related-link-20260828.php' >/dev/null
+          "
 
           set +e
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/apply.php' --path='$PROD' --allow-root" > /tmp/sterilization-seo.json 2> /tmp/sterilization-seo.err
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/optimize-sterilization-article-20260828.php' --path='$PROD' --allow-root" > /tmp/sterilization-seo.json 2> /tmp/sterilization-seo.err
           RC=$?
           set -e
           if [ "$RC" -ne 0 ]; then
@@ -74,8 +80,12 @@ jobs:
             exit "$RC"
           fi
 
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/fix-sterilization-related-link-20260828.php' --path='$PROD' --allow-root" > /tmp/related-link.json
+
           cat /tmp/sterilization-seo.json
-          jq -e '.ok==true and .checks.slug_unchanged==true and .checks.thumbnail_unchanged==true and .checks.keyword_in_title==true and .checks.has_ph46==true and .checks.has_boe==true and .checks.has_faq==true and .after.content_length>.before.content_length' /tmp/sterilization-seo.json >/dev/null
+          cat /tmp/related-link.json
+          jq -e '.ok==true and .checks.slug_unchanged==true and .checks.thumbnail_unchanged==true and .checks.keyword_in_title==true and .checks.has_ph46==true and .checks.has_boe==true and .checks.has_faq==true and .after.content_length>=13000' /tmp/sterilization-seo.json >/dev/null
+          jq -e '.ok==true' /tmp/related-link.json >/dev/null
 
           URL="$(jq -r '.after.permalink' /tmp/sterilization-seo.json)"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
@@ -87,6 +97,12 @@ jobs:
           grep -Fq 'Qué es un autoclave y cuándo se utiliza' /tmp/article.html || { echo 'Autoclave section not found' >&2; exit 23; }
           grep -Fq 'Preguntas frecuentes sobre la esterilización' /tmp/article.html || { echo 'FAQ section not found' >&2; exit 24; }
           grep -Fq 'BOE-A-1978-25634' /tmp/article.html || { echo 'BOE reference not found' >&2; exit 25; }
+          grep -Fq 'Conservas en tarro de vidrio o lata: diferencias de conservación y uso' /tmp/article.html || { echo 'Correct related-link anchor not found' >&2; exit 26; }
+
+          TITLE_TAG="$(grep -ioE '<title[^>]*>[^<]+</title>' /tmp/article.html | head -n1 || true)"
+          META_TAG="$(grep -ioE '<meta[^>]+name=["'"']description["'"'][^>]*>' /tmp/article.html | head -n1 || true)"
+          printf 'Public title: %s\n' "$TITLE_TAG"
+          printf 'Public meta: %s\n' "$META_TAG"
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
 
@@ -97,8 +113,11 @@ jobs:
             --arg source_sha "$GITHUB_SHA" \
             --arg public_url "$URL" \
             --arg http "$HTTP" \
+            --arg title_tag "$TITLE_TAG" \
+            --arg meta_tag "$META_TAG" \
             --slurpfile result /tmp/sterilization-seo.json \
-            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,public_url:$public_url,http:($http|tonumber),result:$result[0]}' \
+            --slurpfile related /tmp/related-link.json \
+            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,public_url:$public_url,http:($http|tonumber),title_tag:$title_tag,meta_tag:$meta_tag,result:$result[0],related_link:$related[0]}' \
             > .deploy-status/optimize-sterilization-article-20260828.json
 
           git config user.name 'github-actions[bot]'
