@@ -92,8 +92,8 @@ jobs:
               baseline = json.load(f)
 
           urls = {
-              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v1',
-              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v1',
+              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v2',
+              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v2',
           }
           sizes = [(390,844),(430,900),(640,900),(768,1024),(1024,900),(1440,1000),(1920,1080)]
           js = r'''() => {
@@ -105,12 +105,16 @@ jobs:
             const order=orderForm?.querySelector('select[name="orderby"]')||null;
             const products=document.querySelector('ul.products');
             const ts=toolbar?getComputedStyle(toolbar):null;
-            const available=toolbar&&ts ? toolbar.getBoundingClientRect().width
-              - parseFloat(ts.paddingLeft||0)-parseFloat(ts.paddingRight||0)
-              - parseFloat(ts.borderLeftWidth||0)-parseFloat(ts.borderRightWidth||0) : null;
+            const tr=toolbar?.getBoundingClientRect()||null;
+            const pl=ts?parseFloat(ts.paddingLeft||0):0;
+            const pr=ts?parseFloat(ts.paddingRight||0):0;
+            const bl=ts?parseFloat(ts.borderLeftWidth||0):0;
+            const br=ts?parseFloat(ts.borderRightWidth||0):0;
+            const available=tr ? tr.width-pl-pr-bl-br : null;
+            const innerLeft=tr ? tr.left+bl+pl : null;
             return {
               toolbar:box(toolbar), destWrap:box(destWrap), dest:box(dest), orderForm:box(orderForm), order:box(order),
-              available, textAlign:dest?getComputedStyle(dest).textAlign:null,
+              available, innerLeft, textAlign:dest?getComputedStyle(dest).textAlign:null,
               overflow:document.documentElement.scrollWidth-innerWidth,
               count:products?products.querySelectorAll(':scope > li.product').length:0,
               ids:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[],
@@ -136,6 +140,8 @@ jobs:
                           errors.append(f'{kind} {width}: horizontal overflow {d["overflow"]}')
                       if d['textAlign'] != 'left':
                           errors.append(f'{kind} {width}: destination text not left aligned ({d["textAlign"]})')
+                      if not d['destWrap'] or d['innerLeft'] is None or not close(d['destWrap']['l'], d['innerLeft']):
+                          errors.append(f'{kind} {width}: destination not aligned to toolbar inner left ({d.get("destWrap")} innerLeft={d["innerLeft"]})')
                       if width <= 640:
                           for key in ('destWrap','dest','orderForm','order'):
                               if not d[key] or d['available'] is None or not close(d[key]['w'], d['available']):
@@ -154,6 +160,8 @@ jobs:
                   for key in ('destWrap','dest','orderForm','order'):
                       if g[key] and v[key] and not close(g[key]['w'],v[key]['w']):
                           errors.append(f'{width}: {key} width differs between global and producer ({g[key]["w"]} vs {v[key]["w"]})')
+                  if g['destWrap'] and v['destWrap'] and not close(g['destWrap']['l'],v['destWrap']['l']):
+                      errors.append(f'{width}: destination left edge differs between global and producer ({g["destWrap"]["l"]} vs {v["destWrap"]["l"]})')
               browser.close()
 
           print(json.dumps(report,ensure_ascii=False,indent=2))
