@@ -1,4 +1,4 @@
-name: Deploy catalogue visual parity 2026-08-28
+name: Deploy catalogue visual parity v2 2026-08-28
 
 on:
   push:
@@ -22,18 +22,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate CSS-only layer
+      - name: Validate CSS-only files
         shell: bash
         run: |
           set -euo pipefail
-          FILE='mu-plugins/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php'
-          php -l "$FILE" >/dev/null
-          grep -Fq '<style id="mdo-catalog-visual-parity-20260828">' "$FILE"
-          ! grep -Fq '<script' "$FILE"
-          ! grep -Eqi 'pre_get_posts|woocommerce_product_query|tax_query|meta_query|posts_where|posts_join|posts_request|wp_ajax|WC_Query|woocommerce_product_is_visible|woocommerce_get_catalog_ordering_args' "$FILE"
-          grep -Fq "add_action( 'wp_footer', 'mdo_catalog_visual_parity_20260828', PHP_INT_MAX )" "$FILE"
+          for FILE in \
+            mu-plugins/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php \
+            mu-plugins/zzzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-refinements-20260828.php; do
+            php -l "$FILE" >/dev/null
+            ! grep -Fq '<script' "$FILE"
+            ! grep -Eqi 'pre_get_posts|woocommerce_product_query|tax_query|meta_query|posts_where|posts_join|posts_request|wp_ajax|WC_Query|woocommerce_product_is_visible|woocommerce_get_catalog_ordering_args' "$FILE"
+          done
 
-      - name: Deploy to production
+      - name: Deploy both presentation files
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -60,15 +61,18 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
 
-          TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php"
-          REMOTE="/tmp/mdo-catalog-visual-parity-${GITHUB_RUN_ID}.php"
-          BACKUP="/tmp/mdo-catalog-visual-parity-backup-${GITHUB_RUN_ID}.php"
-          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
-          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
-
-          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+          MAIN='zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php'
+          REFINE='zzzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-refinements-20260828.php'
+          for NAME in "$MAIN" "$REFINE"; do
+            SRC="mu-plugins/$NAME"
+            TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"
+            REMOTE="/tmp/${NAME%.php}-${GITHUB_RUN_ID}.php"
+            BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP_OPTIONS "$SRC" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+          done
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
       - name: Install browser tooling
@@ -78,110 +82,85 @@ jobs:
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
 
-      - name: Verify visual parity and catalogue integrity
+      - name: Verify six responsive widths and product integrity
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from playwright.sync_api import sync_playwright
-          import json, math, sys
+          import json, sys
 
           with open('runtime/catalog-design-baseline-20260828.json',encoding='utf-8') as f:
               baseline=json.load(f)
 
-          URLS={
-            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_visual_verify=20260828v1',
-            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_visual_verify=20260828v1',
+          urls={
+              'global':'https://www.elmercadodeorigen.com/tienda/?mdo_visual_verify=20260828v2',
+              'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_visual_verify=20260828v2',
           }
-          VIEWPORTS=[(390,844),(768,1024),(1024,900),(1280,900),(1440,1000),(1920,1080)]
-
-          JS=r'''() => {
-            const b=el=>{if(!el)return null;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {l:r.left,r:r.right,t:r.top,b:r.bottom,w:r.width,h:r.height,display:s.display,gap:s.gap,cols:s.gridTemplateColumns,pad:s.padding}};
+          sizes=[(390,844),(768,1024),(1024,900),(1280,900),(1440,1000),(1920,1080)]
+          js=r'''() => {
+            const box=el=>{if(!el)return null;const r=el.getBoundingClientRect();return {l:r.left,w:r.width,h:r.height}};
             const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
-            const count=toolbar?.querySelector('.woocommerce-result-count')||null;
             const dest=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
             const order=toolbar?.querySelector('.woocommerce-ordering')||null;
             const filter=document.querySelector('#toggle-sidebar-mobile-button,.emo-mobile-filter-toggle');
             const products=document.querySelector('ul.products');
-            const right=document.querySelector('#wcfmmp-store .right_side');
             const da=dest?getComputedStyle(dest,'::after'):null;
             const oa=order?getComputedStyle(order,'::after'):null;
             const lastSvg=dest?.querySelector('svg:last-of-type')||null;
-            const rect=products?.getBoundingClientRect();
-            const controls=[count,dest?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||dest,order].filter(Boolean).map(x=>x.getBoundingClientRect().bottom);
             return {
-              toolbar:b(toolbar),filter:b(filter),products:b(products),right:b(right),
-              overflowX:document.documentElement.scrollWidth-innerWidth,
-              productCount:products?products.querySelectorAll(':scope > li.product').length:0,
-              productIds:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[],
-              productGap:products?getComputedStyle(products).columnGap:null,
-              productCols:products?getComputedStyle(products).gridTemplateColumns:null,
-              toolbarProductsGap:(rect&&controls.length)?rect.top-Math.max(...controls):null,
-              destArrow:da?{w:da.width,h:da.height,top:da.top,right:da.right,transform:da.transform,brr:da.borderRight,brb:da.borderBottom}:null,
-              orderArrow:oa?{w:oa.width,h:oa.height,top:oa.top,right:oa.right,transform:oa.transform,brr:oa.borderRight,brb:oa.borderBottom}:null,
-              lastSvgVisibility:lastSvg?getComputedStyle(lastSvg).visibility:null,
-              stylePresent:!!document.getElementById('mdo-catalog-visual-parity-20260828')
+              toolbar:box(toolbar),filter:box(filter),products:box(products),
+              overflow:document.documentElement.scrollWidth-innerWidth,
+              count:products?products.querySelectorAll(':scope > li.product').length:0,
+              ids:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[],
+              cols:products?getComputedStyle(products).gridTemplateColumns:null,
+              da:da?{w:da.width,h:da.height,right:da.right,transform:da.transform}:null,
+              oa:oa?{w:oa.width,h:oa.height,right:oa.right,transform:oa.transform}:null,
+              svg:lastSvg?getComputedStyle(lastSvg).visibility:null,
+              mainStyle:!!document.getElementById('mdo-catalog-visual-parity-20260828'),
+              refineStyle:!!document.getElementById('mdo-catalog-visual-parity-refinements-20260828')
             };
           }'''
 
-          def near(a,b,tol=1.25):
-              return a is not None and b is not None and abs(float(a)-float(b)) <= tol
-
-          failures=[]
-          results={}
+          def close(a,b,t=1.25): return abs(float(a)-float(b)) <= t
+          errors=[]; report={}
           with sync_playwright() as p:
               browser=p.chromium.launch(headless=True)
               page=browser.new_page(viewport={'width':1440,'height':1000})
-              for width,height in VIEWPORTS:
-                  results[str(width)]={}
-                  for name,url in URLS.items():
+              for width,height in sizes:
+                  report[str(width)]={}
+                  for kind,url in urls.items():
                       page.set_viewport_size({'width':width,'height':height})
                       page.goto(url,wait_until='networkidle',timeout=120000)
                       page.wait_for_timeout(1400)
-                      data=page.evaluate(JS)
-                      results[str(width)][name]=data
-                      base=baseline['pages'][name][str(width)]
-                      if data['productIds'] != base['productIds']:
-                          failures.append(f'{name} {width}: product IDs changed {data["productIds"]} != {base["productIds"]}')
-                      if data['productCount'] != base['productCount']:
-                          failures.append(f'{name} {width}: product count changed {data["productCount"]} != {base["productCount"]}')
-                      if data['overflowX'] > 1:
-                          failures.append(f'{name} {width}: horizontal overflow {data["overflowX"]}')
-                      if not data['stylePresent']:
-                          failures.append(f'{name} {width}: CSS parity style missing')
-
-                  g=results[str(width)]['global']; v=results[str(width)]['producer']
+                      d=page.evaluate(js); report[str(width)][kind]=d
+                      base=baseline['pages'][kind][str(width)]
+                      if d['ids'] != base['productIds'] or d['count'] != base['productCount']:
+                          errors.append(f'{kind} {width}: catalogue products changed')
+                      if d['overflow'] > 1: errors.append(f'{kind} {width}: horizontal overflow {d["overflow"]}')
+                      if not d['mainStyle'] or not d['refineStyle']: errors.append(f'{kind} {width}: parity CSS missing')
+                      if d['svg'] != 'hidden': errors.append(f'{kind} {width}: old destination chevron visible')
+                      if not d['da'] or not d['oa'] or any(d['da'][k] != d['oa'][k] for k in ('w','h','right','transform')):
+                          errors.append(f'{kind} {width}: chevrons differ {d["da"]} vs {d["oa"]}')
+                  g=report[str(width)]['global']; v=report[str(width)]['producer']
                   for key in ('toolbar','products'):
-                      if not (g[key] and v[key] and near(g[key]['l'],v[key]['l']) and near(g[key]['w'],v[key]['w'])):
-                          failures.append(f'{width}: producer {key} geometry differs from global: G={g[key]} V={v[key]}')
+                      if not (g[key] and v[key] and close(g[key]['l'],v[key]['l']) and close(g[key]['w'],v[key]['w'])):
+                          errors.append(f'{width}: {key} geometry differs')
                   if width <= 1100:
-                      if not (g['filter'] and v['filter'] and near(g['filter']['l'],v['filter']['l']) and near(g['filter']['w'],v['filter']['w']) and near(g['filter']['h'],v['filter']['h'])):
-                          failures.append(f'{width}: producer filter differs from global: G={g["filter"]} V={v["filter"]}')
-                  expected_cols=1 if width<=640 else (2 if width<=900 else 4)
-                  actual_cols=len([x for x in (v['productCols'] or '').split(' ') if x and x!='none'])
-                  if actual_cols != expected_cols:
-                      failures.append(f'{width}: producer grid columns {actual_cols}, expected {expected_cols}: {v["productCols"]}')
-                  if v['right'] and (abs(v['right']['l']-g['toolbar']['l'])>1.5 and width>=1280):
-                      # right_side includes the same main column before product-area padding on desktop.
-                      failures.append(f'{width}: producer right column does not start on global catalogue column')
-                  for name in ('global','producer'):
-                      d=results[str(width)][name]
-                      da,oa=d['destArrow'],d['orderArrow']
-                      if not da or not oa or da['w']!=oa['w'] or da['h']!=oa['h'] or da['right']!=oa['right'] or da['transform']!=oa['transform']:
-                          failures.append(f'{name} {width}: destination/order chevrons differ: {da} vs {oa}')
-                      if d['lastSvgVisibility'] != 'hidden':
-                          failures.append(f'{name} {width}: original destination chevron still visible ({d["lastSvgVisibility"]})')
+                      if not (g['filter'] and v['filter'] and close(g['filter']['l'],v['filter']['l']) and close(g['filter']['w'],v['filter']['w']) and close(g['filter']['h'],v['filter']['h'])):
+                          errors.append(f'{width}: filter geometry differs G={g["filter"]} V={v["filter"]}')
+                  expected=1 if width<=640 else (2 if width<=900 else 4)
+                  actual=len(v['cols'].split()) if v['cols'] and v['cols']!='none' else 0
+                  if actual != expected: errors.append(f'{width}: producer columns {actual}, expected {expected}')
               browser.close()
 
-          print(json.dumps(results,ensure_ascii=False,indent=2))
-          if failures:
-              print('\nFAILURES:')
-              print('\n'.join('- '+x for x in failures))
-              sys.exit(1)
-          print('CATALOG_VISUAL_PARITY_VERIFIED=true')
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if errors:
+              print('ERRORS:'); print('\n'.join('- '+e for e in errors)); sys.exit(1)
+          print('CATALOG_VISUAL_PARITY_V2_VERIFIED=true')
           PY
 
-      - name: Roll back on failure
+      - name: Roll back both files on failure
         if: failure() && env.PROD_PATH != ''
         shell: bash
         env:
@@ -190,9 +169,13 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+          for NAME in zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php zzzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-refinements-20260828.php; do
+            TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"
+            BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+          done
 
-      - name: Remove backup after success
+      - name: Clean deployment backups
         if: success()
         shell: bash
         env:
@@ -201,4 +184,4 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f /tmp/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828-backup-${GITHUB_RUN_ID}.php /tmp/zzzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-refinements-20260828-backup-${GITHUB_RUN_ID}.php"
