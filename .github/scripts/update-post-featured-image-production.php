@@ -59,22 +59,22 @@ $candidate_ids = array_values(array_unique(array_filter($candidate_ids)));
 
 $reusable_attachment = 0;
 $conflicts = array();
-foreach ( $candidate_ids as $attachment_id ) {
+foreach ( $candidate_ids as $candidate_id ) {
     $used_thumbnail = $wpdb->get_col($wpdb->prepare(
         "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_thumbnail_id' AND meta_value=%s AND post_id<>%d",
-        (string) $attachment_id,
+        (string) $candidate_id,
         $post_id
     ));
     $used_approved = $wpdb->get_col($wpdb->prepare(
         "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_emdo_editorial_image_approved_id' AND meta_value=%s AND post_id<>%d",
-        (string) $attachment_id,
+        (string) $candidate_id,
         $post_id
     ));
     $used_elsewhere = array_values(array_unique(array_map('intval', array_merge($used_thumbnail, $used_approved))));
     if ( ! empty($used_elsewhere) ) {
-        $conflicts[] = array('attachment_id' => $attachment_id, 'used_by_posts' => $used_elsewhere);
+        $conflicts[] = array('attachment_id' => $candidate_id, 'used_by_posts' => $used_elsewhere);
     } else {
-        $reusable_attachment = $attachment_id;
+        $reusable_attachment = $candidate_id;
     }
 }
 if ( ! empty($conflicts) ) {
@@ -140,12 +140,82 @@ if (
     throw new RuntimeException('Featured image/SEO verification failed.');
 }
 
+/*
+ * Parallel workflow retries can occasionally create two media-library rows for the
+ * exact same source before either run sees the other. Remove only truly orphaned
+ * duplicates: never the selected attachment, never an attachment referenced as a
+ * thumbnail/editorial approval, and never one embedded in published content.
+ */
+$deleted_orphan_duplicates = array();
+$kept_duplicate_candidates = array();
+foreach ( $candidate_ids as $candidate_id ) {
+    $candidate_id = (int) $candidate_id;
+    if ( $candidate_id <= 0 || $candidate_id === $attachment_id || ! get_post($candidate_id) ) {
+        continue;
+    }
+
+    $featured_refs = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key IN ('_thumbnail_id','_emdo_editorial_image_approved_id') AND meta_value=%s",
+        (string) $candidate_id
+    ));
+    $candidate_url = (string) wp_get_attachment_url($candidate_id);
+    $candidate_basename = basename((string) wp_parse_url($candidate_url, PHP_URL_PATH));
+    $content_refs = 0;
+    if ( $candidate_basename !== '' ) {
+        $content_refs = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type NOT IN ('revision','attachment') AND post_status NOT IN ('trash','auto-draft') AND post_content LIKE %s",
+            '%' . $wpdb->esc_like($candidate_basename) . '%'
+        ));
+    }
+
+    if ( $featured_refs === 0 && $content_refs === 0 ) {
+        $deleted = wp_delete_attachment($candidate_id, true);
+        if ( $deleted ) {
+            $deleted_orphan_duplicates[] = $candidate_id;
+            continue;
+        }
+    }
+    $kept_duplicate_candidates[] = array(
+        'attachment_id' => $candidate_id,
+        'featured_refs' => $featured_refs,
+        'content_refs' => $content_refs,
+    );
+}
+
+$remaining_source_candidates = array();
+foreach ( array('_mdo_source_page' => $request['source_page'], '_mdo_source_url' => $request['image_url']) as $meta_key => $meta_value ) {
+    $ids = get_posts(array(
+        'post_type' => 'attachment',
+        'post_status' => 'inherit',
+        'posts_per_page' => -1,
+        'fields' => 'ids',
+        'meta_key' => $meta_key,
+        'meta_value' => $meta_value,
+    ));
+    foreach ( $ids as $id ) { $remaining_source_candidates[] = (int) $id; }
+}
+if ( $source_key !== '' ) {
+    $ids = get_posts(array(
+        'post_type' => 'attachment',
+        'post_status' => 'inherit',
+        'posts_per_page' => -1,
+        'fields' => 'ids',
+        'meta_key' => '_mdo_source_key',
+        'meta_value' => $source_key,
+    ));
+    foreach ( $ids as $id ) { $remaining_source_candidates[] = (int) $id; }
+}
+$remaining_source_candidates = array_values(array_unique(array_filter($remaining_source_candidates)));
+
 $report = array(
     'verified' => true,
     'duplicate_preflight' => array(
         'existing_attachment_candidates' => $candidate_ids,
         'conflicts' => array(),
         'reused_existing' => $reused_existing,
+        'deleted_orphan_duplicates' => $deleted_orphan_duplicates,
+        'kept_duplicate_candidates' => $kept_duplicate_candidates,
+        'remaining_source_candidates' => $remaining_source_candidates,
     ),
     'post' => array(
         'slug' => $request['post_slug'],
