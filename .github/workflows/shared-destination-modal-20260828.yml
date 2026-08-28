@@ -1,0 +1,153 @@
+name: Shared destination modal 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/zzzzzzzzzzzzzzzzzzzzzzzzz-mdo-shared-destination-modal-20260828.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate shared UI owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          f='mu-plugins/zzzzzzzzzzzzzzzzzzzzzzzzz-mdo-shared-destination-modal-20260828.php'
+          php -l "$f" >/dev/null
+          ! grep -Eq 'MutationObserver|ResizeObserver|requestAnimationFrame|setInterval[[:space:]]*\(|setTimeout[[:space:]]*\(|pre_get_posts|woocommerce_product_query|posts_(where|join|clauses)|WP_Query' "$f"
+          test "$(grep -c 'id=\"mdo-shared-destination-dialog\"' "$f")" -eq 1
+
+      - name: Deploy shared modal
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD:?production path not found}"
+          echo "PROD=$PROD" >> "$GITHUB_ENV"
+          NAME='zzzzzzzzzzzzzzzzzzzzzzzzz-mdo-shared-destination-modal-20260828.php'
+          TARGET="$PROD/wp-content/mu-plugins/$NAME"
+          BACKUP="/tmp/$NAME.$GITHUB_RUN_ID.backup"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"; echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET'"; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TARGET' '$BACKUP'"; echo EXISTED=1 >> "$GITHUB_ENV"
+          else
+            echo EXISTED=0 >> "$GITHUB_ENV"
+          fi
+          R="/tmp/$NAME.$GITHUB_RUN_ID"
+          sshpass -e scp $SCP "mu-plugins/$NAME" "$STAGING_USER@$STAGING_HOST:$R"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$R' >/dev/null; install -m0644 '$R' '$TARGET'; rm -f '$R'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Install Chromium
+        run: |
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+
+      - name: Verify one identical modal in both catalogues
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import time, sys
+
+          urls={'global':'https://www.elmercadodeorigen.com/tienda/','producer':'https://www.elmercadodeorigen.com/tienda/1957/'}
+          widths=[335,390,767,768,1024,1440]
+          errors=[]; signatures={}
+          inspect=r'''() => {
+            const vis=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden';
+            const modals=[...document.querySelectorAll('#mdo-shared-destination-dialog')];
+            const legacy=[...document.querySelectorAll('.mdo-destination-modal,.mdo-ps-modal')];
+            const m=modals[0]||null, panel=m?.querySelector('.mdo-shared-destination-modal__panel')||null;
+            const close=m?.querySelector('.mdo-shared-destination-modal__close')||null, form=m?.querySelector('[data-mdo-shared-destination-form]')||null;
+            const country=m?.querySelector('[data-mdo-shared-country]')||null, postcode=m?.querySelector('[data-mdo-shared-postcode]')||null;
+            const trigger=[...document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')].find(vis)||null;
+            const c=close?getComputedStyle(close):null,p=panel?getComputedStyle(panel):null,s=country?getComputedStyle(country):null;
+            return {modalCount:modals.length,legacyCount:legacy.length,ready:!!(m&&panel&&close&&form&&country&&postcode&&trigger),
+              formHTML:form?.innerHTML.replace(/\s+/g,' ').trim()||'',triggerControl:trigger?.getAttribute('aria-controls')||'',
+              close:{bg:c?.backgroundColor,color:c?.color,w:c?.width,h:c?.height,r:c?.borderRadius,b:c?.borderTopWidth},
+              panel:{bg:p?.backgroundColor,w:p?.width,r:p?.borderRadius,pad:p?.paddingTop},select:{h:s?.height,r:s?.borderRadius,b:s?.borderTopColor},
+              overflow:document.documentElement.scrollWidth-innerWidth};
+          }'''
+          with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True)
+            for w in widths:
+              signatures[str(w)]={}
+              for kind,url in urls.items():
+                context=browser.new_context(viewport={'width':w,'height':900}); page=context.new_page()
+                page.route('**/*',lambda r:r.abort() if r.request.resource_type in ('image','font','media') else r.continue_())
+                page.goto(url,wait_until='domcontentloaded',timeout=30000)
+                data=None
+                for _ in range(40):
+                  time.sleep(.2)
+                  try:
+                    data=page.evaluate(inspect)
+                    if data and data.get('ready'): break
+                  except Exception: pass
+                tag=f'{kind} {w}'
+                if not data or not data.get('ready'):
+                  errors.append(f'{tag}: shared modal unavailable'); context.close(); continue
+                if data['modalCount']!=1: errors.append(f'{tag}: shared modal count {data["modalCount"]}')
+                if data['legacyCount']!=0: errors.append(f'{tag}: legacy modal count {data["legacyCount"]}')
+                if data['triggerControl']!='mdo-shared-destination-dialog': errors.append(f'{tag}: trigger controls {data["triggerControl"]}')
+                if data['overflow']>1: errors.append(f'{tag}: overflow {data["overflow"]}')
+                signatures[str(w)][kind]=data
+                if data['legacyCount']==0 and data['modalCount']==1:
+                  opened=page.evaluate(r'''() => {const vis=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).display!=='none';const t=[...document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')].find(vis);if(!t)return null;t.click();const m=document.querySelector('#mdo-shared-destination-dialog');return {hidden:m?.hidden,aria:m?.getAttribute('aria-hidden')};}''')
+                  if not opened or opened.get('hidden') or opened.get('aria')!='false': errors.append(f'{tag}: shared modal did not open {opened}')
+                  closed=page.evaluate(r'''() => {const c=document.querySelector('.mdo-shared-destination-modal__close');if(!c)return null;c.click();const m=document.querySelector('#mdo-shared-destination-dialog');return {hidden:m?.hidden,aria:m?.getAttribute('aria-hidden')};}''')
+                  if not closed or not closed.get('hidden') or closed.get('aria')!='true': errors.append(f'{tag}: shared modal did not close {closed}')
+                context.close()
+            browser.close()
+          for w in widths:
+            g=signatures.get(str(w),{}).get('global');v=signatures.get(str(w),{}).get('producer')
+            if not g or not v: continue
+            if g['formHTML']!=v['formHTML']: errors.append(f'{w}: form HTML differs between catalogues')
+            for key in ('close','panel','select'):
+              if g[key]!=v[key]: errors.append(f'{w}: {key} styles differ: {g[key]} vs {v[key]}')
+          if errors:
+            print('ERRORS:');print('\n'.join('- '+e for e in errors));sys.exit(1)
+          print('SHARED_DESTINATION_MODAL_VERIFIED=true')
+          print(f'checked={len(widths)*len(urls)} page-width combinations; one shared form owner')
+          PY
+
+      - name: Roll back on failure
+        if: ${{ failure() && env.TARGET != '' }}
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "${EXISTED:-0}" = 1 ]; then sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$BACKUP' '$TARGET'; rm -f '$BACKUP'"; else sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET' '$BACKUP'"; fi
+
+      - name: Remove backup
+        if: ${{ success() && env.BACKUP != '' }}
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
