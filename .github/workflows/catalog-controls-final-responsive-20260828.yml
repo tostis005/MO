@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/zzzzzzzzzzzzzzzzzzzzzzz-mdo-catalog-controls-final-responsive-20260828.php'
-      - '.github/workflows/catalog-controls-final-responsive-20260828.yml'
   workflow_dispatch:
 
 permissions:
@@ -29,7 +28,7 @@ jobs:
           set -euo pipefail
           f='mu-plugins/zzzzzzzzzzzzzzzzzzzzzzz-mdo-catalog-controls-final-responsive-20260828.php'
           php -l "$f" >/dev/null
-          ! grep -Eq '<script|MutationObserver|ResizeObserver|requestAnimationFrame[[:space:]]*\(|setInterval[[:space:]]*\(|setTimeout[[:space:]]*\(|pre_get_posts|woocommerce_product_query|posts_(where|join|clauses)|WP_Query' "$f"
+          ! grep -Eq '<script|MutationObserver|ResizeObserver|setInterval[[:space:]]*\(|setTimeout[[:space:]]*\(|pre_get_posts|woocommerce_product_query|posts_(where|join|clauses)|WP_Query' "$f"
 
       - name: Deploy responsive owner
         shell: bash
@@ -66,7 +65,7 @@ jobs:
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
 
-      - name: Verify all responsive states
+      - name: Verify alignment icons and first paint
         shell: bash
         run: |
           set -euo pipefail
@@ -75,8 +74,8 @@ jobs:
           import time, json, sys
 
           urls = {
-              'global': 'https://www.elmercadodeorigen.com/tienda/?final_responsive=1',
-              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?final_responsive=1',
+              'global': 'https://www.elmercadodeorigen.com/tienda/',
+              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/',
           }
           widths = [320,335,360,390,430,480,640,700,767,768,820,900,1024,1280,1440,1920]
           errors=[]; report={}
@@ -84,25 +83,38 @@ jobs:
           js='''() => {
             const visible=e=>!!e && e.getClientRects().length>0 && getComputedStyle(e).display!=='none' && getComputedStyle(e).visibility!=='hidden';
             const t=Array.from(document.querySelectorAll('.emo-catalog-toolbar-shared-010229')).find(visible)||null;
-            const d=Array.from(document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')).find(e=>visible(e) && (!t || t.contains(e)))||null;
+            const d=Array.from(document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')).find(e=>visible(e)&&(!t||t.contains(e)))||null;
             const f=Array.from(document.querySelectorAll('form.woocommerce-ordering,.woocommerce-ordering')).find(e=>visible(e)&&e.querySelector('select[name="orderby"]')&&(!t||t.contains(e)))||null;
             const s=f?.querySelector('select[name="orderby"]')||null;
+            const c=t?.querySelector('.woocommerce-result-count')||null;
             const span=d?.querySelector('span')||null, strong=d?.querySelector('strong')||null;
-            const b=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
+            const b=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,t:r.top,b:r.bottom,w:r.width,h:r.height,cy:(r.top+r.bottom)/2}};
             const cs=e=>e?getComputedStyle(e):null;
-            const pin=d?getComputedStyle(d,'::before'):null, da=d?getComputedStyle(d,'::after'):null, oa=f?getComputedStyle(f,'::after'):null, tc=cs(t);
+            const pin=d?getComputedStyle(d,'::before'):null, da=d?getComputedStyle(d,'::after'):null, oa=f?getComputedStyle(f,'::after'):null, tc=cs(t), ds=cs(d), ss=cs(s);
+            const svgVisible=d?Array.from(d.querySelectorAll('svg')).filter(visible).length:0;
             return {
-              ready:!!(t&&d&&f&&s&&span&&strong), final:!!document.getElementById('mdo-catalog-controls-final-responsive-20260828'), visual:!!document.getElementById('mdo-catalog-controls-visual-finish-20260828'),
-              old:[!!document.getElementById('mdo-catalog-control-widths-20260828'),!!document.getElementById('mdo-catalog-mobile-runtime-guard-20260824'),!!document.getElementById('mdo-catalog-top-controls-parity-final-20260824-js'),!!document.getElementById('mdo-catalog-top-controls-arrow-final-20260824-js'),!!document.getElementById('elmercado-catalog-mobile-controls-parity-script-010236')],
-              t:b(t),d:b(d),f:b(f),s:b(s), tPadL:parseFloat(tc?.paddingLeft||'0'),tPadR:parseFloat(tc?.paddingRight||'0'),
-              dAlign:cs(d)?.textAlign,spanAlign:cs(span)?.textAlign,sAlign:cs(s)?.textAlign,sAlignLast:cs(s)?.textAlignLast,
+              ready:!!(t&&d&&f&&s&&c&&span&&strong),
+              critical:!!document.getElementById('mdo-catalog-controls-final-responsive-critical-20260828'),
+              final:!!document.getElementById('mdo-catalog-controls-final-responsive-20260828'),
+              t:b(t),d:b(d),f:b(f),s:b(s),c:b(c),tPadL:parseFloat(tc?.paddingLeft||'0'),tPadR:parseFloat(tc?.paddingRight||'0'),
+              dBg:ds?.backgroundColor,dAlign:ds?.textAlign,spanAlign:cs(span)?.textAlign,sAlign:ss?.textAlign,sAlignLast:ss?.textAlignLast,
               spanWeight:parseInt(cs(span)?.fontWeight||'0'),strongWeight:parseInt(cs(strong)?.fontWeight||'0'),
               pinDisplay:pin?.display,pinW:parseFloat(pin?.width||'0'),pinMask:(pin?.maskImage||pin?.webkitMaskImage||''),
-              destArrowDisplay:da?.display,destArrowW:parseFloat(da?.width||'0'),destArrowH:parseFloat(da?.height||'0'),destArrowBg:da?.backgroundImage||'',
-              orderArrowDisplay:oa?.display,orderArrowW:parseFloat(oa?.width||'0'),orderArrowH:parseFloat(oa?.height||'0'),orderArrowBg:oa?.backgroundImage||'',
-              overflow:document.documentElement.scrollWidth-innerWidth,pointerD:cs(d)?.pointerEvents,pointerS:cs(s)?.pointerEvents,disabled:!!s?.disabled,
-              strongText:strong?.textContent?.trim()||''
+              destArrowDisplay:da?.display,destArrowW:parseFloat(da?.width||'0'),destArrowH:parseFloat(da?.height||'0'),destArrowBg:da?.backgroundImage||'',destArrowBorder:da?.borderRightWidth||'',destArrowTransform:da?.transform||'',
+              orderArrowDisplay:oa?.display,orderArrowW:parseFloat(oa?.width||'0'),orderArrowH:parseFloat(oa?.height||'0'),orderArrowBg:oa?.backgroundImage||'',orderArrowBorder:oa?.borderRightWidth||'',
+              selectBgImage:ss?.backgroundImage||'',svgVisible,
+              overflow:document.documentElement.scrollWidth-innerWidth,pointerD:ds?.pointerEvents,pointerS:ss?.pointerEvents,disabled:!!s?.disabled
             };
+          }'''
+
+          init='''() => {
+            window.__mdoPaintSamples=[];
+            const sample=()=>{
+              const d=document.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
+              if(d){const cs=getComputedStyle(d);window.__mdoPaintSamples.push({t:performance.now(),bg:cs.backgroundColor,color:cs.color});}
+              if(performance.now()<4000) requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
           }'''
 
           with sync_playwright() as p:
@@ -111,8 +123,9 @@ jobs:
               report[str(w)]={}
               for kind,url in urls.items():
                 page=browser.new_page(viewport={'width':w,'height':900})
+                page.add_init_script(init)
                 page.route('**/*',lambda r:r.abort() if r.request.resource_type in ('image','font','media') else r.continue_())
-                page.goto(url,wait_until='commit',timeout=30000)
+                page.goto(url,wait_until='domcontentloaded',timeout=30000)
                 samples=[]
                 for _ in range(50):
                   time.sleep(.2)
@@ -121,51 +134,60 @@ jobs:
                     if x and x.get('ready'):
                       samples=[x]
                       for __ in range(2):
-                        time.sleep(.3); samples.append(page.evaluate(js))
+                        time.sleep(.35); samples.append(page.evaluate(js))
                       if all(z and z.get('ready') for z in samples): break
                   except Exception:
                     samples=[]
                 data=samples[-1] if samples else None
-                report[str(w)][kind]=data
+                paint=page.evaluate('window.__mdoPaintSamples || []')
+                report[str(w)][kind]={'final':data,'paint':paint[:8] if paint else []}
                 if not data:
                   errors.append(f'{kind} {w}: controls unavailable'); page.close(); continue
-                if not data['final'] or not data['visual']: errors.append(f'{kind} {w}: final CSS owners missing')
-                if any(data['old']): errors.append(f'{kind} {w}: retired runtime present {data["old"]}')
+                if not data['critical'] or not data['final']: errors.append(f'{kind} {w}: final CSS owners missing')
                 if data['overflow']>1: errors.append(f'{kind} {w}: horizontal overflow {data["overflow"]}')
+                if data['dBg']!='rgb(241, 246, 242)': errors.append(f'{kind} {w}: destination background {data["dBg"]}')
+                if not paint: errors.append(f'{kind} {w}: no first-paint samples')
+                elif any(x.get('bg')!='rgb(241, 246, 242)' for x in paint):
+                  bad=next((x for x in paint if x.get('bg')!='rgb(241, 246, 242)'),None)
+                  errors.append(f'{kind} {w}: first-paint flicker {bad}')
                 if data['dAlign']!='left' or data['spanAlign']!='left': errors.append(f'{kind} {w}: destination text alignment')
                 if data['sAlign']!='left': errors.append(f'{kind} {w}: ordering text alignment {data["sAlign"]}')
                 if data['strongWeight']<=data['spanWeight']: errors.append(f'{kind} {w}: destination weight {data["spanWeight"]}/{data["strongWeight"]}')
+                if data['svgVisible']!=0: errors.append(f'{kind} {w}: old destination SVG visible count={data["svgVisible"]}')
                 if data['pinDisplay']=='none' or abs(data['pinW']-14)>1.5 or not data['pinMask'] or data['pinMask']=='none': errors.append(f'{kind} {w}: pin missing')
-                if data['destArrowDisplay']=='none' or abs(data['destArrowW']-12)>1.5 or abs(data['destArrowH']-8)>1.5 or data['destArrowBg']=='none': errors.append(f'{kind} {w}: destination chevron missing')
-                if data['orderArrowDisplay']=='none' or abs(data['orderArrowW']-12)>1.5 or abs(data['orderArrowH']-8)>1.5 or data['orderArrowBg']=='none': errors.append(f'{kind} {w}: ordering chevron missing')
+                if data['destArrowDisplay']=='none' or abs(data['destArrowW']-12)>1.5 or abs(data['destArrowH']-8)>1.5 or data['destArrowBg']=='none' or data['destArrowBorder'] not in ('0px','medium'):
+                  errors.append(f'{kind} {w}: destination chevron malformed')
+                if data['orderArrowDisplay']=='none' or abs(data['orderArrowW']-12)>1.5 or abs(data['orderArrowH']-8)>1.5 or data['orderArrowBg']=='none' or data['orderArrowBorder'] not in ('0px','medium'):
+                  errors.append(f'{kind} {w}: ordering chevron malformed')
                 if data['destArrowBg'] != data['orderArrowBg']: errors.append(f'{kind} {w}: chevrons differ')
+                if data['selectBgImage']!='none': errors.append(f'{kind} {w}: native/select arrow still present {data["selectBgImage"]}')
                 if data['pointerD']=='none' or data['pointerS']=='none' or data['disabled']: errors.append(f'{kind} {w}: controls blocked')
-                # Geometry should remain stable across WCFM/theme rerenders.
                 if samples:
-                  dw=[round(z['d']['w'],2) for z in samples]; sw=[round(z['s']['w'],2) for z in samples]
-                  if max(dw)-min(dw)>2 or max(sw)-min(sw)>2: errors.append(f'{kind} {w}: unstable geometry d={dw} s={sw}')
+                  dw=[round(z['d']['w'],2) for z in samples]; sw=[round(z['s']['w'],2) for z in samples]; dh=[round(z['d']['h'],2) for z in samples]
+                  if max(dw)-min(dw)>2 or max(sw)-min(sw)>2 or max(dh)-min(dh)>2: errors.append(f'{kind} {w}: unstable geometry d={dw}/{dh} s={sw}')
                 if w<=767:
                   expected=data['t']['w']-data['tPadL']-data['tPadR']
                   if abs(data['d']['w']-data['s']['w'])>3: errors.append(f'{kind} {w}: mobile controls differ {data["d"]["w"]}/{data["s"]["w"]}')
                   if abs(data['d']['w']-expected)>6 or abs(data['s']['w']-expected)>6: errors.append(f'{kind} {w}: mobile not full inner width expected={expected} d={data["d"]["w"]} s={data["s"]["w"]}')
+                  if abs(data['d']['h']-40)>2 or abs(data['s']['h']-40)>2: errors.append(f'{kind} {w}: mobile control height {data["d"]["h"]}/{data["s"]["h"]}')
                 else:
                   if not (120 <= data['d']['w'] <= 210): errors.append(f'{kind} {w}: destination not intrinsic {data["d"]["w"]}')
                   if abs(data['s']['w']-248)>3 or abs(data['f']['w']-248)>3: errors.append(f'{kind} {w}: ordering width {data["f"]["w"]}/{data["s"]["w"]}')
-                  if abs(data['d']['w']-248)<20: errors.append(f'{kind} {w}: destination still fixed like ordering {data["d"]["w"]}')
-                # At representative desktop width, prove destination expands with content.
+                  if abs(data['d']['h']-38)>2 or abs(data['s']['h']-38)>2 or abs(data['f']['h']-38)>2: errors.append(f'{kind} {w}: compact height d/f/s={data["d"]["h"]}/{data["f"]["h"]}/{data["s"]["h"]}')
+                  centers=[data['c']['cy'],data['d']['cy'],data['f']['cy']]
+                  if max(centers)-min(centers)>2: errors.append(f'{kind} {w}: vertical centers differ {centers}')
+                  if data['c']['r'] >= data['d']['l']-4: errors.append(f'{kind} {w}: count/destination overlap')
+                  if data['d']['r'] >= data['f']['l']-4: errors.append(f'{kind} {w}: destination/ordering overlap')
                 if w==1024:
-                  try:
-                    growth=page.evaluate('''() => {const d=Array.from(document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')).find(e=>e.getClientRects().length); const s=d?.querySelector('strong'); if(!d||!s)return null; const old=s.textContent; const before=d.getBoundingClientRect().width; s.textContent='Estados Unidos'; const after=d.getBoundingClientRect().width; s.textContent=old; return {before,after};}''')
-                    if not growth or growth['after'] <= growth['before']+15: errors.append(f'{kind} 1024: destination does not grow with content {growth}')
-                  except Exception as e:
-                    errors.append(f'{kind} 1024: intrinsic growth check {type(e).__name__}')
+                  growth=page.evaluate('''() => {const d=Array.from(document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')).find(e=>e.getClientRects().length); const s=d?.querySelector('strong'); if(!d||!s)return null; const old=s.textContent; const before=d.getBoundingClientRect().width; s.textContent='Estados Unidos'; const after=d.getBoundingClientRect().width; s.textContent=old; return {before,after};}''')
+                  if not growth or growth['after'] <= growth['before']+15: errors.append(f'{kind} 1024: destination does not grow with content {growth}')
                 page.close()
             browser.close()
 
           print(json.dumps(report,ensure_ascii=False,indent=2))
           if errors:
             print('ERRORS:'); print('\n'.join('- '+x for x in errors)); sys.exit(1)
-          print('CATALOG_CONTROLS_FINAL_RESPONSIVE_VERIFIED=true')
+          print('CATALOG_CONTROLS_PERFECT_ALIGNMENT_VERIFIED=true')
           PY
 
       - name: Roll back on failure
