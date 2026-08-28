@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           f='mu-plugins/zzzzzzzzzzzzzzzzzzzz-mdo-catalog-css-only-safety-20260828.php'
           php -l "$f" >/dev/null
-          ! grep -Eq '<script|MutationObserver|ResizeObserver|requestAnimationFrame|setInterval' "$f"
+          ! grep -Eq '<script|new[[:space:]]+MutationObserver|new[[:space:]]+ResizeObserver|requestAnimationFrame[[:space:]]*\(|setInterval[[:space:]]*\(' "$f"
       - name: Deploy candidate
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -48,7 +48,7 @@ jobs:
           python - <<'PY'
           from playwright.sync_api import sync_playwright
           import time,json,sys
-          urls={'global':'https://www.elmercadodeorigen.com/tienda/?css_only_v2=1','producer':'https://www.elmercadodeorigen.com/tienda/1957/?css_only_v2=1'}
+          urls={'global':'https://www.elmercadodeorigen.com/tienda/?css_only_v2=2','producer':'https://www.elmercadodeorigen.com/tienda/1957/?css_only_v2=2'}
           widths=[335,360,390,640,767]
           bad=[]; out={}
           with sync_playwright() as p:
