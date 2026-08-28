@@ -1,4 +1,4 @@
-name: Actions smoke 2026-08-18
+name: CF7 generated-text diagnostic 2026-08-28
 
 on:
   push:
@@ -11,18 +11,78 @@ permissions:
   contents: write
 
 jobs:
-  smoke:
+  diagnose:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Record Actions execution
+
+      - name: Inspect live anti-spam guard
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-cf7-antispam-20260826.php"
+          REPO_HASH="$(sha256sum mu-plugins/mdo-cf7-antispam-20260826.php | awk '{print $1}')"
+          REMOTE_HASH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sha256sum '$TARGET' | awk '{print \\$1}'")"
+
+          DIAG="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval '
+            echo \"version=\" . ( defined(\"MDO_CF7_GUARD_VERSION\") ? MDO_CF7_GUARD_VERSION : \"missing\" ) . PHP_EOL;
+            echo \"hook=\" . ( has_filter(\"wpcf7_spam\", \"mdo_cf7_guard_filter_spam\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"name_token=\" . ( function_exists(\"mdo_cf7_guard_looks_generated_token\") && mdo_cf7_guard_looks_generated_token(\"VyYGdyULmCUJvYinTVJ\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"message_token=\" . ( function_exists(\"mdo_cf7_guard_looks_generated_token\") && mdo_cf7_guard_looks_generated_token(\"MbRibzvBWMjQtHqq\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            \$_POST = array(\"_wpcf7\" => 1513, \"your-name\" => \"VyYGdyULmCUJvYinTVJ\", \"your-message\" => \"MbRibzvBWMjQtHqq\", \"your-company\" => \"Yqpoel LLC\");
+            echo \"generated_fields=\" . implode(\",\", mdo_cf7_guard_generated_text_fields() ) . PHP_EOL;
+            echo \"simulated_block=\" . ( mdo_cf7_guard_filter_spam(false) ? \"yes\" : \"no\" ) . PHP_EOL;
+          ' --path='$PROD_PATH' --allow-root")"
+
+          printf '%s\n' "$DIAG"
+          grep -Fq 'version=1.1.0' <<< "$DIAG"
+          grep -Fq 'hook=yes' <<< "$DIAG"
+          grep -Fq 'name_token=yes' <<< "$DIAG"
+          grep -Fq 'message_token=yes' <<< "$DIAG"
+          grep -Fq 'simulated_block=yes' <<< "$DIAG"
+
+          mkdir -p runtime
+          {
+            echo "live_repo_hash_match=$([ \"$REPO_HASH\" = \"$REMOTE_HASH\" ] && echo yes || echo no)"
+            printf '%s\n' "$DIAG"
+            echo "verified_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > runtime/cf7-antispam-diagnostic-20260828.txt
+
+      - name: Record diagnostic
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p runtime
-          printf 'actions_ok=true\nrun_id=%s\nverified_at=%s\n' "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/actions-smoke-20260818.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add runtime/actions-smoke-20260818.txt
-          git commit -m 'Record Actions smoke execution'
+          git add runtime/cf7-antispam-diagnostic-20260828.txt
+          git commit -m 'Record live CF7 anti-spam diagnostic'
+          git pull --rebase origin main
           git push origin HEAD:main
