@@ -1,0 +1,129 @@
+name: Catalog design audit 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-design-audit-20260828.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Measure global and producer catalogues
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import json
+
+          URLS={
+            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_design_audit=20260828',
+            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_design_audit=20260828',
+          }
+          VIEWPORTS=[(390,844),(768,1024),(1024,900),(1280,900),(1440,1000),(1920,1080)]
+
+          JS=r'''() => {
+            const rect = el => {
+              if (!el) return null;
+              const r=el.getBoundingClientRect(), s=getComputedStyle(el);
+              return {
+                tag:el.tagName,id:el.id||'',cls:typeof el.className==='string'?el.className:'',
+                text:(el.innerText||'').trim().replace(/\s+/g,' ').slice(0,120),
+                left:+r.left.toFixed(2),top:+r.top.toFixed(2),right:+r.right.toFixed(2),bottom:+r.bottom.toFixed(2),
+                width:+r.width.toFixed(2),height:+r.height.toFixed(2),
+                display:s.display,position:s.position,boxSizing:s.boxSizing,
+                margin:s.margin,padding:s.padding,gap:s.gap,
+                fontSize:s.fontSize,fontWeight:s.fontWeight,lineHeight:s.lineHeight,
+                borderRadius:s.borderRadius,border:s.border,background:s.backgroundColor,
+                transform:s.transform,overflow:s.overflow
+              };
+            };
+            const byText = needle => {
+              const els=[...document.querySelectorAll('body *')].filter(el => {
+                const t=(el.innerText||'').trim().replace(/\s+/g,' ');
+                return t===needle || t.startsWith(needle);
+              });
+              els.sort((a,b)=>((a.innerText||'').length-(b.innerText||'').length));
+              return els[0]||null;
+            };
+            const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+            const count=toolbar?.querySelector('.woocommerce-result-count')||document.querySelector('.woocommerce-result-count');
+            const destTrigger=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
+            const destWrap=destTrigger?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||destTrigger?.parentElement||null;
+            const orderForm=toolbar?.querySelector('.woocommerce-ordering')||document.querySelector('.woocommerce-ordering');
+            const orderSelect=orderForm?.querySelector('select[name="orderby"]')||null;
+            const filterText=byText('Filtrar productos') || byText('Filtrar');
+            const filterButton=filterText?.closest('button,a,.emo-mobile-filter-toggle,#toggle-sidebar-mobile-button') || filterText;
+            const products=document.querySelector('ul.products');
+            const firstProduct=products?.querySelector('li.product')||null;
+            const pageHeader=document.querySelector('.page-header .woostify-container,.page-header');
+            const siteContainer=document.querySelector('.site-content > .woostify-container,.site-content .woostify-container');
+            const vendorStore=document.querySelector('#wcfmmp-store');
+            const vendorBody=document.querySelector('#wcfmmp-store .body_area');
+            const vendorProductArea=document.querySelector('#wcfmmp-store .product_area');
+            const vendorProductsWrapper=document.querySelector('#products-wrapper');
+            const vendorLeft=document.querySelector('#wcfmmp-store .left_sidebar');
+            const vendorRight=document.querySelector('#wcfmmp-store .right_side');
+            const arrowAfter = orderForm ? getComputedStyle(orderForm,'::after') : null;
+            const destSvgs=destTrigger?[...destTrigger.querySelectorAll('svg')].map(rect):[];
+            const toolbarRect=toolbar?.getBoundingClientRect();
+            const filterRect=filterButton?.getBoundingClientRect();
+            const productsRect=products?.getBoundingClientRect();
+            return {
+              url:location.href,
+              viewport:{w:innerWidth,h:innerHeight},
+              bodyClass:document.body.className,
+              toolbar:rect(toolbar), count:rect(count), destWrap:rect(destWrap), destTrigger:rect(destTrigger),
+              orderForm:rect(orderForm), orderSelect:rect(orderSelect), filterButton:rect(filterButton),
+              products:rect(products), firstProduct:rect(firstProduct), pageHeader:rect(pageHeader), siteContainer:rect(siteContainer),
+              vendorStore:rect(vendorStore),vendorBody:rect(vendorBody),vendorProductArea:rect(vendorProductArea),
+              vendorProductsWrapper:rect(vendorProductsWrapper),vendorLeft:rect(vendorLeft),vendorRight:rect(vendorRight),
+              destSvgs,
+              orderArrow: arrowAfter ? {
+                content:arrowAfter.content,display:arrowAfter.display,position:arrowAfter.position,
+                top:arrowAfter.top,right:arrowAfter.right,width:arrowAfter.width,height:arrowAfter.height,
+                margin:arrowAfter.margin,transform:arrowAfter.transform,borderRight:arrowAfter.borderRight,borderBottom:arrowAfter.borderBottom,
+                opacity:arrowAfter.opacity
+              } : null,
+              metrics:{
+                toolbarViewportLeft: toolbarRect ? +toolbarRect.left.toFixed(2) : null,
+                toolbarViewportRight: toolbarRect ? +(innerWidth-toolbarRect.right).toFixed(2) : null,
+                filterViewportLeft: filterRect ? +filterRect.left.toFixed(2) : null,
+                filterViewportRight: filterRect ? +(innerWidth-filterRect.right).toFixed(2) : null,
+                productsViewportLeft: productsRect ? +productsRect.left.toFixed(2) : null,
+                productsViewportRight: productsRect ? +(innerWidth-productsRect.right).toFixed(2) : null,
+                filterMinusToolbarWidth: filterRect&&toolbarRect ? +(filterRect.width-toolbarRect.width).toFixed(2) : null,
+                productsMinusToolbarWidth: productsRect&&toolbarRect ? +(productsRect.width-toolbarRect.width).toFixed(2) : null,
+              },
+              productCount:products?products.querySelectorAll(':scope > li.product').length:0,
+              productIds:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[]
+            };
+          }'''
+
+          with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True)
+            page=browser.new_page(viewport={'width':1440,'height':1000})
+            for width,height in VIEWPORTS:
+              for name,url in URLS.items():
+                page.set_viewport_size({'width':width,'height':height})
+                page.goto(url,wait_until='networkidle',timeout=120000)
+                page.wait_for_timeout(1600)
+                data=page.evaluate(JS)
+                print(f'===== {name.upper()} {width}x{height} =====')
+                print(json.dumps(data,ensure_ascii=False,indent=2))
+            browser.close()
+          PY
