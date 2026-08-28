@@ -1,0 +1,61 @@
+name: Catalogue CSS-only DOM 767 diagnostic
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/catalog-css-only-dom-767-20260828.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy candidate temporarily
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"; : "${PROD:?not found}"; NAME='zzzzzzzzzzzzzzzzzzzz-mdo-catalog-css-only-safety-20260828.php'; TARGET="$PROD/wp-content/mu-plugins/$NAME"; echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          R="/tmp/$NAME.$GITHUB_RUN_ID"; sshpass -e scp $SCP "mu-plugins/$NAME" "$STAGING_USER@$STAGING_HOST:$R"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$R' >/dev/null; install -m0644 '$R' '$TARGET'; rm -f '$R'"
+      - name: Install Chromium
+        run: |
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Inspect global at 767
+        run: |
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import time,json
+          with sync_playwright() as p:
+            b=p.chromium.launch(headless=True); page=b.new_page(viewport={'width':767,'height':820}); page.route('**/*',lambda r:r.abort() if r.request.resource_type in ('image','font','media') else r.continue_()); page.goto('https://www.elmercadodeorigen.com/tienda/?dom767=1',wait_until='commit',timeout=30000)
+            for _ in range(40):
+              time.sleep(.3)
+              try:
+                if page.evaluate('!!document.querySelector(".emo-catalog-toolbar-shared-010229 [data-mdo-destination-open]")'): break
+              except Exception: pass
+            time.sleep(1)
+            data=page.evaluate('''() => {
+              const t=document.querySelector('.emo-catalog-toolbar-shared-010229'); const d=t?.querySelector('[data-mdo-destination-open]');
+              const node=e=>{if(!e)return null;const r=e.getBoundingClientRect(),c=getComputedStyle(e);return {tag:e.tagName,cls:e.className||'',id:e.id||'',attrs:[...e.attributes].reduce((o,a)=>(o[a.name]=a.value,o),{}),rect:{l:r.left,r:r.right,w:r.width,h:r.height},display:c.display,width:c.width,minWidth:c.minWidth,maxWidth:c.maxWidth,position:c.position,left:c.left,transform:c.transform,flex:c.flex,gridColumn:c.gridColumn,gridRow:c.gridRow,inline:e.getAttribute('style')||''}};
+              const chain=[]; let e=d; while(e&&e!==document.body){chain.push(node(e)); if(e===t)break; e=e.parentElement;}
+              return {innerWidth, chain, left:node(t?.querySelector('.woostify-toolbar-left')), toolbar:node(t)};
+            }''')
+            print(json.dumps(data,ensure_ascii=False,indent=2)); b.close()
+          PY
+      - name: Remove candidate
+        if: always()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET'"
