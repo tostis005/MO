@@ -2,8 +2,9 @@
 /**
  * Meta descriptions SEO para productos y artículos.
  *
- * Genera descripciones útiles cuando la actual falta o es demasiado corta,
- * sin sustituir descripciones manuales suficientemente completas.
+ * Genera descripciones útiles cuando la actual falta, es demasiado corta o
+ * resulta excesivamente larga, sin sustituir descripciones manuales que ya
+ * están dentro de una longitud razonable.
  * Compatible con Yoast SEO, Rank Math, AIOSEO y SEOPress; si no hay plugin
  * SEO activo, imprime una única meta description como fallback.
  *
@@ -57,7 +58,7 @@ function elmercado_seo_trim_description( $text, $max = 158 ) {
 	}
 
 	if ( function_exists( 'mb_substr' ) ) {
-		$cut       = mb_substr( $text, 0, $max, 'UTF-8' );
+		$cut        = mb_substr( $text, 0, $max, 'UTF-8' );
 		$last_space = mb_strrpos( $cut, ' ', 0, 'UTF-8' );
 
 		if ( false !== $last_space && $last_space >= ( $max - 28 ) ) {
@@ -145,9 +146,10 @@ function elmercado_seo_generated_description() {
 }
 
 /**
- * Mejora una meta description únicamente cuando falta o es demasiado corta.
+ * Mejora una meta description cuando falta o queda fuera de una longitud útil.
  *
- * Así respetamos descripciones manuales que ya tienen contenido suficiente.
+ * Se conservan las descripciones manuales ya razonables (120-170 caracteres).
+ * Las demasiado cortas o largas se normalizan a partir del contenido real.
  *
  * @param string $description Descripción generada por el plugin SEO.
  * @return string
@@ -157,9 +159,10 @@ function elmercado_seo_filter_meta_description( $description ) {
 		return $description;
 	}
 
-	$current = elmercado_seo_plain_text( $description );
+	$current        = elmercado_seo_plain_text( $description );
+	$current_length = elmercado_seo_strlen( $current );
 
-	if ( elmercado_seo_strlen( $current ) >= 120 ) {
+	if ( $current_length >= 120 && $current_length <= 170 ) {
 		return $description;
 	}
 
