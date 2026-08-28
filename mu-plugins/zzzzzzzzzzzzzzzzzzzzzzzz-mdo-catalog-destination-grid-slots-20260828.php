@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Destination Grid Slots 2026-08-28
  * Description: CSS-only slot ownership for destination pin, label and chevron.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: El Mercado de Origen
  */
 
