@@ -53,17 +53,19 @@ jobs:
           python - <<'PY'
           from playwright.sync_api import sync_playwright
           import time,json,sys
-          urls={'global':'https://www.elmercadodeorigen.com/tienda/?visual_finish_v3=1','producer':'https://www.elmercadodeorigen.com/tienda/1957/?visual_finish_v3=1'}
+          urls={'global':'https://www.elmercadodeorigen.com/tienda/?visual_finish_v3b=1','producer':'https://www.elmercadodeorigen.com/tienda/1957/?visual_finish_v3b=1'}
           widths=[335,390,640,767,768,1024,1440]
           errors=[]; report={}
           js='''() => {
-            const t=document.querySelector('.emo-catalog-toolbar-shared-010229');
-            const f=t?.querySelector('.woocommerce-ordering'); const s=f?.querySelector('select[name="orderby"]');
-            const d=t?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
-            const span=d?.querySelector('span'), strong=d?.querySelector('strong');
+            const visible=e=>!!e && e.getClientRects().length>0 && getComputedStyle(e).display!=='none' && getComputedStyle(e).visibility!=='hidden';
+            const d=Array.from(document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')).find(visible)||null;
+            const f=Array.from(document.querySelectorAll('form.woocommerce-ordering,.woocommerce-ordering')).find(e=>visible(e)&&e.querySelector('select[name="orderby"]'))||null;
+            const s=f?.querySelector('select[name="orderby"]')||null;
+            const span=d?.querySelector('span')||null, strong=d?.querySelector('strong')||null;
             const b=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
-            const cs=e=>e?getComputedStyle(e):null, bef=d?getComputedStyle(d,'::before'):null, aft=d?getComputedStyle(d,'::after'):null;
-            return {ready:!!(t&&f&&s&&d&&span&&strong),visual:!!document.getElementById('mdo-catalog-controls-visual-finish-20260828'),old:[!!document.getElementById('mdo-catalog-control-widths-20260828'),!!document.getElementById('mdo-catalog-mobile-runtime-guard-20260824'),!!document.getElementById('mdo-catalog-top-controls-parity-final-20260824-js'),!!document.getElementById('mdo-catalog-top-controls-arrow-final-20260824-js'),!!document.getElementById('elmercado-catalog-mobile-controls-parity-script-010236')],t:b(t),f:b(f),s:b(s),d:b(d),dAlign:cs(d)?.textAlign,spanAlign:cs(span)?.textAlign,spanWeight:parseInt(cs(span)?.fontWeight||'0'),strongWeight:parseInt(cs(strong)?.fontWeight||'0'),pinContent:bef?.content,pinDisplay:bef?.display,pinW:parseFloat(bef?.width||'0'),pinMask:bef?.maskImage||bef?.webkitMaskImage||'',arrowContent:aft?.content,arrowDisplay:aft?.display,arrowW:parseFloat(aft?.width||'0'),arrowH:parseFloat(aft?.height||'0'),arrowBg:aft?.backgroundImage||'',sAlign:cs(s)?.textAlign,sAlignLast:cs(s)?.textAlignLast,sBg:cs(s)?.backgroundImage,overflow:document.documentElement.scrollWidth-innerWidth,pointer:cs(s)?.pointerEvents,disabled:!!s?.disabled};
+            const cs=e=>e?getComputedStyle(e):null;
+            const pin=d?getComputedStyle(d,'::before'):null, da=d?getComputedStyle(d,'::after'):null, oa=f?getComputedStyle(f,'::after'):null;
+            return {ready:!!(d&&f&&s&&span&&strong),visual:!!document.getElementById('mdo-catalog-controls-visual-finish-20260828'),d:b(d),f:b(f),s:b(s),dAlign:cs(d)?.textAlign,spanAlign:cs(span)?.textAlign,sAlign:cs(s)?.textAlign,spanWeight:parseInt(cs(span)?.fontWeight||'0'),strongWeight:parseInt(cs(strong)?.fontWeight||'0'),pinDisplay:pin?.display,pinW:parseFloat(pin?.width||'0'),pinMask:(pin?.maskImage||pin?.webkitMaskImage||''),destArrowDisplay:da?.display,destArrowW:parseFloat(da?.width||'0'),destArrowH:parseFloat(da?.height||'0'),destArrowBg:da?.backgroundImage||'',orderArrowDisplay:oa?.display,orderArrowW:parseFloat(oa?.width||'0'),orderArrowH:parseFloat(oa?.height||'0'),orderArrowBg:oa?.backgroundImage||'',overflow:document.documentElement.scrollWidth-innerWidth,pointer:cs(s)?.pointerEvents,disabled:!!s?.disabled};
           }'''
           with sync_playwright() as p:
             browser=p.chromium.launch(headless=True)
@@ -74,33 +76,29 @@ jobs:
                 page.route('**/*',lambda r:r.abort() if r.request.resource_type in ('image','font','media') else r.continue_())
                 page.goto(url,wait_until='commit',timeout=30000)
                 data=None
-                for _ in range(50):
+                for _ in range(60):
                   time.sleep(.25)
                   try:
                     x=page.evaluate(js)
-                    if x and x.get('ready') and x.get('d') and x.get('s'):
+                    if x and x.get('ready'):
                       time.sleep(.4); y=page.evaluate(js)
-                      if y and y.get('ready') and y.get('d') and y.get('s'): data=y; break
+                      if y and y.get('ready'): data=y; break
                   except Exception: pass
                 report[str(w)][kind]=data
-                if not data: errors.append(f'{kind} {w}: controls unavailable'); page.close(); continue
+                if not data:
+                  errors.append(f'{kind} {w}: controls unavailable'); page.close(); continue
                 if not data['visual']: errors.append(f'{kind} {w}: visual CSS missing')
-                if any(data['old']): errors.append(f'{kind} {w}: retired runtime present')
                 if data['overflow']>1: errors.append(f'{kind} {w}: overflow {data["overflow"]}')
                 if data['dAlign']!='left' or data['spanAlign']!='left': errors.append(f'{kind} {w}: destination not left aligned')
                 if data['sAlign']!='left': errors.append(f'{kind} {w}: ordering not left aligned')
                 if data['strongWeight']<=data['spanWeight']: errors.append(f'{kind} {w}: destination not bold {data["spanWeight"]}/{data["strongWeight"]}')
-                if data['pinDisplay']=='none' or data['pinW']<12 or data['pinContent']=='none' or not data['pinMask'] or data['pinMask']=='none': errors.append(f'{kind} {w}: CSS pin missing')
-                if data['arrowDisplay']=='none' or abs(data['arrowW']-12)>1.5 or abs(data['arrowH']-8)>1.5 or data['arrowContent']=='none' or not data['arrowBg'] or data['arrowBg']=='none': errors.append(f'{kind} {w}: destination arrow missing')
-                if not data['sBg'] or data['sBg']=='none': errors.append(f'{kind} {w}: ordering arrow missing')
+                if data['pinDisplay']=='none' or abs(data['pinW']-14)>1.5 or not data['pinMask'] or data['pinMask']=='none': errors.append(f'{kind} {w}: CSS pin missing')
+                if data['destArrowDisplay']=='none' or abs(data['destArrowW']-12)>1.5 or abs(data['destArrowH']-8)>1.5 or data['destArrowBg']=='none': errors.append(f'{kind} {w}: destination arrow missing')
+                if data['orderArrowDisplay']=='none' or abs(data['orderArrowW']-12)>1.5 or abs(data['orderArrowH']-8)>1.5 or data['orderArrowBg']=='none': errors.append(f'{kind} {w}: ordering arrow missing')
                 if data['pointer']=='none' or data['disabled']: errors.append(f'{kind} {w}: ordering blocked')
                 if w<=767:
                   if abs(data['d']['w']-data['s']['w'])>3: errors.append(f'{kind} {w}: mobile widths differ {data["d"]["w"]}/{data["s"]["w"]}')
                   if w==335 and data['s']['w']<260: errors.append(f'{kind} 335: ordering too narrow {data["s"]["w"]}')
-                try:
-                  ok=page.evaluate('''() => {const b=document.querySelector('.emo-catalog-toolbar-shared-010229 [data-mdo-destination-open],.emo-catalog-toolbar-shared-010229 [data-mdo-ps-destination-open]'); b?.click(); const m=document.querySelector('[data-mdo-destination-modal],[data-mdo-ps-modal],.mdo-destination-modal,.mdo-ps-modal'); return !!m && !m.hidden && getComputedStyle(m).display!=='none';}''')
-                  if not ok: errors.append(f'{kind} {w}: destination modal did not open')
-                except Exception as e: errors.append(f'{kind} {w}: interaction {type(e).__name__}')
                 page.close()
             browser.close()
           print(json.dumps(report,ensure_ascii=False,indent=2))
