@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Control Widths 2026-08-28
  * Description: Presentation-only refinement for destination alignment/desktop sizing and full-width mobile catalogue controls.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -43,11 +43,12 @@ function mdo_catalog_control_widths_output_20260828(): void {
 			const toolbar = document.querySelector('.emo-catalog-toolbar-shared-010229');
 			if (!toolbar) return false;
 
+			const count = toolbar.querySelector('.woocommerce-result-count');
 			const destTrigger = toolbar.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
 			const destWrap = destTrigger?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination') || destTrigger?.parentElement || null;
 			const orderForm = toolbar.querySelector('.woocommerce-ordering');
 			const order = orderForm?.querySelector('select[name="orderby"]') || null;
-			if (!destTrigger || !destWrap || !orderForm || !order) return false;
+			if (!count || !destTrigger || !destWrap || !orderForm || !order) return false;
 
 			const mobile = window.matchMedia('(max-width:640px)').matches;
 			const desktop = window.matchMedia('(min-width:901px)').matches;
@@ -56,6 +57,14 @@ function mdo_catalog_control_widths_output_20260828(): void {
 			/* Destination copy always reads from the left in both catalogue surfaces. */
 			set(destTrigger, {'text-align':'left'});
 			set(text, {'text-align':'left'});
+
+			/* In every non-stacked layout, destination is the first control in the
+			 * left group. That makes its left edge identical on global/vendor shops,
+			 * regardless of the different result-count text lengths. */
+			if (!mobile) {
+				set(destWrap, {'order':'-1'});
+				set(count, {'order':'0'});
+			}
 
 			/* On desktop the destination control should size to its content rather
 			 * than inheriting the historical fixed 248px control width. */
@@ -81,6 +90,7 @@ function mdo_catalog_control_widths_output_20260828(): void {
 			 * the complete inner width. This removes the narrow ordering state. */
 			if (mobile) {
 				set(destWrap, {
+					'order':'initial',
 					'flex':'0 0 100%',
 					'width':'100%',
 					'min-width':'0',
@@ -89,6 +99,7 @@ function mdo_catalog_control_widths_output_20260828(): void {
 					'justify-self':'stretch',
 					'align-self':'stretch'
 				});
+				set(count, {'order':'initial'});
 				set(destTrigger, {
 					'width':'100%',
 					'min-width':'0',
