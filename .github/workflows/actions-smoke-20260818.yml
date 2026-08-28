@@ -1,4 +1,4 @@
-name: Actions smoke 2026-08-18
+name: Catalog visual baseline 2026-08-28
 
 on:
   push:
@@ -11,18 +11,94 @@ permissions:
   contents: write
 
 jobs:
-  smoke:
+  baseline:
     runs-on: ubuntu-24.04
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
-      - name: Record Actions execution
+      - name: Install Playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Capture compact baseline
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p runtime
-          printf 'actions_ok=true\nrun_id=%s\nverified_at=%s\n' "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > runtime/actions-smoke-20260818.txt
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import json
+
+          URLS={
+            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_design_baseline=20260828b',
+            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_design_baseline=20260828b',
+          }
+          VIEWPORTS=[(390,844),(768,1024),(1024,900),(1280,900),(1440,1000),(1920,1080)]
+
+          JS=r'''() => {
+            const box=el=>{if(!el)return null;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {
+              l:+r.left.toFixed(2),r:+r.right.toFixed(2),t:+r.top.toFixed(2),b:+r.bottom.toFixed(2),w:+r.width.toFixed(2),h:+r.height.toFixed(2),
+              fs:s.fontSize,fw:s.fontWeight,lh:s.lineHeight,p:s.padding,m:s.margin,g:s.gap,br:s.borderRadius,disp:s.display,pos:s.position
+            }};
+            const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+            const count=toolbar?.querySelector('.woocommerce-result-count')||document.querySelector('.woocommerce-result-count');
+            const destTrigger=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
+            const destWrap=destTrigger?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||destTrigger?.parentElement||null;
+            const destStrong=destTrigger?.querySelector('strong')||null;
+            const destSvg=destTrigger?.querySelector('svg')||null;
+            const orderForm=toolbar?.querySelector('.woocommerce-ordering')||document.querySelector('.woocommerce-ordering');
+            const orderSelect=orderForm?.querySelector('select[name="orderby"]')||null;
+            const filter=document.querySelector('#toggle-sidebar-mobile-button,.emo-mobile-filter-toggle');
+            const products=document.querySelector('ul.products');
+            const first=products?.querySelector(':scope > li.product')||null;
+            const header=document.querySelector('.page-header .woostify-container,.page-header');
+            const site=document.querySelector('.site-content > .woostify-container,.site-content .woostify-container');
+            const store=document.querySelector('#wcfmmp-store');
+            const body=document.querySelector('#wcfmmp-store .body_area');
+            const area=document.querySelector('#wcfmmp-store .product_area');
+            const wrapper=document.querySelector('#products-wrapper');
+            const left=document.querySelector('#wcfmmp-store .left_sidebar');
+            const right=document.querySelector('#wcfmmp-store .right_side');
+            const ar=orderForm?getComputedStyle(orderForm,'::after'):null;
+            const tb=toolbar?.getBoundingClientRect(),fb=filter?.getBoundingClientRect(),pb=products?.getBoundingClientRect();
+            const cb=[count,destWrap,orderForm].filter(Boolean).map(x=>x.getBoundingClientRect().bottom);
+            return {
+              viewport:{w:innerWidth,h:innerHeight},
+              boxes:{toolbar:box(toolbar),count:box(count),dest:box(destWrap),destTrigger:box(destTrigger),destStrong:box(destStrong),destSvg:box(destSvg),order:box(orderForm),orderSelect:box(orderSelect),filter:box(filter),products:box(products),first:box(first),header:box(header),site:box(site),store:box(store),vendorBody:box(body),vendorArea:box(area),vendorWrapper:box(wrapper),vendorLeft:box(left),vendorRight:box(right)},
+              gutters:{toolbarL:tb?+tb.left.toFixed(2):null,toolbarR:tb?+(innerWidth-tb.right).toFixed(2):null,filterL:fb?+fb.left.toFixed(2):null,filterR:fb?+(innerWidth-fb.right).toFixed(2):null,productsL:pb?+pb.left.toFixed(2):null,productsR:pb?+(innerWidth-pb.right).toFixed(2):null},
+              arrow:ar?{top:ar.top,right:ar.right,w:ar.width,h:ar.height,transform:ar.transform,brr:ar.borderRight,brb:ar.borderBottom,opacity:ar.opacity}:null,
+              toolbarProductsGap:(cb.length&&pb)?+(pb.top-Math.max(...cb)).toFixed(2):null,
+              overflowX:document.documentElement.scrollWidth-innerWidth,
+              productCount:products?products.querySelectorAll(':scope > li.product').length:0,
+              productIds:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[]
+            };
+          }'''
+
+          out={'captured_at':'2026-08-28','pages':{}}
+          with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True)
+            page=browser.new_page(viewport={'width':1440,'height':1000})
+            for name,url in URLS.items():
+              out['pages'][name]={}
+              for width,height in VIEWPORTS:
+                page.set_viewport_size({'width':width,'height':height})
+                page.goto(url,wait_until='networkidle',timeout=120000)
+                page.wait_for_timeout(1200)
+                out['pages'][name][str(width)]=page.evaluate(JS)
+            browser.close()
+          with open('runtime/catalog-design-baseline-20260828.json','w',encoding='utf-8') as f:
+            json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps(out,ensure_ascii=False))
+          PY
+      - name: Commit baseline
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add runtime/actions-smoke-20260818.txt
-          git commit -m 'Record Actions smoke execution'
+          git add runtime/catalog-design-baseline-20260828.json
+          git commit -m 'Record catalogue design baseline'
+          git pull --rebase origin main
           git push origin HEAD:main
