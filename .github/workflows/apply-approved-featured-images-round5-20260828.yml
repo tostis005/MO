@@ -1,6 +1,7 @@
 name: Apply approved featured images safely
 
 # Registered launcher for production-safe featured image updates.
+# Trigger approved selection 1A after launcher registration.
 on:
   push:
     branches: [main]
