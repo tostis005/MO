@@ -97,8 +97,8 @@ jobs:
               baseline = json.load(f)
 
           urls = {
-              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v5',
-              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v5',
+              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v6',
+              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v6',
           }
           sizes = [(335,760),(360,800),(390,844),(430,900),(640,900),(641,900),(700,900),(767,1024),(768,1024),(1024,900),(1440,1000),(1920,1080)]
           js = r'''() => {
@@ -131,6 +131,7 @@ jobs:
             const chevron=dest?.querySelector('.mdo-catalog-destination__chevron,.mdo-ps-destination__chevron')||svgs[svgs.length-1]||null;
             const legacyPin=svgs.length>1 ? svgs[0] : dest?.querySelector(':scope > .mdo-catalog-destination__pin,:scope > .mdo-ps-destination__pin')||null;
             const headCritical=document.head.querySelector('#mdo-catalog-control-widths-critical-20260828');
+            const os=order?getComputedStyle(order):null;
             return {
               toolbar:box(toolbar), left:box(left), countBox:box(count), destWrap:box(destWrap), dest:box(dest), orderForm:box(orderForm), order:box(order),
               available, innerLeft,
@@ -149,7 +150,20 @@ jobs:
               overflow:document.documentElement.scrollWidth-innerWidth,
               count:products?products.querySelectorAll(':scope > li.product').length:0,
               ids:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[],
-              controlScript:!!document.getElementById('mdo-catalog-control-widths-20260828')
+              controlScript:!!document.getElementById('mdo-catalog-control-widths-20260828'),
+              orderInline:order?.getAttribute('style')||'',
+              orderComputed:os?{
+                display:os.display,width:os.width,minWidth:os.minWidth,maxWidth:os.maxWidth,
+                inlineSize:os.inlineSize,minInlineSize:os.minInlineSize,maxInlineSize:os.maxInlineSize,
+                flex:os.flex,flexBasis:os.flexBasis,flexGrow:os.flexGrow,flexShrink:os.flexShrink,
+                float:os.float,position:os.position,left:os.left,right:os.right,transform:os.transform,
+                marginLeft:os.marginLeft,marginRight:os.marginRight,boxSizing:os.boxSizing
+              }:null,
+              orderChildren:orderForm?[...orderForm.children].map(el=>({
+                tag:el.tagName,type:el.getAttribute('type')||'',cls:el.className||'',
+                display:getComputedStyle(el).display,width:el.getBoundingClientRect().width,
+                flex:getComputedStyle(el).flex
+              })):[]
             };
           }'''
 
@@ -167,8 +181,10 @@ jobs:
                   report[str(width)]={}
                   for kind,url in urls.items():
                       page.set_viewport_size({'width':width,'height':height})
-                      page.goto(url,wait_until='networkidle',timeout=120000)
-                      page.wait_for_timeout(900)
+                      page.goto(url,wait_until='domcontentloaded',timeout=60000)
+                      page.wait_for_selector('.emo-catalog-toolbar-shared-010229 select[name="orderby"]',state='visible',timeout=30000)
+                      page.wait_for_selector('.emo-catalog-toolbar-shared-010229 [data-mdo-destination-open], .emo-catalog-toolbar-shared-010229 [data-mdo-ps-destination-open]',state='visible',timeout=30000)
+                      page.wait_for_timeout(1200)
                       d=page.evaluate(js); report[str(width)][kind]=d
 
                       if not d['controlScript']:
@@ -199,7 +215,7 @@ jobs:
                               errors.append(f'{kind} {width}: result count not first/aligned in compact toolbar')
                           for key in ('destWrap','dest','orderForm','order'):
                               if not d[key] or d['available'] is None or not close(d[key]['w'], d['available'], 3):
-                                  errors.append(f'{kind} {width}: {key} not full compact width ({d.get(key)} available={d["available"]})')
+                                  errors.append(f'{kind} {width}: {key} not full compact width ({d.get(key)} available={d["available"]}; orderComputed={d.get("orderComputed")}; orderChildren={d.get("orderChildren")})')
                       else:
                           if not d['countBox'] or d['innerLeft'] is None or not close(d['countBox']['l'], d['innerLeft'], 3):
                               errors.append(f'{kind} {width}: result count is not the first left control ({d.get("countBox")} innerLeft={d["innerLeft"]})')
