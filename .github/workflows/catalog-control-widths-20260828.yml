@@ -97,10 +97,10 @@ jobs:
               baseline = json.load(f)
 
           urls = {
-              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v4',
-              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v4',
+              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v5',
+              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v5',
           }
-          sizes = [(390,844),(430,900),(640,900),(641,900),(700,900),(767,1024),(768,1024),(1024,900),(1440,1000),(1920,1080)]
+          sizes = [(335,760),(360,800),(390,844),(430,900),(640,900),(641,900),(700,900),(767,1024),(768,1024),(1024,900),(1440,1000),(1920,1080)]
           js = r'''() => {
             const box = el => {
               if(!el) return null;
