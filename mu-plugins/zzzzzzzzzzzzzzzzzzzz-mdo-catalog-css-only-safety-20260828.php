@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue CSS-only Safety 2026-08-28
  * Description: Makes catalogue toolbar geometry CSS-only and retires late runtime style writers that can fight WCFM rerenders.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: El Mercado de Origen
  */
 
@@ -66,8 +66,7 @@ function mdo_catalog_css_only_retire_runtime_layout_20260828(): void {
 add_action( 'wp_loaded', 'mdo_catalog_css_only_retire_runtime_layout_20260828', PHP_INT_MAX );
 
 /**
- * Final geometry owner. CSS only: no MutationObserver, ResizeObserver, timers,
- * requestAnimationFrame, resize listeners or inline-style mutation.
+ * Final geometry owner. CSS only: no runtime DOM watching or style mutation.
  */
 function mdo_catalog_css_only_style_20260828(): void {
 	if ( is_admin() ) {
@@ -109,8 +108,6 @@ function mdo_catalog_css_only_style_20260828(): void {
 			display:contents !important;
 	}
 
-		/* In the global shop the destination can sit inside one additional direct
-		 * flex item. Make that item participate in the shared grid as row two. */
 		html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left > :has([data-mdo-destination-open]),
 		html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left > :has([data-mdo-ps-destination-open]) {
 			grid-column:1 !important;
@@ -229,6 +226,36 @@ function mdo_catalog_css_only_style_20260828(): void {
 			margin:0 !important;
 			transform:none !important;
 			pointer-events:auto !important;
+		}
+
+		/* Global shop has late historical mobile CSS with the same !important
+		 * declarations. Repeat the real classes to make this CSS-only owner
+		 * unambiguously stronger without resorting to inline JS styles. */
+		html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 {
+			display:grid !important;
+			grid-template-columns:minmax(0,1fr) !important;
+			grid-template-rows:auto 40px 40px !important;
+			align-items:stretch !important;
+			justify-items:stretch !important;
+			gap:8px !important;
+			height:auto !important;
+			min-height:0 !important;
+			max-height:none !important;
+		}
+		html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left.woostify-toolbar-left {
+			display:contents !important;
+			width:auto !important;
+			height:auto !important;
+			min-height:0 !important;
+			max-height:none !important;
+		}
+		html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .mdo-catalog-destination.mdo-catalog-destination--canonical {
+			grid-column:1 !important;
+			grid-row:2 !important;
+			width:100% !important;
+			min-width:0 !important;
+			max-width:100% !important;
+			height:40px !important;
 		}
 	}
 	</style>
