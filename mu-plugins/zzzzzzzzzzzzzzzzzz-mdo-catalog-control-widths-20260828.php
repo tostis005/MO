@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Control Widths 2026-08-28
  * Description: Presentation-only refinement for destination hierarchy, stable first paint and full-width compact catalogue controls.
- * Version: 1.3.0
+ * Version: 1.3.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -169,10 +169,16 @@ function mdo_catalog_control_widths_critical_style_20260828(): void {
 				transform:none !important;
 			}
 			html body .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select[name="orderby"] {
+				display:block !important;
 				box-sizing:border-box !important;
+				flex:1 1 100% !important;
+				flex-basis:100% !important;
+				align-self:stretch !important;
+				float:none !important;
 				width:100% !important;
 				min-width:0 !important;
 				max-width:100% !important;
+				margin:0 !important;
 			}
 		}
 	</style>
@@ -393,12 +399,18 @@ function mdo_catalog_control_widths_output_20260828(): void {
 						'align-self':'stretch'
 					});
 					set(order, {
+						'display':'block',
+						'flex':'1 1 100%',
+						'flex-basis':'100%',
+						'align-self':'stretch',
+						'float':'none',
 						'width':'100%',
 						'min-width':'0',
 						'max-width':'100%',
 						'height':'40px',
 						'min-height':'40px',
-						'max-height':'40px'
+						'max-height':'40px',
+						'margin':'0'
 					});
 				} else {
 					set(toolbar, {
