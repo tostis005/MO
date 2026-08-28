@@ -1,21 +1,21 @@
-name: Apply approved featured images round 5 20260828
+name: Apply approved featured images safely
 
-# Registered production run for approved selections 1B, 2A, 4A and 5A.
-# Trigger registration refresh: duplicate preflight + image SEO verified.
+# Registered launcher for production-safe featured image updates.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/apply-approved-featured-images-round5-20260828.yml'
+      - '.github/data/featured-image-request.json'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   apply:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -23,8 +23,14 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+
+      - name: Validate request
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST='.github/data/featured-image-request.json'
+          test -s "$REQUEST"
+          jq -e '.post_slug and .image_url and .image_filename and .image_title and .image_alt and .source_page and .photographer and .license' "$REQUEST" >/dev/null
 
       - name: Apply, check duplicates and verify image SEO
         shell: bash
@@ -59,56 +65,38 @@ jobs:
           REST="${INFO#*|}"
           PHP="${REST%%|*}"
           WP="${REST#*|}"
-          REMOTE="/tmp/emdo-featured-round5-${GITHUB_RUN_ID}"
+          REMOTE="/tmp/emdo-featured-safe-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/scripts/apply-approved-featured-images-round5-20260828.php "$STAGING_USER@$STAGING_HOST:$REMOTE/apply.php"
+          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            .github/scripts/update-post-featured-image-production.php \
+            .github/data/featured-image-request.json \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
           set +e
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/apply.php' --path='$PROD' --allow-root" > /tmp/featured-round5.json 2> /tmp/featured-round5.err
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_FEATURED_REQUEST='$REMOTE/featured-image-request.json'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/update-post-featured-image-production.php' --path='$PROD' --allow-root" > /tmp/featured-safe.json 2> /tmp/featured-safe.err
           RC=$?
           set -e
           if [ "$RC" -ne 0 ]; then
-            echo 'Featured image updater failed:' >&2
-            cat /tmp/featured-round5.err >&2 || true
-            cat /tmp/featured-round5.json >&2 || true
+            cat /tmp/featured-safe.err >&2 || true
+            cat /tmp/featured-safe.json >&2 || true
             sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
             exit "$RC"
           fi
 
-          cat /tmp/featured-round5.json
-          jq -e '.posts|length==4' /tmp/featured-round5.json >/dev/null
-          jq -e '.duplicate_preflight|length==4 and all((.conflicts|length)==0)' /tmp/featured-round5.json >/dev/null
-          jq -e '.posts|all(.thumbnail_id==.attachment_id and .approved_id==.attachment_id and .uses_default=="" and .cover_asset=="" and (.attachment_url|length)>0 and (.filename|length)>0 and (.title|length)>0 and (.alt|length)>0 and (.source_page|length)>0 and (.photographer|length)>0 and .license=="Pexels License")' /tmp/featured-round5.json >/dev/null
+          cat /tmp/featured-safe.json
+          jq -e '.verified==true and (.duplicate_preflight.conflicts|length)==0' /tmp/featured-safe.json >/dev/null
+          jq -e '.post.thumbnail_id==.post.attachment_id and .post.approved_id==.post.attachment_id and .post.uses_default=="" and .post.cover_asset=="" and (.post.filename|length)>0 and (.post.title|length)>0 and (.post.alt|length)>0 and (.post.source_page|length)>0 and (.post.photographer|length)>0 and (.post.license|length)>0' /tmp/featured-safe.json >/dev/null
 
-          printf '[]' > /tmp/public-checks.json
-          while IFS=$'\t' read -r slug permalink attachment_url alt; do
-            out="/tmp/${slug}.html"
-            code="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO featured image verification' -o "$out" -w '%{http_code}' "${permalink}?emdo_featured_verify=${GITHUB_RUN_ID}")"
-            [ "$code" = "200" ] || { echo "HTTP $code for $permalink" >&2; exit 20; }
-            basename="$(basename "${attachment_url%%\?*}")"
-            grep -Fq "$basename" "$out" || { echo "Featured image basename $basename not found at $permalink" >&2; exit 21; }
-            grep -Fq "$alt" "$out" || { echo "Featured image ALT not found at $permalink" >&2; exit 22; }
-            jq --arg slug "$slug" --arg url "$permalink" --arg image "$attachment_url" --arg alt "$alt" --arg code "$code" '. + [{slug:$slug,url:$url,image:$image,alt:$alt,http:($code|tonumber),image_present:true,alt_present:true}]' /tmp/public-checks.json > /tmp/public-next.json
-            mv /tmp/public-next.json /tmp/public-checks.json
-          done < <(jq -r '.posts[] | [.slug,.permalink,.attachment_url,.alt] | @tsv' /tmp/featured-round5.json)
-          jq -e 'length==4 and all(.http==200 and .image_present==true and .alt_present==true)' /tmp/public-checks.json >/dev/null
+          SLUG="$(jq -r '.post.slug' /tmp/featured-safe.json)"
+          PERMALINK="$(jq -r '.post.permalink' /tmp/featured-safe.json)"
+          ATTACHMENT_URL="$(jq -r '.post.attachment_url' /tmp/featured-safe.json)"
+          ALT="$(jq -r '.post.alt' /tmp/featured-safe.json)"
+          OUT="/tmp/${SLUG}.html"
+          CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO featured image verification' -o "$OUT" -w '%{http_code}' "${PERMALINK}?emdo_featured_verify=${GITHUB_RUN_ID}")"
+          [ "$CODE" = "200" ] || { echo "HTTP $CODE for $PERMALINK" >&2; exit 20; }
+          BASENAME="$(basename "${ATTACHMENT_URL%%\?*}")"
+          grep -Fq "$BASENAME" "$OUT" || { echo "Featured image basename missing from frontend" >&2; exit 21; }
+          grep -Fq "$ALT" "$OUT" || { echo "Featured image ALT missing from frontend" >&2; exit 22; }
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
-
-          mkdir -p .deploy-status
-          jq -n \
-            --arg generated_at "$(date -u +%FT%TZ)" \
-            --arg run_id "$GITHUB_RUN_ID" \
-            --arg source_sha "$GITHUB_SHA" \
-            --slurpfile result /tmp/featured-round5.json \
-            --slurpfile checks /tmp/public-checks.json \
-            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,selection:["1B","2A","4A","5A"],duplicate_preflight:$result[0].duplicate_preflight,posts:$result[0].posts,public_checks:$checks[0]}' \
-            > .deploy-status/featured-images-round5-20260828.json
-          jq -e '.verified==true and (.duplicate_preflight|length)==4 and (.posts|length)==4 and (.public_checks|length)==4' .deploy-status/featured-images-round5-20260828.json >/dev/null
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/featured-images-round5-20260828.json
-          git commit -m 'Record verified featured images round 5 [skip ci]'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          echo "public_verification_ok slug=$SLUG http=$CODE image=$ATTACHMENT_URL alt=$ALT"
