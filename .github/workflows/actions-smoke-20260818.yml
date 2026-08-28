@@ -1,4 +1,4 @@
-name: Catalog visual baseline 2026-08-28
+name: Deploy catalogue visual parity 2026-08-28
 
 on:
   push:
@@ -8,97 +8,197 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  baseline:
+  deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Playwright
+
+      - name: Validate CSS-only layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='mu-plugins/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php'
+          php -l "$FILE" >/dev/null
+          grep -Fq '<style id="mdo-catalog-visual-parity-20260828">' "$FILE"
+          ! grep -Fq '<script' "$FILE"
+          ! grep -Eqi 'pre_get_posts|woocommerce_product_query|tax_query|meta_query|posts_where|posts_join|posts_request|wp_ajax|WC_Query|woocommerce_product_is_visible|woocommerce_get_catalog_ordering_args' "$FILE"
+          grep -Fq "add_action( 'wp_footer', 'mdo_catalog_visual_parity_20260828', PHP_INT_MAX )" "$FILE"
+
+      - name: Deploy to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          TARGET="$PROD_PATH/wp-content/mu-plugins/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php"
+          REMOTE="/tmp/mdo-catalog-visual-parity-${GITHUB_RUN_ID}.php"
+          BACKUP="/tmp/mdo-catalog-visual-parity-backup-${GITHUB_RUN_ID}.php"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+          sshpass -e scp $SCP_OPTIONS mu-plugins/zzzzzzzzzzzzzzzz-mdo-catalog-visual-parity-20260828.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Install browser tooling
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
-      - name: Capture compact baseline
+
+      - name: Verify visual parity and catalogue integrity
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p runtime
           python - <<'PY'
           from playwright.sync_api import sync_playwright
-          import json
+          import json, math, sys
+
+          with open('runtime/catalog-design-baseline-20260828.json',encoding='utf-8') as f:
+              baseline=json.load(f)
 
           URLS={
-            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_design_baseline=20260828b',
-            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_design_baseline=20260828b',
+            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_visual_verify=20260828v1',
+            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_visual_verify=20260828v1',
           }
           VIEWPORTS=[(390,844),(768,1024),(1024,900),(1280,900),(1440,1000),(1920,1080)]
 
           JS=r'''() => {
-            const box=el=>{if(!el)return null;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {
-              l:+r.left.toFixed(2),r:+r.right.toFixed(2),t:+r.top.toFixed(2),b:+r.bottom.toFixed(2),w:+r.width.toFixed(2),h:+r.height.toFixed(2),
-              fs:s.fontSize,fw:s.fontWeight,lh:s.lineHeight,p:s.padding,m:s.margin,g:s.gap,br:s.borderRadius,disp:s.display,pos:s.position
-            }};
+            const b=el=>{if(!el)return null;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {l:r.left,r:r.right,t:r.top,b:r.bottom,w:r.width,h:r.height,display:s.display,gap:s.gap,cols:s.gridTemplateColumns,pad:s.padding}};
             const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
-            const count=toolbar?.querySelector('.woocommerce-result-count')||document.querySelector('.woocommerce-result-count');
-            const destTrigger=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
-            const destWrap=destTrigger?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||destTrigger?.parentElement||null;
-            const destStrong=destTrigger?.querySelector('strong')||null;
-            const destSvg=destTrigger?.querySelector('svg')||null;
-            const orderForm=toolbar?.querySelector('.woocommerce-ordering')||document.querySelector('.woocommerce-ordering');
-            const orderSelect=orderForm?.querySelector('select[name="orderby"]')||null;
+            const count=toolbar?.querySelector('.woocommerce-result-count')||null;
+            const dest=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
+            const order=toolbar?.querySelector('.woocommerce-ordering')||null;
             const filter=document.querySelector('#toggle-sidebar-mobile-button,.emo-mobile-filter-toggle');
             const products=document.querySelector('ul.products');
-            const first=products?.querySelector(':scope > li.product')||null;
-            const header=document.querySelector('.page-header .woostify-container,.page-header');
-            const site=document.querySelector('.site-content > .woostify-container,.site-content .woostify-container');
-            const store=document.querySelector('#wcfmmp-store');
-            const body=document.querySelector('#wcfmmp-store .body_area');
-            const area=document.querySelector('#wcfmmp-store .product_area');
-            const wrapper=document.querySelector('#products-wrapper');
-            const left=document.querySelector('#wcfmmp-store .left_sidebar');
             const right=document.querySelector('#wcfmmp-store .right_side');
-            const ar=orderForm?getComputedStyle(orderForm,'::after'):null;
-            const tb=toolbar?.getBoundingClientRect(),fb=filter?.getBoundingClientRect(),pb=products?.getBoundingClientRect();
-            const cb=[count,destWrap,orderForm].filter(Boolean).map(x=>x.getBoundingClientRect().bottom);
+            const da=dest?getComputedStyle(dest,'::after'):null;
+            const oa=order?getComputedStyle(order,'::after'):null;
+            const lastSvg=dest?.querySelector('svg:last-of-type')||null;
+            const rect=products?.getBoundingClientRect();
+            const controls=[count,dest?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||dest,order].filter(Boolean).map(x=>x.getBoundingClientRect().bottom);
             return {
-              viewport:{w:innerWidth,h:innerHeight},
-              boxes:{toolbar:box(toolbar),count:box(count),dest:box(destWrap),destTrigger:box(destTrigger),destStrong:box(destStrong),destSvg:box(destSvg),order:box(orderForm),orderSelect:box(orderSelect),filter:box(filter),products:box(products),first:box(first),header:box(header),site:box(site),store:box(store),vendorBody:box(body),vendorArea:box(area),vendorWrapper:box(wrapper),vendorLeft:box(left),vendorRight:box(right)},
-              gutters:{toolbarL:tb?+tb.left.toFixed(2):null,toolbarR:tb?+(innerWidth-tb.right).toFixed(2):null,filterL:fb?+fb.left.toFixed(2):null,filterR:fb?+(innerWidth-fb.right).toFixed(2):null,productsL:pb?+pb.left.toFixed(2):null,productsR:pb?+(innerWidth-pb.right).toFixed(2):null},
-              arrow:ar?{top:ar.top,right:ar.right,w:ar.width,h:ar.height,transform:ar.transform,brr:ar.borderRight,brb:ar.borderBottom,opacity:ar.opacity}:null,
-              toolbarProductsGap:(cb.length&&pb)?+(pb.top-Math.max(...cb)).toFixed(2):null,
+              toolbar:b(toolbar),filter:b(filter),products:b(products),right:b(right),
               overflowX:document.documentElement.scrollWidth-innerWidth,
               productCount:products?products.querySelectorAll(':scope > li.product').length:0,
-              productIds:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[]
+              productIds:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[],
+              productGap:products?getComputedStyle(products).columnGap:null,
+              productCols:products?getComputedStyle(products).gridTemplateColumns:null,
+              toolbarProductsGap:(rect&&controls.length)?rect.top-Math.max(...controls):null,
+              destArrow:da?{w:da.width,h:da.height,top:da.top,right:da.right,transform:da.transform,brr:da.borderRight,brb:da.borderBottom}:null,
+              orderArrow:oa?{w:oa.width,h:oa.height,top:oa.top,right:oa.right,transform:oa.transform,brr:oa.borderRight,brb:oa.borderBottom}:null,
+              lastSvgVisibility:lastSvg?getComputedStyle(lastSvg).visibility:null,
+              stylePresent:!!document.getElementById('mdo-catalog-visual-parity-20260828')
             };
           }'''
 
-          out={'captured_at':'2026-08-28','pages':{}}
+          def near(a,b,tol=1.25):
+              return a is not None and b is not None and abs(float(a)-float(b)) <= tol
+
+          failures=[]
+          results={}
           with sync_playwright() as p:
-            browser=p.chromium.launch(headless=True)
-            page=browser.new_page(viewport={'width':1440,'height':1000})
-            for name,url in URLS.items():
-              out['pages'][name]={}
+              browser=p.chromium.launch(headless=True)
+              page=browser.new_page(viewport={'width':1440,'height':1000})
               for width,height in VIEWPORTS:
-                page.set_viewport_size({'width':width,'height':height})
-                page.goto(url,wait_until='networkidle',timeout=120000)
-                page.wait_for_timeout(1200)
-                out['pages'][name][str(width)]=page.evaluate(JS)
-            browser.close()
-          with open('runtime/catalog-design-baseline-20260828.json','w',encoding='utf-8') as f:
-            json.dump(out,f,ensure_ascii=False,indent=2)
-          print(json.dumps(out,ensure_ascii=False))
+                  results[str(width)]={}
+                  for name,url in URLS.items():
+                      page.set_viewport_size({'width':width,'height':height})
+                      page.goto(url,wait_until='networkidle',timeout=120000)
+                      page.wait_for_timeout(1400)
+                      data=page.evaluate(JS)
+                      results[str(width)][name]=data
+                      base=baseline['pages'][name][str(width)]
+                      if data['productIds'] != base['productIds']:
+                          failures.append(f'{name} {width}: product IDs changed {data["productIds"]} != {base["productIds"]}')
+                      if data['productCount'] != base['productCount']:
+                          failures.append(f'{name} {width}: product count changed {data["productCount"]} != {base["productCount"]}')
+                      if data['overflowX'] > 1:
+                          failures.append(f'{name} {width}: horizontal overflow {data["overflowX"]}')
+                      if not data['stylePresent']:
+                          failures.append(f'{name} {width}: CSS parity style missing')
+
+                  g=results[str(width)]['global']; v=results[str(width)]['producer']
+                  for key in ('toolbar','products'):
+                      if not (g[key] and v[key] and near(g[key]['l'],v[key]['l']) and near(g[key]['w'],v[key]['w'])):
+                          failures.append(f'{width}: producer {key} geometry differs from global: G={g[key]} V={v[key]}')
+                  if width <= 1100:
+                      if not (g['filter'] and v['filter'] and near(g['filter']['l'],v['filter']['l']) and near(g['filter']['w'],v['filter']['w']) and near(g['filter']['h'],v['filter']['h'])):
+                          failures.append(f'{width}: producer filter differs from global: G={g["filter"]} V={v["filter"]}')
+                  expected_cols=1 if width<=640 else (2 if width<=900 else 4)
+                  actual_cols=len([x for x in (v['productCols'] or '').split(' ') if x and x!='none'])
+                  if actual_cols != expected_cols:
+                      failures.append(f'{width}: producer grid columns {actual_cols}, expected {expected_cols}: {v["productCols"]}')
+                  if v['right'] and (abs(v['right']['l']-g['toolbar']['l'])>1.5 and width>=1280):
+                      # right_side includes the same main column before product-area padding on desktop.
+                      failures.append(f'{width}: producer right column does not start on global catalogue column')
+                  for name in ('global','producer'):
+                      d=results[str(width)][name]
+                      da,oa=d['destArrow'],d['orderArrow']
+                      if not da or not oa or da['w']!=oa['w'] or da['h']!=oa['h'] or da['right']!=oa['right'] or da['transform']!=oa['transform']:
+                          failures.append(f'{name} {width}: destination/order chevrons differ: {da} vs {oa}')
+                      if d['lastSvgVisibility'] != 'hidden':
+                          failures.append(f'{name} {width}: original destination chevron still visible ({d["lastSvgVisibility"]})')
+              browser.close()
+
+          print(json.dumps(results,ensure_ascii=False,indent=2))
+          if failures:
+              print('\nFAILURES:')
+              print('\n'.join('- '+x for x in failures))
+              sys.exit(1)
+          print('CATALOG_VISUAL_PARITY_VERIFIED=true')
           PY
-      - name: Commit baseline
+
+      - name: Roll back on failure
+        if: failure() && env.PROD_PATH != ''
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add runtime/catalog-design-baseline-20260828.json
-          git commit -m 'Record catalogue design baseline'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+
+      - name: Remove backup after success
+        if: success()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
