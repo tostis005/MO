@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Control Widths 2026-08-28
  * Description: Presentation-only refinement for destination hierarchy, stable first paint and full-width compact catalogue controls.
- * Version: 1.2.0
+ * Version: 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -119,6 +119,20 @@ function mdo_catalog_control_widths_critical_style_20260828(): void {
 				min-height:0 !important;
 				padding:11px !important;
 			}
+
+			/* Producer catalogues sit inside an extra WCFM content gutter. Keep the
+			 * shared toolbar tied to the viewport instead of allowing width:100% to
+			 * become 100% of that narrower nested container on very small phones. */
+			html body.wcfmmp-store-page .emo-catalog-toolbar-shared-010229,
+			html body.wcfm-store-page .emo-catalog-toolbar-shared-010229 {
+				position:relative !important;
+				left:50% !important;
+				width:calc(100vw - 32px) !important;
+				min-width:calc(100vw - 32px) !important;
+				max-width:calc(100vw - 32px) !important;
+				transform:translateX(-50%) !important;
+			}
+
 			html body .emo-catalog-toolbar-shared-010229 .woostify-toolbar-left {
 				display:contents !important;
 			}
@@ -151,6 +165,8 @@ function mdo_catalog_control_widths_critical_style_20260828(): void {
 				min-width:0 !important;
 				max-width:100% !important;
 				margin:0 !important;
+				left:0 !important;
+				transform:none !important;
 			}
 			html body .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select[name="orderby"] {
 				box-sizing:border-box !important;
@@ -216,6 +232,7 @@ function mdo_catalog_control_widths_output_20260828(): void {
 				const compactMobile = window.matchMedia('(min-width:641px) and (max-width:767px)').matches;
 				const mobile = narrowPhone || compactMobile;
 				const desktop = window.matchMedia('(min-width:901px)').matches;
+				const producer = !!toolbar.querySelector('[data-mdo-ps-destination-open]');
 				const text = destTrigger.querySelector(':scope > span') || destTrigger.querySelector('span');
 				const strong = text?.querySelector('strong') || null;
 				const directSvgs = [...destTrigger.querySelectorAll(':scope > svg')];
@@ -284,6 +301,27 @@ function mdo_catalog_control_widths_output_20260828(): void {
 						'margin':'0 0 12px',
 						'padding':'11px'
 					});
+
+					/* On producer pages 100% refers to WCFM's narrower nested content area.
+					 * Reassert the viewport contract so 335px phones retain the same 16px
+					 * outer gutters and the ordering control can fill the complete card. */
+					if (producer) {
+						set(toolbar, {
+							'position':'relative',
+							'left':'50%',
+							'width':'calc(100vw - 32px)',
+							'min-width':'calc(100vw - 32px)',
+							'max-width':'calc(100vw - 32px)',
+							'transform':'translateX(-50%)'
+						});
+					} else {
+						set(toolbar, {
+							'position':'relative',
+							'left':'0',
+							'transform':'none'
+						});
+					}
+
 					set(left, {
 						'display':'contents',
 						'visibility':'visible',
@@ -367,6 +405,8 @@ function mdo_catalog_control_widths_output_20260828(): void {
 						'display':'flex',
 						'grid-template-columns':'none',
 						'grid-template-rows':'none',
+						'position':'relative',
+						'left':'0',
 						'width':'100%',
 						'min-width':'0',
 						'max-width':'100%',
@@ -379,7 +419,8 @@ function mdo_catalog_control_widths_output_20260828(): void {
 						'gap':'18px',
 						'overflow':'visible',
 						'margin':'0 0 16px',
-						'padding':'12px 14px'
+						'padding':'12px 14px',
+						'transform':'none'
 					});
 					set(left, {
 						'display':'flex',
