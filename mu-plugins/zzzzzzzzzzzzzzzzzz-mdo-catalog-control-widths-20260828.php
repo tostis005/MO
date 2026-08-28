@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Control Widths 2026-08-28
  * Description: Presentation-only refinement for destination alignment/desktop sizing and full-width mobile catalogue controls.
- * Version: 1.0.2
+ * Version: 1.0.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -24,6 +24,45 @@ function mdo_catalog_control_widths_is_surface_20260828(): bool {
 	}
 	return function_exists( 'wcfm_is_store_page' ) && wcfm_is_store_page();
 }
+
+/**
+ * Critical first-paint styling for the destination trigger.
+ *
+ * The historical catalogue layers finish styling the pill in wp_footer. That
+ * leaves a short window where a generic/theme button background can paint before
+ * the final parity owner applies #f8faf8. Keep only the non-geometric visual
+ * properties here so the trigger is born in its final light state without
+ * changing any responsive layout or behaviour.
+ */
+function mdo_catalog_control_widths_critical_style_20260828(): void {
+	if ( ! mdo_catalog_control_widths_is_surface_20260828() ) {
+		return;
+	}
+	?>
+	<style id="mdo-catalog-control-widths-critical-20260828">
+		html body [data-mdo-destination-open],
+		html body [data-mdo-ps-destination-open] {
+			background:#f8faf8 !important;
+			background-color:#f8faf8 !important;
+			color:#173f32 !important;
+			border:1px solid rgba(23,63,50,.15) !important;
+			border-radius:999px !important;
+			box-shadow:none !important;
+			-webkit-appearance:none !important;
+			appearance:none !important;
+		}
+		html body [data-mdo-destination-open]:hover,
+		html body [data-mdo-destination-open]:focus-visible,
+		html body [data-mdo-ps-destination-open]:hover,
+		html body [data-mdo-ps-destination-open]:focus-visible {
+			background:#f2f6f3 !important;
+			background-color:#f2f6f3 !important;
+			color:#173f32 !important;
+		}
+	</style>
+	<?php
+}
+add_action( 'wp_head', 'mdo_catalog_control_widths_critical_style_20260828', PHP_INT_MAX );
 
 function mdo_catalog_control_widths_output_20260828(): void {
 	if ( ! mdo_catalog_control_widths_is_surface_20260828() ) {
