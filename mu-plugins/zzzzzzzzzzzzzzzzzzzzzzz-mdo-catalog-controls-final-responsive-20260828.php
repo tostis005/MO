@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Controls Final Responsive 2026-08-28
  * Description: CSS-only final responsive geometry for catalogue destination and ordering controls.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: El Mercado de Origen
  */
 
@@ -74,7 +74,27 @@ function mdo_catalog_controls_final_responsive_20260828(): void {
 			max-inline-size:248px !important;
 		}
 
-		html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select[name="orderby"] {
+		/* WCFM has a stronger tablet rule between 768–900px. These selectors
+		 * deliberately use the real store IDs/classes so CSS wins without any
+		 * runtime style writer or DOM observer. */
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 form.woocommerce-ordering.woocommerce-ordering,
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering,
+		html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 form.woocommerce-ordering.woocommerce-ordering,
+		html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering {
+			box-sizing:border-box !important;
+			flex:0 0 248px !important;
+			flex-basis:248px !important;
+			width:248px !important;
+			inline-size:248px !important;
+			min-width:248px !important;
+			min-inline-size:248px !important;
+			max-width:248px !important;
+			max-inline-size:248px !important;
+		}
+
+		html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-ordering select[name="orderby"],
+		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering select[name="orderby"],
+		html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering select[name="orderby"] {
 			box-sizing:border-box !important;
 			width:100% !important;
 			inline-size:100% !important;
