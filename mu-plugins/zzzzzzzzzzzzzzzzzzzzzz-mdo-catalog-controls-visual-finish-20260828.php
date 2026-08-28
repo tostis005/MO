@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Controls Visual Finish 2026-08-28
  * Description: CSS-only visual finish for destination and ordering controls, preserving the stable catalogue geometry.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: El Mercado de Origen
  */
 
@@ -125,6 +125,49 @@ function mdo_catalog_controls_visual_finish_20260828(): void {
 		color:inherit !important;
 	}
 
+	/*
+	 * Ordering arrow lives on the form wrapper, not on the select. WCFM resets
+	 * select background images at mobile/tablet widths; the wrapper pseudo-element
+	 * is stable and lets both controls use the exact same 12x8 chevron.
+	 */
+	html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering,
+	html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering,
+	html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering {
+		position:relative !important;
+	}
+
+	html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering::before,
+	html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering::before,
+	html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering::before {
+		content:none !important;
+		display:none !important;
+	}
+
+	html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering::after,
+	html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering::after,
+	html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering::after {
+		content:"" !important;
+		display:block !important;
+		position:absolute !important;
+		top:50% !important;
+		right:13px !important;
+		left:auto !important;
+		box-sizing:border-box !important;
+		width:12px !important;
+		height:8px !important;
+		min-width:12px !important;
+		margin:0 !important;
+		padding:0 !important;
+		background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23173f32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+		background-repeat:no-repeat !important;
+		background-position:center !important;
+		background-size:12px 8px !important;
+		opacity:.72 !important;
+		transform:translateY(-50%) !important;
+		pointer-events:none !important;
+		z-index:2 !important;
+	}
+
 	html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering select[name="orderby"],
 	html body.elmercado-child-theme .woostify-sorting.emo-catalog-toolbar-shared-010229.emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering select.orderby,
 	html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-ordering.woocommerce-ordering select[name="orderby"],
@@ -144,11 +187,8 @@ function mdo_catalog_controls_visual_finish_20260828(): void {
 		border-radius:999px !important;
 		-webkit-appearance:none !important;
 		appearance:none !important;
-		background:#f8faf8 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23173f32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right 13px center/12px 8px no-repeat !important;
-		background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23173f32' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
-		background-repeat:no-repeat !important;
-		background-position:right 13px center !important;
-		background-size:12px 8px !important;
+		background-color:#f8faf8 !important;
+		background-image:none !important;
 		box-shadow:none !important;
 		color:#173f32 !important;
 		font-family:inherit !important;
