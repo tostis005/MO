@@ -1,0 +1,119 @@
+name: Final CSS-only catalogue verification 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-css-only-final-20260828.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate files
+        run: |
+          set -euo pipefail
+          FILES=(
+            'zzzzzzzzzzz-mdo-catalog-top-controls-parity-20260824.php'
+            'zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php'
+            'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
+            'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
+            'zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+            'zzzzzzzzzzzzzzzzzzz-mdo-producer-mobile-css-only-20260828.php'
+          )
+          for n in "${FILES[@]}"; do php -l "mu-plugins/$n" >/dev/null; done
+          ! grep -Eq '<script|new[[:space:]]+MutationObserver|new[[:space:]]+ResizeObserver|requestAnimationFrame[[:space:]]*\(|setInterval[[:space:]]*\(' $(printf 'mu-plugins/%s ' "${FILES[@]}")
+      - name: Deploy candidate
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp=$(command -v wp); php=$(command -v php || true); [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for c in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$c"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done')"
+          : "${PROD:?}"; echo "PROD=$PROD" >> "$GITHUB_ENV"; BK="/tmp/mdo-css-final-$GITHUB_RUN_ID"; echo "BK=$BK" >> "$GITHUB_ENV"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$BK'"
+          FILES=('zzzzzzzzzzz-mdo-catalog-top-controls-parity-20260824.php' 'zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php' 'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php' 'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php' 'zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php' 'zzzzzzzzzzzzzzzzzzz-mdo-producer-mobile-css-only-20260828.php')
+          for n in "${FILES[@]}"; do t="$PROD/wp-content/mu-plugins/$n"; r="/tmp/$n.$GITHUB_RUN_ID"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$t' ]; then cp -p '$t' '$BK/$n'; else touch '$BK/$n.absent'; fi"; sshpass -e scp $SCP "mu-plugins/$n" "$STAGING_USER@$STAGING_HOST:$r"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php -l '$r' >/dev/null && install -m0644 '$r' '$t' && rm -f '$r'"; done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+      - name: Install browser
+        run: |
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Verify native structure and CSS-only layout
+        run: |
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import time,json,sys
+          errors=[]; report={}
+          urls={'global':'https://www.elmercadodeorigen.com/tienda/?cssfinal=1','producer':'https://www.elmercadodeorigen.com/tienda/1957/?cssfinal=1'}
+          with sync_playwright() as p:
+            b=p.chromium.launch(headless=True)
+            for w in (335,360,390):
+              report[str(w)]={}
+              for kind,url in urls.items():
+                pg=b.new_page(viewport={'width':w,'height':820})
+                pg.route('**/*',lambda r:r.abort() if r.request.resource_type in ('image','font','media') else r.continue_())
+                pg.goto(url,wait_until='commit',timeout=30000)
+                d=None
+                for _ in range(40):
+                  time.sleep(.35)
+                  try:
+                    d=pg.evaluate('''() => {
+                      const q=s=>document.querySelector(s), box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
+                      const shared=q('.emo-catalog-toolbar-shared-010229'), native=q('#wcfmmp-store .elmercado-vendor-toolbar,#wcfmmp-store .woostify-sorting'), t=shared||native;
+                      const form=t?.querySelector('.woocommerce-ordering')||q('#wcfmmp-store .woocommerce-ordering'); const sel=form?.querySelector('select[name="orderby"]'); const dest=t?.querySelector('[data-mdo-ps-destination-open],[data-mdo-destination-open]')||q('[data-mdo-ps-destination-open],[data-mdo-destination-open]');
+                      return {ready:!!(t&&form&&sel&&dest),toolbar:box(t),form:box(form),select:box(sel),dest:box(dest),shared:!!shared,native:!!native,formIn:t?.contains(form)||false,destIn:t?.contains(dest)||false,media:matchMedia('(max-width:767px)').matches,display:t?getComputedStyle(t).display:null,overflow:document.documentElement.scrollWidth-innerWidth,sharedCss:!!q('#mdo-catalog-control-widths-css-only-20260828'),producerCss:!!q('#mdo-producer-mobile-css-only-20260828'),legacy:!!q('#mdo-catalog-top-controls-parity-20260824-js'),runtime:!!q('#mdo-catalog-mobile-runtime-guard-20260824'),final:!!q('#mdo-catalog-top-controls-parity-final-20260824-js'),arrow:!!q('#mdo-catalog-top-controls-arrow-final-20260824-js'),focusable:sel&&!sel.disabled&&getComputedStyle(sel).pointerEvents!=='none',body:document.body.className};
+                    }''')
+                    if d.get('ready'): break
+                  except Exception: d=None
+                report[str(w)][kind]=d
+                if not d or not d.get('ready'):
+                  errors.append(f'{kind} {w}: controls not ready; snapshot={d}'); pg.close(); continue
+                if not d['media']: errors.append(f'{kind} {w}: mobile media false')
+                if d['legacy'] or d['runtime'] or d['final'] or d['arrow']: errors.append(f'{kind} {w}: dynamic catalogue runtime present')
+                if d['overflow']>1: errors.append(f'{kind} {w}: overflow {d["overflow"]}')
+                if kind=='producer':
+                  if not d['producerCss']: errors.append(f'producer {w}: CSS override missing')
+                  if not d['formIn'] or not d['destIn']: errors.append(f'producer {w}: native structure needs JS mounting formIn={d["formIn"]} destIn={d["destIn"]}')
+                  if d['select']['w']<260: errors.append(f'producer {w}: select narrow {d["select"]["w"]}')
+                  if abs(d['select']['w']-d['dest']['w'])>3: errors.append(f'producer {w}: select/dest differ {d["select"]["w"]}/{d["dest"]["w"]}')
+                  if d['toolbar']['h']<125: errors.append(f'producer {w}: toolbar not mobile grid h={d["toolbar"]["h"]}')
+                if not d['focusable']: errors.append(f'{kind} {w}: select not interactive')
+                pg.locator('select[name="orderby"]').first.focus(timeout=1500)
+                if not pg.evaluate('document.activeElement?.matches("select[name=orderby]")'): errors.append(f'{kind} {w}: focus failed')
+                t=time.time(); pg.evaluate('1+1');
+                if time.time()-t>1: errors.append(f'{kind} {w}: page sluggish')
+                pg.close()
+            b.close()
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if errors:
+            print('ERRORS:'); print('\n'.join('- '+e for e in errors)); sys.exit(1)
+          print('CSS_ONLY_FINAL_VERIFIED=true')
+          PY
+      - name: Roll back on failure
+        if: failure() && env.PROD != ''
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          FILES=('zzzzzzzzzzz-mdo-catalog-top-controls-parity-20260824.php' 'zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php' 'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php' 'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php' 'zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php' 'zzzzzzzzzzzzzzzzzzz-mdo-producer-mobile-css-only-20260828.php')
+          for n in "${FILES[@]}"; do t="$PROD/wp-content/mu-plugins/$n"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$BK/$n' ]; then install -m0644 '$BK/$n' '$t'; else rm -f '$t'; fi"; done
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$BK'"
+      - name: Cleanup backup
+        if: success()
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$BK'"
