@@ -74,36 +74,48 @@ jobs:
           set -euo pipefail
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
 
-          RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval '
-            echo \"version=\" . ( defined(\"MDO_CF7_REST_GUARD_VERSION\") ? MDO_CF7_REST_GUARD_VERSION : \"missing\" ) . PHP_EOL;
-            echo \"hook=\" . ( has_filter(\"wpcf7_spam\", \"mdo_cf7_rest_guard_filter\") ? \"yes\" : \"no\" ) . PHP_EOL;
+          cat > /tmp/mdo-cf7-rest-verify.php <<'PHP'
+          <?php
+          echo 'version=' . ( defined( 'MDO_CF7_REST_GUARD_VERSION' ) ? MDO_CF7_REST_GUARD_VERSION : 'missing' ) . PHP_EOL;
+          echo 'hook=' . ( has_filter( 'wpcf7_spam', 'mdo_cf7_rest_guard_filter' ) ? 'yes' : 'no' ) . PHP_EOL;
 
-            \$_POST = array(\"your-name\" => \"VyYGdyULmCUJvYinTVJ\", \"your-message\" => \"MbRibzvBWMjQtHqq\", \"your-company\" => \"Yqpoel LLC\");
-            echo \"rest_bypass_random_block=\" . ( mdo_cf7_rest_guard_filter(false, null) ? \"yes\" : \"no\" ) . PHP_EOL;
+          $_POST = array(
+              'your-name' => 'VyYGdyULmCUJvYinTVJ',
+              'your-message' => 'MbRibzvBWMjQtHqq',
+              'your-company' => 'Yqpoel LLC',
+          );
+          echo 'rest_bypass_random_block=' . ( mdo_cf7_rest_guard_filter( false, null ) ? 'yes' : 'no' ) . PHP_EOL;
 
-            class MDO_CF7_Test_Form { public function id() { return 1513; } }
-            class MDO_CF7_Test_Submission {
-                private $data;
-                public function __construct($data) { $this->data = $data; }
-                public function get_posted_data() { return $this->data; }
-                public function get_contact_form() { return new MDO_CF7_Test_Form(); }
-                public function add_spam_log($entry) {}
-            }
+          class MDO_CF7_Test_Form {
+              public function id() { return 1513; }
+          }
+          class MDO_CF7_Test_Submission {
+              private $data;
+              public function __construct( $data ) { $this->data = $data; }
+              public function get_posted_data() { return $this->data; }
+              public function get_contact_form() { return new MDO_CF7_Test_Form(); }
+              public function add_spam_log( $entry ) {}
+          }
 
-            \$_SERVER[\"HTTP_USER_AGENT\"] = \"MDO-CF7-REST-GUARD-TEST\";
-            $issued = time() - 5;
-            $nonce = str_repeat(\"a\", 32);
-            $payload = \"1513|\" . $issued . \"|\" . $nonce . \"|\" . mdo_cf7_guard_ua_hash();
-            $sig = hash_hmac(\"sha256\", $payload, wp_salt(\"auth\"));
-            $token = $issued . \".\" . $nonce . \".\" . $sig;
-            $good = new MDO_CF7_Test_Submission(array(
-                \"your-name\" => \"Jose Antonio Perez\",
-                \"your-message\" => \"Quiero informacion sobre vuestros productores.\",
-                \"_mdo_cf7_guard\" => $token
-            ));
-            echo \"legitimate_valid_challenge_allowed=\" . ( mdo_cf7_rest_guard_filter(false, $good) ? \"no\" : \"yes\" ) . PHP_EOL;
-          ' --path='$PROD_PATH' --allow-root")"
+          $_SERVER['HTTP_USER_AGENT'] = 'MDO-CF7-REST-GUARD-TEST';
+          $issued = time() - 5;
+          $nonce = str_repeat( 'a', 32 );
+          $payload = '1513|' . $issued . '|' . $nonce . '|' . mdo_cf7_guard_ua_hash();
+          $sig = hash_hmac( 'sha256', $payload, wp_salt( 'auth' ) );
+          $token = $issued . '.' . $nonce . '.' . $sig;
+          $good = new MDO_CF7_Test_Submission( array(
+              'your-name' => 'Jose Antonio Perez',
+              'your-message' => 'Quiero informacion sobre vuestros productores.',
+              '_mdo_cf7_guard' => $token,
+          ) );
+          echo 'legitimate_valid_challenge_allowed=' . ( mdo_cf7_rest_guard_filter( false, $good ) ? 'no' : 'yes' ) . PHP_EOL;
+          PHP
+
+          VERIFY_REMOTE="/tmp/mdo-cf7-rest-verify-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS /tmp/mdo-cf7-rest-verify.php "$STAGING_USER@$STAGING_HOST:$VERIFY_REMOTE"
+          RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval-file '$VERIFY_REMOTE' --path='$PROD_PATH' --allow-root; rm -f '$VERIFY_REMOTE'")"
 
           printf '%s\n' "$RESULT"
           grep -Fq 'version=1.0.0' <<< "$RESULT"
