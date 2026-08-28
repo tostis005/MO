@@ -1,0 +1,191 @@
+name: Catalogue controls final responsive 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/zzzzzzzzzzzzzzzzzzzzzzz-mdo-catalog-controls-final-responsive-20260828.php'
+      - '.github/workflows/catalog-controls-final-responsive-20260828.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate CSS-only responsive owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          f='mu-plugins/zzzzzzzzzzzzzzzzzzzzzzz-mdo-catalog-controls-final-responsive-20260828.php'
+          php -l "$f" >/dev/null
+          ! grep -Eq '<script|MutationObserver|ResizeObserver|requestAnimationFrame[[:space:]]*\(|setInterval[[:space:]]*\(|setTimeout[[:space:]]*\(|pre_get_posts|woocommerce_product_query|posts_(where|join|clauses)|WP_Query' "$f"
+
+      - name: Deploy responsive owner
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$u" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac; done
+          ')"
+          : "${PROD:?production path not found}"
+          echo "PROD=$PROD" >> "$GITHUB_ENV"
+          NAME='zzzzzzzzzzzzzzzzzzzzzzz-mdo-catalog-controls-final-responsive-20260828.php'
+          TARGET="$PROD/wp-content/mu-plugins/$NAME"
+          BACKUP="/tmp/$NAME.$GITHUB_RUN_ID.backup"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"; echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+          if sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -f '$TARGET'"; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "cp -p '$TARGET' '$BACKUP'"; echo EXISTED=1 >> "$GITHUB_ENV"
+          else
+            echo EXISTED=0 >> "$GITHUB_ENV"
+          fi
+          R="/tmp/$NAME.$GITHUB_RUN_ID"
+          sshpass -e scp $SCP "mu-plugins/$NAME" "$STAGING_USER@$STAGING_HOST:$R"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$R' >/dev/null; install -m0644 '$R' '$TARGET'; rm -f '$R'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Install Chromium
+        run: |
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+
+      - name: Verify all responsive states
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import time, json, sys
+
+          urls = {
+              'global': 'https://www.elmercadodeorigen.com/tienda/?final_responsive=1',
+              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?final_responsive=1',
+          }
+          widths = [320,335,360,390,430,480,640,700,767,768,820,900,1024,1280,1440,1920]
+          errors=[]; report={}
+
+          js='''() => {
+            const visible=e=>!!e && e.getClientRects().length>0 && getComputedStyle(e).display!=='none' && getComputedStyle(e).visibility!=='hidden';
+            const t=Array.from(document.querySelectorAll('.emo-catalog-toolbar-shared-010229')).find(visible)||null;
+            const d=Array.from(document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')).find(e=>visible(e) && (!t || t.contains(e)))||null;
+            const f=Array.from(document.querySelectorAll('form.woocommerce-ordering,.woocommerce-ordering')).find(e=>visible(e)&&e.querySelector('select[name="orderby"]')&&(!t||t.contains(e)))||null;
+            const s=f?.querySelector('select[name="orderby"]')||null;
+            const span=d?.querySelector('span')||null, strong=d?.querySelector('strong')||null;
+            const b=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
+            const cs=e=>e?getComputedStyle(e):null;
+            const pin=d?getComputedStyle(d,'::before'):null, da=d?getComputedStyle(d,'::after'):null, oa=f?getComputedStyle(f,'::after'):null, tc=cs(t);
+            return {
+              ready:!!(t&&d&&f&&s&&span&&strong), final:!!document.getElementById('mdo-catalog-controls-final-responsive-20260828'), visual:!!document.getElementById('mdo-catalog-controls-visual-finish-20260828'),
+              old:[!!document.getElementById('mdo-catalog-control-widths-20260828'),!!document.getElementById('mdo-catalog-mobile-runtime-guard-20260824'),!!document.getElementById('mdo-catalog-top-controls-parity-final-20260824-js'),!!document.getElementById('mdo-catalog-top-controls-arrow-final-20260824-js'),!!document.getElementById('elmercado-catalog-mobile-controls-parity-script-010236')],
+              t:b(t),d:b(d),f:b(f),s:b(s), tPadL:parseFloat(tc?.paddingLeft||'0'),tPadR:parseFloat(tc?.paddingRight||'0'),
+              dAlign:cs(d)?.textAlign,spanAlign:cs(span)?.textAlign,sAlign:cs(s)?.textAlign,sAlignLast:cs(s)?.textAlignLast,
+              spanWeight:parseInt(cs(span)?.fontWeight||'0'),strongWeight:parseInt(cs(strong)?.fontWeight||'0'),
+              pinDisplay:pin?.display,pinW:parseFloat(pin?.width||'0'),pinMask:(pin?.maskImage||pin?.webkitMaskImage||''),
+              destArrowDisplay:da?.display,destArrowW:parseFloat(da?.width||'0'),destArrowH:parseFloat(da?.height||'0'),destArrowBg:da?.backgroundImage||'',
+              orderArrowDisplay:oa?.display,orderArrowW:parseFloat(oa?.width||'0'),orderArrowH:parseFloat(oa?.height||'0'),orderArrowBg:oa?.backgroundImage||'',
+              overflow:document.documentElement.scrollWidth-innerWidth,pointerD:cs(d)?.pointerEvents,pointerS:cs(s)?.pointerEvents,disabled:!!s?.disabled,
+              strongText:strong?.textContent?.trim()||''
+            };
+          }'''
+
+          with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True)
+            for w in widths:
+              report[str(w)]={}
+              for kind,url in urls.items():
+                page=browser.new_page(viewport={'width':w,'height':900})
+                page.route('**/*',lambda r:r.abort() if r.request.resource_type in ('image','font','media') else r.continue_())
+                page.goto(url,wait_until='commit',timeout=30000)
+                samples=[]
+                for _ in range(50):
+                  time.sleep(.2)
+                  try:
+                    x=page.evaluate(js)
+                    if x and x.get('ready'):
+                      samples=[x]
+                      for __ in range(2):
+                        time.sleep(.3); samples.append(page.evaluate(js))
+                      if all(z and z.get('ready') for z in samples): break
+                  except Exception:
+                    samples=[]
+                data=samples[-1] if samples else None
+                report[str(w)][kind]=data
+                if not data:
+                  errors.append(f'{kind} {w}: controls unavailable'); page.close(); continue
+                if not data['final'] or not data['visual']: errors.append(f'{kind} {w}: final CSS owners missing')
+                if any(data['old']): errors.append(f'{kind} {w}: retired runtime present {data["old"]}')
+                if data['overflow']>1: errors.append(f'{kind} {w}: horizontal overflow {data["overflow"]}')
+                if data['dAlign']!='left' or data['spanAlign']!='left': errors.append(f'{kind} {w}: destination text alignment')
+                if data['sAlign']!='left': errors.append(f'{kind} {w}: ordering text alignment {data["sAlign"]}')
+                if data['strongWeight']<=data['spanWeight']: errors.append(f'{kind} {w}: destination weight {data["spanWeight"]}/{data["strongWeight"]}')
+                if data['pinDisplay']=='none' or abs(data['pinW']-14)>1.5 or not data['pinMask'] or data['pinMask']=='none': errors.append(f'{kind} {w}: pin missing')
+                if data['destArrowDisplay']=='none' or abs(data['destArrowW']-12)>1.5 or abs(data['destArrowH']-8)>1.5 or data['destArrowBg']=='none': errors.append(f'{kind} {w}: destination chevron missing')
+                if data['orderArrowDisplay']=='none' or abs(data['orderArrowW']-12)>1.5 or abs(data['orderArrowH']-8)>1.5 or data['orderArrowBg']=='none': errors.append(f'{kind} {w}: ordering chevron missing')
+                if data['destArrowBg'] != data['orderArrowBg']: errors.append(f'{kind} {w}: chevrons differ')
+                if data['pointerD']=='none' or data['pointerS']=='none' or data['disabled']: errors.append(f'{kind} {w}: controls blocked')
+                # Geometry should remain stable across WCFM/theme rerenders.
+                if samples:
+                  dw=[round(z['d']['w'],2) for z in samples]; sw=[round(z['s']['w'],2) for z in samples]
+                  if max(dw)-min(dw)>2 or max(sw)-min(sw)>2: errors.append(f'{kind} {w}: unstable geometry d={dw} s={sw}')
+                if w<=767:
+                  expected=data['t']['w']-data['tPadL']-data['tPadR']
+                  if abs(data['d']['w']-data['s']['w'])>3: errors.append(f'{kind} {w}: mobile controls differ {data["d"]["w"]}/{data["s"]["w"]}')
+                  if abs(data['d']['w']-expected)>6 or abs(data['s']['w']-expected)>6: errors.append(f'{kind} {w}: mobile not full inner width expected={expected} d={data["d"]["w"]} s={data["s"]["w"]}')
+                else:
+                  if not (120 <= data['d']['w'] <= 210): errors.append(f'{kind} {w}: destination not intrinsic {data["d"]["w"]}')
+                  if abs(data['s']['w']-248)>3 or abs(data['f']['w']-248)>3: errors.append(f'{kind} {w}: ordering width {data["f"]["w"]}/{data["s"]["w"]}')
+                  if abs(data['d']['w']-248)<20: errors.append(f'{kind} {w}: destination still fixed like ordering {data["d"]["w"]}')
+                # At representative desktop width, prove destination expands with content.
+                if w==1024:
+                  try:
+                    growth=page.evaluate('''() => {const d=Array.from(document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')).find(e=>e.getClientRects().length); const s=d?.querySelector('strong'); if(!d||!s)return null; const old=s.textContent; const before=d.getBoundingClientRect().width; s.textContent='Estados Unidos'; const after=d.getBoundingClientRect().width; s.textContent=old; return {before,after};}''')
+                    if not growth or growth['after'] <= growth['before']+15: errors.append(f'{kind} 1024: destination does not grow with content {growth}')
+                  except Exception as e:
+                    errors.append(f'{kind} 1024: intrinsic growth check {type(e).__name__}')
+                page.close()
+            browser.close()
+
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if errors:
+            print('ERRORS:'); print('\n'.join('- '+x for x in errors)); sys.exit(1)
+          print('CATALOG_CONTROLS_FINAL_RESPONSIVE_VERIFIED=true')
+          PY
+
+      - name: Roll back on failure
+        if: failure() && env.TARGET != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          if [ "${EXISTED:-0}" = 1 ]; then
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "install -m0644 '$BACKUP' '$TARGET'; rm -f '$BACKUP'"
+          else
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$TARGET'"
+          fi
+
+      - name: Remove backup
+        if: success() && env.EXISTED == '1'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
