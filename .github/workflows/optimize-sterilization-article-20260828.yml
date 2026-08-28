@@ -99,11 +99,6 @@ jobs:
           grep -Fq 'BOE-A-1978-25634' /tmp/article.html || { echo 'BOE reference not found' >&2; exit 25; }
           grep -Fq 'Conservas en tarro de vidrio o lata: diferencias de conservación y uso' /tmp/article.html || { echo 'Correct related-link anchor not found' >&2; exit 26; }
 
-          TITLE_TAG="$(grep -ioE '<title[^>]*>[^<]+</title>' /tmp/article.html | head -n1 || true)"
-          META_TAG="$(grep -ioE '<meta[^>]+name=["'"']description["'"'][^>]*>' /tmp/article.html | head -n1 || true)"
-          printf 'Public title: %s\n' "$TITLE_TAG"
-          printf 'Public meta: %s\n' "$META_TAG"
-
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
 
           mkdir -p .deploy-status
@@ -113,11 +108,9 @@ jobs:
             --arg source_sha "$GITHUB_SHA" \
             --arg public_url "$URL" \
             --arg http "$HTTP" \
-            --arg title_tag "$TITLE_TAG" \
-            --arg meta_tag "$META_TAG" \
             --slurpfile result /tmp/sterilization-seo.json \
             --slurpfile related /tmp/related-link.json \
-            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,public_url:$public_url,http:($http|tonumber),title_tag:$title_tag,meta_tag:$meta_tag,result:$result[0],related_link:$related[0]}' \
+            '{generated_at:$generated_at,run_id:($run_id|tonumber),source_sha:$source_sha,verified:true,public_url:$public_url,http:($http|tonumber),result:$result[0],related_link:$related[0]}' \
             > .deploy-status/optimize-sterilization-article-20260828.json
 
           git config user.name 'github-actions[bot]'
