@@ -27,9 +27,10 @@ jobs:
         run: |
           set -euo pipefail
           php -l mu-plugins/mdo-vendor-desktop-products-layout-20260828.php >/dev/null
-          grep -Fq 'body.wcfm-store-page #products-wrapper ul.products' mu-plugins/mdo-vendor-desktop-products-layout-20260828.php
+          grep -Fq 'html body.wcfm-store-page #products-wrapper ul.products.products' mu-plugins/mdo-vendor-desktop-products-layout-20260828.php
           grep -Fq 'margin-top: 0 !important' mu-plugins/mdo-vendor-desktop-products-layout-20260828.php
           grep -Fq '@media (min-width: 1024px)' mu-plugins/mdo-vendor-desktop-products-layout-20260828.php
+          grep -Fq "add_action( 'wp_footer', 'mdo_vendor_desktop_products_layout_fix', 99999 )" mu-plugins/mdo-vendor-desktop-products-layout-20260828.php
 
       - name: Deploy to production
         shell: bash
@@ -85,7 +86,7 @@ jobs:
           from playwright.sync_api import sync_playwright
           import json, sys
 
-          URL='https://www.elmercadodeorigen.com/tienda/1957/?mdo_layout_fix_verify=20260828'
+          URL='https://www.elmercadodeorigen.com/tienda/1957/?mdo_layout_fix_verify=20260828v101'
 
           def measure(page, width, height):
               page.set_viewport_size({'width':width,'height':height})
@@ -138,7 +139,7 @@ jobs:
           mkdir -p runtime
           {
             echo 'vendor_desktop_layout_fix_active=true'
-            echo 'version=1.0.0'
+            echo 'version=1.0.1'
             cat /tmp/vendor-layout-verify.txt
             echo "verified_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > runtime/vendor-desktop-layout-fix-20260828.txt
