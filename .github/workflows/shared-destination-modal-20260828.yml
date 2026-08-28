@@ -72,7 +72,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from playwright.sync_api import sync_playwright
-          import time, sys, json
+          import time, sys
 
           urls={
             'global':'https://www.elmercadodeorigen.com/tienda/',
@@ -128,8 +128,8 @@ jobs:
                 if data['overflow']>1: errors.append(f'{tag}: overflow {data["overflow"]}')
                 signatures[str(w)][kind]=data
 
-                # Open from the visible trigger and verify the exact shared dialog.
-                page.locator('[data-mdo-destination-open],[data-mdo-ps-destination-open]').filter(visible=True).first.click(timeout=3000)
+                clicked=page.evaluate('''() => {const vis=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).display!=='none'; const t=[...document.querySelectorAll('[data-mdo-destination-open],[data-mdo-ps-destination-open]')].find(vis); if(!t)return false; t.click(); return true;}''')
+                if not clicked: errors.append(f'{tag}: trigger not clickable')
                 time.sleep(.15)
                 opened=page.evaluate('''() => {const m=document.querySelector('#mdo-shared-destination-dialog'); const c=m?.querySelector('.mdo-shared-destination-modal__close'); return {hidden:m?.hidden,aria:m?.getAttribute('aria-hidden'),closeVisible:!!c&&c.getClientRects().length>0};}''')
                 if opened.get('hidden') or opened.get('aria')!='false' or not opened.get('closeVisible'): errors.append(f'{tag}: modal did not open {opened}')
