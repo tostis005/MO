@@ -69,17 +69,17 @@ jobs:
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
 
-      - name: Verify exact small-phone widths
+      - name: Measure exact small-phone widths
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          from playwright.sync_api import sync_playwright
-          import json, sys
+          from playwright.sync_api import sync_playwright, Error as PlaywrightError
+          import json, sys, time
 
           urls={
-            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_335_verify=3',
-            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_335_verify=3',
+            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_335_verify=4',
+            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_335_verify=4',
           }
           sizes=[(335,760),(360,800),(390,844)]
           js=r'''() => {
@@ -89,13 +89,17 @@ jobs:
             const order=form?.querySelector('select[name="orderby"]')||null;
             const dest=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
             const destWrap=dest?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||dest?.parentElement||null;
+            const critical=document.head?.querySelector('#mdo-catalog-control-widths-critical-20260828')||null;
             const ts=toolbar?getComputedStyle(toolbar):null;
             const tr=toolbar?.getBoundingClientRect()||null;
             const available=tr&&ts ? tr.width-parseFloat(ts.paddingLeft||0)-parseFloat(ts.paddingRight||0)-parseFloat(ts.borderLeftWidth||0)-parseFloat(ts.borderRightWidth||0) : null;
             const os=order?getComputedStyle(order):null;
             return {
+              ready:!!(toolbar&&form&&order&&dest&&destWrap),
+              url:location.href,
               toolbar:box(toolbar),form:box(form),order:box(order),destWrap:box(destWrap),dest:box(dest),available,
               overflow:document.documentElement.scrollWidth-innerWidth,
+              critical:!!critical,
               version:toolbar?.dataset?.mdoCatalogControlWidths||null,
               inline:order?.getAttribute('style')||'',
               computed:os?{
@@ -108,7 +112,23 @@ jobs:
               children:form?[...form.children].map(el=>({tag:el.tagName,cls:el.className||'',w:el.getBoundingClientRect().width,display:getComputedStyle(el).display,flex:getComputedStyle(el).flex})):[]
             };
           }'''
+
           def close(a,b,t=2.5): return abs(float(a)-float(b))<=t
+          def sample(page, navs):
+            deadline=time.time()+30
+            last_error=''
+            last=None
+            while time.time()<deadline:
+              try:
+                last=page.evaluate(js)
+                if last and last.get('ready'):
+                  last['navs']=list(navs)
+                  return last
+              except PlaywrightError as exc:
+                last_error=str(exc)
+              page.wait_for_timeout(350)
+            raise RuntimeError(f'DOM never became measurable; url={page.url}; navs={navs}; last={last}; error={last_error}')
+
           errors=[]; out={}
           with sync_playwright() as p:
             browser=p.chromium.launch(headless=True)
@@ -116,20 +136,27 @@ jobs:
               out[str(width)]={}
               for kind,url in urls.items():
                 page=browser.new_page(viewport={'width':width,'height':height})
+                navs=[]
+                page.on('framenavigated',lambda frame, n=navs, pg=page: n.append(frame.url) if frame==pg.main_frame else None)
                 try:
                   page.goto(url,wait_until='commit',timeout=30000)
-                  page.wait_for_selector('.emo-catalog-toolbar-shared-010229 select[name="orderby"]',state='visible',timeout=30000)
-                  page.wait_for_selector('.emo-catalog-toolbar-shared-010229 [data-mdo-destination-open], .emo-catalog-toolbar-shared-010229 [data-mdo-ps-destination-open]',state='visible',timeout=30000)
-                  page.wait_for_timeout(1800)
-                  d=page.evaluate(js)
+                  d=sample(page,navs)
+                  page.wait_for_timeout(1000)
+                  try:
+                    settled=page.evaluate(js)
+                    if settled and settled.get('ready'):
+                      settled['navs']=list(navs)
+                      d=settled
+                  except PlaywrightError:
+                    pass
                 finally:
                   page.close()
                 out[str(width)][kind]=d
-                if d['version']!='20260828-v4': errors.append(f'{kind} {width}: candidate owner inactive {d["version"]}')
+                if not d['critical']: errors.append(f'{kind} {width}: critical candidate CSS missing')
                 if d['overflow']>1: errors.append(f'{kind} {width}: horizontal overflow {d["overflow"]}')
                 for key in ('form','order','destWrap','dest'):
                   if not d[key] or d['available'] is None or not close(d[key]['w'],d['available']):
-                    errors.append(f'{kind} {width}: {key} width={d.get(key)} available={d["available"]}; computed={d.get("computed")}; children={d.get("children")}; inline={d.get("inline")}')
+                    errors.append(f'{kind} {width}: {key} width={d.get(key)} available={d["available"]}; computed={d.get("computed")}; children={d.get("children")}; inline={d.get("inline")}; navs={d.get("navs")}')
               g=out[str(width)]['global']; v=out[str(width)]['producer']
               if not close(g['order']['w'],v['order']['w']): errors.append(f'{width}: global/producer order mismatch {g["order"]["w"]} vs {v["order"]["w"]}')
             browser.close()
