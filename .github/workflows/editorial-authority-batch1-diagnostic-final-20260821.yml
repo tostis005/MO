@@ -1,19 +1,21 @@
-name: Editorial authority batch 1 diagnostic final 20260821
+name: Safe featured image production launcher
 
+# Reuses a registered historical diagnostic workflow as a safe image deployment launcher.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/editorial-authority-batch1-diagnostic-final-20260821.yml'
+      - '.github/data/featured-image-request.json'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  diagnose:
+  apply:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -21,80 +23,80 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Execute publisher and capture everything
+      - name: Validate request
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST='.github/data/featured-image-request.json'
+          test -s "$REQUEST"
+          jq -e '.post_slug and .image_url and .image_filename and .image_title and .image_alt and .source_page and .photographer and .license' "$REQUEST" >/dev/null
+
+      - name: Apply, check duplicates and verify image SEO
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set +e
-          mkdir -p .deploy-status
+          set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
-          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            [ -n "$wp_bin" ] || exit 2
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
             done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
-          ROOT_RC=$?
-          PUB=/tmp/ab1-pub-${GITHUB_RUN_ID}.php
-          RUN=/tmp/ab1-run-${GITHUB_RUN_ID}.php
-          if [ -n "$PROD_PATH" ]; then
-            sshpass -e scp $SCP .github/scripts/publish-editorial-authority-batch1-20260821.php "$STAGING_USER@$STAGING_HOST:$PUB"
-            SCP1=$?
-            sshpass -e scp $SCP .github/scripts/run-editorial-publisher-bootstrap-20260821.php "$STAGING_USER@$STAGING_HOST:$RUN"
-            SCP2=$?
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); EMDO_WP_ROOT='$PROD_PATH' EMDO_PUBLISHER_FILE='$PUB' \"\$php_bin\" -d display_errors=0 -d error_reporting=1 '$RUN'" > /tmp/pubout.txt 2> /tmp/puberr.txt
-            PUB_RC=$?
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); \"\$wp_bin\" db query \"SELECT pm.meta_value AS emdo_key,p.ID,p.post_status,p.post_name FROM wp_posts p JOIN wp_postmeta pm ON pm.post_id=p.ID AND pm.meta_key='_emdo_authority_key' ORDER BY p.ID DESC LIMIT 10;\" --skip-column-names --path='$PROD_PATH' --allow-root" > /tmp/dbrows.txt 2>/tmp/dberr.txt
-            DB_RC=$?
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$PUB' '$RUN'; wp_bin=\$(command -v wp); \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true" >/dev/null 2>&1
-          else
-            SCP1=99; SCP2=99; PUB_RC=99; DB_RC=99
-            : > /tmp/pubout.txt; : > /tmp/puberr.txt; : > /tmp/dbrows.txt; : > /tmp/dberr.txt
-          fi
-          python3 - <<'PY'
-          import json,os
-          def read(p,n=12000):
-              try:return open(p,encoding='utf-8',errors='ignore').read()[-n:]
-              except:return ''
-          env=os.environ
-          sh=lambda k,d=99:int(env.get(k,d)) if env.get(k) else d
-          # Shell variables are exported below through small files instead.
-          vals={}
-          for name,path in [('root_rc','/tmp/rootrc'),('scp1','/tmp/scp1'),('scp2','/tmp/scp2'),('publisher_rc','/tmp/pubrc'),('db_rc','/tmp/dbrc')]:
-              try: vals[name]=int(open(path).read().strip())
-              except: vals[name]=None
-          out={'run_id':env['GITHUB_RUN_ID'],'source_sha':env['GITHUB_SHA'],'prod_path':read('/tmp/prodpath',2000).strip(),'publisher_stdout':read('/tmp/pubout.txt'),'publisher_stderr':read('/tmp/puberr.txt'),'db_rows':read('/tmp/dbrows.txt'),'db_stderr':read('/tmp/dberr.txt'),**vals}
-          json.dump(out,open('.deploy-status/editorial-authority-batch1-diagnostic-final-20260821.json','w',encoding='utf-8'),ensure_ascii=False,indent=2); open('.deploy-status/editorial-authority-batch1-diagnostic-final-20260821.json','a').write('\n')
-          PY
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
 
-      - name: Write shell status files
-        if: always()
-        shell: bash
-        run: |
-          # If the previous step exited before writing diagnostics, record the run-level fact.
-          test -f .deploy-status/editorial-authority-batch1-diagnostic-final-20260821.json || printf '{"run_id":"%s","source_sha":"%s","diagnostic_missing":true}\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > .deploy-status/editorial-authority-batch1-diagnostic-final-20260821.json
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-featured-safe-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            .github/scripts/update-post-featured-image-production.php \
+            .github/data/featured-image-request.json \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
-      - name: Commit diagnostics
-        if: always()
-        shell: bash
-        run: |
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_FEATURED_REQUEST='$REMOTE/featured-image-request.json'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/update-post-featured-image-production.php' --path='$PROD' --allow-root" > /tmp/featured-safe.json 2> /tmp/featured-safe.err
+          RC=$?
           set -e
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .deploy-status/editorial-authority-batch1-diagnostic-final-20260821.json
-          git commit -m 'Record final editorial authority batch 1 diagnostics [skip ci]' || exit 0
-          git pull --rebase origin main
-          git push origin HEAD:main
+          if [ "$RC" -ne 0 ]; then
+            cat /tmp/featured-safe.err >&2 || true
+            cat /tmp/featured-safe.json >&2 || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
+            exit "$RC"
+          fi
+
+          cat /tmp/featured-safe.json
+          jq -e '.verified==true and (.duplicate_preflight.conflicts|length)==0' /tmp/featured-safe.json >/dev/null
+          jq -e '.post.thumbnail_id==.post.attachment_id and .post.approved_id==.post.attachment_id and .post.uses_default=="" and .post.cover_asset=="" and (.post.filename|length)>0 and (.post.title|length)>0 and (.post.alt|length)>0 and (.post.source_page|length)>0 and (.post.photographer|length)>0 and (.post.license|length)>0' /tmp/featured-safe.json >/dev/null
+
+          SLUG="$(jq -r '.post.slug' /tmp/featured-safe.json)"
+          PERMALINK="$(jq -r '.post.permalink' /tmp/featured-safe.json)"
+          ATTACHMENT_URL="$(jq -r '.post.attachment_url' /tmp/featured-safe.json)"
+          ALT="$(jq -r '.post.alt' /tmp/featured-safe.json)"
+          OUT="/tmp/${SLUG}.html"
+          CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO featured image verification' -o "$OUT" -w '%{http_code}' "${PERMALINK}?emdo_featured_verify=${GITHUB_RUN_ID}")"
+          [ "$CODE" = "200" ] || { echo "HTTP $CODE for $PERMALINK" >&2; exit 20; }
+          BASENAME="$(basename "${ATTACHMENT_URL%%\?*}")"
+          grep -Fq "$BASENAME" "$OUT" || { echo "Featured image basename missing from frontend" >&2; exit 21; }
+          grep -Fq "$ALT" "$OUT" || { echo "Featured image ALT missing from frontend" >&2; exit 22; }
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
+          echo "public_verification_ok slug=$SLUG http=$CODE image=$ATTACHMENT_URL alt=$ALT"
