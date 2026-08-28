@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue CSS-only Safety 2026-08-28
  * Description: Makes catalogue toolbar geometry CSS-only and retires late runtime style writers that can fight WCFM rerenders.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: El Mercado de Origen
  */
 
@@ -18,7 +18,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 function mdo_catalog_css_only_retire_runtime_layout_20260828(): void {
 	global $wp_filter;
 
-	/* Direct callbacks used by several historical presentation owners. */
 	$direct = array(
 		'mdo_catalog_control_widths_output_20260828',
 		'mdo_catalog_mobile_runtime_guard_output_20260824',
@@ -109,6 +108,25 @@ function mdo_catalog_css_only_style_20260828(): void {
 		html body.elmercado-child-theme.wcfm-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left {
 			display:contents !important;
 	}
+
+		/* In the global shop the destination can sit inside one additional direct
+		 * flex item. Make that item participate in the shared grid as row two. */
+		html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left > :has([data-mdo-destination-open]),
+		html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 > .woostify-toolbar-left > :has([data-mdo-ps-destination-open]) {
+			grid-column:1 !important;
+			grid-row:2 !important;
+			display:block !important;
+			position:static !important;
+			box-sizing:border-box !important;
+			flex:none !important;
+			width:100% !important;
+			min-width:0 !important;
+			max-width:100% !important;
+			height:40px !important;
+			margin:0 !important;
+			float:none !important;
+			transform:none !important;
+		}
 
 		html body.elmercado-child-theme .emo-catalog-toolbar-shared-010229 .woocommerce-result-count,
 		html body.elmercado-child-theme.wcfmmp-store-page #wcfmmp-store#wcfmmp-store .emo-catalog-toolbar-shared-010229 .woocommerce-result-count,
