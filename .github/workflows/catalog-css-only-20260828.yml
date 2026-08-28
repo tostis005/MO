@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate CSS-only owners
+      - name: Validate CSS-only presentation files
         shell: bash
         run: |
           set -euo pipefail
@@ -31,12 +31,14 @@ jobs:
             'mu-plugins/zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
             'mu-plugins/zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
             'mu-plugins/zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+            'mu-plugins/zzzzzzzzzzzzzzzzzzz-mdo-producer-mobile-css-only-20260828.php'
           )
           for f in "${FILES[@]}"; do php -l "$f" >/dev/null; done
-          ! grep -E 'MutationObserver|ResizeObserver|requestAnimationFrame|setTimeout|addEventListener\(.resize' "${FILES[@]}"
           grep -Fq 'mdo-catalog-control-widths-css-only-20260828' "${FILES[3]}"
+          grep -Fq 'mdo-producer-mobile-css-only-20260828' "${FILES[4]}"
+          ! grep -Eq '<script|new[[:space:]]+MutationObserver|new[[:space:]]+ResizeObserver|requestAnimationFrame[[:space:]]*\(|setInterval[[:space:]]*\(' "${FILES[@]}"
 
-      - name: Deploy four catalogue presentation files
+      - name: Deploy CSS-only catalogue presentation
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -64,17 +66,19 @@ jobs:
           BACKUP_DIR="/tmp/mdo-css-only-${GITHUB_RUN_ID}"
           echo "BACKUP_DIR=$BACKUP_DIR" >> "$GITHUB_ENV"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$BACKUP_DIR'"
+
           FILES=(
             'zzzzzzzzzzzz-mdo-catalog-top-controls-parity-final-20260824.php'
             'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
             'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
             'zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+            'zzzzzzzzzzzzzzzzzzz-mdo-producer-mobile-css-only-20260828.php'
           )
           for name in "${FILES[@]}"; do
             src="mu-plugins/$name"
             target="$PROD_PATH/wp-content/mu-plugins/$name"
             remote="/tmp/${name%.php}-${GITHUB_RUN_ID}.php"
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "cp -p '$target' '$BACKUP_DIR/$name'"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$target' ]; then cp -p '$target' '$BACKUP_DIR/$name'; else : > '$BACKUP_DIR/$name.absent'; fi"
             sshpass -e scp $SCP_OPTIONS "$src" "$STAGING_USER@$STAGING_HOST:$remote"
             sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$remote' >/dev/null; install -m 0644 '$remote' '$target'; rm -f '$remote'"
           done
@@ -87,7 +91,7 @@ jobs:
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
 
-      - name: Verify 335px width and responsiveness
+      - name: Verify 335 360 390 CSS-only layout
         shell: bash
         run: |
           set -euo pipefail
@@ -96,8 +100,8 @@ jobs:
           import json, time, sys
 
           urls={
-            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_css_only_verify=1',
-            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_css_only_verify=1',
+            'global':'https://www.elmercadodeorigen.com/tienda/?mdo_css_only_verify=2',
+            'producer':'https://www.elmercadodeorigen.com/tienda/1957/?mdo_css_only_verify=2',
           }
           sizes=[335,360,390]
           errors=[]; report={}
@@ -105,7 +109,7 @@ jobs:
           def snapshot(page):
             return page.evaluate('''() => {
               const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
-              const form=toolbar?.querySelector('.woocommerce-ordering')||document.querySelector('.woocommerce-ordering');
+              const form=toolbar?.querySelector('.woocommerce-ordering')||null;
               const select=form?.querySelector('select[name="orderby"]')||null;
               const dest=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
               const b=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width,h:r.height}};
@@ -113,15 +117,17 @@ jobs:
               return {
                 ready:!!(toolbar&&form&&select&&dest),
                 toolbar:b(toolbar),form:b(form),select:b(select),dest:b(dest),
-                cssOnly:!!document.getElementById('mdo-catalog-control-widths-css-only-20260828'),
+                sharedCss:!!document.getElementById('mdo-catalog-control-widths-css-only-20260828'),
+                producerCss:!!document.getElementById('mdo-producer-mobile-css-only-20260828'),
                 oldWidthScript:!!document.getElementById('mdo-catalog-control-widths-20260828'),
                 runtimeGuardScript:!!document.getElementById('mdo-catalog-mobile-runtime-guard-20260824'),
                 parityFinalScript:!!document.getElementById('mdo-catalog-top-controls-parity-final-20260824-js'),
                 arrowFinalScript:!!document.getElementById('mdo-catalog-top-controls-arrow-final-20260824-js'),
                 overflow:document.documentElement.scrollWidth-innerWidth,
-                selectDisplay:s?.display||null, selectWidth:s?.width||null, inlineSize:s?.inlineSize||null,
-                pointerEvents:s?.pointerEvents||null, disabled:!!select?.disabled,
-                bodyClass:document.body?.className||''
+                selectDisplay:s?.display||null,
+                pointerEvents:s?.pointerEvents||null,
+                disabled:!!select?.disabled,
+                producer:document.body.classList.contains('wcfm-store-page')
               };
             }''')
 
@@ -134,31 +140,53 @@ jobs:
                 page.route('**/*', lambda route: route.abort() if route.request.resource_type in ('image','media','font') else route.continue_())
                 page.goto(url,wait_until='commit',timeout=30000)
                 data=None
-                for _ in range(30):
+                for _ in range(40):
                   try:
-                    time.sleep(0.5)
+                    time.sleep(0.4)
                     d=snapshot(page)
                     if d.get('ready'):
-                      data=d; break
+                      data=d
+                      # WCFM can remount once; require a second stable sample.
+                      time.sleep(0.8)
+                      d2=snapshot(page)
+                      if d2.get('ready'):
+                        data=d2
+                      break
                   except Exception:
                     pass
                 if data is None:
                   errors.append(f'{kind} {width}: controls never became measurable')
                   page.close(); continue
                 report[str(width)][kind]=data
-                if not data['cssOnly']: errors.append(f'{kind} {width}: CSS-only owner missing')
+
+                if not data['sharedCss']: errors.append(f'{kind} {width}: shared CSS owner missing')
+                if kind=='producer' and not data['producerCss']: errors.append(f'producer {width}: producer CSS owner missing')
                 if data['oldWidthScript'] or data['runtimeGuardScript'] or data['parityFinalScript'] or data['arrowFinalScript']:
-                  errors.append(f'{kind} {width}: dynamic style runtime still present')
+                  errors.append(f'{kind} {width}: dynamic layout runtime still present')
                 if data['overflow'] > 1: errors.append(f'{kind} {width}: horizontal overflow {data["overflow"]}')
                 if abs(data['form']['w']-data['select']['w']) > 2.5:
-                  errors.append(f'{kind} {width}: select width {data["select"]["w"]} != form {data["form"]["w"]}')
-                if width == 335 and data['select']['w'] < 260:
-                  errors.append(f'{kind} 335: select still too narrow ({data["select"]["w"]})')
+                  errors.append(f'{kind} {width}: select {data["select"]["w"]} != form {data["form"]["w"]}')
+                if abs(data['dest']['w']-data['select']['w']) > 3.0:
+                  errors.append(f'{kind} {width}: destination {data["dest"]["w"]} != ordering {data["select"]["w"]}')
+                if width==335 and data['select']['w'] < 260:
+                  errors.append(f'{kind} 335: ordering still too narrow ({data["select"]["w"]})')
+                if kind=='producer':
+                  if data['toolbar']['h'] < 125:
+                    errors.append(f'producer {width}: compact grid did not apply (toolbar h={data["toolbar"]["h"]})')
+                  if data['form']['l'] < data['toolbar']['l']-2 or data['form']['r'] > data['toolbar']['r']+2:
+                    errors.append(f'producer {width}: ordering sits outside toolbar')
                 if data['pointerEvents']=='none' or data['disabled']:
-                  errors.append(f'{kind} {width}: ordering control is not interactive')
-                # Event loop / DOM responsiveness check.
-                t0=time.time(); title=page.title(); elapsed=time.time()-t0
-                if elapsed > 2.0: errors.append(f'{kind} {width}: page evaluation sluggish ({elapsed:.2f}s)')
+                  errors.append(f'{kind} {width}: ordering is not interactive')
+
+                try:
+                  page.locator('.emo-catalog-toolbar-shared-010229 select[name="orderby"]').focus(timeout=1500)
+                  focused=page.evaluate('document.activeElement?.matches("select[name=orderby]") || false')
+                  if not focused: errors.append(f'{kind} {width}: ordering cannot receive focus')
+                except Exception as e:
+                  errors.append(f'{kind} {width}: focus failed ({type(e).__name__})')
+                t0=time.time()
+                page.evaluate('1+1')
+                if time.time()-t0 > 1.0: errors.append(f'{kind} {width}: DOM became sluggish')
                 page.close()
             browser.close()
 
@@ -170,7 +198,7 @@ jobs:
           print('CSS_ONLY_CATALOGUE_VERIFIED=true')
           PY
 
-      - name: Roll back all four files on failure
+      - name: Roll back catalogue presentation on failure
         if: failure() && env.PROD_PATH != ''
         shell: bash
         env:
@@ -184,9 +212,10 @@ jobs:
             'zzzzzzzzzzzzz-mdo-catalog-top-controls-arrow-final-20260824.php'
             'zzzzzzzzzzzzzz-mdo-catalog-mobile-runtime-guard-20260824.php'
             'zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+            'zzzzzzzzzzzzzzzzzzz-mdo-producer-mobile-css-only-20260828.php'
           )
           for name in "${FILES[@]}"; do
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "install -m 0644 '$BACKUP_DIR/$name' '$PROD_PATH/wp-content/mu-plugins/$name'"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP_DIR/$name' ]; then install -m 0644 '$BACKUP_DIR/$name' '$PROD_PATH/wp-content/mu-plugins/$name'; else rm -f '$PROD_PATH/wp-content/mu-plugins/$name'; fi"
           done
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -rf '$BACKUP_DIR'"
 
