@@ -30,6 +30,7 @@ jobs:
           FILE='mu-plugins/zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
           php -l "$FILE" >/dev/null
           grep -Fq 'mdo-catalog-control-widths-20260828' "$FILE"
+          grep -Fq 'mdo-catalog-control-widths-critical-20260828' "$FILE"
           grep -Fq "window.matchMedia('(max-width:640px)')" "$FILE"
           ! grep -Eqi 'pre_get_posts|woocommerce_product_query|tax_query|meta_query|posts_where|posts_join|posts_request|wp_ajax|WC_Query|woocommerce_product_is_visible|woocommerce_get_catalog_ordering_args' "$FILE"
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
@@ -80,7 +81,7 @@ jobs:
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
 
-      - name: Verify responsive control widths and catalogue integrity
+      - name: Verify responsive hierarchy and catalogue integrity
         shell: bash
         run: |
           set -euo pipefail
@@ -92,13 +93,19 @@ jobs:
               baseline = json.load(f)
 
           urls = {
-              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v2',
-              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v2',
+              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v3',
+              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v3',
           }
           sizes = [(390,844),(430,900),(640,900),(768,1024),(1024,900),(1440,1000),(1920,1080)]
           js = r'''() => {
-            const box = el => { if(!el) return null; const r=el.getBoundingClientRect(); return {l:r.left,w:r.width,h:r.height}; };
+            const box = el => {
+              if(!el) return null;
+              const r=el.getBoundingClientRect();
+              return {l:r.left,r:r.right,w:r.width,h:r.height};
+            };
             const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+            const left=toolbar?.querySelector('.woostify-toolbar-left')||null;
+            const count=toolbar?.querySelector('.woocommerce-result-count')||null;
             const dest=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
             const destWrap=dest?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||dest?.parentElement||null;
             const orderForm=toolbar?.querySelector('.woocommerce-ordering')||null;
@@ -112,9 +119,18 @@ jobs:
             const br=ts?parseFloat(ts.borderRightWidth||0):0;
             const available=tr ? tr.width-pl-pr-bl-br : null;
             const innerLeft=tr ? tr.left+bl+pl : null;
+            const destStyle=dest?getComputedStyle(dest):null;
+            const pinStyle=dest?getComputedStyle(dest,'::before'):null;
+            const headCritical=document.head.querySelector('#mdo-catalog-control-widths-critical-20260828');
             return {
-              toolbar:box(toolbar), destWrap:box(destWrap), dest:box(dest), orderForm:box(orderForm), order:box(order),
-              available, innerLeft, textAlign:dest?getComputedStyle(dest).textAlign:null,
+              toolbar:box(toolbar), left:box(left), countBox:box(count), destWrap:box(destWrap), dest:box(dest), orderForm:box(orderForm), order:box(order),
+              available, innerLeft,
+              textAlign:destStyle?.textAlign||null,
+              destBg:destStyle?.backgroundColor||null,
+              destBorder:destStyle?.borderTopColor||null,
+              pinDisplay:pinStyle?.display||null,
+              pinWidth:pinStyle?.width||null,
+              criticalInHead:!!headCritical,
               overflow:document.documentElement.scrollWidth-innerWidth,
               count:products?products.querySelectorAll(':scope > li.product').length:0,
               ids:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[],
@@ -134,34 +150,57 @@ jobs:
                       page.goto(url,wait_until='networkidle',timeout=120000)
                       page.wait_for_timeout(1700)
                       d=page.evaluate(js); report[str(width)][kind]=d
+
                       if not d['controlScript']:
                           errors.append(f'{kind} {width}: control refinement missing')
+                      if not d['criticalInHead']:
+                          errors.append(f'{kind} {width}: critical first-paint CSS is not in head')
                       if d['overflow'] > 1:
                           errors.append(f'{kind} {width}: horizontal overflow {d["overflow"]}')
                       if d['textAlign'] != 'left':
                           errors.append(f'{kind} {width}: destination text not left aligned ({d["textAlign"]})')
-                      if not d['destWrap'] or d['innerLeft'] is None or not close(d['destWrap']['l'], d['innerLeft']):
-                          errors.append(f'{kind} {width}: destination not aligned to toolbar inner left ({d.get("destWrap")} innerLeft={d["innerLeft"]})')
+                      if d['destBg'] != 'rgb(241, 246, 242)':
+                          errors.append(f'{kind} {width}: destination highlight background unexpected ({d["destBg"]})')
+                      if d['pinDisplay'] == 'none' or d['pinWidth'] not in ('13px','13'):
+                          errors.append(f'{kind} {width}: location cue missing ({d["pinDisplay"]}, {d["pinWidth"]})')
+
                       if width <= 640:
+                          if not d['countBox'] or d['innerLeft'] is None or not close(d['countBox']['l'], d['innerLeft'], 3):
+                              errors.append(f'{kind} {width}: result count not first/aligned in mobile toolbar')
                           for key in ('destWrap','dest','orderForm','order'):
                               if not d[key] or d['available'] is None or not close(d[key]['w'], d['available']):
                                   errors.append(f'{kind} {width}: {key} not full mobile width ({d.get(key)} available={d["available"]})')
+                      else:
+                          if not d['countBox'] or d['innerLeft'] is None or not close(d['countBox']['l'], d['innerLeft'], 3):
+                              errors.append(f'{kind} {width}: result count is not the first left control ({d.get("countBox")} innerLeft={d["innerLeft"]})')
+                          if not d['countBox'] or not d['destWrap'] or not (d['destWrap']['l'] > d['countBox']['r']):
+                              errors.append(f'{kind} {width}: destination is not after result count')
+                          if d['countBox'] and d['destWrap']:
+                              gap=d['destWrap']['l']-d['countBox']['r']
+                              if not (8 <= gap <= 24):
+                                  errors.append(f'{kind} {width}: count/destination gap unexpected ({gap})')
+                          if not d['destWrap'] or not d['orderForm'] or not (d['destWrap']['r'] < d['orderForm']['l']):
+                              errors.append(f'{kind} {width}: ordering is not isolated to the right of destination')
+
                       if width >= 901:
                           if not d['dest'] or not d['order'] or not (d['dest']['w'] + 12 < d['order']['w']):
                               errors.append(f'{kind} {width}: destination did not compact to content ({d["dest"]} vs {d["order"]})')
-                          if not d['destWrap'] or not d['orderForm'] or not (d['destWrap']['l'] < d['orderForm']['l']):
-                              errors.append(f'{kind} {width}: destination is not on the left side of ordering')
+
                       base_pages=baseline.get('pages',{}).get(kind,{})
                       if str(width) in base_pages:
                           base=base_pages[str(width)]
                           if d['ids'] != base['productIds'] or d['count'] != base['productCount']:
                               errors.append(f'{kind} {width}: catalogue products changed')
+
                   g=report[str(width)]['global']; v=report[str(width)]['producer']
                   for key in ('destWrap','dest','orderForm','order'):
                       if g[key] and v[key] and not close(g[key]['w'],v[key]['w']):
                           errors.append(f'{width}: {key} width differs between global and producer ({g[key]["w"]} vs {v[key]["w"]})')
-                  if g['destWrap'] and v['destWrap'] and not close(g['destWrap']['l'],v['destWrap']['l']):
-                      errors.append(f'{width}: destination left edge differs between global and producer ({g["destWrap"]["l"]} vs {v["destWrap"]["l"]})')
+                  if width > 640 and g['countBox'] and g['destWrap'] and v['countBox'] and v['destWrap']:
+                      gap_g=g['destWrap']['l']-g['countBox']['r']
+                      gap_v=v['destWrap']['l']-v['countBox']['r']
+                      if not close(gap_g,gap_v,2):
+                          errors.append(f'{width}: count/destination gap differs between global and producer ({gap_g} vs {gap_v})')
               browser.close()
 
           print(json.dumps(report,ensure_ascii=False,indent=2))
@@ -169,7 +208,7 @@ jobs:
               print('ERRORS:')
               print('\n'.join('- '+e for e in errors))
               sys.exit(1)
-          print('CATALOG_CONTROL_WIDTHS_VERIFIED=true')
+          print('CATALOG_DESTINATION_HIERARCHY_VERIFIED=true')
           PY
 
       - name: Roll back refinement on failure
