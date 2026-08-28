@@ -26,6 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Six representative viewport widths: mobile, tablet, small desktop, laptop, desktop and wide desktop.
           python - <<'PY'
           from playwright.sync_api import sync_playwright
           import json
