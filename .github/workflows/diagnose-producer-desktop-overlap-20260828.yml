@@ -28,6 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Measure the live producer page at desktop and mobile widths.
           python - <<'PY'
           from playwright.sync_api import sync_playwright
           import json
