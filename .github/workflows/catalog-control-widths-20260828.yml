@@ -1,0 +1,187 @@
+name: Deploy catalogue control widths 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-control-widths-20260828.yml'
+      - 'mu-plugins/zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate presentation-only refinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='mu-plugins/zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+          php -l "$FILE" >/dev/null
+          grep -Fq 'mdo-catalog-control-widths-20260828' "$FILE"
+          grep -Fq "window.matchMedia('(max-width:640px)')" "$FILE"
+          ! grep -Eqi 'pre_get_posts|woocommerce_product_query|tax_query|meta_query|posts_where|posts_join|posts_request|wp_ajax|WC_Query|woocommerce_product_is_visible|woocommerce_get_catalog_ordering_args' "$FILE"
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy control width refinement
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+
+          NAME='zzzzzzzzzzzzzzzzzz-mdo-catalog-control-widths-20260828.php'
+          SRC="mu-plugins/$NAME"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"
+          REMOTE="/tmp/${NAME%.php}-${GITHUB_RUN_ID}.php"
+          BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+          sshpass -e scp $SCP_OPTIONS "$SRC" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Install browser tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+
+      - name: Verify responsive control widths and catalogue integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import json, sys
+
+          with open('runtime/catalog-design-baseline-20260828.json', encoding='utf-8') as f:
+              baseline = json.load(f)
+
+          urls = {
+              'global': 'https://www.elmercadodeorigen.com/tienda/?mdo_control_width_verify=20260828v1',
+              'producer': 'https://www.elmercadodeorigen.com/tienda/1957/?mdo_control_width_verify=20260828v1',
+          }
+          sizes = [(390,844),(430,900),(640,900),(768,1024),(1024,900),(1440,1000),(1920,1080)]
+          js = r'''() => {
+            const box = el => { if(!el) return null; const r=el.getBoundingClientRect(); return {l:r.left,w:r.width,h:r.height}; };
+            const toolbar=document.querySelector('.emo-catalog-toolbar-shared-010229');
+            const dest=toolbar?.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]')||null;
+            const destWrap=dest?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination')||dest?.parentElement||null;
+            const orderForm=toolbar?.querySelector('.woocommerce-ordering')||null;
+            const order=orderForm?.querySelector('select[name="orderby"]')||null;
+            const products=document.querySelector('ul.products');
+            const ts=toolbar?getComputedStyle(toolbar):null;
+            const available=toolbar&&ts ? toolbar.getBoundingClientRect().width
+              - parseFloat(ts.paddingLeft||0)-parseFloat(ts.paddingRight||0)
+              - parseFloat(ts.borderLeftWidth||0)-parseFloat(ts.borderRightWidth||0) : null;
+            return {
+              toolbar:box(toolbar), destWrap:box(destWrap), dest:box(dest), orderForm:box(orderForm), order:box(order),
+              available, textAlign:dest?getComputedStyle(dest).textAlign:null,
+              overflow:document.documentElement.scrollWidth-innerWidth,
+              count:products?products.querySelectorAll(':scope > li.product').length:0,
+              ids:products?[...products.querySelectorAll(':scope > li.product')].slice(0,12).map(x=>x.className.match(/post-(\d+)/)?.[1]||null):[],
+              controlScript:!!document.getElementById('mdo-catalog-control-widths-20260828')
+            };
+          }'''
+
+          def close(a,b,t=2.0): return abs(float(a)-float(b)) <= t
+          errors=[]; report={}
+          with sync_playwright() as p:
+              browser=p.chromium.launch(headless=True)
+              page=browser.new_page(viewport={'width':1440,'height':1000})
+              for width,height in sizes:
+                  report[str(width)]={}
+                  for kind,url in urls.items():
+                      page.set_viewport_size({'width':width,'height':height})
+                      page.goto(url,wait_until='networkidle',timeout=120000)
+                      page.wait_for_timeout(1700)
+                      d=page.evaluate(js); report[str(width)][kind]=d
+                      if not d['controlScript']:
+                          errors.append(f'{kind} {width}: control refinement missing')
+                      if d['overflow'] > 1:
+                          errors.append(f'{kind} {width}: horizontal overflow {d["overflow"]}')
+                      if d['textAlign'] != 'left':
+                          errors.append(f'{kind} {width}: destination text not left aligned ({d["textAlign"]})')
+                      if width <= 640:
+                          for key in ('destWrap','dest','orderForm','order'):
+                              if not d[key] or d['available'] is None or not close(d[key]['w'], d['available']):
+                                  errors.append(f'{kind} {width}: {key} not full mobile width ({d.get(key)} available={d["available"]})')
+                      if width >= 901:
+                          if not d['dest'] or not d['order'] or not (d['dest']['w'] + 12 < d['order']['w']):
+                              errors.append(f'{kind} {width}: destination did not compact to content ({d["dest"]} vs {d["order"]})')
+                          if not d['destWrap'] or not d['orderForm'] or not (d['destWrap']['l'] < d['orderForm']['l']):
+                              errors.append(f'{kind} {width}: destination is not on the left side of ordering')
+                      base_pages=baseline.get('pages',{}).get(kind,{})
+                      if str(width) in base_pages:
+                          base=base_pages[str(width)]
+                          if d['ids'] != base['productIds'] or d['count'] != base['productCount']:
+                              errors.append(f'{kind} {width}: catalogue products changed')
+                  g=report[str(width)]['global']; v=report[str(width)]['producer']
+                  for key in ('destWrap','dest','orderForm','order'):
+                      if g[key] and v[key] and not close(g[key]['w'],v[key]['w']):
+                          errors.append(f'{width}: {key} width differs between global and producer ({g[key]["w"]} vs {v[key]["w"]})')
+              browser.close()
+
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if errors:
+              print('ERRORS:')
+              print('\n'.join('- '+e for e in errors))
+              sys.exit(1)
+          print('CATALOG_CONTROL_WIDTHS_VERIFIED=true')
+          PY
+
+      - name: Roll back refinement on failure
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+
+      - name: Clean deployment backup
+        if: success()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
