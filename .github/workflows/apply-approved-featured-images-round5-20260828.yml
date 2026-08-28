@@ -1,11 +1,12 @@
 name: Apply approved featured images safely
 
-# Temporary registered launch for user-approved Pexels 30700510.
+# Registered launcher for production-safe featured image updates.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/apply-approved-featured-images-round5-20260828.yml'
+      - '.github/data/featured-image-request.json'
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,16 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Pexels 30700510 and verify image SEO
+
+      - name: Validate request
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST='.github/data/featured-image-request.json'
+          test -s "$REQUEST"
+          jq -e '.post_slug and .image_url and .image_filename and .image_title and .image_alt and .source_page and .photographer and .license' "$REQUEST" >/dev/null
+
+      - name: Apply, check duplicates and verify image SEO
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -32,31 +42,61 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
-          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
           INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp=$(command -v wp || true); php=$(command -v php || true)
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
             [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
             prod=""
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
             done
-            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
-          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE="/tmp/emdo-raw-cooked-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP .github/scripts/apply-raw-vs-cooked-vegetables-image-20260828.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-featured-safe-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            .github/scripts/update-post-featured-image-production.php \
+            .github/data/featured-image-request.json \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+
           set +e
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > /tmp/result.json 2> /tmp/result.err
-          RC=$?; set -e
-          if [ "$RC" -ne 0 ]; then cat /tmp/result.err >&2; cat /tmp/result.json >&2; exit "$RC"; fi
-          cat /tmp/result.json
-          jq -e '.verified==true and .selection=="user-url-pexels-30700510" and (.duplicate_preflight.conflicts|length)==0' /tmp/result.json >/dev/null
-          jq -e '.image.thumbnail_id==.image.attachment_id and .image.approved_id==.image.attachment_id and .image.uses_default=="" and .image.cover_asset=="" and (.image.filename|length)>0 and (.image.alt|length)>0 and (.image.title|length)>0 and (.image.source_page|length)>0 and (.image.license|length)>0' /tmp/result.json >/dev/null
-          PERMALINK="$(jq -r '.resolved_post.permalink' /tmp/result.json)"; IMAGE="$(jq -r '.image.url' /tmp/result.json)"; ALT="$(jq -r '.image.alt' /tmp/result.json)"; SLUG="$(jq -r '.resolved_post.slug' /tmp/result.json)"
-          OUT=/tmp/raw-cooked-public.html
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_FEATURED_REQUEST='$REMOTE/featured-image-request.json'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/update-post-featured-image-production.php' --path='$PROD' --allow-root" > /tmp/featured-safe.json 2> /tmp/featured-safe.err
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            cat /tmp/featured-safe.err >&2 || true
+            cat /tmp/featured-safe.json >&2 || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
+            exit "$RC"
+          fi
+
+          cat /tmp/featured-safe.json
+          jq -e '.verified==true and (.duplicate_preflight.conflicts|length)==0' /tmp/featured-safe.json >/dev/null
+          jq -e '.post.thumbnail_id==.post.attachment_id and .post.approved_id==.post.attachment_id and .post.uses_default=="" and .post.cover_asset=="" and (.post.filename|length)>0 and (.post.title|length)>0 and (.post.alt|length)>0 and (.post.source_page|length)>0 and (.post.photographer|length)>0 and (.post.license|length)>0' /tmp/featured-safe.json >/dev/null
+
+          SLUG="$(jq -r '.post.slug' /tmp/featured-safe.json)"
+          PERMALINK="$(jq -r '.post.permalink' /tmp/featured-safe.json)"
+          ATTACHMENT_URL="$(jq -r '.post.attachment_url' /tmp/featured-safe.json)"
+          ALT="$(jq -r '.post.alt' /tmp/featured-safe.json)"
+          OUT="/tmp/${SLUG}.html"
           CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO featured image verification' -o "$OUT" -w '%{http_code}' "${PERMALINK}?emdo_featured_verify=${GITHUB_RUN_ID}")"
-          [ "$CODE" = 200 ]; BASENAME="$(basename "${IMAGE%%\?*}")"; grep -Fq "$BASENAME" "$OUT"; grep -Fq "$ALT" "$OUT"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
-          echo "public_verification_ok slug=$SLUG http=$CODE image=$IMAGE alt=$ALT"
+          [ "$CODE" = "200" ] || { echo "HTTP $CODE for $PERMALINK" >&2; exit 20; }
+          BASENAME="$(basename "${ATTACHMENT_URL%%\?*}")"
+          grep -Fq "$BASENAME" "$OUT" || { echo "Featured image basename missing from frontend" >&2; exit 21; }
+          grep -Fq "$ALT" "$OUT" || { echo "Featured image ALT missing from frontend" >&2; exit 22; }
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'"
+          echo "public_verification_ok slug=$SLUG http=$CODE image=$ATTACHMENT_URL alt=$ALT"
