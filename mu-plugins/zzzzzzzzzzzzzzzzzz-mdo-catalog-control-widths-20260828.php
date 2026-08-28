@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Catalogue Control Widths 2026-08-28
  * Description: Presentation-only refinement for destination alignment/desktop sizing and full-width mobile catalogue controls.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -38,17 +38,26 @@ function mdo_catalog_control_widths_output_20260828(): void {
 			if (!el) return;
 			Object.entries(props).forEach(([name, value]) => el.style.setProperty(name, value, 'important'));
 		};
+		const directFlexItem = (root, node) => {
+			if (!root || !node || !root.contains(node)) return null;
+			let item = node;
+			while (item && item.parentElement && item.parentElement !== root) item = item.parentElement;
+			return item && item.parentElement === root ? item : null;
+		};
 
 		const apply = () => {
 			const toolbar = document.querySelector('.emo-catalog-toolbar-shared-010229');
 			if (!toolbar) return false;
 
+			const left = toolbar.querySelector('.woostify-toolbar-left');
 			const count = toolbar.querySelector('.woocommerce-result-count');
 			const destTrigger = toolbar.querySelector('[data-mdo-destination-open],[data-mdo-ps-destination-open]');
 			const destWrap = destTrigger?.closest('.mdo-catalog-destination--canonical,.mdo-catalog-destination,.mdo-ps-destination') || destTrigger?.parentElement || null;
+			const destItem = directFlexItem(left, destTrigger);
+			const countItem = directFlexItem(left, count) || count;
 			const orderForm = toolbar.querySelector('.woocommerce-ordering');
 			const order = orderForm?.querySelector('select[name="orderby"]') || null;
-			if (!count || !destTrigger || !destWrap || !orderForm || !order) return false;
+			if (!left || !count || !destTrigger || !destWrap || !destItem || !orderForm || !order) return false;
 
 			const mobile = window.matchMedia('(max-width:640px)').matches;
 			const desktop = window.matchMedia('(min-width:901px)').matches;
@@ -58,17 +67,23 @@ function mdo_catalog_control_widths_output_20260828(): void {
 			set(destTrigger, {'text-align':'left'});
 			set(text, {'text-align':'left'});
 
-			/* In every non-stacked layout, destination is the first control in the
-			 * left group. That makes its left edge identical on global/vendor shops,
-			 * regardless of the different result-count text lengths. */
+			/* Reorder the ACTUAL direct flex item, not only the inner destination
+			 * wrapper. WCFM adds an extra wrapper at some desktop widths. */
 			if (!mobile) {
-				set(destWrap, {'order':'-1'});
-				set(count, {'order':'0'});
+				set(destItem, {'order':'-1'});
+				set(countItem, {'order':'0'});
 			}
 
 			/* On desktop the destination control should size to its content rather
 			 * than inheriting the historical fixed 248px control width. */
 			if (desktop) {
+				set(destItem, {
+					'flex':'0 1 auto',
+					'width':'auto',
+					'min-width':'0',
+					'max-width':'320px',
+					'margin':'0'
+				});
 				set(destWrap, {
 					'flex':'0 1 auto',
 					'width':'auto',
@@ -89,6 +104,14 @@ function mdo_catalog_control_widths_output_20260828(): void {
 			/* Once the toolbar enters the mobile stacked layout, both controls own
 			 * the complete inner width. This removes the narrow ordering state. */
 			if (mobile) {
+				set(destItem, {
+					'order':'initial',
+					'width':'100%',
+					'min-width':'0',
+					'max-width':'100%',
+					'margin':'0'
+				});
+				set(countItem, {'order':'initial'});
 				set(destWrap, {
 					'order':'initial',
 					'flex':'0 0 100%',
@@ -99,7 +122,6 @@ function mdo_catalog_control_widths_output_20260828(): void {
 					'justify-self':'stretch',
 					'align-self':'stretch'
 				});
-				set(count, {'order':'initial'});
 				set(destTrigger, {
 					'width':'100%',
 					'min-width':'0',
