@@ -1,4 +1,4 @@
-name: Deploy SEO meta descriptions production 2026-08-28
+name: Deploy SEO meta descriptions production v2 2026-08-28
 
 on:
   push:
@@ -81,8 +81,8 @@ jobs:
           import time
 
           urls = {
-              'product': 'https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?seo_meta_v265=1',
-              'article': 'https://www.elmercadodeorigen.com/como-leer-etiqueta-aceite-oliva/?seo_meta_v265=1',
+              'product': 'https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?seo_meta_v266=1',
+              'article': 'https://www.elmercadodeorigen.com/como-leer-etiqueta-aceite-oliva/?seo_meta_v266=1',
           }
 
           class MetaParser(HTMLParser):
@@ -108,8 +108,8 @@ jobs:
                       if len(descs) != 1:
                           raise RuntimeError(f'{kind}: expected 1 meta description, found {len(descs)}')
                       desc = descs[0]
-                      if len(desc) < 120:
-                          raise RuntimeError(f'{kind}: meta description too short ({len(desc)} chars): {desc}')
+                      if len(desc) < 120 or len(desc) > 170:
+                          raise RuntimeError(f'{kind}: meta description outside 120-170 chars ({len(desc)} chars): {desc}')
                       print(f'{kind}: {len(desc)} chars | {desc}')
                       last_error = None
                       break
