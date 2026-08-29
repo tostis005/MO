@@ -1,0 +1,85 @@
+name: Diagnose English routing production 2026-08-29
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-english-routing-production-20260829.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect production English architecture
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp=$(command -v wp || true)
+          php=$(command -v php || true)
+          [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          prod=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$php" -d memory_limit=512M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+            esac
+          done
+          : "${prod:?production path missing}"
+          echo "PROD=$prod"
+
+          echo '=== MU PLUGINS ==='
+          find "$prod/wp-content/mu-plugins" -maxdepth 2 -type f -name '*.php' -printf '%p\n' 2>/dev/null | sort || true
+
+          echo '=== ENGLISH-RELATED FILE HITS ==='
+          grep -RIlE '(/en/|native.?english|english.?route|hreflang|REQUEST_URI.*en|rewrite.*en)' \
+            "$prod/wp-content/mu-plugins" "$prod/wp-content/themes" 2>/dev/null | head -100 || true
+
+          echo '=== ACTIVE PLUGINS (skip loading) ==='
+          "$php" -d memory_limit=512M "$wp" option get active_plugins --path="$prod" --format=json --skip-plugins --skip-themes --allow-root 2>/dev/null || true
+          echo
+
+          echo '=== EN PAGE RESPONSE HEAD ==='
+          for p in /en/ /en/iberian-ham/ /en/product/100-iberian-acorn-fed-ham-black-tag/; do
+            echo "--- $p"
+            curl -ksSIL --max-time 20 "https://www.elmercadodeorigen.com${p}?diag=$(date +%s%N)" | sed -n '1,18p' || true
+          done
+
+          echo '=== EN HTML META ==='
+          f=/tmp/emdo-en-iberian-ham.html
+          curl -ksSL --max-time 25 -o "$f" "https://www.elmercadodeorigen.com/en/iberian-ham/?diag=$(date +%s%N)" || true
+          grep -Eio '<(link|meta)[^>]+(canonical|alternate|hreflang|og:url)[^>]*>' "$f" | head -40 || true
+
+          echo '=== WP PAGE CANDIDATES ==='
+          "$php" -d memory_limit=768M "$wp" eval '
+            global $wpdb;
+            $rows=$wpdb->get_results("SELECT ID,post_parent,post_type,post_status,post_name,post_title FROM {$wpdb->posts} WHERE post_status IN (\"publish\",\"draft\",\"private\") AND (post_name IN (\"en\",\"iberian-ham\",\"jamon-iberico\") OR post_title LIKE \"%Iberian Ham%\" OR post_title LIKE \"%Jamón Ibérico%\") ORDER BY ID ASC LIMIT 100");
+            foreach($rows as $r){echo wp_json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;}
+          ' --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
+
+          echo '=== REWRITE / EN OPTIONS ==='
+          "$php" -d memory_limit=768M "$wp" eval '
+            global $wpdb;
+            $like1=$wpdb->esc_like("en_")."%"; $like2="%".$wpdb->esc_like("english")."%";
+            $rows=$wpdb->get_results($wpdb->prepare("SELECT option_name,LEFT(option_value,500) v FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s ORDER BY option_name LIMIT 100",$like1,$like2));
+            foreach($rows as $r){echo $r->option_name."=".$r->v.PHP_EOL;}
+          ' --path="$prod" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
+          REMOTE
