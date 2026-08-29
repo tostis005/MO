@@ -1,0 +1,75 @@
+name: Diagnose native English meta routing 2026-08-29
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-native-english-meta-routing-20260829.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect native English metadata and router
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp=$(command -v wp || true)
+          php=$(command -v php || true)
+          [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          prod=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$php" -d memory_limit=512M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+            esac
+          done
+          : "${prod:?production path missing}"
+
+          echo '=== EXACT SLUG COLLISIONS ==='
+          "$php" -d memory_limit=512M "$wp" eval '
+            global $wpdb;
+            $slugs=array("jamon-bellota-100-iberico","jamon-de-bellota-100-iberico","100-iberico-acorn-fed-ham","100-iberian-acorn-fed-ham-black-tag");
+            $in=implode(",",array_fill(0,count($slugs),"%s"));
+            $sql=$wpdb->prepare("SELECT ID,post_type,post_status,post_parent,post_name,post_title FROM {$wpdb->posts} WHERE post_name IN ($in) ORDER BY ID",$slugs);
+            foreach($wpdb->get_results($sql) as $r){echo wp_json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;}
+          ' --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== EN META PRODUCT 1350 ==='
+          "$php" -d memory_limit=512M "$wp" eval '
+            global $wpdb;
+            foreach($wpdb->get_results("SELECT meta_key,meta_value FROM {$wpdb->postmeta} WHERE post_id=1350 AND (meta_key LIKE \"%en_US%\" OR meta_key LIKE \"%english%\") ORDER BY meta_key") as $r){echo $r->meta_key."=".substr($r->meta_value,0,1200).PHP_EOL;}
+          ' --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== EN META HOME 3699 ==='
+          "$php" -d memory_limit=512M "$wp" eval '
+            global $wpdb;
+            foreach($wpdb->get_results("SELECT meta_key,meta_value FROM {$wpdb->postmeta} WHERE post_id=3699 AND (meta_key LIKE \"%en_US%\" OR meta_key LIKE \"%english%\") ORDER BY meta_key") as $r){echo $r->meta_key."=".substr($r->meta_value,0,1200).PHP_EOL;}
+          ' --path="$prod" --skip-plugins --skip-themes --allow-root
+
+          echo '=== ROUTER SOURCE ==='
+          sed -n '1,320p' "$prod/wp-content/mu-plugins/mdo-english-slug-router.php" 2>/dev/null || true
+          echo '=== NATIVE RENDER BRIDGE ==='
+          sed -n '1,300p' "$prod/wp-content/mu-plugins/mdo-production-native-render-bridge.php" 2>/dev/null || true
+          echo '=== ENGLISH SEO ROUTES ==='
+          sed -n '1,360p' "$prod/wp-content/mu-plugins/mdo-production-english-seo-routes.php" 2>/dev/null || true
+          REMOTE
