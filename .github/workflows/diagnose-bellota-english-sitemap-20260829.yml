@@ -21,7 +21,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect production sitemap path and runtime
+      - name: Inspect WordPress sitemap runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -55,19 +55,27 @@ jobs:
             echo "function_mdoer_sitemap=".(function_exists("mdoer_sitemap")?"yes":"no").PHP_EOL;
             if(function_exists("mdoer_sitemap")){
               $urls=mdoer_sitemap();
-              echo "count=".count($urls).PHP_EOL;
               $needle=home_url("/en/100-iberico-acorn-fed-ham/");
+              echo "count=".count($urls).PHP_EOL;
               echo "needle=".$needle.PHP_EOL;
               echo "contains=".(in_array($needle,$urls,true)?"yes":"no").PHP_EOL;
-              foreach($urls as $u){ if(stripos($u,"100-iberico")!==false || stripos($u,"bellota")!==false){ echo "hit=".$u.PHP_EOL; } }
             }
           ' --path="$prod" --allow-root
-          echo '=== ORIGIN SITEMAP ==='
-          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 'https://www.elmercadodeorigen.com/english-sitemap.xml?diag=20260829' | tee /tmp/origin-en-sitemap.xml | grep -o 'https://www.elmercadodeorigen.com/en/[^<]*' | grep -E '100-iberico|bellota' || true
-          echo "origin_bytes=$(wc -c </tmp/origin-en-sitemap.xml)"
-          echo '=== PUBLIC SITEMAP ==='
-          curl -ksS 'https://www.elmercadodeorigen.com/english-sitemap.xml?diag=20260829' | tee /tmp/public-en-sitemap.xml | grep -o 'https://www.elmercadodeorigen.com/en/[^<]*' | grep -E '100-iberico|bellota' || true
-          echo "public_bytes=$(wc -c </tmp/public-en-sitemap.xml)"
-          echo '=== RESPONSE HEADERS ==='
-          curl -ksSI --resolve www.elmercadodeorigen.com:443:127.0.0.1 'https://www.elmercadodeorigen.com/english-sitemap.xml?diag=20260829' | sed -n '1,25p'
           REMOTE
+
+      - name: Inspect public English sitemap response
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/english-sitemap.xml?diag=${GITHUB_RUN_ID}"
+          curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO sitemap diagnostic' -D /tmp/headers.txt -o /tmp/sitemap.xml "$URL"
+          echo '=== HEADERS ==='
+          cat /tmp/headers.txt
+          echo '=== SIZE ==='
+          wc -c /tmp/sitemap.xml
+          echo '=== PREFIX ==='
+          head -c 500 /tmp/sitemap.xml; echo
+          echo '=== BELLLOTA URL ==='
+          grep -F '/en/100-iberico-acorn-fed-ham/' /tmp/sitemap.xml || true
+          echo '=== URL COUNT ==='
+          grep -o '<url>' /tmp/sitemap.xml | wc -l || true
