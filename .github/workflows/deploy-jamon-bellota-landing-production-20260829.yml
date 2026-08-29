@@ -92,13 +92,13 @@ jobs:
           grep -Fqi 'products' "$ES_OUT" || { echo "WooCommerce product block not rendered in Spanish" >&2; exit 24; }
           grep -Fqi 'products' "$EN_OUT" || { echo "WooCommerce product block not rendered in English" >&2; exit 25; }
 
-          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$ES_OUT"; then echo "Spanish landing unexpectedly noindexed" >&2; exit 26; fi
-          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$EN_OUT"; then echo "English landing unexpectedly noindexed" >&2; exit 27; fi
+          if grep -Eqi '<meta[^>]+robots[^>]+noindex' "$ES_OUT"; then echo "Spanish landing unexpectedly noindexed" >&2; exit 26; fi
+          if grep -Eqi '<meta[^>]+robots[^>]+noindex' "$EN_OUT"; then echo "English landing unexpectedly noindexed" >&2; exit 27; fi
 
-          grep -Eqi 'hreflang=["'"']es-ES["'"']' "$ES_OUT" || { echo "Spanish hreflang missing" >&2; exit 28; }
-          grep -Eqi 'hreflang=["'"']en["'"']' "$ES_OUT" || { echo "English hreflang missing on Spanish landing" >&2; exit 29; }
-          grep -Eqi 'hreflang=["'"']es-ES["'"']' "$EN_OUT" || { echo "Spanish hreflang missing on English landing" >&2; exit 30; }
-          grep -Eqi 'hreflang=["'"']en["'"']' "$EN_OUT" || { echo "English hreflang missing" >&2; exit 31; }
+          grep -Fqi 'hreflang="es-ES"' "$ES_OUT" || { echo "Spanish hreflang missing" >&2; exit 28; }
+          grep -Fqi 'hreflang="en"' "$ES_OUT" || { echo "English hreflang missing on Spanish landing" >&2; exit 29; }
+          grep -Fqi 'hreflang="es-ES"' "$EN_OUT" || { echo "Spanish hreflang missing on English landing" >&2; exit 30; }
+          grep -Fqi 'hreflang="en"' "$EN_OUT" || { echo "English hreflang missing" >&2; exit 31; }
           grep -Fqi 'rel="canonical"' "$EN_OUT" || { echo "English canonical missing" >&2; exit 32; }
           grep -Fqi '/en/100-iberico-acorn-fed-ham/' "$EN_OUT" || { echo "English preferred URL missing from metadata" >&2; exit 33; }
 
