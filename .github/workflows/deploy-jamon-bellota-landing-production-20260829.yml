@@ -1,0 +1,103 @@
+name: Deploy 100% Iberico bellota landing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-jamon-bellota-landing-production-20260829.yml'
+      - '.github/scripts/deploy-jamon-bellota-landing-production-20260829.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy ES and EN landing to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-jamon-bellota-landing-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            .github/scripts/deploy-jamon-bellota-landing-production-20260829.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-jamon-bellota-landing-production-20260829.php' --path='$PROD' --allow-root" > /tmp/emdo-landing.json 2> /tmp/emdo-landing.err
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            cat /tmp/emdo-landing.err >&2 || true
+            cat /tmp/emdo-landing.json >&2 || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
+            exit "$RC"
+          fi
+
+          cat /tmp/emdo-landing.json
+          jq -e '.verified==true and .translation_mode!="none" and (.es.products|length)>0 and (.en.products|length)>0' /tmp/emdo-landing.json >/dev/null
+
+          ES_URL="$(jq -r '.es.url' /tmp/emdo-landing.json)"
+          EN_URL="$(jq -r '.en.url' /tmp/emdo-landing.json)"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+
+          ES_OUT=/tmp/emdo-landing-es.html
+          EN_OUT=/tmp/emdo-landing-en.html
+          ES_CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO landing verification' -o "$ES_OUT" -w '%{http_code}' "${ES_URL}?emdo_landing_verify=${GITHUB_RUN_ID}")"
+          EN_CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO landing verification' -o "$EN_OUT" -w '%{http_code}' "${EN_URL}?emdo_landing_verify=${GITHUB_RUN_ID}")"
+
+          [ "$ES_CODE" = "200" ] || { echo "HTTP $ES_CODE for $ES_URL" >&2; exit 20; }
+          [ "$EN_CODE" = "200" ] || { echo "HTTP $EN_CODE for $EN_URL" >&2; exit 21; }
+          grep -Fqi 'Brida negra' "$ES_OUT" || { echo "Spanish landing content not found on frontend" >&2; exit 22; }
+          grep -Fqi 'black seal' "$EN_OUT" || { echo "English landing content not found on frontend" >&2; exit 23; }
+          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$ES_OUT"; then
+            echo "Spanish landing unexpectedly noindexed" >&2
+            exit 24
+          fi
+          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$EN_OUT"; then
+            echo "English landing unexpectedly noindexed" >&2
+            exit 25
+          fi
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
+          echo "landing_public_verification_ok es=$ES_URL en=$EN_URL"
