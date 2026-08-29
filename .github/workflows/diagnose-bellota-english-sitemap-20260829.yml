@@ -43,39 +43,33 @@ jobs:
             esac
           done
           : "${prod:?production path missing}"
-          echo "PROD=$prod"
-          echo '=== PHYSICAL SITEMAP FILES ==='
-          find "$prod" -maxdepth 2 -type f -iname '*english*sitemap*' -ls 2>/dev/null || true
-          echo '=== PAGE/META/RUNTIME ==='
           "$php" -d memory_limit=768M "$wp" eval '
             $id=13580;
             $p=get_post($id);
             echo "post=".($p?($p->post_status."|".$p->post_type."|".$p->post_name):"missing").PHP_EOL;
             foreach(array("_en_US_post_name","_en_US_published","_en_US_post_title") as $k){ echo $k."=".get_post_meta($id,$k,true).PHP_EOL; }
-            echo "function_mdoer_sitemap=".(function_exists("mdoer_sitemap")?"yes":"no").PHP_EOL;
             if(function_exists("mdoer_sitemap")){
               $urls=mdoer_sitemap();
               $needle=home_url("/en/100-iberico-acorn-fed-ham/");
-              echo "count=".count($urls).PHP_EOL;
-              echo "needle=".$needle.PHP_EOL;
-              echo "contains=".(in_array($needle,$urls,true)?"yes":"no").PHP_EOL;
+              echo "legacy_runtime_contains=".(in_array($needle,$urls,true)?"yes":"no").PHP_EOL;
             }
           ' --path="$prod" --allow-root
           REMOTE
 
-      - name: Inspect public English sitemap response
+      - name: Verify active sitemap architecture
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://www.elmercadodeorigen.com/english-sitemap.xml?diag=${GITHUB_RUN_ID}"
-          curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO sitemap diagnostic' -D /tmp/headers.txt -o /tmp/sitemap.xml "$URL"
-          echo '=== HEADERS ==='
-          cat /tmp/headers.txt
-          echo '=== SIZE ==='
-          wc -c /tmp/sitemap.xml
-          echo '=== PREFIX ==='
-          head -c 500 /tmp/sitemap.xml; echo
-          echo '=== BELLLOTA URL ==='
-          grep -F '/en/100-iberico-acorn-fed-ham/' /tmp/sitemap.xml || true
-          echo '=== URL COUNT ==='
-          grep -o '<url>' /tmp/sitemap.xml | wc -l || true
+          UA='Mozilla/5.0 EMDO sitemap diagnostic'
+          curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -D /tmp/legacy-h.txt -o /tmp/legacy.xml "https://www.elmercadodeorigen.com/english-sitemap.xml?diag=${GITHUB_RUN_ID}"
+          echo '=== LEGACY REDIRECT ==='
+          grep -Ei 'HTTP/|location:|x-redirect-by:' /tmp/legacy-h.txt || true
+          curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o /tmp/index.xml "https://www.elmercadodeorigen.com/sitemap_index.xml?diag=${GITHUB_RUN_ID}"
+          echo '=== ACTIVE INDEX ==='
+          grep -F 'mdo-sitemap-pages.xml' /tmp/index.xml
+          curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o /tmp/pages.xml "https://www.elmercadodeorigen.com/mdo-sitemap-pages.xml?diag=${GITHUB_RUN_ID}"
+          echo '=== LANDING IN ACTIVE PAGE SITEMAP ==='
+          grep -F 'https://www.elmercadodeorigen.com/jamon-bellota-100-iberico/' /tmp/pages.xml
+          grep -F 'https://www.elmercadodeorigen.com/en/100-iberico-acorn-fed-ham/' /tmp/pages.xml
+          echo '=== PAGE SITEMAP URL COUNT ==='
+          grep -o '<url>' /tmp/pages.xml | wc -l
