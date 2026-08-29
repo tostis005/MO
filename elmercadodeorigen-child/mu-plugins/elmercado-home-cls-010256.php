@@ -86,6 +86,27 @@ display:flex!important;transform:translateX(100%)!important;visibility:hidden!im
 opacity:1!important;z-index:200!important;margin:0!important;
 }
 body.home:not(.emo-js-ready) #shop-cart-sidebar .cart-sidebar-content{visibility:hidden!important;}
+
+/* Hero de productores: en móvil las cuatro tarjetas tienen exactamente el mismo ancho. */
+html body.home.elmercado-child-theme .emo-hero__visual--vendors.emo-vendor-count-4{
+display:grid!important;
+grid-template-columns:repeat(2,minmax(0,1fr))!important;
+grid-template-rows:repeat(2,minmax(145px,auto))!important;
+grid-auto-columns:0!important;
+gap:.75rem!important;
+}
+html body.home.elmercado-child-theme .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--1{
+grid-column:1!important;grid-row:1!important;
+}
+html body.home.elmercado-child-theme .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--2{
+grid-column:2!important;grid-row:1!important;
+}
+html body.home.elmercado-child-theme .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--3{
+grid-column:1!important;grid-row:2!important;
+}
+html body.home.elmercado-child-theme .emo-hero__visual--vendors.emo-vendor-count-4 .emo-hero-card--4{
+grid-column:2!important;grid-row:2!important;
+}
 }
 </style>
 		<?php
