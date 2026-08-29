@@ -1,0 +1,73 @@
+name: Diagnose bellota English sitemap production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-bellota-english-sitemap-20260829.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect production sitemap path and runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp=$(command -v wp || true)
+          php=$(command -v php || true)
+          [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          prod=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$php" -d memory_limit=512M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+            esac
+          done
+          : "${prod:?production path missing}"
+          echo "PROD=$prod"
+          echo '=== PHYSICAL SITEMAP FILES ==='
+          find "$prod" -maxdepth 2 -type f -iname '*english*sitemap*' -ls 2>/dev/null || true
+          echo '=== PAGE/META/RUNTIME ==='
+          "$php" -d memory_limit=768M "$wp" eval '
+            $id=13580;
+            $p=get_post($id);
+            echo "post=".($p?($p->post_status."|".$p->post_type."|".$p->post_name):"missing").PHP_EOL;
+            foreach(array("_en_US_post_name","_en_US_published","_en_US_post_title") as $k){ echo $k."=".get_post_meta($id,$k,true).PHP_EOL; }
+            echo "function_mdoer_sitemap=".(function_exists("mdoer_sitemap")?"yes":"no").PHP_EOL;
+            if(function_exists("mdoer_sitemap")){
+              $urls=mdoer_sitemap();
+              echo "count=".count($urls).PHP_EOL;
+              $needle=home_url("/en/100-iberico-acorn-fed-ham/");
+              echo "needle=".$needle.PHP_EOL;
+              echo "contains=".(in_array($needle,$urls,true)?"yes":"no").PHP_EOL;
+              foreach($urls as $u){ if(stripos($u,"100-iberico")!==false || stripos($u,"bellota")!==false){ echo "hit=".$u.PHP_EOL; } }
+            }
+          ' --path="$prod" --allow-root
+          echo '=== ORIGIN SITEMAP ==='
+          curl -ksS --resolve www.elmercadodeorigen.com:443:127.0.0.1 'https://www.elmercadodeorigen.com/english-sitemap.xml?diag=20260829' | tee /tmp/origin-en-sitemap.xml | grep -o 'https://www.elmercadodeorigen.com/en/[^<]*' | grep -E '100-iberico|bellota' || true
+          echo "origin_bytes=$(wc -c </tmp/origin-en-sitemap.xml)"
+          echo '=== PUBLIC SITEMAP ==='
+          curl -ksS 'https://www.elmercadodeorigen.com/english-sitemap.xml?diag=20260829' | tee /tmp/public-en-sitemap.xml | grep -o 'https://www.elmercadodeorigen.com/en/[^<]*' | grep -E '100-iberico|bellota' || true
+          echo "public_bytes=$(wc -c </tmp/public-en-sitemap.xml)"
+          echo '=== RESPONSE HEADERS ==='
+          curl -ksSI --resolve www.elmercadodeorigen.com:443:127.0.0.1 'https://www.elmercadodeorigen.com/english-sitemap.xml?diag=20260829' | sed -n '1,25p'
+          REMOTE
