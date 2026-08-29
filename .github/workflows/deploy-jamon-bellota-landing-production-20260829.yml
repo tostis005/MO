@@ -102,13 +102,17 @@ jobs:
           grep -Fqi 'rel="canonical"' "$EN_OUT" || { echo "English canonical missing" >&2; exit 32; }
           grep -Fqi '/en/100-iberico-acorn-fed-ham/' "$EN_OUT" || { echo "English preferred URL missing from metadata" >&2; exit 33; }
 
-          SITEMAP=/tmp/emdo-english-sitemap.xml
-          curl -LsS --retry 3 -A 'Mozilla/5.0 EMDO sitemap verification' -o "$SITEMAP" "https://www.elmercadodeorigen.com/english-sitemap.xml?emdo_landing_verify=${GITHUB_RUN_ID}"
-          grep -Fq '/en/100-iberico-acorn-fed-ham/' "$SITEMAP" || { echo "English landing absent from English sitemap" >&2; exit 34; }
+          SITEMAP_INDEX=/tmp/emdo-sitemap-index.xml
+          PAGE_SITEMAP=/tmp/emdo-page-sitemap.xml
+          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO sitemap verification' -o "$SITEMAP_INDEX" "https://www.elmercadodeorigen.com/sitemap_index.xml?emdo_landing_verify=${GITHUB_RUN_ID}"
+          grep -Fq 'https://www.elmercadodeorigen.com/mdo-sitemap-pages.xml' "$SITEMAP_INDEX" || { echo "Active page sitemap missing from sitemap index" >&2; exit 34; }
+          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO sitemap verification' -o "$PAGE_SITEMAP" "https://www.elmercadodeorigen.com/mdo-sitemap-pages.xml?emdo_landing_verify=${GITHUB_RUN_ID}"
+          grep -Fq "$ES_URL" "$PAGE_SITEMAP" || { echo "Spanish landing absent from active page sitemap" >&2; exit 35; }
+          grep -Fq "$EN_URL" "$PAGE_SITEMAP" || { echo "English landing absent from active page sitemap" >&2; exit 36; }
 
           CAT=/tmp/emdo-ham-category.html
-          curl -LsS --retry 3 -A 'Mozilla/5.0 EMDO internal link verification' -o "$CAT" "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?emdo_landing_verify=${GITHUB_RUN_ID}"
-          grep -Fq '/jamon-bellota-100-iberico/' "$CAT" || { echo "Internal category link to landing missing" >&2; exit 35; }
+          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO internal link verification' -o "$CAT" "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?emdo_landing_verify=${GITHUB_RUN_ID}"
+          grep -Fq '/jamon-bellota-100-iberico/' "$CAT" || { echo "Internal category link to landing missing" >&2; exit 37; }
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
-          echo "landing_public_verification_ok es=$ES_URL en=$EN_URL"
+          echo "landing_public_verification_ok es=$ES_URL en=$EN_URL sitemap=active-index category_link=ok"
