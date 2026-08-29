@@ -1,0 +1,58 @@
+name: Diagnose production multilingual setup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-multilingual-production-20260829.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect production multilingual stack
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            set -e
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || { echo "PROD_NOT_FOUND"; exit 4; }
+            export PATH="$(dirname "$php"):$PATH"
+            echo "===ACTIVE_PLUGINS==="
+            "$php" "$wp" plugin list --path="$prod" --status=active --fields=name,status,version --format=table --allow-root || true
+            echo "===LANG_OPTIONS==="
+            "$php" "$wp" option list --path="$prod" --search="*translate*" --fields=option_name --format=csv --allow-root 2>/dev/null || true
+            "$php" "$wp" option list --path="$prod" --search="*lang*" --fields=option_name --format=csv --allow-root 2>/dev/null | head -80 || true
+            echo "===LANG_TABLES==="
+            prefix=$("$php" "$wp" db prefix --path="$prod" --allow-root)
+            "$php" "$wp" db query "SHOW TABLES LIKE \"${prefix}%trp%\"; SHOW TABLES LIKE \"${prefix}%icl%\"; SHOW TABLES LIKE \"${prefix}%weglot%\";" --path="$prod" --allow-root 2>/dev/null || true
+            echo "===EN_SAMPLE==="
+            curl -LsS -A "Mozilla/5.0" -o /dev/null -w "%{url_effective}|%{http_code}\n" https://www.elmercadodeorigen.com/en/ || true
+          '
