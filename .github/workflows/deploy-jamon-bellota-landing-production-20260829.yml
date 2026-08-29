@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy ES and EN landing to production
+      - name: Deploy and verify native ES EN landing in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -43,7 +43,7 @@ jobs:
             prod=""
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
               p=$(dirname "$cfg")
-              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              u=$("$php" -d memory_limit=512M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
               case "$u" in
                 https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
               esac
@@ -74,12 +74,11 @@ jobs:
           fi
 
           cat /tmp/emdo-landing.json
-          jq -e '.verified==true and .translation_mode!="none" and (.es.products|length)>0 and (.en.products|length)>0' /tmp/emdo-landing.json >/dev/null
+          jq -e '.verified==true and (.products|length)>0 and (.id|tonumber)>0' /tmp/emdo-landing.json >/dev/null
+          ES_URL="$(jq -r '.es_url' /tmp/emdo-landing.json)"
+          EN_URL="$(jq -r '.en_url' /tmp/emdo-landing.json)"
 
-          ES_URL="$(jq -r '.es.url' /tmp/emdo-landing.json)"
-          EN_URL="$(jq -r '.en.url' /tmp/emdo-landing.json)"
-
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' -d memory_limit=768M '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
 
           ES_OUT=/tmp/emdo-landing-es.html
           EN_OUT=/tmp/emdo-landing-en.html
@@ -88,16 +87,28 @@ jobs:
 
           [ "$ES_CODE" = "200" ] || { echo "HTTP $ES_CODE for $ES_URL" >&2; exit 20; }
           [ "$EN_CODE" = "200" ] || { echo "HTTP $EN_CODE for $EN_URL" >&2; exit 21; }
-          grep -Fqi 'Brida negra' "$ES_OUT" || { echo "Spanish landing content not found on frontend" >&2; exit 22; }
-          grep -Fqi 'black seal' "$EN_OUT" || { echo "English landing content not found on frontend" >&2; exit 23; }
-          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$ES_OUT"; then
-            echo "Spanish landing unexpectedly noindexed" >&2
-            exit 24
-          fi
-          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$EN_OUT"; then
-            echo "English landing unexpectedly noindexed" >&2
-            exit 25
-          fi
+          grep -Fqi 'Brida negra' "$ES_OUT" || { echo "Spanish landing content not found" >&2; exit 22; }
+          grep -Fqi 'black seal' "$EN_OUT" || { echo "English landing content not found" >&2; exit 23; }
+          grep -Fqi 'products' "$ES_OUT" || { echo "WooCommerce product block not rendered in Spanish" >&2; exit 24; }
+          grep -Fqi 'products' "$EN_OUT" || { echo "WooCommerce product block not rendered in English" >&2; exit 25; }
+
+          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$ES_OUT"; then echo "Spanish landing unexpectedly noindexed" >&2; exit 26; fi
+          if grep -Eqi '<meta[^>]+name=["'"']robots["'"'][^>]+content=["'"'][^"'"']*noindex' "$EN_OUT"; then echo "English landing unexpectedly noindexed" >&2; exit 27; fi
+
+          grep -Eqi 'hreflang=["'"']es-ES["'"']' "$ES_OUT" || { echo "Spanish hreflang missing" >&2; exit 28; }
+          grep -Eqi 'hreflang=["'"']en["'"']' "$ES_OUT" || { echo "English hreflang missing on Spanish landing" >&2; exit 29; }
+          grep -Eqi 'hreflang=["'"']es-ES["'"']' "$EN_OUT" || { echo "Spanish hreflang missing on English landing" >&2; exit 30; }
+          grep -Eqi 'hreflang=["'"']en["'"']' "$EN_OUT" || { echo "English hreflang missing" >&2; exit 31; }
+          grep -Fqi 'rel="canonical"' "$EN_OUT" || { echo "English canonical missing" >&2; exit 32; }
+          grep -Fqi '/en/100-iberico-acorn-fed-ham/' "$EN_OUT" || { echo "English preferred URL missing from metadata" >&2; exit 33; }
+
+          SITEMAP=/tmp/emdo-english-sitemap.xml
+          curl -LsS --retry 3 -A 'Mozilla/5.0 EMDO sitemap verification' -o "$SITEMAP" "https://www.elmercadodeorigen.com/english-sitemap.xml?emdo_landing_verify=${GITHUB_RUN_ID}"
+          grep -Fq '/en/100-iberico-acorn-fed-ham/' "$SITEMAP" || { echo "English landing absent from English sitemap" >&2; exit 34; }
+
+          CAT=/tmp/emdo-ham-category.html
+          curl -LsS --retry 3 -A 'Mozilla/5.0 EMDO internal link verification' -o "$CAT" "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?emdo_landing_verify=${GITHUB_RUN_ID}"
+          grep -Fq '/jamon-bellota-100-iberico/' "$CAT" || { echo "Internal category link to landing missing" >&2; exit 35; }
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
           echo "landing_public_verification_ok es=$ES_URL en=$EN_URL"
