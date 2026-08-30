@@ -1,0 +1,55 @@
+    update_post_meta($id, '_en_US_post_excerpt', $cfg['en_meta']);
+    update_post_meta($id, '_en_US_post_content', '<span data-no-translation>'.$en.'</span>');
+    update_post_meta($id, '_en_US_published', '1');
+    emdo_oc_aioseo($id, $cfg['seo_title'], $cfg['es_meta']);
+    return array('key'=>$cfg['key'],'group'=>$cfg['group'],'id'=>$id,'es_url'=>home_url('/'.$cfg['es_slug'].'/'),'en_url'=>home_url('/en/'.$cfg['en_slug'].'/'),'products'=>emdo_oc_resolve_product_ids($cfg['products']));
+}
+
+function emdo_oc_append_category_links(string $term_slug, array $rows): bool {
+    $term = get_term_by('slug', $term_slug, 'product_cat');
+    if (!$term || is_wp_error($term)) return false;
+    $start='<!-- emdo-commercial-landings-'.$term_slug.'-start -->';
+    $end='<!-- emdo-commercial-landings-'.$term_slug.'-end -->';
+    $pattern='/\s*'.preg_quote($start,'/').'.*?'.preg_quote($end,'/').'\s*/s';
+    $es=(string)$term->description;
+    $es=preg_replace($pattern,"\n",$es);
+    $links=array(); foreach($rows as $r){$links[]='<a href="'.esc_url($r['es_url']).'">'.esc_html($r['es_label']).'</a>';}
+    $es_block=$start.'<p><strong>Explora también:</strong> '.implode(' · ',$links).'.</p>'.$end;
+    $res=wp_update_term((int)$term->term_id,'product_cat',array('description'=>trim($es)."\n\n".$es_block));
+
+    $en=(string)get_term_meta((int)$term->term_id,'_en_US_description',true);
+    if($en!==''){
+        $en=preg_replace($pattern,"\n",$en);
+        $links=array(); foreach($rows as $r){$links[]='<a href="'.esc_url($r['en_url']).'">'.esc_html($r['en_label']).'</a>';}
+        $en_block=$start.'<p><strong>Explore also:</strong> '.implode(' · ',$links).'.</p>'.$end;
+        update_term_meta((int)$term->term_id,'_en_US_description',trim($en)."\n\n".$en_block);
+    }
+    return !is_wp_error($res);
+}
+
+$pages = array();
+
+$pages[] = array(
+'key'=>'aove-almazara','group'=>'aceites','es_slug'=>'aceite-oliva-virgen-extra-directo-almazara','en_slug'=>'extra-virgin-olive-oil-direct-from-spanish-mill',
+'es_title'=>'Aceite de Oliva Virgen Extra Directo de Almazara','en_title'=>'Extra Virgin Olive Oil Direct from a Spanish Mill',
+'seo_title'=>'Comprar AOVE Directo de Almazara | El Mercado de Origen',
+'es_meta'=>'Compra aceite de oliva virgen extra elaborado por una almazara familiar. Compara formatos de 5 L, 1 L y 500 ml de 1957 en El Mercado de Origen.',
+'en_meta'=>'Buy extra virgin olive oil from a Spanish family olive mill. Compare 5 L, 1 L and 500 ml formats from producer 1957.',
+'products'=>array('aceite-de-oliva-virgen-extra-5l','aceite-de-oliva-virgen-extra-1l','aceite-de-oliva-virgen-extra-500ml-pet'),
+'es_content'=><<<'HTML'
+<p>Comprar <strong>aceite de oliva virgen extra directamente de una almazara</strong> permite conocer quién lo elabora, cómo trabaja y qué formatos ofrece. En El Mercado de Origen reunimos los AOVEs de <strong>1957</strong>, un proyecto familiar ligado al olivar durante tres generaciones.</p>
+<p>Su catálogo está pensado para distintos ritmos de consumo: desde la garrafa de 5 litros hasta cajas de botellas de 1 litro o formatos de 500 ml. Así puedes elegir no solo por variedad o perfil de sabor, sino también por el envase que mejor encaje en casa.</p>
+{{PRODUCTS}}
+<h2>AOVE elaborado por una almazara familiar</h2>
+<p>1957 trabaja con aceitunas recogidas del árbol y obtiene sus aceites mediante procedimientos mecánicos. Uno de los aspectos que caracteriza su elaboración es el control de la temperatura: la extracción se realiza en frío, manteniendo el proceso por debajo de 19 ºC.</p>
+<p>La relación con el olivar comenzó en 1957 y ha continuado de generación en generación. Esa trazabilidad permite que la compra no se limite a una botella anónima: puedes conocer el productor y la historia que hay detrás del aceite.</p>
+<h2>Qué formato de aceite elegir</h2>
+<p>El formato más conveniente depende del consumo del hogar. La <strong>garrafa de 5 L</strong> resulta práctica cuando el AOVE se utiliza a diario para cocinar, aliñar o freír. Las cajas de botellas de <strong>1 L</strong> facilitan el almacenaje y el uso por unidades, mientras que los formatos de <strong>500 ml</strong> son cómodos para mesas, hogares con menor consumo o para repartir el aceite en varias ubicaciones.</p>
+<h2>Variedades y perfiles de sabor</h2>
+<p>En el producto de 5 litros pueden encontrarse distintas variedades. La Arbequina suele ofrecer un perfil más suave, mientras que Marteño —Picual— y Lechín presentan perfiles más intensos. No existe una única variedad mejor para todo: conviene elegir según el uso y el gusto personal.</p>
+<h2>Comprar aceite con origen visible</h2>
+<p>El objetivo de esta selección es que puedas comparar precio, formato, variedad y productor sin perder de vista el origen. Los productos disponibles se envían desde el productor y mantienen visible quién está detrás de su elaboración.</p>
+<h2>Preguntas frecuentes</h2>
+<h3>¿Qué significa que un aceite sea virgen extra?</h3><p>Es la categoría superior de los aceites de oliva vírgenes y debe cumplir los requisitos físico-químicos y sensoriales establecidos para esta denominación.</p>
+<h3>¿Compensa comprar AOVE en 5 litros?</h3><p>Puede ser una opción práctica para hogares con consumo frecuente. Lo importante es conservarlo bien cerrado, protegido de la luz y lejos de fuentes de calor.</p>
+<h3>¿El aceite procede de un productor concreto?</h3><p>Sí. Los AOVEs de esta selección están elaborados por 1957, cuyo proyecto y proceso de elaboración puedes consultar en su página de productor.</p>
