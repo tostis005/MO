@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-nutrition-priority-41-45-production
+  group: nutrition-priority-41-45-production-global
   cancel-in-progress: false
 
 jobs:
@@ -31,4 +31,4 @@ jobs:
         run: bash .github/scripts/run-nutrition-priority-41-45-production.sh
 
 # nutrition roadmap batch 41-45: EVOO nutrition FAQs
-# trigger after workflow registration
+# ownership-safe rollback retry; single global queue
