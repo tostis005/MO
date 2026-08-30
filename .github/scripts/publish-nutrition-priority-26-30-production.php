@@ -1,14 +1,17 @@
 <?php
-/** Publish bilingual nutrition priority articles 26-30. */
+/** Publish bilingual nutrition priority articles 26-30 (legumes). */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 $seed_dir = getenv( 'EMDO_NUTRITION_2630_SEED_DIR' );
 if ( ! is_string( $seed_dir ) || '' === trim( $seed_dir ) || ! is_dir( $seed_dir ) ) { WP_CLI::error( 'Invalid seed directory.' ); }
 $seed_dir = rtrim( $seed_dir, '/\\' );
 
 function emdo_2630_articles( string $dir ): array {
-    $file=$dir.'/content-seeds/nutrition-priority-26-30-010272.b64';
-    if(!is_readable($file)){ WP_CLI::error('Missing payload.'); }
-    $encoded=trim((string)file_get_contents($file));
+    $encoded='';
+    for($i=1;$i<=4;$i++){
+        $file=$dir.'/content-seeds/nutrition-priority-26-30-legumes-010273-'.$i.'.b64';
+        if(!is_readable($file)){ WP_CLI::error('Missing payload part '.$i); }
+        $encoded.=trim((string)file_get_contents($file));
+    }
     $gz=base64_decode($encoded,true); if(false===$gz){ WP_CLI::error('Invalid Base64 payload.'); }
     $json=gzdecode($gz); if(false===$json){ WP_CLI::error('Cannot decompress payload.'); }
     $data=json_decode($json,true);
@@ -51,27 +54,13 @@ function emdo_2630_save_en(int $id,array $a,string $content): void {
     update_post_meta($id,'_en_US_post_content',$content);
     update_post_meta($id,'_en_US_published','1');
 }
-function emdo_2630_remove_exact_stale(array $a): void {
-    $slug=(string)$a['slug'];
-    $existing=get_page_by_path($slug,OBJECT,'post');
-    if(!$existing instanceof WP_Post){ return; }
-    $same_title=trim((string)$existing->post_title)===trim((string)$a['title']);
-    $same_excerpt=trim((string)$existing->post_excerpt)===trim((string)$a['excerpt']);
-    if(!$same_title || !$same_excerpt){ WP_CLI::error('Safety stop: existing slug is not an exact batch 26-30 residue: '.$slug.' id='.(int)$existing->ID); }
-    WP_CLI::log('cleanup_stale_batch_post slug='.$slug.' id='.(int)$existing->ID);
-    $deleted=wp_delete_post((int)$existing->ID,true);
-    if(!$deleted){ WP_CLI::error('Could not remove exact stale batch post: '.$slug); }
-    clean_post_cache((int)$existing->ID);
-    if(get_page_by_path($slug,OBJECT,'post') instanceof WP_Post){ WP_CLI::error('Stale batch post still resolves after deletion: '.$slug); }
-}
 
 $articles=emdo_2630_articles($seed_dir); $image_id=emdo_2630_image_id();
 if($image_id<=0){ WP_CLI::error('Generic provisional image not found.'); }
 $rows=array(); $errors=array();
 foreach($articles as $a){
     $slug=(string)$a['slug'];
-    emdo_2630_remove_exact_stale($a);
-    if(get_page_by_path($slug,OBJECT,'post') instanceof WP_Post){ WP_CLI::error('Safety stop: slug still exists after exact-residue cleanup: '.$slug); }
+    if(get_page_by_path($slug,OBJECT,'post') instanceof WP_Post){ WP_CLI::error('Safety stop: target slug already exists: '.$slug); }
     $cat_id=emdo_2630_category_id($a); if($cat_id<=0){ WP_CLI::error('Blog category not found: '.$a['category_slug']); }
     $product_slugs=emdo_2630_product_slugs($a);
     $es=emdo_2630_render($a,$product_slugs,false); $en=emdo_2630_render($a,$product_slugs,true);

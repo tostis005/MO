@@ -6,7 +6,7 @@ python3 - <<'PY'
 import base64,gzip,json
 from pathlib import Path
 root=Path('elmercadodeorigen-child/inc/content-seeds')
-enc=''.join((root/f'nutrition-priority-26-30-010272-{i}.b64').read_text().strip() for i in range(1,5))
+enc=''.join((root/f'nutrition-priority-26-30-legumes-010273-{i}.b64').read_text().strip() for i in range(1,5))
 data=json.loads(gzip.decompress(base64.b64decode(enc,validate=True)).decode('utf-8'))
 if len(data)!=5: raise SystemExit('Expected five articles')
 for a in data:
@@ -14,6 +14,7 @@ for a in data:
         raise SystemExit('Article too short: '+a['slug'])
     if '<!-- EMDO_RELATED_PRODUCTS -->' not in a['content'] or '<!-- EMDO_RELATED_PRODUCTS -->' not in a['en_content']:
         raise SystemExit('Related placeholder missing: '+a['slug'])
+    if a['category_slug']!='legumbres': raise SystemExit('Unexpected category: '+a['slug'])
 Path('/tmp/nutrition-2630.json').write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
 print('Editorial payload OK:', ', '.join(a['slug'] for a in data))
 PY
@@ -31,7 +32,7 @@ CRITICAL_URLS=(
  'https://www.elmercadodeorigen.com/'
  'https://www.elmercadodeorigen.com/tienda/'
  'https://www.elmercadodeorigen.com/blog/'
- 'https://www.elmercadodeorigen.com/category/carnes/'
+ 'https://www.elmercadodeorigen.com/category/legumbres/'
 )
 health_check(){
   local phase="$1"; shift
@@ -60,34 +61,24 @@ INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
   printf "%s|%s|%s" "$prod" "$php" "$wp"
 ')"
 PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-REMOTE="/tmp/emdo-nutrition-2630-${GITHUB_RUN_ID}"
+REMOTE="/tmp/emdo-nutrition-2630-legumes-${GITHUB_RUN_ID}"
 
-# Delete only an exact stale residue from a prior attempt of this batch.
 for slug in "${TARGET_SLUGS[@]}"; do
-  expected_title="$(jq -r --arg s "$slug" '.[]|select(.slug==$s)|.title' /tmp/nutrition-2630.json)"
-  expected_excerpt="$(jq -r --arg s "$slug" '.[]|select(.slug==$s)|.excerpt' /tmp/nutrition-2630.json)"
   ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --post_status=any --name='$slug' --format=ids 2>/dev/null || true")"
-  for id in $ids; do
-    actual_title="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post get '$id' --field=post_title --path='$PROD' --allow-root 2>/dev/null || true")"
-    actual_excerpt="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post get '$id' --field=post_excerpt --path='$PROD' --allow-root 2>/dev/null || true")"
-    [ "$actual_title" = "$expected_title" ] && [ "$actual_excerpt" = "$expected_excerpt" ] || {
-      echo "Safety stop: existing slug is not this batch: $slug id=$id title=$actual_title" >&2; exit 10;
-    }
-    echo "cleanup_stale_batch_post slug=$slug id=$id"
-    sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete '$id' --force --path='$PROD' --allow-root >/dev/null"
-  done
+  [ -z "${ids// /}" ] || { echo "Safety stop: target slug already exists: $slug ids=$ids" >&2; exit 10; }
 done
 
 sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
 sshpass -e scp $SCP .github/scripts/publish-nutrition-priority-26-30-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
-cat elmercadodeorigen-child/inc/content-seeds/nutrition-priority-26-30-010272-{1,2,3,4}.b64 > /tmp/nutrition-priority-26-30-010272.b64
-sshpass -e scp $SCP /tmp/nutrition-priority-26-30-010272.b64 "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
+for i in 1 2 3 4; do
+  sshpass -e scp $SCP "elmercadodeorigen-child/inc/content-seeds/nutrition-priority-26-30-legumes-010273-${i}.b64" "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
+done
 
 ROLLBACK_ACTIVE=1
 rollback_only_new_posts(){
   rc=$?; set +e
   if [ "${ROLLBACK_ACTIVE:-0}" = 1 ]; then
-    echo 'Verification failed: rolling back only batch 26-30 posts.' >&2
+    echo 'Verification failed: rolling back only new batch 26-30 legume posts.' >&2
     for slug in "${TARGET_SLUGS[@]}"; do
       ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --post_status=any --name='$slug' --format=ids 2>/dev/null || true")"
       [ -z "${ids// /}" ] || sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete $ids --force --path='$PROD' --allow-root >/dev/null 2>&1 || true"
@@ -127,4 +118,4 @@ while read -r slug; do grep -Fq "$slug" /tmp/blog.html; done < <(jq -r '.posts[]
 health_check post "${CRITICAL_URLS[@]}"
 ROLLBACK_ACTIVE=0; trap - ERR
 sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
-echo 'SAFE_PUBLICATION_OK: batch 26-30 published and verified.'
+echo 'SAFE_PUBLICATION_OK: batch 26-30 legumes published and verified.'
