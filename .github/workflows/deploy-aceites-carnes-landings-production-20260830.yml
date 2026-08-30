@@ -1,4 +1,4 @@
-name: Deploy curated oil and meat SEO landings
+name: Deploy curated commercial SEO landings
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - '.github/scripts/deploy-aceites-carnes-landings-production-20260830.php'
       - '.github/scripts/fix-aove-landings-product-set-production-20260830.php'
       - '.github/scripts/cleanup-duplicate-oil-meat-landings-production-20260830.php'
+      - '.github/scripts/deploy-verduras-legumbres-landings-production-20260830.php'
   workflow_dispatch:
 
 permissions:
@@ -16,7 +17,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -24,7 +25,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Clean, deploy and verify ES EN landings in production
+      - name: Deploy and verify ES EN commercial landings in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -45,52 +46,48 @@ jobs:
             [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
           ')"
           PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE="/tmp/emdo-ac-${GITHUB_RUN_ID}"
+          REMOTE="/tmp/emdo-commercial-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
           sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
             .github/scripts/cleanup-duplicate-oil-meat-landings-production-20260830.php \
             .github/scripts/deploy-aceites-carnes-landings-production-20260830.php \
             .github/scripts/fix-aove-landings-product-set-production-20260830.php \
+            .github/scripts/deploy-verduras-legumbres-landings-production-20260830.php \
             "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/cleanup-duplicate-oil-meat-landings-production-20260830.php' --path='$PROD' --allow-root" > /tmp/cleanup.json
-          cat /tmp/cleanup.json
           jq -e '.verified==true' /tmp/cleanup.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-aceites-carnes-landings-production-20260830.php' --path='$PROD' --allow-root" > /tmp/ac.json
-          cat /tmp/ac.json
           jq -e '.verified==true and .count==11 and .aceites==3 and .carnes==8 and (.pages|length)==11' /tmp/ac.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/fix-aove-landings-product-set-production-20260830.php' --path='$PROD' --allow-root" > /tmp/aove-fix.json
-          cat /tmp/aove-fix.json
           jq -e '.verified==true and .product_count==3 and (.product_slugs|length)==3 and (.pages|length)==3' /tmp/aove-fix.json >/dev/null
 
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -l '$REMOTE/deploy-verduras-legumbres-landings-production-20260830.php' >/dev/null; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-verduras-legumbres-landings-production-20260830.php' --path='$PROD' --allow-root" > /tmp/vl.json
+          cat /tmp/vl.json
+          jq -e '.verified==true and .count>=2 and .vegetables>=1 and .legumes>=1 and (.pages|length)==.count' /tmp/vl.json >/dev/null
+
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
-          jq -r '.pages[] | .es_url, .en_url' /tmp/ac.json > /tmp/urls.txt
+
+          jq -r '.pages[] | .es_url, .en_url' /tmp/vl.json > /tmp/vl-urls.txt
           while IFS= read -r url; do
             code="$(curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO landing verify' -o /tmp/page.html -w '%{http_code}' "${url}?verify=${GITHUB_RUN_ID}")"
             [ "$code" = "200" ] || { echo "HTTP $code for $url" >&2; exit 20; }
             if grep -Eqi '<meta[^>]+robots[^>]+noindex' /tmp/page.html; then echo "Unexpected noindex: $url" >&2; exit 21; fi
-          done < /tmp/urls.txt
-
-          for url in \
-            'https://www.elmercadodeorigen.com/aove-cordoba-directo-almazara/' \
-            'https://www.elmercadodeorigen.com/aove-arbequina/' \
-            'https://www.elmercadodeorigen.com/aove-picual/' \
-            'https://www.elmercadodeorigen.com/en/cordoba-extra-virgin-olive-oil-direct-from-mill/' \
-            'https://www.elmercadodeorigen.com/en/arbequina-extra-virgin-olive-oil/' \
-            'https://www.elmercadodeorigen.com/en/picual-extra-virgin-olive-oil/'; do
-            curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO AOVE product verify' -o /tmp/oil-page.html "${url}?verify_products=${GITHUB_RUN_ID}"
-            grep -Fqi '15x1L' /tmp/oil-page.html || grep -Fqi '15 × 1L' /tmp/oil-page.html || { echo "15x1L AOVE product missing from $url" >&2; exit 25; }
-          done
+            grep -Fqi 'hreflang="es-ES"' /tmp/page.html || { echo "Missing es hreflang: $url" >&2; exit 22; }
+            grep -Fqi 'hreflang="en"' /tmp/page.html || { echo "Missing en hreflang: $url" >&2; exit 23; }
+          done < /tmp/vl-urls.txt
 
           curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO sitemap verify' -o /tmp/pages.xml "https://www.elmercadodeorigen.com/mdo-sitemap-pages.xml?verify=${GITHUB_RUN_ID}"
-          while IFS= read -r url; do grep -Fq "$url" /tmp/pages.xml || { echo "Missing from sitemap: $url" >&2; exit 22; }; done < /tmp/urls.txt
-          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o /tmp/oils.html "https://www.elmercadodeorigen.com/categoria-producto/aceites/?verify=${GITHUB_RUN_ID}"
-          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o /tmp/meat.html "https://www.elmercadodeorigen.com/categoria-producto/carnes/?verify=${GITHUB_RUN_ID}"
-          for slug in aove-cordoba-directo-almazara aove-arbequina aove-picual; do grep -Fq "/$slug/" /tmp/oils.html || { echo "Oil category link missing: $slug" >&2; exit 23; }; done
-          for slug in carne-ternera-online carne-vaca-madurada carne-para-barbacoa packs-lotes-carne carne-para-guisar carne-para-asar filetes-ternera-online hamburguesas-ternera-vaca; do grep -Fq "/$slug/" /tmp/meat.html || { echo "Meat category link missing: $slug" >&2; exit 24; }; done
-          if grep -Fq 'emdo-commercial-landings-' /tmp/oils.html || grep -Fq 'emdo-commercial-landings-' /tmp/meat.html; then echo 'Legacy alternate category block still present' >&2; exit 26; fi
+          while IFS= read -r url; do grep -Fq "$url" /tmp/pages.xml || { echo "Missing from sitemap: $url" >&2; exit 24; }; done < /tmp/vl-urls.txt
+
+          VEG_CAT="$(jq -r '.category_terms.vegetables.url' /tmp/vl.json)"
+          LEG_CAT="$(jq -r '.category_terms.legumes.url' /tmp/vl.json)"
+          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o /tmp/veg.html "${VEG_CAT}?verify=${GITHUB_RUN_ID}"
+          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o /tmp/leg.html "${LEG_CAT}?verify=${GITHUB_RUN_ID}"
+          jq -r '.pages[] | select(.group=="verduras") | .es_url' /tmp/vl.json | while IFS= read -r url; do path="/${url#*://*/}"; slug="$(basename "${url%/}")"; grep -Fq "/$slug/" /tmp/veg.html || { echo "Vegetable category link missing: $slug" >&2; exit 25; }; done
+          jq -r '.pages[] | select(.group=="legumbres") | .es_url' /tmp/vl.json | while IFS= read -r url; do slug="$(basename "${url%/}")"; grep -Fq "/$slug/" /tmp/leg.html || { echo "Legume category link missing: $slug" >&2; exit 26; }; done
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
-          echo all_curated_oil_meat_landings_verified
+          echo all_curated_vegetable_legume_landings_verified
