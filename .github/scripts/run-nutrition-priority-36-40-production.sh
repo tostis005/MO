@@ -3,11 +3,13 @@ set -euo pipefail
 
 php -l .github/scripts/publish-nutrition-priority-36-40-production.php
 python3 - <<'PY'
-import base64,gzip,json
+import base64,gzip,json,hashlib
 from pathlib import Path
-parts=sorted(Path('elmercadodeorigen-child/inc/content-seeds').glob('nutrition-priority-36-40-010273.part*'))
-if len(parts)!=7: raise SystemExit('Expected seven payload parts')
+parts=sorted(Path('elmercadodeorigen-child/inc/content-seeds').glob('nutrition-priority-36-40-010273-v2.part*'))
+if len(parts)!=3: raise SystemExit('Expected three payload parts')
 enc=''.join(p.read_text().strip() for p in parts)
+expected_sha='0585a338cdd9442b1062b250989aac6e689b64c859dc0c4ce8212d892e1b8a3d'
+if hashlib.sha256(enc.encode()).hexdigest()!=expected_sha: raise SystemExit('Payload integrity check failed')
 data=json.loads(gzip.decompress(base64.b64decode(enc,validate=True)).decode('utf-8'))
 if len(data)!=5: raise SystemExit('Expected five articles')
 expected=['jamones-y-paletas','jamones-y-paletas','jamones-y-paletas','jamones-y-paletas','aceites']
@@ -77,7 +79,7 @@ done
 
 sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
 sshpass -e scp $SCP .github/scripts/publish-nutrition-priority-36-40-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
-sshpass -e scp $SCP elmercadodeorigen-child/inc/content-seeds/nutrition-priority-36-40-010273.part* "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
+sshpass -e scp $SCP elmercadodeorigen-child/inc/content-seeds/nutrition-priority-36-40-010273-v2.part* "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
 
 ROLLBACK_ACTIVE=1
 rollback_only_new_posts(){
