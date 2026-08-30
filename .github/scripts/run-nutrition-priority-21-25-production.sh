@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Single protected publisher for batch 21-25. This script is intentionally the only 21-25 runner touched by this commit.
 
 php -l .github/scripts/publish-nutrition-priority-21-25-production.php
 python3 - <<'PY'
