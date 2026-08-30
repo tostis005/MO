@@ -16,6 +16,7 @@ jobs:
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Publish protected batch 16-20
