@@ -6,12 +6,9 @@ if ( ! is_string( $seed_dir ) || '' === trim( $seed_dir ) || ! is_dir( $seed_dir
 $seed_dir = rtrim( $seed_dir, '/\\' );
 
 function emdo_2630_articles( string $dir ): array {
-    $encoded='';
-    for($i=1;$i<=4;$i++){
-        $file=$dir.'/content-seeds/nutrition-priority-26-30-legumes-010273-'.$i.'.b64';
-        if(!is_readable($file)){ WP_CLI::error('Missing payload part '.$i); }
-        $encoded.=trim((string)file_get_contents($file));
-    }
+    $file=$dir.'/content-seeds/nutrition-priority-26-30-010272.b64';
+    if(!is_readable($file)){ WP_CLI::error('Missing payload file.'); }
+    $encoded=trim((string)file_get_contents($file));
     $gz=base64_decode($encoded,true); if(false===$gz){ WP_CLI::error('Invalid Base64 payload.'); }
     $json=gzdecode($gz); if(false===$json){ WP_CLI::error('Cannot decompress payload.'); }
     $data=json_decode($json,true);
