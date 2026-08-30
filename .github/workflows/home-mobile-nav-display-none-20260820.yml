@@ -1,4 +1,4 @@
-name: Publish nutrition priority batch 16-20 production
+name: Publish nutrition priority batch 21-25 production
 
 on:
   push:
@@ -19,6 +19,6 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publish protected batch 16-20
+      - name: Publish protected batch 21-25
         shell: bash
-        run: bash .github/scripts/run-nutrition-priority-16-20-production.sh
+        run: bash .github/scripts/run-nutrition-priority-21-25-production.sh
