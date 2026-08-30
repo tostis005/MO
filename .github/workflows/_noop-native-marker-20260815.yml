@@ -1,30 +1,8 @@
-name: One-time publish nutrition batch 21-25
-
+name: Native translation marker 2026-08-15
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/_noop-native-marker-20260815.yml'
-
-concurrency:
-  group: publish-nutrition-priority-21-25-one-time
-  cancel-in-progress: false
-
-permissions:
-  contents: read
-
+  workflow_dispatch:
 jobs:
-  publish:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
-      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+  marker:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Publish and verify batch 21-25
-        shell: bash
-        run: bash .github/scripts/run-nutrition-priority-21-25-production.sh
+      - run: echo native-translation-work
