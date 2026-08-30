@@ -1,0 +1,204 @@
+name: Publish Iberian ham nutrition batch 1 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-jamon-nutrition-batch1-production.yml'
+      - '.github/scripts/publish-jamon-nutrition-batch1-production.php'
+      - 'elmercadodeorigen-child/inc/content-seeds/jamon-nutrition-010268-*.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate editorial payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-jamon-nutrition-batch1-production.php
+          for part in 1 2 3 4; do
+            test -s "elmercadodeorigen-child/inc/content-seeds/jamon-nutrition-010268-${part}.b64"
+          done
+          python3 - <<'PY'
+          import base64
+          import gzip
+          import json
+          from pathlib import Path
+
+          root = Path('elmercadodeorigen-child/inc/content-seeds')
+          encoded = ''.join((root / f'jamon-nutrition-010268-{i}.b64').read_text().strip() for i in range(1, 5))
+          data = json.loads(gzip.decompress(base64.b64decode(encoded, validate=True)).decode('utf-8'))
+          if len(data) != 5:
+              raise SystemExit('Expected exactly five articles.')
+          required = {'slug','title','excerpt','content','en_slug','en_title','en_excerpt','en_content'}
+          for article in data:
+              missing = required.difference(article)
+              if missing:
+                  raise SystemExit(f'Missing article keys: {sorted(missing)}')
+              if len(article['content']) < 4000 or len(article['en_content']) < 3500:
+                  raise SystemExit(f'Article too short: {article["slug"]}')
+          Path('/tmp/jamon-nutrition.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+          print('Editorial payload OK:', ', '.join(a['slug'] for a in data))
+          PY
+
+      - name: Publish with preflight, rollback and public verification
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          UA="Mozilla/5.0 EMDO safe Iberian ham publication verification"
+          mapfile -t TARGET_SLUGS < <(jq -r '.[].slug' /tmp/jamon-nutrition.json)
+          [ "${#TARGET_SLUGS[@]}" -eq 5 ]
+
+          CRITICAL_URLS=(
+            'https://www.elmercadodeorigen.com/'
+            'https://www.elmercadodeorigen.com/tienda/'
+            'https://www.elmercadodeorigen.com/blog/'
+            'https://www.elmercadodeorigen.com/category/jamones-y-paletas/'
+          )
+
+          health_check() {
+            local phase="$1"
+            shift
+            for url in "$@"; do
+              local file code bytes
+              file="/tmp/health-${phase}-$(echo "$url" | tr '/:?&=' '_').html"
+              code="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$file" -w '%{http_code}' "${url}?emdo_health=${GITHUB_RUN_ID}-${phase}")"
+              [ "$code" = "200" ] || { echo "Health ${phase}: HTTP ${code} for ${url}" >&2; return 1; }
+              bytes="$(wc -c < "$file")"
+              [ "$bytes" -gt 5000 ] || { echo "Health ${phase}: suspiciously small response (${bytes} bytes) for ${url}" >&2; return 1; }
+              grep -qi '</html>' "$file" || { echo "Health ${phase}: incomplete HTML for ${url}" >&2; return 1; }
+              echo "health_ok phase=${phase} http=${code} bytes=${bytes} url=${url}"
+            done
+          }
+
+          health_check pre "${CRITICAL_URLS[@]}"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-jamon-safe-${GITHUB_RUN_ID}"
+
+          for slug in "${TARGET_SLUGS[@]}"; do
+            ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
+            [ -z "${ids// /}" ] || { echo "Safety stop: production slug already exists: ${slug} (${ids})" >&2; exit 10; }
+          done
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
+          sshpass -e scp $SCP .github/scripts/publish-jamon-nutrition-batch1-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/content-seeds/jamon-nutrition-010268-*.b64 "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
+
+          ROLLBACK_ACTIVE=1
+          rollback_only_new_posts() {
+            rc=$?
+            if [ "${ROLLBACK_ACTIVE:-0}" = "1" ]; then
+              echo "Verification failed: rolling back only the five new ham nutrition posts." >&2
+              set +e
+              for slug in "${TARGET_SLUGS[@]}"; do
+                ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
+                if [ -n "${ids// /}" ]; then
+                  echo "rollback_delete slug=${slug} ids=${ids}" >&2
+                  sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete $ids --force --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+                fi
+              done
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' rewrite flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1
+              health_check rollback "${CRITICAL_URLS[@]}" || true
+              set -e
+            fi
+            exit "$rc"
+          }
+          trap rollback_only_new_posts ERR
+
+          trap - ERR
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_JAMON_SEED_DIR='$REMOTE'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-jamon-nutrition-batch1-production.php' --path='$PROD' --allow-root" > /tmp/jamon-batch1.raw 2> /tmp/jamon-batch1.err
+          PUBLISH_RC=$?
+          set -e
+          trap rollback_only_new_posts ERR
+
+          echo "publisher_rc=${PUBLISH_RC} stdout_bytes=$(wc -c < /tmp/jamon-batch1.raw) stderr_bytes=$(wc -c < /tmp/jamon-batch1.err)"
+          if [ -s /tmp/jamon-batch1.err ]; then
+            cat /tmp/jamon-batch1.err >&2 || true
+          fi
+          if [ -s /tmp/jamon-batch1.raw ]; then
+            cat /tmp/jamon-batch1.raw || true
+          fi
+          [ "$PUBLISH_RC" -eq 0 ]
+
+          JSON_LINE="$(grep -E '^\{.*\}$' /tmp/jamon-batch1.raw | tail -n 1 || true)"
+          [ -n "$JSON_LINE" ] || { echo 'Publisher emitted no parseable JSON.' >&2; false; }
+          printf '%s\n' "$JSON_LINE" > /tmp/jamon-batch1.json
+          jq -e '.verified == true and .count == 5 and (.errors | length) == 0 and (.posts | length) == 5' /tmp/jamon-batch1.json >/dev/null
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+
+          while IFS=$'\t' read -r slug en_slug title en_title permalink en_permalink; do
+            es_file="/tmp/post-${slug}.html"
+            en_file="/tmp/post-${en_slug}.html"
+
+            es_code="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$es_file" -w '%{http_code}' "${permalink}?emdo_verify=${GITHUB_RUN_ID}")"
+            [ "$es_code" = "200" ]
+            [ "$(wc -c < "$es_file")" -gt 5000 ]
+            grep -qi '</html>' "$es_file"
+            grep -Fq "$title" "$es_file"
+
+            en_code="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$en_file" -w '%{http_code}' "${en_permalink}?emdo_verify=${GITHUB_RUN_ID}")"
+            [ "$en_code" = "200" ]
+            [ "$(wc -c < "$en_file")" -gt 5000 ]
+            grep -qi '</html>' "$en_file"
+            grep -Fq "$en_title" "$en_file"
+            echo "post_ok es=${permalink} en=${en_permalink}"
+          done < <(jq -r '.posts[] | [.slug,.en_slug,.title,.en_title,.permalink,.en_permalink] | @tsv' /tmp/jamon-batch1.json)
+
+          curl -L -sS --retry 3 -A "$UA" "https://www.elmercadodeorigen.com/category/jamones-y-paletas/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/jamones-category.html
+          curl -L -sS --retry 3 -A "$UA" "https://www.elmercadodeorigen.com/blog/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/blog.html
+          while IFS= read -r slug; do
+            grep -Fq "$slug" /tmp/jamones-category.html
+            grep -Fq "$slug" /tmp/blog.html
+          done < <(jq -r '.posts[].slug' /tmp/jamon-batch1.json)
+
+          health_check post "${CRITICAL_URLS[@]}"
+
+          ROLLBACK_ACTIVE=0
+          trap - ERR
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
+          echo "SAFE_PUBLICATION_OK: 5 Spanish Iberian ham posts + 5 English translations; site healthy before and after; no rollback needed."
