@@ -3,8 +3,6 @@ name: Vegetable and legume landing production deploy
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/about-live-cache-audit-010226-production.yml'
   workflow_dispatch:
 
 permissions:
