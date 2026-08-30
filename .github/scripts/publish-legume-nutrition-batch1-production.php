@@ -46,11 +46,6 @@ function emdo_legume_batch1_articles( string $seed_dir ): array {
 		$encoded .= (string) file_get_contents( $file );
 	}
 
-	/*
-	 * The payload is Base64 text. Previous transport introduced a non-Base64
-	 * character in one chunk, so normalize to the canonical alphabet before
-	 * decoding. This does not alter the compressed editorial bytes themselves.
-	 */
 	$encoded = preg_replace( '/[^A-Za-z0-9+\/=]/', '', $encoded );
 	if ( ! is_string( $encoded ) || '' === $encoded ) {
 		WP_CLI::error( 'Editorial payload is empty after normalization.' );
@@ -82,11 +77,6 @@ function emdo_legume_batch1_articles( string $seed_dir ): array {
 
 $articles = emdo_legume_batch1_articles( $seed_dir );
 
-/*
- * Publish directly from the already-decoded payload. We deliberately do not
- * call the automatic seed runner here: that runner performs a second decode
- * and was the source of the failed production attempt.
- */
 $category_id = elmercado_legume_blog_category_id_010267();
 if ( $category_id <= 0 ) {
 	WP_CLI::error( 'Legumbres category could not be resolved.' );
