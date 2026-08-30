@@ -1,17 +1,13 @@
-name: Publish nutrition priority batch 41-45 production launcher 2
+name: Publish nutrition priority batch 31-35 production
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/publish-nutrition-priority-31-35-production.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-nutrition-priority-41-45-production-launcher-2
+  group: publish-nutrition-priority-31-35-production
   cancel-in-progress: false
 
 jobs:
@@ -26,8 +22,8 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publish and verify batch 41-45
+      - name: Publish and verify batch 31-35
         shell: bash
-        run: bash .github/scripts/run-nutrition-priority-41-45-production.sh
+        run: bash .github/scripts/run-nutrition-priority-31-35-production.sh
 
-# temporary registered launcher for nutrition roadmap batch 41-45
+# completed historical batch; manual dispatch only
