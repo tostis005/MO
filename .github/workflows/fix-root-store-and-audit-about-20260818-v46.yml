@@ -1,98 +1,29 @@
-name: Fix root store and audit About v46
+name: One-time protected nutrition batch 21-25
+
 on:
   push:
     branches: [main]
     paths: ['.github/workflows/fix-root-store-and-audit-about-20260818-v46.yml']
-  workflow_dispatch:
+
+concurrency:
+  group: publish-nutrition-priority-21-25-final
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  fix-audit:
+  publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 25
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
-      - name: Marker and source correction
+      - name: Publish and verify batch 21-25
         shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions; git config user.email github-actions@github.com
-          git pull --rebase origin main
-          printf 'run_id=%s\nstatus=started\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v46.txt
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('mu-plugins/mdo-z-english-vendor-seo-010260.php')
-          s=p.read_text()
-          old="""\t} elseif ( preg_match( '#^en/store/([^/]+)$#i', $path, $m ) ) {
-          \t\t$internal = '/en/tienda/' . mdoev_store_slug_010260( $m[1] ) . '/';
-          }
-          """
-          if old not in s:
-              raise SystemExit('Root store bootstrap branch not found')
-          s=s.replace(old,"\t}\n",1)
-          s=s.replace(' * Version: 1.0.1',' * Version: 1.0.2',1)
-          p.write_text(s)
-          PY
-          php -l mu-plugins/mdo-z-english-vendor-seo-010260.php
-          git add runtime/english-vendor-v46.txt mu-plugins/mdo-z-english-vendor-seo-010260.php
-          git commit -m 'Avoid duplicate root WCFM store rewrite'
-          git pull --rebase origin main
-          git push origin HEAD:main
-      - name: Deploy production
-        shell: bash
-        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" 'wp=$(command -v wp); ph=$(command -v php || true); [ -n "$ph" ] || ph=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); u=$("$ph" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null||true); case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com) printf %s "$p";break;;esac;done')"
-          : "${PROD_PATH:?}"
-          echo "$PROD_PATH" >/tmp/prod_path46
-          sshpass -e scp $SCP mu-plugins/mdo-z-english-vendor-seo-010260.php "$STAGING_USER@$STAGING_HOST:$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1); \"\$ph\" -l '$PROD_PATH/wp-content/mu-plugins/mdo-z-english-vendor-seo-010260.php'; wp=\$(command -v wp); \"\$ph\" \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-      - name: Audit routes and About content from production
-        shell: bash
-        env: {SSHPASS: '${{ secrets.STAGING_PASSWORD }}'}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"; SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"; PROD_PATH="$(cat /tmp/prod_path46)"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
-            set +e
-            out=/tmp/v46.txt; : >\"\$out\"
-            for u in https://www.elmercadodeorigen.com/en/store/1957/ https://www.elmercadodeorigen.com/en/store/1957/about/ https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/ https://www.elmercadodeorigen.com/en/store/hidalgo-de-la-jara/about/; do
-              rm -f /tmp/h46 /tmp/b46
-              code=\$(curl -k -L --max-redirs 6 -sS --connect-timeout 8 --max-time 35 -D /tmp/h46 -o /tmp/b46 -w '%{http_code}' \"\$u\" 2>/tmp/e46); rc=\$?
-              echo \"=== \$u\" >>\"\$out\"
-              echo \"rc=\$rc code=\$code redirects=\$(grep -ic '^location:' /tmp/h46 2>/dev/null || true) bytes=\$(wc -c </tmp/b46 2>/dev/null || echo 0)\" >>\"\$out\"
-              grep -iE '^(HTTP/|location:|x-redirect-by:)' /tmp/h46 2>/dev/null | tail -12 >>\"\$out\"
-              if [ -f /tmp/b46 ]; then
-                echo \"product_links=\$(grep -oE '/en/product/[^\\\" <]+' /tmp/b46|sort -u|wc -l) policies=\$(grep -oiE '>[[:space:]]*Policies[[:space:]]*<' /tmp/b46|wc -l) about_links=\$(grep -oE '/en/store/[^\\\" ]+/about/' /tmp/b46|sort -u|wc -l) story=\$(grep -oi 'The story of' /tmp/b46|wc -l) livestock=\$(grep -oi 'livestock farmers' /tmp/b46|wc -l) spanish=\$(grep -oiE 'La historia de|Los ganaderos que integran' /tmp/b46|wc -l)\" >>\"\$out\"
-                grep -oE '<title>[^<]+' /tmp/b46 | head -1 >>\"\$out\"
-                python3 - <<'PY2' /tmp/b46 >>\"\$out\"
-import re,sys,html
-s=open(sys.argv[1],errors='ignore').read()
-s=re.sub(r'<script\b[^>]*>.*?</script>',' ',s,flags=re.I|re.S); s=re.sub(r'<style\b[^>]*>.*?</style>',' ',s,flags=re.I|re.S); s=re.sub(r'<[^>]+>',' ',s); s=html.unescape(s); s=re.sub(r'\s+',' ',s).strip()
-print('TEXT_SAMPLE='+s[:1400])
-PY2
-              fi
-            done
-            echo '=== DB DESCRIPTIONS ===' >>\"\$out\"
-            wp=\$(command -v wp); ph=\$(command -v php || true); [ -n \"\$ph\" ] || ph=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null|sort -Vr|head -1)
-            \"\$ph\" -d memory_limit=768M \"\$wp\" eval 'global \$wpdb; foreach(\$wpdb->get_results(\"SELECT user_id,meta_value FROM {\$wpdb->usermeta} WHERE meta_key=\\\"wcfmmp_profile_settings\\\"\",ARRAY_A) as \$r){\$s=maybe_unserialize(\$r[\"meta_value\"]);if(!is_array(\$s)||empty(\$s[\"store_slug\"]))continue;\$id=(int)\$r[\"user_id\"];\$es=(string)get_user_meta(\$id,\"_store_description\",true);if(!trim(wp_strip_all_tags(\$es)))\$es=(string)(\$s[\"shop_description\"]??\"\");\$en=(string)get_user_meta(\$id,\"_mdo_en_store_description\",true);\$pc=(int)\$wpdb->get_var(\$wpdb->prepare(\"SELECT COUNT(*) FROM {\$wpdb->posts} WHERE post_type=\\\"product\\\" AND post_status=\\\"publish\\\" AND post_author=%d\",\$id));echo \"slug=\".\$s[\"store_slug\"].\" user=\".\$id.\" products=\".\$pc.\" es_chars=\".mb_strlen(trim(wp_strip_all_tags(\$es))).\" en_chars=\".mb_strlen(trim(wp_strip_all_tags(\$en))).\" en_sample=\".mb_substr(trim(preg_replace(\"/\\\\s+/u\",\" \",wp_strip_all_tags(\$en))),0,250).PHP_EOL;}' --path='$PROD_PATH' --allow-root >>\"\$out\" 2>&1
-            cat \"\$out\"
-          " > runtime/english-vendor-audit-v46.txt
-      - name: Commit report
-        if: always()
-        run: |
-          git config user.name github-actions; git config user.email github-actions@github.com
-          git pull --rebase origin main
-          printf 'run_id=%s\nstatus=complete\n' "$GITHUB_RUN_ID" > runtime/english-vendor-v46.txt
-          git add runtime/english-vendor-v46.txt runtime/english-vendor-audit-v46.txt
-          git commit -m 'Record root store and About audit v46' || exit 0
-          git push origin HEAD:main
+        run: bash .github/scripts/run-nutrition-priority-21-25-production.sh
