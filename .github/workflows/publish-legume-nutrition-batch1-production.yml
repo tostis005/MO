@@ -135,7 +135,6 @@ jobs:
             done
           }
 
-          # First verify the public site is healthy. No production write has happened yet.
           health_check pre "${CRITICAL_URLS[@]}"
 
           INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
@@ -162,7 +161,6 @@ jobs:
           WP="${REST#*|}"
           REMOTE="/tmp/emdo-legume-safe-${GITHUB_RUN_ID}"
 
-          # Safety invariant: none of the five target slugs may pre-exist in production.
           for slug in "${TARGET_SLUGS[@]}"; do
             ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
             [ -z "${ids// /}" ] || { echo "Safety stop: production slug already exists: ${slug} (${ids})" >&2; exit 10; }
@@ -201,25 +199,37 @@ jobs:
           }
           trap rollback_only_new_posts ERR
 
-          # The only production mutation starts here.
           set +e
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_LEGUME_SEED_DIR='$REMOTE'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-legume-nutrition-batch1-production.php' --path='$PROD' --allow-root" > /tmp/legume-batch1.raw 2> /tmp/legume-batch1.err
           PUBLISH_RC=$?
           set -e
-          if [ "$PUBLISH_RC" -ne 0 ]; then
-            echo "Publisher failed with rc=${PUBLISH_RC}" >&2
+
+          echo "publisher_rc=${PUBLISH_RC} stdout_bytes=$(wc -c < /tmp/legume-batch1.raw) stderr_bytes=$(wc -c < /tmp/legume-batch1.err)"
+          if [ -s /tmp/legume-batch1.err ]; then
+            echo '--- publisher stderr ---' >&2
             cat /tmp/legume-batch1.err >&2 || true
-            cat /tmp/legume-batch1.raw >&2 || true
+            echo '--- end publisher stderr ---' >&2
+          fi
+          if [ -s /tmp/legume-batch1.raw ]; then
+            echo '--- publisher stdout ---'
+            cat /tmp/legume-batch1.raw || true
+            echo '--- end publisher stdout ---'
+          fi
+
+          if [ "$PUBLISH_RC" -ne 0 ]; then
             false
           fi
 
-          tail -n 1 /tmp/legume-batch1.raw > /tmp/legume-batch1.json
-          cat /tmp/legume-batch1.json
+          JSON_LINE="$(grep -E '^\{.*\}$' /tmp/legume-batch1.raw | tail -n 1 || true)"
+          if [ -z "$JSON_LINE" ]; then
+            echo 'Publisher returned success but emitted no parseable JSON result.' >&2
+            false
+          fi
+          printf '%s\n' "$JSON_LINE" > /tmp/legume-batch1.json
           jq -e '.verified == true and .count == 5 and (.errors | length) == 0 and (.posts | length) == 5' /tmp/legume-batch1.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
 
-          # Verify all 10 public URLs, full HTML and the expected translated titles.
           while IFS=$'\t' read -r slug en_slug title en_title permalink en_permalink; do
             es_file="/tmp/post-${slug}.html"
             en_file="/tmp/post-${en_slug}.html"
@@ -238,7 +248,6 @@ jobs:
             echo "post_ok es=${permalink} en=${en_permalink}"
           done < <(jq -r '.posts[] | [.slug,.en_slug,.title,.en_title,.permalink,.en_permalink] | @tsv' /tmp/legume-batch1.json)
 
-          # Verify discovery surfaces contain every new Spanish slug.
           curl -L -sS --retry 3 -A "$UA" "https://www.elmercadodeorigen.com/category/legumbres/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/legumbres-category.html
           curl -L -sS --retry 3 -A "$UA" "https://www.elmercadodeorigen.com/blog/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/blog.html
           while IFS= read -r slug; do
@@ -246,7 +255,6 @@ jobs:
             grep -Fq "$slug" /tmp/blog.html
           done < <(jq -r '.posts[].slug' /tmp/legume-batch1.json)
 
-          # Final whole-site health check after publication.
           health_check post "${CRITICAL_URLS[@]}"
 
           ROLLBACK_ACTIVE=0
