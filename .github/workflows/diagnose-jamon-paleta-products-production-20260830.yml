@@ -1,4 +1,4 @@
-name: Inventory oil and meat products for landings
+name: Inventory vegetables and legumes for landings
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inventory production oil and meat products
+      - name: Inventory production vegetables and legumes
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -47,13 +47,22 @@ jobs:
           "$php" -d memory_limit=768M "$wp" eval '
             $terms=get_terms(array("taxonomy"=>"product_cat","hide_empty"=>false));
             echo "TERMS\n";
-            foreach($terms as $t){ if(stripos($t->name,"aceit")!==false || stripos($t->name,"carne")!==false || stripos($t->slug,"aceit")!==false || stripos($t->slug,"carne")!==false){ echo wp_json_encode(array("id"=>$t->term_id,"slug"=>$t->slug,"name"=>$t->name,"count"=>$t->count),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL; }}
+            foreach($terms as $t){
+              $s=mb_strtolower($t->slug." ".$t->name);
+              if(strpos($s,"hortal")!==false || strpos($s,"verdur")!==false || strpos($s,"legumbr")!==false){
+                echo wp_json_encode(array("id"=>$t->term_id,"slug"=>$t->slug,"name"=>$t->name,"count"=>$t->count),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).PHP_EOL;
+              }
+            }
             echo "PRODUCTS\n";
             $q=new WP_Query(array("post_type"=>"product","post_status"=>"publish","posts_per_page"=>-1,"orderby"=>"title","order"=>"ASC"));
             foreach($q->posts as $p){
               $cats=wp_get_post_terms($p->ID,"product_cat",array("fields"=>"all"));
               $match=false; $catrows=array();
-              foreach($cats as $c){ $catrows[]=array("slug"=>$c->slug,"name"=>$c->name); if(stripos($c->name,"aceit")!==false || stripos($c->name,"carne")!==false || stripos($c->slug,"aceit")!==false || stripos($c->slug,"carne")!==false){$match=true;} }
+              foreach($cats as $c){
+                $catrows[]=array("slug"=>$c->slug,"name"=>$c->name);
+                $s=mb_strtolower($c->slug." ".$c->name);
+                if(strpos($s,"hortal")!==false || strpos($s,"verdur")!==false || strpos($s,"legumbr")!==false){$match=true;}
+              }
               if(!$match) continue;
               $tags=wp_get_post_terms($p->ID,"product_tag",array("fields"=>"names"));
               $prod=wc_get_product($p->ID);
