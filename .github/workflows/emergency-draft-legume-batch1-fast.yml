@@ -1,0 +1,76 @@
+name: Emergency draft legume batch 1 fast
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-draft-legume-batch1-fast.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Draft only the five new posts and verify archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/emergency-draft-legume-batch1.php
+          PORT="${STAGING_PORT:-22}"
+          ASKPASS="$RUNNER_TEMP/emdo-askpass.sh"
+          cat > "$ASKPASS" <<'SH'
+          #!/bin/sh
+          printf '%s\n' "$STAGING_PASSWORD"
+          SH
+          chmod 700 "$ASKPASS"
+          export SSH_ASKPASS="$ASKPASS"
+          export SSH_ASKPASS_REQUIRE=force
+          export DISPLAY=:0
+          SSH_OPTS=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT")
+          SCP_OPTS=(-P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20)
+
+          remote_ssh() { setsid -w ssh "${SSH_OPTS[@]}" "$STAGING_USER@$STAGING_HOST" "$@" < /dev/null; }
+          remote_scp() { setsid -w scp "${SCP_OPTS[@]}" "$@" < /dev/null; }
+
+          INFO="$(remote_ssh '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-emergency-legumes-fast-${GITHUB_RUN_ID}.php"
+
+          remote_scp .github/scripts/emergency-draft-legume-batch1.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          remote_ssh "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -f '$REMOTE'"
+
+          CODE="$(curl -L -sS --retry 3 --retry-delay 1 -A 'Mozilla/5.0 EMDO emergency verification' -o /tmp/legumbres.html -w '%{http_code}' "https://www.elmercadodeorigen.com/category/legumbres/?emdo_rollback_fast=${GITHUB_RUN_ID}")"
+          echo "Legumbres archive HTTP: $CODE"
+          test "$CODE" = "200"
+          grep -qi '<html' /tmp/legumbres.html
+          echo "Legumbres archive restored."
