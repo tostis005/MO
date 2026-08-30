@@ -1,5 +1,6 @@
 <?php
 /** Remove overly specific 12-jar preserves landing and keep permanent redirects. */
+// Triggered after workflow registration; operation is idempotent.
 if (!defined('ABSPATH')) { fwrite(STDERR, "WordPress is not loaded.\n"); exit(1); }
 
 $key = 'conservas-12-tarros';
