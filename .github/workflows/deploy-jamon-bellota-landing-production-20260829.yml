@@ -1,12 +1,11 @@
-name: Deploy curated jamon and paleta landings
+name: Deploy curated oil and meat landings
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/deploy-jamon-bellota-landing-production-20260829.yml'
-      - '.github/scripts/deploy-jamon-bellota-landing-production-20260829.php'
-      - '.github/scripts/deploy-jamon-paleta-landings-bulk-production-20260830.php'
+      - '.github/scripts/oil-meat-landings/**'
   workflow_dispatch:
 
 permissions:
@@ -15,7 +14,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -23,7 +22,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy ES EN commercial landings to production
+      - name: Deploy ES EN oil and meat landings to production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -31,6 +30,9 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          cat .github/scripts/oil-meat-landings/part-*.phpfrag > /tmp/deploy-oil-meat-landings.php
+          php -l /tmp/deploy-oil-meat-landings.php
+
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
           INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
@@ -54,41 +56,40 @@ jobs:
           REST="${INFO#*|}"
           PHP="${REST%%|*}"
           WP="${REST#*|}"
-          REMOTE="/tmp/emdo-jp-${GITHUB_RUN_ID}"
+          REMOTE="/tmp/emdo-oc-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
           sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
-            .github/scripts/deploy-jamon-bellota-landing-production-20260829.php \
-            .github/scripts/deploy-jamon-paleta-landings-bulk-production-20260830.php \
-            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+            /tmp/deploy-oil-meat-landings.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-jamon-bellota-landing-production-20260829.php' --path='$PROD' --allow-root" > /tmp/first.json
-          jq -e '.verified==true and (.products|length)>0' /tmp/first.json >/dev/null
-          cat /tmp/first.json
-
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-jamon-paleta-landings-bulk-production-20260830.php' --path='$PROD' --allow-root" > /tmp/bulk.json
-          jq -e '.verified==true and .count==8 and (.pages|length)==8' /tmp/bulk.json >/dev/null
-          cat /tmp/bulk.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -l '$REMOTE/deploy-oil-meat-landings.php' && '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-oil-meat-landings.php' --path='$PROD' --allow-root" > /tmp/result.json
+          cat /tmp/result.json
+          jq -e '.verified==true and .count==10 and .oil_count==1 and .meat_count==9 and (.pages|length)==10' /tmp/result.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
 
-          printf '%s\n' "$(jq -r '.es_url' /tmp/first.json)" "$(jq -r '.en_url' /tmp/first.json)" > /tmp/urls.txt
-          jq -r '.pages[] | .es_url, .en_url' /tmp/bulk.json >> /tmp/urls.txt
+          jq -r '.pages[] | .es_url, .en_url' /tmp/result.json > /tmp/urls.txt
           while IFS= read -r url; do
             code="$(curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO landing verify' -o /tmp/page.html -w '%{http_code}' "${url}?verify=${GITHUB_RUN_ID}")"
             [ "$code" = "200" ] || { echo "HTTP $code for $url" >&2; exit 20; }
+            if grep -Eqi '<meta[^>]+robots[^>]+noindex' /tmp/page.html; then echo "Unexpected noindex: $url" >&2; exit 21; fi
+            grep -Fqi 'hreflang="es-ES"' /tmp/page.html || { echo "Missing es hreflang: $url" >&2; exit 22; }
+            grep -Fqi 'hreflang="en"' /tmp/page.html || { echo "Missing en hreflang: $url" >&2; exit 23; }
           done < /tmp/urls.txt
 
           PAGE_SITEMAP=/tmp/pages.xml
           curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO sitemap verify' -o "$PAGE_SITEMAP" "https://www.elmercadodeorigen.com/mdo-sitemap-pages.xml?verify=${GITHUB_RUN_ID}"
           while IFS= read -r url; do
-            grep -Fq "$url" "$PAGE_SITEMAP" || { echo "Missing from page sitemap: $url" >&2; exit 21; }
+            grep -Fq "$url" "$PAGE_SITEMAP" || { echo "Missing from page sitemap: $url" >&2; exit 24; }
           done < /tmp/urls.txt
 
-          CAT=/tmp/category.html
-          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o "$CAT" "https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?verify=${GITHUB_RUN_ID}"
-          for slug in jamon-bellota-100-iberico paleta-bellota-100-iberica jamon-cebo-campo-iberico jamon-iberico-dop-los-pedroches paleta-iberica-dop-los-pedroches jamon-iberico-loncheado paleta-iberica-loncheada jamon-iberico-deshuesado jamon-paleta-ibericos-para-regalar; do
-            grep -Fq "/$slug/" "$CAT" || { echo "Category link missing: $slug" >&2; exit 22; }
+          OIL_CAT=/tmp/oil-cat.html
+          MEAT_CAT=/tmp/meat-cat.html
+          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o "$OIL_CAT" "https://www.elmercadodeorigen.com/categoria-producto/aceites/?verify=${GITHUB_RUN_ID}"
+          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o "$MEAT_CAT" "https://www.elmercadodeorigen.com/categoria-producto/carnes/?verify=${GITHUB_RUN_ID}"
+          grep -Fq '/aceite-oliva-virgen-extra-directo-almazara/' "$OIL_CAT" || { echo 'Oil category link missing' >&2; exit 25; }
+          for slug in carne-ternera-online carne-vaca-madurada carne-para-barbacoa lotes-carne-online carne-para-guisar carne-para-asar filetes-ternera-online cortes-premium-vacuno hamburguesas-ternera-vaca-online; do
+            grep -Fq "/$slug/" "$MEAT_CAT" || { echo "Meat category link missing: $slug" >&2; exit 26; }
           done
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
-          echo 'all_curated_jamon_paleta_landings_verified'
+          echo 'all_curated_oil_meat_landings_verified'
