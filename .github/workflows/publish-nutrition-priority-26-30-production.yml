@@ -1,0 +1,31 @@
+name: Publish nutrition priority batch 26-30 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-nutrition-priority-26-30-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-nutrition-priority-26-30-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish and verify batch 26-30
+        shell: bash
+        run: bash .github/scripts/run-nutrition-priority-26-30-production.sh
