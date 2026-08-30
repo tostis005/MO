@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Single protected publisher for batch 21-25. This script is intentionally the only 21-25 runner touched by this commit.
 
 php -l .github/scripts/publish-nutrition-priority-21-25-production.php
 python3 - <<'PY'
@@ -62,9 +61,17 @@ INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
 PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
 REMOTE="/tmp/emdo-nutrition-2125-${GITHUB_RUN_ID}"
 
+# Clean only stale residues created by earlier attempts of this exact batch.
+# A matching slug is deleted only when its title is exactly the title in the signed editorial payload.
 for slug in "${TARGET_SLUGS[@]}"; do
-  ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
-  [ -z "${ids// /}" ] || { echo "Safety stop: slug exists: $slug ($ids)" >&2; exit 10; }
+  expected_title="$(jq -r --arg s "$slug" '.[]|select(.slug==$s)|.title' /tmp/nutrition-2125.json)"
+  ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --post_status=any --name='$slug' --format=ids 2>/dev/null || true")"
+  for id in $ids; do
+    actual_title="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post get '$id' --field=post_title --path='$PROD' --allow-root 2>/dev/null || true")"
+    [ "$actual_title" = "$expected_title" ] || { echo "Safety stop: existing slug is not this batch: $slug id=$id title=$actual_title" >&2; exit 10; }
+    echo "cleanup_stale_batch_post slug=$slug id=$id"
+    sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete '$id' --force --path='$PROD' --allow-root >/dev/null"
+  done
 done
 
 sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
@@ -77,7 +84,7 @@ rollback_only_new_posts(){
   if [ "${ROLLBACK_ACTIVE:-0}" = 1 ]; then
     echo 'Verification failed: rolling back only batch 21-25 posts.' >&2
     for slug in "${TARGET_SLUGS[@]}"; do
-      ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
+      ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --post_status=any --name='$slug' --format=ids 2>/dev/null || true")"
       [ -z "${ids// /}" ] || sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete $ids --force --path='$PROD' --allow-root >/dev/null 2>&1 || true"
     done
     sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' rewrite flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1
