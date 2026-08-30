@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate publication payload
+      - name: Validate and recover publication payload
         shell: bash
         run: |
           set -euo pipefail
@@ -32,6 +32,73 @@ jobs:
           for part in 1 2 3 4; do
             test -s "elmercadodeorigen-child/inc/content-seeds/legume-nutrition-010267-${part}.b64"
           done
+          python3 - <<'PY'
+          import base64
+          import gzip
+          from pathlib import Path
+
+          root = Path('elmercadodeorigen-child/inc/content-seeds')
+          paths = [root / f'legume-nutrition-010267-{part}.b64' for part in range(1, 5)]
+          encoded = ''.join(path.read_text(encoding='utf-8').strip() for path in paths)
+          markers = [
+              b'a:5:{',
+              'Qué nutrientes aportan las legumbres'.encode('utf-8'),
+              'Garbanzos, lentejas o alubias'.encode('utf-8'),
+              b'en_title',
+              b'en_content',
+          ]
+
+          def unpack(candidate):
+              try:
+                  compressed = base64.b64decode(candidate, validate=True)
+                  data = gzip.decompress(compressed)
+              except Exception:
+                  return None
+              return data if all(marker in data for marker in markers) else None
+
+          recovered = encoded if unpack(encoded) is not None else None
+          recovered_at = None
+          recovered_char = None
+          alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+          if recovered is None:
+              # The stored fragment sizes show the missing character is overwhelmingly
+              # likely to be inside fragment 2 (7000..13999 in the concatenated string).
+              search_ranges = [range(7000, min(14000, len(encoded) + 1)), range(0, len(encoded) + 1)]
+              checked_positions = set()
+              for positions in search_ranges:
+                  for pos in positions:
+                      if pos in checked_positions:
+                          continue
+                      checked_positions.add(pos)
+                      prefix = encoded[:pos]
+                      suffix = encoded[pos:]
+                      for char in alphabet:
+                          candidate = prefix + char + suffix
+                          if unpack(candidate) is not None:
+                              recovered = candidate
+                              recovered_at = pos
+                              recovered_char = char
+                              break
+                      if recovered is not None:
+                          break
+                  if recovered is not None:
+                      break
+
+          if recovered is None:
+              raise SystemExit('Could not recover the single missing Base64 character.')
+
+          # Re-split on deterministic 7000-character boundaries so the PHP seed can
+          # consume the exact original payload without any special production logic.
+          chunks = [recovered[i:i + 7000] for i in range(0, len(recovered), 7000)]
+          if len(chunks) != 4 or len(recovered) % 4 != 0 or unpack(recovered) is None:
+              raise SystemExit('Recovered payload failed final integrity validation.')
+          for path, chunk in zip(paths, chunks):
+              path.write_text(chunk, encoding='utf-8')
+
+          detail = 'already valid' if recovered_at is None else f'recovered missing character at offset {recovered_at}'
+          print(f'Editorial payload integrity OK: {detail}; {len(recovered)} Base64 characters.')
+          PY
 
       - name: Publish and verify on production
         shell: bash
