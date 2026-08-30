@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/publish-legume-nutrition-batch1-production.yml'
-      - '.github/scripts/publish-legume-nutrition-batch1-production.php'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +13,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -58,12 +57,9 @@ jobs:
 
           recovered = encoded if unpack(encoded) is not None else None
           recovered_at = None
-          recovered_char = None
           alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
           if recovered is None:
-              # The stored fragment sizes show the missing character is overwhelmingly
-              # likely to be inside fragment 2 (7000..13999 in the concatenated string).
               search_ranges = [range(7000, min(14000, len(encoded) + 1)), range(0, len(encoded) + 1)]
               checked_positions = set()
               for positions in search_ranges:
@@ -78,7 +74,6 @@ jobs:
                           if unpack(candidate) is not None:
                               recovered = candidate
                               recovered_at = pos
-                              recovered_char = char
                               break
                       if recovered is not None:
                           break
@@ -86,10 +81,8 @@ jobs:
                       break
 
           if recovered is None:
-              raise SystemExit('Could not recover the single missing Base64 character.')
+              raise SystemExit('Could not recover the missing Base64 character safely.')
 
-          # Re-split on deterministic 7000-character boundaries so the PHP seed can
-          # consume the exact original payload without any special production logic.
           chunks = [recovered[i:i + 7000] for i in range(0, len(recovered), 7000)]
           if len(chunks) != 4 or len(recovered) % 4 != 0 or unpack(recovered) is None:
               raise SystemExit('Recovered payload failed final integrity validation.')
@@ -100,16 +93,50 @@ jobs:
           print(f'Editorial payload integrity OK: {detail}; {len(recovered)} Base64 characters.')
           PY
 
-      - name: Publish and verify on production
+      - name: Publish with preflight, rollback and postflight verification
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+
           PORT="${STAGING_PORT:-22}"
           SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          UA="Mozilla/5.0 EMDO safe legume publication verification"
+          TARGET_SLUGS=(
+            'que-nutrientes-aportan-legumbres-proteinas-fibra-hierro-vitaminas-minerales'
+            'que-legumbre-tiene-mas-proteina-comparativa-legumbres-espana'
+            'que-legumbre-tiene-mas-hierro-comparativa-legumbres-espana'
+            'que-legumbre-tiene-mas-fibra-comparativa-nutricional'
+            'garbanzos-lentejas-alubias-cual-es-mas-nutritiva'
+          )
+          CRITICAL_URLS=(
+            'https://www.elmercadodeorigen.com/'
+            'https://www.elmercadodeorigen.com/tienda/'
+            'https://www.elmercadodeorigen.com/blog/'
+            'https://www.elmercadodeorigen.com/category/legumbres/'
+          )
+
+          health_check() {
+            local phase="$1"
+            shift
+            for url in "$@"; do
+              local file code bytes
+              file="/tmp/health-${phase}-$(echo "$url" | tr '/:?&=' '_').html"
+              code="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$file" -w '%{http_code}' "${url}?emdo_health=${GITHUB_RUN_ID}-${phase}")"
+              [ "$code" = "200" ] || { echo "Health ${phase}: HTTP ${code} for ${url}" >&2; return 1; }
+              bytes="$(wc -c < "$file")"
+              [ "$bytes" -gt 5000 ] || { echo "Health ${phase}: suspiciously small response (${bytes} bytes) for ${url}" >&2; return 1; }
+              grep -qi '</html>' "$file" || { echo "Health ${phase}: incomplete HTML for ${url}" >&2; return 1; }
+              echo "health_ok phase=${phase} http=${code} bytes=${bytes} url=${url}"
+            done
+          }
+
+          # First verify the public site is healthy. No production write has happened yet.
+          health_check pre "${CRITICAL_URLS[@]}"
 
           INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
             wp=$(command -v wp || true)
@@ -133,10 +160,15 @@ jobs:
           REST="${INFO#*|}"
           PHP="${REST%%|*}"
           WP="${REST#*|}"
-          REMOTE="/tmp/emdo-legume-batch1-${GITHUB_RUN_ID}"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
+          REMOTE="/tmp/emdo-legume-safe-${GITHUB_RUN_ID}"
 
-          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          # Safety invariant: none of the five target slugs may pre-exist in production.
+          for slug in "${TARGET_SLUGS[@]}"; do
+            ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
+            [ -z "${ids// /}" ] || { echo "Safety stop: production slug already exists: ${slug} (${ids})" >&2; exit 10; }
+          done
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
           sshpass -e scp $SCP \
             .github/scripts/publish-legume-nutrition-batch1-production.php \
             elmercadodeorigen-child/inc/blog-legume-nutrition-seed-010267.php \
@@ -148,37 +180,65 @@ jobs:
             elmercadodeorigen-child/inc/content-seeds/legume-nutrition-010267-4.b64 \
             "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
 
-          set +e
+          ROLLBACK_ACTIVE=1
+          rollback_only_new_posts() {
+            rc=$?
+            if [ "${ROLLBACK_ACTIVE:-0}" = "1" ]; then
+              echo "Verification failed: rolling back only the five new target posts." >&2
+              set +e
+              for slug in "${TARGET_SLUGS[@]}"; do
+                ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
+                if [ -n "${ids// /}" ]; then
+                  sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete $ids --force --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+                fi
+              done
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' rewrite flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1
+              set -e
+            fi
+            exit "$rc"
+          }
+          trap rollback_only_new_posts ERR
+
+          # The only production mutation starts here.
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_LEGUME_SEED_DIR='$REMOTE'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-legume-nutrition-batch1-production.php' --path='$PROD' --allow-root" > /tmp/legume-batch1.raw 2> /tmp/legume-batch1.err
-          RC=$?
-          set -e
-          if [ "$RC" -ne 0 ]; then
-            cat /tmp/legume-batch1.err >&2 || true
-            cat /tmp/legume-batch1.raw >&2 || true
-            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
-            exit "$RC"
-          fi
 
           tail -n 1 /tmp/legume-batch1.raw > /tmp/legume-batch1.json
           cat /tmp/legume-batch1.json
-          jq -e '.verified == true and .count == 5 and (.errors | length) == 0' /tmp/legume-batch1.json >/dev/null
+          jq -e '.verified == true and .count == 5 and (.errors | length) == 0 and (.posts | length) == 5' /tmp/legume-batch1.json >/dev/null
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
 
-          while IFS=$'\t' read -r slug en_slug permalink en_permalink; do
-            ES_CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO legume publication verification' -o "/tmp/${slug}.html" -w '%{http_code}' "${permalink}?emdo_legume_batch1=${GITHUB_RUN_ID}")"
-            [ "$ES_CODE" = "200" ] || { echo "Spanish URL failed: $permalink ($ES_CODE)" >&2; exit 20; }
-            EN_CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO legume publication verification' -o "/tmp/${en_slug}.html" -w '%{http_code}' "${en_permalink}?emdo_legume_batch1=${GITHUB_RUN_ID}")"
-            [ "$EN_CODE" = "200" ] || { echo "English URL failed: $en_permalink ($EN_CODE)" >&2; exit 21; }
-            echo "verified es=$permalink en=$en_permalink"
-          done < <(jq -r '.posts[] | [.slug,.en_slug,.permalink,.en_permalink] | @tsv' /tmp/legume-batch1.json)
+          # Verify all 10 public URLs, full HTML and the expected translated titles.
+          while IFS=$'\t' read -r slug en_slug title en_title permalink en_permalink; do
+            es_file="/tmp/post-${slug}.html"
+            en_file="/tmp/post-${en_slug}.html"
 
-          curl -L -sS --retry 3 -A 'Mozilla/5.0 EMDO blog verification' "https://www.elmercadodeorigen.com/category/legumbres/?emdo_legume_batch1=${GITHUB_RUN_ID}" -o /tmp/legumbres-category.html
-          curl -L -sS --retry 3 -A 'Mozilla/5.0 EMDO blog verification' "https://www.elmercadodeorigen.com/blog/?emdo_legume_batch1=${GITHUB_RUN_ID}" -o /tmp/blog.html
+            es_code="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$es_file" -w '%{http_code}' "${permalink}?emdo_verify=${GITHUB_RUN_ID}")"
+            [ "$es_code" = "200" ]
+            [ "$(wc -c < "$es_file")" -gt 5000 ]
+            grep -qi '</html>' "$es_file"
+            grep -Fq "$title" "$es_file"
+
+            en_code="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$en_file" -w '%{http_code}' "${en_permalink}?emdo_verify=${GITHUB_RUN_ID}")"
+            [ "$en_code" = "200" ]
+            [ "$(wc -c < "$en_file")" -gt 5000 ]
+            grep -qi '</html>' "$en_file"
+            grep -Fq "$en_title" "$en_file"
+            echo "post_ok es=${permalink} en=${en_permalink}"
+          done < <(jq -r '.posts[] | [.slug,.en_slug,.title,.en_title,.permalink,.en_permalink] | @tsv' /tmp/legume-batch1.json)
+
+          # Verify discovery surfaces contain every new Spanish slug.
+          curl -L -sS --retry 3 -A "$UA" "https://www.elmercadodeorigen.com/category/legumbres/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/legumbres-category.html
+          curl -L -sS --retry 3 -A "$UA" "https://www.elmercadodeorigen.com/blog/?emdo_verify=${GITHUB_RUN_ID}" -o /tmp/blog.html
           while IFS= read -r slug; do
-            grep -Fq "$slug" /tmp/legumbres-category.html || { echo "Slug missing from Legumbres category: $slug" >&2; exit 22; }
-            grep -Fq "$slug" /tmp/blog.html || { echo "Slug missing from Blog: $slug" >&2; exit 23; }
+            grep -Fq "$slug" /tmp/legumbres-category.html
+            grep -Fq "$slug" /tmp/blog.html
           done < <(jq -r '.posts[].slug' /tmp/legume-batch1.json)
 
+          # Final whole-site health check after publication.
+          health_check post "${CRITICAL_URLS[@]}"
+
+          ROLLBACK_ACTIVE=0
+          trap - ERR
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
-          echo "Production publication verified: 5 Spanish posts, 5 English translations, category and blog listings."
+          echo "SAFE_PUBLICATION_OK: 5 Spanish posts + 5 English translations; home, shop, blog and Legumbres healthy before and after; no rollback needed."
