@@ -61,7 +61,7 @@ jobs:
           sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
             /tmp/deploy-oil-meat-landings.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
 
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -l '$REMOTE/deploy-oil-meat-landings.php' && '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-oil-meat-landings.php' --path='$PROD' --allow-root" > /tmp/result.json
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -l '$REMOTE/deploy-oil-meat-landings.php' >/dev/null && '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/deploy-oil-meat-landings.php' --path='$PROD' --allow-root" > /tmp/result.json
           cat /tmp/result.json
           jq -e '.verified==true and .count==10 and .oil_count==1 and .meat_count==9 and (.pages|length)==10' /tmp/result.json >/dev/null
 
