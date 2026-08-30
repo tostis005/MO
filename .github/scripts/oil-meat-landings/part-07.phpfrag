@@ -1,0 +1,22 @@
+    $labels=array(
+      'aove-almazara'=>array('AOVE directo de almazara','EVOO direct from a Spanish mill'),
+      'ternera-online'=>array('Carne de ternera online','Fresh beef online'),
+      'vaca-madurada'=>array('Carne de vaca madurada','Dry-aged mature beef'),
+      'barbacoa'=>array('Carne para barbacoa','Beef for barbecue'),
+      'lotes-carne'=>array('Lotes de carne','Beef meat boxes'),
+      'guisar'=>array('Carne para guisar','Beef for stewing'),
+      'asar'=>array('Carne para asar','Beef roasting joints'),
+      'filetes-ternera'=>array('Filetes de ternera','Beef steaks'),
+      'premium-vacuno'=>array('Cortes premium de vacuno','Premium beef cuts'),
+      'hamburguesas'=>array('Hamburguesas de ternera y vaca','Beef burgers'),
+    );
+    foreach($results as $r){
+      $row=$r; $row['es_label']=$labels[$r['key']][0]; $row['en_label']=$labels[$r['key']][1];
+      if($r['group']==='aceites') $oil_rows[]=$row; else $meat_rows[]=$row;
+    }
+    $oil_linked=emdo_oc_append_category_links('aceites',$oil_rows);
+    $meat_linked=emdo_oc_append_category_links('carnes',$meat_rows);
+    if(!$oil_linked || !$meat_linked) throw new Exception('Category internal-link injection failed.');
+    if(function_exists('flush_rewrite_rules')) flush_rewrite_rules(false);
+    echo wp_json_encode(array('verified'=>true,'count'=>count($results),'oil_count'=>count($oil_rows),'meat_count'=>count($meat_rows),'pages'=>$results,'categories'=>array('aceites'=>$oil_linked,'carnes'=>$meat_linked)),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+} catch(Throwable $e){ fwrite(STDERR,$e->getMessage()."\n"); exit(1); }
