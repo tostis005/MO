@@ -170,3 +170,5 @@ jobs:
           trap - ERR
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
           echo "SAFE_PUBLICATION_OK: 5 Spanish nutrition posts + 5 English translations; category and related products set; site healthy before and after; no rollback needed."
+
+# Triggered through PR so GitHub Actions evaluates the registered workflow on merge.
