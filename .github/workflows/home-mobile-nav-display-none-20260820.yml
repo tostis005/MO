@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: publish-nutrition-priority-21-25-production
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
