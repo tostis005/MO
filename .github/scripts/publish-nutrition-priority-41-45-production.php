@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 $seed_dir = getenv( 'EMDO_NUTRITION_4145_SEED_DIR' );
 if ( ! is_string( $seed_dir ) || '' === trim( $seed_dir ) || ! is_dir( $seed_dir ) ) { WP_CLI::error( 'Invalid seed directory.' ); }
 $seed_dir = rtrim( $seed_dir, '/\\' );
+$batch_token = getenv( 'EMDO_BATCH_TOKEN' );
+if ( ! is_string( $batch_token ) || ! preg_match( '/^[A-Za-z0-9._:-]{1,128}$/', $batch_token ) ) { WP_CLI::error( 'Invalid batch token.' ); }
 
 function emdo_4145_articles( string $dir ): array {
     $files=glob($dir.'/content-seeds/nutrition-priority-41-45-010274-v1.part*');
@@ -75,7 +77,13 @@ foreach($articles as $a){
         'comment_status'=>'closed','ping_status'=>'closed'
     )),true);
     if(is_wp_error($r)||(int)$r<=0){ WP_CLI::error('Could not publish '.$slug); }
-    $id=(int)$r; set_post_thumbnail($id,$image_id); emdo_4145_save_en($id,$a,$en);
+    $id=(int)$r;
+    update_post_meta($id,'_emdo_batch_token',$batch_token);
+    if($batch_token!==(string)get_post_meta($id,'_emdo_batch_token',true)){
+        wp_delete_post($id,true);
+        WP_CLI::error('Could not mark new post for safe rollback: '.$slug);
+    }
+    set_post_thumbnail($id,$image_id); emdo_4145_save_en($id,$a,$en);
     $p=get_post($id);
     if(!$p instanceof WP_Post || 'publish'!==$p->post_status){ $errors[]='Not published: '.$slug; }
     if(!has_category($cat_id,$id)){ $errors[]='Category missing: '.$slug; }
