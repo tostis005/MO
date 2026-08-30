@@ -6,7 +6,7 @@ python3 - <<'PY'
 import base64,gzip,json
 from pathlib import Path
 root=Path('elmercadodeorigen-child/inc/content-seeds')
-enc=(root/'nutrition-priority-26-30-010272.b64').read_text().strip()
+enc=''.join((root/f'nutrition-priority-26-30-010272-{i}.b64').read_text().strip() for i in range(1,5))
 data=json.loads(gzip.decompress(base64.b64decode(enc,validate=True)).decode('utf-8'))
 if len(data)!=5: raise SystemExit('Expected five articles')
 for a in data:
@@ -80,7 +80,8 @@ done
 
 sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
 sshpass -e scp $SCP .github/scripts/publish-nutrition-priority-26-30-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
-sshpass -e scp $SCP elmercadodeorigen-child/inc/content-seeds/nutrition-priority-26-30-010272.b64 "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
+cat elmercadodeorigen-child/inc/content-seeds/nutrition-priority-26-30-010272-{1,2,3,4}.b64 > /tmp/nutrition-priority-26-30-010272.b64
+sshpass -e scp $SCP /tmp/nutrition-priority-26-30-010272.b64 "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
 
 ROLLBACK_ACTIVE=1
 rollback_only_new_posts(){
