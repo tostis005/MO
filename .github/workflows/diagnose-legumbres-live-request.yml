@@ -1,0 +1,70 @@
+name: Diagnose Legumbres live request
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-legumbres-live-request.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Request live archives and inspect fresh errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- public HTTP checks from GitHub runner ---'
+          for url in \
+            'https://www.elmercadodeorigen.com/' \
+            'https://www.elmercadodeorigen.com/blog/' \
+            'https://www.elmercadodeorigen.com/category/legumbres/' ; do
+            code=$(curl -L -sS --max-time 30 -A 'Mozilla/5.0 EMDO live diagnostic' -o /tmp/page.html -w '%{http_code}' "${url}?emdo_live_diag=${GITHUB_RUN_ID}")
+            bytes=$(wc -c < /tmp/page.html)
+            title=$(grep -oi '<title>[^<]*' /tmp/page.html | head -n1 | sed 's/<title>//I' || true)
+            echo "$code bytes=$bytes title=$title url=$url"
+          done
+
+          PORT="${STAGING_PORT:-22}"
+          ASKPASS="$RUNNER_TEMP/emdo-askpass.sh"
+          cat > "$ASKPASS" <<'SH'
+          #!/bin/sh
+          printf '%s\n' "$STAGING_PASSWORD"
+          SH
+          chmod 700 "$ASKPASS"
+          export SSH_ASKPASS="$ASKPASS"
+          export SSH_ASKPASS_REQUIRE=force
+          export DISPLAY=:0
+          SSH_OPTS=(-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT")
+
+          setsid -w ssh "${SSH_OPTS[@]}" "$STAGING_USER@$STAGING_HOST" 'bash -s' < /dev/null <<'REMOTE'
+          set -eu
+          wp=$(command -v wp || true)
+          php=$(command -v php || true)
+          [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          prod=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+            p=$(dirname "$cfg")
+            u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$u" in
+              https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+            esac
+          done
+          [ -n "$prod" ] || exit 4
+          echo '--- exact states of incident posts ---'
+          for id in 13692 13693 13694 13695 13696; do
+            "$php" "$wp" post get "$id" --path="$prod" --allow-root --fields=ID,post_status,post_name,post_title --format=json 2>/dev/null || true
+          done
+          echo '--- newest production debug entries ---'
+          tail -n 100 "$prod/wp-content/debug.log" 2>/dev/null || true
+          REMOTE
