@@ -33,6 +33,7 @@ PORT="${STAGING_PORT:-22}"
 SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
 SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
 UA='Mozilla/5.0 EMDO safe nutrition publication verification'
+BATCH_TOKEN="nutrition-4145-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}"
 mapfile -t TARGET_SLUGS < <(jq -r '.[].slug' /tmp/nutrition-4145.json)
 [ "${#TARGET_SLUGS[@]}" -eq 5 ]
 
@@ -81,24 +82,24 @@ sshpass -e scp $SCP .github/scripts/publish-nutrition-priority-41-45-production.
 sshpass -e scp $SCP elmercadodeorigen-child/inc/content-seeds/nutrition-priority-41-45-010274-v1.part* "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
 
 ROLLBACK_ACTIVE=1
-rollback_only_new_posts(){
+rollback_only_this_run(){
   rc=$?; set +e
   if [ "${ROLLBACK_ACTIVE:-0}" = 1 ]; then
-    echo 'Verification failed: rolling back only new batch 41-45 posts.' >&2
-    for slug in "${TARGET_SLUGS[@]}"; do
-      ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --post_status=any --name='$slug' --format=ids 2>/dev/null || true")"
-      [ -z "${ids// /}" ] || sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete $ids --force --path='$PROD' --allow-root >/dev/null 2>&1 || true"
-    done
+    echo "Verification failed: rolling back only posts created by token ${BATCH_TOKEN}." >&2
+    ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --post_status=any --meta_key='_emdo_batch_token' --meta_value='$BATCH_TOKEN' --format=ids 2>/dev/null || true")"
+    if [ -n "${ids// /}" ]; then
+      sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete $ids --force --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+    fi
     sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' rewrite flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1
     health_check rollback "${CRITICAL_URLS[@]}" || true
   fi
   exit "$rc"
 }
-trap rollback_only_new_posts ERR
+trap rollback_only_this_run ERR
 
 trap - ERR; set +e
-sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_NUTRITION_4145_SEED_DIR='$REMOTE'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-nutrition-priority-41-45-production.php' --path='$PROD' --allow-root" >/tmp/nutrition-4145.raw 2>/tmp/nutrition-4145.err
-PUBLISH_RC=$?; set -e; trap rollback_only_new_posts ERR
+sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_NUTRITION_4145_SEED_DIR='$REMOTE'; export EMDO_BATCH_TOKEN='$BATCH_TOKEN'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-nutrition-priority-41-45-production.php' --path='$PROD' --allow-root" >/tmp/nutrition-4145.raw 2>/tmp/nutrition-4145.err
+PUBLISH_RC=$?; set -e; trap rollback_only_this_run ERR
 [ ! -s /tmp/nutrition-4145.err ] || cat /tmp/nutrition-4145.err >&2
 [ ! -s /tmp/nutrition-4145.raw ] || cat /tmp/nutrition-4145.raw
 [ "$PUBLISH_RC" -eq 0 ]
@@ -123,5 +124,8 @@ curl -L -sS --retry 3 -A "$UA" "https://www.elmercadodeorigen.com/blog/?emdo_ver
 while read -r slug; do grep -Fq "$slug" /tmp/blog.html; done < <(jq -r '.posts[].slug' /tmp/nutrition-4145-result.json)
 health_check post "${CRITICAL_URLS[@]}"
 ROLLBACK_ACTIVE=0; trap - ERR
+while read -r id; do
+  sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post meta delete '$id' '_emdo_batch_token' --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+done < <(jq -r '.posts[].id' /tmp/nutrition-4145-result.json)
 sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
 echo 'SAFE_PUBLICATION_OK: batch 41-45 nutrition articles published and verified.'
