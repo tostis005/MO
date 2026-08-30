@@ -1,4 +1,4 @@
-name: Publish nutrition priority batch 36-40 production
+name: Publish nutrition priority batch 41-45 production launcher
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-nutrition-priority-36-40-production
+  group: publish-nutrition-priority-41-45-production-launcher
   cancel-in-progress: false
 
 jobs:
@@ -26,9 +26,8 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publish and verify batch 36-40
+      - name: Publish and verify batch 41-45
         shell: bash
-        run: bash .github/scripts/run-nutrition-priority-36-40-production.sh
+        run: bash .github/scripts/run-nutrition-priority-41-45-production.sh
 
-# nutrition roadmap batch 36-40: Iberian ham fat + EVOO filtration
-# retry 2: integrity-checked payload v2
+# temporary registered launcher for nutrition roadmap batch 41-45: EVOO nutrition FAQs
