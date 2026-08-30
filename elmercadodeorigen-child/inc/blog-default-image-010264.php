@@ -41,3 +41,12 @@ $elmercado_blog_image_seo_010266 = __DIR__ . '/blog-image-seo-010266.php';
 if ( is_readable( $elmercado_blog_image_seo_010266 ) ) {
 	require_once $elmercado_blog_image_seo_010266;
 }
+
+/*
+ * 0.10.267: primera tanda de contenidos nutricionales de legumbres (ES/EN).
+ * Se carga aquí para mantener el cambio aislado dentro del sistema editorial.
+ */
+$elmercado_blog_legume_nutrition_seed_010267 = __DIR__ . '/blog-legume-nutrition-seed-010267.php';
+if ( is_readable( $elmercado_blog_legume_nutrition_seed_010267 ) ) {
+	require_once $elmercado_blog_legume_nutrition_seed_010267;
+}
