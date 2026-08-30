@@ -1,0 +1,55 @@
+<?php
+/**
+ * Production deploy: curated Aceites + Carnes commercial SEO landings.
+ * Native Spanish pages + reviewed English aliases/content in _en_US_* metadata.
+ * Idempotent: updates pages by _emdo_oc_landing_key.
+ */
+if (!defined('ABSPATH')) { fwrite(STDERR, "WordPress is not loaded.\n"); exit(1); }
+
+function emdo_oc_resolve_product_ids(array $items): array {
+    $ids=array();
+    foreach($items as $item){
+        if(is_numeric($item)) $id=(int)$item;
+        else { $p=get_page_by_path((string)$item, OBJECT, 'product'); $id=$p instanceof WP_Post ? (int)$p->ID : 0; }
+        if($id && get_post_status($id)==='publish') $ids[]=$id;
+    }
+    return array_values(array_unique($ids));
+}
+
+function emdo_oc_products_shortcode(array $items): string {
+    $ids = emdo_oc_resolve_product_ids($items);
+    if (!$ids) return '';
+    return '[products ids="'.implode(',', $ids).'" columns="'.min(3, max(1, count($ids))).'" orderby="post__in"]';
+}
+
+function emdo_oc_aioseo(int $post_id, string $title, string $description): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'aioseo_posts';
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) return;
+    $row_id = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM `{$table}` WHERE post_id=%d LIMIT 1", $post_id));
+    if ($row_id) $wpdb->update($table, array('title'=>$title,'description'=>$description), array('id'=>$row_id), array('%s','%s'), array('%d'));
+}
+
+function emdo_oc_page_id(string $key): int {
+    $ids = get_posts(array('post_type'=>'page','post_status'=>array('publish','draft','private'),'posts_per_page'=>2,'fields'=>'ids','no_found_rows'=>true,'meta_key'=>'_emdo_oc_landing_key','meta_value'=>$key));
+    return count($ids) ? (int)$ids[0] : 0;
+}
+
+function emdo_oc_upsert(array $cfg): array {
+    $id = emdo_oc_page_id($cfg['key']);
+    if (!$id) {
+        $existing = get_page_by_path($cfg['es_slug'], OBJECT, 'page');
+        if ($existing instanceof WP_Post) $id = (int)$existing->ID;
+    }
+    $products = emdo_oc_products_shortcode($cfg['products']);
+    if ($products === '') throw new Exception('No live products for '.$cfg['key']);
+    $es = str_replace('{{PRODUCTS}}', $products, $cfg['es_content']);
+    $en = str_replace('{{PRODUCTS}}', $products, $cfg['en_content']);
+    $args = array('post_type'=>'page','post_status'=>'publish','post_title'=>$cfg['es_title'],'post_name'=>$cfg['es_slug'],'post_content'=>$es,'post_excerpt'=>$cfg['es_meta'],'comment_status'=>'closed','ping_status'=>'closed');
+    if ($id) $args['ID'] = $id;
+    $saved = wp_insert_post(wp_slash($args), true);
+    if (is_wp_error($saved)) throw new Exception($saved->get_error_message());
+    $id = (int)$saved;
+    update_post_meta($id, '_emdo_oc_landing_key', $cfg['key']);
+    update_post_meta($id, '_en_US_post_title', '<span data-no-translation>'.$cfg['en_title'].'</span>');
+    update_post_meta($id, '_en_US_post_name', $cfg['en_slug']);
