@@ -1,0 +1,55 @@
+'products'=>array(11087,11125,11077,11099,11082,11163,11134,11145,11107),
+'es_content'=><<<'HTML'
+<p>Los <strong>cortes premium de vacuno</strong> reúnen piezas que suelen buscarse por terneza, infiltración, presencia en mesa o comportamiento en parrilla. Solomillo, entrecot, chuletón, picaña y tomahawk ofrecen experiencias bastante diferentes.</p>
+{{PRODUCTS}}
+<h2>Solomillo: prioridad a la terneza</h2><p>El solomillo es uno de los cortes más valorados cuando se busca una textura muy tierna. Puede cocinarse en medallones o piezas más gruesas y necesita poco tiempo.</p>
+<h2>Entrecot y chuletón</h2><p>El entrecot ofrece una pieza sin hueso con grasa y sabor adecuados para plancha o parrilla. El chuletón añade el hueso y una pieza de mayor presencia, normalmente pensada para compartir.</p>
+<h2>Picaña y tomahawk</h2><p>La picaña destaca por su capa de grasa exterior, mientras que el tomahawk llama la atención por el hueso largo y el grosor. Son cortes especialmente asociados a parrilla y reuniones.</p>
+<h2>Cómo elegir</h2><p>Si priorizas terneza, mira el solomillo. Si buscas equilibrio entre grasa y carne, entrecot o chuletón. Para una pieza de parrilla con mucha presencia, tomahawk. Para un perfil distinto y corte en lonchas, picaña.</p>
+<h2>Preguntas frecuentes</h2><h3>¿Cuál es el corte más tierno?</h3><p>El solomillo suele destacar por terneza, aunque cada corte aporta una combinación diferente de textura, grasa y sabor.</p><h3>¿Qué cortes son mejores para compartir?</h3><p>Chuletón y tomahawk, por su tamaño y grosor, suelen prestarse especialmente bien a servir en el centro de la mesa.</p>
+{{PRODUCTS}}
+HTML,
+'en_content'=><<<'HTML'
+<p><strong>Premium beef cuts</strong> are chosen for tenderness, marbling, presentation or grilling performance. Tenderloin, entrecôte, rib steak, picanha and tomahawk provide distinctly different eating experiences.</p>
+{{PRODUCTS}}
+<h2>Tenderloin for tenderness</h2><p>Tenderloin is one of the natural choices when a very tender texture is the priority.</p>
+<h2>Entrecôte and rib steak</h2><p>Entrecôte is a versatile boneless steak, while rib steak adds the bone and a larger sharing format.</p>
+<h2>Picanha and tomahawk</h2><p>Picanha is known for its outer fat cap, while tomahawk is defined by its long bone and thick presentation. Both are strongly associated with grilling.</p>
+<h2>How to choose</h2><p>Choose tenderloin for tenderness, entrecôte or rib steak for a balance of meat and fat, tomahawk for a dramatic grill centrepiece, and picanha for a different fat profile and slicing style.</p>
+{{PRODUCTS}}
+HTML
+);
+
+$pages[] = array(
+'key'=>'hamburguesas','group'=>'carnes','es_slug'=>'hamburguesas-ternera-vaca-online','en_slug'=>'beef-burgers-online',
+'es_title'=>'Hamburguesas de Ternera y Vaca Online','en_title'=>'Beef Burgers Online',
+'seo_title'=>'Comprar Hamburguesas de Ternera y Vaca Online | Tolecarnes',
+'es_meta'=>'Compra hamburguesas de ternera y vaca online: 100% ternera, 100% vaca y hamburguesas mixtas sin gluten de Tolecarnes.',
+'en_meta'=>'Buy beef burgers online from Tolecarnes: 100% beef, 100% mature beef and gluten-free mixed burgers.',
+'products'=>array(11148,11166,11061),
+'es_content'=><<<'HTML'
+<p>Las <strong>hamburguesas de ternera y vaca</strong> permiten elegir entre perfiles distintos sin tener que preparar la carne desde cero. En Tolecarnes hay opciones 100% ternera, 100% vaca y hamburguesas mixtas sin gluten.</p>
+{{PRODUCTS}}
+<h2>100% ternera</h2><p>Una hamburguesa de ternera ofrece un perfil más suave y funciona como opción versátil para plancha, sartén o barbacoa.</p>
+<h2>100% vaca</h2><p>La versión de vaca presenta un sabor más desarrollado y resulta interesante para quien busca un perfil cárnico más intenso.</p>
+<h2>Hamburguesas mixtas</h2><p>La mezcla de carnes cambia jugosidad, grasa y sabor. Es una alternativa distinta a las recetas de una sola especie y en este catálogo se ofrece además en versión sin gluten.</p>
+<h2>Cómo cocinarlas</h2><p>Conviene cocinar sobre una superficie bien caliente y evitar aplastar continuamente la hamburguesa, ya que así se pierden jugos. El tiempo depende del grosor y del punto de seguridad adecuado para carne picada.</p>
+<h2>Preguntas frecuentes</h2><h3>¿Qué diferencia hay entre ternera y vaca?</h3><p>La edad del animal y las características de la carne influyen en sabor, grasa y textura. La vaca suele presentar un perfil más intenso.</p><h3>¿Se pueden hacer a la barbacoa?</h3><p>Sí. Una parrilla bien caliente permite dorar el exterior y cocinar el interior de forma uniforme.</p>
+{{PRODUCTS}}
+HTML,
+'en_content'=><<<'HTML'
+<p><strong>Beef burgers</strong> make it easy to compare different meat profiles without preparing mince from scratch. Tolecarnes offers 100% beef burgers, 100% mature beef burgers and gluten-free mixed burgers.</p>
+{{PRODUCTS}}
+<h2>100% beef burgers</h2><p>A standard beef burger provides a versatile profile for a pan, griddle or barbecue.</p>
+<h2>100% mature beef burgers</h2><p>Mature beef offers a deeper meat flavour and a distinct option for customers who prefer a stronger profile.</p>
+<h2>Mixed burgers</h2><p>Combining meats changes juiciness, fat and flavour. The mixed burgers in this range are also gluten-free.</p>
+<h2>Cooking burgers</h2><p>Use a properly heated surface and avoid repeatedly pressing the burger, which pushes out juices. Cooking time depends on thickness and the appropriate safe internal doneness for minced meat.</p>
+{{PRODUCTS}}
+HTML
+);
+
+try {
+    $results=array();
+    foreach($pages as $cfg) $results[]=emdo_oc_upsert($cfg);
+
+    $oil_rows=array(); $meat_rows=array();
