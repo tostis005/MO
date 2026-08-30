@@ -199,10 +199,12 @@ jobs:
           }
           trap rollback_only_new_posts ERR
 
+          trap - ERR
           set +e
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_LEGUME_SEED_DIR='$REMOTE'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-legume-nutrition-batch1-production.php' --path='$PROD' --allow-root" > /tmp/legume-batch1.raw 2> /tmp/legume-batch1.err
           PUBLISH_RC=$?
           set -e
+          trap rollback_only_new_posts ERR
 
           echo "publisher_rc=${PUBLISH_RC} stdout_bytes=$(wc -c < /tmp/legume-batch1.raw) stderr_bytes=$(wc -c < /tmp/legume-batch1.err)"
           if [ -s /tmp/legume-batch1.err ]; then
