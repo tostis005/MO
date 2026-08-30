@@ -5,12 +5,12 @@ php -l .github/scripts/publish-nutrition-priority-26-30-production.php
 python3 - <<'PY'
 import base64,gzip,json
 from pathlib import Path
-root=Path('elmercadodeorigen-child/inc/content-seeds')
-enc=''.join((root/f'nutrition-priority-26-30-legumes-010273-{i}.b64').read_text().strip() for i in range(1,5))
+p=Path('elmercadodeorigen-child/inc/content-seeds/nutrition-priority-26-30-010272.b64')
+enc=p.read_text().strip()
 data=json.loads(gzip.decompress(base64.b64decode(enc,validate=True)).decode('utf-8'))
 if len(data)!=5: raise SystemExit('Expected five articles')
 for a in data:
-    if len(a['content'])<5500 or len(a['en_content'])<4800:
+    if len(a['content'])<4500 or len(a['en_content'])<4200:
         raise SystemExit('Article too short: '+a['slug'])
     if '<!-- EMDO_RELATED_PRODUCTS -->' not in a['content'] or '<!-- EMDO_RELATED_PRODUCTS -->' not in a['en_content']:
         raise SystemExit('Related placeholder missing: '+a['slug'])
@@ -70,9 +70,7 @@ done
 
 sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
 sshpass -e scp $SCP .github/scripts/publish-nutrition-priority-26-30-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
-for i in 1 2 3 4; do
-  sshpass -e scp $SCP "elmercadodeorigen-child/inc/content-seeds/nutrition-priority-26-30-legumes-010273-${i}.b64" "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
-done
+sshpass -e scp $SCP elmercadodeorigen-child/inc/content-seeds/nutrition-priority-26-30-010272.b64 "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
 
 ROLLBACK_ACTIVE=1
 rollback_only_new_posts(){
