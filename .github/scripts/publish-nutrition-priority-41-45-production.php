@@ -65,31 +65,59 @@ function emdo_4145_existing_post_id(string $slug): int {
     $id=$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_name=%s LIMIT 1",$slug));
     return $id ? (int)$id : 0;
 }
+function emdo_4145_assert_existing_matches(int $id,array $a,int $cat_id,string $es,string $en): void {
+    $p=get_post($id);
+    $slug=(string)$a['slug'];
+    if(!$p instanceof WP_Post){ WP_CLI::error('Existing target could not be loaded: '.$slug.' id='.$id); }
+    $mismatches=array();
+    if('publish'!==(string)$p->post_status){ $mismatches[]='status'; }
+    if(trim((string)$p->post_title)!==trim((string)$a['title'])){ $mismatches[]='title'; }
+    if((string)$p->post_name!==$slug){ $mismatches[]='slug'; }
+    if(trim((string)$p->post_excerpt)!==trim((string)$a['excerpt'])){ $mismatches[]='excerpt'; }
+    if(trim((string)$p->post_content)!==trim($es)){ $mismatches[]='content'; }
+    if(!has_category($cat_id,$id)){ $mismatches[]='category'; }
+    if((int)get_post_thumbnail_id($id)<=0){ $mismatches[]='thumbnail'; }
+    if('1'!==(string)get_post_meta($id,'_en_US_published',true)){ $mismatches[]='en_published'; }
+    if(trim((string)get_post_meta($id,'_en_US_post_title',true))!==trim((string)$a['en_title'])){ $mismatches[]='en_title'; }
+    if(trim((string)get_post_meta($id,'_en_US_post_name',true))!==trim((string)$a['en_slug'])){ $mismatches[]='en_slug'; }
+    if(trim((string)get_post_meta($id,'_en_US_post_excerpt',true))!==trim((string)$a['en_excerpt'])){ $mismatches[]='en_excerpt'; }
+    if(trim((string)get_post_meta($id,'_en_US_post_content',true))!==trim($en)){ $mismatches[]='en_content'; }
+    if(!empty($mismatches)){ WP_CLI::error('Safety stop: existing target differs from expected article: '.$slug.' id='.$id.' fields='.implode(',',$mismatches)); }
+}
 
 $articles=emdo_4145_articles($seed_dir); $image_id=emdo_4145_image_id();
 if($image_id<=0){ WP_CLI::error('Generic provisional image not found.'); }
 $rows=array(); $errors=array();
 foreach($articles as $a){
     $slug=(string)$a['slug'];
-    $existing_id=emdo_4145_existing_post_id($slug);
-    if($existing_id>0){ WP_CLI::error('Safety stop: target slug already exists in database: '.$slug.' id='.$existing_id); }
     $cat_id=emdo_4145_category_id($a); if($cat_id<=0){ WP_CLI::error('Blog category not found: '.$a['category_slug']); }
     $product_slugs=emdo_4145_product_slugs($a);
     $es=emdo_4145_render($a,$product_slugs,false); $en=emdo_4145_render($a,$product_slugs,true);
     if(false!==strpos($es,'EMDO_RELATED_PRODUCTS')||false!==strpos($en,'EMDO_RELATED_PRODUCTS')){ WP_CLI::error('Related products placeholder not rendered: '.$slug); }
-    $r=wp_insert_post(wp_slash(array(
-        'post_type'=>'post','post_status'=>'publish','post_title'=>(string)$a['title'],'post_name'=>$slug,
-        'post_excerpt'=>(string)$a['excerpt'],'post_content'=>$es,'post_category'=>array($cat_id),
-        'comment_status'=>'closed','ping_status'=>'closed'
-    )),true);
-    if(is_wp_error($r)||(int)$r<=0){ WP_CLI::error('Could not publish '.$slug); }
-    $id=(int)$r;
-    update_post_meta($id,'_emdo_batch_token',$batch_token);
-    if($batch_token!==(string)get_post_meta($id,'_emdo_batch_token',true)){
-        wp_delete_post($id,true);
-        WP_CLI::error('Could not mark new post for safe rollback: '.$slug);
+
+    $existing_id=emdo_4145_existing_post_id($slug);
+    $adopted=false;
+    if($existing_id>0){
+        emdo_4145_assert_existing_matches($existing_id,$a,$cat_id,$es,$en);
+        $id=$existing_id;
+        $adopted=true;
+        WP_CLI::log('Existing article matches expected payload; adopting safely: '.$slug.' id='.$id);
+    }else{
+        $r=wp_insert_post(wp_slash(array(
+            'post_type'=>'post','post_status'=>'publish','post_title'=>(string)$a['title'],'post_name'=>$slug,
+            'post_excerpt'=>(string)$a['excerpt'],'post_content'=>$es,'post_category'=>array($cat_id),
+            'comment_status'=>'closed','ping_status'=>'closed'
+        )),true);
+        if(is_wp_error($r)||(int)$r<=0){ WP_CLI::error('Could not publish '.$slug); }
+        $id=(int)$r;
+        update_post_meta($id,'_emdo_batch_token',$batch_token);
+        if($batch_token!==(string)get_post_meta($id,'_emdo_batch_token',true)){
+            wp_delete_post($id,true);
+            WP_CLI::error('Could not mark new post for safe rollback: '.$slug);
+        }
+        set_post_thumbnail($id,$image_id); emdo_4145_save_en($id,$a,$en);
     }
-    set_post_thumbnail($id,$image_id); emdo_4145_save_en($id,$a,$en);
+
     $p=get_post($id);
     if(!$p instanceof WP_Post || 'publish'!==$p->post_status){ $errors[]='Not published: '.$slug; }
     if(!has_category($cat_id,$id)){ $errors[]='Category missing: '.$slug; }
@@ -101,7 +129,7 @@ foreach($articles as $a){
         'id'=>$id,'slug'=>$slug,'en_slug'=>(string)$a['en_slug'],'title'=>(string)$a['title'],'en_title'=>(string)$a['en_title'],
         'category_slug'=>(string)$a['category_slug'],'permalink'=>(string)get_permalink($id),
         'en_permalink'=>(string)home_url('/en/'.trim((string)$a['en_slug'],'/').'/'),
-        'thumbnail_id'=>(int)get_post_thumbnail_id($id),'product_cats'=>$product_slugs
+        'thumbnail_id'=>(int)get_post_thumbnail_id($id),'product_cats'=>$product_slugs,'adopted'=>$adopted
     );
 }
 flush_rewrite_rules(false); wp_cache_flush();
