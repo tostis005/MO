@@ -189,10 +189,12 @@ jobs:
               for slug in "${TARGET_SLUGS[@]}"; do
                 ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --format=ids 2>/dev/null || true")"
                 if [ -n "${ids// /}" ]; then
+                  echo "rollback_delete slug=${slug} ids=${ids}" >&2
                   sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post delete $ids --force --path='$PROD' --allow-root >/dev/null 2>&1 || true"
                 fi
               done
               sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' rewrite flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE'" >/dev/null 2>&1
+              health_check rollback "${CRITICAL_URLS[@]}" || true
               set -e
             fi
             exit "$rc"
@@ -200,7 +202,16 @@ jobs:
           trap rollback_only_new_posts ERR
 
           # The only production mutation starts here.
+          set +e
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_LEGUME_SEED_DIR='$REMOTE'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-legume-nutrition-batch1-production.php' --path='$PROD' --allow-root" > /tmp/legume-batch1.raw 2> /tmp/legume-batch1.err
+          PUBLISH_RC=$?
+          set -e
+          if [ "$PUBLISH_RC" -ne 0 ]; then
+            echo "Publisher failed with rc=${PUBLISH_RC}" >&2
+            cat /tmp/legume-batch1.err >&2 || true
+            cat /tmp/legume-batch1.raw >&2 || true
+            false
+          fi
 
           tail -n 1 /tmp/legume-batch1.raw > /tmp/legume-batch1.json
           cat /tmp/legume-batch1.json
