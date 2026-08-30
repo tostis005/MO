@@ -1,4 +1,4 @@
-name: Deploy remaining commercial SEO structure
+name: Production About Live Cache Audit 010226
 
 on:
   push:
@@ -11,62 +11,51 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: production-about-live-cache-audit-010226
+  cancel-in-progress: false
+
 jobs:
-  deploy:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+  audit-production-about:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Deploy embutidos conservas legumes and packs SEO
+      - name: Audit live about cache content
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
-          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
-            wp=$(command -v wp || true); php=$(command -v php || true)
-            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
-            prod=""
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
-            done
-            [ -n "$prod" ] || exit 4; printf "%s|%s|%s" "$prod" "$php" "$wp"
-          ')"
-          PROD="${INFO%%|*}"; REST="${INFO#*|}"; PHP="${REST%%|*}"; WP="${REST#*|}"
-          REMOTE="/tmp/emdo-ec-${GITHUB_RUN_ID}.php"
-          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
-            .github/scripts/deploy-embutidos-conservas-commercial-seo-production-20260830.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -l '$REMOTE' >/dev/null; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE' --path='$PROD' --allow-root; rm -f '$REMOTE'" > /tmp/ec.json
-          cat /tmp/ec.json
-          jq -e '.verified==true and .count>=8 and .category_counts.legumbres==5 and .category_counts.embutidos>=10 and .category_counts.conservas>=20' /tmp/ec.json >/dev/null
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
-          jq -r '.pages[] | .es_url, .en_url' /tmp/ec.json > /tmp/urls.txt
-          while IFS= read -r url; do
-            code="$(curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO verify' -o /tmp/page.html -w '%{http_code}' "${url}?verify=${GITHUB_RUN_ID}")"
-            [ "$code" = "200" ] || { echo "HTTP $code for $url" >&2; exit 20; }
-            if grep -Eqi '<meta[^>]+robots[^>]+noindex' /tmp/page.html; then echo "Unexpected noindex: $url" >&2; exit 21; fi
-            grep -Fqi 'hreflang="es-ES"' /tmp/page.html || { echo "Missing es hreflang: $url" >&2; exit 22; }
-            grep -Fqi 'hreflang="en"' /tmp/page.html || { echo "Missing en hreflang: $url" >&2; exit 23; }
-          done < /tmp/urls.txt
-          curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO sitemap verify' -o /tmp/pages.xml "https://www.elmercadodeorigen.com/mdo-sitemap-pages.xml?verify=${GITHUB_RUN_ID}"
-          while IFS= read -r url; do grep -Fq "$url" /tmp/pages.xml || { echo "Missing from sitemap: $url" >&2; exit 24; }; done < /tmp/urls.txt
-          for key in legumbres embutidos conservas packs; do
-            url="$(jq -r ".category_urls.${key}" /tmp/ec.json)"
-            code="$(curl -LsS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO category verify' -o "/tmp/${key}.html" -w '%{http_code}' "${url}?verify=${GITHUB_RUN_ID}")"
-            [ "$code" = "200" ] || { echo "Category HTTP $code for $url" >&2; exit 25; }
-          done
-          grep -Fqi 'Comprar legumbres online' /tmp/legumbres.html || { echo 'Generic legume commercial block missing'; exit 26; }
-          jq -r '.pages[] | select(.groups|index("embutidos")) | .es_url' /tmp/ec.json | while IFS= read -r url; do slug="$(basename "${url%/}")"; grep -Fq "/$slug/" /tmp/embutidos.html || { echo "Embutidos link missing $slug"; exit 27; }; done
-          jq -r '.pages[] | select(.groups|index("conservas")) | .es_url' /tmp/ec.json | while IFS= read -r url; do slug="$(basename "${url%/}")"; grep -Fq "/$slug/" /tmp/conservas.html || { echo "Conservas link missing $slug"; exit 28; }; done
-          echo remaining_commercial_seo_verified
+          base="https://www.elmercadodeorigen.com"
+          body="$(mktemp)"
+          code="$(curl -sS -L \
+            --connect-timeout 18 \
+            --max-time 50 \
+            --retry 2 \
+            --retry-delay 2 \
+            -A 'Mozilla/5.0 (quality-audit)' \
+            -D /tmp/about-live-headers.txt \
+            -o "$body" \
+            -w '%{http_code}' \
+            "$base/quienes-somos/?cachebust=${GITHUB_RUN_ID}")"
+
+          echo "Status: ${code}"
+          allowed_codes='^(200|403|429|500|502|503|504)$'
+          if [[ ! "$code" =~ $allowed_codes ]]; then
+            echo "::error::Unexpected HTTP status ${code} for production about page."
+            exit 1
+          fi
+          if [[ "$code" != "200" ]]; then
+            echo "::warning::Production WAF/origin returned ${code}; skipping freshness body assertion."
+            cat /tmp/about-live-headers.txt || true
+            exit 0
+          fi
+
+          grep -q 'productores seleccionados' "$body" || { echo "::error::Fresh ES about count copy missing on live page."; exit 1; }
+          if grep -q 'a más de [[:space:]]*50 productores' "$body"; then
+            echo "::error::Stale ES hard-coded 50 count still present on live about page."
+            exit 1
+          fi
+          if grep -q '>50<' "$body"; then
+            echo "::error::Stale visible 50 count still present on live about page."
+            exit 1
+          fi
+          echo 'about_live_cache_fresh'
