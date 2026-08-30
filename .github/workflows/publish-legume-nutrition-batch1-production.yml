@@ -1,0 +1,117 @@
+name: Publish legume nutrition batch 1 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-legume-nutrition-batch1-production.yml'
+      - '.github/scripts/publish-legume-nutrition-batch1-production.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate publication payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-legume-nutrition-batch1-production.php
+          php -l elmercadodeorigen-child/inc/blog-legume-nutrition-seed-010267.php
+          for part in 1 2 3 4; do
+            test -s "elmercadodeorigen-child/inc/content-seeds/legume-nutrition-010267-${part}.b64"
+          done
+
+      - name: Publish and verify on production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-legume-batch1-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE/content-seeds'"
+
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          sshpass -e scp $SCP \
+            .github/scripts/publish-legume-nutrition-batch1-production.php \
+            elmercadodeorigen-child/inc/blog-legume-nutrition-seed-010267.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+          sshpass -e scp $SCP \
+            elmercadodeorigen-child/inc/content-seeds/legume-nutrition-010267-1.b64 \
+            elmercadodeorigen-child/inc/content-seeds/legume-nutrition-010267-2.b64 \
+            elmercadodeorigen-child/inc/content-seeds/legume-nutrition-010267-3.b64 \
+            elmercadodeorigen-child/inc/content-seeds/legume-nutrition-010267-4.b64 \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE/content-seeds/"
+
+          set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export EMDO_LEGUME_SEED_DIR='$REMOTE'; export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-legume-nutrition-batch1-production.php' --path='$PROD' --allow-root" > /tmp/legume-batch1.raw 2> /tmp/legume-batch1.err
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            cat /tmp/legume-batch1.err >&2 || true
+            cat /tmp/legume-batch1.raw >&2 || true
+            sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
+            exit "$RC"
+          fi
+
+          tail -n 1 /tmp/legume-batch1.raw > /tmp/legume-batch1.json
+          cat /tmp/legume-batch1.json
+          jq -e '.verified == true and .count == 5 and (.errors | length) == 0' /tmp/legume-batch1.json >/dev/null
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+
+          while IFS=$'\t' read -r slug en_slug permalink en_permalink; do
+            ES_CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO legume publication verification' -o "/tmp/${slug}.html" -w '%{http_code}' "${permalink}?emdo_legume_batch1=${GITHUB_RUN_ID}")"
+            [ "$ES_CODE" = "200" ] || { echo "Spanish URL failed: $permalink ($ES_CODE)" >&2; exit 20; }
+            EN_CODE="$(curl -L -sS --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO legume publication verification' -o "/tmp/${en_slug}.html" -w '%{http_code}' "${en_permalink}?emdo_legume_batch1=${GITHUB_RUN_ID}")"
+            [ "$EN_CODE" = "200" ] || { echo "English URL failed: $en_permalink ($EN_CODE)" >&2; exit 21; }
+            echo "verified es=$permalink en=$en_permalink"
+          done < <(jq -r '.posts[] | [.slug,.en_slug,.permalink,.en_permalink] | @tsv' /tmp/legume-batch1.json)
+
+          curl -L -sS --retry 3 -A 'Mozilla/5.0 EMDO blog verification' "https://www.elmercadodeorigen.com/category/legumbres/?emdo_legume_batch1=${GITHUB_RUN_ID}" -o /tmp/legumbres-category.html
+          curl -L -sS --retry 3 -A 'Mozilla/5.0 EMDO blog verification' "https://www.elmercadodeorigen.com/blog/?emdo_legume_batch1=${GITHUB_RUN_ID}" -o /tmp/blog.html
+          while IFS= read -r slug; do
+            grep -Fq "$slug" /tmp/legumbres-category.html || { echo "Slug missing from Legumbres category: $slug" >&2; exit 22; }
+            grep -Fq "$slug" /tmp/blog.html || { echo "Slug missing from Blog: $slug" >&2; exit 23; }
+          done < <(jq -r '.posts[].slug' /tmp/legume-batch1.json)
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'"
+          echo "Production publication verified: 5 Spanish posts, 5 English translations, category and blog listings."
