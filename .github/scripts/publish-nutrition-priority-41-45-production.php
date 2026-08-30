@@ -60,13 +60,19 @@ function emdo_4145_save_en(int $id,array $a,string $content): void {
     update_post_meta($id,'_en_US_post_content',$content);
     update_post_meta($id,'_en_US_published','1');
 }
+function emdo_4145_existing_post_id(string $slug): int {
+    global $wpdb;
+    $id=$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_name=%s LIMIT 1",$slug));
+    return $id ? (int)$id : 0;
+}
 
 $articles=emdo_4145_articles($seed_dir); $image_id=emdo_4145_image_id();
 if($image_id<=0){ WP_CLI::error('Generic provisional image not found.'); }
 $rows=array(); $errors=array();
 foreach($articles as $a){
     $slug=(string)$a['slug'];
-    if(get_page_by_path($slug,OBJECT,'post') instanceof WP_Post){ WP_CLI::error('Safety stop: target slug already exists: '.$slug); }
+    $existing_id=emdo_4145_existing_post_id($slug);
+    if($existing_id>0){ WP_CLI::error('Safety stop: target slug already exists in database: '.$slug.' id='.$existing_id); }
     $cat_id=emdo_4145_category_id($a); if($cat_id<=0){ WP_CLI::error('Blog category not found: '.$a['category_slug']); }
     $product_slugs=emdo_4145_product_slugs($a);
     $es=emdo_4145_render($a,$product_slugs,false); $en=emdo_4145_render($a,$product_slugs,true);
