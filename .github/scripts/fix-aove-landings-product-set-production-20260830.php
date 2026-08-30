@@ -2,7 +2,7 @@
 /**
  * Ensure all curated AOVE landings use the complete live AOVE product set.
  * Resolves products by slug so IDs never need to be hard-coded.
- * Touch: trigger the registered commercial landing production workflow.
+ * Touch: trigger the temporary vegetable and legume production runner.
  */
 if (!defined('ABSPATH')) { fwrite(STDERR, "WordPress is not loaded.\n"); exit(1); }
 
