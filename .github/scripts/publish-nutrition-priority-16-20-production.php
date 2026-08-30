@@ -1,7 +1,7 @@
 <?php
 /**
  * Publish and verify bilingual nutrition batch 16-20:
- * five vegetable nutrient comparison articles.
+ * three vegetable comparison articles + two beef nutrition articles.
  * Uses one Spanish post + Falang _en_US_post_* metadata.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
@@ -49,10 +49,18 @@ function emdo_nutrition_1620_category_id( array $article ): int {
 }
 
 function emdo_nutrition_1620_product_cat( array $article ): ?WP_Term {
-    $term = get_term_by( 'name', (string) $article['product_cat_name'], 'product_cat' );
-    if ( $term instanceof WP_Term ) { return $term; }
-    $term = get_term_by( 'slug', sanitize_title( (string) $article['product_cat_name'] ), 'product_cat' );
-    return $term instanceof WP_Term ? $term : null;
+    $candidates = array( (string) $article['product_cat_name'] );
+    if ( 'hortalizas-y-verduras' === (string) $article['category_slug'] ) {
+        $candidates[] = 'Hortalizas/Verduras';
+    }
+
+    foreach ( array_unique( $candidates ) as $candidate ) {
+        $term = get_term_by( 'name', $candidate, 'product_cat' );
+        if ( $term instanceof WP_Term ) { return $term; }
+        $term = get_term_by( 'slug', sanitize_title( $candidate ), 'product_cat' );
+        if ( $term instanceof WP_Term ) { return $term; }
+    }
+    return null;
 }
 
 function emdo_nutrition_1620_render_content( array $article, WP_Term $product_cat, bool $english = false ): string {
