@@ -6,10 +6,11 @@ if ( ! is_string( $seed_dir ) || '' === trim( $seed_dir ) || ! is_dir( $seed_dir
 $seed_dir = rtrim( $seed_dir, '/\\' );
 
 function emdo_3640_articles( string $dir ): array {
-    $files=glob($dir.'/content-seeds/nutrition-priority-36-40-010273.part*');
+    $files=glob($dir.'/content-seeds/nutrition-priority-36-40-010273-v2.part*');
     sort($files,SORT_STRING);
-    if(7!==count($files)){ WP_CLI::error('Expected seven payload parts.'); }
+    if(3!==count($files)){ WP_CLI::error('Expected three payload parts.'); }
     $encoded=''; foreach($files as $file){ if(!is_readable($file)){ WP_CLI::error('Unreadable payload part.'); } $encoded.=trim((string)file_get_contents($file)); }
+    if(hash('sha256',$encoded)!=='0585a338cdd9442b1062b250989aac6e689b64c859dc0c4ce8212d892e1b8a3d'){ WP_CLI::error('Payload integrity check failed.'); }
     $gz=base64_decode($encoded,true); if(false===$gz){ WP_CLI::error('Invalid Base64 payload.'); }
     $json=gzdecode($gz); if(false===$json){ WP_CLI::error('Cannot decompress payload.'); }
     $data=json_decode($json,true);
