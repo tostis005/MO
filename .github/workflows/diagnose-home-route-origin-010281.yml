@@ -1,0 +1,146 @@
+name: Diagnose canonical home routing 0.10.281
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-home-route-origin-010281.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare public route and direct origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_IP=$(getent ahostsv4 www.elmercadodeorigen.com | awk 'NR==1{print $1}' || true)
+          ORIGIN_IP=$(getent ahostsv4 "$STAGING_HOST" | awk 'NR==1{print $1}' || true)
+          echo "PUBLIC_IP=${PUBLIC_IP:-unknown}"
+          echo "ORIGIN_IP=${ORIGIN_IP:-unknown}"
+          if [ -n "$PUBLIC_IP" ] && [ -n "$ORIGIN_IP" ]; then
+            [ "$PUBLIC_IP" = "$ORIGIN_IP" ] && echo 'PUBLIC_AND_ORIGIN_IP_MATCH=1' || echo 'PUBLIC_AND_ORIGIN_IP_MATCH=0'
+          fi
+
+          marker_check() {
+            label="$1"; shift
+            printf '%s -> ' "$label"
+            markers=$(curl -ksSL --max-time 25 "$@" | grep -Eo 'mdo-footer-layout-socials-010278|mdo-footer-brand-hover-010279' | sort -u | tr '\n' ',' || true)
+            echo "${markers:-NO_MARKERS}"
+          }
+
+          marker_check 'PUBLIC_ROOT' https://www.elmercadodeorigen.com/
+          marker_check 'PUBLIC_QUERY' 'https://www.elmercadodeorigen.com/?mdo_origin_diag=1'
+
+          if [ -n "$ORIGIN_IP" ]; then
+            marker_check 'DIRECT_ORIGIN_ROOT' --resolve "www.elmercadodeorigen.com:443:$ORIGIN_IP" https://www.elmercadodeorigen.com/
+            marker_check 'DIRECT_ORIGIN_QUERY' --resolve "www.elmercadodeorigen.com:443:$ORIGIN_IP" 'https://www.elmercadodeorigen.com/?mdo_origin_diag=1'
+          fi
+
+      - name: Inspect WordPress and server routing
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -e
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          PROD_PATH=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break ;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          hosting_domain=$(basename "$(dirname "$PROD_PATH")")
+          echo "HOSTING_DOMAIN=$hosting_domain"
+
+          echo 'WP_CACHE_CONFIG:'
+          grep -nE "define\([[:space:]]*['\"]WP_CACHE['\"]" "$PROD_PATH/wp-config.php" 2>/dev/null || echo 'WP_CACHE_NOT_DEFINED'
+
+          echo 'CACHE_DROPIN_FILES:'
+          for file in advanced-cache.php object-cache.php db.php; do
+            if [ -f "$PROD_PATH/wp-content/$file" ]; then
+              stat -c '%n %s bytes' "$PROD_PATH/wp-content/$file"
+              head -n 8 "$PROD_PATH/wp-content/$file" | grep -Ei 'plugin|cache|redis|memcached|rocket|optimiz|speed' || true
+            fi
+          done
+
+          if [ -n "$wp_bin" ]; then
+            echo 'ACTIVE_PLUGINS_OPTION:'
+            "$php_bin" "$wp_bin" option get active_plugins --format=json --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>&1 || true
+            echo 'FRONT_PAGE_OPTIONS:'
+            printf 'show_on_front='; "$php_bin" "$wp_bin" option get show_on_front --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>&1 || true
+            printf 'page_on_front='; "$php_bin" "$wp_bin" option get page_on_front --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>&1 || true
+            printf 'home='; "$php_bin" "$wp_bin" option get home --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>&1 || true
+            printf 'siteurl='; "$php_bin" "$wp_bin" option get siteurl --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>&1 || true
+          fi
+
+          echo 'HTACCESS_RELEVANT_LINES:'
+          if [ -f "$PROD_PATH/.htaccess" ]; then
+            grep -nEi 'cache|request_uri|rewrite|index\.html|try_files|front|home|wp-content' "$PROD_PATH/.htaccess" | head -n 120 || true
+          fi
+
+          echo 'CACHE_NAMED_DIRECTORIES:'
+          find "$PROD_PATH/wp-content" -maxdepth 3 -type d \( -iname '*cache*' -o -iname '*rocket*' -o -iname '*optimiz*' -o -iname '*speed*' \) -print 2>/dev/null | head -n 80 || true
+
+          echo 'STATIC_HTML_WITH_OLD_FOOTER_TEXT:'
+          find "$PROD_PATH" -maxdepth 5 -type f \( -iname '*.html' -o -iname '*.htm' \) -print0 2>/dev/null \
+            | xargs -0 -r grep -Il 'Contacto productores' 2>/dev/null \
+            | head -n 40 || true
+
+          plesk_bin=''
+          [ -x /usr/sbin/plesk ] && plesk_bin=/usr/sbin/plesk
+          [ -z "$plesk_bin" ] && plesk_bin=$(command -v plesk || true)
+          if [ -n "$plesk_bin" ]; then
+            use_sudo=0
+            if ! "$plesk_bin" version >/dev/null 2>&1 && sudo -n "$plesk_bin" version >/dev/null 2>&1; then use_sudo=1; fi
+            run_plesk() { if [ "$use_sudo" -eq 1 ]; then sudo -n "$plesk_bin" "$@"; else "$plesk_bin" "$@"; fi; }
+            echo 'PLESK_PUBLIC_DOMAIN_WEB_SETTINGS:'
+            run_plesk bin domain --show-web-server-settings elmercadodeorigen.com 2>/dev/null | grep -Ei 'cache|nginx|php|static|proxy|fastcgi' | head -n 120 || true
+            echo 'PLESK_HOSTING_DOMAIN_WEB_SETTINGS:'
+            run_plesk bin domain --show-web-server-settings "$hosting_domain" 2>/dev/null | grep -Ei 'cache|nginx|php|static|proxy|fastcgi' | head -n 120 || true
+          fi
+
+          if sudo -n true >/dev/null 2>&1; then
+            echo 'NGINX_VHOST_RELEVANT_LINES:'
+            for confroot in "/var/www/vhosts/system/elmercadodeorigen.com/conf" "/var/www/vhosts/system/$hosting_domain/conf"; do
+              if [ -d "$confroot" ]; then
+                sudo -n grep -RniE 'cache|try_files|index\.html|request_uri|fastcgi_cache|proxy_cache|rewrite' "$confroot" 2>/dev/null | head -n 160 || true
+              fi
+            done
+          fi
+
+          local_marker_check() {
+            label="$1"; url="$2"
+            printf '%s -> ' "$label"
+            markers=$(curl -ksSL --max-time 20 -H 'Host: www.elmercadodeorigen.com' "$url" | grep -Eo 'mdo-footer-layout-socials-010278|mdo-footer-brand-hover-010279' | sort -u | tr '\n' ',' || true)
+            echo "${markers:-NO_MARKERS}"
+          }
+          local_marker_check 'LOCAL_NGINX_ROOT' 'https://127.0.0.1/'
+          local_marker_check 'LOCAL_NGINX_QUERY' 'https://127.0.0.1/?mdo_local_diag=1'
+          REMOTE
