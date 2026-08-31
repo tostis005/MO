@@ -1,0 +1,48 @@
+name: Verify public Tolecarnes batch 05
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tolecarnes-batch-05-public-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check Spanish and English rendered pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          slugs=(filetes-segunda tira-de-churrasco-argentino vacio-de-ternera solomillo-de-vaca canon-de-espaldilla)
+          es_body=('Filetes para recetas de todos los días' 'Un corte clásico para la parrilla' 'Un corte para cocinar entero o en filetes' 'Uno de los cortes más tiernos de la vaca' 'Una pieza con dos formas sencillas de prepararla')
+          en_body=('Steaks for everyday meals' 'A classic cut for the grill' 'A cut that can be cooked whole or sliced' 'One of the most tender beef cuts' 'One cut, two simple ways to cook it')
+          es_short=('Filetes de segunda de ternera obtenidos de piezas como la tapa o la contra' 'Tira de churrasco argentino obtenida mediante un corte transversal del costillar' 'Vacío de ternera, un corte situado en la parte interior de las costillas' 'Solomillo de vaca procedente de la zona lumbar' 'Cañón de espaldilla de vacuno')
+          en_short=('Second-category beef steaks cut from pieces such as topside or silverside' 'Argentinian-style beef rib strips cut crosswise through the rib section' 'Beef vacío, a cut located on the inner side of the rib area' 'Beef tenderloin from the loin area' 'Beef shoulder tender')
+          failures=0
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"
+            es="/tmp/es-${i}.html"; en="/tmp/en-${i}.html"
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch05 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_b5_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch05 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_b5_en=${GITHUB_RUN_ID}-${i}")
+            esok=yes; enok=yes
+            grep -Fq "${es_short[$i]}" "$es" || esok=no
+            grep -Fq "${es_body[$i]}" "$es" || esok=no
+            grep -Fq 'Sobre Tolecarnes' "$es" || esok=no
+            grep -Fq 'Preguntas frecuentes' "$es" || esok=no
+            grep -Fq "${en_short[$i]}" "$en" || enok=no
+            grep -Fq "${en_body[$i]}" "$en" || enok=no
+            grep -Fq 'About Tolecarnes' "$en" || enok=no
+            grep -Fq 'Frequently asked questions' "$en" || enok=no
+            if grep -Fq 'Sobre Tolecarnes' "$en" || grep -Fq 'Preguntas frecuentes' "$en"; then enok=no; fi
+            status=OK
+            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
+            echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
+          done
+          echo "BATCH05_PUBLIC_FAILURES=${failures}"
+          [[ "$failures" -eq 0 ]]
