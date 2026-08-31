@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO - Product detail layout 0.10.268
- * Description: Provides a restrained, responsive WooCommerce single-product layout with balanced gallery/summary proportions and compact editorial spacing.
- * Version: 0.10.268
+ * Plugin Name: MDO - Product detail layout 0.10.269
+ * Description: Stable, responsive WooCommerce product layout with a centered purchase grid and continuous editorial content.
+ * Version: 0.10.269
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -16,61 +16,66 @@ add_action(
 			return;
 		}
 		?>
-		<style id="mdo-product-detail-layout-010268">
-			html body.single-product .content-top > .woostify-container,
-			html body.single-product .product-page-container > .woostify-container,
-			html body.single-product .woocommerce-tabs,
-			html body.single-product .related,
-			html body.single-product .up-sells {
+		<style id="mdo-product-detail-layout-010269">
+			/* ---------------------------------------------------------
+			 * Shared page geometry.
+			 * --------------------------------------------------------- */
+			html body.elmercado-child-theme.single-product .content-top > .woostify-container,
+			html body.elmercado-child-theme.single-product div.product .product-page-container > .woostify-container,
+			html body.elmercado-child-theme.single-product div.product > .woostify-container {
 				width: calc(100% - 32px) !important;
 				max-width: 1240px !important;
 				margin-left: auto !important;
 				margin-right: auto !important;
+				padding-left: 0 !important;
+				padding-right: 0 !important;
 				box-sizing: border-box !important;
 			}
 
-			html body.single-product .content-top {
-				padding: 12px 0 4px !important;
+			/* ---------------------------------------------------------
+			 * Breadcrumb / previous-next.
+			 * --------------------------------------------------------- */
+			html body.elmercado-child-theme.single-product .content-top {
+				padding: 10px 0 4px !important;
 			}
-			html body.single-product .content-top > .woostify-container {
+			html body.elmercado-child-theme.single-product .content-top > .woostify-container {
 				align-items: center !important;
 				gap: 8px 16px !important;
-				padding: 0 !important;
 			}
-			html body.single-product .content-top .woocommerce {
+			html body.elmercado-child-theme.single-product .content-top .woocommerce {
 				min-width: 0 !important;
 				margin: 0 !important;
 			}
-			html body.single-product .wc-breadcrumb,
-			html body.single-product .woocommerce-breadcrumb,
-			html body.single-product .woostify-breadcrumb {
+			html body.elmercado-child-theme.single-product .wc-breadcrumb,
+			html body.elmercado-child-theme.single-product .woocommerce-breadcrumb,
+			html body.elmercado-child-theme.single-product .woostify-breadcrumb {
 				margin: 0 !important;
 				padding: 0 !important;
 				color: #68736e !important;
 				font-size: 12px !important;
 				line-height: 1.45 !important;
 			}
-			html body.single-product .woostify-product-navigation {
+			html body.elmercado-child-theme.single-product .woostify-product-navigation {
 				gap: 6px !important;
 				margin: 0 !important;
 			}
-			html body.single-product .woostify-product-navigation .product-nav-item {
+			html body.elmercado-child-theme.single-product .woostify-product-navigation .product-nav-item {
 				margin: 0 !important;
 				padding: 0 !important;
 			}
-			html body.single-product .woostify-product-navigation .product-nav-item + .product-nav-item::before,
-			html body.single-product .woostify-product-navigation .product-nav-item-content {
+			html body.elmercado-child-theme.single-product .woostify-product-navigation .product-nav-item + .product-nav-item::before,
+			html body.elmercado-child-theme.single-product .woostify-product-navigation .product-nav-item-content {
 				display: none !important;
 				content: none !important;
 			}
-			html body.single-product .woostify-product-navigation .product-nav-item-text {
+			html body.elmercado-child-theme.single-product .woostify-product-navigation .product-nav-item-text {
 				display: inline-flex !important;
 				min-height: 30px !important;
 				align-items: center !important;
 				gap: 4px !important;
 				padding: 5px 9px !important;
 				background: transparent !important;
-				border: 1px solid rgba(13,33,27,.12) !important;
+				border: 1px solid rgba(13, 33, 27, .12) !important;
 				border-radius: 999px !important;
 				color: #53615b !important;
 				font-size: 11px !important;
@@ -78,37 +83,47 @@ add_action(
 				line-height: 1 !important;
 				text-transform: none !important;
 			}
-			html body.single-product .woostify-product-navigation .product-nav-icon {
+			html body.elmercado-child-theme.single-product .woostify-product-navigation .product-nav-icon {
 				margin: 0 !important;
 			}
-			html body.single-product .woostify-product-navigation .product-nav-icon svg {
+			html body.elmercado-child-theme.single-product .woostify-product-navigation .product-nav-icon svg {
 				width: 13px !important;
 				height: 13px !important;
 			}
 
-			html body.single-product .product-page-container {
-				padding: 18px 0 30px !important;
+			/* ---------------------------------------------------------
+			 * Purchase area: use a grid instead of nested percentage widths.
+			 * --------------------------------------------------------- */
+			html body.elmercado-child-theme.single-product div.product .product-page-container {
+				padding: 18px 0 22px !important;
 			}
-			html body.single-product .product-page-container > .woostify-container {
-				padding: 0 !important;
+			html body.elmercado-child-theme.single-product div.product .product-page-container > .woostify-container {
+				display: grid !important;
+				grid-template-columns: minmax(0, 1.08fr) minmax(420px, .92fr) !important;
+				align-items: start !important;
+				gap: 42px !important;
 			}
-			html body.single-product div.product {
-				padding-top: 0 !important;
+			html body.elmercado-child-theme.single-product div.product .product-page-container > .woostify-container::before,
+			html body.elmercado-child-theme.single-product div.product .product-page-container > .woostify-container::after {
+				display: none !important;
+				content: none !important;
 			}
-			html body.single-product .product-gallery,
-			html body.single-product .product-summary,
-			html body.single-product div.product .woocommerce-product-gallery,
-			html body.single-product div.product .summary {
-				margin-bottom: 0 !important;
-			}
-
-			/* The outer product-summary owns the desktop column width. */
-			html body.single-product .product-summary > .summary,
-			html body.single-product .product-summary > div.summary,
-			html body.single-product .product-summary .summary.entry-summary {
+			html body.elmercado-child-theme.single-product div.product .product-page-container .product-gallery,
+			html body.elmercado-child-theme.single-product div.product .product-page-container .product-summary {
 				float: none !important;
 				width: 100% !important;
 				max-width: none !important;
+				min-width: 0 !important;
+				margin: 0 !important;
+			}
+			html body.elmercado-child-theme.single-product div.product .product-page-container .product-summary > div.summary.entry-summary,
+			html body.elmercado-child-theme.single-product div.product .product-page-container .product-summary .summary.entry-summary {
+				position: static !important;
+				top: auto !important;
+				float: none !important;
+				width: 100% !important;
+				max-width: none !important;
+				min-width: 0 !important;
 				margin: 0 !important;
 				padding: 0 !important;
 				background: transparent !important;
@@ -116,34 +131,34 @@ add_action(
 				border-radius: 0 !important;
 				box-shadow: none !important;
 			}
-			html body.single-product .product-gallery img,
-			html body.single-product .woocommerce-product-gallery img,
-			html body.single-product .product-images img {
+			html body.elmercado-child-theme.single-product div.product .product-gallery img,
+			html body.elmercado-child-theme.single-product div.product .woocommerce-product-gallery img,
+			html body.elmercado-child-theme.single-product div.product .product-images img {
 				border-radius: 12px !important;
 			}
-			html body.single-product .product-thumbnail-images img,
-			html body.single-product .flex-control-thumbs img {
+			html body.elmercado-child-theme.single-product div.product .product-thumbnail-images img,
+			html body.elmercado-child-theme.single-product div.product .flex-control-thumbs img {
 				border-radius: 8px !important;
 			}
 
-			html body.single-product .product_title {
+			/* Sales hierarchy. */
+			html body.elmercado-child-theme.single-product div.product .product-summary .summary.entry-summary h1.product_title {
 				width: 100% !important;
 				max-width: none !important;
 				margin: 0 0 10px !important;
-				font-size: clamp(32px, 3vw, 44px) !important;
+				font-size: clamp(32px, 3vw, 42px) !important;
 				font-weight: 600 !important;
 				letter-spacing: -0.035em !important;
 				line-height: 1.08 !important;
 			}
-			html body.single-product div.product p.price,
-			html body.single-product div.product span.price,
-			html body.single-product .product-summary .price {
-				margin: 0 0 14px !important;
-				font-size: clamp(24px, 2vw, 29px) !important;
+			html body.elmercado-child-theme.single-product div.product .product-summary .summary.entry-summary p.price,
+			html body.elmercado-child-theme.single-product div.product .product-summary .summary.entry-summary span.price {
+				margin: 0 0 13px !important;
+				font-size: clamp(24px, 2vw, 28px) !important;
 				font-weight: 800 !important;
 				line-height: 1.2 !important;
 			}
-			html body.single-product .woocommerce-product-details__short-description {
+			html body.elmercado-child-theme.single-product div.product .product-summary .woocommerce-product-details__short-description {
 				width: 100% !important;
 				max-width: none !important;
 				margin: 0 !important;
@@ -152,51 +167,62 @@ add_action(
 				font-size: 15px !important;
 				line-height: 1.62 !important;
 			}
-			html body.single-product .woocommerce-product-details__short-description p {
-				margin: 0 0 10px !important;
+			html body.elmercado-child-theme.single-product div.product .product-summary .woocommerce-product-details__short-description p {
+				margin: 0 0 9px !important;
 			}
-			html body.single-product .woocommerce-product-details__short-description p:last-child {
+			html body.elmercado-child-theme.single-product div.product .product-summary .woocommerce-product-details__short-description p:last-child {
 				margin-bottom: 0 !important;
 			}
-			html body.single-product form.cart {
-				margin-top: 18px !important;
+			html body.elmercado-child-theme.single-product div.product .product-summary form.cart {
+				margin-top: 17px !important;
 			}
-			html body.single-product form.cart table.variations {
-				margin-bottom: 12px !important;
+			html body.elmercado-child-theme.single-product div.product .product-summary form.cart table.variations {
+				margin-bottom: 11px !important;
 			}
-			html body.single-product form.cart table.variations tr {
-				margin-bottom: 10px !important;
+			html body.elmercado-child-theme.single-product div.product .product-summary form.cart table.variations tr {
+				margin-bottom: 9px !important;
 			}
-			html body.single-product form.cart table.variations label {
+			html body.elmercado-child-theme.single-product div.product .product-summary form.cart table.variations label {
 				font-size: 11px !important;
 				font-weight: 800 !important;
 				letter-spacing: .055em !important;
 			}
-			html body.single-product form.cart select {
+			html body.elmercado-child-theme.single-product div.product .product-summary form.cart select {
 				min-height: 42px !important;
 				font-size: 14px !important;
 			}
-			html body.single-product .product_meta {
-				margin-top: 18px !important;
-				padding-top: 14px !important;
-				border-top: 1px solid rgba(13,33,27,.09) !important;
+			html body.elmercado-child-theme.single-product div.product .product-summary .product_meta {
+				margin-top: 16px !important;
+				padding-top: 13px !important;
+				border-top: 1px solid rgba(13, 33, 27, .09) !important;
 				color: #68736e !important;
 				font-size: 11px !important;
-				line-height: 1.55 !important;
+				line-height: 1.5 !important;
 			}
 
-			html body.single-product .woocommerce-tabs {
+			/* ---------------------------------------------------------
+			 * After-summary container owns description and related products.
+			 * This prevents percentage widths from being applied a second time.
+			 * --------------------------------------------------------- */
+			html body.elmercado-child-theme.single-product div.product > .woostify-container {
+				padding-top: 0 !important;
+				padding-bottom: 0 !important;
+			}
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs {
 				clear: both !important;
-				padding: 30px 0 26px !important;
+				width: 100% !important;
+				max-width: none !important;
+				margin: 0 !important;
+				padding: 28px 0 24px !important;
 				background: transparent !important;
 				border: 0 !important;
-				border-top: 1px solid rgba(13,33,27,.10) !important;
+				border-top: 1px solid rgba(13, 33, 27, .10) !important;
 				border-radius: 0 !important;
 				box-shadow: none !important;
+				box-sizing: border-box !important;
 			}
-			html body.single-product .woocommerce-tabs .woocommerce-Tabs-panel,
-			html body.single-product .woocommerce-tabs #tab-description,
-			html body.single-product #tab-description {
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs #tab-description,
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs .woocommerce-Tabs-panel--description {
 				display: block !important;
 				width: 100% !important;
 				max-width: 1040px !important;
@@ -206,140 +232,108 @@ add_action(
 				font-size: 16px !important;
 				line-height: 1.72 !important;
 			}
-			html body.single-product #tab-description > :first-child {
+			html body.elmercado-child-theme.single-product div.product #tab-description > :first-child {
 				margin-top: 0 !important;
 			}
-			html body.single-product #tab-description h2 {
-				margin: 30px 0 10px !important;
-				font-size: clamp(24px, 2vw, 30px) !important;
+			html body.elmercado-child-theme.single-product div.product #tab-description h2 {
+				margin: 28px 0 9px !important;
+				font-size: clamp(24px, 2vw, 29px) !important;
 				font-weight: 650 !important;
 				letter-spacing: -0.025em !important;
 				line-height: 1.2 !important;
 			}
-			html body.single-product #tab-description h3 {
-				margin: 24px 0 8px !important;
+			html body.elmercado-child-theme.single-product div.product #tab-description h3 {
+				margin: 22px 0 7px !important;
 				font-size: clamp(19px, 1.5vw, 22px) !important;
 				line-height: 1.3 !important;
 			}
-			html body.single-product #tab-description p,
-			html body.single-product #tab-description ul,
-			html body.single-product #tab-description ol {
+			html body.elmercado-child-theme.single-product div.product #tab-description p,
+			html body.elmercado-child-theme.single-product div.product #tab-description ul,
+			html body.elmercado-child-theme.single-product div.product #tab-description ol {
 				margin-top: 0 !important;
-				margin-bottom: 14px !important;
+				margin-bottom: 13px !important;
 			}
 
-			html body.single-product .woocommerce-tabs + .related,
-			html body.single-product section.related.products,
-			html body.single-product .related,
-			html body.single-product .up-sells {
-				margin-top: 0 !important;
-				margin-bottom: 0 !important;
-				padding: 24px 0 36px !important;
-				border-top: 1px solid rgba(13,33,27,.10) !important;
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > section.related.products,
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .related,
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .up-sells {
+				width: 100% !important;
+				max-width: none !important;
+				margin: 0 !important;
+				padding: 22px 0 34px !important;
+				border-top: 1px solid rgba(13, 33, 27, .10) !important;
+				box-sizing: border-box !important;
 			}
-			html body.single-product .related > h2,
-			html body.single-product .up-sells > h2 {
-				margin: 0 0 18px !important;
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > section.related.products > h2,
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .related > h2,
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .up-sells > h2 {
+				margin: 0 0 17px !important;
 				padding: 0 !important;
 				color: #0d211b !important;
-				font-size: clamp(24px, 2vw, 30px) !important;
+				font-size: clamp(24px, 2vw, 29px) !important;
 				font-weight: 650 !important;
 				letter-spacing: -0.025em !important;
 				line-height: 1.2 !important;
 				text-align: left !important;
 			}
-			html body.single-product .related ul.products,
-			html body.single-product .up-sells ul.products {
+			html body.elmercado-child-theme.single-product div.product .related ul.products,
+			html body.elmercado-child-theme.single-product div.product .up-sells ul.products {
 				margin-top: 0 !important;
 				margin-bottom: 0 !important;
 			}
 
-			@media (min-width: 992px) {
-				html body.single-product .content-top .woocommerce {
-					flex: 1 1 auto !important;
-				}
-				html body.single-product .woocommerce + .woostify-product-navigation {
-					flex: 0 0 auto !important;
-					justify-content: flex-end !important;
-				}
-				html body.single-product .product-gallery {
-					float: left !important;
-					width: 54% !important;
-					max-width: 54% !important;
-				}
-				html body.single-product .product-summary {
-					float: left !important;
-					width: calc(46% - 36px) !important;
-					max-width: calc(46% - 36px) !important;
-					margin-left: 36px !important;
-				}
-			}
-
 			@media (max-width: 991px) {
-				html body.single-product .content-top {
-					padding-top: 9px !important;
-				}
-				html body.single-product .content-top .woocommerce {
+				html body.elmercado-child-theme.single-product .content-top .woocommerce {
 					flex: 0 0 100% !important;
 				}
-				html body.single-product .woostify-product-navigation {
+				html body.elmercado-child-theme.single-product .woostify-product-navigation {
 					width: 100% !important;
 					justify-content: space-between !important;
 				}
-				html body.single-product .product-page-container {
-					padding: 12px 0 24px !important;
+				html body.elmercado-child-theme.single-product div.product .product-page-container {
+					padding: 12px 0 20px !important;
 				}
-				html body.single-product .product-gallery,
-				html body.single-product .product-summary {
-					float: none !important;
-					width: 100% !important;
-					max-width: none !important;
-					margin-left: 0 !important;
+				html body.elmercado-child-theme.single-product div.product .product-page-container > .woostify-container {
+					display: block !important;
 				}
-				html body.single-product .product-summary {
+				html body.elmercado-child-theme.single-product div.product .product-page-container .product-summary {
 					margin-top: 22px !important;
-				}
-				html body.single-product .woocommerce-tabs {
-					padding: 24px 0 22px !important;
-				}
-				html body.single-product .woocommerce-tabs .woocommerce-Tabs-panel,
-				html body.single-product .woocommerce-tabs #tab-description,
-				html body.single-product #tab-description {
-					max-width: none !important;
 				}
 			}
 
 			@media (max-width: 767px) {
-				html body.single-product .content-top > .woostify-container,
-				html body.single-product .product-page-container > .woostify-container,
-				html body.single-product .woocommerce-tabs,
-				html body.single-product .related,
-				html body.single-product .up-sells {
+				html body.elmercado-child-theme.single-product .content-top > .woostify-container,
+				html body.elmercado-child-theme.single-product div.product .product-page-container > .woostify-container,
+				html body.elmercado-child-theme.single-product div.product > .woostify-container {
 					width: calc(100% - 30px) !important;
 				}
-				html body.single-product .product_title {
-					font-size: clamp(29px, 8.5vw, 36px) !important;
+				html body.elmercado-child-theme.single-product div.product .product-summary .summary.entry-summary h1.product_title {
+					font-size: clamp(29px, 8.5vw, 35px) !important;
 					line-height: 1.08 !important;
 				}
-				html body.single-product .woocommerce-product-details__short-description {
+				html body.elmercado-child-theme.single-product div.product .product-summary .woocommerce-product-details__short-description {
 					font-size: 14px !important;
 					line-height: 1.62 !important;
 				}
-				html body.single-product .woocommerce-tabs {
-					padding: 22px 0 20px !important;
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs {
+					padding: 21px 0 19px !important;
 				}
-				html body.single-product #tab-description {
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs #tab-description,
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs .woocommerce-Tabs-panel--description {
+					max-width: none !important;
 					font-size: 15px !important;
 					line-height: 1.68 !important;
 				}
-				html body.single-product #tab-description h2,
-				html body.single-product .related > h2,
-				html body.single-product .up-sells > h2 {
-					font-size: 24px !important;
+				html body.elmercado-child-theme.single-product div.product #tab-description h2,
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > section.related.products > h2,
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .related > h2,
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .up-sells > h2 {
+					font-size: 23px !important;
 				}
-				html body.single-product .related,
-				html body.single-product .up-sells {
-					padding: 22px 0 30px !important;
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > section.related.products,
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .related,
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .up-sells {
+					padding: 20px 0 28px !important;
 				}
 			}
 		</style>
