@@ -50,9 +50,9 @@ jobs:
             'Made for quick cooking'
             'Ideal for stews and slow cooking'
             'A cut with plenty of flavour'
-            'A tender boneless loin steak'
-            'Juicy steaks from the chuck'
-            'A substantial high-loin steak'
+            'A tender cut from the striploin'
+            'The juiciness of beef chuck'
+            'A rib steak from the high loin'
             'One of the most tender cuts'
             'A cut made for slow cooking'
           )
@@ -62,20 +62,18 @@ jobs:
             slug="${slugs[$i]}"
             out="/tmp/${i}.html"
             url="${base}/${slug}/?emdo_public_en_verify=${GITHUB_RUN_ID}-${i}"
-            code=$(curl -L -sS --connect-timeout 10 --max-time 30 -A 'Mozilla/5.0 EMDO public English verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -w '%{http_code}' -o "$out" "$url")
-            echo "==== ${slug} HTTP=${code} bytes=$(wc -c < "$out") ===="
-            marker='no'; section='no'; producer='no'; faq='no'; spanish_new='no'
+            code=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 --retry-delay 1 -A 'Mozilla/5.0 EMDO public English verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -w '%{http_code}' -o "$out" "$url")
+            marker='no'; section='no'; producer='no'; faq='no'; spanish='no'
             grep -Fq "${markers[$i]}" "$out" && marker='yes' || true
             grep -Fq "${section_markers[$i]}" "$out" && section='yes' || true
             grep -Fq 'About Tolecarnes' "$out" && producer='yes' || true
             grep -Fq 'Frequently asked questions' "$out" && faq='yes' || true
-            grep -Fq 'Sobre Tolecarnes' "$out" && spanish_new='yes' || true
-            echo "PUBLIC_EN new_excerpt=${marker} new_body_section=${section} about_tolecarnes=${producer} faq=${faq} spanish_marker=${spanish_new}"
-            echo '-- relevant snippets --'
-            grep -o -E '.{0,120}(About Tolecarnes|Frequently asked questions|An everyday kitchen staple|A different style of burger|Made for quick cooking|Ideal for stews and slow cooking|A cut with plenty of flavour|A tender boneless loin steak|Juicy steaks from the chuck|A substantial high-loin steak|One of the most tender cuts|A cut made for slow cooking|Ground beef made with 100% beef|Beef steak selected from the striploin|Beef tenderloin, one of the most prized cuts).{0,180}' "$out" | head -n 12 || true
-            if [[ "$code" != '200' || "$marker" != 'yes' || "$section" != 'yes' || "$producer" != 'yes' || "$faq" != 'yes' ]]; then
-              failures=$((failures+1))
+            if grep -Fq 'Sobre Tolecarnes' "$out" || grep -Fq 'Preguntas frecuentes' "$out"; then spanish='yes'; fi
+            status='OK'
+            if [[ "$code" != '200' || "$marker" != 'yes' || "$section" != 'yes' || "$producer" != 'yes' || "$faq" != 'yes' || "$spanish" != 'no' ]]; then
+              status='FAIL'; failures=$((failures+1))
             fi
+            echo "VERIFY slug=${slug} HTTP=${code} short=${marker} body=${section} producer=${producer} faq=${faq} spanish=${spanish} STATUS=${status}"
           done
           echo "PUBLIC_EN_FAILURES=${failures}"
-          exit 0
+          [[ "$failures" -eq 0 ]]
