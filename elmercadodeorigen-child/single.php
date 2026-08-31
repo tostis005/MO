@@ -337,7 +337,7 @@ while ( have_posts() ) :
 						</div>
 						<a class="emo-text-link" href="<?php echo esc_url( elmercado_blog_url() ); ?>"><?php esc_html_e( 'Ver todos los artículos', 'elmercadodeorigen' ); ?> <span aria-hidden="true">→</span></a>
 					</header>
-					<div class="emo-journal-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+					<div class="emo-journal-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(245px, 100%), 1fr)) !important;">
 						<?php
 						while ( $related->have_posts() ) :
 							$related->the_post();
