@@ -1,0 +1,31 @@
+name: Show public English description tab content
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tolecarnes-public-en-tab-content.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Print description tab content for two products
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L -sS --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 EMDO verifier' -H 'Cache-Control: no-cache, no-store' -o /tmp/carne.html 'https://www.elmercadodeorigen.com/en/product/carne-picada-extra/?emdo_tabcontent=carne'
+          curl -L -sS --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 EMDO verifier' -H 'Cache-Control: no-cache, no-store' -o /tmp/entrecot.html 'https://www.elmercadodeorigen.com/en/product/entrecot-de-lomo-bajo/?emdo_tabcontent=entrecot'
+          echo '==== CARNE TAB CONTENT ===='
+          start=$(grep -n -m1 'id="tab-description"' /tmp/carne.html | cut -d: -f1)
+          end=$((start+45))
+          sed -n "${start},${end}p" /tmp/carne.html
+          echo '==== ENTRECOT TAB CONTENT ===='
+          start=$(grep -n -m1 'id="tab-description"' /tmp/entrecot.html | cut -d: -f1)
+          end=$((start+45))
+          sed -n "${start},${end}p" /tmp/entrecot.html
