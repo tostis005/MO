@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     paths:
       - '.github/workflows/hotfix-home-performance-010284.yml'
-      - '.github/hotfix-home-performance-010284.trigger'
+      - '.github/hotfix-home-performance-010284.trigger*'
   workflow_dispatch:
 
 permissions:
