@@ -1,4 +1,4 @@
-name: Deploy product detail refinement 0.10.271
+name: Deploy product detail refinement 0.10.272
 
 on:
   push:
@@ -21,14 +21,12 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Validate refinement
         shell: bash
         run: |
           set -euo pipefail
           php -l mu-plugins/z-mdo-product-detail-refinement-010270.php
-          grep -Fq 'mdo-product-detail-refinement-010271' mu-plugins/z-mdo-product-detail-refinement-010270.php
-
+          grep -Fq 'mdo-product-detail-refinement-010272' mu-plugins/z-mdo-product-detail-refinement-010270.php
       - name: Deploy refinement to production
         shell: bash
         env:
@@ -60,7 +58,6 @@ jobs:
           sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-
       - name: Verify rendered layout
         shell: bash
         run: |
@@ -88,7 +85,7 @@ jobs:
                   relatedBackground:related?getComputedStyle(related).backgroundColor:null,
                   productPadding:product?getComputedStyle(product).padding:null,
                   productPagePadding:pp?getComputedStyle(pp).padding:null,
-                  marker:!!document.querySelector('#mdo-product-detail-refinement-010271')
+                  marker:!!document.querySelector('#mdo-product-detail-refinement-010272')
                 };
               });
               console.log('REFINEMENT',cfg.name,JSON.stringify(m));
