@@ -1,4 +1,4 @@
-name: Temporary Tolecarnes Batch 07 Production Runner
+name: Verify public Tolecarnes batch 07
 
 on:
   push:
@@ -11,59 +11,38 @@ permissions:
   contents: read
 
 jobs:
-  update:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Validate batch 07 script
+      - name: Check Spanish and English rendered pages
         shell: bash
         run: |
           set -euo pipefail
-          php -l .github/scripts/tolecarnes-products-batch-07-production.php >/dev/null
-          grep -Fq 'Pecho en filetes de ternera' .github/scripts/tolecarnes-products-batch-07-production.php
-          grep -Fq 'Tomahawk aguja' .github/scripts/tolecarnes-products-batch-07-production.php
-          grep -Fq 'Burger 100% ternera (2 unidades)' .github/scripts/tolecarnes-products-batch-07-production.php
-          grep -Fq 'Roast beef de ternera' .github/scripts/tolecarnes-products-batch-07-production.php
-          grep -Fq 'Lote 2 tomahawk de aguja y vino' .github/scripts/tolecarnes-products-batch-07-production.php
-          grep -Fq '_en_US_post_content' .github/scripts/tolecarnes-products-batch-07-production.php
-          grep -Fq 'mo_tolecarnes_batch07_backup_20260831' .github/scripts/tolecarnes-products-batch-07-production.php
-          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
-      - name: Apply batch 07 to production
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-          REMOTE_SCRIPT="/tmp/tolecarnes-batch07-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/tolecarnes-products-batch-07-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
-      - name: Flush WordPress object cache
-        if: success()
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
-          ')"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          slugs=(pecho-en-filetes-de-ternera tomahawk-aguja burger-100-ternera-2-unidades roast-beef-de-ternera lote-2-tomahawk-de-aguja-y-vino)
+          es_body=('El pecho de ternera, ya preparado en filetes' 'La aguja en formato Tomahawk' 'Hamburguesas 100% de ternera' 'Una pieza de lomo bajo para asar' 'Dos Tomahawk de aguja en un mismo lote')
+          en_body=('Beef brisket, already prepared as steaks' 'Chuck in Tomahawk format' '100% beef burgers' 'A striploin joint for roasting' 'Two chuck Tomahawks in one box')
+          es_short=('Pecho de ternera cortado en filetes pequeños y listo para cocinar' 'Aguja de ternera en formato Tomahawk' 'Hamburguesas elaboradas artesanalmente con 100% carne de ternera' 'Roast beef de ternera preparado a partir de lomo bajo' 'Lote compuesto por 2 Tomahawk de aguja de ternera')
+          en_short=('Beef brisket cut into small steaks and ready to cook' 'Beef chuck in Tomahawk format' 'Handmade burgers prepared with 100% beef' 'Beef roast prepared from striploin' 'Box containing 2 beef chuck Tomahawks')
+          failures=0
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"
+            es="/tmp/es-${i}.html"; en="/tmp/en-${i}.html"
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch07 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_b7_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch07 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_b7_en=${GITHUB_RUN_ID}-${i}")
+            esok=yes; enok=yes
+            grep -Fq "${es_short[$i]}" "$es" || esok=no
+            grep -Fq "${es_body[$i]}" "$es" || esok=no
+            grep -Fq 'Sobre Tolecarnes' "$es" || esok=no
+            grep -Fq 'Preguntas frecuentes' "$es" || esok=no
+            grep -Fq "${en_short[$i]}" "$en" || enok=no
+            grep -Fq "${en_body[$i]}" "$en" || enok=no
+            grep -Fq 'About Tolecarnes' "$en" || enok=no
+            grep -Fq 'Frequently asked questions' "$en" || enok=no
+            if grep -Fq 'Sobre Tolecarnes' "$en" || grep -Fq 'Preguntas frecuentes' "$en"; then enok=no; fi
+            status=OK
+            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
+            echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
+          done
+          echo "BATCH07_PUBLIC_FAILURES=${failures}"
+          [[ "$failures" -eq 0 ]]
