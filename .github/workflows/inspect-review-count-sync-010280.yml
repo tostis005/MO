@@ -1,0 +1,79 @@
+name: Inspect review counts and sync hooks 0.10.280
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-review-count-sync-010280.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect production WordPress state
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          : "${wp_bin:?wp-cli not found}"
+          : "${php_bin:?php not found}"
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break ;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+          WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
+
+          echo '=== FRONT PAGE ==='
+          front_id=$("${WP[@]}" option get page_on_front --skip-plugins --skip-themes 2>/dev/null || true)
+          echo "front_id=$front_id"
+          if [[ "$front_id" =~ ^[0-9]+$ ]] && [ "$front_id" -gt 0 ]; then
+            "${WP[@]}" post get "$front_id" --fields=ID,post_title,post_name,post_status --format=json --skip-plugins --skip-themes || true
+            echo '--- post_content matches ---'
+            "${WP[@]}" post get "$front_id" --field=post_content --skip-plugins --skip-themes 2>/dev/null | grep -Ein -C2 'Trustpilot|Google|303|169|reseñ|review' | head -n 120 || true
+            echo '--- Elementor matches ---'
+            tmp=$(mktemp)
+            "${WP[@]}" post meta get "$front_id" _elementor_data --skip-plugins --skip-themes > "$tmp" 2>/dev/null || true
+            grep -Ein -o '.{0,180}(Trustpilot|Google|303|169|reseñ|review).{0,260}' "$tmp" | head -n 120 || true
+            rm -f "$tmp"
+          fi
+
+          echo '=== RELEVANT PLUGINS ==='
+          "${WP[@]}" plugin list --fields=name,status,version --format=csv 2>/dev/null | grep -Ei 'trust|review|google|sync|import|vendor|feed|mentta|wcfm|elementor' || true
+
+          echo '=== RELEVANT CRON HOOKS ==='
+          "${WP[@]}" cron event list --fields=hook,next_run_gmt,recurrence --format=csv 2>/dev/null | grep -Ei 'sync|vendor|store|product|import|feed|mdo|mentta|review|trust|google' | head -n 200 || true
+
+          echo '=== RELEVANT OPTION NAMES ONLY ==='
+          prefix=$("${WP[@]}" db prefix 2>/dev/null)
+          sql="SELECT option_name FROM ${prefix}options WHERE option_name LIKE '%trust%' OR option_name LIKE '%review%' OR option_name LIKE '%google%' OR option_name LIKE '%sync%' OR option_name LIKE '%mentta%' ORDER BY option_name LIMIT 250;"
+          "${WP[@]}" db query "$sql" --skip-column-names 2>/dev/null | head -n 250 || true
+
+          echo '=== RELEVANT TABLE NAMES ==='
+          "${WP[@]}" db tables --all-tables-with-prefix 2>/dev/null | tr ' ' '\n' | grep -Ei 'trust|review|google|sync|import|feed' | head -n 120 || true
+          REMOTE
