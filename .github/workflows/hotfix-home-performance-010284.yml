@@ -23,30 +23,22 @@ jobs:
       - uses: actions/checkout@v4
       - name: Lint fixed plugin
         run: php -l mu-plugins/mdo-home-performance-010284.php
-      - name: Restore production plugin
+      - name: Restore production plugin without bootstrapping WordPress
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
           PORT="${STAGING_PORT:-22}"
-          ROOT=$(sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          TARGET=$(sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          wp_bin=$(command -v wp || true)
-          php_bin=$(command -v php || true)
-          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
-            p=$(dirname "$cfg")
-            url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-            case "$url" in
-              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
-                printf '%s' "$p"; exit 0 ;;
-            esac
-          done
-          exit 23
+          target=$(find /var/www/vhosts "$HOME" -maxdepth 10 -type f -path '*/httpdocs/wp-content/mu-plugins/mdo-home-performance-010284.php' 2>/dev/null | head -n1)
+          [ -n "$target" ] || exit 23
+          printf '%s' "$target"
           REMOTE
           )
-          sshpass -e scp -o StrictHostKeyChecking=no -P "$PORT" mu-plugins/mdo-home-performance-010284.php "$STAGING_USER@$STAGING_HOST:$ROOT/wp-content/mu-plugins/mdo-home-performance-010284.php"
-          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "php -l '$ROOT/wp-content/mu-plugins/mdo-home-performance-010284.php'"
-          curl -fsSL --retry 3 --retry-delay 1 'https://www.elmercadodeorigen.com/?mdo_hotfix_check=1' -o /tmp/home.html
+          [ -n "$TARGET" ]
+          sshpass -e scp -o StrictHostKeyChecking=no -P "$PORT" mu-plugins/mdo-home-performance-010284.php "$STAGING_USER@$STAGING_HOST:$TARGET"
+          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "php -l '$TARGET'"
+          curl -fsSL --retry 4 --retry-delay 1 'https://www.elmercadodeorigen.com/?mdo_hotfix_check=2' -o /tmp/home.html
           grep -q '</html>' /tmp/home.html
           echo 'Production recovered after namespace hotfix.'
