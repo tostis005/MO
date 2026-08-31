@@ -1,0 +1,62 @@
+name: Diagnose English Tolecarnes rendering from production host
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tolecarnes-local-en-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Curl English pages locally on production host
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          slugs=(carne-picada-extra entrecot-de-lomo-bajo)
+          markers=(
+            'Ground beef made with 100% beef and no added additives.'
+            'Beef steak selected from the striploin and presented boneless.'
+          )
+          sections=(
+            'An everyday kitchen staple'
+            'A tender boneless loin steak'
+          )
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"; f="/tmp/en-local-${i}.html"; h="/tmp/en-local-${i}.headers"
+            url="https://www.elmercadodeorigen.com/en/product/${s}/?emdo_local_verify=$(date +%s)-${i}"
+            code=$(curl -k -L -sS --resolve www.elmercadodeorigen.com:443:127.0.0.1 --connect-timeout 5 --max-time 15 -A 'Mozilla/5.0 EMDO local verifier' -D "$h" -w '%{http_code}' -o "$f" "$url" || true)
+            echo "==== ${s} HTTP=${code:-curl_fail} bytes=$(wc -c < "$f" 2>/dev/null || echo 0) ===="
+            sed -n '1,25p' "$h" 2>/dev/null || true
+            for label in marker section producer faq; do
+              case "$label" in
+                marker) q="${markers[$i]}" ;;
+                section) q="${sections[$i]}" ;;
+                producer) q='About Tolecarnes' ;;
+                faq) q='Frequently asked questions' ;;
+              esac
+              if grep -Fq "$q" "$f" 2>/dev/null; then echo "${label}=yes"; else echo "${label}=no"; fi
+            done
+            echo '-- description area snippets --'
+            grep -o -E '.{0,140}(Description|Ground beef made with 100% beef|Beef steak selected from the striploin|An everyday kitchen staple|A tender boneless loin steak|About Tolecarnes|Frequently asked questions|Carne 100% Ternera Natural|Esta pieza se selecciona).{0,240}' "$f" | head -n 20 || true
+          done
+          REMOTE
