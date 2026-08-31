@@ -1,4 +1,4 @@
-name: Inspect Google Maps direct review payload 0.10.283
+name: Probe exact Google Place review payload 0.10.284
 
 on:
   push:
@@ -13,51 +13,28 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 4
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect direct public payloads
+      - name: Probe exact Google Place
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import re, urllib.request
-
-          UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
-          def fetch(url):
-              req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept-Language':'es-ES,es;q=0.9,en;q=0.8'})
-              with urllib.request.urlopen(req,timeout=25) as r:
-                  return r.read().decode('utf-8','replace')
-
-          urls = [
-              'https://www.google.com/maps/search/?api=1&query=El%20Mercado%20de%20Origen',
-              'https://www.google.com/maps?cid=17661713796917926528&hl=es',
-              'https://www.google.com/search?hl=es&gl=es&q=El+Mercado+de+Origen+rese%C3%B1as',
-          ]
-          for url in urls:
-              print('\n===',url,'===')
-              try:
-                  s=fetch(url)
-              except Exception as e:
-                  print('ERR',type(e).__name__,str(e)[:160]); continue
-              print('bytes',len(s))
-              for token in ['El Mercado de Origen','4.9','4,9','303 rese','303 review','303 opiniones','303 reseñas']:
-                  positions=[m.start() for m in re.finditer(re.escape(token),s,re.I)]
-                  print(token, 'hits', len(positions))
-                  for p in positions[:4]:
-                      frag=s[max(0,p-450):p+750]
-                      frag=re.sub(r'\s+',' ',frag)
-                      print('SNIP',frag[:1200])
-              # Numeric arrays close to exact business name; this helps identify stable positions.
-              for m in list(re.finditer('El Mercado de Origen',s,re.I))[:3]:
-                  frag=s[max(0,m.start()-1800):m.start()+2500]
-                  nums=re.findall(r'(?<!\d)(?:[1-5][\.,]\d|\d{2,4})(?!\d)',frag)
-                  print('NEAR_NAME_NUMS',nums[:160])
-          print('\n=== TRUSTPILOT ===')
-          s=fetch('https://es.trustpilot.com/review/elmercadodeorigen.com')
+          u='https://www.google.com/maps/search/?api=1&query=Google&query_place_id=ChIJbbIJi58nQg0RgJroXR8DG_U'
+          req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36','Accept-Language':'es-ES,es;q=0.9,en;q=0.8'})
+          s=urllib.request.urlopen(req,timeout=25).read().decode('utf-8','replace')
           print('bytes',len(s))
-          patterns=[r'El Mercado de Origen[^<]{0,80}Opiniones[^<]{0,40}(\d{1,6})',r'(\d{1,6})\s+opiniones',r'"numberOfReviews"\s*:\s*\{?[^}]{0,120}?"total"\s*:\s*(\d+)']
-          for pat in patterns:
-              ms=re.findall(pat,s,re.I|re.S)
-              print('PAT',pat,'=>',ms[:8])
+          for token in ['El Mercado de Origen','4.9','4,9','303','reseñas','reviews']:
+              ps=[m.start() for m in re.finditer(re.escape(token),s,re.I)]
+              print(token,'hits',len(ps))
+              for p in ps[:8]:
+                  f=re.sub(r'\s+',' ',s[max(0,p-700):p+1000])
+                  print('SNIP',f[:1700])
+          # Search common Maps data patterns: rating followed by review count in nearby array cells.
+          for pat in [r'4\.9.{0,400}?303',r'303.{0,400}?4\.9',r'4,9.{0,400}?303',r'303.{0,400}?4,9']:
+              ms=list(re.finditer(pat,s,re.I|re.S))
+              print('PAIR',pat,'hits',len(ms))
+              for m in ms[:5]: print(re.sub(r'\s+',' ',s[max(0,m.start()-400):m.end()+500])[:1500])
           PY
