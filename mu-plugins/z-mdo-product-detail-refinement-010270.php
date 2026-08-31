@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO - Product detail refinement 0.10.272
- * Description: Removes the gap below product navigation and gives only the long description a white background.
- * Version: 0.10.272
+ * Plugin Name: MDO - Product detail refinement 0.10.273
+ * Description: Aligns product detail pages with the site's premium cream/white editorial system, compact gallery proportions and a full-width white description band.
+ * Version: 0.10.273
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -16,8 +16,8 @@ add_action(
 			return;
 		}
 		?>
-		<style id="mdo-product-detail-refinement-010272">
-			/* Remove stacked spacing between previous/next and the product itself. */
+		<style id="mdo-product-detail-refinement-010273">
+			/* Keep previous/next visually attached to the purchase area. */
 			html body.elmercado-child-theme.single-product .content-top {
 				margin-bottom: 0 !important;
 				padding-bottom: 0 !important;
@@ -32,16 +32,79 @@ add_action(
 				padding-top: 0 !important;
 			}
 
-			/* White background only for the long description section. */
-			html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs {
-				background-color: #fff !important;
+			/*
+			 * Product imagery: a consistent 4:5 commerce frame keeps portrait,
+			 * square and landscape source photography visually balanced without crop.
+			 */
+			html body.elmercado-child-theme.single-product div.product .product-page-container .product-gallery .product-images {
+				height: auto !important;
+				aspect-ratio: 4 / 5 !important;
+				background: #fff !important;
+				border-radius: 12px !important;
 			}
 
-			/* Related products deliberately keep the page background. */
+			html body.elmercado-child-theme.single-product div.product .product-page-container .product-gallery .product-images img {
+				display: block !important;
+				width: 100% !important;
+				height: 100% !important;
+				max-height: none !important;
+				object-fit: contain !important;
+				object-position: center center !important;
+				background: #fff !important;
+			}
+
+			/* Slightly tighten the thumbnail rail so imagery reads as one unit. */
+			@media (min-width: 992px) {
+				html body.elmercado-child-theme.single-product div.product .product-page-container .product-thumbnail-images {
+					margin-right: 16px !important;
+				}
+			}
+
+			/*
+			 * Long description: full-bleed white section, while the editorial copy
+			 * remains aligned to the site's 1240 / 1040px layout system.
+			 */
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs {
+				position: relative !important;
+				isolation: isolate !important;
+				background: #fff !important;
+				border-top: 1px solid rgba(13, 33, 27, .08) !important;
+				border-bottom: 1px solid rgba(13, 33, 27, .08) !important;
+			}
+
+			html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs::before {
+				content: "" !important;
+				position: absolute !important;
+				z-index: -1 !important;
+				top: -1px !important;
+				bottom: -1px !important;
+				left: 50% !important;
+				width: 100vw !important;
+				transform: translateX(-50%) !important;
+				background: #fff !important;
+				border-top: 1px solid rgba(13, 33, 27, .08) !important;
+				border-bottom: 1px solid rgba(13, 33, 27, .08) !important;
+				pointer-events: none !important;
+			}
+
+			/* Related products deliberately return to the site's cream page canvas. */
 			html body.elmercado-child-theme.single-product div.product > .woostify-container > section.related.products,
 			html body.elmercado-child-theme.single-product div.product > .woostify-container > .related,
 			html body.elmercado-child-theme.single-product div.product > .woostify-container > .up-sells {
-				background-color: transparent !important;
+				position: relative !important;
+				z-index: 1 !important;
+				background: transparent !important;
+			}
+
+			@media (max-width: 991px) {
+				html body.elmercado-child-theme.single-product div.product .product-page-container .product-gallery .product-images {
+					aspect-ratio: 4 / 5 !important;
+				}
+
+				html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs {
+					padding-top: 24px !important;
+					padding-bottom: 22px !important;
+				}
 			}
 		</style>
 		<?php
