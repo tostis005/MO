@@ -91,7 +91,14 @@ jobs:
               if ( function_exists("wp_cache_clear_cache") ) { wp_cache_clear_cache(); }
               if ( function_exists("w3tc_flush_all") ) { w3tc_flush_all(); }
               if ( class_exists("autoptimizeCache") ) { autoptimizeCache::clearall(); }
+              if ( has_action("swcfpc_purge_cache") ) { do_action("swcfpc_purge_cache"); }
+              if ( has_action("cloudflare_purge_cache") ) { do_action("cloudflare_purge_cache"); }
             ' --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+          fi
+
+          # Remove generated full-page/disk caches. Only cache contents are deleted; configuration stays intact.
+          if [ -d "$PROD_PATH/wp-content/cache" ]; then
+            find "$PROD_PATH/wp-content/cache" -mindepth 1 -delete 2>/dev/null || true
           fi
           REMOTE
 
