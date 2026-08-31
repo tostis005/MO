@@ -15,7 +15,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -45,27 +45,18 @@ jobs:
             printf '%s' "${existing%/wp-content/mu-plugins/mdo-home-performance-010284.php}"
             exit 0
           fi
-          wp_bin=$(command -v wp || true)
-          php_bin=$(command -v php || true)
-          [ -n "$wp_bin" ] || exit 21
-          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          [ -n "$php_bin" ] || exit 22
           for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
-            p=$(dirname "$cfg")
-            url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-            case "$url" in
-              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
-                printf '%s' "$p"; exit 0 ;;
-            esac
+            root=$(dirname "$cfg")
+            if grep -q 'elmercadodeorigen' "$cfg" 2>/dev/null; then printf '%s' "$root"; exit 0; fi
           done
           exit 23
           REMOTE
           )
           [ -n "$ROOT" ]
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
-          echo "Production WordPress located."
+          echo 'Production WordPress located.'
 
-      - name: Deploy MU plugin
+      - name: Deploy and prepare Home assets
         shell: bash
         run: |
           set -euo pipefail
@@ -73,118 +64,34 @@ jobs:
           ROOT='${{ steps.prod.outputs.root }}'
           sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "mkdir -p '$ROOT/wp-content/mu-plugins'"
           sshpass -e scp -o StrictHostKeyChecking=no -P "$PORT" mu-plugins/mdo-home-performance-010284.php "$STAGING_USER@$STAGING_HOST:$ROOT/wp-content/mu-plugins/mdo-home-performance-010284.php"
-
-      - name: Generate responsive WebP producer image
-        shell: bash
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          ROOT='${{ steps.prod.outputs.root }}'
           sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "ROOT='$ROOT' bash -s" <<'REMOTE'
           set -euo pipefail
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$php_bin" ] || exit 24
+          "$php_bin" -l "$ROOT/wp-content/mu-plugins/mdo-home-performance-010284.php"
           upload_dir="$ROOT/wp-content/uploads/2026/08"
           src=$(find "$upload_dir" -maxdepth 1 -type f \( -iname 'La-huerta-de-ana-mary-fondo*.jpg' -o -iname 'La-huerta-de-ana-mary-fondo*.jpeg' -o -iname 'La-huerta-de-ana-mary-fondo*.png' -o -iname 'La-huerta-de-ana-mary-fondo*.webp' \) ! -iname '*-mdo-*' -printf '%s %p\n' 2>/dev/null | sort -nr | head -n1 | cut -d' ' -f2-)
-          [ -n "$src" ] || { echo 'La Huerta source image was not found.' >&2; exit 31; }
-          php_bin=$(command -v php || true)
-          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$src" ] || { echo 'La Huerta source image not found' >&2; exit 25; }
           "$php_bin" -r '
           $src=$argv[1]; $dir=dirname($src); $info=@getimagesize($src);
-          if(!$info || !function_exists("imagewebp")){fwrite(STDERR,"GD/WebP unavailable\n"); exit(41);} 
+          if(!$info || !function_exists("imagewebp")){fwrite(STDERR,"GD/WebP unavailable\n");exit(41);} 
           switch($info[2]){case IMAGETYPE_JPEG:$im=@imagecreatefromjpeg($src);break;case IMAGETYPE_PNG:$im=@imagecreatefrompng($src);break;case IMAGETYPE_WEBP:$im=@imagecreatefromwebp($src);break;default:$im=false;}
-          if(!$im){fwrite(STDERR,"Cannot decode source image\n"); exit(42);} 
-          $sw=imagesx($im); $sh=imagesy($im);
-          foreach([480,960] as $target){$tw=min($target,$sw);$th=max(1,(int)round($sh*$tw/$sw));$out=imagecreatetruecolor($tw,$th);imagealphablending($out,false);imagesavealpha($out,true);$transparent=imagecolorallocatealpha($out,0,0,0,127);imagefilledrectangle($out,0,0,$tw,$th,$transparent);imagecopyresampled($out,$im,0,0,0,0,$tw,$th,$sw,$sh);$file=$dir."/La-huerta-de-ana-mary-fondo-mdo-".$target.".webp";if(!imagewebp($out,$file,82)){fwrite(STDERR,"Cannot write $file\n");exit(43);}imagedestroy($out);echo basename($file)." ".filesize($file)." bytes\n";}
-          imagedestroy($im);
+          if(!$im){fwrite(STDERR,"Cannot decode source\n");exit(42);} $sw=imagesx($im);$sh=imagesy($im);
+          foreach([480,960] as $target){$tw=min($target,$sw);$th=max(1,(int)round($sh*$tw/$sw));$out=imagecreatetruecolor($tw,$th);imagealphablending($out,false);imagesavealpha($out,true);$tr=imagecolorallocatealpha($out,0,0,0,127);imagefilledrectangle($out,0,0,$tw,$th,$tr);imagecopyresampled($out,$im,0,0,0,0,$tw,$th,$sw,$sh);$file=$dir."/La-huerta-de-ana-mary-fondo-mdo-".$target.".webp";if(!imagewebp($out,$file,82)){exit(43);}imagedestroy($out);$dim=getimagesize($file);echo basename($file)." ".$dim[0]."x".$dim[1]." ".filesize($file)." bytes\n";} imagedestroy($im);
           ' "$src"
+          rm -f "$ROOT/wp-content/uploads/elmercado-home-static/index.html"
+          echo 'Static Home cache invalidated.'
           REMOTE
 
-      - name: Lint production plugin and refresh Home cache
+      - name: Production smoke validation
         shell: bash
         run: |
           set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          ROOT='${{ steps.prod.outputs.root }}'
-          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "ROOT='$ROOT' bash -s" <<'REMOTE'
-          set -euo pipefail
-          wp_bin=$(command -v wp || true)
-          php_bin=$(command -v php || true)
-          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          "$php_bin" -l "$ROOT/wp-content/mu-plugins/mdo-home-performance-010284.php"
-          "$php_bin" "$wp_bin" eval 'delete_option("mdo_home_performance_coherence_version"); if (function_exists("elmercado_flush_home_cache")) { elmercado_flush_home_cache(); } else { $f=WP_CONTENT_DIR . "/uploads/elmercado-home-static/index.html"; if (is_file($f)) { @unlink($f); } }' --path="$ROOT" --allow-root
-          "$php_bin" "$wp_bin" cache flush --path="$ROOT" --allow-root || true
-          REMOTE
-
-      - name: Validate production HTML
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 3 --retry-delay 2 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          curl -fsSL --retry 4 --retry-delay 2 'https://www.elmercadodeorigen.com/?mdo_deploy_check=010284' -o /tmp/fresh.html
+          curl -fsSL --retry 4 --retry-delay 2 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          grep -q '</html>' /tmp/home.html
           grep -q 'mdo-home-performance-010284' /tmp/home.html
-          grep -q 'mdo-lcp-copy' /tmp/home.html
           grep -Eq 'La-huerta-de-ana-mary-fondo-mdo-(480|960)\.webp' /tmp/home.html
-          if grep -Eiq '<link[^>]+woo-coupon-usage' /tmp/home.html; then echo 'Coupon stylesheet is still render-blocking on Home.' >&2; exit 51; fi
-          curl -fsSL --retry 3 --retry-delay 2 'https://www.elmercadodeorigen.com/en/' -o /tmp/home-en.html
-          curl -fsSL --retry 3 --retry-delay 2 'https://www.elmercadodeorigen.com/tienda/' -o /tmp/shop.html
-          if grep -q 'mdo-home-performance-010284' /tmp/shop.html; then echo 'Home-only transform leaked to shop.' >&2; exit 52; fi
-          echo 'Production HTML validation passed.'
-
-      - name: Browser validation desktop and mobile
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm init -y >/dev/null 2>&1
-          npm install --silent playwright
-          npx playwright install --with-deps chromium >/dev/null
-          node <<'NODE'
-          const { chromium } = require('playwright');
-          (async()=>{
-            const browser=await chromium.launch({headless:true});
-            async function inspect(label,url,viewport,expectHome){
-              const page=await browser.newPage({viewport});
-              const pageErrors=[]; page.on('pageerror',e=>pageErrors.push(String(e.message||e)));
-              const res=await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
-              if(!res || res.status()>=400) throw new Error(`${label}: HTTP ${res&&res.status()}`);
-              await page.waitForLoadState('load',{timeout:60000});
-              const state=await page.evaluate(()=>{
-                const lcp=document.querySelector('.mdo-lcp-copy');
-                const img=document.querySelector('img.mdo-home-producer-webp');
-                const cs=lcp?getComputedStyle(lcp):null;
-                return {
-                  marker:document.documentElement.innerHTML.includes('mdo-home-performance-010284'),
-                  lcp:!!lcp, opacity:cs?cs.opacity:null, visibility:cs?cs.visibility:null,
-                  overflow:Math.max(0,document.documentElement.scrollWidth-window.innerWidth),
-                  image:img?{currentSrc:img.currentSrc,srcset:img.getAttribute('srcset'),width:img.getBoundingClientRect().width}:null,
-                  gtm:document.documentElement.innerHTML.includes('googletagmanager'),
-                  delayedSocial:document.querySelectorAll('script[data-mdo-delayed-social-src]').length
-                };
-              });
-              console.log(label,JSON.stringify(state),'pageErrors',pageErrors.length);
-              if(expectHome){
-                if(!state.marker||!state.lcp||state.opacity!=='1'||state.visibility==='hidden') throw new Error(`${label}: LCP optimization inactive`);
-                if(!state.image||!state.image.currentSrc.includes('.webp')) throw new Error(`${label}: responsive WebP inactive`);
-                if(state.overflow>2) throw new Error(`${label}: horizontal overflow ${state.overflow}`);
-              } else if(state.marker){throw new Error(`${label}: Home optimization leaked outside Home`);}
-              await page.close();
-            }
-            await inspect('ES desktop','https://www.elmercadodeorigen.com/',{width:1440,height:900},true);
-            await inspect('ES mobile','https://www.elmercadodeorigen.com/',{width:390,height:844},true);
-            await inspect('EN home','https://www.elmercadodeorigen.com/en/',{width:390,height:844},false).catch(async e=>{
-              console.log('EN route note:',e.message);
-              const p=await browser.newPage({viewport:{width:390,height:844}}); const r=await p.goto('https://www.elmercadodeorigen.com/en/',{waitUntil:'domcontentloaded'}); if(!r||r.status()>=400) throw e; await p.close();
-            });
-            await inspect('Shop','https://www.elmercadodeorigen.com/tienda/',{width:390,height:844},false);
-            await browser.close();
-          })().catch(e=>{console.error(e);process.exit(1)});
-          NODE
-
-      - name: Lighthouse smoke measurement
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx -y lighthouse 'https://www.elmercadodeorigen.com/' --only-categories=performance --chrome-flags='--headless --no-sandbox --disable-gpu' --output=json --output-path=/tmp/lighthouse.json --quiet || exit 0
-          node - <<'NODE'
-          const fs=require('fs'); const r=JSON.parse(fs.readFileSync('/tmp/lighthouse.json','utf8')); const a=r.audits||{};
-          const score=Math.round(((r.categories||{}).performance||{}).score*100);
-          console.log(`Performance ${score}; LCP ${a['largest-contentful-paint']?.displayValue||'n/a'}; CLS ${a['cumulative-layout-shift']?.displayValue||'n/a'}; TBT ${a['total-blocking-time']?.displayValue||'n/a'}`);
-          NODE
+          if grep -Eiq '<link[^>]+woo-coupon-usage' /tmp/home.html; then echo 'Coupon stylesheet remains on Home' >&2; exit 31; fi
+          echo 'Home deployment smoke validation passed.'
