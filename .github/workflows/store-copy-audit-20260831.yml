@@ -1,0 +1,27 @@
+name: Audit published store product copy
+on:
+  push:
+    paths:
+      - '.github/workflows/store-copy-audit-20260831.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Audit all published products
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done')"
+          : "${PROD_PATH:?production path not found}"
+          CODE='global $wpdb; $rows=$wpdb->get_results("SELECT ID,post_title,post_name,post_excerpt,post_content,post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" ORDER BY ID ASC",ARRAY_A); $by=[]; foreach($rows as $r){$u=get_userdata((int)$r["post_author"]); $v=$u?(string)$u->display_name:"(sin vendedor)"; $enex=(string)get_post_meta((int)$r["ID"],"_en_US_post_excerpt",true); $en=(string)get_post_meta((int)$r["ID"],"_en_US_post_content",true); $es=(string)$r["post_content"]; $hasEsFaq=(stripos($es,"Preguntas frecuentes")!==false); $hasEnFaq=(stripos($en,"Frequently asked questions")!==false); $hasProducer=(stripos($es,"<h2>Sobre ")!==false || stripos($es,"<h2>Acerca de ")!==false || stripos($es,"Sobre Tolecarnes")!==false || stripos($es,"Sobre La Huerta de Ana Mary")!==false || stripos($es,"Sobre 1957")!==false || stripos($es,"Sobre Hidalgo de la Jara")!==false); $hasEnProducer=(stripos($en,"<h2>About ")!==false || stripos($en,"About Tolecarnes")!==false || stripos($en,"About La Huerta de Ana Mary")!==false || stripos($en,"About 1957")!==false || stripos($en,"About Hidalgo de la Jara")!==false); $complete=($hasEsFaq&&$hasEnFaq&&$hasProducer&&$hasEnProducer&&trim($r["post_excerpt"])!==""&&trim($enex)!==""&&trim($en)!==""); if(!isset($by[$v]))$by[$v]=["total"=>0,"complete"=>0,"pending"=>[]]; $by[$v]["total"]++; if($complete){$by[$v]["complete"]++;}else{$by[$v]["pending"][]=["id"=>(int)$r["ID"],"title"=>$r["post_title"],"slug"=>$r["post_name"],"flags"=>"esfaq=".(int)$hasEsFaq.",enfaq=".(int)$hasEnFaq.",esprod=".(int)$hasProducer.",enprod=".(int)$hasEnProducer.",enex=".(trim($enex)!==""?1:0).",encontent=".(trim($en)!==""?1:0)];}} ksort($by,SORT_NATURAL|SORT_FLAG_CASE); echo "TOTAL_PRODUCTS=".count($rows)."\n"; foreach($by as $v=>$d){echo "VENDOR|".$v."|TOTAL=".$d["total"]."|COMPLETE=".$d["complete"]."|PENDING=".count($d["pending"])."\n"; foreach($d["pending"] as $p){echo "PENDING|".$v."|".$p["id"]."|".$p["title"]."|".$p["slug"]."|".$p["flags"]."\n";}}'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '$CODE' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
