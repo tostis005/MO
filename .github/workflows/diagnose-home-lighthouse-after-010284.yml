@@ -1,0 +1,75 @@
+name: Diagnose Home Lighthouse After 0.10.284
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/diagnose-home-lighthouse-after-010284.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Run Lighthouse and print remaining bottlenecks
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)
+          if [ -z "$CHROME" ]; then
+            echo 'No system Chrome found.' >&2
+            exit 20
+          fi
+          export CHROME_PATH="$CHROME"
+          npx -y lighthouse 'https://www.elmercadodeorigen.com/' \
+            --only-categories=performance \
+            --chrome-flags='--headless --no-sandbox --disable-gpu' \
+            --output=json --output-path=/tmp/lh.json --quiet
+          node <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/lh.json','utf8'));
+          const audits=r.audits||{};
+          const score=Math.round(((r.categories||{}).performance||{}).score*100);
+          const val=id=>audits[id]?.displayValue ?? audits[id]?.numericValue ?? null;
+          console.log('=== SUMMARY ===');
+          console.log(JSON.stringify({score,FCP:val('first-contentful-paint'),LCP:val('largest-contentful-paint'),TBT:val('total-blocking-time'),CLS:val('cumulative-layout-shift'),SI:val('speed-index')},null,2));
+
+          console.log('=== MATCHING AUDIT KEYS ===');
+          Object.keys(audits).filter(k=>/lcp|render|unused|third|main|bootup|long|network|image|byte|critical|blocking|layout|font|cache|compression/i.test(k)).sort().forEach(k=>console.log(k,'=>',audits[k]?.displayValue||audits[k]?.title||''));
+
+          function printAudit(id){
+            const a=audits[id]; if(!a) return;
+            console.log(`=== AUDIT ${id} ===`);
+            console.log('title:',a.title);
+            console.log('score:',a.score,'display:',a.displayValue||'');
+            if(a.details){
+              const d=JSON.parse(JSON.stringify(a.details));
+              if(Array.isArray(d.items) && d.items.length>25) d.items=d.items.slice(0,25);
+              console.log(JSON.stringify(d,null,2));
+            }
+          }
+          [
+            'largest-contentful-paint-element','lcp-breakdown','lcp-discovery-insight','lcp-phases-insight',
+            'render-blocking-resources','render-blocking-insight','unused-css-rules','unused-javascript',
+            'third-party-summary','third-parties-insight','mainthread-work-breakdown','bootup-time','long-tasks',
+            'network-requests','network-dependency-tree-insight','total-byte-weight','uses-responsive-images',
+            'modern-image-formats','uses-optimized-images','image-delivery-insight','forced-reflow-insight',
+            'font-display','cache-insight','dom-size','legacy-javascript'
+          ].forEach(printAudit);
+
+          const reqAudit=audits['network-requests'];
+          if(reqAudit?.details?.items){
+            console.log('=== TOP NETWORK BY TRANSFER ===');
+            reqAudit.details.items
+              .slice()
+              .sort((a,b)=>(b.transferSize||0)-(a.transferSize||0))
+              .slice(0,30)
+              .forEach(x=>console.log(JSON.stringify({url:x.url,resourceType:x.resourceType,transferSize:x.transferSize,resourceSize:x.resourceSize,startTime:x.startTime,endTime:x.endTime}))); 
+            console.log('=== THIRD-PARTY / JS / CSS REQUESTS ===');
+            reqAudit.details.items.filter(x=>/facebook|pinterest|pinimg|googletag|google-analytics|woocommerce|woo-|jquery|\.css(?:\?|$)|\.js(?:\?|$)/i.test(x.url||'')).slice(0,80).forEach(x=>console.log(JSON.stringify({url:x.url,resourceType:x.resourceType,transferSize:x.transferSize,resourceSize:x.resourceSize,startTime:x.startTime,endTime:x.endTime}))); 
+          }
+          NODE
