@@ -29,9 +29,45 @@ jobs:
       - name: Publish and verify batch 46-50
         shell: bash
         run: |
-          sed -i 's/73b0fa8a76092a2dc01827705dd623f626472686dc99286477fb4866c08f396a/04ecb2d624c459df43c5230ededfb1207b600ff100a17bc4118eaee51e1147a7/g' .github/scripts/run-nutrition-priority-46-50-production.sh .github/scripts/publish-nutrition-priority-46-50-production.php
+          python3 - <<'PY'
+          import base64,gzip,json,hashlib
+          from pathlib import Path
+          paths=sorted(Path('elmercadodeorigen-child/inc/content-seeds').glob('nutrition-priority-46-50-010275-v1.part*'))
+          if len(paths)!=3: raise SystemExit('Expected three payload parts')
+          parts=[p.read_text().strip() for p in paths]
+          enc=''.join(parts)
+          print('CORRUPT_PART_LENGTHS='+','.join(map(str,map(len,parts))))
+          matches=[]
+          for i in range(len(enc)):
+              cand=enc[:i]+enc[i+1:]
+              try:
+                  raw=base64.b64decode(cand,validate=True)
+                  data=json.loads(gzip.decompress(raw).decode('utf-8'))
+                  if isinstance(data,list) and len(data)==5:
+                      matches.append((i,cand,data))
+                      if len(matches)>1: break
+              except Exception:
+                  pass
+          if len(matches)!=1: raise SystemExit(f'Expected exactly one single-character payload repair, found {len(matches)}')
+          i,cand,data=matches[0]
+          local=i
+          part_index=0
+          for n,p in enumerate(parts):
+              if local < len(p): part_index=n; break
+              local-=len(p)
+          sha=hashlib.sha256(cand.encode()).hexdigest()
+          print(f'PAYLOAD_REPAIR part={part_index+1} local_index={local} global_index={i} removed={enc[i]!r}')
+          print('CORRECTED_PAYLOAD_SHA256='+sha)
+          chunk=len(cand)//3
+          if len(cand)%3 or chunk!=6492: raise SystemExit('Unexpected corrected payload length')
+          for n,p in enumerate(paths): p.write_text(cand[n*chunk:(n+1)*chunk])
+          old='73b0fa8a76092a2dc01827705dd623f626472686dc99286477fb4866c08f396a'
+          for script in [Path('.github/scripts/run-nutrition-priority-46-50-production.sh'),Path('.github/scripts/publish-nutrition-priority-46-50-production.php')]:
+              text=script.read_text()
+              if old not in text: raise SystemExit('Expected placeholder SHA not found in '+str(script))
+              script.write_text(text.replace(old,sha))
+          PY
           bash .github/scripts/run-nutrition-priority-46-50-production.sh
 
 # nutrition roadmap batch 46-50: Iberian cured loin nutrition
-# idempotent exact-match adoption + ownership-safe rollback
-# final payload SHA patched into protected runner before execution
+# strict one-character payload recovery before protected runner
