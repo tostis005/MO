@@ -96,11 +96,64 @@ jobs:
             ' --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
           fi
 
-          # Remove generated full-page/disk caches. Only cache contents are deleted; configuration stays intact.
           if [ -d "$PROD_PATH/wp-content/cache" ]; then
             find "$PROD_PATH/wp-content/cache" -mindepth 1 -delete 2>/dev/null || true
           fi
+
+          # Plesk WP Toolkit/nginx may cache the canonical home outside WordPress.
+          plesk_bin=''
+          [ -x /usr/sbin/plesk ] && plesk_bin=/usr/sbin/plesk
+          [ -z "$plesk_bin" ] && plesk_bin=$(command -v plesk || true)
+
+          if [ -n "$plesk_bin" ]; then
+            use_sudo=0
+            if ! "$plesk_bin" version >/dev/null 2>&1; then
+              if sudo -n "$plesk_bin" version >/dev/null 2>&1; then
+                use_sudo=1
+              fi
+            fi
+
+            if [ "$use_sudo" -eq 1 ]; then
+              plesk_list=$(sudo -n "$plesk_bin" ext wp-toolkit --list 2>/dev/null || true)
+            else
+              plesk_list=$("$plesk_bin" ext wp-toolkit --list 2>/dev/null || true)
+            fi
+
+            instance_id=$(printf '%s\n' "$plesk_list" | awk 'tolower($0) ~ /elmercadodeorigen\.com/ && $1 ~ /^[0-9]+$/ {print $1; exit}')
+            if [ -n "$instance_id" ]; then
+              echo "PLESK_WPT_INSTANCE_FOUND=$instance_id"
+              if [ "$use_sudo" -eq 1 ]; then
+                sudo -n "$plesk_bin" ext wp-toolkit --clear-cache -instance-id "$instance_id" >/dev/null 2>&1 || true
+                sudo -n "$plesk_bin" ext wp-toolkit --clear-wpt-cache >/dev/null 2>&1 || true
+              else
+                "$plesk_bin" ext wp-toolkit --clear-cache -instance-id "$instance_id" >/dev/null 2>&1 || true
+                "$plesk_bin" ext wp-toolkit --clear-wpt-cache >/dev/null 2>&1 || true
+              fi
+            else
+              echo 'PLESK_WPT_INSTANCE_NOT_AVAILABLE'
+            fi
+          else
+            echo 'PLESK_CLI_NOT_AVAILABLE'
+          fi
+
+          if sudo -n true >/dev/null 2>&1 && [ -d /var/cache/nginx ]; then
+            purged_nginx=0
+            for cache_dir in /var/cache/nginx/elmercadodeorigen.com_* /var/cache/nginx/www.elmercadodeorigen.com_*; do
+              if [ -d "$cache_dir" ]; then
+                sudo -n find "$cache_dir" -mindepth 1 -delete 2>/dev/null || true
+                purged_nginx=1
+              fi
+            done
+            echo "PLESK_NGINX_CACHE_PURGED=$purged_nginx"
+          else
+            echo 'PLESK_NGINX_CACHE_DIRECT_PURGE_UNAVAILABLE'
+          fi
           REMOTE
+
+          echo '--- canonical home response headers ---'
+          curl -sSIL --max-time 25 https://www.elmercadodeorigen.com/ | grep -Ei '^(HTTP/|server:|age:|cf-cache-status:|cf-ray:|x-cache|x-proxy-cache|x-litespeed-cache|cache-control:|expires:|via:)' || true
+          echo '--- canonical home footer markers ---'
+          curl -sSL --max-time 25 https://www.elmercadodeorigen.com/ | grep -Eo 'mdo-footer-layout-socials-010278|mdo-footer-brand-hover-010279' | sort -u || true
 
       - name: Verify footer on canonical home and internal pages
         shell: bash
