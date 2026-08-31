@@ -100,7 +100,6 @@ jobs:
             find "$PROD_PATH/wp-content/cache" -mindepth 1 -delete 2>/dev/null || true
           fi
 
-          # Plesk WP Toolkit/nginx may cache the canonical home outside WordPress.
           plesk_bin=''
           [ -x /usr/sbin/plesk ] && plesk_bin=/usr/sbin/plesk
           [ -z "$plesk_bin" ] && plesk_bin=$(command -v plesk || true)
@@ -132,6 +131,20 @@ jobs:
             else
               echo 'PLESK_WPT_INSTANCE_NOT_AVAILABLE'
             fi
+
+            if [ "$use_sudo" -eq 1 ]; then
+              if sudo -n "$plesk_bin" bin subscription_settings --clear-nginx-cache elmercadodeorigen.com >/dev/null 2>&1; then
+                echo 'PLESK_DOMAIN_NGINX_CACHE_CLEARED=1'
+              else
+                echo 'PLESK_DOMAIN_NGINX_CACHE_CLEARED=0'
+              fi
+            else
+              if "$plesk_bin" bin subscription_settings --clear-nginx-cache elmercadodeorigen.com >/dev/null 2>&1; then
+                echo 'PLESK_DOMAIN_NGINX_CACHE_CLEARED=1'
+              else
+                echo 'PLESK_DOMAIN_NGINX_CACHE_CLEARED=0'
+              fi
+            fi
           else
             echo 'PLESK_CLI_NOT_AVAILABLE'
           fi
@@ -152,8 +165,16 @@ jobs:
 
           echo '--- canonical home response headers ---'
           curl -sSIL --max-time 25 https://www.elmercadodeorigen.com/ | grep -Ei '^(HTTP/|server:|age:|cf-cache-status:|cf-ray:|x-cache|x-proxy-cache|x-litespeed-cache|cache-control:|expires:|via:)' || true
-          echo '--- canonical home footer markers ---'
-          curl -sSL --max-time 25 https://www.elmercadodeorigen.com/ | grep -Eo 'mdo-footer-layout-socials-010278|mdo-footer-brand-hover-010279' | sort -u || true
+          echo '--- canonical/query/internal footer markers ---'
+          for url in \
+            'https://www.elmercadodeorigen.com/' \
+            'https://www.elmercadodeorigen.com/?mdo_footer_diag=1' \
+            'https://www.elmercadodeorigen.com/envios/'
+          do
+            printf '%s -> ' "$url"
+            markers=$(curl -sSL --max-time 25 "$url" | grep -Eo 'mdo-footer-layout-socials-010278|mdo-footer-brand-hover-010279' | sort -u | tr '\n' ',' || true)
+            echo "${markers:-NO_MARKERS}"
+          done
 
       - name: Verify footer on canonical home and internal pages
         shell: bash
@@ -180,10 +201,10 @@ jobs:
             });
 
             const tests = [
-              { name: 'home-es', url: 'https://www.elmercadodeorigen.com/', width: 1440, height: 1000, mobile: false, lang: 'es' },
-              { name: 'home-es-mobile', url: 'https://www.elmercadodeorigen.com/', width: 390, height: 844, mobile: true, lang: 'es' },
-              { name: 'shipping-es', url: 'https://www.elmercadodeorigen.com/envios/', width: 1440, height: 1000, mobile: false, lang: 'es' },
-              { name: 'home-en', url: 'https://www.elmercadodeorigen.com/en/', width: 1440, height: 1000, mobile: false, lang: 'en' }
+              { name: 'home-es', url: 'https://www.elmercadodeorigen.com/', width: 1440, height: 1000, mobile: false },
+              { name: 'home-es-mobile', url: 'https://www.elmercadodeorigen.com/', width: 390, height: 844, mobile: true },
+              { name: 'shipping-es', url: 'https://www.elmercadodeorigen.com/envios/', width: 1440, height: 1000, mobile: false },
+              { name: 'home-en', url: 'https://www.elmercadodeorigen.com/en/', width: 1440, height: 1000, mobile: false }
             ];
 
             for (const cfg of tests) {
