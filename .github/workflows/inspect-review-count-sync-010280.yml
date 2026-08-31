@@ -1,4 +1,4 @@
-name: Inspect store synchronizer completion hook 0.10.291
+name: Inspect supplier synchronizer lifecycle 0.10.292
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect production synchronizer hooks
+      - name: Inspect production supplier synchronizer
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -41,10 +41,18 @@ jobs:
             case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;; esac
           done
           [ -n "$PROD_PATH" ] || exit 2
-          echo '=== MENTTA / SYNC PLUGIN DIRS ==='
-          find "$PROD_PATH/wp-content/plugins" "$PROD_PATH/wp-content/mu-plugins" -maxdepth 2 -type f -name '*.php' 2>/dev/null | grep -Ei 'mentta|sync|vendor|store' | head -n 120 || true
-          echo '=== HOOK / SCHEDULE MATCHES ==='
-          timeout 30s grep -RIn -E 'do_action\(|add_action\(|wp_schedule|as_schedule|cron|sync|synchron|actualiz|tienda|store|vendor|mentta' "$PROD_PATH/wp-content/plugins/mentta-marketplace" "$PROD_PATH/wp-content/plugins/external-updates-mentta-marketplace" "$PROD_PATH/wp-content/mu-plugins" 2>/dev/null | grep -Ei 'mentta|sync|synchron|cron|schedule|store|vendor|tienda' | head -n 350 || true
-          echo '=== SERVER CRON MENTTA/SYNC ==='
-          crontab -l 2>/dev/null | grep -Ei 'mentta|sync|store|vendor|wp-cron' || true
+          FILE="$PROD_PATH/wp-content/plugins/mdo-supplier-sync/mdo-supplier-sync.php"
+          [ -f "$FILE" ] || { echo 'supplier sync file not found'; exit 3; }
+
+          echo '=== SUPPLIER SYNC HOOKS / SCHEDULES ==='
+          grep -nE 'do_action\(|add_action\(|wp_schedule|wp_next_scheduled|wp_clear_scheduled|cron|sync|synchron|complete|finish|supplier|vendor|store' "$FILE" | head -n 360 || true
+
+          echo '=== FILE HEAD ==='
+          sed -n '1,240p' "$FILE"
+
+          echo '=== FILE MIDDLE ==='
+          sed -n '241,520p' "$FILE"
+
+          echo '=== WP CRON EVENTS MATCHING SUPPLIER ==='
+          timeout 25s "$php_bin" "$wp_bin" cron event list --path="$PROD_PATH" --allow-root --fields=hook,next_run_gmt,recurrence --format=csv 2>/dev/null | grep -Ei 'supplier|sync|vendor|store|mdo' | head -n 120 || true
           REMOTE
