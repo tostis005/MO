@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/tolecarnes-products-batch-01-production.php'
+      - '.github/scripts/tolecarnes-products-batch-01-translatepress-production.php'
       - '.github/workflows/tolecarnes-products-batch-01-production.yml'
   workflow_dispatch:
 
@@ -33,9 +34,11 @@ jobs:
         run: |
           set -euo pipefail
           php -l .github/scripts/tolecarnes-products-batch-01-production.php >/dev/null
+          php -l .github/scripts/tolecarnes-products-batch-01-translatepress-production.php >/dev/null
           grep -Fq "Carne picada elaborada con 100% ternera y sin aditivos" .github/scripts/tolecarnes-products-batch-01-production.php
           grep -Fq "Tolecarnes es una ganadería familiar de Menasalbas" .github/scripts/tolecarnes-products-batch-01-production.php
           grep -Fq "Tolecarnes is a family-run cattle farm based in Menasalbas" .github/scripts/tolecarnes-products-batch-01-production.php
+          grep -Fq "trp_dictionary_es_es_en_us" .github/scripts/tolecarnes-products-batch-01-translatepress-production.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
       - name: Update five Tolecarnes products in production
@@ -64,9 +67,13 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          REMOTE_SCRIPT="/tmp/tolecarnes-products-batch-01-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/tolecarnes-products-batch-01-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
+          REMOTE_DIR="/tmp/tolecarnes-batch-01-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp $SCP_OPTIONS \
+            .github/scripts/tolecarnes-products-batch-01-production.php \
+            .github/scripts/tolecarnes-products-batch-01-translatepress-production.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DIR/tolecarnes-products-batch-01-translatepress-production.php' --path='$PROD_PATH' --allow-root; rc=\$?; rm -rf '$REMOTE_DIR'; exit \$rc"
 
       - name: Flush WordPress object cache
         if: success()
@@ -88,3 +95,21 @@ jobs:
             done
           ')"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify Spanish and English public fichas
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          slugs=(carne-picada-extra burger-mixtas-sin-gluten-2-uds filetes-primera magro-o-ragu-de-ternera entrana-de-ternera)
+          en_titles=("Extra Ground Beef" "Gluten-Free Beef & Pork Burgers" "First-Category Beef Steaks" "Diced Beef for Ragout" "Beef Skirt Steak – Entraña")
+          for i in "${!slugs[@]}"; do
+            slug="${slugs[$i]}"
+            es_file="/tmp/es-${i}.html"; en_file="/tmp/en-${i}.html"
+            curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO product verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$es_file" "https://www.elmercadodeorigen.com/producto/${slug}/?emdo_verify=${GITHUB_RUN_ID}"
+            curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO product verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$en_file" "https://www.elmercadodeorigen.com/en/product/${slug}/?emdo_verify=${GITHUB_RUN_ID}"
+            grep -Fq 'Sobre Tolecarnes' "$es_file"
+            grep -Fq 'About Tolecarnes' "$en_file"
+            grep -Fq "${en_titles[$i]}" "$en_file"
+            echo "PUBLIC_OK ${slug} ES+EN"
+          done
