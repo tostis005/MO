@@ -40,18 +40,19 @@ jobs:
           PROD_PATH=""
           for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
             p=$(dirname "$cfg")
-            u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            u=$("$php" -d memory_limit=512M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
             case "$u" in *elmercadodeorigen.com*) PROD_PATH="$p"; break;; esac
           done
           : "${PROD_PATH:?production path not found}"
 
-          "$php" "$wp" eval '
+          "$php" -d memory_limit=512M "$wp" eval '
             $posts = get_posts(array(
               "post_type" => "post",
               "post_status" => "publish",
               "posts_per_page" => -1,
               "orderby" => "date",
               "order" => "DESC",
+              "suppress_filters" => true,
             ));
             $patterns = array(
               "shortcode_products" => "/\\[(?:products|product|product_category|best_selling_products|featured_products|sale_products)\\b/i",
@@ -72,15 +73,15 @@ jobs:
               $product_urls = array_values(array_filter(array_unique($urls[0] ?? array()), static fn($u) => preg_match("~/(?:producto|product)/~i", $u)));
               $found[] = array(
                 "id" => (int) $post->ID,
-                "date" => get_the_date("Y-m-d", $post),
+                "date" => substr((string)$post->post_date, 0, 10),
                 "slug" => $post->post_name,
-                "title" => html_entity_decode(get_the_title($post), ENT_QUOTES | ENT_HTML5, "UTF-8"),
-                "permalink" => get_permalink($post),
+                "title" => html_entity_decode($post->post_title, ENT_QUOTES | ENT_HTML5, "UTF-8"),
+                "permalink" => home_url("/" . $post->post_name . "/"),
                 "hits" => $hits,
                 "shortcodes" => array_values(array_unique($shortcodes[0] ?? array())),
                 "product_urls" => array_slice($product_urls, 0, 12),
               );
             }
             echo wp_json_encode($found, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-          ' --path="$PROD_PATH" --allow-root
+          ' --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root
           REMOTE
