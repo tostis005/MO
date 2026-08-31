@@ -1,0 +1,33 @@
+name: Emergency external production healthcheck
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-external-healthcheck-20260831.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check public endpoints from outside production
+        shell: bash
+        run: |
+          set -euo pipefail
+          check() {
+            name="$1"; url="$2"; expect="$3"
+            code=$(curl -L -sS -o "/tmp/$name.html" -w '%{http_code}' --connect-timeout 5 --max-time 20 "$url" || true)
+            bytes=$(wc -c < "/tmp/$name.html" 2>/dev/null || echo 0)
+            total=$(curl -L -sS -o /dev/null -w '%{time_total}' --connect-timeout 5 --max-time 20 "$url" 2>/dev/null || echo timeout)
+            echo "$name code=$code bytes=$bytes seconds=$total"
+            [ "$code" = "$expect" ]
+          }
+          check home 'https://www.elmercadodeorigen.com/' 200
+          check blog 'https://www.elmercadodeorigen.com/blog/' 200
+          check shop 'https://www.elmercadodeorigen.com/tienda/' 200
+          check article 'https://www.elmercadodeorigen.com/cuanta-proteina-tiene-carne-ternera/' 200
+          check filtered 'https://www.elmercadodeorigen.com/tienda/?filter_alimentacion=bellota' 403
