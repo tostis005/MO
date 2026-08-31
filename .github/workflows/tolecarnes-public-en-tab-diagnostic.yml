@@ -1,4 +1,4 @@
-name: Verify La Huerta de Ana Mary batch 01 public pages
+name: Diagnose Patatas blancas English rendering
 
 on:
   push:
@@ -11,38 +11,34 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Check Spanish and English rendered pages
+      - name: Inspect public English potato page
         shell: bash
         run: |
           set -euo pipefail
-          slugs=(patatas-blancas calabacin brocoli 20-kg-de-patatas-blancas-variedad-kennebec flores-de-calabacin-8-unidades)
-          es_body=('Patata Kennebec de Fresno de la Vega' 'Una hortaliza suave y muy versátil' 'Brócoli fresco para preparaciones sencillas' '20 kg de patata Kennebec' 'Flores de calabacín frescas')
-          en_body=('Kennebec potatoes from Fresno de la Vega' 'A mild and highly versatile vegetable' 'Fresh broccoli for simple cooking' '20 kg of Kennebec potatoes' 'Fresh courgette flowers')
-          es_short=('Patatas blancas variedad Kennebec' 'Calabacín fresco cultivado en Fresno de la Vega' 'Brócoli fresco cultivado en Fresno de la Vega' 'Formato de 20 kg de patata blanca variedad Kennebec' 'Caja de 8 flores de calabacín frescas')
-          en_short=('White Kennebec potatoes grown in Fresno de la Vega' 'Fresh courgette grown in Fresno de la Vega' 'Fresh broccoli grown in Fresno de la Vega' '20 kg format of white Kennebec potatoes' 'Box of 8 fresh courgette flowers')
-          failures=0
-          for i in "${!slugs[@]}"; do
-            s="${slugs[$i]}"
-            es="/tmp/es-${i}.html"; en="/tmp/en-${i}.html"
-            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta01 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_h1_es=${GITHUB_RUN_ID}-${i}")
-            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta01 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_h1_en=${GITHUB_RUN_ID}-${i}")
-            esok=yes; enok=yes
-            grep -Fq "${es_short[$i]}" "$es" || esok=no
-            grep -Fq "${es_body[$i]}" "$es" || esok=no
-            grep -Fq 'Sobre La Huerta de Ana Mary' "$es" || esok=no
-            grep -Fq 'Preguntas frecuentes' "$es" || esok=no
-            grep -Fq "${en_short[$i]}" "$en" || enok=no
-            grep -Fq "${en_body[$i]}" "$en" || enok=no
-            grep -Fq 'About La Huerta de Ana Mary' "$en" || enok=no
-            grep -Fq 'Frequently asked questions' "$en" || enok=no
-            if grep -Fq 'Sobre La Huerta de Ana Mary' "$en" || grep -Fq 'Preguntas frecuentes' "$en"; then enok=no; fi
-            status=OK
-            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
-            echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
+          f=/tmp/patatas.html
+          code=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta potato diagnostic' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$f" "https://www.elmercadodeorigen.com/en/product/patatas-blancas/?emdo_h1_diag=${GITHUB_RUN_ID}")
+          echo "HTTP=$code"
+          checks=(
+            'White Kennebec potatoes grown in Fresno de la Vega'
+            'Kennebec potatoes from Fresno de la Vega'
+            'About La Huerta de Ana Mary'
+            'Frequently asked questions'
+            'Sobre La Huerta de Ana Mary'
+            'Preguntas frecuentes'
+          )
+          for q in "${checks[@]}"; do
+            if grep -Fq "$q" "$f"; then echo "FOUND|$q"; else echo "MISS|$q"; fi
           done
-          echo "HUERTA_BATCH01_PUBLIC_FAILURES=${failures}"
-          [[ "$failures" -eq 0 ]]
+          python3 - "$f" <<'PY'
+import sys,re
+s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
+for needle in ['Kennebec','Huerta de Ana Mary','Frequently asked questions','Preguntas frecuentes']:
+    i=s.find(needle)
+    if i>=0:
+        chunk=re.sub(r'\s+',' ',s[max(0,i-500):i+1200])
+        print('CONTEXT|'+needle+'|'+chunk[:1700])
+PY
