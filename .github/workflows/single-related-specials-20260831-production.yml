@@ -1,0 +1,261 @@
+name: Single article related and Specials production 2026-08-31
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/single.php'
+      - '.github/workflows/single-related-specials-20260831-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: single-related-specials-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate isolated single article patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/single.php
+          grep -q "'posts_per_page'      => 4" elmercadodeorigen-child/single.php
+          grep -q "MDO_Home_Featured_Special::render" elmercadodeorigen-child/single.php
+          grep -q "repeat(4, minmax(0, 1fr))" elmercadodeorigen-child/single.php
+
+      - name: Locate production and select a real article
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] && [ -n "$php" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" -d memory_limit=512M "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          TARGET_URL="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "bash -s -- '$PROD_PATH'" <<'REMOTE'
+          set -euo pipefail
+          prod="$1"
+          wp=$(command -v wp || true); php=$(command -v php || true)
+          [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php" -d memory_limit=512M "$wp" eval '
+            $posts = get_posts(array("post_type"=>"post","post_status"=>"publish","posts_per_page"=>50,"orderby"=>"date","order"=>"DESC"));
+            foreach ($posts as $post) {
+              $cats = get_the_category($post->ID);
+              if (!$cats) continue;
+              $q = new WP_Query(array("post_type"=>"post","post_status"=>"publish","posts_per_page"=>5,"post__not_in"=>array($post->ID),"category__in"=>array((int)$cats[0]->term_id),"fields"=>"ids","ignore_sticky_posts"=>true));
+              if ((int)$q->found_posts >= 4) { echo get_permalink($post->ID); break; }
+            }
+          ' --path="$prod" --allow-root
+          REMOTE
+          )"
+          : "${TARGET_URL:?no suitable article found}"
+
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "TARGET_URL=$TARGET_URL" >> "$GITHUB_ENV"
+          echo "SSH=$SSH" >> "$GITHUB_ENV"
+          echo "SCP=$SCP" >> "$GITHUB_ENV"
+          echo "TARGET_URL=$TARGET_URL"
+
+      - name: Backup and deploy only single.php
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TARGET="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/single.php"
+          REMOTE="/tmp/emdo-single-related-${GITHUB_RUN_ID}.php"
+          BACKUP="/tmp/emdo-single-related-backup-${GITHUB_RUN_ID}.php"
+          echo "BACKUP=$BACKUP" >> "$GITHUB_ENV"
+
+          sshpass -e scp $SCP elmercadodeorigen-child/single.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" -l '$REMOTE' >/dev/null; cp -p '$TARGET' '$BACKUP'; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'; \"\$php\" -l '$TARGET' >/dev/null; grep -q \"'posts_per_page'      => 4\" '$TARGET'; grep -q 'MDO_Home_Featured_Special::render' '$TARGET'"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp || true); php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" -d memory_limit=512M \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php\" -d memory_limit=512M \"\$wp\" eval 'if ( function_exists(\"wp_cache_flush\") ) wp_cache_flush(); if ( has_action(\"litespeed_purge_all\") ) do_action(\"litespeed_purge_all\");' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify exact request in live Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet playwright
+          python -m playwright install --with-deps chromium >/dev/null
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import os, time, re, sys
+
+          base = 'https://www.elmercadodeorigen.com'
+          article = os.environ['TARGET_URL']
+          stamp = str(int(time.time() * 1000))
+          errors=[]
+
+          def fatal_text(page):
+              body = page.locator('body').inner_text(timeout=10000)
+              return bool(re.search(r'Fatal error|Parse error|Uncaught Error|critical error on this website', body, re.I))
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+
+              # Portada: solo comprobar que sigue viva; no se modifica ni se exige su rejilla histórica.
+              blog = browser.new_page(viewport={'width':1440,'height':1000})
+              r = blog.goto(f'{base}/blog/?verify_single={stamp}', wait_until='domcontentloaded', timeout=90000)
+              blog.wait_for_timeout(1200)
+              blog_status = r.status if r else 0
+              if blog_status != 200: errors.append(f'blog HTTP {blog_status}')
+              if fatal_text(blog): errors.append('blog fatal/critical error')
+              if blog.locator('main#primary.emo-journal').count() != 1: errors.append('blog main journal missing')
+              print(f'BLOG_OK status={blog_status} journal={blog.locator("main#primary.emo-journal").count()}')
+              blog.close()
+
+              # Home: capture the canonical active featured Special id.
+              home = browser.new_page(viewport={'width':1440,'height':1000})
+              r = home.goto(f'{base}/?verify_single={stamp}', wait_until='domcontentloaded', timeout=90000)
+              home.wait_for_timeout(1200)
+              home_status = r.status if r else 0
+              hs = home.locator('[data-mdo-home-featured-special]')
+              home_special_count = hs.count()
+              home_special_id = hs.first.get_attribute('data-mdo-home-featured-special') if home_special_count else ''
+              home_special_text = hs.first.inner_text() if home_special_count else ''
+              if home_status != 200: errors.append(f'home HTTP {home_status}')
+              if home_special_count != 1: errors.append(f'home active Special count={home_special_count}')
+              if home_special_count and not re.search(r'hamburg|ternera', home_special_text, re.I): errors.append('home Special is not current beef-burger promotion')
+              print(f'HOME_SPECIAL status={home_status} count={home_special_count} id={home_special_id} text={home_special_text[:140]!r}')
+              home.close()
+
+              # Desktop article: same Special, before 4 related cards, all on one row.
+              page = browser.new_page(viewport={'width':1440,'height':1200})
+              sep = '&' if '?' in article else '?'
+              r = page.goto(f'{article}{sep}verify_single={stamp}', wait_until='domcontentloaded', timeout=90000)
+              page.wait_for_timeout(1800)
+              article_status = r.status if r else 0
+              if article_status != 200: errors.append(f'article HTTP {article_status}')
+              if fatal_text(page): errors.append('article fatal/critical error')
+
+              special = page.locator('[data-mdo-home-featured-special]')
+              special_count = special.count()
+              article_special_id = special.first.get_attribute('data-mdo-home-featured-special') if special_count else ''
+              special_text = special.first.inner_text() if special_count else ''
+              if special_count != 1: errors.append(f'article Special count={special_count}')
+              if home_special_id and article_special_id != home_special_id: errors.append(f'Special id mismatch home={home_special_id} article={article_special_id}')
+              if special_count and not re.search(r'hamburg|ternera', special_text, re.I): errors.append('article Special is not current beef-burger promotion')
+
+              related = page.locator('.emo-related-reading .emo-article-card')
+              related_count = related.count()
+              if related_count != 4: errors.append(f'related card count={related_count}, expected 4')
+
+              grid = page.locator('.emo-related-reading .emo-journal-grid')
+              columns = 0
+              same_row = False
+              if grid.count() == 1:
+                  template = grid.evaluate("e => getComputedStyle(e).gridTemplateColumns")
+                  columns = len([x for x in template.split(' ') if x.strip()])
+                  if related_count == 4:
+                      ys = [round(related.nth(i).bounding_box()['y'], 1) for i in range(4)]
+                      same_row = max(ys) - min(ys) <= 3
+                      print(f'RELATED_Y={ys}')
+                  if columns != 4: errors.append(f'desktop related columns={columns}, expected 4')
+                  if related_count == 4 and not same_row: errors.append('desktop related cards are not on one row')
+              else:
+                  errors.append('related grid missing')
+
+              order_ok = False
+              if special_count == 1 and grid.count() == 1:
+                  order_ok = page.evaluate('''() => {
+                    const a=document.querySelector('[data-mdo-home-featured-special]');
+                    const b=document.querySelector('.emo-related-reading');
+                    return !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
+                  }''')
+                  if not order_ok: errors.append('Special does not appear before related section')
+
+              print(f'ARTICLE_DESKTOP status={article_status} special_id={article_special_id} related={related_count} columns={columns} same_row={same_row} special_before_related={order_ok}')
+              page.close()
+
+              # Mobile: responsive one-column related cards and no horizontal overflow.
+              mobile = browser.new_page(viewport={'width':390,'height':844}, is_mobile=True, device_scale_factor=1)
+              r = mobile.goto(f'{article}{sep}verify_single_mobile={stamp}', wait_until='domcontentloaded', timeout=90000)
+              mobile.wait_for_timeout(1600)
+              mobile_status = r.status if r else 0
+              mobile_related = mobile.locator('.emo-related-reading .emo-article-card').count()
+              mobile_grid = mobile.locator('.emo-related-reading .emo-journal-grid')
+              mobile_columns = 0
+              if mobile_grid.count() == 1:
+                  template = mobile_grid.evaluate("e => getComputedStyle(e).gridTemplateColumns")
+                  mobile_columns = len([x for x in template.split(' ') if x.strip()])
+              dims = mobile.evaluate('''() => ({w: innerWidth, sw: document.documentElement.scrollWidth})''')
+              overflow = dims['sw'] > dims['w'] + 3
+              mobile_special = mobile.locator('[data-mdo-home-featured-special]').count()
+              if mobile_status != 200: errors.append(f'mobile article HTTP {mobile_status}')
+              if mobile_related != 4: errors.append(f'mobile related card count={mobile_related}')
+              if mobile_columns != 1: errors.append(f'mobile related columns={mobile_columns}, expected 1')
+              if overflow: errors.append(f'mobile horizontal overflow width={dims["w"]} scrollWidth={dims["sw"]}')
+              if mobile_special != 1: errors.append(f'mobile Special count={mobile_special}')
+              print(f'ARTICLE_MOBILE status={mobile_status} special={mobile_special} related={mobile_related} columns={mobile_columns} overflow={overflow} width={dims["w"]} scrollWidth={dims["sw"]}')
+              mobile.close()
+
+              browser.close()
+
+          if errors:
+              print('ERRORS:')
+              for e in errors: print('- ' + e)
+              sys.exit(1)
+
+          print(f'HOME_SPECIAL_ID={home_special_id}')
+          print(f'ARTICLE_SPECIAL_ID={article_special_id}')
+          print('RELATED_CARDS=4')
+          print('RELATED_DESKTOP_COLUMNS=4')
+          print('SPECIAL_BEFORE_RELATED=true')
+          print('MOBILE_OVERFLOW=false')
+          print('SINGLE_SPECIALS_RELATED_VERIFIED=true')
+          PY
+
+      - name: Roll back single.php if verification fails
+        if: failure() && env.PROD_PATH != ''
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TARGET="$PROD_PATH/wp-content/themes/elmercadodeorigen-child/single.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; fi; wp=\$(command -v wp || true); php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" -d memory_limit=512M \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          code_blog="$(curl -ksS -L -o /tmp/blog-rollback-check -w '%{http_code}' --max-time 30 'https://www.elmercadodeorigen.com/blog/' || true)"
+          code_article="$(curl -ksS -L -o /tmp/article-rollback-check -w '%{http_code}' --max-time 30 "$TARGET_URL" || true)"
+          echo "ROLLBACK_CHECK blog=$code_blog article=$code_article"
+          test "$code_blog" = 200
+          test "$code_article" = 200
+
+      - name: Clean backup after verified success
+        if: success()
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
