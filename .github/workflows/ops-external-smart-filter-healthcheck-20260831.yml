@@ -1,0 +1,35 @@
+name: External smart filter healthcheck
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ops-external-smart-filter-healthcheck-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify storefront, product crawl and filters externally
+        shell: bash
+        run: |
+          set -euo pipefail
+          ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0 Safari/537.36'
+          check() {
+            label="$1"; url="$2"; agent="$3"
+            code=$(curl -L -sS -A "$agent" -o "/tmp/$label" -w '%{http_code}' --connect-timeout 8 --max-time 30 "$url" || true)
+            echo "$label=$code"
+            [ "$code" = 200 ]
+          }
+          check home 'https://www.elmercadodeorigen.com/' "$ua"
+          check shop 'https://www.elmercadodeorigen.com/tienda/' "$ua"
+          check category 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/' "$ua"
+          check filtered 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_alimentacion=bellota' "$ua"
+          check product 'https://www.elmercadodeorigen.com/producto/pimiento-italiano/' 'MenttaCrawler/1.0'
+          check robots 'https://www.elmercadodeorigen.com/robots.txt' "$ua"
+          grep -Fq 'Disallow: /*?*filter_' /tmp/robots
