@@ -1,4 +1,4 @@
-name: Probe Google and Trustpilot direct sources 0.10.282
+name: Inspect Google Maps direct review payload 0.10.283
 
 on:
   push:
@@ -13,57 +13,51 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
-      - name: Probe direct sources and production code
+      - name: Inspect direct public payloads
         shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o ConnectTimeout=10 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          timeout 150s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
-          set -u
-          wp_bin=$(command -v wp || true)
-          php_bin=$(command -v php || true)
-          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-          PROD_PATH=""
-          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-            p=$(dirname "$cfg")
-            url=$(timeout 8s "$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-            case "$url" in
-              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break ;;
-            esac
-          done
-          [ -n "$PROD_PATH" ] || exit 2
-          WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
+          python3 - <<'PY'
+          import re, urllib.request
 
-          echo '=== CREDENTIAL NAMES ONLY ==='
-          timeout 15s "${WP[@]}" eval '$c=get_defined_constants(true); foreach(($c["user"]??[]) as $k=>$v){if(preg_match("/(GOOGLE|MAPS|PLACE|TRUSTPILOT|TRUST)/i",$k)){echo $k."=SET\n";}}' --skip-plugins --skip-themes 2>/dev/null || true
-          grep -Eio "define\(['\"][A-Za-z0-9_]*(GOOGLE|MAPS|PLACE|TRUSTPILOT|TRUST)[A-Za-z0-9_]*" "$PROD_PATH/wp-config.php" 2>/dev/null | sed -E "s/^define\(['\"]//" | sort -u || true
+          UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
+          def fetch(url):
+              req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept-Language':'es-ES,es;q=0.9,en;q=0.8'})
+              with urllib.request.urlopen(req,timeout=25) as r:
+                  return r.read().decode('utf-8','replace')
 
-          echo '=== TRUSTPILOT DIRECT PAGE ==='
-          tp=$(mktemp)
-          timeout 25s curl -L -sS --compressed --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36' 'https://es.trustpilot.com/review/elmercadodeorigen.com' -o "$tp" || true
-          grep -Eio '.{0,160}(169|opiniones|reviews|numberOfReviews|trustScore).{0,220}' "$tp" | head -n 35 || true
-          rm -f "$tp"
-
-          echo '=== GOOGLE DIRECT MAPS PAGE ==='
-          gm=$(mktemp)
-          timeout 25s curl -L -sS --compressed --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36' 'https://www.google.com/maps/search/?api=1&query=El%20Mercado%20de%20Origen' -o "$gm" || true
-          echo "google_bytes=$(wc -c < "$gm" 2>/dev/null || echo 0)"
-          grep -Eio '.{0,180}(303|4[,.]9|reseñas|reviews|El Mercado de Origen).{0,240}' "$gm" | head -n 45 || true
-          rm -f "$gm"
-
-          echo '=== SOURCE MATCHES ==='
-          timeout 20s grep -RIn -E '303|169|Trustpilot|trustpilot|Google.{0,80}(review|reseñ)|review.{0,80}Google|sync.{0,80}(vendor|store|product)|wp_schedule_event|do_action\(' "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes/elmercadodeorigen-child" 2>/dev/null | head -n 260 || true
-          REMOTE
+          urls = [
+              'https://www.google.com/maps/search/?api=1&query=El%20Mercado%20de%20Origen',
+              'https://www.google.com/maps?cid=17661713796917926528&hl=es',
+              'https://www.google.com/search?hl=es&gl=es&q=El+Mercado+de+Origen+rese%C3%B1as',
+          ]
+          for url in urls:
+              print('\n===',url,'===')
+              try:
+                  s=fetch(url)
+              except Exception as e:
+                  print('ERR',type(e).__name__,str(e)[:160]); continue
+              print('bytes',len(s))
+              for token in ['El Mercado de Origen','4.9','4,9','303 rese','303 review','303 opiniones','303 reseñas']:
+                  positions=[m.start() for m in re.finditer(re.escape(token),s,re.I)]
+                  print(token, 'hits', len(positions))
+                  for p in positions[:4]:
+                      frag=s[max(0,p-450):p+750]
+                      frag=re.sub(r'\s+',' ',frag)
+                      print('SNIP',frag[:1200])
+              # Numeric arrays close to exact business name; this helps identify stable positions.
+              for m in list(re.finditer('El Mercado de Origen',s,re.I))[:3]:
+                  frag=s[max(0,m.start()-1800):m.start()+2500]
+                  nums=re.findall(r'(?<!\d)(?:[1-5][\.,]\d|\d{2,4})(?!\d)',frag)
+                  print('NEAR_NAME_NUMS',nums[:160])
+          print('\n=== TRUSTPILOT ===')
+          s=fetch('https://es.trustpilot.com/review/elmercadodeorigen.com')
+          print('bytes',len(s))
+          patterns=[r'El Mercado de Origen[^<]{0,80}Opiniones[^<]{0,40}(\d{1,6})',r'(\d{1,6})\s+opiniones',r'"numberOfReviews"\s*:\s*\{?[^}]{0,120}?"total"\s*:\s*(\d+)']
+          for pat in patterns:
+              ms=re.findall(pat,s,re.I|re.S)
+              print('PAT',pat,'=>',ms[:8])
+          PY
