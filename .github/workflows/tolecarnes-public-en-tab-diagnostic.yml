@@ -1,4 +1,4 @@
-name: Deploy polished product detail design 0.10.273
+name: Deploy polished product detail design 0.10.274
 
 on:
   push:
@@ -27,8 +27,9 @@ jobs:
         run: |
           set -euo pipefail
           php -l mu-plugins/z-mdo-product-detail-refinement-010270.php
-          grep -Fq 'mdo-product-detail-refinement-010273' mu-plugins/z-mdo-product-detail-refinement-010270.php
-          grep -Fq 'aspect-ratio: 4 / 5' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'mdo-product-detail-refinement-010274' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'height: clamp(580px, 50vw, 720px)' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'object-fit: contain' mu-plugins/z-mdo-product-detail-refinement-010270.php
           grep -Fq 'width: 100vw' mu-plugins/z-mdo-product-detail-refinement-010270.php
       - name: Deploy refinement to production
         shell: bash
@@ -77,11 +78,11 @@ jobs:
                 const page=await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
                 await page.goto(`https://www.elmercadodeorigen.com/producto/${slug}/?design_verify=${Date.now()}`,{waitUntil:'networkidle',timeout:90000});
                 const m=await page.evaluate(()=>{
-                  const box=s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect(),cs=getComputedStyle(e);return {w:Math.round(r.width),h:Math.round(r.height),bg:cs.backgroundColor,objectFit:cs.objectFit,aspectRatio:cs.aspectRatio};};
+                  const box=s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect(),cs=getComputedStyle(e);return {w:Math.round(r.width),h:Math.round(r.height),bg:cs.backgroundColor,objectFit:cs.objectFit,overflow:cs.overflow};};
                   const tabs=document.querySelector('.woocommerce-tabs');
                   const before=tabs?getComputedStyle(tabs,'::before'):null;
                   return {
-                    marker:!!document.querySelector('#mdo-product-detail-refinement-010273'),
+                    marker:!!document.querySelector('#mdo-product-detail-refinement-010274'),
                     gallery:box('.product-gallery'),
                     images:box('.product-gallery .product-images'),
                     firstImage:box('.product-gallery .product-images img'),
@@ -96,10 +97,12 @@ jobs:
                 if(!m.marker) throw new Error('design marker missing');
                 if(!m.images || !m.firstImage) throw new Error('gallery missing');
                 if(m.firstImage.objectFit !== 'contain') throw new Error('image cropping policy incorrect');
+                if(Math.abs(m.firstImage.h-m.images.h)>2) throw new Error('image frame height mismatch: '+m.firstImage.h+' vs '+m.images.h);
+                if(Math.abs(m.firstImage.w-m.images.w)>2) throw new Error('image frame width mismatch: '+m.firstImage.w+' vs '+m.images.w);
                 if(m.tabs?.bg !== 'rgb(255, 255, 255)' || m.beforeBg !== 'rgb(255, 255, 255)') throw new Error('description band is not white');
                 if(m.related && m.related.bg !== 'rgba(0, 0, 0, 0)') throw new Error('related background changed');
-                if(cfg.name==='desktop' && m.images.h > 760) throw new Error('desktop gallery still too tall: '+m.images.h);
-                if(cfg.name==='mobile' && m.images.h > 480) throw new Error('mobile gallery still too tall: '+m.images.h);
+                if(cfg.name==='desktop' && m.images.h > 722) throw new Error('desktop gallery still too tall: '+m.images.h);
+                if(cfg.name==='mobile' && m.images.h > 452) throw new Error('mobile gallery still too tall: '+m.images.h);
                 await page.close();
               }
             }
