@@ -1,0 +1,79 @@
+name: Diagnose crawler traffic 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-crawlers-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+    steps:
+      - name: Summarize recent crawler and filter traffic
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          LOG=""
+          for f in \
+            /var/www/vhosts/system/elmercadodeorigen.com/logs/access_log \
+            /var/www/vhosts/elmercadodeorigen.com/logs/access_log \
+            /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_ssl_log \
+            /var/www/vhosts/elmercadodeorigen.com/logs/proxy_access_ssl_log; do
+            if [ -r "$f" ]; then LOG="$f"; break; fi
+          done
+          if [ -z "$LOG" ]; then
+            echo "No readable access log found"
+            ls -la /var/www/vhosts/system/elmercadodeorigen.com/logs 2>/dev/null || true
+            exit 2
+          fi
+          echo "LOG=$LOG"
+          TMP=$(mktemp)
+          tail -n 80000 "$LOG" > "$TMP"
+
+          echo "=== TOP IPS ALL ==="
+          awk '{print $1}' "$TMP" | sort | uniq -c | sort -nr | head -n 25
+
+          echo "=== TOP USER AGENTS ALL ==="
+          awk -F'"' 'NF>=6 {print $6}' "$TMP" | sort | uniq -c | sort -nr | head -n 30
+
+          echo "=== FILTER REQUEST COUNT ==="
+          grep -Eic '[?&]filter_[^ =]*=' "$TMP" || true
+
+          echo "=== TOP IPS FILTER REQUESTS ==="
+          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | awk '{print $1}' | sort | uniq -c | sort -nr | head -n 30 || true
+
+          echo "=== TOP USER AGENTS FILTER REQUESTS ==="
+          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | awk -F'"' 'NF>=6 {print $6}' | sort | uniq -c | sort -nr | head -n 30 || true
+
+          echo "=== TOP FILTER URLS ==="
+          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | awk -F'"' '{print $2}' | awk '{print $2}' | sed 's/&amp;/\&/g' | sort | uniq -c | sort -nr | head -n 40 || true
+
+          echo "=== FILTER REQUEST SAMPLE (IP STATUS UA REQUEST) ==="
+          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | tail -n 60 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
+
+          echo "=== BOT-LIKE USER AGENTS / MENTA TOKENS ==="
+          grep -Ei 'bot|crawler|spider|scrapy|python|curl|wget|httpclient|headless|menta' "$TMP" | tail -n 100 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
+
+          echo "=== CURRENT LOAD ==="
+          uptime
+          ps -eo pid,etime,%cpu,%mem,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|COMMAND' | head -n 25 || true
+          rm -f "$TMP"
+          REMOTE
