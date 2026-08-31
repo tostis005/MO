@@ -23,13 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate repair plugin
-        shell: bash
-        run: |
-          set -euo pipefail
-          php -l mu-plugins/mdo-blog-product-images-20260831.php
+      - name: Validate plugin
+        run: php -l mu-plugins/mdo-blog-product-images-20260831.php
 
-      - name: Deploy repair plugin to production
+      - name: Deploy to production and flush cache
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -39,134 +36,76 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
           PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
+              p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac
             done
           ')"
           : "${PROD_PATH:?production path not found}"
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
-          echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
-
+          echo "SSH=$SSH" >> "$GITHUB_ENV"
           NAME='mdo-blog-product-images-20260831.php'
-          SRC="mu-plugins/$NAME"
           TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"
           REMOTE="/tmp/${NAME%.php}-${GITHUB_RUN_ID}.php"
           BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP "mu-plugins/$NAME" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "set -e; php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; [ ! -f '$TARGET' ] || cp -p '$TARGET' '$BACKUP'; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "wp=\$(command -v wp || true); php=\$(command -v php || true); [ -n \"\$php\" ] || php=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php\" \"\$wp\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php\" \"\$wp\" eval 'if ( function_exists(\"wp_cache_flush\") ) wp_cache_flush(); if ( has_action(\"litespeed_purge_all\") ) do_action(\"litespeed_purge_all\");' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-          sshpass -e scp $SCP_OPTIONS "$SRC" "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$BACKUP'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
-
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-
-      - name: Install Chromium
+      - name: Verify with Chromium
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --quiet playwright
           python -m playwright install --with-deps chromium >/dev/null
-
-      - name: Verify real product images in a blog article
-        shell: bash
-        run: |
-          set -euo pipefail
           python - <<'PY'
           from playwright.sync_api import sync_playwright
           import json, sys
-
-          url = 'https://www.elmercadodeorigen.com/jamon-iberico/?mdo_blog_images_verify=20260831'
-          report = {}
-          errors = []
-
+          errors=[]; report={}
           with sync_playwright() as p:
-              browser = p.chromium.launch(headless=True)
-              page = browser.new_page(viewport={'width': 1440, 'height': 1000})
-              page.goto(url, wait_until='networkidle', timeout=120000)
-              page.wait_for_selector('body.single-post ul.products li.product', timeout=60000)
-              cards = page.locator('body.single-post ul.products li.product')
-              count = cards.count()
-              report['card_count'] = count
-              report['plugin_css'] = page.locator('#mdo-blog-product-images-20260831-css').count() == 1
-              report['plugin_js'] = page.locator('#mdo-blog-product-images-20260831-js').count() == 1
-              report['cards'] = []
-
-              if count < 3:
-                  errors.append(f'expected at least 3 product cards, got {count}')
-
-              for i in range(min(count, 12)):
-                  card = cards.nth(i)
-                  card.scroll_into_view_if_needed()
-                  page.wait_for_timeout(250)
-                  data = card.evaluate('''card => {
-                    const selectors = 'img.product-loop-image,img.attachment-woocommerce_thumbnail,img.wp-post-image,.product-loop-image-wrapper img,img.mdo-blog-related-product-image-20260831';
-                    const imgs = [...card.querySelectorAll(selectors)];
-                    const details = imgs.map(img => {
-                      const r = img.getBoundingClientRect();
-                      const s = getComputedStyle(img);
-                      return {
-                        src: img.currentSrc || img.src || '',
-                        naturalWidth: img.naturalWidth,
-                        naturalHeight: img.naturalHeight,
-                        width: r.width,
-                        height: r.height,
-                        display: s.display,
-                        visibility: s.visibility,
-                        opacity: s.opacity
-                      };
-                    });
-                    const good = details.some(x => x.naturalWidth > 40 && x.naturalHeight > 40 && x.width > 80 && x.height > 80 && x.display !== 'none' && x.visibility !== 'hidden' && Number(x.opacity) > 0);
-                    return {className: card.className, good, details};
-                  }''')
-                  report['cards'].append(data)
-                  if not data['good']:
-                      errors.append(f'card {i + 1} has no visible loaded product image')
-
+              browser=p.chromium.launch(headless=True)
+              page=browser.new_page(viewport={'width':1440,'height':1000})
+              page.goto('https://www.elmercadodeorigen.com/jamon-iberico/?mdo_blog_images_verify=20260831v2',wait_until='networkidle',timeout=120000)
+              page.wait_for_selector('body.single-post ul.products li.product',timeout=60000)
+              cards=page.locator('body.single-post ul.products li.product')
+              report['count']=cards.count()
+              report['css']=page.locator('#mdo-blog-product-images-20260831-css').count()
+              report['js']=page.locator('#mdo-blog-product-images-20260831-js').count()
+              if report['count'] < 3: errors.append(f'only {report["count"]} product cards')
+              if report['css'] != 1 or report['js'] != 1: errors.append('repair plugin markup missing')
+              report['cards']=[]
+              for i in range(min(report['count'],12)):
+                  card=cards.nth(i); card.scroll_into_view_if_needed(); page.wait_for_timeout(350)
+                  d=card.evaluate('''c=>{const q='img.product-loop-image,img.attachment-woocommerce_thumbnail,img.wp-post-image,.product-loop-image-wrapper img,img.mdo-blog-related-product-image-20260831';const a=[...c.querySelectorAll(q)].map(i=>{const r=i.getBoundingClientRect(),s=getComputedStyle(i);return{src:i.currentSrc||i.src||'',nw:i.naturalWidth,nh:i.naturalHeight,w:r.width,h:r.height,d:s.display,v:s.visibility,o:s.opacity}});return{ok:a.some(x=>x.nw>40&&x.nh>40&&x.w>80&&x.h>80&&x.d!=='none'&&x.v!=='hidden'&&Number(x.o)>0),images:a}}''')
+                  report['cards'].append(d)
+                  if not d['ok']: errors.append(f'card {i+1} has no visible loaded product image')
               browser.close()
-
-          if not report['plugin_css'] or not report['plugin_js']:
-              errors.append('production page did not load the repair plugin')
-
-          print(json.dumps(report, ensure_ascii=False, indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
           if errors:
-              print('ERRORS:')
-              print('\n'.join('- ' + e for e in errors))
-              sys.exit(1)
+              print('ERRORS:\n'+'\n'.join('- '+e for e in errors)); sys.exit(1)
           print('BLOG_PRODUCT_IMAGES_VERIFIED=true')
           PY
 
-      - name: Roll back on failed verification
+      - name: Roll back if verification fails
         if: failure() && env.PROD_PATH != ''
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          NAME='mdo-blog-product-images-20260831.php'
-          TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"
-          BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
+          NAME='mdo-blog-product-images-20260831.php'; TARGET="$PROD_PATH/wp-content/mu-plugins/$NAME"; BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "if [ -f '$BACKUP' ]; then install -m 0644 '$BACKUP' '$TARGET' && rm -f '$BACKUP'; else rm -f '$TARGET'; fi"
 
-      - name: Clean deployment backup
+      - name: Clean backup
         if: success()
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          NAME='mdo-blog-product-images-20260831.php'
-          BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
+          NAME='mdo-blog-product-images-20260831.php'; BACKUP="/tmp/${NAME%.php}-backup-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -f '$BACKUP'"
