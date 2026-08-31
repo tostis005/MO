@@ -150,22 +150,25 @@ add_action(
 				}
 				return card.getAttribute('data-product_id') || card.getAttribute('data-product-id') || '';
 			};
-			const usable = (img) => {
-				if (!(img instanceof HTMLImageElement)) return false;
-				const src = (img.currentSrc || img.getAttribute('src') || '').trim();
-				return !!src && src !== 'about:blank' && !src.startsWith('data:image/gif;base64,R0lGODlhAQABA');
-			};
 			const repairCard = (card) => {
 				if (!(card instanceof Element) || !card.matches('li.product')) return;
 				const data = products[productId(card)];
 				if (!data?.url) return;
+
 				const native = card.querySelector(selectors);
-				if (native && usable(native)) {
+				if (native instanceof HTMLImageElement) {
+					native.setAttribute('src', data.url);
+					native.removeAttribute('srcset');
+					native.removeAttribute('sizes');
+					native.setAttribute('data-src', data.url);
+					native.setAttribute('alt', data.alt || '');
 					native.style.setProperty('display', 'block', 'important');
 					native.style.setProperty('visibility', 'visible', 'important');
 					native.style.setProperty('opacity', '1', 'important');
+					card.classList.add('mdo-blog-product-image-repaired-20260831');
 					return;
 				}
+
 				if (card.querySelector('.mdo-blog-related-product-media-20260831')) return;
 				const link = document.createElement('a');
 				link.className = 'mdo-blog-related-product-media-20260831';
