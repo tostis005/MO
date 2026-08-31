@@ -34,7 +34,10 @@ jobs:
               await page.goto(url,{waitUntil:'networkidle',timeout:90000});
               await page.screenshot({path:`visual-audit/${cfg.name}-product.png`,fullPage:true});
               const metrics=await page.evaluate(()=>{
-                const box=(sel)=>{const e=document.querySelector(sel); if(!e)return null; const r=e.getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height,display:getComputedStyle(e).display,margin:getComputedStyle(e).margin,padding:getComputedStyle(e).padding};};
+                const box=(sel)=>{const e=document.querySelector(sel); if(!e)return null; const r=e.getBoundingClientRect(); return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:getComputedStyle(e).display,margin:getComputedStyle(e).margin,padding:getComputedStyle(e).padding};};
+                const summary=document.querySelector('.product-summary');
+                const summaryChildren=summary ? [...summary.children].map((e,i)=>{const r=e.getBoundingClientRect();return {i,tag:e.tagName,cls:e.className||'',h:Math.round(r.height),y:Math.round(r.y),display:getComputedStyle(e).display,text:(e.innerText||'').replace(/\s+/g,' ').trim().slice(0,90)}}).filter(x=>x.h>0) : [];
+                const tall=[...document.querySelectorAll('.product-summary *')].map(e=>{const r=e.getBoundingClientRect();return {tag:e.tagName,cls:e.className||'',h:Math.round(r.height),y:Math.round(r.y),display:getComputedStyle(e).display,text:(e.innerText||'').replace(/\s+/g,' ').trim().slice(0,80)}}).filter(x=>x.h>=80).sort((a,b)=>b.h-a.h).slice(0,30);
                 return {
                   bodyWidth:document.body.scrollWidth,
                   pageHeight:document.documentElement.scrollHeight,
@@ -47,7 +50,9 @@ jobs:
                   related:box('.related'),
                   relatedTitle:box('.related > h2'),
                   descH2:[...document.querySelectorAll('#tab-description h2')].slice(0,5).map(e=>e.textContent.trim()),
-                  title:document.querySelector('.product_title')?.textContent.trim()||''
+                  title:document.querySelector('.product_title')?.textContent.trim()||'',
+                  summaryChildren,
+                  tall
                 };
               });
               console.log('METRICS',cfg.name,JSON.stringify(metrics));
@@ -58,6 +63,10 @@ jobs:
           JS
           mkdir -p visual-audit
           node capture-visual-audit.js
+          if command -v convert >/dev/null 2>&1; then
+            convert visual-audit/desktop-product.png -resize 480x -quality 24 visual-audit/desktop-preview.jpg
+            convert visual-audit/mobile-product.png -resize 260x -quality 24 visual-audit/mobile-preview.jpg
+          fi
           rm -f capture-visual-audit.js package.json package-lock.json
           rm -rf node_modules
       - name: Commit temporary screenshots
@@ -66,6 +75,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add visual-audit/desktop-product.png visual-audit/mobile-product.png
-          git commit -m 'Temporary product visual audit screenshots'
+          git add visual-audit/
+          git commit -m 'Refresh temporary product visual audit screenshots'
+          git pull --rebase origin main
           git push
