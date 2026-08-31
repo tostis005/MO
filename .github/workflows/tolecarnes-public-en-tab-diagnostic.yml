@@ -22,23 +22,16 @@ jobs:
           f=/tmp/patatas.html
           code=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta potato diagnostic' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$f" "https://www.elmercadodeorigen.com/en/product/patatas-blancas/?emdo_h1_diag=${GITHUB_RUN_ID}")
           echo "HTTP=$code"
-          checks=(
-            'White Kennebec potatoes grown in Fresno de la Vega'
-            'Kennebec potatoes from Fresno de la Vega'
-            'About La Huerta de Ana Mary'
-            'Frequently asked questions'
-            'Sobre La Huerta de Ana Mary'
-            'Preguntas frecuentes'
-          )
-          for q in "${checks[@]}"; do
-            if grep -Fq "$q" "$f"; then echo "FOUND|$q"; else echo "MISS|$q"; fi
+          for q in \
+            'White Kennebec potatoes grown in Fresno de la Vega' \
+            'Kennebec potatoes from Fresno de la Vega' \
+            'About La Huerta de Ana Mary' \
+            'Frequently asked questions' \
+            'Sobre La Huerta de Ana Mary' \
+            'Preguntas frecuentes'; do
+            if grep -Fq "$q" "$f"; then echo "FOUND: $q"; else echo "MISS: $q"; fi
           done
-          python3 - "$f" <<'PY'
-import sys,re
-s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
-for needle in ['Kennebec','Huerta de Ana Mary','Frequently asked questions','Preguntas frecuentes']:
-    i=s.find(needle)
-    if i>=0:
-        chunk=re.sub(r'\s+',' ',s[max(0,i-500):i+1200])
-        print('CONTEXT|'+needle+'|'+chunk[:1700])
-PY
+          echo '--- KENNEBEC LINES ---'
+          grep -in -m 12 'Kennebec' "$f" || true
+          echo '--- HUERTA LINES ---'
+          grep -in -m 12 'Huerta de Ana Mary' "$f" || true
