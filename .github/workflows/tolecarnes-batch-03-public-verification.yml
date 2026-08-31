@@ -1,0 +1,48 @@
+name: Verify public Tolecarnes batch 03
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tolecarnes-batch-03-public-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check Spanish and English rendered pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          slugs=(churrasco-de-ternera pito-de-vacuno-fileteado huesos-de-ternera entrecot-de-vaca redondo-de-ternera)
+          es_body=('Un corte pensado para la parrilla' 'Un corte menos habitual del vacuno' 'Una base para caldos y fondos' 'Entrecot de vaca con más de 20 días de maduración' 'Una pieza magra y de forma regular')
+          en_body=('A cut made for the grill' 'A less common beef cut' 'A base for stocks and broths' 'Beef entrecote matured for more than 20 days' 'A lean cut with a regular shape')
+          es_short=('Churrasco de ternera con grasa natural infiltrada' 'Pito de vacuno fileteado, una pieza próxima a la entraña' 'Huesos frescos de ternera cortados y limpios' 'Entrecot de vaca con grasa infiltrada, sabor intenso' 'Redondo de ternera, una pieza cilíndrica y muy magra')
+          en_short=('Beef churrasco with natural marbling' 'Sliced beef pito, a cut located close to the skirt' 'Fresh beef bones, cut and cleaned' 'Beef entrecote with intramuscular fat' 'Beef eye of round, a cylindrical and very lean cut')
+          failures=0
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"
+            es="/tmp/es-${i}.html"; en="/tmp/en-${i}.html"
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch03 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_b3_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch03 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_b3_en=${GITHUB_RUN_ID}-${i}")
+            esok=yes; enok=yes
+            grep -Fq "${es_short[$i]}" "$es" || esok=no
+            grep -Fq "${es_body[$i]}" "$es" || esok=no
+            grep -Fq 'Sobre Tolecarnes' "$es" || esok=no
+            grep -Fq 'Preguntas frecuentes' "$es" || esok=no
+            grep -Fq "${en_short[$i]}" "$en" || enok=no
+            grep -Fq "${en_body[$i]}" "$en" || enok=no
+            grep -Fq 'About Tolecarnes' "$en" || enok=no
+            grep -Fq 'Frequently asked questions' "$en" || enok=no
+            if grep -Fq 'Sobre Tolecarnes' "$en" || grep -Fq 'Preguntas frecuentes' "$en"; then enok=no; fi
+            status=OK
+            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
+            echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
+          done
+          echo "BATCH03_PUBLIC_FAILURES=${failures}"
+          [[ "$failures" -eq 0 ]]
