@@ -1,0 +1,54 @@
+name: Emergency diagnose production load
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-diagnose-load-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect production host
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            echo "=== HOST ==="
+            date; uptime; nproc; free -h; df -h / /var 2>/dev/null || true
+            echo "=== TOP CPU ==="
+            ps -eo pid,ppid,user,stat,etime,%cpu,%mem,args --sort=-%cpu | head -n 35
+            echo "=== TOP MEM ==="
+            ps -eo pid,ppid,user,stat,etime,%cpu,%mem,args --sort=-%mem | head -n 25
+            echo "=== WEB/DB SERVICES ==="
+            systemctl --no-pager --full status nginx 2>/dev/null | head -n 18 || true
+            systemctl --no-pager --full status apache2 2>/dev/null | head -n 18 || true
+            systemctl --no-pager --full status httpd 2>/dev/null | head -n 18 || true
+            systemctl --no-pager --full status mariadb 2>/dev/null | head -n 22 || true
+            systemctl --no-pager --full status mysql 2>/dev/null | head -n 22 || true
+            echo "=== PHP-FPM SERVICES ==="
+            systemctl list-units --type=service --all --no-pager | grep -E "php.*fpm|fpm.*php" || true
+            echo "=== PHP PROCESS COUNTS ==="
+            ps -eo comm= | grep -E "^php|php-fpm" | sort | uniq -c || true
+            echo "=== MYSQL PROCESSLIST ==="
+            mysql -NBe "SHOW FULL PROCESSLIST" 2>&1 | head -n 60 || true
+            echo "=== RECENT KERNEL OOM ==="
+            dmesg -T 2>/dev/null | grep -Ei "out of memory|oom-killer|killed process" | tail -n 20 || true
+          '
