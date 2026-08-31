@@ -1,4 +1,4 @@
-name: Inspect product image height cascade
+name: Inspect product image wrapper chain
 
 on:
   push:
@@ -16,11 +16,10 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect image cascade
+      - name: Inspect wrapper chain
         shell: bash
         run: |
           set -euo pipefail
-          echo "cascade-inspection-trigger"
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null 2>&1
           cat > inspect.js <<'JS'
@@ -28,33 +27,16 @@ jobs:
           (async()=>{
             const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
             const page=await browser.newPage({viewport:{width:1440,height:1000}});
-            await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?cascade='+Date.now(),{waitUntil:'networkidle',timeout:90000});
+            await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?wrappers='+Date.now(),{waitUntil:'networkidle',timeout:90000});
             const out=await page.evaluate(()=>{
               const img=document.querySelector('.product-gallery .product-images img');
-              const parent=document.querySelector('.product-gallery .product-images');
-              const rules=[];
-              for(const sheet of [...document.styleSheets]){
-                let rs;
-                try{rs=sheet.cssRules}catch(e){continue}
-                const walk=list=>{
-                  for(const rule of [...list]){
-                    if(rule.cssRules){walk(rule.cssRules);continue}
-                    if(!rule.selectorText) continue;
-                    let matches=false;
-                    try{matches=img.matches(rule.selectorText)}catch(e){}
-                    if(matches){
-                      const h=rule.style.getPropertyValue('height');
-                      const mh=rule.style.getPropertyValue('max-height');
-                      const w=rule.style.getPropertyValue('width');
-                      const of=rule.style.getPropertyValue('object-fit');
-                      if(h||mh||w||of) rules.push({selector:rule.selectorText,height:h,heightPriority:rule.style.getPropertyPriority('height'),maxHeight:mh,maxHeightPriority:rule.style.getPropertyPriority('max-height'),width:w,widthPriority:rule.style.getPropertyPriority('width'),objectFit:of,href:sheet.href||'inline'});
-                    }
-                  }
-                };
-                walk(rs);
+              const arr=[];
+              for(let e=img;e && arr.length<8;e=e.parentElement){
+                const r=e.getBoundingClientRect(),s=getComputedStyle(e);
+                arr.push({tag:e.tagName,cls:e.className||'',id:e.id||'',w:Math.round(r.width),h:Math.round(r.height),height:s.height,width:s.width,display:s.display,position:s.position,overflow:s.overflow,transform:s.transform});
+                if(e.classList && e.classList.contains('product-images')) break;
               }
-              const r=img.getBoundingClientRect(),pr=parent.getBoundingClientRect(),cs=getComputedStyle(img);
-              return {outer:img.outerHTML.slice(0,1200),styleAttr:img.getAttribute('style'),img:{w:r.width,h:r.height,height:cs.height,maxHeight:cs.maxHeight,width:cs.width,objectFit:cs.objectFit},parent:{w:pr.width,h:pr.height,height:getComputedStyle(parent).height},rules};
+              return arr;
             });
             console.log(JSON.stringify(out,null,2));
             await browser.close();
