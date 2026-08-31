@@ -1,0 +1,55 @@
+name: Emergency audit live EMDO traffic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-audit-live-traffic-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect recent EMDO requests and connections
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -u
+            echo "=== LOAD ==="; uptime
+            echo "=== LOG CANDIDATES ==="
+            find /var/www/vhosts/system/elmercadodeorigen.com/logs /var/www/vhosts -maxdepth 5 -type f \( -name "proxy_access_log" -o -name "access_log" -o -name "access.log" \) 2>/dev/null | grep -E "elmercadodeorigen|wizardly" | head -n 20 || true
+            log=""
+            for f in /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_log /var/www/vhosts/system/elmercadodeorigen.com/logs/access_log; do [ -f "$f" ] && log="$f" && break; done
+            if [ -z "$log" ]; then log=$(find /var/www/vhosts -maxdepth 5 -type f \( -name "proxy_access_log" -o -name "access_log" \) 2>/dev/null | grep -E "elmercadodeorigen|wizardly" | head -n1); fi
+            echo "USING_LOG=$log"
+            [ -n "$log" ] || exit 0
+            tmp=$(mktemp)
+            tail -n 8000 "$log" > "$tmp"
+            echo "=== TOP IPS LAST 8000 ==="
+            awk "{print \$1}" "$tmp" | sort | uniq -c | sort -nr | head -n 25
+            echo "=== TOP REQUEST PATHS LAST 8000 ==="
+            awk "{print \$7}" "$tmp" | sed "s/?.*//" | sort | uniq -c | sort -nr | head -n 40
+            echo "=== TOP USER AGENTS LAST 8000 ==="
+            awk -F\" "{print \$6}" "$tmp" | sort | uniq -c | sort -nr | head -n 25
+            echo "=== LAST 80 REQUESTS ==="
+            tail -n 80 "$tmp"
+            echo "=== ESTABLISHED 443 PEERS ==="
+            ss -tn state established 2>/dev/null | awk "\$4 ~ /:443$/ {print \$5}" | sed -E "s/:[0-9]+$//" | sort | uniq -c | sort -nr | head -n 30 || true
+          '
