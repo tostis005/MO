@@ -1,4 +1,4 @@
-name: Deploy product detail refinement 0.10.270
+name: Inspect product spacing and description DOM
 
 on:
   push:
@@ -11,95 +11,39 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-
-      - name: Validate refinement
-        shell: bash
-        run: |
-          set -euo pipefail
-          php -l mu-plugins/z-mdo-product-detail-refinement-010270.php
-          grep -Fq 'mdo-product-detail-refinement-010270' mu-plugins/z-mdo-product-detail-refinement-010270.php
-          grep -Fq 'background: #fff !important' mu-plugins/z-mdo-product-detail-refinement-010270.php
-          grep -Fq 'background: transparent !important' mu-plugins/z-mdo-product-detail-refinement-010270.php
-
-      - name: Deploy refinement to production
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
-            done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-          source='mu-plugins/z-mdo-product-detail-refinement-010270.php'
-          base="$(basename "$source")"
-          target="$PROD_PATH/wp-content/mu-plugins/$base"
-          remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-${GITHUB_RUN_ID}'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-
-      - name: Verify rendered layout
+      - name: Inspect rendered product structure
         shell: bash
         run: |
           set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null 2>&1
-          cat > check.js <<'JS'
+          cat > inspect.js <<'JS'
           const { chromium } = require('playwright');
           (async()=>{
-            const browser = await chromium.launch({headless:true, executablePath:'/usr/bin/google-chrome', args:['--no-sandbox']});
-            for (const cfg of [{name:'desktop',width:1440,height:1000},{name:'mobile',width:390,height:844}]) {
-              const page=await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
-              await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?refine_verify='+Date.now(),{waitUntil:'networkidle',timeout:90000});
-              const m=await page.evaluate(()=>{
-                const r=s=>document.querySelector(s)?.getBoundingClientRect()||null;
-                const nav=r('.woostify-product-navigation');
-                const gallery=r('.product-gallery');
-                const tabs=document.querySelector('.woocommerce-tabs');
-                const related=document.querySelector('.related');
-                return {
-                  navBottom:nav?Math.round(nav.bottom):null,
-                  galleryTop:gallery?Math.round(gallery.top):null,
-                  gap:(nav&&gallery)?Math.round(gallery.top-nav.bottom):null,
-                  descriptionBackground:tabs?getComputedStyle(tabs).backgroundColor:null,
-                  relatedBackground:related?getComputedStyle(related).backgroundColor:null,
-                  marker:!!document.querySelector('#mdo-product-detail-refinement-010270')
-                };
-              });
-              console.log('REFINEMENT',cfg.name,JSON.stringify(m));
-              if (!m.marker) throw new Error('refinement marker missing');
-              if (m.descriptionBackground !== 'rgb(255, 255, 255)') throw new Error('description is not white');
-              if (m.relatedBackground !== 'rgba(0, 0, 0, 0)') throw new Error('related products background was changed');
-              if (m.gap === null || m.gap > 20) throw new Error('navigation-to-product gap still too large: '+m.gap);
-              await page.close();
-            }
+            const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
+            const page=await browser.newPage({viewport:{width:1440,height:1000}});
+            await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?dom_inspect='+Date.now(),{waitUntil:'networkidle',timeout:90000});
+            const out=await page.evaluate(()=>{
+              const info=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:e.className,id:e.id,x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),margin:s.margin,padding:s.padding,bg:s.backgroundColor,display:s.display,position:s.position};};
+              const nav=document.querySelector('.woostify-product-navigation');
+              const ct=document.querySelector('.content-top');
+              const ctc=document.querySelector('.content-top > .woostify-container');
+              const pp=document.querySelector('.product-page-container');
+              const ppc=document.querySelector('.product-page-container > .woostify-container');
+              const gal=document.querySelector('.product-gallery');
+              const tabs=document.querySelector('.woocommerce-tabs');
+              const desc=document.querySelector('#tab-description');
+              const rel=document.querySelector('.related');
+              const ancestors=e=>{const a=[];for(let n=e;n&&a.length<6;n=n.parentElement)a.push(info(n));return a;};
+              return {bodyClass:document.body.className,nav:info(nav),contentTop:info(ct),contentTopContainer:info(ctc),productPage:info(pp),productPageContainer:info(ppc),gallery:info(gal),tabs:info(tabs),desc:info(desc),related:info(rel),tabsAncestors:ancestors(tabs),productPageAncestors:ancestors(pp)};
+            });
+            console.log(JSON.stringify(out,null,2));
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
-          node check.js
-          rm -rf node_modules package.json package-lock.json check.js
+          node inspect.js
