@@ -1,0 +1,58 @@
+name: Emergency restart EMDO PHP-FPM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-restart-emdo-fpm-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Restart only PHP-FPM service serving El Mercado de Origen
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -euo pipefail
+            echo "=== FIND EMDO FPM MASTER ==="
+            child=$(pgrep -f "php-fpm: pool elmercadodeorigen.com" | head -n1 || true)
+            [ -n "$child" ] || { echo "No EMDO php-fpm child found"; exit 3; }
+            master=$(ps -o ppid= -p "$child" | tr -d " ")
+            echo "child=$child master=$master"
+            unit=$(sed -n "s#.*system.slice/\([^/]*plesk-php[0-9][0-9]-fpm.service\).*#\1#p" /proc/$master/cgroup | head -n1)
+            if [ -z "$unit" ]; then
+              unit=$(systemctl list-units --type=service --state=running --no-legend "plesk-php*-fpm.service" | awk "NR==1{print \$1}")
+              echo "Could not derive unit from cgroup; candidate=$unit"
+            fi
+            case "$unit" in plesk-php*-fpm.service) ;; *) echo "Unsafe/unexpected unit: $unit"; exit 4;; esac
+            echo "Restarting $unit"
+            systemctl restart "$unit"
+            sleep 4
+            systemctl is-active "$unit"
+            echo "=== POST-RESTART LOAD ==="
+            uptime
+            ps -eo pid,ppid,etime,%cpu,%mem,args --sort=-%cpu | grep -E "php-fpm: pool elmercadodeorigen.com|COMMAND" | head -n 25 || true
+            echo "=== HTTP CHECK ==="
+            code=$(curl -k -L -sS -o /tmp/emdo-health.html -w "%{http_code}" --connect-timeout 5 --max-time 25 https://www.elmercadodeorigen.com/ || true)
+            bytes=$(wc -c < /tmp/emdo-health.html 2>/dev/null || echo 0)
+            echo "HTTP_CODE=$code BODY_BYTES=$bytes"
+            [ "$code" = "200" ]
+          '
