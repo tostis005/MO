@@ -14,12 +14,14 @@ foreach($queries as $key=>$terms){
   $tt=wp_get_post_terms($p->ID,'product_type',['fields'=>'names']);$type=is_wp_error($tt)?'':implode(',',$tt);$u=get_userdata((int)$p->post_author);$author=$u?$u->display_name:'';
   $en=(int)apply_filters('wpml_object_id',(int)$p->ID,'product',false,'en');$es=(int)apply_filters('wpml_object_id',(int)$p->ID,'product',false,'es');
   echo "ID={$p->ID} lang={$lang} status={$p->post_status} title={$p->post_title} slug={$p->post_name} author={$author} sku={$sku} type={$type} price={$price} stock={$stock} es={$es} en={$en}\n";
-  if($en&&$en!==(int)$p->ID){$ep=get_post($en);echo "  EN_LINK ID={$en} title=".($ep?$ep->post_title:'?')." slug=".($ep?$ep->post_name:'?')." status=".($ep?$ep->post_status:'?')."\n";}
  }
 }
 $table=$wpdb->prefix.'icl_translations';
-if($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$table))===$table){
- echo "==== WPML rows ====\n";$ids=$wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_status NOT IN ('trash','auto-draft') AND (post_title LIKE '%Carne picada%' OR post_title LIKE '%Burger%' OR post_title LIKE '%Filetes%' OR post_title LIKE '%Rag%' OR post_title LIKE '%Entraña%')");
- if($ids){$ph=implode(',',array_map('intval',$ids));$trs=$wpdb->get_results("SELECT element_id,trid,language_code,source_language_code FROM {$table} WHERE element_type='post_product' AND element_id IN ({$ph}) ORDER BY trid,language_code");foreach($trs as $tr){echo "element={$tr->element_id} trid={$tr->trid} lang={$tr->language_code} source={$tr->source_language_code}\n";}}
-}
+if($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$table))===$table){echo "==== WPML TABLE PRESENT ====\n";} else {echo "==== WPML TABLE ABSENT ====\n";}
+echo "==== ACTIVE TRANSLATION-RELATED PLUGINS ====\n";
+$active=(array)get_option('active_plugins',[]);
+foreach($active as $plugin){if(preg_match('/translate|translat|wpml|sitepress|polylang|weglot|language|lang|multilingual|lingotek/i',$plugin)){echo $plugin."\n";}}
+if(is_multisite()){$network=(array)get_site_option('active_sitewide_plugins',[]);foreach(array_keys($network) as $plugin){if(preg_match('/translate|translat|wpml|sitepress|polylang|weglot|language|lang|multilingual|lingotek/i',$plugin)){echo "NETWORK ".$plugin."\n";}}}
+echo "==== TRANSLATION-LIKE DB TABLES ====\n";
+$tables=$wpdb->get_col("SHOW TABLES");foreach($tables as $t){if(preg_match('/trp_|translate|translation|weglot|pll_|icl_/i',$t)){echo $t."\n";}}
 echo "DIAGNOSTIC_DONE\n";
