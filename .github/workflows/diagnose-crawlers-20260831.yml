@@ -19,7 +19,7 @@ jobs:
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
     steps:
-      - name: Summarize recent crawler and filter traffic
+      - name: Analyze current SSL crawler traffic
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -32,48 +32,43 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           LOGDIR=/var/www/vhosts/system/elmercadodeorigen.com/logs
-          echo "=== LOG FILES ==="
-          ls -lah "$LOGDIR" || true
-
+          LOG="$LOGDIR/access_ssl_log"
+          [ -s "$LOG" ] || { echo "Missing/empty $LOG"; exit 2; }
           TMP=$(mktemp)
-          : > "$TMP"
-          while IFS= read -r f; do
-            echo "USING $f ($(wc -c < "$f") bytes)"
-            tail -n 60000 "$f" >> "$TMP" || true
-          done < <(find "$LOGDIR" -maxdepth 1 \( -type f -o -type l \) -name '*access*' -size +0c -print 2>/dev/null | sort)
-
-          echo "COMBINED_LINES=$(wc -l < "$TMP")"
-          if [ ! -s "$TMP" ]; then
-            echo "No non-empty access data found"
-            exit 2
-          fi
+          tail -n 70000 "$LOG" > "$TMP"
+          echo "LINES=$(wc -l < "$TMP") BYTES=$(wc -c < "$TMP")"
 
           echo "=== TOP IPS ALL ==="
-          awk '{print $1}' "$TMP" | sort | uniq -c | sort -nr | head -n 25 || true
+          awk '{print $1}' "$TMP" | sort | uniq -c | sort -nr | head -n 30 || true
 
           echo "=== TOP USER AGENTS ALL ==="
-          awk -F'"' 'NF>=6 {print $6}' "$TMP" | sort | uniq -c | sort -nr | head -n 30 || true
+          awk -F'"' 'NF>=6 {print $6}' "$TMP" | sort | uniq -c | sort -nr | head -n 35 || true
 
+          FILT=$(mktemp)
+          grep -Ei '[?&]filter_[^ =]*=' "$TMP" > "$FILT" || true
           echo "=== FILTER REQUEST COUNT ==="
-          grep -Eic '[?&]filter_[^ =]*=' "$TMP" || true
+          wc -l < "$FILT"
 
           echo "=== TOP IPS FILTER REQUESTS ==="
-          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | awk '{print $1}' | sort | uniq -c | sort -nr | head -n 30 || true
+          awk '{print $1}' "$FILT" | sort | uniq -c | sort -nr | head -n 35 || true
 
           echo "=== TOP USER AGENTS FILTER REQUESTS ==="
-          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | awk -F'"' 'NF>=6 {print $6}' | sort | uniq -c | sort -nr | head -n 30 || true
+          awk -F'"' 'NF>=6 {print $6}' "$FILT" | sort | uniq -c | sort -nr | head -n 35 || true
 
-          echo "=== TOP FILTER URLS ==="
-          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | awk -F'"' '{print $2}' | awk '{print $2}' | sed 's/&amp;/\&/g' | sort | uniq -c | sort -nr | head -n 40 || true
+          echo "=== TOP FILTER PATHS (QUERY NORMALIZED AWAY) ==="
+          awk -F'"' '{print $2}' "$FILT" | awk '{print $2}' | sed 's/?[^ ]*$//' | sort | uniq -c | sort -nr | head -n 35 || true
 
-          echo "=== FILTER REQUEST SAMPLE ==="
-          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | tail -n 80 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
+          echo "=== FILTER STATUS CODES ==="
+          awk -F'"' '{print $3}' "$FILT" | awk '{print $1}' | sort | uniq -c | sort -nr || true
 
-          echo "=== BOT-LIKE / MENTA SAMPLE ==="
-          grep -Ei 'bot|crawler|spider|scrapy|python|curl|wget|httpclient|headless|menta' "$TMP" | tail -n 120 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
+          echo "=== RECENT FILTER REQUEST SAMPLE ==="
+          tail -n 80 "$FILT" | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[1] " | " $6 " | " $2}' || true
+
+          echo "=== RECENT HEADLESS / BOT-LIKE SAMPLE ==="
+          grep -Ei 'HeadlessChrome|bot|crawler|spider|scrapy|python|curl|wget|httpclient|menta' "$TMP" | tail -n 100 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[1] " | " $6 " | " $2}' || true
 
           echo "=== CURRENT LOAD ==="
           uptime
           ps -eo pid,etime,%cpu,%mem,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|COMMAND' | head -n 25 || true
-          rm -f "$TMP"
+          rm -f "$TMP" "$FILT"
           REMOTE
