@@ -1,0 +1,156 @@
+name: Install smart filter protection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ops-install-smart-filter-protection-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+    steps:
+      - name: Install nginx filter throttling and re-enable filters
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          DOMAIN=elmercadodeorigen.com
+          SYSCONF="/var/www/vhosts/system/$DOMAIN/conf"
+          DOCROOT=$(awk '/^[[:space:]]*DocumentRoot[[:space:]]/ {gsub(/\"/,"",$2); print $2; exit}' "$SYSCONF/httpd.conf")
+          : "${DOCROOT:?document root not found}"
+          TS=$(date +%Y%m%d-%H%M%S)
+          HT="$DOCROOT/.htaccess"
+          ROBOTS="$DOCROOT/robots.txt"
+          GLOBAL=/etc/nginx/conf.d/emdo_filter_rate_limit.conf
+          VHOST="$SYSCONF/vhost_nginx.conf"
+
+          echo '=== BACKUPS ==='
+          [ -f "$HT" ] && cp -a "$HT" "$HT.emdo-pre-smart-filter-$TS"
+          [ -f "$ROBOTS" ] && cp -a "$ROBOTS" "$ROBOTS.emdo-pre-smart-filter-$TS"
+          [ -f "$GLOBAL" ] && cp -a "$GLOBAL" "$GLOBAL.emdo-pre-smart-filter-$TS"
+          [ -f "$VHOST" ] && cp -a "$VHOST" "$VHOST.emdo-pre-smart-filter-$TS"
+
+          echo '=== GLOBAL NGINX FILTER KEYS/ZONES ==='
+          cat > "$GLOBAL" <<'NGINXGLOBAL'
+# BEGIN EMDO SMART FILTER PROTECTION 20260831
+# Only WooCommerce faceted URLs (filter_*) receive a key. Empty keys are not rate-limited.
+map $args $emdo_filter_ip_key {
+    default "";
+    ~*(^|&)filter_[^=]+= $binary_remote_addr;
+}
+map $args $emdo_filter_global_key {
+    default "";
+    ~*(^|&)filter_[^=]+= "emdo-filter";
+}
+# Human usage: bursts are allowed. Sustained crawler floods are rejected before Apache/PHP.
+limit_req_zone $emdo_filter_ip_key zone=emdo_filter_per_ip:10m rate=30r/m;
+limit_req_zone $emdo_filter_global_key zone=emdo_filter_global:1m rate=2r/s;
+# END EMDO SMART FILTER PROTECTION 20260831
+NGINXGLOBAL
+          cat "$GLOBAL"
+
+          echo '=== DOMAIN NGINX DIRECTIVES ==='
+          if [ -f "$VHOST" ]; then
+            sed -i '/# BEGIN EMDO SMART FILTER PROTECTION 20260831/,/# END EMDO SMART FILTER PROTECTION 20260831/d' "$VHOST"
+          else
+            touch "$VHOST"
+          fi
+          cat >> "$VHOST" <<'NGINXVHOST'
+
+# BEGIN EMDO SMART FILTER PROTECTION 20260831
+# Applies only when the map key is non-empty (query contains filter_*).
+limit_req_status 429;
+limit_req_log_level warn;
+limit_req zone=emdo_filter_per_ip burst=5 nodelay;
+limit_req zone=emdo_filter_global burst=6 nodelay;
+# END EMDO SMART FILTER PROTECTION 20260831
+NGINXVHOST
+          cat "$VHOST"
+
+          echo '=== RECONFIGURE PLESK + TEST NGINX BEFORE REMOVING EMERGENCY BLOCK ==='
+          /usr/local/psa/admin/sbin/httpdmng --reconfigure-domain "$DOMAIN"
+          nginx -t
+          grep -n 'vhost_nginx.conf' "$SYSCONF/last_nginx.conf"
+          grep -q 'emdo_filter_per_ip' "$GLOBAL"
+          systemctl reload nginx
+
+          echo '=== REMOVE ONLY THE TWO TEMPORARY FILTER 403 GUARDS ==='
+          python3 - "$HT" <<'PY'
+import re, sys
+p=sys.argv[1]
+s=open(p, encoding='utf-8').read()
+for begin,end in [
+    ('# BEGIN EMDO EMERGENCY BROAD FILTER GUARD 20260831','# END EMDO EMERGENCY BROAD FILTER GUARD 20260831'),
+    ('# BEGIN EMDO EMERGENCY FILTER FLOOD 20260831','# END EMDO EMERGENCY FILTER FLOOD 20260831'),
+]:
+    s=re.sub(r'(?ms)^'+re.escape(begin)+r'.*?^'+re.escape(end)+r'\n?', '', s)
+open(p,'w',encoding='utf-8').write(s)
+PY
+          if grep -q 'EMDO EMERGENCY BROAD FILTER GUARD 20260831\|EMDO EMERGENCY FILTER FLOOD 20260831' "$HT"; then
+            echo 'Emergency filter guard removal failed'
+            exit 5
+          fi
+
+          echo '=== ROBOTS: DISCOURAGE FACET CRAWLING, KEEP PRODUCTS OPEN ==='
+          cat > "$ROBOTS" <<'ROBOTSFILE'
+User-agent: *
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+# Faceted WooCommerce combinations are for shoppers, not crawler discovery.
+# Product, producer, shop and category URLs remain crawlable.
+Disallow: /*?*filter_
+Disallow: /*?*query_type_
+
+Sitemap: https://www.elmercadodeorigen.com/sitemap_index.xml
+ROBOTSFILE
+          cat "$ROBOTS"
+
+          echo '=== FUNCTIONAL CHECKS ==='
+          ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0 Safari/537.36'
+          home=$(curl -k -L -sS -A "$ua" -o /tmp/emdo-home -w '%{http_code}' --connect-timeout 5 --max-time 25 https://www.elmercadodeorigen.com/ || true)
+          shop=$(curl -k -L -sS -A "$ua" -o /tmp/emdo-shop -w '%{http_code}' --connect-timeout 5 --max-time 25 https://www.elmercadodeorigen.com/tienda/ || true)
+          category=$(curl -k -L -sS -A "$ua" -o /tmp/emdo-cat -w '%{http_code}' --connect-timeout 5 --max-time 25 https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/ || true)
+          filter=$(curl -k -L -sS -A "$ua" -o /tmp/emdo-filter -w '%{http_code}' --connect-timeout 5 --max-time 25 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_alimentacion=bellota' || true)
+          product=$(curl -k -L -sS -A 'MenttaCrawler/1.0' -o /tmp/emdo-product -w '%{http_code}' --connect-timeout 5 --max-time 25 'https://www.elmercadodeorigen.com/producto/paleta-de-bellota-iberica-50-raza-iberica/' || true)
+          robots=$(curl -k -L -sS -o /tmp/emdo-robots -w '%{http_code}' --connect-timeout 5 --max-time 15 https://www.elmercadodeorigen.com/robots.txt || true)
+          echo "HOME=$home SHOP=$shop CATEGORY=$category FILTER=$filter MENTTA_PRODUCT=$product ROBOTS=$robots"
+          [ "$home" = 200 ]
+          [ "$shop" = 200 ]
+          [ "$category" = 200 ]
+          [ "$filter" = 200 ]
+          [ "$product" = 200 ]
+          [ "$robots" = 200 ]
+          grep -q 'Disallow: /.*filter_' /tmp/emdo-robots
+
+          echo '=== BURST TEST: FILTERS SHOULD THROTTLE, NORMAL PAGES SHOULD NOT ==='
+          rm -f /tmp/emdo-filter-codes
+          seq 1 18 | xargs -P18 -I{} sh -c "curl -k -sS -A '$ua' -o /dev/null -w '%{http_code}\\n' --connect-timeout 4 --max-time 20 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_alimentacion=bellota&emdo_burst={}' || echo 000" >> /tmp/emdo-filter-codes
+          sort /tmp/emdo-filter-codes | uniq -c
+          ok_count=$(grep -c '^200$' /tmp/emdo-filter-codes || true)
+          limited_count=$(grep -c '^429$' /tmp/emdo-filter-codes || true)
+          echo "BURST_200=$ok_count BURST_429=$limited_count"
+          [ "$ok_count" -ge 1 ]
+          [ "$limited_count" -ge 1 ]
+
+          echo '=== CURRENT LOAD ==='
+          uptime
+          ps -eo pid,etime,%cpu,%mem,args --sort=-%cpu | grep -E 'php-fpm: pool elmercadodeorigen.com|COMMAND' | head -n 20 || true
+          REMOTE
