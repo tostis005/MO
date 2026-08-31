@@ -17,28 +17,6 @@ $is_filtered = '' !== $filter_state['query'] || ! empty( $filter_state['categori
 $paged = max( 1, (int) get_query_var( 'paged' ) );
 $featured_ids = ! $is_filtered && function_exists( 'elmercado_blog_featured_ids_010263' ) ? elmercado_blog_featured_ids_010263( 3, true ) : array();
 
-$special_product_ids = array();
-if ( ! $is_filtered && function_exists( 'wc_get_product_ids_on_sale' ) && function_exists( 'wc_get_product' ) ) {
-	$special_candidates = array();
-	foreach ( array_values( array_unique( array_map( 'absint', (array) wc_get_product_ids_on_sale() ) ) ) as $product_id ) {
-		if ( $product_id <= 0 ) {
-			continue;
-		}
-
-		$product = wc_get_product( $product_id );
-		if ( ! $product || ! is_a( $product, 'WC_Product' ) || ! $product->is_visible() || ! $product->is_in_stock() || ! $product->is_on_sale() ) {
-			continue;
-		}
-
-		$special_candidates[ $product_id ] = (int) $product->get_total_sales();
-	}
-
-	if ( ! empty( $special_candidates ) ) {
-		arsort( $special_candidates, SORT_NUMERIC );
-		$special_product_ids = array_slice( array_map( 'intval', array_keys( $special_candidates ) ), 0, 4 );
-	}
-}
-
 $query_args = array(
 	'post_type' => 'post',
 	'post_status' => 'publish',
@@ -58,59 +36,6 @@ $articles_query = new WP_Query( $query_args );
 $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_blog_public_url_010263() : elmercado_blog_url();
 ?>
 
-<style id="elmercado-blog-specials-grid-010266">
-	@media (min-width: 1041px) {
-		.emo-journal--discovery .emo-blog-grid {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
-		}
-	}
-
-	.emo-blog-specials {
-		margin-top: clamp(42px, 6vw, 72px);
-	}
-
-	.emo-blog-specials:first-of-type {
-		margin-top: 0;
-	}
-
-	.emo-blog-specials .woocommerce,
-	.emo-blog-specials ul.products {
-		width: 100%;
-	}
-
-	.emo-blog-specials ul.products {
-		display: grid !important;
-		grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-		gap: 24px !important;
-		margin: 0 !important;
-	}
-
-	.emo-blog-specials ul.products::before,
-	.emo-blog-specials ul.products::after {
-		display: none !important;
-		content: none !important;
-	}
-
-	.emo-blog-specials ul.products li.product {
-		float: none !important;
-		width: 100% !important;
-		max-width: none !important;
-		margin: 0 !important;
-	}
-
-	@media (max-width: 1040px) {
-		.emo-blog-specials ul.products {
-			grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-		}
-	}
-
-	@media (max-width: 560px) {
-		.emo-blog-specials ul.products {
-			grid-template-columns: minmax(0, 1fr) !important;
-		}
-	}
-</style>
-
 <main id="primary" class="site-main emo-journal emo-journal--discovery">
 	<section class="emo-journal-hero">
 		<div class="emo-shell emo-journal-hero__inner">
@@ -122,19 +47,6 @@ $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_bl
 
 	<section class="emo-journal-listing emo-journal-listing--discovery"><div class="emo-shell">
 		<?php if ( function_exists( 'elmercado_render_blog_discovery_controls_010263' ) ) { elmercado_render_blog_discovery_controls_010263( $filter_state['query'], $filter_state['categories'] ); } ?>
-
-		<?php if ( ! empty( $special_product_ids ) ) : ?>
-			<section class="emo-blog-specials" aria-labelledby="emo-blog-specials-title">
-				<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Especiales', 'Specials' ) ); ?></span><h2 id="emo-blog-specials-title"><?php echo esc_html( elmercado_blog_copy_010263( 'Productos especiales', 'Special products' ) ); ?></h2></div></header>
-				<?php
-				$special_products_shortcode = sprintf(
-					'[products ids="%s" limit="4" columns="4" orderby="post__in"]',
-					implode( ',', array_map( 'absint', $special_product_ids ) )
-				);
-				echo do_shortcode( $special_products_shortcode ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-				?>
-			</section>
-		<?php endif; ?>
 
 		<?php if ( ! $is_filtered && ! empty( $featured_ids ) ) : ?>
 			<section class="emo-blog-featured">
