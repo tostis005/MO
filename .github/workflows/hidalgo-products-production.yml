@@ -1,0 +1,94 @@
+name: Apply Hidalgo de la Jara product copy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hidalgo-products-production.yml'
+      - '.github/scripts/hidalgo-products-production-20260831.php'
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate updater
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/hidalgo-products-production-20260831.php
+          grep -Fq 'DONE hidalgo_products=' .github/scripts/hidalgo-products-production-20260831.php
+          grep -Fq 'Sobre Hidalgo de la Jara' .github/scripts/hidalgo-products-production-20260831.php
+          grep -Fq 'About Hidalgo de la Jara' .github/scripts/hidalgo-products-production-20260831.php
+          grep -Fq 'mo_hidalgo_products_copy_backup_20260831' .github/scripts/hidalgo-products-production-20260831.php
+      - name: Apply guarded update
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1); for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE=/tmp/hidalgo-products-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP_OPTIONS .github/scripts/hidalgo-products-production-20260831.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify 42 public pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          slugs=(
+            jamon-de-bellota-100-iberico
+            paleta-de-bellota-100-iberico
+            jamon-de-bellota-100-iberico-en-sobres
+            paleta-de-bellota-100-iberico-en-sobres
+            cana-de-lomo-de-bellota-100-iberico-en-sobres
+            salchichon-de-bellota-100-iberico-en-sobres-de-10uds-x-100g
+            chorizo-de-bellota-100-iberico-en-sobres-de-10uds-x-100g
+            cana-de-lomo-de-bellota-100-iberico
+            salchichon-de-bellota-100-iberico
+            chorizo-de-bellota-100-iberico
+            jamon-de-bellota-50-iberico-brida-roja
+            paleta-de-bellota-50-iberica-brida-roja
+            jamon-de-bellota-100-iberico-con-dop-los-pedroches-brida-negra
+            surtido-de-bellota-100-iberico
+            paleta-de-bellota-100-iberica-con-dop-los-pedroches-brida-negra
+            jamon-de-cebo-de-campo-100-iberico-con-dop-los-pedroches-brida-verde
+            pack-de-cata-de-bellota-100-iberico-2x-jamon-2x-paleta-2x-lomo-2x-salchichon-2x-chorizo
+            morcon-de-bellota-100-iberico
+            sobrasada-de-bellota-100-iberica
+            lomito-cana-de-presa-de-bellota-100-iberico
+            jamon-de-de-cebo-de-campo-100-iberico-con-dop-los-pedroches-en-sobres-de
+          )
+          failures=0
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"; es=/tmp/hidalgo-es-$i.html; en=/tmp/hidalgo-en-$i.html
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 35 --retry 1 -A 'Mozilla/5.0 EMDO Hidalgo verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/producto/${s}/?emdo_hidalgo_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 35 --retry 1 -A 'Mozilla/5.0 EMDO Hidalgo verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_hidalgo_en=${GITHUB_RUN_ID}-${i}")
+            esok=yes; enok=yes
+            grep -Fq 'Sobre Hidalgo de la Jara' "$es" || esok=no
+            grep -Fq 'Preguntas frecuentes' "$es" || esok=no
+            grep -Fq 'About Hidalgo de la Jara' "$en" || enok=no
+            grep -Fq 'Frequently asked questions' "$en" || enok=no
+            if grep -Fq 'Sobre Hidalgo de la Jara' "$en" || grep -Fq 'Preguntas frecuentes' "$en"; then enok=no; fi
+            status=OK
+            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
+            echo "VERIFY slug=$s ES_HTTP=$esc ES=$esok EN_HTTP=$enc EN=$enok STATUS=$status"
+          done
+          echo "HIDALGO_PUBLIC_FAILURES=$failures"
+          [[ "$failures" -eq 0 ]]
