@@ -1,18 +1,13 @@
 <?php
 if (!defined('ABSPATH')) { exit("Run inside WordPress\n"); }
-$args = [
-  'post_type' => 'product',
-  'post_status' => 'publish',
-  'posts_per_page' => 30,
-  'orderby' => 'ID',
-  'order' => 'ASC',
-  'fields' => 'ids',
-];
-$ids = get_posts($args);
+global $wpdb;
+$ids = $wpdb->get_col($wpdb->prepare(
+  "SELECT ID FROM {$wpdb->posts} WHERE post_type='product' AND post_status='publish' AND ID > %d ORDER BY ID ASC LIMIT 250",
+  11114
+));
 $count = 0;
 foreach ($ids as $id) {
-  if ($id <= 11114) continue;
-  $p = get_post($id);
+  $p = get_post((int)$id);
   if (!$p) continue;
   $u = get_userdata((int)$p->post_author);
   $vendor = $u ? (string)$u->display_name : '';
@@ -22,8 +17,8 @@ foreach ($ids as $id) {
   $sku = (string)get_post_meta($id, '_sku', true);
   $type = wp_get_post_terms($id, 'product_type', ['fields'=>'names']);
   $type = $type ? implode(',', $type) : '';
-  $excerpt = trim(wp_strip_all_tags((string)$p->post_excerpt));
-  $content = trim(wp_strip_all_tags((string)$p->post_content));
+  $excerpt = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags((string)$p->post_excerpt)));
+  $content = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags((string)$p->post_content)));
   echo "ID={$id}\nTITLE={$p->post_title}\nSLUG={$p->post_name}\nSKU={$sku}\nTYPE={$type}\nSTOCK={$stock}\nEXCERPT={$excerpt}\nCONTENT={$content}\n---\n";
   $count++;
   if ($count >= 10) break;
