@@ -2,14 +2,14 @@
 /**
  * Plugin Name: MDO Home Performance 0.10.284
  * Description: Conservative Home-only performance refinements for El Mercado de Origen.
- * Version: 0.10.284
+ * Version: 0.10.284.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-const MDO_HOME_PERF_VERSION = '0.10.284';
+const MDO_HOME_PERF_010284_VERSION = '0.10.284.1';
 
 /**
  * Flush the special Home cache exactly once per plugin version.
@@ -17,7 +17,7 @@ const MDO_HOME_PERF_VERSION = '0.10.284';
 add_action( 'init', static function () {
     $option = 'mdo_home_performance_coherence_version';
 
-    if ( get_option( $option, '' ) === MDO_HOME_PERF_VERSION ) {
+    if ( get_option( $option, '' ) === MDO_HOME_PERF_010284_VERSION ) {
         return;
     }
 
@@ -30,12 +30,11 @@ add_action( 'init', static function () {
         }
     }
 
-    update_option( $option, MDO_HOME_PERF_VERSION, false );
+    update_option( $option, MDO_HOME_PERF_010284_VERSION, false );
 }, -9999 );
 
 /**
  * Avoid loading the coupon plugin stylesheet on the front page only.
- * It remains available on shop/cart/checkout/account and every internal page.
  */
 add_action( 'wp_enqueue_scripts', static function () {
     if ( ! is_front_page() ) {
@@ -68,13 +67,10 @@ add_action( 'template_redirect', static function () {
         return;
     }
 
-    ob_start( 'mdo_home_perf_transform_html' );
+    ob_start( 'mdo_home_perf_transform_html_010284' );
 }, -9999 );
 
-/**
- * Add or replace an HTML attribute without changing the rest of the element.
- */
-function mdo_home_perf_set_attr( $tag, $name, $value ) {
+function mdo_home_perf_set_attr_010284( $tag, $name, $value ) {
     $name_pattern = preg_quote( $name, '#' );
     $escaped      = esc_attr( $value );
 
@@ -90,10 +86,7 @@ function mdo_home_perf_set_attr( $tag, $name, $value ) {
     return preg_replace( '#>$#', ' ' . $name . '="' . $escaped . '">', $tag, 1 );
 }
 
-/**
- * Add a class to an opening tag while preserving existing classes.
- */
-function mdo_home_perf_add_class( $tag, $class_name ) {
+function mdo_home_perf_add_class_010284( $tag, $class_name ) {
     if ( preg_match( '#\sclass\s*=\s*(["\'])(.*?)\1#is', $tag, $match ) ) {
         $classes = trim( $match[2] . ' ' . $class_name );
         return preg_replace(
@@ -107,10 +100,7 @@ function mdo_home_perf_add_class( $tag, $class_name ) {
     return preg_replace( '#>$#', ' class="' . esc_attr( $class_name ) . '">', $tag, 1 );
 }
 
-/**
- * Remove a single attribute from an opening tag.
- */
-function mdo_home_perf_remove_attr( $tag, $name ) {
+function mdo_home_perf_remove_attr_010284( $tag, $name ) {
     $name_pattern = preg_quote( $name, '#' );
     return preg_replace( '#\s+' . $name_pattern . '\s*=\s*(["\']).*?\1#is', '', $tag );
 }
@@ -118,7 +108,7 @@ function mdo_home_perf_remove_attr( $tag, $name ) {
 /**
  * Transform front-page HTML after WordPress has rendered it.
  */
-function mdo_home_perf_transform_html( $html ) {
+function mdo_home_perf_transform_html_010284( $html ) {
     if ( ! is_string( $html ) || '' === $html || false !== strpos( $html, 'mdo-home-performance-010284' ) ) {
         return $html;
     }
@@ -135,8 +125,8 @@ function mdo_home_perf_transform_html( $html ) {
         '#<p\b([^>]*)>((?:(?!</p>).)*En\s+El\s+Mercado\s+de\s+Origen\s+buscamos\s+productores(?:(?!</p>).)*)</p>#isu',
         static function ( $match ) {
             $open = '<p' . $match[1] . '>';
-            $open = mdo_home_perf_add_class( $open, 'mdo-lcp-copy' );
-            $open = mdo_home_perf_remove_attr( $open, 'data-aos' );
+            $open = mdo_home_perf_add_class_010284( $open, 'mdo-lcp-copy' );
+            $open = mdo_home_perf_remove_attr_010284( $open, 'data-aos' );
             return $open . $match[2] . '</p>';
         },
         $html,
@@ -159,12 +149,12 @@ function mdo_home_perf_transform_html( $html ) {
             $src_480  = $dir_url . '/La-huerta-de-ana-mary-fondo-mdo-480.webp';
             $src_960  = $dir_url . '/La-huerta-de-ana-mary-fondo-mdo-960.webp';
 
-            $tag = mdo_home_perf_set_attr( $tag, 'src', $src_480 );
-            $tag = mdo_home_perf_set_attr( $tag, 'srcset', $src_480 . ' 480w, ' . $src_960 . ' 960w' );
-            $tag = mdo_home_perf_set_attr( $tag, 'sizes', '(max-width: 767px) 46vw, (max-width: 1199px) 31vw, 360px' );
-            $tag = mdo_home_perf_set_attr( $tag, 'loading', 'lazy' );
-            $tag = mdo_home_perf_set_attr( $tag, 'decoding', 'async' );
-            $tag = mdo_home_perf_add_class( $tag, 'mdo-home-producer-webp' );
+            $tag = mdo_home_perf_set_attr_010284( $tag, 'src', $src_480 );
+            $tag = mdo_home_perf_set_attr_010284( $tag, 'srcset', $src_480 . ' 480w, ' . $src_960 . ' 960w' );
+            $tag = mdo_home_perf_set_attr_010284( $tag, 'sizes', '(max-width: 767px) 46vw, (max-width: 1199px) 31vw, 360px' );
+            $tag = mdo_home_perf_set_attr_010284( $tag, 'loading', 'lazy' );
+            $tag = mdo_home_perf_set_attr_010284( $tag, 'decoding', 'async' );
+            $tag = mdo_home_perf_add_class_010284( $tag, 'mdo-home-producer-webp' );
 
             return $tag;
         },
