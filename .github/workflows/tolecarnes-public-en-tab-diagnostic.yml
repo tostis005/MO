@@ -1,4 +1,4 @@
-name: Inspect public English Tolecarnes description tab
+name: Apply approved Huerta producer block
 
 on:
   push:
@@ -11,63 +11,57 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  update:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect two English description tabs
+      - uses: actions/checkout@v4
+      - name: Apply producer block
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/huerta-anamary-producer-block-update.php >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE=/tmp/huerta-producer-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP_OPTIONS .github/scripts/huerta-anamary-producer-block-update.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify ten public pages
         shell: bash
         run: |
           set -euo pipefail
-          declare -A paths
-          paths[carne]='carne-picada-extra'
-          paths[entrecot]='entrecot-de-lomo-bajo'
-          for key in carne entrecot; do
-            f="/tmp/${key}.html"
-            curl -L -sS --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 EMDO tab verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$f" "https://www.elmercadodeorigen.com/en/product/${paths[$key]}/?emdo_tab_verify=${GITHUB_RUN_ID}-${key}"
-            echo "==== ${key} ===="
-            if [[ "$key" == carne ]]; then
-              checks=(
-                '100% natural beef with no additives.'
-                'Carne 100% Ternera Natural sin aditivos.'
-                'An everyday kitchen staple'
-                'Una carne para el día a día'
-                'Ground beef is one of those ingredients that can be used in many different ways.'
-                'La carne picada es una de esas opciones'
-                'About Tolecarnes'
-                'Sobre Tolecarnes'
-                'Frequently asked questions'
-                'Preguntas frecuentes'
-              )
-            else
-              checks=(
-                'Esta pieza se selecciona de la parte del lomo bajo sin hueso, muy tierna y sabrosa.'
-                'A tender boneless loin steak'
-                'Un entrecot tierno y sabroso'
-                'The striploin entrecot comes from the lower loin area'
-                'El entrecot de lomo bajo procede'
-                'About Tolecarnes'
-                'Sobre Tolecarnes'
-                'Frequently asked questions'
-                'Preguntas frecuentes'
-              )
-            fi
-            for q in "${checks[@]}"; do
-              if grep -Fq "$q" "$f"; then echo "FOUND: $q"; else echo "MISS: $q"; fi
-            done
-            echo '-- tab markers --'
-            grep -n -m 5 -E 'tab-description|woocommerce-Tabs-panel|Description</h2>|Descripción</h2>' "$f" || true
-            echo '-- old/new text context --'
-            python3 - "$f" <<'PY'
-import sys,re,html
-p=sys.argv[1]
-s=open(p,'r',encoding='utf-8',errors='ignore').read()
-needles=['100% natural beef with no additives.','Carne 100% Ternera Natural sin aditivos.','An everyday kitchen staple','Una carne para el día a día','Esta pieza se selecciona de la parte del lomo bajo','A tender boneless loin steak','Un entrecot tierno y sabroso','About Tolecarnes','Sobre Tolecarnes']
-for n in needles:
-    i=s.find(n)
-    if i>=0:
-        chunk=s[max(0,i-350):i+700]
-        chunk=re.sub(r'\s+',' ',chunk)
-        print('CONTEXT',n,':',chunk[:1100])
-PY
+          slugs=(patatas-blancas calabacin brocoli 20-kg-de-patatas-blancas-variedad-kennebec flores-de-calabacin-8-unidades)
+          failures=0
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"; es=/tmp/es-${i}.html; en=/tmp/en-${i}.html
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta producer verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_hp_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta producer verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_hp_en=${GITHUB_RUN_ID}-${i}")
+            esok=yes; enok=yes
+            grep -Fq 'La recolección se organiza en función de los pedidos' "$es" || esok=no
+            grep -Fq 'más de tres generaciones vinculadas al trabajo en el campo' "$es" || esok=no
+            grep -Fq 'Harvesting is organised around orders' "$en" || enok=no
+            grep -Fq 'more than three generations linked to working the land' "$en" || enok=no
+            if grep -Fq 'Según explica el propio productor' "$es" || grep -Fq 'Arsenio Pérez Crespo' "$es"; then esok=no; fi
+            if grep -Fq 'According to the producer' "$en" || grep -Fq 'Arsenio Pérez Crespo' "$en" || grep -Fq 'Sobre La Huerta de Ana Mary' "$en"; then enok=no; fi
+            status=OK
+            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
+            echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
           done
+          echo "HUERTA_PRODUCER_PUBLIC_FAILURES=${failures}"
+          [[ "$failures" -eq 0 ]]
