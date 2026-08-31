@@ -1,0 +1,60 @@
+name: Inspect nginx filter protection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ops-inspect-nginx-filter-protection-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+    steps:
+      - name: Inspect nginx and Plesk includes
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== NGINX VERSION ==='
+          nginx -v 2>&1 || true
+          echo '=== NGINX CONF INCLUDES ==='
+          grep -nE 'include .*conf.d|http *\{' /etc/nginx/nginx.conf || true
+          echo '=== GLOBAL CONF.D ==='
+          ls -lah /etc/nginx/conf.d 2>/dev/null || true
+          echo '=== DOMAIN NGINX CONFIG FILES ==='
+          ls -lah /var/www/vhosts/system/elmercadodeorigen.com/conf/*nginx* 2>/dev/null || true
+          echo '=== DOMAIN NGINX RELEVANT LINES ==='
+          for f in /var/www/vhosts/system/elmercadodeorigen.com/conf/*nginx*.conf; do
+            [ -r "$f" ] || continue
+            echo "--- $f ---"
+            grep -nE 'server_name|include|location /|proxy_pass|fastcgi|vhost_nginx' "$f" | head -n 120 || true
+          done
+          echo '=== DOMAIN CUSTOM NGINX ==='
+          for f in /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost_nginx.conf /var/www/vhosts/system/elmercadodeorigen.com/conf/vhost.conf; do
+            if [ -r "$f" ]; then echo "--- $f ---"; cat "$f"; fi
+          done
+          echo '=== CURRENT HTACCESS GUARD ==='
+          DOCROOT=$(awk '/^[[:space:]]*DocumentRoot[[:space:]]/ {gsub(/\"/,"",$2); print $2; exit}' /var/www/vhosts/system/elmercadodeorigen.com/conf/httpd.conf)
+          echo "DOCROOT=$DOCROOT"
+          grep -n -A12 -B2 'EMDO EMERGENCY BROAD FILTER GUARD' "$DOCROOT/.htaccess" || true
+          echo '=== ROBOTS ==='
+          if [ -r "$DOCROOT/robots.txt" ]; then cat "$DOCROOT/robots.txt"; else curl -ksS --max-time 10 https://www.elmercadodeorigen.com/robots.txt | head -n 120; fi
+          echo '=== NGINX TEST ==='
+          nginx -t
+          REMOTE
