@@ -1,0 +1,81 @@
+name: Verify public English Tolecarnes product pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tolecarnes-public-en-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-en:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check rendered English pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com/en/product'
+          slugs=(
+            carne-picada-extra
+            burger-mixtas-sin-gluten-2-uds
+            filetes-primera
+            magro-o-ragu-de-ternera
+            entrana-de-ternera
+            entrecot-de-lomo-bajo
+            filetes-aguja-de-ternera
+            chuleton-de-vaca-vieja-madurado
+            solomillo-de-ternera
+            morcillo-de-ternera
+          )
+          markers=(
+            'Ground beef made with 100% beef and no added additives.'
+            'Burgers made with an equal blend of beef and locally sourced pork.'
+            'Beef steaks cut from tender pieces such as the knuckle or rump'
+            'Hand-cut beef designed for dishes where the meat has time to cook slowly'
+            'Entraña is a thin, flavourful cut taken from the inside of the rib area.'
+            'Beef steak selected from the striploin and presented boneless.'
+            'Juicy, flavourful beef chuck steaks with intramuscular fat'
+            'Rib steak from the high loin of selected mature cows'
+            'Beef tenderloin, one of the most prized cuts for its tenderness'
+            'Beef shin from the lower leg or shank.'
+          )
+          section_markers=(
+            'An everyday kitchen staple'
+            'A different style of burger'
+            'Made for quick cooking'
+            'Ideal for stews and slow cooking'
+            'A cut with plenty of flavour'
+            'A tender boneless loin steak'
+            'Juicy steaks from the chuck'
+            'A substantial high-loin steak'
+            'One of the most tender cuts'
+            'A cut made for slow cooking'
+          )
+
+          failures=0
+          for i in "${!slugs[@]}"; do
+            slug="${slugs[$i]}"
+            out="/tmp/${i}.html"
+            url="${base}/${slug}/?emdo_public_en_verify=${GITHUB_RUN_ID}-${i}"
+            code=$(curl -L -sS --connect-timeout 10 --max-time 30 -A 'Mozilla/5.0 EMDO public English verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -w '%{http_code}' -o "$out" "$url")
+            echo "==== ${slug} HTTP=${code} bytes=$(wc -c < "$out") ===="
+            marker='no'; section='no'; producer='no'; faq='no'; spanish_new='no'
+            grep -Fq "${markers[$i]}" "$out" && marker='yes' || true
+            grep -Fq "${section_markers[$i]}" "$out" && section='yes' || true
+            grep -Fq 'About Tolecarnes' "$out" && producer='yes' || true
+            grep -Fq 'Frequently asked questions' "$out" && faq='yes' || true
+            grep -Fq 'Sobre Tolecarnes' "$out" && spanish_new='yes' || true
+            echo "PUBLIC_EN new_excerpt=${marker} new_body_section=${section} about_tolecarnes=${producer} faq=${faq} spanish_marker=${spanish_new}"
+            echo '-- relevant snippets --'
+            grep -o -E '.{0,120}(About Tolecarnes|Frequently asked questions|An everyday kitchen staple|A different style of burger|Made for quick cooking|Ideal for stews and slow cooking|A cut with plenty of flavour|A tender boneless loin steak|Juicy steaks from the chuck|A substantial high-loin steak|One of the most tender cuts|A cut made for slow cooking|Ground beef made with 100% beef|Beef steak selected from the striploin|Beef tenderloin, one of the most prized cuts).{0,180}' "$out" | head -n 12 || true
+            if [[ "$code" != '200' || "$marker" != 'yes' || "$section" != 'yes' || "$producer" != 'yes' || "$faq" != 'yes' ]]; then
+              failures=$((failures+1))
+            fi
+          done
+          echo "PUBLIC_EN_FAILURES=${failures}"
+          exit 0
