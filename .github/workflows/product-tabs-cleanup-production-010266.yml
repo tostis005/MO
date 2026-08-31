@@ -1,4 +1,4 @@
-name: Deploy product detail layout 0.10.268
+name: Deploy product detail layout 0.10.269
 
 on:
   workflow_dispatch:
@@ -24,7 +24,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Validate sources
         shell: bash
         run: |
@@ -35,11 +34,11 @@ jobs:
           grep -Fq 'mdo-product-tabs-cleanup-010266' mu-plugins/mdo-product-tabs-cleanup-010266.php
           grep -Fq '#tab-additional_information' mu-plugins/mdo-product-tabs-cleanup-010266.php
           ! grep -Fq 'description > h2:first-child' mu-plugins/mdo-product-tabs-cleanup-010266.php
-          grep -Fq 'mdo-product-detail-layout-010268' mu-plugins/mdo-product-detail-layout-010267.php
+          grep -Fq 'mdo-product-detail-layout-010269' mu-plugins/mdo-product-detail-layout-010267.php
+          grep -Fq 'grid-template-columns' mu-plugins/mdo-product-detail-layout-010267.php
           grep -Fq 'max-width: 1040px' mu-plugins/mdo-product-detail-layout-010267.php
-          grep -Fq 'product-summary > .summary' mu-plugins/mdo-product-detail-layout-010267.php
+          grep -Fq 'div.product > .woostify-container' mu-plugins/mdo-product-detail-layout-010267.php
           grep -Fq 'PHP_INT_MAX' mu-plugins/mdo-product-detail-layout-010267.php
-          grep -Fq 'text-align: left !important' mu-plugins/mdo-product-detail-layout-010267.php
 
       - name: Deploy product detail MU plugins
         shell: bash
@@ -52,7 +51,6 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true)
             php_bin=$(command -v php || true)
@@ -66,18 +64,13 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-
-          for source in \
-            mu-plugins/mdo-product-tabs-cleanup-010266.php \
-            mu-plugins/mdo-product-detail-layout-010267.php
-          do
+          for source in mu-plugins/mdo-product-tabs-cleanup-010266.php mu-plugins/mdo-product-detail-layout-010267.php; do
             base="$(basename "$source")"
             target="$PROD_PATH/wp-content/mu-plugins/$base"
             remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
             sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
-            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-010268'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-010269'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
           done
-
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
       - name: Verify public product pages
@@ -90,10 +83,10 @@ jobs:
           curl -L -fsS --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO product detail verifier' -H 'Cache-Control: no-cache, no-store' "$EN?verify_detail=${GITHUB_RUN_ID}" -o /tmp/product-en.html
           grep -Fq 'id="mdo-product-tabs-cleanup-010266"' /tmp/product-es.html
           grep -Fq 'id="mdo-product-tabs-cleanup-010266"' /tmp/product-en.html
-          grep -Fq 'id="mdo-product-detail-layout-010268"' /tmp/product-es.html
-          grep -Fq 'id="mdo-product-detail-layout-010268"' /tmp/product-en.html
+          grep -Fq 'id="mdo-product-detail-layout-010269"' /tmp/product-es.html
+          grep -Fq 'id="mdo-product-detail-layout-010269"' /tmp/product-en.html
           grep -Fq 'Sobre Hidalgo de la Jara' /tmp/product-es.html
           grep -Fq 'About Hidalgo de la Jara' /tmp/product-en.html
           if grep -Eiq '>\s*Descripción\s*</h2>' /tmp/product-es.html; then echo 'Automatic ES Description heading still present'; exit 1; fi
           if grep -Eiq '>\s*Description\s*</h2>' /tmp/product-en.html; then echo 'Automatic EN Description heading still present'; exit 1; fi
-          echo 'PRODUCT_DETAIL_LAYOUT_010268_PUBLIC_OK'
+          echo 'PRODUCT_DETAIL_LAYOUT_010269_PUBLIC_OK'
