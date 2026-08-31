@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO - Product detail refinement 0.10.276
- * Description: Refines single-product spacing, balances gallery and purchase columns, keeps uncropped Flickity imagery and the full-width white description band.
- * Version: 0.10.276
+ * Plugin Name: MDO - Product detail refinement 0.10.277
+ * Description: Refines single-product spacing, balances gallery and purchase columns, keeps uncropped Flickity imagery, white navigation breathing space and the full-width white description band.
+ * Version: 0.10.277
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -16,11 +16,33 @@ add_action(
 			return;
 		}
 		?>
-		<style id="mdo-product-detail-refinement-010276">
-			/* A small, intentional pause between previous/next and the product. */
+		<style id="mdo-product-detail-refinement-010277">
+			/*
+			 * Keep a small pause under previous/next, but make that breathing space
+			 * part of the white navigation surface instead of exposing the cream canvas.
+			 */
 			html body.elmercado-child-theme.single-product .content-top {
-				margin-bottom: 18px !important;
-				padding-bottom: 0 !important;
+				position: relative !important;
+				margin-bottom: 0 !important;
+				padding-bottom: 18px !important;
+			}
+
+			html body.elmercado-child-theme.single-product .content-top::after {
+				content: "" !important;
+				position: absolute !important;
+				z-index: 0 !important;
+				left: 50% !important;
+				bottom: 0 !important;
+				width: 100vw !important;
+				height: 18px !important;
+				transform: translateX(-50%) !important;
+				background: #fff !important;
+				pointer-events: none !important;
+			}
+
+			html body.elmercado-child-theme.single-product .content-top > * {
+				position: relative;
+				z-index: 1;
 			}
 
 			html body.elmercado-child-theme.single-product div.product {
@@ -145,7 +167,12 @@ add_action(
 
 			@media (max-width: 991px) {
 				html body.elmercado-child-theme.single-product .content-top {
-					margin-bottom: 14px !important;
+					margin-bottom: 0 !important;
+					padding-bottom: 14px !important;
+				}
+
+				html body.elmercado-child-theme.single-product .content-top::after {
+					height: 14px !important;
 				}
 
 				html body.elmercado-child-theme.single-product div.product .product-page-container .product-gallery .product-images {
