@@ -31,28 +31,28 @@ jobs:
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          LOG=""
-          for f in \
-            /var/www/vhosts/system/elmercadodeorigen.com/logs/access_log \
-            /var/www/vhosts/elmercadodeorigen.com/logs/access_log \
-            /var/www/vhosts/system/elmercadodeorigen.com/logs/proxy_access_ssl_log \
-            /var/www/vhosts/elmercadodeorigen.com/logs/proxy_access_ssl_log; do
-            if [ -r "$f" ]; then LOG="$f"; break; fi
-          done
-          if [ -z "$LOG" ]; then
-            echo "No readable access log found"
-            ls -la /var/www/vhosts/system/elmercadodeorigen.com/logs 2>/dev/null || true
+          LOGDIR=/var/www/vhosts/system/elmercadodeorigen.com/logs
+          echo "=== LOG FILES ==="
+          ls -lah "$LOGDIR" || true
+
+          TMP=$(mktemp)
+          : > "$TMP"
+          while IFS= read -r f; do
+            echo "USING $f ($(wc -c < "$f") bytes)"
+            tail -n 60000 "$f" >> "$TMP" || true
+          done < <(find "$LOGDIR" -maxdepth 1 \( -type f -o -type l \) -name '*access*' -size +0c -print 2>/dev/null | sort)
+
+          echo "COMBINED_LINES=$(wc -l < "$TMP")"
+          if [ ! -s "$TMP" ]; then
+            echo "No non-empty access data found"
             exit 2
           fi
-          echo "LOG=$LOG"
-          TMP=$(mktemp)
-          tail -n 80000 "$LOG" > "$TMP"
 
           echo "=== TOP IPS ALL ==="
-          awk '{print $1}' "$TMP" | sort | uniq -c | sort -nr | head -n 25
+          awk '{print $1}' "$TMP" | sort | uniq -c | sort -nr | head -n 25 || true
 
           echo "=== TOP USER AGENTS ALL ==="
-          awk -F'"' 'NF>=6 {print $6}' "$TMP" | sort | uniq -c | sort -nr | head -n 30
+          awk -F'"' 'NF>=6 {print $6}' "$TMP" | sort | uniq -c | sort -nr | head -n 30 || true
 
           echo "=== FILTER REQUEST COUNT ==="
           grep -Eic '[?&]filter_[^ =]*=' "$TMP" || true
@@ -66,11 +66,11 @@ jobs:
           echo "=== TOP FILTER URLS ==="
           grep -Ei '[?&]filter_[^ =]*=' "$TMP" | awk -F'"' '{print $2}' | awk '{print $2}' | sed 's/&amp;/\&/g' | sort | uniq -c | sort -nr | head -n 40 || true
 
-          echo "=== FILTER REQUEST SAMPLE (IP STATUS UA REQUEST) ==="
-          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | tail -n 60 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
+          echo "=== FILTER REQUEST SAMPLE ==="
+          grep -Ei '[?&]filter_[^ =]*=' "$TMP" | tail -n 80 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
 
-          echo "=== BOT-LIKE USER AGENTS / MENTA TOKENS ==="
-          grep -Ei 'bot|crawler|spider|scrapy|python|curl|wget|httpclient|headless|menta' "$TMP" | tail -n 100 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
+          echo "=== BOT-LIKE / MENTA SAMPLE ==="
+          grep -Ei 'bot|crawler|spider|scrapy|python|curl|wget|httpclient|headless|menta' "$TMP" | tail -n 120 | awk -F'"' '{split($1,a," "); split($3,b," "); print a[1] " | " b[2] " | " $6 " | " $2}' || true
 
           echo "=== CURRENT LOAD ==="
           uptime
