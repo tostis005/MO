@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO - Product tabs cleanup 0.10.266
+ * Plugin Name: MDO - Product tabs cleanup 0.10.267
  * Description: Shows the product description directly, without WooCommerce tab navigation or the automatic Description heading.
- * Version: 0.10.266
+ * Version: 0.10.267
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -10,8 +10,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Remove WooCommerce's automatic heading above the long description.
- * This applies equally to Spanish and translated product routes.
+ * Remove only WooCommerce's automatic heading above the long description.
+ * Product-authored H2 headings remain visible for hierarchy, readability and SEO.
  */
 add_filter(
 	'woocommerce_product_description_heading',
@@ -23,8 +23,8 @@ add_filter(
 
 /**
  * Keep the long description visible while removing the tab navigation.
- * Additional-information content remains hidden because the user requested
- * the description to read as a normal continuous section rather than tabs.
+ * Additional-information content remains hidden because the product page now
+ * reads as a continuous commercial/editorial page rather than a tab interface.
  */
 add_action(
 	'wp_head',
@@ -42,11 +42,6 @@ add_action(
 			body.single-product .woocommerce-Tabs-panel--description,
 			body.single-product #tab-description {
 				display: block !important;
-			}
-
-			body.single-product .woocommerce-Tabs-panel--description > h2:first-child,
-			body.single-product #tab-description > h2:first-child {
-				display: none !important;
 			}
 
 			body.single-product .woocommerce-Tabs-panel--additional_information,
