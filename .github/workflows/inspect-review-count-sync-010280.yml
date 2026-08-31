@@ -1,4 +1,4 @@
-name: Inspect review counts and sync hooks 0.10.280
+name: Inspect direct review API credentials and sync hook 0.10.281
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 8
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
@@ -48,24 +48,23 @@ jobs:
           WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
 
           echo '=== LIVE HOME MATCHES ==='
-          curl -L -sS --connect-timeout 10 --max-time 40 -A 'Mozilla/5.0 MDO review diagnostic' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/?review_diag=$(date +%s)" | tr '\n' ' ' | grep -Eio '.{0,220}(Google|Trustpilot|303|169|294|reseñas|reviews).{0,320}' | head -n 80 || true
+          curl -L -sS --connect-timeout 10 --max-time 30 -A 'Mozilla/5.0 MDO direct-review diagnostic' -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/?review_diag=$(date +%s)" | tr '\n' ' ' | grep -Eio '.{0,220}(Google|Trustpilot|303|169|reseñas|reviews).{0,320}' | head -n 80 || true
 
-          echo '=== TRUSTINDEX SHORTCODE RENDER ==='
-          "${WP[@]}" eval 'echo do_shortcode("[trustindex no-registration=google]");' 2>/dev/null | tr '\n' ' ' | grep -Eio '.{0,180}(base de|reviews|reseñas|Google).{0,220}' | head -n 40 || true
+          echo '=== DIRECT API CREDENTIAL CONSTANT NAMES ==='
+          "${WP[@]}" eval '$c=get_defined_constants(true); foreach(($c["user"]??[]) as $k=>$v){if(preg_match("/(GOOGLE|MAPS|PLACE|TRUSTPILOT|TRUST)/i",$k)){echo $k."=SET\n";}}' --skip-plugins --skip-themes 2>/dev/null || true
 
-          echo '=== PLUGINS ==='
-          "${WP[@]}" plugin list --fields=name,status,version --format=csv --skip-plugins --skip-themes 2>/dev/null | grep -Ei 'trust|review|google|sync|import|vendor|feed|mentta|wcfm|elementor' || true
+          echo '=== DIRECT API ENV NAMES ==='
+          env | cut -d= -f1 | grep -Ei 'GOOGLE|MAPS|PLACE|TRUSTPILOT|TRUST' | sort -u || true
+
+          echo '=== RELEVANT OPTION NAMES ==='
+          "${WP[@]}" eval 'global $wpdb; $rows=$wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name REGEXP \"google|maps|place|trustpilot|trust|review|sync|mentta\" ORDER BY option_name LIMIT 400"); foreach($rows as $r){echo $r."\n";}' --skip-plugins --skip-themes 2>/dev/null | head -n 400 || true
 
           echo '=== CRON HOOKS ==='
-          "${WP[@]}" cron event list --fields=hook,next_run_gmt,recurrence --format=csv 2>/dev/null | grep -Ei 'sync|vendor|store|product|import|feed|mdo|mentta|review|trust|google' | head -n 200 || true
+          "${WP[@]}" cron event list --fields=hook,next_run_gmt,recurrence --format=csv 2>/dev/null | grep -Ei 'sync|vendor|store|product|import|feed|mdo|mentta|review|trust|google' | head -n 220 || true
 
-          echo '=== SOURCE MATCHES ==='
-          grep -RIn -E '303|169|Trustpilot|trustpilot|review.*count|reseñ|sync.*vendor|sync.*store|product.*sync' "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes/elmercadodeorigen-child" 2>/dev/null | head -n 240 || true
+          echo '=== SOURCE MATCHES MU/THEME ==='
+          grep -RIn -E '303|169|Trustpilot|trustpilot|Google.{0,80}(review|reseñ)|review.{0,80}Google|sync.{0,80}(vendor|store|product)|do_action\(.{0,80}sync|wp_schedule_event' "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes/elmercadodeorigen-child" 2>/dev/null | head -n 320 || true
 
-          echo '=== OPTION NAMES ONLY ==='
-          prefix=$("${WP[@]}" eval 'global $wpdb; echo $wpdb->prefix;' --skip-plugins --skip-themes 2>/dev/null || true)
-          if [ -n "$prefix" ]; then
-            sql="SELECT option_name FROM ${prefix}options WHERE option_name LIKE '%trust%' OR option_name LIKE '%review%' OR option_name LIKE '%google%' OR option_name LIKE '%sync%' OR option_name LIKE '%mentta%' ORDER BY option_name LIMIT 250;"
-            "${WP[@]}" db query "$sql" --skip-column-names 2>/dev/null | head -n 250 || true
-          fi
+          echo '=== RELEVANT PLUGIN DIRS ==='
+          find "$PROD_PATH/wp-content/plugins" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | grep -Ei 'trust|review|google|sync|import|vendor|feed|mentta|wcfm' | sort || true
           REMOTE
