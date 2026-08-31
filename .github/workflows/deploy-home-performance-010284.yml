@@ -1,0 +1,171 @@
+name: Deploy Home Performance 0.10.284
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'mu-plugins/mdo-home-performance-010284.php'
+      - '.github/workflows/deploy-home-performance-010284.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint MU plugin
+        run: php -l mu-plugins/mdo-home-performance-010284.php
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+
+      - name: Locate production WordPress
+        id: prod
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          ROOT=$(sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$wp_bin" ] || exit 21
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$php_bin" ] || exit 22
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                printf '%s' "$p"
+                exit 0
+                ;;
+            esac
+          done
+          exit 23
+          REMOTE
+          )
+          [ -n "$ROOT" ]
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          echo "Production WordPress located."
+
+      - name: Deploy MU plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          ROOT='${{ steps.prod.outputs.root }}'
+          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "mkdir -p '$ROOT/wp-content/mu-plugins'"
+          sshpass -e scp -o StrictHostKeyChecking=no -P "$PORT" mu-plugins/mdo-home-performance-010284.php "$STAGING_USER@$STAGING_HOST:$ROOT/wp-content/mu-plugins/mdo-home-performance-010284.php"
+
+      - name: Generate responsive WebP producer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          ROOT='${{ steps.prod.outputs.root }}'
+          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "ROOT='$ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          upload_dir="$ROOT/wp-content/uploads/2026/08"
+          src=$(find "$upload_dir" -maxdepth 1 -type f \( -iname 'La-huerta-de-ana-mary-fondo*.jpg' -o -iname 'La-huerta-de-ana-mary-fondo*.jpeg' -o -iname 'La-huerta-de-ana-mary-fondo*.png' -o -iname 'La-huerta-de-ana-mary-fondo*.webp' \) ! -iname '*-mdo-*' -printf '%s %p\n' 2>/dev/null | sort -nr | head -n1 | cut -d' ' -f2-)
+          if [ -z "$src" ]; then
+            echo 'La Huerta source image was not found.' >&2
+            exit 31
+          fi
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -r '
+          $src=$argv[1]; $dir=dirname($src); $info=@getimagesize($src);
+          if(!$info || !function_exists("imagewebp")){fwrite(STDERR,"GD/WebP unavailable\n"); exit(41);} 
+          switch($info[2]){
+            case IMAGETYPE_JPEG: $im=@imagecreatefromjpeg($src); break;
+            case IMAGETYPE_PNG: $im=@imagecreatefrompng($src); break;
+            case IMAGETYPE_WEBP: $im=@imagecreatefromwebp($src); break;
+            default: $im=false;
+          }
+          if(!$im){fwrite(STDERR,"Cannot decode source image\n"); exit(42);} 
+          $sw=imagesx($im); $sh=imagesy($im);
+          foreach([480,960] as $target){
+            $tw=min($target,$sw); $th=max(1,(int)round($sh*$tw/$sw));
+            $out=imagecreatetruecolor($tw,$th);
+            imagealphablending($out,false); imagesavealpha($out,true);
+            $transparent=imagecolorallocatealpha($out,0,0,0,127); imagefilledrectangle($out,0,0,$tw,$th,$transparent);
+            imagecopyresampled($out,$im,0,0,0,0,$tw,$th,$sw,$sh);
+            $file=$dir."/La-huerta-de-ana-mary-fondo-mdo-".$target.".webp";
+            if(!imagewebp($out,$file,82)){fwrite(STDERR,"Cannot write $file\n"); exit(43);} 
+            imagedestroy($out);
+            echo basename($file)." ".filesize($file)." bytes\n";
+          }
+          imagedestroy($im);
+          ' "$src"
+          REMOTE
+
+      - name: Lint production plugin and refresh Home cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          ROOT='${{ steps.prod.outputs.root }}'
+          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "ROOT='$ROOT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          "$php_bin" -l "$ROOT/wp-content/mu-plugins/mdo-home-performance-010284.php"
+          "$php_bin" "$wp_bin" eval 'delete_option("mdo_home_performance_coherence_version"); if (function_exists("elmercado_flush_home_cache")) { elmercado_flush_home_cache(); } else { $f=WP_CONTENT_DIR . "/uploads/elmercado-home-static/index.html"; if (is_file($f)) { @unlink($f); } }' --path="$ROOT" --allow-root
+          "$php_bin" "$wp_bin" cache flush --path="$ROOT" --allow-root || true
+          REMOTE
+
+      - name: Validate production pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 2 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          grep -q 'mdo-home-performance-010284' /tmp/home.html
+          grep -q 'mdo-lcp-copy' /tmp/home.html
+          grep -Eq 'La-huerta-de-ana-mary-fondo-mdo-(480|960)\.webp' /tmp/home.html
+          if grep -Eiq '<link[^>]+woo-coupon-usage' /tmp/home.html; then
+            echo 'Coupon stylesheet is still render-blocking on Home.' >&2
+            exit 51
+          fi
+          curl -fsSL --retry 3 --retry-delay 2 'https://www.elmercadodeorigen.com/en/' -o /tmp/home-en.html
+          curl -fsSL --retry 3 --retry-delay 2 'https://www.elmercadodeorigen.com/tienda/' -o /tmp/shop.html
+          if grep -q 'mdo-home-performance-010284' /tmp/shop.html; then
+            echo 'Home-only performance transform leaked to shop.' >&2
+            exit 52
+          fi
+          echo 'Production HTML validation passed.'
+
+      - name: Lighthouse smoke measurement
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq chromium-browser || sudo apt-get install -y -qq chromium || true
+          npx -y lighthouse 'https://www.elmercadodeorigen.com/' \
+            --only-categories=performance \
+            --chrome-flags='--headless --no-sandbox --disable-gpu' \
+            --output=json --output-path=/tmp/lighthouse.json --quiet || exit 0
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/lighthouse.json','utf8'));
+          const a=r.audits||{};
+          const score=Math.round(((r.categories||{}).performance||{}).score*100);
+          const lcp=a['largest-contentful-paint']?.displayValue || 'n/a';
+          const cls=a['cumulative-layout-shift']?.displayValue || 'n/a';
+          const tbt=a['total-blocking-time']?.displayValue || 'n/a';
+          console.log(`Performance ${score}; LCP ${lcp}; CLS ${cls}; TBT ${tbt}`);
+          NODE
