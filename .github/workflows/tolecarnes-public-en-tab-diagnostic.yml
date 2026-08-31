@@ -1,4 +1,4 @@
-name: Deploy product detail refinement 0.10.272
+name: Inspect public English Tolecarnes description tab
 
 on:
   push:
@@ -11,91 +11,63 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - name: Validate refinement
+      - name: Inspect two English description tabs
         shell: bash
         run: |
           set -euo pipefail
-          php -l mu-plugins/z-mdo-product-detail-refinement-010270.php
-          grep -Fq 'mdo-product-detail-refinement-010272' mu-plugins/z-mdo-product-detail-refinement-010270.php
-      - name: Deploy refinement to production
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true)
-            php_bin=$(command -v php || true)
-            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg")
-              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
-              case "$url" in
-                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
-              esac
+          declare -A paths
+          paths[carne]='carne-picada-extra'
+          paths[entrecot]='entrecot-de-lomo-bajo'
+          for key in carne entrecot; do
+            f="/tmp/${key}.html"
+            curl -L -sS --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 EMDO tab verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o "$f" "https://www.elmercadodeorigen.com/en/product/${paths[$key]}/?emdo_tab_verify=${GITHUB_RUN_ID}-${key}"
+            echo "==== ${key} ===="
+            if [[ "$key" == carne ]]; then
+              checks=(
+                '100% natural beef with no additives.'
+                'Carne 100% Ternera Natural sin aditivos.'
+                'An everyday kitchen staple'
+                'Una carne para el día a día'
+                'Ground beef is one of those ingredients that can be used in many different ways.'
+                'La carne picada es una de esas opciones'
+                'About Tolecarnes'
+                'Sobre Tolecarnes'
+                'Frequently asked questions'
+                'Preguntas frecuentes'
+              )
+            else
+              checks=(
+                'Esta pieza se selecciona de la parte del lomo bajo sin hueso, muy tierna y sabrosa.'
+                'A tender boneless loin steak'
+                'Un entrecot tierno y sabroso'
+                'The striploin entrecot comes from the lower loin area'
+                'El entrecot de lomo bajo procede'
+                'About Tolecarnes'
+                'Sobre Tolecarnes'
+                'Frequently asked questions'
+                'Preguntas frecuentes'
+              )
+            fi
+            for q in "${checks[@]}"; do
+              if grep -Fq "$q" "$f"; then echo "FOUND: $q"; else echo "MISS: $q"; fi
             done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-          source='mu-plugins/z-mdo-product-detail-refinement-010270.php'
-          base="$(basename "$source")"
-          target="$PROD_PATH/wp-content/mu-plugins/$base"
-          remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
-      - name: Verify rendered layout
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm init -y >/dev/null 2>&1
-          npm install playwright@1.55.0 >/dev/null 2>&1
-          cat > check.js <<'JS'
-          const { chromium } = require('playwright');
-          (async()=>{
-            const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
-            for (const cfg of [{name:'desktop',width:1440,height:1000},{name:'mobile',width:390,height:844}]) {
-              const page=await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
-              await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?verify_refine='+Date.now(),{waitUntil:'networkidle',timeout:90000});
-              const m=await page.evaluate(()=>{
-                const r=s=>document.querySelector(s)?.getBoundingClientRect()||null;
-                const nav=r('.woostify-product-navigation');
-                const gallery=r('.product-gallery');
-                const tabs=document.querySelector('.woocommerce-tabs');
-                const related=document.querySelector('.related');
-                const product=document.querySelector('div.product');
-                const pp=document.querySelector('.product-page-container');
-                return {
-                  gap:(nav&&gallery)?Math.round(gallery.top-nav.bottom):null,
-                  descriptionBackground:tabs?getComputedStyle(tabs).backgroundColor:null,
-                  relatedBackground:related?getComputedStyle(related).backgroundColor:null,
-                  productPadding:product?getComputedStyle(product).padding:null,
-                  productPagePadding:pp?getComputedStyle(pp).padding:null,
-                  marker:!!document.querySelector('#mdo-product-detail-refinement-010272')
-                };
-              });
-              console.log('REFINEMENT',cfg.name,JSON.stringify(m));
-              if (!m.marker) throw new Error('refinement marker missing');
-              if (m.descriptionBackground !== 'rgb(255, 255, 255)') throw new Error('description is not white');
-              if (m.relatedBackground !== 'rgba(0, 0, 0, 0)') throw new Error('related background changed');
-              if (m.gap === null || m.gap > 12) throw new Error('navigation-to-product gap too large: '+m.gap);
-              await page.close();
-            }
-            await browser.close();
-          })().catch(e=>{console.error(e);process.exit(1)});
-          JS
-          node check.js
+            echo '-- tab markers --'
+            grep -n -m 5 -E 'tab-description|woocommerce-Tabs-panel|Description</h2>|Descripción</h2>' "$f" || true
+            echo '-- old/new text context --'
+            python3 - "$f" <<'PY'
+import sys,re,html
+p=sys.argv[1]
+s=open(p,'r',encoding='utf-8',errors='ignore').read()
+needles=['100% natural beef with no additives.','Carne 100% Ternera Natural sin aditivos.','An everyday kitchen staple','Una carne para el día a día','Esta pieza se selecciona de la parte del lomo bajo','A tender boneless loin steak','Un entrecot tierno y sabroso','About Tolecarnes','Sobre Tolecarnes']
+for n in needles:
+    i=s.find(n)
+    if i>=0:
+        chunk=s[max(0,i-350):i+700]
+        chunk=re.sub(r'\s+',' ',chunk)
+        print('CONTEXT',n,':',chunk[:1100])
+PY
+          done
