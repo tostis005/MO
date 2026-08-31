@@ -1,4 +1,4 @@
-# Public rendered-page verification for the five products updated in batch 03.
+# Temporary public rendered-page verification for batch 04 using the registered verifier.
 name: Verify public Tolecarnes batch 03
 
 on:
@@ -20,17 +20,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          slugs=(churrasco-de-ternera pito-de-vacuno-fileteado huesos-de-ternera entrecot-de-vaca redondo-de-ternera)
-          es_body=('Un corte pensado para la parrilla' 'Un corte menos habitual del vacuno' 'Una base para caldos y fondos' 'Entrecot de vaca con más de 20 días de maduración' 'Una pieza magra y de forma regular')
-          en_body=('A cut made for the grill' 'A less common beef cut' 'A base for stocks and broths' 'Beef entrecote matured for more than 20 days' 'A lean cut with a regular shape')
-          es_short=('Churrasco de ternera con grasa natural infiltrada' 'Pito de vacuno fileteado, una pieza próxima a la entraña' 'Huesos frescos de ternera cortados y limpios' 'Entrecot de vaca con grasa infiltrada, sabor intenso' 'Redondo de ternera, una pieza cilíndrica y muy magra')
-          en_short=('Beef churrasco with natural marbling' 'Sliced beef pito, a cut located close to the skirt' 'Fresh beef bones, cut and cleaned' 'Beef entrecote with intramuscular fat' 'Beef eye of round, a cylindrical and very lean cut')
+          slugs=(osobuco-de-ternera carne-a-la-piedra-de-vaca-madurada rabo-de-ternera lote-familiar filetes-para-cachopos)
+          es_body=('Morcillo de ternera cortado con hueso' 'Carne de vaca madurada y lista para cocinar' 'Rabo de ternera preparado para guisar' 'Tres kilos de ternera para distintas preparaciones' 'Filetes preparados para hacer cachopos')
+          en_body=('Cross-cut beef shin with the bone' 'Matured beef ready for quick cooking' 'Beef tail prepared for stewing' 'Three kilograms of beef for different meals' 'Steaks prepared for making cachopos')
+          es_short=('Osobuco de ternera obtenido del morcillo' 'Carne de vaca madurada durante más de 20 días' 'Rabo de ternera de los Montes de Toledo' 'Lote familiar de 3 kg de ternera' 'Filetes de ternera preparados especialmente para elaborar cachopos')
+          en_short=('Beef osso buco cut crosswise from the shin' 'Beef matured for more than 20 days' 'Beef tail from the Montes de Toledo' 'Family beef box containing 3 kg in total' 'Beef steaks prepared specifically for making cachopos')
           failures=0
           for i in "${!slugs[@]}"; do
             s="${slugs[$i]}"
             es="/tmp/es-${i}.html"; en="/tmp/en-${i}.html"
-            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch03 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_b3_es=${GITHUB_RUN_ID}-${i}")
-            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch03 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_b3_en=${GITHUB_RUN_ID}-${i}")
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch04 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_b4_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO batch04 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_b4_en=${GITHUB_RUN_ID}-${i}")
             esok=yes; enok=yes
             grep -Fq "${es_short[$i]}" "$es" || esok=no
             grep -Fq "${es_body[$i]}" "$es" || esok=no
@@ -45,5 +45,5 @@ jobs:
             if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
             echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
           done
-          echo "BATCH03_PUBLIC_FAILURES=${failures}"
+          echo "BATCH04_PUBLIC_FAILURES=${failures}"
           [[ "$failures" -eq 0 ]]
