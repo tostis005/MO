@@ -1,0 +1,40 @@
+name: Inspect old English product text
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tolecarnes-public-en-oldtext-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect old and new text on two English product pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L -sS --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 EMDO verifier' -H 'Cache-Control: no-cache, no-store' -o /tmp/carne.html 'https://www.elmercadodeorigen.com/en/product/carne-picada-extra/?emdo_oldtext=carne'
+          curl -L -sS --connect-timeout 8 --max-time 20 -A 'Mozilla/5.0 EMDO verifier' -H 'Cache-Control: no-cache, no-store' -o /tmp/entrecot.html 'https://www.elmercadodeorigen.com/en/product/entrecot-de-lomo-bajo/?emdo_oldtext=entrecot'
+          echo '==== CARNE ===='
+          grep -Fq '100% natural beef with no additives.' /tmp/carne.html && echo OLD_EN=yes || echo OLD_EN=no
+          grep -Fq 'Carne 100% Ternera Natural sin aditivos.' /tmp/carne.html && echo OLD_ES=yes || echo OLD_ES=no
+          grep -Fq 'An everyday kitchen staple' /tmp/carne.html && echo NEW_BODY_EN=yes || echo NEW_BODY_EN=no
+          grep -Fq 'Una carne para el día a día' /tmp/carne.html && echo NEW_BODY_ES=yes || echo NEW_BODY_ES=no
+          grep -Fq 'About Tolecarnes' /tmp/carne.html && echo PRODUCER_EN=yes || echo PRODUCER_EN=no
+          grep -Fq 'Sobre Tolecarnes' /tmp/carne.html && echo PRODUCER_ES=yes || echo PRODUCER_ES=no
+          echo '==== ENTRECOT ===='
+          grep -Fq 'Esta pieza se selecciona de la parte del lomo bajo sin hueso, muy tierna y sabrosa.' /tmp/entrecot.html && echo OLD_ES=yes || echo OLD_ES=no
+          grep -Fq 'A tender boneless loin steak' /tmp/entrecot.html && echo NEW_BODY_EN=yes || echo NEW_BODY_EN=no
+          grep -Fq 'Un entrecot tierno y sabroso' /tmp/entrecot.html && echo NEW_BODY_ES=yes || echo NEW_BODY_ES=no
+          grep -Fq 'About Tolecarnes' /tmp/entrecot.html && echo PRODUCER_EN=yes || echo PRODUCER_EN=no
+          grep -Fq 'Sobre Tolecarnes' /tmp/entrecot.html && echo PRODUCER_ES=yes || echo PRODUCER_ES=no
+          echo '==== DESCRIPTION-TAB LINES CARNE ===='
+          grep -n -m 8 -E '100% natural beef with no additives|Carne 100% Ternera Natural|tab-description|woocommerce-Tabs-panel' /tmp/carne.html || true
+          echo '==== DESCRIPTION-TAB LINES ENTRECOT ===='
+          grep -n -m 8 -E 'Esta pieza se selecciona|tab-description|woocommerce-Tabs-panel' /tmp/entrecot.html || true
