@@ -1,0 +1,174 @@
+name: Fix canonical home footer cache route 0.10.280
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-home-footer-cache-route-010280.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  purge-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Purge both Plesk vhost cache identities
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -e
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          PROD_PATH=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break ;;
+            esac
+          done
+          : "${PROD_PATH:?production path not found}"
+
+          hosting_domain=$(basename "$(dirname "$PROD_PATH")")
+          echo "HOSTING_DOMAIN=$hosting_domain"
+
+          plesk_bin=''
+          [ -x /usr/sbin/plesk ] && plesk_bin=/usr/sbin/plesk
+          [ -z "$plesk_bin" ] && plesk_bin=$(command -v plesk || true)
+          : "${plesk_bin:?Plesk CLI not found}"
+
+          use_sudo=0
+          if ! "$plesk_bin" version >/dev/null 2>&1; then
+            if sudo -n "$plesk_bin" version >/dev/null 2>&1; then
+              use_sudo=1
+            fi
+          fi
+
+          run_plesk() {
+            if [ "$use_sudo" -eq 1 ]; then
+              sudo -n "$plesk_bin" "$@"
+            else
+              "$plesk_bin" "$@"
+            fi
+          }
+
+          for domain in elmercadodeorigen.com "$hosting_domain"; do
+            if run_plesk bin subscription_settings --clear-nginx-cache "$domain" >/dev/null 2>&1; then
+              echo "NGINX_CACHE_CLEARED=$domain"
+            else
+              echo "NGINX_CACHE_NOT_CLEARED=$domain"
+            fi
+          done
+
+          plesk_list=$(run_plesk ext wp-toolkit --list 2>/dev/null || true)
+          instance_id=$(printf '%s\n' "$plesk_list" | awk 'tolower($0) ~ /elmercadodeorigen\.com/ && $1 ~ /^[0-9]+$/ {print $1; exit}')
+          if [ -n "$instance_id" ]; then
+            run_plesk ext wp-toolkit --clear-cache -instance-id "$instance_id" >/dev/null 2>&1 || true
+            echo "WPT_CACHE_CLEARED=$instance_id"
+          fi
+
+          if sudo -n true >/dev/null 2>&1 && [ -d /var/cache/nginx ]; then
+            echo 'RELEVANT_NGINX_CACHE_DIRS_BEFORE:'
+            sudo -n find /var/cache/nginx -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | grep -Ei 'elmercado|wizardly' || true
+            for cache_dir in /var/cache/nginx/elmercadodeorigen.com_* /var/cache/nginx/www.elmercadodeorigen.com_* "/var/cache/nginx/${hosting_domain}_"*; do
+              if [ -d "$cache_dir" ]; then
+                sudo -n find "$cache_dir" -mindepth 1 -delete 2>/dev/null || true
+                echo "DIRECT_NGINX_PURGE=$(basename "$cache_dir")"
+              fi
+            done
+          fi
+
+          if [ -n "$wp_bin" ]; then
+            echo 'CACHE_RELATED_ACTIVE_PLUGINS:'
+            "$php_bin" "$wp_bin" plugin list --status=active --fields=name,version --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'cache|rocket|optimiz|speed|tenweb|cloudflare|nginx|redis|varnish|performance|super' || true
+            echo 'DROPINS:'
+            "$php_bin" "$wp_bin" plugin list --status=dropin --fields=name,status --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null || true
+            echo 'FRONT_PAGE_OPTIONS:'
+            printf 'show_on_front='; "$php_bin" "$wp_bin" option get show_on_front --path="$PROD_PATH" --allow-root 2>/dev/null || true
+            printf 'page_on_front='; "$php_bin" "$wp_bin" option get page_on_front --path="$PROD_PATH" --allow-root 2>/dev/null || true
+          fi
+
+          echo 'ROOT_INDEX_FILES:'
+          find "$PROD_PATH" -maxdepth 1 -type f -name 'index.*' -printf '%f %s bytes\n' 2>/dev/null || true
+          REMOTE
+
+          echo '--- footer markers after dual-vhost purge ---'
+          for url in \
+            'https://www.elmercadodeorigen.com/' \
+            'https://www.elmercadodeorigen.com/?mdo_footer_diag=2' \
+            'https://www.elmercadodeorigen.com/envios/'
+          do
+            printf '%s -> ' "$url"
+            markers=$(curl -sSL --max-time 25 "$url" | grep -Eo 'mdo-footer-layout-socials-010278|mdo-footer-brand-hover-010279' | sort -u | tr '\n' ',' || true)
+            echo "${markers:-NO_MARKERS}"
+          done
+
+      - name: Verify canonical home footer and social hover
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          cat > verify-home-footer.js <<'JS'
+          const { chromium } = require('playwright');
+          const expected = {
+            Instagram: 'rgb(228, 64, 95)',
+            Facebook: 'rgb(24, 119, 242)',
+            Telegram: 'rgb(34, 158, 217)',
+            WhatsApp: 'rgb(37, 211, 102)'
+          };
+          (async () => {
+            const browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+            for (const cfg of [
+              {name:'desktop', width:1440, height:1000},
+              {name:'mobile', width:390, height:844}
+            ]) {
+              const page = await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
+              await page.goto('https://www.elmercadodeorigen.com/', {waitUntil:'networkidle', timeout:90000});
+              await page.waitForSelector('.site-footer.mdo-footer-enhanced-010278 .mdo-footer-shell-010278', {timeout:20000});
+              const data = await page.evaluate(() => {
+                const footer = document.querySelector('.site-footer.mdo-footer-enhanced-010278');
+                const heading = footer?.querySelector('.mdo-footer-main-010278 > .mdo-footer-column-010278:first-child h2')?.textContent.trim() || '';
+                return {heading, socialCount: footer?.querySelectorAll('.mdo-footer-social-010278').length || 0, overflow: document.documentElement.scrollWidth-window.innerWidth};
+              });
+              console.log('HOME_FOOTER', cfg.name, JSON.stringify(data));
+              if (data.heading !== 'El Mercado de Origen') throw new Error('wrong heading: '+data.heading);
+              if (data.socialCount !== 4) throw new Error('wrong social count');
+              if (data.overflow > 2) throw new Error('horizontal overflow');
+              if (cfg.name === 'desktop') {
+                for (const [label, color] of Object.entries(expected)) {
+                  const sel = `.mdo-footer-social-010278[aria-label="${label}"]`;
+                  await page.hover(sel);
+                  await page.waitForTimeout(250);
+                  const actual = await page.$eval(sel, el => getComputedStyle(el).backgroundColor);
+                  console.log('HOVER', label, actual);
+                  if (actual !== color) throw new Error(label+' hover mismatch '+actual);
+                }
+              }
+              await page.close();
+            }
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          JS
+          node verify-home-footer.js
