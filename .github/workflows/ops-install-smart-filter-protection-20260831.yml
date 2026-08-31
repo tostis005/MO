@@ -48,22 +48,21 @@ jobs:
           [ -f "$VHOST" ] && cp -a "$VHOST" "$VHOST.emdo-pre-smart-filter-$TS"
 
           echo '=== GLOBAL NGINX FILTER KEYS/ZONES ==='
-          cat > "$GLOBAL" <<'NGINXGLOBAL'
-# BEGIN EMDO SMART FILTER PROTECTION 20260831
-# Only WooCommerce faceted URLs (filter_*) receive a key. Empty keys are not rate-limited.
-map $args $emdo_filter_ip_key {
-    default "";
-    ~*(^|&)filter_[^=]+= $binary_remote_addr;
-}
-map $args $emdo_filter_global_key {
-    default "";
-    ~*(^|&)filter_[^=]+= "emdo-filter";
-}
-# Human usage: bursts are allowed. Sustained crawler floods are rejected before Apache/PHP.
-limit_req_zone $emdo_filter_ip_key zone=emdo_filter_per_ip:10m rate=30r/m;
-limit_req_zone $emdo_filter_global_key zone=emdo_filter_global:1m rate=2r/s;
-# END EMDO SMART FILTER PROTECTION 20260831
-NGINXGLOBAL
+          printf '%s\n' \
+            '# BEGIN EMDO SMART FILTER PROTECTION 20260831' \
+            '# Only WooCommerce faceted URLs (filter_*) receive a key. Empty keys are not rate-limited.' \
+            'map $args $emdo_filter_ip_key {' \
+            '    default "";' \
+            '    ~*(^|&)filter_[^=]+= $binary_remote_addr;' \
+            '}' \
+            'map $args $emdo_filter_global_key {' \
+            '    default "";' \
+            '    ~*(^|&)filter_[^=]+= "emdo-filter";' \
+            '}' \
+            '# Human usage: bursts are allowed. Sustained crawler floods are rejected before Apache/PHP.' \
+            'limit_req_zone $emdo_filter_ip_key zone=emdo_filter_per_ip:10m rate=30r/m;' \
+            'limit_req_zone $emdo_filter_global_key zone=emdo_filter_global:1m rate=2r/s;' \
+            '# END EMDO SMART FILTER PROTECTION 20260831' > "$GLOBAL"
           cat "$GLOBAL"
 
           echo '=== DOMAIN NGINX DIRECTIVES ==='
@@ -72,16 +71,15 @@ NGINXGLOBAL
           else
             touch "$VHOST"
           fi
-          cat >> "$VHOST" <<'NGINXVHOST'
-
-# BEGIN EMDO SMART FILTER PROTECTION 20260831
-# Applies only when the map key is non-empty (query contains filter_*).
-limit_req_status 429;
-limit_req_log_level warn;
-limit_req zone=emdo_filter_per_ip burst=5 nodelay;
-limit_req zone=emdo_filter_global burst=6 nodelay;
-# END EMDO SMART FILTER PROTECTION 20260831
-NGINXVHOST
+          printf '%s\n' \
+            '' \
+            '# BEGIN EMDO SMART FILTER PROTECTION 20260831' \
+            '# Applies only when the map key is non-empty (query contains filter_*).' \
+            'limit_req_status 429;' \
+            'limit_req_log_level warn;' \
+            'limit_req zone=emdo_filter_per_ip burst=5 nodelay;' \
+            'limit_req zone=emdo_filter_global burst=6 nodelay;' \
+            '# END EMDO SMART FILTER PROTECTION 20260831' >> "$VHOST"
           cat "$VHOST"
 
           echo '=== RECONFIGURE PLESK + TEST NGINX BEFORE REMOVING EMERGENCY BLOCK ==='
@@ -92,35 +90,24 @@ NGINXVHOST
           systemctl reload nginx
 
           echo '=== REMOVE ONLY THE TWO TEMPORARY FILTER 403 GUARDS ==='
-          python3 - "$HT" <<'PY'
-import re, sys
-p=sys.argv[1]
-s=open(p, encoding='utf-8').read()
-for begin,end in [
-    ('# BEGIN EMDO EMERGENCY BROAD FILTER GUARD 20260831','# END EMDO EMERGENCY BROAD FILTER GUARD 20260831'),
-    ('# BEGIN EMDO EMERGENCY FILTER FLOOD 20260831','# END EMDO EMERGENCY FILTER FLOOD 20260831'),
-]:
-    s=re.sub(r'(?ms)^'+re.escape(begin)+r'.*?^'+re.escape(end)+r'\n?', '', s)
-open(p,'w',encoding='utf-8').write(s)
-PY
+          perl -0777 -i -pe 's/^# BEGIN EMDO EMERGENCY BROAD FILTER GUARD 20260831\n.*?^# END EMDO EMERGENCY BROAD FILTER GUARD 20260831\n?//gms; s/^# BEGIN EMDO EMERGENCY FILTER FLOOD 20260831\n.*?^# END EMDO EMERGENCY FILTER FLOOD 20260831\n?//gms' "$HT"
           if grep -q 'EMDO EMERGENCY BROAD FILTER GUARD 20260831\|EMDO EMERGENCY FILTER FLOOD 20260831' "$HT"; then
             echo 'Emergency filter guard removal failed'
             exit 5
           fi
 
           echo '=== ROBOTS: DISCOURAGE FACET CRAWLING, KEEP PRODUCTS OPEN ==='
-          cat > "$ROBOTS" <<'ROBOTSFILE'
-User-agent: *
-Disallow: /wp-admin/
-Allow: /wp-admin/admin-ajax.php
-
-# Faceted WooCommerce combinations are for shoppers, not crawler discovery.
-# Product, producer, shop and category URLs remain crawlable.
-Disallow: /*?*filter_
-Disallow: /*?*query_type_
-
-Sitemap: https://www.elmercadodeorigen.com/sitemap_index.xml
-ROBOTSFILE
+          printf '%s\n' \
+            'User-agent: *' \
+            'Disallow: /wp-admin/' \
+            'Allow: /wp-admin/admin-ajax.php' \
+            '' \
+            '# Faceted WooCommerce combinations are for shoppers, not crawler discovery.' \
+            '# Product, producer, shop and category URLs remain crawlable.' \
+            'Disallow: /*?*filter_' \
+            'Disallow: /*?*query_type_' \
+            '' \
+            'Sitemap: https://www.elmercadodeorigen.com/sitemap_index.xml' > "$ROBOTS"
           cat "$ROBOTS"
 
           echo '=== FUNCTIONAL CHECKS ==='
@@ -138,7 +125,7 @@ ROBOTSFILE
           [ "$filter" = 200 ]
           [ "$product" = 200 ]
           [ "$robots" = 200 ]
-          grep -q 'Disallow: /.*filter_' /tmp/emdo-robots
+          grep -Fq 'Disallow: /*?*filter_' /tmp/emdo-robots
 
           echo '=== BURST TEST: FILTERS SHOULD THROTTLE, NORMAL PAGES SHOULD NOT ==='
           rm -f /tmp/emdo-filter-codes
