@@ -1,10 +1,10 @@
-# footer-spacing-source
-name: Inspect product footer spacing source
+name: Deploy balanced product detail refinement 0.10.276
 
 on:
   push:
     branches: [main]
     paths:
+      - 'mu-plugins/z-mdo-product-detail-refinement-010270.php'
       - '.github/workflows/tolecarnes-public-en-tab-diagnostic.yml'
   workflow_dispatch:
 
@@ -12,32 +12,115 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect footer spacing chain
+      - name: Validate refinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'mdo-product-detail-refinement-010276' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'grid-template-columns: minmax(0, .96fr) minmax(420px, 1.04fr)' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'height: 620px' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'padding-bottom: 28px' mu-plugins/z-mdo-product-detail-refinement-010270.php
+      - name: Deploy refinement to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          source='mu-plugins/z-mdo-product-detail-refinement-010270.php'
+          base="$(basename "$source")"
+          target="$PROD_PATH/wp-content/mu-plugins/$base"
+          remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-${GITHUB_RUN_ID}'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify balanced product layout
         shell: bash
         run: |
           set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null 2>&1
-          cat > inspect.js <<'JS'
+          cat > check.js <<'JS'
           const { chromium } = require('playwright');
           (async()=>{
             const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
-            const page=await browser.newPage({viewport:{width:1440,height:1000}});
-            await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?footer_chain='+Date.now(),{waitUntil:'networkidle',timeout:90000});
-            const out=await page.evaluate(()=>{
-              const info=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:e.className||'',id:e.id||'',top:Math.round(r.top),bottom:Math.round(r.bottom),h:Math.round(r.height),margin:s.margin,padding:s.padding,marginBottom:s.marginBottom,paddingBottom:s.paddingBottom};};
-              const sels=['#content','.site-content','.site-main','main#main','.content-area','.woocommerce','.woocommerce-page','div.product','div.product > .woostify-container','.related.products','footer.site-footer'];
-              const nodes={}; for(const s of sels) nodes[s]=info(document.querySelector(s));
-              const related=document.querySelector('.related.products'); const chain=[]; for(let e=related;e&&chain.length<7;e=e.parentElement) chain.push(info(e));
-              return {nodes,chain};
-            });
-            console.log(JSON.stringify(out,null,2));
+            const products=['jamon-de-bellota-100-iberico','aceite-de-oliva-virgen-extra-5l','patatas-blancas'];
+            for(const slug of products){
+              for(const cfg of [{name:'desktop',width:1440,height:1000},{name:'mobile',width:390,height:844}]){
+                const page=await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
+                await page.goto(`https://www.elmercadodeorigen.com/producto/${slug}/?balance_verify=${Date.now()}`,{waitUntil:'networkidle',timeout:90000});
+                const m=await page.evaluate(()=>{
+                  const box=s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect(),cs=getComputedStyle(e);return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),top:Math.round(r.top),bottom:Math.round(r.bottom),bg:cs.backgroundColor,objectFit:cs.objectFit,margin:cs.margin,padding:cs.padding};};
+                  const nav=document.querySelector('.woostify-product-navigation')?.getBoundingClientRect();
+                  const gallery=document.querySelector('.product-gallery')?.getBoundingClientRect();
+                  const summary=document.querySelector('.product-summary')?.getBoundingClientRect();
+                  const related=document.querySelector('.related.products,.related')?.getBoundingClientRect();
+                  const footer=document.querySelector('footer.site-footer,#colophon')?.getBoundingClientRect();
+                  const tabs=document.querySelector('.woocommerce-tabs');
+                  const before=tabs?getComputedStyle(tabs,'::before'):null;
+                  return {
+                    marker:!!document.querySelector('#mdo-product-detail-refinement-010276'),
+                    gallery:box('.product-gallery'), summary:box('.product-summary'), frame:box('.product-gallery .product-images'),
+                    carousel:box('.product-gallery .product-images #product-images'), viewport:box('.product-gallery .product-images #product-images > .flickity-viewport'),
+                    slide:box('.product-gallery .product-images #product-images figure.image-item.is-selected'), image:box('.product-gallery .product-images #product-images figure.image-item.is-selected img'),
+                    tabs:box('.woocommerce-tabs'), related:box('.related.products,.related'), content:box('#content.site-content'), footer:box('footer.site-footer,#colophon'),
+                    beforeBg:before?.backgroundColor||null, beforeWidth:before?.width||null,
+                    navGap:(nav&&gallery)?Math.round(gallery.top-nav.bottom):null,
+                    rightBlank:(gallery&&summary)?Math.round(gallery.bottom-summary.bottom):null,
+                    footerGap:(related&&footer)?Math.round(footer.top-related.bottom):null
+                  };
+                });
+                console.log('BALANCE',slug,cfg.name,JSON.stringify(m));
+                if(!m.marker) throw new Error('refinement marker missing');
+                if(!m.frame || !m.image || m.image.objectFit!=='contain') throw new Error('uncropped image policy missing');
+                for(const key of ['carousel','viewport','slide','image']) if(!m[key] || Math.abs(m[key].h-m.frame.h)>2) throw new Error(key+' frame mismatch');
+                if(m.tabs?.bg!=='rgb(255, 255, 255)' || m.beforeBg!=='rgb(255, 255, 255)') throw new Error('description band not white');
+                if(m.related && m.related.bg!=='rgba(0, 0, 0, 0)') throw new Error('related background changed');
+                if(cfg.name==='desktop'){
+                  if(Math.abs(m.navGap-18)>2) throw new Error('desktop nav gap '+m.navGap);
+                  if(m.gallery.w<560 || m.gallery.w>600) throw new Error('desktop gallery width '+m.gallery.w);
+                  if(m.summary.w<600) throw new Error('desktop summary too narrow '+m.summary.w);
+                  if(Math.abs(m.frame.h-620)>2) throw new Error('desktop frame height '+m.frame.h);
+                  if(slug==='jamon-de-bellota-100-iberico' && m.rightBlank>65) throw new Error('desktop right blank '+m.rightBlank);
+                  if(m.footerGap<24 || m.footerGap>34) throw new Error('desktop footer gap '+m.footerGap);
+                } else {
+                  if(Math.abs(m.navGap-14)>2) throw new Error('mobile nav gap '+m.navGap);
+                  if(Math.abs(m.gallery.w-360)>2) throw new Error('mobile gallery width '+m.gallery.w);
+                  if(Math.abs(m.frame.h-450)>2) throw new Error('mobile frame height '+m.frame.h);
+                  if(m.footerGap<16 || m.footerGap>26) throw new Error('mobile footer gap '+m.footerGap);
+                }
+                await page.close();
+              }
+            }
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
-          node inspect.js
+          node check.js
