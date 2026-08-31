@@ -1,4 +1,4 @@
-name: Deploy product tabs cleanup 0.10.266
+name: Deploy product detail layout 0.10.267
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'mu-plugins/mdo-product-tabs-cleanup-010266.php'
+      - 'mu-plugins/mdo-product-detail-layout-010267.php'
       - '.github/workflows/product-tabs-cleanup-production-010266.yml'
 
 permissions:
@@ -24,16 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate source
+      - name: Validate sources
         shell: bash
         run: |
           set -euo pipefail
           php -l mu-plugins/mdo-product-tabs-cleanup-010266.php
+          php -l mu-plugins/mdo-product-detail-layout-010267.php
           grep -Fq 'woocommerce_product_description_heading' mu-plugins/mdo-product-tabs-cleanup-010266.php
           grep -Fq 'mdo-product-tabs-cleanup-010266' mu-plugins/mdo-product-tabs-cleanup-010266.php
           grep -Fq '#tab-additional_information' mu-plugins/mdo-product-tabs-cleanup-010266.php
+          ! grep -Fq 'description > h2:first-child' mu-plugins/mdo-product-tabs-cleanup-010266.php
+          grep -Fq 'mdo-product-detail-layout-010267' mu-plugins/mdo-product-detail-layout-010267.php
+          grep -Fq 'max-width: 1080px' mu-plugins/mdo-product-detail-layout-010267.php
+          grep -Fq 'text-align: left !important' mu-plugins/mdo-product-detail-layout-010267.php
+          grep -Fq 'product-nav-item-content' mu-plugins/mdo-product-detail-layout-010267.php
 
-      - name: Deploy MU plugin
+      - name: Deploy product detail MU plugins
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -59,10 +66,18 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-product-tabs-cleanup-010266.php"
-          REMOTE="/tmp/mdo-product-tabs-cleanup-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS mu-plugins/mdo-product-tabs-cleanup-010266.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp '$TARGET' '$TARGET.bak'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$TARGET'; wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          for source in \
+            mu-plugins/mdo-product-tabs-cleanup-010266.php \
+            mu-plugins/mdo-product-detail-layout-010267.php
+          do
+            base="$(basename "$source")"
+            target="$PROD_PATH/wp-content/mu-plugins/$base"
+            remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-010267'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
+          done
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
       - name: Verify public product pages
         shell: bash
@@ -70,12 +85,14 @@ jobs:
           set -euo pipefail
           ES='https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/'
           EN='https://www.elmercadodeorigen.com/en/product/jamon-de-bellota-100-iberico/'
-          curl -L -fsS --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO product tabs verifier' -H 'Cache-Control: no-cache, no-store' "$ES?verify_tabs=${GITHUB_RUN_ID}" -o /tmp/product-es.html
-          curl -L -fsS --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO product tabs verifier' -H 'Cache-Control: no-cache, no-store' "$EN?verify_tabs=${GITHUB_RUN_ID}" -o /tmp/product-en.html
+          curl -L -fsS --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO product detail verifier' -H 'Cache-Control: no-cache, no-store' "$ES?verify_detail=${GITHUB_RUN_ID}" -o /tmp/product-es.html
+          curl -L -fsS --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO product detail verifier' -H 'Cache-Control: no-cache, no-store' "$EN?verify_detail=${GITHUB_RUN_ID}" -o /tmp/product-en.html
           grep -Fq 'id="mdo-product-tabs-cleanup-010266"' /tmp/product-es.html
           grep -Fq 'id="mdo-product-tabs-cleanup-010266"' /tmp/product-en.html
+          grep -Fq 'id="mdo-product-detail-layout-010267"' /tmp/product-es.html
+          grep -Fq 'id="mdo-product-detail-layout-010267"' /tmp/product-en.html
           grep -Fq 'Sobre Hidalgo de la Jara' /tmp/product-es.html
           grep -Fq 'About Hidalgo de la Jara' /tmp/product-en.html
           if grep -Eiq '>\s*Descripción\s*</h2>' /tmp/product-es.html; then echo 'Automatic ES Description heading still present'; exit 1; fi
           if grep -Eiq '>\s*Description\s*</h2>' /tmp/product-en.html; then echo 'Automatic EN Description heading still present'; exit 1; fi
-          echo 'PRODUCT_TABS_CLEANUP_PUBLIC_OK'
+          echo 'PRODUCT_DETAIL_LAYOUT_PUBLIC_OK'
