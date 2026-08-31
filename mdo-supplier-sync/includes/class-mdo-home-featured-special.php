@@ -19,7 +19,7 @@ final class MDO_Home_Featured_Special {
 	}
 
 	public static function enqueue_assets(): void {
-		if ( is_admin() || ! is_front_page() ) {
+		if ( is_admin() || ( ! is_front_page() && ! is_singular( 'post' ) ) ) {
 			return;
 		}
 
@@ -54,7 +54,13 @@ final class MDO_Home_Featured_Special {
 		return substr( $content, 0, $marker_position ) . $block . substr( $content, $marker_position );
 	}
 
-	private static function render(): string {
+	/**
+	 * Render the exact featured Special block used on the homepage.
+	 *
+	 * Kept public so other editorial surfaces can reuse the same active-Special
+	 * selection, bilingual copy and markup without duplicating business rules.
+	 */
+	public static function render(): string {
 		if ( ! post_type_exists( 'mdo_promotion' ) || ! class_exists( 'MDO_Specials' ) || ! class_exists( 'MDO_Promotions' ) ) {
 			return '';
 		}
