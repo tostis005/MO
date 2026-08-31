@@ -38,12 +38,9 @@ jobs:
           ref='98390a9edac31742b66888ab0fe8525a5cd381d5'
           base='elmercadodeorigen-child/inc/content-seeds/nutrition-priority-46-50-010275-v1.part'
           paths=[Path(base+str(i)) for i in (1,2,3)]
-          original=[]
-          for p in paths:
-              original.append(subprocess.check_output(['git','show',f'{ref}:{p.as_posix()}'],text=True).strip())
+          original=[subprocess.check_output(['git','show',f'{ref}:{p.as_posix()}'],text=True).strip() for p in paths]
           encoded=''.join(original)
-          raw=base64.b64decode(encoded,validate=True)
-          data=json.loads(gzip.decompress(raw).decode('utf-8'))
+          data=json.loads(gzip.decompress(base64.b64decode(encoded,validate=True)).decode('utf-8'))
           expected=[
             'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
             'jamon-iberico-vs-lomo-iberico-diferencias-nutricionales',
@@ -56,8 +53,7 @@ jobs:
           link_re=re.compile(r'<a\b[^>]*href=["\'](?:https://www\.elmercadodeorigen\.com)?/en/[^"\']+["\'][^>]*>(.*?)</a>',re.I|re.S)
           removed=0
           for article in data:
-              before=article['en_content']
-              article['en_content'],n=link_re.subn(r'\1',before)
+              article['en_content'],n=link_re.subn(r'\1',article['en_content'])
               removed+=n
           print(f'ENGLISH_INTERNAL_LINKS_REMOVED={removed}')
           clean_json=json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf-8')
@@ -68,19 +64,65 @@ jobs:
           chunks=[clean_b64[:chunk],clean_b64[chunk:2*chunk],clean_b64[2*chunk:]]
           if len(chunks)!=3 or any(not c for c in chunks): raise SystemExit('Could not split rebuilt payload')
           for p,c in zip(paths,chunks): p.write_text(c)
-          # Prove the rebuilt package independently before allowing the protected runner to start.
           check=''.join(p.read_text().strip() for p in paths)
           if hashlib.sha256(check.encode()).hexdigest()!=sha: raise SystemExit('Rebuilt payload write verification failed')
           verify=json.loads(gzip.decompress(base64.b64decode(check,validate=True)).decode('utf-8'))
           if [a.get('slug') for a in verify]!=expected: raise SystemExit('Rebuilt payload semantic verification failed')
-          old='73b0fa8a76092a2dc01827705dd623f626472686dc99286477fb4866c08f396a'
-          for script in [Path('.github/scripts/run-nutrition-priority-46-50-production.sh'),Path('.github/scripts/publish-nutrition-priority-46-50-production.php')]:
+          old_sha='73b0fa8a76092a2dc01827705dd623f626472686dc99286477fb4866c08f396a'
+          runner=Path('.github/scripts/run-nutrition-priority-46-50-production.sh')
+          publisher=Path('.github/scripts/publish-nutrition-priority-46-50-production.php')
+          for script in [runner,publisher]:
               text=script.read_text()
-              if old not in text: raise SystemExit('Expected placeholder SHA not found in '+str(script))
-              script.write_text(text.replace(old,sha))
+              if old_sha not in text: raise SystemExit('Expected placeholder SHA not found in '+str(script))
+              script.write_text(text.replace(old_sha,sha))
+          old_func="""function emdo_4650_product_slugs( array $a ): array {
+    $out = array();
+    foreach ( (array) $a['product_cat_slugs'] as $slug ) {
+        $term = get_term_by( 'slug', (string) $slug, 'product_cat' );
+        if ( ! $term instanceof WP_Term ) { WP_CLI::error( 'WooCommerce product category not found: ' . $slug . ' for ' . $a['slug'] ); }
+        $out[] = $term->slug;
+    }
+    return array_values( array_unique( $out ) );
+}
+"""
+          new_func="""function emdo_4650_product_slugs( array $a ): array {
+    $out = array();
+    foreach ( (array) $a['product_cat_slugs'] as $requested ) {
+        $requested = (string) $requested;
+        $term = get_term_by( 'slug', $requested, 'product_cat' );
+        if ( ! $term instanceof WP_Term && 'embutidos' === $requested ) {
+            foreach ( array( 'embutidos-y-curados', 'embutidos-curados' ) as $fallback_slug ) {
+                $candidate = get_term_by( 'slug', $fallback_slug, 'product_cat' );
+                if ( $candidate instanceof WP_Term ) { $term = $candidate; break; }
+            }
+        }
+        if ( ! $term instanceof WP_Term && 'embutidos' === $requested ) {
+            foreach ( array( 'Embutidos y curados', 'Embutidos y Curados', 'Embutidos' ) as $fallback_name ) {
+                $candidate = get_term_by( 'name', $fallback_name, 'product_cat' );
+                if ( $candidate instanceof WP_Term ) { $term = $candidate; break; }
+            }
+        }
+        if ( ! $term instanceof WP_Term && 'embutidos' === $requested ) {
+            $terms = get_terms( array( 'taxonomy'=>'product_cat', 'hide_empty'=>false, 'search'=>'embutid' ) );
+            if ( is_wp_error( $terms ) ) { WP_CLI::error( 'Could not inspect WooCommerce product categories.' ); }
+            $matches = array_values( array_filter( (array) $terms, static function( $candidate ) {
+                return $candidate instanceof WP_Term && ( false !== strpos( $candidate->slug, 'embutid' ) || false !== strpos( sanitize_title( $candidate->name ), 'embutid' ) );
+            } ) );
+            if ( 1 === count( $matches ) ) { $term = $matches[0]; }
+        }
+        if ( ! $term instanceof WP_Term ) { WP_CLI::error( 'WooCommerce product category could not be resolved safely: ' . $requested . ' for ' . $a['slug'] ); }
+        if ( $term->slug !== $requested ) { WP_CLI::log( 'Resolved WooCommerce category ' . $requested . ' -> ' . $term->slug ); }
+        $out[] = $term->slug;
+    }
+    return array_values( array_unique( $out ) );
+}
+"""
+          ptext=publisher.read_text()
+          if old_func not in ptext: raise SystemExit('Expected product category resolver function not found')
+          publisher.write_text(ptext.replace(old_func,new_func))
           print('REBUILT_PAYLOAD_OK lengths='+','.join(str(len(c)) for c in chunks))
           PY
           bash .github/scripts/run-nutrition-priority-46-50-production.sh
 
 # nutrition roadmap batch 46-50: Iberian cured loin nutrition
-# rebuilds the validated original payload, removes uncertain English internal links, then runs protected publication
+# rebuilds validated payload and resolves the live Woo cured-meat category without assuming its slug
