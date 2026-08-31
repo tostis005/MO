@@ -1,0 +1,57 @@
+name: Emergency deep EMDO FPM audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-deep-fpm-audit-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect HTTPS logs and busy PHP workers
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -u
+            LOGDIR=/var/www/vhosts/system/elmercadodeorigen.com/logs
+            echo "=== LOAD ==="; uptime
+            echo "=== ALL LOG FILES ==="; ls -lah "$LOGDIR" | tail -n 80 || true
+            echo "=== RECENT LOG MTIMES ==="; find "$LOGDIR" -maxdepth 1 -type f -printf "%TY-%Tm-%Td %TH:%TM:%TS %10s %f\n" 2>/dev/null | sort -r | head -n 40 || true
+            for f in "$LOGDIR"/*access*; do
+              [ -f "$f" ] || continue
+              echo "=== $f LAST 30 ==="
+              tail -n 30 "$f" || true
+            done
+            echo "=== BUSY FPM ==="
+            pids=$(pgrep -f "php-fpm: pool elmercadodeorigen.com" | head -n 8 || true)
+            for p in $pids; do
+              echo "--- PID $p ---"
+              ps -o pid,ppid,etime,%cpu,%mem,wchan:24,args -p "$p" || true
+              echo -n "cwd="; readlink "/proc/$p/cwd" 2>/dev/null || true
+              echo "fds:"; ls -l "/proc/$p/fd" 2>/dev/null | tail -n 12 || true
+              echo "stack:"; cat "/proc/$p/stack" 2>/dev/null | head -n 20 || true
+            done
+            echo "=== PHP82 POOL CONFIG ==="
+            grep -R -n -E "elmercadodeorigen|pm\.|request_|access\.log|slowlog|listen" /opt/plesk/php/8.2/etc/php-fpm.d /etc/php/8.2/fpm/pool.d 2>/dev/null | head -n 120 || true
+            echo "=== APACHE CONNECTIONS TO FPM/LOCAL ==="
+            ss -tnp 2>/dev/null | grep -E "apache2|php-fpm|:7080|:7081|:9000" | head -n 100 || true
+          '
