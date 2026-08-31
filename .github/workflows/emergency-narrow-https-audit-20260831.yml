@@ -1,0 +1,62 @@
+name: Emergency narrow HTTPS audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-narrow-https-audit-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect active HTTPS access logs
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -u
+            LOGDIR=/var/www/vhosts/system/elmercadodeorigen.com/logs
+            echo "LOAD $(uptime)"
+            echo "RECENT_FILES"
+            find "$LOGDIR" -maxdepth 1 -type f -printf "%T@ %s %f\n" 2>/dev/null | sort -nr | head -n 15
+            echo "ACCESS_CANDIDATES"
+            for f in "$LOGDIR"/*access*; do
+              [ -f "$f" ] || continue
+              printf "%s %s bytes: " "$(basename "$f")" "$(stat -c%s "$f")"
+              tail -n 1 "$f" | cut -c1-220
+            done
+            log=""
+            for n in proxy_access_ssl_log access_ssl_log proxy_access_log access_log; do
+              [ -s "$LOGDIR/$n" ] && log="$LOGDIR/$n" && break
+            done
+            [ -n "$log" ] || { echo NO_LOG; exit 0; }
+            echo "ANALYZING $(basename "$log")"
+            tail -n 2500 "$log" > /tmp/emdo-req.log
+            echo TOP_IPS
+            awk "{print \$1}" /tmp/emdo-req.log | sort | uniq -c | sort -nr | head -n 15
+            echo TOP_PATHS
+            awk "{print \$7}" /tmp/emdo-req.log | sed "s/?.*//" | sort | uniq -c | sort -nr | head -n 25
+            echo TOP_STATUS
+            awk "{print \$9}" /tmp/emdo-req.log | sort | uniq -c | sort -nr | head -n 10
+            echo TOP_UA
+            awk -F\" "{print \$6}" /tmp/emdo-req.log | sort | uniq -c | sort -nr | head -n 15
+            echo LAST20
+            tail -n 20 /tmp/emdo-req.log | cut -c1-320
+          '
