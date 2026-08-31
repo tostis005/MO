@@ -1,9 +1,10 @@
-name: Publish nutrition priority batch 41-45 production
+name: Publish nutrition batch production
 
 on:
   push:
     branches: [main]
     paths:
+      - '.github/content-publish/current-batch.txt'
       - '.github/workflows/publish-nutrition-priority-41-45-production.yml'
   workflow_dispatch:
 
@@ -11,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: nutrition-priority-41-45-production-global
+  group: nutrition-batch-production-global
   cancel-in-progress: false
 
 jobs:
@@ -26,9 +27,12 @@ jobs:
       SSHPASS: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Publish and verify batch 41-45
+      - name: Publish and verify current nutrition batch
         shell: bash
-        run: bash .github/scripts/run-nutrition-priority-41-45-production.sh
-
-# nutrition roadmap batch 41-45: EVOO nutrition FAQs
-# idempotent exact-match adoption + ownership-safe rollback
+        run: |
+          set -euo pipefail
+          BATCH="$(tr -d '[:space:]' < .github/content-publish/current-batch.txt)"
+          [[ "$BATCH" =~ ^[0-9]+-[0-9]+$ ]]
+          RUNNER=".github/scripts/run-nutrition-priority-${BATCH}-production.sh"
+          test -f "$RUNNER"
+          bash "$RUNNER"
