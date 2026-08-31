@@ -1,4 +1,4 @@
-name: Validate direct Google Places lookup 0.10.286
+name: Retry direct Google Places lookup 0.10.287
 
 on:
   push:
@@ -46,33 +46,43 @@ jobs:
           done
           [ -n "$PROD_PATH" ] || exit 2
           WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
+          key=$(timeout 12s "${WP[@]}" option get grw_google_api_key --skip-plugins --skip-themes 2>/dev/null || true)
+          if [ -z "$key" ]; then echo 'KEY=EMPTY'; exit 0; fi
+          echo "KEY=SET length=${#key}"
 
-          timeout 50s "${WP[@]}" eval '
-          $key=(string)get_option("grw_google_api_key","");
-          if($key===""){echo "KEY=EMPTY\n"; return;}
-          echo "KEY=SET\n";
-          $body=wp_json_encode(["textQuery"=>"El Mercado de Origen","languageCode"=>"es"]);
-          $r=wp_remote_post("https://places.googleapis.com/v1/places:searchText",[
-            "timeout"=>25,
-            "headers"=>["Content-Type"=>"application/json","X-Goog-Api-Key"=>$key,"X-Goog-FieldMask"=>"places.id,places.displayName,places.rating,places.userRatingCount,places.googleMapsUri"],
-            "body"=>$body,
-          ]);
-          if(is_wp_error($r)){echo "NEW_API_ERROR=".$r->get_error_code()."\n";} else {
-            echo "NEW_API_HTTP=".(int)wp_remote_retrieve_response_code($r)."\n";
-            $j=json_decode((string)wp_remote_retrieve_body($r),true);
-            if(!empty($j["places"])&&is_array($j["places"])) foreach(array_slice($j["places"],0,8) as $p){
-              $n=(string)($p["displayName"]["text"]??""); $id=(string)($p["id"]??""); $rating=$p["rating"]??""; $cnt=$p["userRatingCount"]??"";
-              echo "PLACE name=".$n." id=".$id." rating=".$rating." count=".$cnt."\n";
-            }
-            if(isset($j["error"])) echo "NEW_API_STATUS=".(string)($j["error"]["status"]??"UNKNOWN")."\n";
-          }
-          $url="https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=".rawurlencode("El Mercado de Origen")."&inputtype=textquery&fields=place_id,name,rating,user_ratings_total&language=es&key=".rawurlencode($key);
-          $r2=wp_remote_get($url,["timeout"=>25]);
-          if(is_wp_error($r2)){echo "LEGACY_ERROR=".$r2->get_error_code()."\n";} else {
-            echo "LEGACY_HTTP=".(int)wp_remote_retrieve_response_code($r2)."\n";
-            $j2=json_decode((string)wp_remote_retrieve_body($r2),true);
-            echo "LEGACY_STATUS=".(string)($j2["status"]??"UNKNOWN")."\n";
-            if(!empty($j2["candidates"])&&is_array($j2["candidates"])) foreach(array_slice($j2["candidates"],0,8) as $p){echo "LEGACY_PLACE name=".(string)($p["name"]??"")." id=".(string)($p["place_id"]??"")." rating=".(string)($p["rating"]??"")." count=".(string)($p["user_ratings_total"]??"")."\n";}
-          }
-          ' --skip-themes 2>/dev/null
+          tmp=$(mktemp)
+          code=$(curl -sS --connect-timeout 8 --max-time 25 -o "$tmp" -w '%{http_code}' \
+            -X POST 'https://places.googleapis.com/v1/places:searchText' \
+            -H 'Content-Type: application/json' \
+            -H "X-Goog-Api-Key: $key" \
+            -H 'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.googleMapsUri' \
+            --data '{"textQuery":"El Mercado de Origen","languageCode":"es"}' || true)
+          echo "NEW_API_HTTP=$code"
+          python3 - "$tmp" <<'PY'
+          import json,sys
+          try: j=json.load(open(sys.argv[1],encoding='utf-8'))
+          except Exception as e: print('NEW_API_JSON=INVALID'); raise SystemExit
+          if 'error' in j: print('NEW_API_STATUS='+str(j['error'].get('status','UNKNOWN')))
+          for p in j.get('places',[])[:8]:
+              print('PLACE name=%s id=%s rating=%s count=%s' % ((p.get('displayName') or {}).get('text',''),p.get('id',''),p.get('rating',''),p.get('userRatingCount','')))
+          PY
+          rm -f "$tmp"
+
+          tmp=$(mktemp)
+          code=$(curl -sS --connect-timeout 8 --max-time 25 -o "$tmp" -w '%{http_code}' --get \
+            'https://maps.googleapis.com/maps/api/place/findplacefromtext/json' \
+            --data-urlencode 'input=El Mercado de Origen' \
+            --data-urlencode 'inputtype=textquery' \
+            --data-urlencode 'fields=place_id,name,rating,user_ratings_total' \
+            --data-urlencode 'language=es' \
+            --data-urlencode "key=$key" || true)
+          echo "LEGACY_HTTP=$code"
+          python3 - "$tmp" <<'PY'
+          import json,sys
+          try: j=json.load(open(sys.argv[1],encoding='utf-8'))
+          except Exception: print('LEGACY_JSON=INVALID'); raise SystemExit
+          print('LEGACY_STATUS='+str(j.get('status','UNKNOWN')))
+          for p in j.get('candidates',[])[:8]: print('LEGACY_PLACE name=%s id=%s rating=%s count=%s' % (p.get('name',''),p.get('place_id',''),p.get('rating',''),p.get('user_ratings_total','')))
+          PY
+          rm -f "$tmp"
           REMOTE
