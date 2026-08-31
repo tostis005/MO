@@ -1,0 +1,50 @@
+name: Update Tolecarnes Product Copy Batch 01 - Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/scripts/tolecarnes-products-batch-01-production.php'
+      - '.github/workflows/tolecarnes-products-batch-01-production.yml'
+
+concurrency:
+  group: tolecarnes-products-batch-01-production
+  cancel-in-progress: false
+
+jobs:
+  update-production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "${{ secrets.PROD_SSH_PORT }}" -H "${{ secrets.PROD_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload product update script
+        shell: bash
+        run: |
+          scp -P "${{ secrets.PROD_SSH_PORT }}" \
+            .github/scripts/tolecarnes-products-batch-01-production.php \
+            "${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:/tmp/tolecarnes-products-batch-01-production.php"
+
+      - name: Update five Tolecarnes products in WordPress production
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.PROD_SSH_PORT }}" \
+            "${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}" \
+            'cd /var/www/html && wp eval-file /tmp/tolecarnes-products-batch-01-production.php --allow-root'
+
+      - name: Remove temporary script
+        if: always()
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.PROD_SSH_PORT }}" \
+            "${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}" \
+            'rm -f /tmp/tolecarnes-products-batch-01-production.php' || true
