@@ -1,0 +1,168 @@
+name: Deploy footer brand and hover 0.10.279
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/zz-mdo-footer-brand-hover-010279.php'
+      - '.github/workflows/deploy-footer-brand-hover-010279.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate footer refinement module
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/zz-mdo-footer-brand-hover-010279.php
+          grep -Fq 'El Mercado de Origen' mu-plugins/zz-mdo-footer-brand-hover-010279.php
+          grep -Fq '#e4405f' mu-plugins/zz-mdo-footer-brand-hover-010279.php
+          grep -Fq '#1877f2' mu-plugins/zz-mdo-footer-brand-hover-010279.php
+          grep -Fq '#229ed9' mu-plugins/zz-mdo-footer-brand-hover-010279.php
+          grep -Fq '#25d366' mu-plugins/zz-mdo-footer-brand-hover-010279.php
+
+      - name: Deploy footer refinement and purge caches
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          source='mu-plugins/zz-mdo-footer-brand-hover-010279.php'
+          base="$(basename "$source")"
+          target="$PROD_PATH/wp-content/mu-plugins/$base"
+          remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
+
+          sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-${GITHUB_RUN_ID}'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -e
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          if [ -n "$wp_bin" ]; then
+            "$php_bin" "$wp_bin" cache flush --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+            "$php_bin" "$wp_bin" transient delete --all --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+            "$php_bin" "$wp_bin" eval '
+              if ( function_exists("rocket_clean_domain") ) { rocket_clean_domain(); }
+              if ( has_action("litespeed_purge_all") ) { do_action("litespeed_purge_all"); }
+              if ( function_exists("wp_cache_clear_cache") ) { wp_cache_clear_cache(); }
+              if ( function_exists("w3tc_flush_all") ) { w3tc_flush_all(); }
+              if ( class_exists("autoptimizeCache") ) { autoptimizeCache::clearall(); }
+            ' --path="$PROD_PATH" --allow-root >/dev/null 2>&1 || true
+          fi
+          REMOTE
+
+      - name: Verify canonical home and global footer
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+
+          cat > check-footer-refinement.js <<'JS'
+          const { chromium } = require('playwright');
+
+          const expectedHover = {
+            Instagram: 'rgb(228, 64, 95)',
+            Facebook: 'rgb(24, 119, 242)',
+            Telegram: 'rgb(34, 158, 217)',
+            WhatsApp: 'rgb(37, 211, 102)'
+          };
+
+          (async () => {
+            const browser = await chromium.launch({
+              headless: true,
+              executablePath: '/usr/bin/google-chrome',
+              args: ['--no-sandbox']
+            });
+
+            const tests = [
+              { name: 'home-es-canonical', url: 'https://www.elmercadodeorigen.com/', width: 1440, height: 1000 },
+              { name: 'home-es-mobile-canonical', url: 'https://www.elmercadodeorigen.com/', width: 390, height: 844 },
+              { name: 'shipping-es', url: 'https://www.elmercadodeorigen.com/envios/', width: 1440, height: 1000 },
+              { name: 'home-en-canonical', url: 'https://www.elmercadodeorigen.com/en/', width: 1440, height: 1000 }
+            ];
+
+            for (const cfg of tests) {
+              const page = await browser.newPage({ viewport: { width: cfg.width, height: cfg.height } });
+              await page.goto(cfg.url, { waitUntil: 'networkidle', timeout: 90000 });
+              await page.waitForSelector('.site-footer.mdo-footer-enhanced-010278 .mdo-footer-shell-010278', { timeout: 20000 });
+
+              const result = await page.evaluate(() => {
+                const footer = document.querySelector('.site-footer.mdo-footer-enhanced-010278');
+                const heading = footer?.querySelector('.mdo-footer-main-010278 > .mdo-footer-column-010278:first-child h2')?.textContent.trim() || '';
+                const socials = Array.from(footer?.querySelectorAll('.mdo-footer-social-010278') || []).map(el => el.getAttribute('aria-label'));
+                return {
+                  heading,
+                  socials,
+                  overflow: document.documentElement.scrollWidth - window.innerWidth,
+                  refinementStyle: !!document.querySelector('#mdo-footer-brand-hover-010279'),
+                  refinementScript: !!document.querySelector('#mdo-footer-brand-hover-runtime-010279')
+                };
+              });
+
+              console.log('FOOTER_REFINEMENT', cfg.name, JSON.stringify(result));
+
+              if (result.heading !== 'El Mercado de Origen') throw new Error(cfg.name + ': global footer title not updated: ' + result.heading);
+              if (result.socials.length !== 4) throw new Error(cfg.name + ': expected 4 social icons');
+              if (!result.refinementStyle || !result.refinementScript) throw new Error(cfg.name + ': refinement module missing from rendered page');
+              if (result.overflow > 2) throw new Error(cfg.name + ': horizontal overflow ' + result.overflow + 'px');
+
+              if (cfg.name === 'home-es-canonical') {
+                for (const [label, expected] of Object.entries(expectedHover)) {
+                  const selector = `.mdo-footer-social-010278[aria-label="${label}"]`;
+                  await page.hover(selector);
+                  await page.waitForTimeout(250);
+                  const background = await page.$eval(selector, el => getComputedStyle(el).backgroundColor);
+                  console.log('SOCIAL_HOVER', label, background);
+                  if (background !== expected) throw new Error(label + ': expected hover ' + expected + ', got ' + background);
+                }
+              }
+
+              await page.close();
+            }
+
+            await browser.close();
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          JS
+
+          node check-footer-refinement.js
