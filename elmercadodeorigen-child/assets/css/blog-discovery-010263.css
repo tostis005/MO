@@ -1,4 +1,4 @@
-/* Blog discovery and category architecture 0.10.263 */
+/* Blog discovery and category architecture 0.10.266 */
 
 .emo-journal--discovery .emo-journal-listing--discovery,
 .emo-journal--category .emo-journal-listing--discovery {
@@ -140,14 +140,11 @@ html:not(.no-js) .emo-blog-apply {
 	text-underline-offset: 4px;
 }
 
+.emo-blog-specials,
 .emo-blog-featured,
 .emo-blog-results,
 .emo-blog-category-navigation {
 	margin-top: clamp(42px, 6vw, 72px);
-}
-
-.emo-blog-featured:first-of-type {
-	margin-top: 0;
 }
 
 .emo-blog-section-heading {
@@ -168,8 +165,15 @@ html:not(.no-js) .emo-blog-apply {
 .emo-blog-featured-grid,
 .emo-blog-grid {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 24px;
+}
+
+.emo-blog-featured-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.emo-blog-grid {
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .emo-blog-featured-grid .emo-article-card,
