@@ -29,45 +29,58 @@ jobs:
       - name: Publish and verify batch 46-50
         shell: bash
         run: |
+          set -euo pipefail
+          ORIGINAL_PAYLOAD_COMMIT='98390a9edac31742b66888ab0fe8525a5cd381d5'
+          git fetch --no-tags --depth=1 origin "$ORIGINAL_PAYLOAD_COMMIT"
           python3 - <<'PY'
-          import base64,gzip,json,hashlib
+          import base64,gzip,json,hashlib,re,subprocess
           from pathlib import Path
-          paths=sorted(Path('elmercadodeorigen-child/inc/content-seeds').glob('nutrition-priority-46-50-010275-v1.part*'))
-          if len(paths)!=3: raise SystemExit('Expected three payload parts')
-          parts=[p.read_text().strip() for p in paths]
-          enc=''.join(parts)
-          print('CORRUPT_PART_LENGTHS='+','.join(map(str,map(len,parts))))
-          matches=[]
-          for i in range(len(enc)):
-              cand=enc[:i]+enc[i+1:]
-              try:
-                  raw=base64.b64decode(cand,validate=True)
-                  data=json.loads(gzip.decompress(raw).decode('utf-8'))
-                  if isinstance(data,list) and len(data)==5:
-                      matches.append((i,cand,data))
-                      if len(matches)>1: break
-              except Exception:
-                  pass
-          if len(matches)!=1: raise SystemExit(f'Expected exactly one single-character payload repair, found {len(matches)}')
-          i,cand,data=matches[0]
-          local=i
-          part_index=0
-          for n,p in enumerate(parts):
-              if local < len(p): part_index=n; break
-              local-=len(p)
-          sha=hashlib.sha256(cand.encode()).hexdigest()
-          print(f'PAYLOAD_REPAIR part={part_index+1} local_index={local} global_index={i} removed={enc[i]!r}')
-          print('CORRECTED_PAYLOAD_SHA256='+sha)
-          chunk=len(cand)//3
-          if len(cand)%3 or chunk!=6492: raise SystemExit('Unexpected corrected payload length')
-          for n,p in enumerate(paths): p.write_text(cand[n*chunk:(n+1)*chunk])
+          ref='98390a9edac31742b66888ab0fe8525a5cd381d5'
+          base='elmercadodeorigen-child/inc/content-seeds/nutrition-priority-46-50-010275-v1.part'
+          paths=[Path(base+str(i)) for i in (1,2,3)]
+          original=[]
+          for p in paths:
+              original.append(subprocess.check_output(['git','show',f'{ref}:{p.as_posix()}'],text=True).strip())
+          encoded=''.join(original)
+          raw=base64.b64decode(encoded,validate=True)
+          data=json.loads(gzip.decompress(raw).decode('utf-8'))
+          expected=[
+            'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'jamon-iberico-vs-lomo-iberico-diferencias-nutricionales',
+            'cuanta-proteina-tiene-lomo-iberico',
+            'cuanto-hierro-tiene-lomo-iberico',
+            'grasa-lomo-iberico-saturada-monoinsaturada-poliinsaturada',
+          ]
+          if not isinstance(data,list) or [a.get('slug') for a in data]!=expected:
+              raise SystemExit('Original payload does not contain the expected five articles')
+          link_re=re.compile(r'<a\b[^>]*href=["\'](?:https://www\.elmercadodeorigen\.com)?/en/[^"\']+["\'][^>]*>(.*?)</a>',re.I|re.S)
+          removed=0
+          for article in data:
+              before=article['en_content']
+              article['en_content'],n=link_re.subn(r'\1',before)
+              removed+=n
+          print(f'ENGLISH_INTERNAL_LINKS_REMOVED={removed}')
+          clean_json=json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf-8')
+          clean_b64=base64.b64encode(gzip.compress(clean_json,compresslevel=9,mtime=0)).decode('ascii')
+          sha=hashlib.sha256(clean_b64.encode()).hexdigest()
+          print('REBUILT_PAYLOAD_SHA256='+sha)
+          chunk=(len(clean_b64)+2)//3
+          chunks=[clean_b64[:chunk],clean_b64[chunk:2*chunk],clean_b64[2*chunk:]]
+          if len(chunks)!=3 or any(not c for c in chunks): raise SystemExit('Could not split rebuilt payload')
+          for p,c in zip(paths,chunks): p.write_text(c)
+          # Prove the rebuilt package independently before allowing the protected runner to start.
+          check=''.join(p.read_text().strip() for p in paths)
+          if hashlib.sha256(check.encode()).hexdigest()!=sha: raise SystemExit('Rebuilt payload write verification failed')
+          verify=json.loads(gzip.decompress(base64.b64decode(check,validate=True)).decode('utf-8'))
+          if [a.get('slug') for a in verify]!=expected: raise SystemExit('Rebuilt payload semantic verification failed')
           old='73b0fa8a76092a2dc01827705dd623f626472686dc99286477fb4866c08f396a'
           for script in [Path('.github/scripts/run-nutrition-priority-46-50-production.sh'),Path('.github/scripts/publish-nutrition-priority-46-50-production.php')]:
               text=script.read_text()
               if old not in text: raise SystemExit('Expected placeholder SHA not found in '+str(script))
               script.write_text(text.replace(old,sha))
+          print('REBUILT_PAYLOAD_OK lengths='+','.join(str(len(c)) for c in chunks))
           PY
           bash .github/scripts/run-nutrition-priority-46-50-production.sh
 
 # nutrition roadmap batch 46-50: Iberian cured loin nutrition
-# strict one-character payload recovery before protected runner
+# rebuilds the validated original payload, removes uncertain English internal links, then runs protected publication
