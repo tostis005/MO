@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Lint fixed plugin
         run: php -l mu-plugins/mdo-home-performance-010284.php
-      - name: Restore production plugin without bootstrapping WordPress
+      - name: Restore and validate production plugin
         shell: bash
         run: |
           set -euo pipefail
@@ -39,7 +39,21 @@ jobs:
           )
           [ -n "$TARGET" ]
           sshpass -e scp -o StrictHostKeyChecking=no -P "$PORT" mu-plugins/mdo-home-performance-010284.php "$STAGING_USER@$STAGING_HOST:$TARGET"
-          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "php -l '$TARGET'"
-          curl -fsSL --retry 4 --retry-delay 1 'https://www.elmercadodeorigen.com/?mdo_hotfix_check=2' -o /tmp/home.html
+          sshpass -e ssh -o StrictHostKeyChecking=no -p "$PORT" "$STAGING_USER@$STAGING_HOST" "TARGET='$TARGET' bash -s" <<'REMOTE'
+          set -euo pipefail
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$php_bin" ]
+          "$php_bin" -l "$TARGET"
+          root=${TARGET%/wp-content/mu-plugins/mdo-home-performance-010284.php}
+          legacy="$root/wp-content/mu-plugins/mdo-home-performance-20260819.php"
+          if [ -f "$legacy" ]; then
+            echo '--- legacy optimizer relevant lines ---'
+            grep -nEi 'function |coupon|facebook|pinterest|lcp|webp|ana-mary|template_redirect|wp_enqueue_scripts' "$legacy" | head -n 120 || true
+          fi
+          REMOTE
+          curl -fsSL --retry 4 --retry-delay 1 'https://www.elmercadodeorigen.com/?mdo_hotfix_check=3' -o /tmp/home.html
           grep -q '</html>' /tmp/home.html
-          echo 'Production recovered after namespace hotfix.'
+          grep -q 'mdo-home-performance-010284' /tmp/home.html
+          grep -q 'mdo-lcp-copy' /tmp/home.html
+          echo 'Production is bootstrapping and the fixed Home optimizer is active.'
