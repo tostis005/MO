@@ -1,64 +1,48 @@
-name: Apply La Huerta batch 01 English excerpt fix
+name: Verify La Huerta de Ana Mary batch 01 public pages
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/tolecarnes-public-en-tab-diagnostic.yml'
-      - '.github/scripts/huerta-anamary-batch01-english-excerpts-fix.php'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  update:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    env:
-      STAGING_HOST: ${{ secrets.STAGING_HOST }}
-      STAGING_PORT: ${{ secrets.STAGING_PORT }}
-      STAGING_USER: ${{ secrets.STAGING_USER }}
-      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Validate fix
+      - name: Check Spanish and English rendered pages
         shell: bash
         run: |
           set -euo pipefail
-          php -l .github/scripts/huerta-anamary-batch01-english-excerpts-fix.php >/dev/null
-          grep -Fq '_en_US_post_excerpt' .github/scripts/huerta-anamary-batch01-english-excerpts-fix.php
-          grep -Fq 'mo_huerta_anamary_batch01_en_excerpt_backup_20260831' .github/scripts/huerta-anamary-batch01-english-excerpts-fix.php
-      - name: Apply fix to production
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
-          ')"
-          : "${PROD_PATH:?production path not found}"
-          REMOTE_SCRIPT="/tmp/huerta-en-excerpts-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/huerta-anamary-batch01-english-excerpts-fix.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
-      - name: Flush cache
-        if: success()
-        shell: bash
-        env:
-          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
-        run: |
-          set -euo pipefail
-          PORT="${STAGING_PORT:-22}"
-          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
-            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
-          ')"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          slugs=(patatas-blancas calabacin brocoli 20-kg-de-patatas-blancas-variedad-kennebec flores-de-calabacin-8-unidades)
+          es_body=('Patata Kennebec de Fresno de la Vega' 'Una hortaliza suave y muy versátil' 'Brócoli fresco para preparaciones sencillas' '20 kg de patata Kennebec' 'Flores de calabacín frescas')
+          en_body=('Kennebec potatoes from Fresno de la Vega' 'A mild and highly versatile vegetable' 'Fresh broccoli for simple cooking' '20 kg of Kennebec potatoes' 'Fresh courgette flowers')
+          es_short=('Patatas blancas variedad Kennebec' 'Calabacín fresco cultivado en Fresno de la Vega' 'Brócoli fresco cultivado en Fresno de la Vega' 'Formato de 20 kg de patata blanca variedad Kennebec' 'Caja de 8 flores de calabacín frescas')
+          en_short=('White Kennebec potatoes grown in Fresno de la Vega' 'Fresh courgette grown in Fresno de la Vega' 'Fresh broccoli grown in Fresno de la Vega' '20 kg format of white Kennebec potatoes' 'Box of 8 fresh courgette flowers')
+          failures=0
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"
+            es="/tmp/es-${i}.html"; en="/tmp/en-${i}.html"
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta01 final verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_h1_final_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta01 final verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_h1_final_en=${GITHUB_RUN_ID}-${i}")
+            esok=yes; enok=yes
+            grep -Fq "${es_short[$i]}" "$es" || esok=no
+            grep -Fq "${es_body[$i]}" "$es" || esok=no
+            grep -Fq 'Sobre La Huerta de Ana Mary' "$es" || esok=no
+            grep -Fq 'Preguntas frecuentes' "$es" || esok=no
+            grep -Fq "${en_short[$i]}" "$en" || enok=no
+            grep -Fq "${en_body[$i]}" "$en" || enok=no
+            grep -Fq 'About La Huerta de Ana Mary' "$en" || enok=no
+            grep -Fq 'Frequently asked questions' "$en" || enok=no
+            if grep -Fq 'Sobre La Huerta de Ana Mary' "$en" || grep -Fq 'Preguntas frecuentes' "$en"; then enok=no; fi
+            status=OK
+            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
+            echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
+          done
+          echo "HUERTA_BATCH01_FINAL_FAILURES=${failures}"
+          [[ "$failures" -eq 0 ]]
