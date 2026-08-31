@@ -21,7 +21,7 @@ jobs:
           set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null 2>&1
-          cat > /tmp/capture.js <<'JS'
+          cat > capture-visual-audit.js <<'JS'
           const { chromium } = require('playwright');
           (async()=>{
             const browser = await chromium.launch({headless:true, executablePath:'/usr/bin/google-chrome', args:['--no-sandbox']});
@@ -57,7 +57,9 @@ jobs:
           })().catch(e=>{console.error(e); process.exit(1)});
           JS
           mkdir -p visual-audit
-          node /tmp/capture.js
+          node capture-visual-audit.js
+          rm -f capture-visual-audit.js package.json package-lock.json
+          rm -rf node_modules
       - name: Commit temporary screenshots
         shell: bash
         run: |
