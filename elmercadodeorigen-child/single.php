@@ -124,6 +124,17 @@ add_action(
 				margin-top: 0 !important;
 			}
 
+			/* Cuatro lecturas relacionadas en una única fila de escritorio. */
+			html body.single-post .emo-related-reading .emo-journal-grid {
+				grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+			}
+
+			@media (max-width: 1100px) {
+				html body.single-post .emo-related-reading .emo-journal-grid {
+					grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+				}
+			}
+
 			@media (max-width: 820px) {
 				html body.single-post main#primary.emo-article-page .emo-article-cover {
 					border-radius: 20px !important;
@@ -141,6 +152,12 @@ add_action(
 				html body.single-post main#primary.emo-article-page .emo-article-content {
 					padding: 28px 22px !important;
 					border-radius: 18px !important;
+				}
+			}
+
+			@media (max-width: 560px) {
+				html body.single-post .emo-related-reading .emo-journal-grid {
+					grid-template-columns: minmax(0, 1fr) !important;
 				}
 			}
 
@@ -277,10 +294,19 @@ while ( have_posts() ) :
 		</article>
 
 		<?php
+		$specials_html = '';
+		if ( class_exists( 'MDO_Home_Featured_Special' ) && is_callable( array( 'MDO_Home_Featured_Special', 'render' ) ) ) {
+			try {
+				$specials_html = (string) MDO_Home_Featured_Special::render();
+			} catch ( Throwable $exception ) {
+				$specials_html = '';
+			}
+		}
+
 		$related_args = array(
 			'post_type'           => 'post',
 			'post_status'         => 'publish',
-			'posts_per_page'      => 3,
+			'posts_per_page'      => 4,
 			'post__not_in'        => array( $post_id ),
 			'ignore_sticky_posts' => true,
 		);
@@ -296,6 +322,10 @@ while ( have_posts() ) :
 			$related = new WP_Query( $related_args );
 		}
 		?>
+
+		<?php if ( '' !== $specials_html ) : ?>
+			<?php echo $specials_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+		<?php endif; ?>
 
 		<?php if ( $related->have_posts() ) : ?>
 			<section class="emo-related-reading">
