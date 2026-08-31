@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: MDO - Product detail refinement 0.10.273
- * Description: Aligns product detail pages with the site's premium cream/white editorial system, compact gallery proportions and a full-width white description band.
- * Version: 0.10.273
+ * Plugin Name: MDO - Product detail refinement 0.10.274
+ * Description: Aligns product detail pages with the site's premium cream/white editorial system, compact uncropped gallery frames and a full-width white description band.
+ * Version: 0.10.274
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -16,7 +16,7 @@ add_action(
 			return;
 		}
 		?>
-		<style id="mdo-product-detail-refinement-010273">
+		<style id="mdo-product-detail-refinement-010274">
 			/* Keep previous/next visually attached to the purchase area. */
 			html body.elmercado-child-theme.single-product .content-top {
 				margin-bottom: 0 !important;
@@ -33,12 +33,12 @@ add_action(
 			}
 
 			/*
-			 * Product imagery: a consistent 4:5 commerce frame keeps portrait,
-			 * square and landscape source photography visually balanced without crop.
+			 * Product imagery: a compact commerce frame with a definite height.
+			 * Every source image fills that frame with contain, never crop.
 			 */
 			html body.elmercado-child-theme.single-product div.product .product-page-container .product-gallery .product-images {
-				height: auto !important;
-				aspect-ratio: 4 / 5 !important;
+				height: clamp(580px, 50vw, 720px) !important;
+				aspect-ratio: auto !important;
 				background: #fff !important;
 				border-radius: 12px !important;
 			}
@@ -47,7 +47,8 @@ add_action(
 				display: block !important;
 				width: 100% !important;
 				height: 100% !important;
-				max-height: none !important;
+				max-width: 100% !important;
+				max-height: 100% !important;
 				object-fit: contain !important;
 				object-position: center center !important;
 				background: #fff !important;
@@ -98,7 +99,7 @@ add_action(
 
 			@media (max-width: 991px) {
 				html body.elmercado-child-theme.single-product div.product .product-page-container .product-gallery .product-images {
-					aspect-ratio: 4 / 5 !important;
+					height: min(450px, calc((100vw - 30px) * 1.25)) !important;
 				}
 
 				html body.elmercado-child-theme.single-product div.product > .woostify-container > .woocommerce-tabs {
