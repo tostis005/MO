@@ -1,9 +1,10 @@
-name: Inspect product gallery proportions
+name: Deploy polished product detail design 0.10.273
 
 on:
   push:
     branches: [main]
     paths:
+      - 'mu-plugins/z-mdo-product-detail-refinement-010270.php'
       - '.github/workflows/tolecarnes-public-en-tab-diagnostic.yml'
   workflow_dispatch:
 
@@ -11,36 +12,98 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect gallery geometry
+      - name: Validate refinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'mdo-product-detail-refinement-010273' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'aspect-ratio: 4 / 5' mu-plugins/z-mdo-product-detail-refinement-010270.php
+          grep -Fq 'width: 100vw' mu-plugins/z-mdo-product-detail-refinement-010270.php
+      - name: Deploy refinement to production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          source='mu-plugins/z-mdo-product-detail-refinement-010270.php'
+          base="$(basename "$source")"
+          target="$PROD_PATH/wp-content/mu-plugins/$base"
+          remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-${GITHUB_RUN_ID}'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify product layout across catalogue types
         shell: bash
         run: |
           set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null 2>&1
-          cat > inspect.js <<'JS'
+          cat > check.js <<'JS'
           const { chromium } = require('playwright');
           (async()=>{
             const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
-            for (const cfg of [{name:'desktop',width:1440,height:1000},{name:'mobile',width:390,height:844}]) {
-              const page=await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
-              await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?gallery_inspect='+Date.now(),{waitUntil:'networkidle',timeout:90000});
-              const out=await page.evaluate(()=>{
-                const info=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:e.className,id:e.id,x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),display:s.display,position:s.position,overflow:s.overflow,objectFit:s.objectFit,maxHeight:s.maxHeight,height:s.height,padding:s.padding,margin:s.margin,bg:s.backgroundColor};};
-                const sels=['.product-gallery','.product-gallery .product-images','.product-gallery .product-image','.product-gallery .woocommerce-product-gallery__wrapper','.product-gallery .slick-list','.product-gallery .slick-track','.product-gallery .slick-slide','.product-gallery img','.product-thumbnail-images','.product-thumbnail-images .slick-list','.product-thumbnail-images img','.product-summary','.woocommerce-tabs','#tab-description','.related'];
-                const nodes={};
-                for(const s of sels) nodes[s]=info(document.querySelector(s));
-                const imgs=[...document.querySelectorAll('.product-gallery img')].slice(0,8).map((img,i)=>({i,...info(img),naturalWidth:img.naturalWidth,naturalHeight:img.naturalHeight,src:(img.currentSrc||img.src||'').split('?')[0].slice(-120)}));
-                return {nodes,imgs};
-              });
-              console.log('GALLERY',cfg.name,JSON.stringify(out));
-              await page.close();
+            const products=['jamon-de-bellota-100-iberico','aceite-de-oliva-virgen-extra-5l','patatas-blancas'];
+            for(const slug of products){
+              for(const cfg of [{name:'desktop',width:1440,height:1000},{name:'mobile',width:390,height:844}]){
+                const page=await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
+                await page.goto(`https://www.elmercadodeorigen.com/producto/${slug}/?design_verify=${Date.now()}`,{waitUntil:'networkidle',timeout:90000});
+                const m=await page.evaluate(()=>{
+                  const box=s=>{const e=document.querySelector(s);if(!e)return null;const r=e.getBoundingClientRect(),cs=getComputedStyle(e);return {w:Math.round(r.width),h:Math.round(r.height),bg:cs.backgroundColor,objectFit:cs.objectFit,aspectRatio:cs.aspectRatio};};
+                  const tabs=document.querySelector('.woocommerce-tabs');
+                  const before=tabs?getComputedStyle(tabs,'::before'):null;
+                  return {
+                    marker:!!document.querySelector('#mdo-product-detail-refinement-010273'),
+                    gallery:box('.product-gallery'),
+                    images:box('.product-gallery .product-images'),
+                    firstImage:box('.product-gallery .product-images img'),
+                    summary:box('.product-summary'),
+                    tabs:box('.woocommerce-tabs'),
+                    related:box('.related'),
+                    beforeBg:before?.backgroundColor||null,
+                    beforeWidth:before?.width||null
+                  };
+                });
+                console.log('DESIGN',slug,cfg.name,JSON.stringify(m));
+                if(!m.marker) throw new Error('design marker missing');
+                if(!m.images || !m.firstImage) throw new Error('gallery missing');
+                if(m.firstImage.objectFit !== 'contain') throw new Error('image cropping policy incorrect');
+                if(m.tabs?.bg !== 'rgb(255, 255, 255)' || m.beforeBg !== 'rgb(255, 255, 255)') throw new Error('description band is not white');
+                if(m.related && m.related.bg !== 'rgba(0, 0, 0, 0)') throw new Error('related background changed');
+                if(cfg.name==='desktop' && m.images.h > 760) throw new Error('desktop gallery still too tall: '+m.images.h);
+                if(cfg.name==='mobile' && m.images.h > 480) throw new Error('mobile gallery still too tall: '+m.images.h);
+                await page.close();
+              }
             }
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
-          node inspect.js
+          node check.js
