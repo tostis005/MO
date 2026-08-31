@@ -116,7 +116,7 @@ jobs:
           shop=$(curl -k -L -sS -A "$ua" -o /tmp/emdo-shop -w '%{http_code}' --connect-timeout 5 --max-time 25 https://www.elmercadodeorigen.com/tienda/ || true)
           category=$(curl -k -L -sS -A "$ua" -o /tmp/emdo-cat -w '%{http_code}' --connect-timeout 5 --max-time 25 https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/ || true)
           filter=$(curl -k -L -sS -A "$ua" -o /tmp/emdo-filter -w '%{http_code}' --connect-timeout 5 --max-time 25 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_alimentacion=bellota' || true)
-          product=$(curl -k -L -sS -A 'MenttaCrawler/1.0' -o /tmp/emdo-product -w '%{http_code}' --connect-timeout 5 --max-time 25 'https://www.elmercadodeorigen.com/producto/paleta-de-bellota-iberica-50-raza-iberica/' || true)
+          product=$(curl -k -L -sS -A 'MenttaCrawler/1.0' -o /tmp/emdo-product -w '%{http_code}' --connect-timeout 5 --max-time 25 'https://www.elmercadodeorigen.com/producto/pimiento-italiano/' || true)
           robots=$(curl -k -L -sS -o /tmp/emdo-robots -w '%{http_code}' --connect-timeout 5 --max-time 15 https://www.elmercadodeorigen.com/robots.txt || true)
           echo "HOME=$home SHOP=$shop CATEGORY=$category FILTER=$filter MENTTA_PRODUCT=$product ROBOTS=$robots"
           [ "$home" = 200 ]
