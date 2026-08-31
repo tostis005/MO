@@ -28,8 +28,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Publish and verify batch 46-50
         shell: bash
-        run: bash .github/scripts/run-nutrition-priority-46-50-production.sh
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          parts=sorted(Path('elmercadodeorigen-child/inc/content-seeds').glob('nutrition-priority-46-50-010275-v1.part*'))
+          enc=''.join(p.read_text().strip() for p in parts)
+          print('PAYLOAD_SHA256='+hashlib.sha256(enc.encode()).hexdigest())
+          PY
+          bash .github/scripts/run-nutrition-priority-46-50-production.sh
 
 # nutrition roadmap batch 46-50: Iberian cured loin nutrition
 # idempotent exact-match adoption + ownership-safe rollback
-# trigger after workflow registration
+# diagnostic hash before protected runner
