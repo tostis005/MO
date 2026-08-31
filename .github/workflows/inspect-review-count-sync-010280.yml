@@ -1,4 +1,4 @@
-name: Locate current Google profile directly 0.10.290
+name: Inspect store synchronizer completion hook 0.10.291
 
 on:
   push:
@@ -13,43 +13,38 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Query Google directly with browser
+      - name: Inspect production synchronizer hooks
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          npm init -y >/dev/null 2>&1
-          npm install playwright@1.55.0 >/dev/null 2>&1
-          npx playwright install --with-deps chromium >/dev/null 2>&1
-          node <<'JS'
-          const { chromium } = require('playwright');
-          (async()=>{
-            const browser=await chromium.launch({headless:true});
-            const ctx=await browser.newContext({locale:'es-ES', userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'});
-            const urls=[
-              'https://www.google.com/search?hl=es&gl=es&q=%22El+Mercado+de+Origen%22+rese%C3%B1as',
-              'https://www.google.com/search?hl=es&gl=es&q=%22El+Mercado+de+Origen%22+elmercadodeorigen.com',
-              'https://www.google.com/maps/search/El+Mercado+de+Origen?hl=es'
-            ];
-            for (const url of urls) {
-              const page=await ctx.newPage();
-              const resp=await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
-              await page.waitForTimeout(3000);
-              const text=(await page.locator('body').innerText()).replace(/\s+/g,' ');
-              console.log('URL='+url);
-              console.log('HTTP='+(resp?resp.status():'none'));
-              console.log('HAS_NAME='+/El Mercado de Origen/i.test(text));
-              for (const re of [/El Mercado de Origen.{0,500}/ig,/.{0,180}(?:4[,.]9|303|reseñas|opiniones).{0,300}/ig]) {
-                const ms=text.match(re)||[];
-                for(const m of ms.slice(0,10)) console.log('SNIP='+m.slice(0,800));
-              }
-              const html=await page.content();
-              const ids=[...new Set((html.match(/ChIJ[A-Za-z0-9_-]{10,}/g)||[]))];
-              console.log('PLACE_IDS='+ids.slice(0,20).join(','));
-              await page.close();
-            }
-            await browser.close();
-          })().catch(e=>{console.error('GOOGLE_ERROR='+e.message);process.exit(1)});
-          JS
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=10 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=''
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg"); url=$(timeout 8s "$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break;; esac
+          done
+          [ -n "$PROD_PATH" ] || exit 2
+          echo '=== MENTTA / SYNC PLUGIN DIRS ==='
+          find "$PROD_PATH/wp-content/plugins" "$PROD_PATH/wp-content/mu-plugins" -maxdepth 2 -type f -name '*.php' 2>/dev/null | grep -Ei 'mentta|sync|vendor|store' | head -n 120 || true
+          echo '=== HOOK / SCHEDULE MATCHES ==='
+          timeout 30s grep -RIn -E 'do_action\(|add_action\(|wp_schedule|as_schedule|cron|sync|synchron|actualiz|tienda|store|vendor|mentta' "$PROD_PATH/wp-content/plugins/mentta-marketplace" "$PROD_PATH/wp-content/plugins/external-updates-mentta-marketplace" "$PROD_PATH/wp-content/mu-plugins" 2>/dev/null | grep -Ei 'mentta|sync|synchron|cron|schedule|store|vendor|tienda' | head -n 350 || true
+          echo '=== SERVER CRON MENTTA/SYNC ==='
+          crontab -l 2>/dev/null | grep -Ei 'mentta|sync|store|vendor|wp-cron' || true
+          REMOTE
