@@ -1,13 +1,45 @@
 <?php
 /**
- * Plugin Name: MDO - Footer brand and social hover refinements 0.10.279
- * Description: Ajusta el título principal del footer global y aplica el color de marca de cada red social al hover/focus.
- * Version: 0.10.279
+ * Plugin Name: MDO - Footer brand and social hover refinements 0.10.282
+ * Description: Ajusta el título principal del footer global, aplica los colores de marca y mantiene coherente la caché HTML de Home.
+ * Version: 0.10.282
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+/**
+ * La Home tiene una caché HTML propia en el tema hijo. Como un MU-plugin no
+ * dispara los hooks editoriales que vacían esa caché, invalidamos una sola vez
+ * por versión del refinamiento antes de template_redirect, donde la Home hace HIT.
+ */
+add_action(
+	'init',
+	static function (): void {
+		$version = '0.10.282';
+		$option  = 'mdo_footer_home_cache_coherence_version';
+
+		if ( get_option( $option, '' ) === $version ) {
+			return;
+		}
+
+		if ( function_exists( 'elmercado_flush_home_cache' ) ) {
+			elmercado_flush_home_cache();
+		} else {
+			// Fallback defensivo si el tema cambia su orden de carga.
+			$static_dir = WP_CONTENT_DIR . '/uploads/elmercado-home-static';
+			foreach ( glob( $static_dir . '/index.html' ) ?: array() as $file ) {
+				if ( is_file( $file ) ) {
+					@unlink( $file );
+				}
+			}
+		}
+
+		update_option( $option, $version, false );
+	},
+	-9999
+);
 
 // Global refinement layered after the base footer module.
 add_action(
