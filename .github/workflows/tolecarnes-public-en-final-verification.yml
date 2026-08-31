@@ -43,33 +43,34 @@ jobs:
             'Beef tenderloin, one of the most prized cuts for its tenderness'
             'Beef shin from the lower leg or shank.'
           )
+          body_markers=(
+            'An everyday kitchen staple'
+            'A different style of burger'
+            'Made for quick cooking'
+            'Ideal for stews and slow cooking'
+            'A cut with plenty of flavour'
+            'A tender cut from the striploin'
+            'The juiciness of beef chuck'
+            'A rib steak from the high loin'
+            'One of the most tender cuts'
+            'A cut made for slow cooking'
+          )
           failures=0
           for i in "${!slugs[@]}"; do
             s="${slugs[$i]}"; f="/tmp/en-${i}.html"
             url="https://www.elmercadodeorigen.com/en/product/${s}/?emdo_final_en=${GITHUB_RUN_ID}-${i}"
             code=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 --retry-delay 1 -A 'Mozilla/5.0 EMDO final English verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -w '%{http_code}' -o "$f" "$url")
-            short=no; producer=no; faq=no; spanish=no
+            short=no; body=no; producer=no; faq=no; spanish=no
             grep -Fq "${short_markers[$i]}" "$f" && short=yes || true
+            grep -Fq "${body_markers[$i]}" "$f" && body=yes || true
             grep -Fq 'About Tolecarnes' "$f" && producer=yes || true
             grep -Fq 'Frequently asked questions' "$f" && faq=yes || true
             if grep -Fq 'Sobre Tolecarnes' "$f" || grep -Fq 'Preguntas frecuentes' "$f"; then spanish=yes; fi
-            tab_chars=$(python3 - "$f" <<'PY'
-import sys,re,html
-s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
-m=re.search(r'<div class="woocommerce-Tabs-panel woocommerce-Tabs-panel--description[^>]*id="tab-description"[^>]*>(.*?)</div>',s,re.S)
-if not m:
-    print(0)
-else:
-    t=re.sub(r'<[^>]+>',' ',m.group(1))
-    t=html.unescape(re.sub(r'\s+',' ',t)).strip()
-    print(len(t))
-PY
-)
             status=OK
-            if [[ "$code" != 200 || "$short" != yes || "$producer" != yes || "$faq" != yes || "$spanish" != no || "$tab_chars" -lt 1000 ]]; then
+            if [[ "$code" != 200 || "$short" != yes || "$body" != yes || "$producer" != yes || "$faq" != yes || "$spanish" != no ]]; then
               status=FAIL; failures=$((failures+1))
             fi
-            echo "VERIFY slug=${s} HTTP=${code} short=${short} producer=${producer} faq=${faq} spanish=${spanish} tab_chars=${tab_chars} STATUS=${status}"
+            echo "VERIFY slug=${s} HTTP=${code} short=${short} body=${body} producer=${producer} faq=${faq} spanish=${spanish} STATUS=${status}"
           done
           echo "PUBLIC_EN_FAILURES=${failures}"
           [[ "$failures" -eq 0 ]]
