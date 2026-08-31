@@ -1,4 +1,5 @@
 <?php
+// Reverification after corrected Batch 02 deployment.
 if (!defined('ABSPATH')) { exit("Run inside WordPress\n"); }
 global $wpdb;
 $trp=$wpdb->prefix.'trp_dictionary_es_es_en_us';
