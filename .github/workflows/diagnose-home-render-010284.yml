@@ -1,0 +1,37 @@
+name: Diagnose Home Render 0.10.284
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/diagnose-home-render-010284.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect current Home source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 'https://www.elmercadodeorigen.com/?mdo_render_diag=010284' -o /tmp/home.html
+          echo '--- LCP report phrase matches ---'
+          grep -nEi -C 4 'En[[:space:]]+El[[:space:]]+Mercado[[:space:]]+de[[:space:]]+Origen|buscamos[[:space:]]+productores' /tmp/home.html | head -n 160 || true
+          echo '--- La Huerta image tags ---'
+          grep -Eio '<img[^>]+La-huerta-de-ana-mary-fondo[^>]*>' /tmp/home.html | head -n 10 || true
+          echo '--- likely visible intro paragraphs ---'
+          python3 - <<'PY'
+          import re, html
+          s=open('/tmp/home.html',encoding='utf-8',errors='ignore').read()
+          for m in re.finditer(r'<p\b[^>]*>.*?</p>',s,re.I|re.S):
+              plain=re.sub(r'<[^>]+>',' ',m.group(0))
+              plain=html.unescape(re.sub(r'\s+',' ',plain)).strip()
+              if any(x.lower() in plain.lower() for x in ['mercado de origen','productor','origen buscamos']):
+                  print('TEXT:',plain[:500])
+                  print('HTML:',m.group(0)[:1200])
+          PY
