@@ -1,4 +1,5 @@
 <?php
+// Read-only diagnostic: identify the next five unprocessed Tolecarnes products.
 if (!defined('ABSPATH')) { exit("Run inside WordPress\n"); }
 global $wpdb;
 
