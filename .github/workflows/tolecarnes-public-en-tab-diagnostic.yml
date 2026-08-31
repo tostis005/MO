@@ -1,4 +1,4 @@
-name: Diagnose next five La Huerta products batch 07
+name: Apply La Huerta batch 07 to production
 
 on:
   push:
@@ -11,31 +11,69 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  update:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 20
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Read next Huerta products from production
+      - uses: actions/checkout@v4
+      - name: Apply batch 07
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
+          php -l .github/scripts/huerta-anamary-products-batch-07-production.php >/dev/null
+          grep -Fq '12 Tarros de confitura de pimiento 250ml' .github/scripts/huerta-anamary-products-batch-07-production.php
+          grep -Fq 'Pepino' .github/scripts/huerta-anamary-products-batch-07-production.php
+          grep -Fq 'La recolección se organiza en función de los pedidos' .github/scripts/huerta-anamary-products-batch-07-production.php
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
           PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
           ')"
           : "${PROD_PATH:?production path not found}"
-          CODE='global $wpdb; $rows=$wpdb->get_results("SELECT ID,post_title,post_name,post_excerpt,post_content,post_author FROM {$wpdb->posts} WHERE post_type=\"product\" AND post_status=\"publish\" AND ID>12789 ORDER BY ID ASC",ARRAY_A); $n=0; foreach($rows as $r){ $u=get_userdata((int)$r["post_author"]); if(!$u || stripos($u->display_name,"Huerta de Ana Mary")===false) continue; $sku=get_post_meta($r["ID"],"_sku",true); $stock=get_post_meta($r["ID"],"_stock_status",true); echo "PRODUCT|{$r["ID"]}|{$r["post_title"]}|{$r["post_name"]}|{$sku}|{$stock}\n"; echo "EXCERPT|".mb_substr(wp_strip_all_tags($r["post_excerpt"]),0,900)."\n"; echo "CONTENT|".mb_substr(wp_strip_all_tags($r["post_content"]),0,5000)."\n"; if(++$n>=5) break; } echo "COUNT={$n}\n";'
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '$CODE' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
-          echo 'diagnostic complete'
-          echo 'batch07 diagnostic trigger'
+          REMOTE=/tmp/huerta-batch07-${GITHUB_RUN_ID}.php
+          sshpass -e scp $SCP_OPTIONS .github/scripts/huerta-anamary-products-batch-07-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+      - name: Verify ten public pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          slugs=(12-tarros-de-confitura-de-pimiento-250ml fritada-de-tomate-artesana-314ml kg-pimientos-de-padron pimiento-asado-picante-314-ml-artesano pepino)
+          es_body=('12 tarros de confitura artesana de pimiento' 'Fritada de tomate lista para servir o cocinar' 'Pimientos de Padrón para freír o preparar a la plancha' 'Pimiento picante asado con leña y pelado a mano' 'Pepino fresco de temporada')
+          en_body=('12 jars of artisan pepper jam' 'Tomato fritada ready to serve or cook with' 'Padrón peppers for pan-frying or griddle cooking' 'Hot peppers roasted over wood and peeled by hand' 'Fresh seasonal cucumber')
+          es_short=('Caja con 12 tarros de confitura artesana de pimiento' 'Fritada de tomate artesana en tarro de cristal de 314 ml' 'Pimientos de Padrón frescos vendidos por kilo' 'Pimiento asado picante de elaboración artesanal' 'Pepino fresco de temporada de La Huerta de Ana Mary')
+          en_short=('Box of 12 jars of artisan pepper jam' 'Artisan tomato fritada in a 314 ml glass jar' 'Fresh Padrón peppers sold by the kilogram' 'Traditionally prepared hot roasted peppers' 'Fresh seasonal cucumber from La Huerta de Ana Mary')
+          failures=0
+          for i in "${!slugs[@]}"; do
+            s="${slugs[$i]}"; es=/tmp/es-${i}.html; en=/tmp/en-${i}.html
+            esc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta07 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$es" "https://www.elmercadodeorigen.com/product/${s}/?emdo_h7_es=${GITHUB_RUN_ID}-${i}")
+            enc=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta07 verifier' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$en" "https://www.elmercadodeorigen.com/en/product/${s}/?emdo_h7_en=${GITHUB_RUN_ID}-${i}")
+            esok=yes; enok=yes
+            grep -Fq "${es_short[$i]}" "$es" || esok=no
+            grep -Fq "${es_body[$i]}" "$es" || esok=no
+            grep -Fq 'Sobre La Huerta de Ana Mary' "$es" || esok=no
+            grep -Fq 'Preguntas frecuentes' "$es" || esok=no
+            grep -Fq 'La recolección se organiza en función de los pedidos' "$es" || esok=no
+            grep -Fq "${en_short[$i]}" "$en" || enok=no
+            grep -Fq "${en_body[$i]}" "$en" || enok=no
+            grep -Fq 'About La Huerta de Ana Mary' "$en" || enok=no
+            grep -Fq 'Frequently asked questions' "$en" || enok=no
+            grep -Fq 'Harvesting is organised around orders' "$en" || enok=no
+            if grep -Fq 'Sobre La Huerta de Ana Mary' "$en" || grep -Fq 'Preguntas frecuentes' "$en"; then enok=no; fi
+            status=OK
+            if [[ "$esc" != 200 || "$enc" != 200 || "$esok" != yes || "$enok" != yes ]]; then status=FAIL; failures=$((failures+1)); fi
+            echo "VERIFY slug=${s} ES_HTTP=${esc} ES=${esok} EN_HTTP=${enc} EN=${enok} STATUS=${status}"
+          done
+          echo "HUERTA_BATCH07_PUBLIC_FAILURES=${failures}"
+          [[ "$failures" -eq 0 ]]
