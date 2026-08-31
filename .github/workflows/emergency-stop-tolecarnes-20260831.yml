@@ -1,0 +1,67 @@
+name: Emergency stop stuck Tolecarnes production update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-stop-tolecarnes-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Stop only the stuck Tolecarnes updater and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -u
+            echo "=== BEFORE ==="
+            date
+            uptime || true
+            ps -eo pid,ppid,etime,%cpu,%mem,args | grep -E "[t]olecarnes-products-batch-01|[w]p eval-file" || true
+
+            echo "=== STOP STUCK BATCH ==="
+            pids=$(ps -eo pid=,args= | awk "/tolecarnes-products-batch-01-[0-9]+\\.php/ && /wp/ {print \$1}")
+            if [ -n "${pids:-}" ]; then
+              echo "Killing stuck updater PID(s): $pids"
+              kill $pids 2>/dev/null || true
+              sleep 2
+              for p in $pids; do
+                if kill -0 "$p" 2>/dev/null; then kill -9 "$p" 2>/dev/null || true; fi
+              done
+            else
+              echo "No matching updater process found."
+            fi
+            rm -f /tmp/tolecarnes-products-batch-01-*.php || true
+
+            echo "=== AFTER ==="
+            uptime || true
+            ps -eo pid,ppid,etime,%cpu,%mem,args | grep -E "[t]olecarnes-products-batch-01|[w]p eval-file" || true
+
+            echo "=== LOCAL HTTP CHECK ==="
+            code=$(curl -k -L -sS -o /tmp/emdo-health.html -w "%{http_code}" --connect-timeout 5 --max-time 15 https://www.elmercadodeorigen.com/ || true)
+            echo "HTTP_CODE=$code"
+            echo "BODY_BYTES=$(wc -c < /tmp/emdo-health.html 2>/dev/null || echo 0)"
+            if [ "$code" != "200" ]; then
+              exit 2
+            fi
+          '
