@@ -220,3 +220,143 @@ add_action(
 	},
 	PHP_INT_MAX
 );
+
+/*
+ * 0.10.266: los shortcodes/bloques de WooCommerce embebidos en una entrada
+ * pasan por las mismas acciones de loop que la tienda. Algunas combinaciones
+ * históricas de Woostify + lazy-load pueden dejar la tarjeta completa pero sin
+ * un <img src="..."> utilizable. Capturamos únicamente la zona visual del loop
+ * en entradas y garantizamos una imagen principal real como fallback.
+ */
+add_action(
+	'woocommerce_before_shop_loop_item_title',
+	static function (): void {
+		if ( is_admin() || ! is_singular( 'post' ) ) {
+			return;
+		}
+
+		ob_start();
+	},
+	-9999
+);
+
+add_action(
+	'woocommerce_before_shop_loop_item_title',
+	static function (): void {
+		if ( is_admin() || ! is_singular( 'post' ) || 0 === ob_get_level() ) {
+			return;
+		}
+
+		$markup = (string) ob_get_clean();
+		$has_real_src = 1 === preg_match(
+			'/<img\b[^>]*\bsrc=(?:"|\')(?!data:|about:blank)(?:https?:|\/\/|\/)[^"\']+(?:"|\')/i',
+			$markup
+		);
+
+		echo $markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+
+		if ( $has_real_src ) {
+			return;
+		}
+
+		global $product;
+		if ( ! $product instanceof WC_Product ) {
+			return;
+		}
+
+		$image = $product->get_image(
+			'woocommerce_thumbnail',
+			array(
+				'class'    => 'elmercado-blog-product-image-fallback',
+				'loading'  => 'lazy',
+				'decoding' => 'async',
+			)
+		);
+
+		if ( '' === trim( (string) $image ) ) {
+			return;
+		}
+
+		printf(
+			'<a class="elmercado-blog-product-image-fallback-link" href="%1$s" aria-label="%2$s">%3$s</a>',
+			esc_url( $product->get_permalink() ),
+			esc_attr( $product->get_name() ),
+			$image // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		);
+	},
+	PHP_INT_MAX
+);
+
+add_action(
+	'wp_head',
+	static function (): void {
+		if ( is_admin() || ! is_singular( 'post' ) ) {
+			return;
+		}
+		?>
+		<style id="elmercado-blog-product-image-repair-010266">
+			body.single-post .emo-article-content ul.products li.product :is(
+				img.product-loop-image,
+				img.attachment-woocommerce_thumbnail,
+				img.elmercado-blog-product-image-fallback
+			) {
+				display: block !important;
+				visibility: visible !important;
+				opacity: 1 !important;
+				max-width: 100% !important;
+			}
+
+			body.single-post .emo-article-content ul.products li.product .elmercado-blog-product-image-fallback-link {
+				display: block !important;
+				width: 100% !important;
+				margin: 0 !important;
+				padding: 0 !important;
+				overflow: hidden !important;
+			}
+
+			body.single-post .emo-article-content ul.products li.product .elmercado-blog-product-image-fallback {
+				width: 100% !important;
+				height: auto !important;
+				aspect-ratio: 1 / 1 !important;
+				object-fit: cover !important;
+			}
+		</style>
+		<?php
+	},
+	PHP_INT_MAX
+);
+
+add_action(
+	'wp_footer',
+	static function (): void {
+		if ( is_admin() || ! is_singular( 'post' ) ) {
+			return;
+		}
+		?>
+		<script id="elmercado-blog-product-image-repair-010266-js">
+		(() => {
+			'use strict';
+			const repair = (root = document) => {
+				root.querySelectorAll?.('.emo-article-content ul.products li.product img').forEach((img) => {
+					const src = (img.getAttribute('src') || '').trim();
+					if (src && !src.startsWith('data:') && src !== 'about:blank') return;
+					const candidate = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-original');
+					if (!candidate) return;
+					img.setAttribute('src', candidate);
+					const srcset = img.getAttribute('data-srcset') || img.getAttribute('data-lazy-srcset');
+					if (srcset) img.setAttribute('srcset', srcset);
+				});
+			};
+
+			repair();
+			new MutationObserver((mutations) => {
+				mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
+					if (node.nodeType === Node.ELEMENT_NODE) repair(node);
+				}));
+			}).observe(document.querySelector('.emo-article-content') || document.body, { childList: true, subtree: true });
+		})();
+		</script>
+		<?php
+	},
+	PHP_INT_MAX
+);
