@@ -1,0 +1,58 @@
+name: Emergency blog outage diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-blog-outage-diagnostic-20260831.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture production diagnostics
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          mkdir -p diagnostics
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' > diagnostics/emergency-blog-outage-live.txt <<'REMOTE'
+          set +e
+          D=/var/www/vhosts/system/elmercadodeorigen.com/logs
+          echo "=== TIME LOAD ==="
+          date -Is; uptime
+          echo "=== PHP TOP ==="
+          ps -eo pid,etimes,%cpu,%mem,cmd --sort=-%cpu | grep -E "php-fpm|php-cgi" | head -n 35
+          echo "=== HTTPS TOP PATHS LAST 5000 ==="
+          tail -n 5000 "$D/access_ssl_log" | awk '{print $7}' | sed 's/?.*//' | sort | uniq -c | sort -nr | head -n 60
+          echo "=== HTTPS LAST 120 ==="
+          tail -n 120 "$D/access_ssl_log" | cut -c1-500
+          echo "=== PHP SLOW LAST 260 ==="
+          tail -n 260 "$D/php-fpm_slow.log"
+          echo "=== WP NEWEST POSTS ==="
+          cd /var/www/vhosts/elmercadodeorigen.com/httpdocs || exit 0
+          wp post list --post_type=post --post_status=publish,draft --orderby=date --order=DESC --posts_per_page=20 --fields=ID,post_date,post_status,post_name,post_title --format=table --allow-root 2>&1
+          REMOTE
+      - name: Commit diagnostic
+        shell: bash
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add diagnostics/emergency-blog-outage-live.txt
+          git commit -m "Store emergency blog outage live diagnostics" || exit 0
+          git push
