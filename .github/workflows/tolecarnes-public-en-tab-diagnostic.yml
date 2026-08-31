@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null 2>&1
-          cat > /tmp/check.js <<'JS'
+          cat > check.js <<'JS'
           const { chromium } = require('playwright');
           (async()=>{
             const browser = await chromium.launch({headless:true, executablePath:'/usr/bin/google-chrome', args:['--no-sandbox']});
@@ -101,5 +101,5 @@ jobs:
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
-          node /tmp/check.js
-          rm -rf node_modules package.json package-lock.json /tmp/check.js
+          node check.js
+          rm -rf node_modules package.json package-lock.json check.js
