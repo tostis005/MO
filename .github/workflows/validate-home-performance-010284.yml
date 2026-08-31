@@ -1,0 +1,145 @@
+name: Validate Home Performance 0.10.284
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/validate-home-performance-010284.yml'
+      - '.github/validate-home-performance-010284.trigger*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH helper
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sshpass
+
+      - name: Verify deployed patch and invalidate static Home cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$PORT" "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          target=$(find /var/www/vhosts "$HOME" -maxdepth 10 -type f -path '*/httpdocs/wp-content/mu-plugins/mdo-home-performance-010284.php' 2>/dev/null | head -n1)
+          [ -n "$target" ] || { echo 'Home performance plugin not found' >&2; exit 21; }
+          root=${target%/wp-content/mu-plugins/mdo-home-performance-010284.php}
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$php_bin" ] || exit 22
+          "$php_bin" -l "$target"
+          test -s "$root/wp-content/uploads/2026/08/La-huerta-de-ana-mary-fondo-mdo-480.webp"
+          test -s "$root/wp-content/uploads/2026/08/La-huerta-de-ana-mary-fondo-mdo-960.webp"
+          rm -f "$root/wp-content/uploads/elmercado-home-static/index.html"
+          echo 'Static Home cache invalidated safely.'
+          REMOTE
+
+      - name: Validate regenerated public HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 --retry-delay 2 'https://www.elmercadodeorigen.com/?mdo_perf_fresh=010284' -o /tmp/home-fresh.html
+          curl -fsSL --retry 4 --retry-delay 2 'https://www.elmercadodeorigen.com/' -o /tmp/home.html
+          grep -q '</html>' /tmp/home.html
+          grep -q 'mdo-home-performance-010284' /tmp/home.html
+          grep -q 'mdo-lcp-copy' /tmp/home.html
+          grep -Eq 'La-huerta-de-ana-mary-fondo-mdo-(480|960)\.webp' /tmp/home.html
+          if grep -Eiq '<link[^>]+woo-coupon-usage' /tmp/home.html; then
+            echo 'Coupon stylesheet is still render blocking on Home.' >&2
+            exit 31
+          fi
+          delayed=$(grep -Eo 'data-mdo-delayed-social-src=' /tmp/home.html | wc -l || true)
+          echo "Delayed external social script placeholders in Home HTML: $delayed"
+          gtm=$(grep -Eio 'googletagmanager|gtag\(' /tmp/home.html | wc -l || true)
+          echo "GTM/gtag references preserved: $gtm"
+          curl -fsSL --retry 4 --retry-delay 2 'https://www.elmercadodeorigen.com/tienda/' -o /tmp/shop.html
+          if grep -q 'mdo-home-performance-010284' /tmp/shop.html; then
+            echo 'Home-only optimizer leaked to shop.' >&2
+            exit 32
+          fi
+          echo 'Public HTML validation passed.'
+
+      - name: Browser validation desktop and mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright
+          npx playwright install --with-deps chromium >/dev/null
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            async function check(label,url,viewport,home){
+              const page=await browser.newPage({viewport});
+              const errors=[];
+              page.on('pageerror',e=>errors.push(String(e.message||e)));
+              const response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
+              if(!response || response.status()>=400) throw new Error(`${label}: HTTP ${response&&response.status()}`);
+              await page.waitForLoadState('load',{timeout:60000});
+              const state=await page.evaluate(()=>{
+                const lcp=document.querySelector('.mdo-lcp-copy');
+                const img=document.querySelector('img.mdo-home-producer-webp');
+                const cs=lcp?getComputedStyle(lcp):null;
+                return {
+                  marker:document.documentElement.innerHTML.includes('mdo-home-performance-010284'),
+                  lcp:!!lcp,
+                  opacity:cs?cs.opacity:null,
+                  visibility:cs?cs.visibility:null,
+                  overflow:Math.max(0,document.documentElement.scrollWidth-window.innerWidth),
+                  image:img?{currentSrc:img.currentSrc,srcset:img.getAttribute('srcset'),renderedWidth:Math.round(img.getBoundingClientRect().width)}:null,
+                  gtm:document.documentElement.innerHTML.includes('googletagmanager') || document.documentElement.innerHTML.includes('gtag(')
+                };
+              });
+              console.log(label,JSON.stringify(state),`pageErrors=${errors.length}`);
+              if(home){
+                if(!state.marker||!state.lcp||state.opacity!=='1'||state.visibility==='hidden') throw new Error(`${label}: LCP patch inactive`);
+                if(!state.image||!state.image.currentSrc.includes('.webp')) throw new Error(`${label}: WebP producer image inactive`);
+                if(state.overflow>2) throw new Error(`${label}: horizontal overflow ${state.overflow}`);
+              } else if(state.marker){
+                throw new Error(`${label}: Home optimizer leaked outside Home`);
+              }
+              await page.close();
+            }
+            await check('ES desktop','https://www.elmercadodeorigen.com/',{width:1440,height:900},true);
+            await check('ES mobile','https://www.elmercadodeorigen.com/',{width:390,height:844},true);
+            await check('Shop mobile','https://www.elmercadodeorigen.com/tienda/',{width:390,height:844},false);
+            const en=await browser.newPage({viewport:{width:390,height:844}});
+            const er=await en.goto('https://www.elmercadodeorigen.com/en/',{waitUntil:'domcontentloaded',timeout:60000});
+            if(!er || er.status()>=400) throw new Error(`EN home: HTTP ${er&&er.status()}`);
+            console.log('EN home HTTP',er.status());
+            await en.close();
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+      - name: Lighthouse production measurement
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx -y lighthouse 'https://www.elmercadodeorigen.com/' \
+            --only-categories=performance \
+            --chrome-flags='--headless --no-sandbox --disable-gpu' \
+            --output=json --output-path=/tmp/lighthouse.json --quiet || exit 0
+          node <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('/tmp/lighthouse.json','utf8'));
+          const a=r.audits||{};
+          const score=Math.round(((r.categories||{}).performance||{}).score*100);
+          console.log(`LIGHTHOUSE Performance=${score} LCP=${a['largest-contentful-paint']?.displayValue||'n/a'} CLS=${a['cumulative-layout-shift']?.displayValue||'n/a'} TBT=${a['total-blocking-time']?.displayValue||'n/a'} FCP=${a['first-contentful-paint']?.displayValue||'n/a'}`);
+          NODE
