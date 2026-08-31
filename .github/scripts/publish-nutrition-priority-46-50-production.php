@@ -33,9 +33,16 @@ function emdo_4650_category_id(array $a): int {
 function emdo_4650_product_slugs(array $a): array {
     $out=array();
     foreach((array)$a['product_cat_slugs'] as $slug){
-        $t=get_term_by('slug',(string)$slug,'product_cat');
+        $slug=(string)$slug;
+        $t=get_term_by('slug',$slug,'product_cat');
+        if(!$t instanceof WP_Term && 'embutidos'===$slug){
+            foreach(array('Embutidos y curados','Embutidos') as $name){
+                $candidate=get_term_by('name',$name,'product_cat');
+                if($candidate instanceof WP_Term){ $t=$candidate; break; }
+            }
+        }
         if(!$t instanceof WP_Term){ WP_CLI::error('WooCommerce product category not found: '.$slug.' for '.$a['slug']); }
-        $out[]=$t->slug;
+        $out[]=(string)$t->slug;
     }
     return array_values(array_unique($out));
 }

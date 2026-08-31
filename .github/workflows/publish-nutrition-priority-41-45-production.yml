@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/content-publish/current-batch.txt'
       - '.github/workflows/publish-nutrition-priority-41-45-production.yml'
+      - '.github/scripts/publish-nutrition-priority-*-production.php'
+      - '.github/scripts/run-nutrition-priority-*-production.sh'
+      - 'elmercadodeorigen-child/inc/content-seeds/nutrition-priority-*'
   workflow_dispatch:
 
 permissions:
