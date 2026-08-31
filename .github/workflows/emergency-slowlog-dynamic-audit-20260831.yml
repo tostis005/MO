@@ -1,0 +1,47 @@
+name: Emergency slowlog dynamic audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-slowlog-dynamic-audit-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect PHP slow log and dynamic HTTPS requests
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=8 -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            set -u
+            D=/var/www/vhosts/system/elmercadodeorigen.com/logs
+            echo "LOAD $(uptime)"
+            echo "DYNAMIC_TOP_IPS"
+            tail -n 3000 "$D/access_ssl_log" | awk "{print \$1}" | sort | uniq -c | sort -nr | head -n 20
+            echo "DYNAMIC_TOP_PATHS"
+            tail -n 3000 "$D/access_ssl_log" | awk "{print \$7}" | sed "s/?.*//" | sort | uniq -c | sort -nr | head -n 30
+            echo "DYNAMIC_TOP_UA"
+            tail -n 3000 "$D/access_ssl_log" | awk -F\" "{print \$6}" | sort | uniq -c | sort -nr | head -n 15
+            echo "DYNAMIC_LAST30"
+            tail -n 30 "$D/access_ssl_log" | cut -c1-360
+            echo "PHP_SLOW_LAST160"
+            tail -n 160 "$D/php-fpm_slow.log" | sed -E "s#^(.{0,260}).*#\1#"
+          '
