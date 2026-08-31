@@ -308,7 +308,6 @@ add_action(
 				const href = anchor.href || '';
 				if (!map.instagram && /instagram\.com/i.test(href)) map.instagram = href;
 				if (!map.facebook && /facebook\.com/i.test(href)) map.facebook = href;
-				if (!map.telegram && /(t\.me|telegram\.me)/i.test(href)) map.telegram = href;
 				if (!map.whatsapp && /(wa\.me|whatsapp\.com)/i.test(href)) map.whatsapp = href;
 				return map;
 			}, {});
