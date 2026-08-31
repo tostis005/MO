@@ -70,7 +70,7 @@ jobs:
           set -euo pipefail
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0 >/dev/null 2>&1
-          cat > /tmp/check-footer.js <<'JS'
+          cat > check-footer.js <<'JS'
           const { chromium } = require('playwright');
 
           (async () => {
@@ -138,4 +138,4 @@ jobs:
             process.exit(1);
           });
           JS
-          node /tmp/check-footer.js
+          node check-footer.js
