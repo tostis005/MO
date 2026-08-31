@@ -1,4 +1,4 @@
-name: Probe exact Google Place review payload 0.10.284
+name: Inspect direct Google API configuration 0.10.285
 
 on:
   push:
@@ -13,28 +13,49 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 5
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Probe exact Google Place
+      - name: Inspect key presence without exposing values
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import re, urllib.request
-          u='https://www.google.com/maps/search/?api=1&query=Google&query_place_id=ChIJbbIJi58nQg0RgJroXR8DG_U'
-          req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36','Accept-Language':'es-ES,es;q=0.9,en;q=0.8'})
-          s=urllib.request.urlopen(req,timeout=25).read().decode('utf-8','replace')
-          print('bytes',len(s))
-          for token in ['El Mercado de Origen','4.9','4,9','303','reseñas','reviews']:
-              ps=[m.start() for m in re.finditer(re.escape(token),s,re.I)]
-              print(token,'hits',len(ps))
-              for p in ps[:8]:
-                  f=re.sub(r'\s+',' ',s[max(0,p-700):p+1000])
-                  print('SNIP',f[:1700])
-          # Search common Maps data patterns: rating followed by review count in nearby array cells.
-          for pat in [r'4\.9.{0,400}?303',r'303.{0,400}?4\.9',r'4,9.{0,400}?303',r'303.{0,400}?4,9']:
-              ms=list(re.finditer(pat,s,re.I|re.S))
-              print('PAIR',pat,'hits',len(ms))
-              for m in ms[:5]: print(re.sub(r'\s+',' ',s[max(0,m.start()-400):m.end()+500])[:1500])
-          PY
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o ConnectTimeout=10 -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          timeout 180s sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          PROD_PATH=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$(timeout 8s "$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) PROD_PATH="$p"; break ;;
+            esac
+          done
+          [ -n "$PROD_PATH" ] || exit 2
+          WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
+
+          echo '=== OPTIONS CONTAINING GOOGLE-LIKE API KEY (NAMES ONLY) ==='
+          timeout 20s "${WP[@]}" eval 'global $wpdb; $rows=$wpdb->get_results("SELECT option_name,option_value FROM {$wpdb->options}"); foreach($rows as $r){$v=(string)$r->option_value; if(strpos($v,"AIza")!==false || (preg_match("/(google|maps|places?)/i",(string)$r->option_name) && preg_match("/(api.?key|AIza)/i",$v))){echo $r->option_name."=KEY_PRESENT\n";}}' --skip-themes 2>/dev/null | sort -u | head -n 120 || true
+
+          echo '=== FILES CONTAINING AIza KEY (PATHS ONLY) ==='
+          timeout 25s grep -RIl --exclude='*.map' --exclude='*.min.js' 'AIza' "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes" "$PROD_PATH/wp-content/plugins" 2>/dev/null | sed "s#^$PROD_PATH/##" | head -n 120 || true
+
+          echo '=== GOOGLE/MAPS OPTION NAMES ==='
+          timeout 20s "${WP[@]}" eval 'global $wpdb; $rows=$wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name REGEXP \"google|maps|places?\" ORDER BY option_name LIMIT 300"); foreach($rows as $r){echo $r."\n";}' --skip-plugins --skip-themes 2>/dev/null | head -n 300 || true
+
+          echo '=== RELEVANT SCHEDULED HOOKS ==='
+          timeout 25s "${WP[@]}" cron event list --fields=hook,next_run_gmt,recurrence --format=csv 2>/dev/null | grep -Ei 'mentta|sync|import|vendor|store|product|feed' | head -n 200 || true
+          REMOTE
