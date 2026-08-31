@@ -7,6 +7,7 @@ on:
       - '.github/workflows/diagnose-home-specials-20260831.yml'
   workflow_dispatch:
 
+# Read-only production diagnostic. No files or database values are modified.
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
