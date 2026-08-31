@@ -1,4 +1,4 @@
-name: Retry direct Google Places lookup 0.10.287
+name: Locate Google Place ID and test Trustpilot direct 0.10.288
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Query Google Places directly without exposing key
+      - name: Inspect identifiers and direct Trustpilot response
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -46,43 +46,34 @@ jobs:
           done
           [ -n "$PROD_PATH" ] || exit 2
           WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
-          key=$(timeout 12s "${WP[@]}" option get grw_google_api_key --skip-plugins --skip-themes 2>/dev/null || true)
-          if [ -z "$key" ]; then echo 'KEY=EMPTY'; exit 0; fi
-          echo "KEY=SET length=${#key}"
 
-          tmp=$(mktemp)
-          code=$(curl -sS --connect-timeout 8 --max-time 25 -o "$tmp" -w '%{http_code}' \
-            -X POST 'https://places.googleapis.com/v1/places:searchText' \
-            -H 'Content-Type: application/json' \
-            -H "X-Goog-Api-Key: $key" \
-            -H 'X-Goog-FieldMask: places.id,places.displayName,places.rating,places.userRatingCount,places.googleMapsUri' \
-            --data '{"textQuery":"El Mercado de Origen","languageCode":"es"}' || true)
-          echo "NEW_API_HTTP=$code"
-          python3 - "$tmp" <<'PY'
-          import json,sys
-          try: j=json.load(open(sys.argv[1],encoding='utf-8'))
-          except Exception as e: print('NEW_API_JSON=INVALID'); raise SystemExit
-          if 'error' in j: print('NEW_API_STATUS='+str(j['error'].get('status','UNKNOWN')))
-          for p in j.get('places',[])[:8]:
-              print('PLACE name=%s id=%s rating=%s count=%s' % ((p.get('displayName') or {}).get('text',''),p.get('id',''),p.get('rating',''),p.get('userRatingCount','')))
-          PY
-          rm -f "$tmp"
+          echo '=== GOOGLE PLACE IDS IN WP OPTIONS ==='
+          timeout 20s "${WP[@]}" eval 'global $wpdb; $rows=$wpdb->get_results("SELECT option_name,option_value FROM {$wpdb->options}"); foreach($rows as $r){ if(preg_match_all("/ChIJ[A-Za-z0-9_-]{10,}/",(string)$r->option_value,$m)){ foreach(array_unique($m[0]) as $id) echo $r->option_name." ".$id."\n"; }}' --skip-plugins --skip-themes 2>/dev/null | head -n 100 || true
 
+          echo '=== GRW OPTION NAMES ==='
+          timeout 15s "${WP[@]}" eval 'global $wpdb; foreach($wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE \"%grw%\" ORDER BY option_name LIMIT 200") as $x) echo $x."\n";' --skip-plugins --skip-themes 2>/dev/null || true
+
+          echo '=== TRUSTPILOT DIRECT ==='
           tmp=$(mktemp)
-          code=$(curl -sS --connect-timeout 8 --max-time 25 -o "$tmp" -w '%{http_code}' --get \
-            'https://maps.googleapis.com/maps/api/place/findplacefromtext/json' \
-            --data-urlencode 'input=El Mercado de Origen' \
-            --data-urlencode 'inputtype=textquery' \
-            --data-urlencode 'fields=place_id,name,rating,user_ratings_total' \
-            --data-urlencode 'language=es' \
-            --data-urlencode "key=$key" || true)
-          echo "LEGACY_HTTP=$code"
+          code=$(curl -L -sS --compressed --connect-timeout 8 --max-time 25 -o "$tmp" -w '%{http_code}' \
+            -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36' \
+            -H 'Accept-Language: es-ES,es;q=0.9,en;q=0.8' \
+            'https://es.trustpilot.com/review/elmercadodeorigen.com' || true)
+          echo "TRUSTPILOT_HTTP=$code bytes=$(wc -c < "$tmp" 2>/dev/null || echo 0)"
           python3 - "$tmp" <<'PY'
-          import json,sys
-          try: j=json.load(open(sys.argv[1],encoding='utf-8'))
-          except Exception: print('LEGACY_JSON=INVALID'); raise SystemExit
-          print('LEGACY_STATUS='+str(j.get('status','UNKNOWN')))
-          for p in j.get('candidates',[])[:8]: print('LEGACY_PLACE name=%s id=%s rating=%s count=%s' % (p.get('name',''),p.get('place_id',''),p.get('rating',''),p.get('user_ratings_total','')))
+          import re,sys,html
+          s=open(sys.argv[1],encoding='utf-8',errors='replace').read()
+          tests=[
+            r'"numberOfReviews"\s*:\s*\{[^}]*?"total"\s*:\s*(\d+)',
+            r'"numberOfReviews"\s*:\s*(\d+)',
+            r'(\d{1,6})\s+opiniones',
+            r'Opiniones\s*(?:<!--.*?-->)?\s*(\d{1,6})',
+          ]
+          vals=[]
+          for p in tests:
+              x=re.findall(p,s,re.I|re.S); print('PATTERN',p,'=>',x[:8]); vals.extend(x)
+          for p in [r'"trustScore"\s*:\s*([0-5](?:\.\d+)?)',r'"score"\s*:\s*([0-5](?:\.\d+)?)']:
+              print('SCORE_PATTERN',p,'=>',re.findall(p,s,re.I|re.S)[:8])
           PY
           rm -f "$tmp"
           REMOTE
