@@ -1,5 +1,5 @@
-# spacing-audit-trigger
-name: Inspect product spacing and footer gap
+# footer-spacing-source
+name: Inspect product footer spacing source
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect layout geometry
+      - name: Inspect footer spacing chain
         shell: bash
         run: |
           set -euo pipefail
@@ -27,31 +27,16 @@ jobs:
           const { chromium } = require('playwright');
           (async()=>{
             const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
-            for(const cfg of [{name:'desktop',width:1440,height:1000},{name:'mobile',width:390,height:844}]){
-              const page=await browser.newPage({viewport:{width:cfg.width,height:cfg.height}});
-              await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?spacing_audit='+Date.now(),{waitUntil:'networkidle',timeout:90000});
-              const out=await page.evaluate(()=>{
-                const info=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),top:Math.round(r.top),bottom:Math.round(r.bottom),margin:s.margin,padding:s.padding,bg:s.backgroundColor,display:s.display,gap:s.gap};};
-                const q=s=>document.querySelector(s);
-                const nav=q('.woostify-product-navigation');
-                const gallery=q('.product-gallery');
-                const summary=q('.product-summary');
-                const frame=q('.product-gallery .product-images');
-                const related=q('.related.products,.related');
-                const footer=q('footer#colophon,.site-footer,#colophon,footer.site-footer');
-                const productContainer=q('.product-page-container > .woostify-container');
-                const tabs=q('.woocommerce-tabs');
-                return {
-                  nav:info(nav), gallery:info(gallery), summary:info(summary), frame:info(frame), productContainer:info(productContainer), tabs:info(tabs), related:info(related), footer:info(footer),
-                  navGap:(nav&&gallery)?Math.round(gallery.getBoundingClientRect().top-nav.getBoundingClientRect().bottom):null,
-                  rightBlank:(gallery&&summary)?Math.round(gallery.getBoundingClientRect().bottom-summary.getBoundingClientRect().bottom):null,
-                  footerGap:(related&&footer)?Math.round(footer.getBoundingClientRect().top-related.getBoundingClientRect().bottom):null,
-                  bodyH:document.body.scrollHeight
-                };
-              });
-              console.log('SPACING',cfg.name,JSON.stringify(out));
-              await page.close();
-            }
+            const page=await browser.newPage({viewport:{width:1440,height:1000}});
+            await page.goto('https://www.elmercadodeorigen.com/producto/jamon-de-bellota-100-iberico/?footer_chain='+Date.now(),{waitUntil:'networkidle',timeout:90000});
+            const out=await page.evaluate(()=>{
+              const info=e=>{if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,cls:e.className||'',id:e.id||'',top:Math.round(r.top),bottom:Math.round(r.bottom),h:Math.round(r.height),margin:s.margin,padding:s.padding,marginBottom:s.marginBottom,paddingBottom:s.paddingBottom};};
+              const sels=['#content','.site-content','.site-main','main#main','.content-area','.woocommerce','.woocommerce-page','div.product','div.product > .woostify-container','.related.products','footer.site-footer'];
+              const nodes={}; for(const s of sels) nodes[s]=info(document.querySelector(s));
+              const related=document.querySelector('.related.products'); const chain=[]; for(let e=related;e&&chain.length<7;e=e.parentElement) chain.push(info(e));
+              return {nodes,chain};
+            });
+            console.log(JSON.stringify(out,null,2));
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
