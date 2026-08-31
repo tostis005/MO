@@ -9,6 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// Global refinement layered after the base footer module.
 add_action(
 	'wp_footer',
 	static function (): void {
