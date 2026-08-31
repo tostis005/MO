@@ -17,14 +17,6 @@ $is_filtered = '' !== $filter_state['query'] || ! empty( $filter_state['categori
 $paged = max( 1, (int) get_query_var( 'paged' ) );
 $featured_ids = ! $is_filtered && function_exists( 'elmercado_blog_featured_ids_010263' ) ? elmercado_blog_featured_ids_010263( 3, true ) : array();
 
-$specials_html = '';
-if ( ! $is_filtered && shortcode_exists( 'products' ) ) {
-	$specials_candidate_html = do_shortcode( '[products limit="4" columns="4" orderby="popularity" order="DESC" visibility="visible"]' );
-	if ( is_string( $specials_candidate_html ) && false !== strpos( $specials_candidate_html, 'class="products' ) ) {
-		$specials_html = $specials_candidate_html;
-	}
-}
-
 $query_args = array(
 	'post_type' => 'post',
 	'post_status' => 'publish',
@@ -55,13 +47,6 @@ $blog_url = function_exists( 'elmercado_blog_public_url_010263' ) ? elmercado_bl
 
 	<section class="emo-journal-listing emo-journal-listing--discovery"><div class="emo-shell">
 		<?php if ( function_exists( 'elmercado_render_blog_discovery_controls_010263' ) ) { elmercado_render_blog_discovery_controls_010263( $filter_state['query'], $filter_state['categories'] ); } ?>
-
-		<?php if ( '' !== $specials_html ) : ?>
-			<section class="emo-blog-specials" data-blog-specials="010266" aria-labelledby="emo-blog-specials-title">
-				<header class="emo-blog-section-heading"><div><span class="emo-kicker"><?php echo esc_html( elmercado_blog_copy_010263( 'Selección', 'Selection' ) ); ?></span><h2 id="emo-blog-specials-title"><?php echo esc_html( elmercado_blog_copy_010263( 'Especiales', 'Specials' ) ); ?></h2></div></header>
-				<?php echo $specials_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-			</section>
-		<?php endif; ?>
 
 		<?php if ( ! $is_filtered && ! empty( $featured_ids ) ) : ?>
 			<section class="emo-blog-featured">
