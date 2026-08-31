@@ -1,4 +1,4 @@
-name: Inspect direct Google API configuration 0.10.285
+name: Validate direct Google Places lookup 0.10.286
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect key presence without exposing values
+      - name: Query Google Places directly without exposing key
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -47,15 +47,32 @@ jobs:
           [ -n "$PROD_PATH" ] || exit 2
           WP=("$php_bin" "$wp_bin" --path="$PROD_PATH" --allow-root)
 
-          echo '=== OPTIONS CONTAINING GOOGLE-LIKE API KEY (NAMES ONLY) ==='
-          timeout 20s "${WP[@]}" eval 'global $wpdb; $rows=$wpdb->get_results("SELECT option_name,option_value FROM {$wpdb->options}"); foreach($rows as $r){$v=(string)$r->option_value; if(strpos($v,"AIza")!==false || (preg_match("/(google|maps|places?)/i",(string)$r->option_name) && preg_match("/(api.?key|AIza)/i",$v))){echo $r->option_name."=KEY_PRESENT\n";}}' --skip-themes 2>/dev/null | sort -u | head -n 120 || true
-
-          echo '=== FILES CONTAINING AIza KEY (PATHS ONLY) ==='
-          timeout 25s grep -RIl --exclude='*.map' --exclude='*.min.js' 'AIza' "$PROD_PATH/wp-content/mu-plugins" "$PROD_PATH/wp-content/themes" "$PROD_PATH/wp-content/plugins" 2>/dev/null | sed "s#^$PROD_PATH/##" | head -n 120 || true
-
-          echo '=== GOOGLE/MAPS OPTION NAMES ==='
-          timeout 20s "${WP[@]}" eval 'global $wpdb; $rows=$wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name REGEXP \"google|maps|places?\" ORDER BY option_name LIMIT 300"); foreach($rows as $r){echo $r."\n";}' --skip-plugins --skip-themes 2>/dev/null | head -n 300 || true
-
-          echo '=== RELEVANT SCHEDULED HOOKS ==='
-          timeout 25s "${WP[@]}" cron event list --fields=hook,next_run_gmt,recurrence --format=csv 2>/dev/null | grep -Ei 'mentta|sync|import|vendor|store|product|feed' | head -n 200 || true
+          timeout 50s "${WP[@]}" eval '
+          $key=(string)get_option("grw_google_api_key","");
+          if($key===""){echo "KEY=EMPTY\n"; return;}
+          echo "KEY=SET\n";
+          $body=wp_json_encode(["textQuery"=>"El Mercado de Origen","languageCode"=>"es"]);
+          $r=wp_remote_post("https://places.googleapis.com/v1/places:searchText",[
+            "timeout"=>25,
+            "headers"=>["Content-Type"=>"application/json","X-Goog-Api-Key"=>$key,"X-Goog-FieldMask"=>"places.id,places.displayName,places.rating,places.userRatingCount,places.googleMapsUri"],
+            "body"=>$body,
+          ]);
+          if(is_wp_error($r)){echo "NEW_API_ERROR=".$r->get_error_code()."\n";} else {
+            echo "NEW_API_HTTP=".(int)wp_remote_retrieve_response_code($r)."\n";
+            $j=json_decode((string)wp_remote_retrieve_body($r),true);
+            if(!empty($j["places"])&&is_array($j["places"])) foreach(array_slice($j["places"],0,8) as $p){
+              $n=(string)($p["displayName"]["text"]??""); $id=(string)($p["id"]??""); $rating=$p["rating"]??""; $cnt=$p["userRatingCount"]??"";
+              echo "PLACE name=".$n." id=".$id." rating=".$rating." count=".$cnt."\n";
+            }
+            if(isset($j["error"])) echo "NEW_API_STATUS=".(string)($j["error"]["status"]??"UNKNOWN")."\n";
+          }
+          $url="https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=".rawurlencode("El Mercado de Origen")."&inputtype=textquery&fields=place_id,name,rating,user_ratings_total&language=es&key=".rawurlencode($key);
+          $r2=wp_remote_get($url,["timeout"=>25]);
+          if(is_wp_error($r2)){echo "LEGACY_ERROR=".$r2->get_error_code()."\n";} else {
+            echo "LEGACY_HTTP=".(int)wp_remote_retrieve_response_code($r2)."\n";
+            $j2=json_decode((string)wp_remote_retrieve_body($r2),true);
+            echo "LEGACY_STATUS=".(string)($j2["status"]??"UNKNOWN")."\n";
+            if(!empty($j2["candidates"])&&is_array($j2["candidates"])) foreach(array_slice($j2["candidates"],0,8) as $p){echo "LEGACY_PLACE name=".(string)($p["name"]??"")." id=".(string)($p["place_id"]??"")." rating=".(string)($p["rating"]??"")." count=".(string)($p["user_ratings_total"]??"")."\n";}
+          }
+          ' --skip-themes 2>/dev/null
           REMOTE
