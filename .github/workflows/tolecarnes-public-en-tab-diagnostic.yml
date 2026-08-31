@@ -1,4 +1,4 @@
-name: Diagnose Patatas blancas English rendering
+name: Inspect English excerpt storage for La Huerta products
 
 on:
   push:
@@ -13,25 +13,27 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect public English potato page
+      - name: Inspect English excerpt meta and TranslatePress rows
         shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          f=/tmp/patatas.html
-          code=$(curl -L -sS --connect-timeout 10 --max-time 30 --retry 1 -A 'Mozilla/5.0 EMDO huerta potato diagnostic' -H 'Cache-Control: no-cache, no-store' -w '%{http_code}' -o "$f" "https://www.elmercadodeorigen.com/en/product/patatas-blancas/?emdo_h1_diag=${GITHUB_RUN_ID}")
-          echo "HTTP=$code"
-          for q in \
-            'White Kennebec potatoes grown in Fresno de la Vega' \
-            'Kennebec potatoes from Fresno de la Vega' \
-            'About La Huerta de Ana Mary' \
-            'Frequently asked questions' \
-            'Sobre La Huerta de Ana Mary' \
-            'Preguntas frecuentes'; do
-            if grep -Fq "$q" "$f"; then echo "FOUND: $q"; else echo "MISS: $q"; fi
-          done
-          echo '--- KENNEBEC LINES ---'
-          grep -in -m 12 'Kennebec' "$f" || true
-          echo '--- HUERTA LINES ---'
-          grep -in -m 12 'Huerta de Ana Mary' "$f" || true
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          CODE='global $wpdb; foreach([12699,12702] as $id){ echo "PRODUCT={$id}\\n"; foreach(get_post_meta($id) as $k=>$v){ if(stripos($k,"en_US")!==false || stripos($k,"excerpt")!==false) echo "META|{$k}|".mb_substr((string)maybe_unserialize($v[0]),0,700)."\\n"; } } $t=$wpdb->prefix."trp_dictionary_es_es_en_us"; $needles=["Patatas blancas","Patatas blancas variedad Kennebec, cultivadas en Fresno de la Vega y vendidas por kilo. Se presentan sin lavar, conservando el aspecto terroso característico de una patata recién salida del campo, con piel gruesa y carne blanca.","Calabacín fresco cultivado en Fresno de la Vega. Una hortaliza de sabor suave y textura tierna, fácil de incorporar a platos de diario y adecuada para plancha, salteados, cremas, horno o rellenos."]; foreach($needles as $n){ echo "ORIGINAL|{$n}\\n"; $rows=$wpdb->get_results($wpdb->prepare("SELECT id,original,translated,status,block_type FROM `{$t}` WHERE original=%s",$n),ARRAY_A); foreach($rows as $r) echo "TRP|".json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\\n"; }'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '$CODE' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root"
