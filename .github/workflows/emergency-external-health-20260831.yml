@@ -1,0 +1,39 @@
+name: Emergency external health check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-external-health-20260831.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Verify production externally
+        shell: bash
+        run: |
+          set -euo pipefail
+          check() {
+            label="$1"
+            url="$2"
+            max="$3"
+            code=$(curl -k -L -sS -o "/tmp/${label}.html" -w '%{http_code}' --connect-timeout 5 --max-time "$max" -A 'Mozilla/5.0 EMDO external health' "$url" || true)
+            bytes=$(wc -c < "/tmp/${label}.html" 2>/dev/null || echo 0)
+            echo "$label HTTP=$code BYTES=$bytes"
+          }
+          check home 'https://www.elmercadodeorigen.com/' 20
+          check category 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/' 20
+          check filtered 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_alimentacion=bellota&filter_rango-peso=65-75-kg' 10
+          check product 'https://www.elmercadodeorigen.com/producto/carne-picada-extra/' 20
+          home=$(curl -k -L -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 -A 'Mozilla/5.0 EMDO external health' 'https://www.elmercadodeorigen.com/' || true)
+          category=$(curl -k -L -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 -A 'Mozilla/5.0 EMDO external health' 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/' || true)
+          filtered=$(curl -k -L -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 -A 'Mozilla/5.0 EMDO external health' 'https://www.elmercadodeorigen.com/categoria-producto/jamones-paletas/?filter_alimentacion=bellota&filter_rango-peso=65-75-kg' || true)
+          [ "$home" = '200' ]
+          [ "$category" = '200' ]
+          [ "$filtered" = '403' ]
