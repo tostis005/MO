@@ -6,7 +6,7 @@ $expected = [
   11058 => ['key'=>'carne_picada','title'=>'Carne picada extra','slug'=>'carne-picada-extra','marker'=>'Carne picada elaborada con 100% ternera y sin aditivos','en_title'=>'Extra Ground Beef'],
   11061 => ['key'=>'burger_mixta','title'=>'Burger mixtas - sin gluten (2 uds)','slug'=>'burger-mixtas-sin-gluten-2-uds','marker'=>'Hamburguesas elaboradas con una mezcla al 50% de carne de ternera y carne de cerdo de la zona','en_title'=>'Gluten-Free Beef & Pork Burgers'],
   11064 => ['key'=>'filetes_primera','title'=>'Filetes primera','slug'=>'filetes-primera','marker'=>'Filetes de ternera procedentes de piezas especialmente adecuadas para una cocción rápida','en_title'=>'First-Category Beef Steaks'],
-  11073 => ['key'=>'ragu','title'=>'Magro o ragú de ternera','slug'=>'magro-o-ragu-de-ternera','marker'=>'Magro de ternera cortado en dados','en_title'=>'Diced Beef for Ragout'],
+  11073 => ['key'=>'ragu','title'=>'Magro o ragú de ternera','slug'=>'magro-o-ragu-de-ternera','marker'=>'Carne de ternera cortada a mano y pensada especialmente para preparaciones','en_title'=>'Diced Beef for Ragout'],
   11075 => ['key'=>'entrana','title'=>'Entraña de ternera','slug'=>'entrana-de-ternera','marker'=>'La entraña es un corte fino','en_title'=>'Beef Skirt Steak – Entraña'],
 ];
 
