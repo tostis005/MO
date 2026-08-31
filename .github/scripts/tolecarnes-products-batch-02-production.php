@@ -269,7 +269,7 @@ foreach($products as $key=>$spec){
     $p=get_post((int)$spec['id']);
     if(!$p||$p->post_type!=='product'||$p->post_status==='trash') mo_b2_fail("Missing product {$key}");
     if($p->post_title!==$spec['title']||$p->post_name!==$spec['slug']) mo_b2_fail("Identity mismatch {$key}: {$p->ID} {$p->post_title} / {$p->post_name}");
-    if(stripcasecmp((string)get_post_meta($p->ID,'_sku',true),(string)$spec['sku'])!==0) mo_b2_fail("SKU mismatch {$key}");
+    if(strcasecmp((string)get_post_meta($p->ID,'_sku',true),(string)$spec['sku'])!==0) mo_b2_fail("SKU mismatch {$key}");
     if(stripos(mo_b2_vendor($p),'tolecarnes')===false) mo_b2_fail("Vendor mismatch {$key}");
     $types=wp_get_post_terms($p->ID,'product_type',['fields'=>'names']);
     if(is_wp_error($types)||!in_array('simple',$types,true)) mo_b2_fail("Unexpected product type {$key}");
