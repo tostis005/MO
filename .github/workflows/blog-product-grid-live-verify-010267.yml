@@ -1,0 +1,100 @@
+name: Verify live blog product grid 0.10.267
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-product-grid-live-verify-010267.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Verify canonical live HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/jamon-iberico/?emo_blog_grid_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO blog grid verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/blog-grid.html "$URL"
+          echo "CSS_ID=$(grep -Fc 'elmercado-blog-product-category-more-010267' /tmp/blog-grid.html || true)"
+          echo "FOUR_COL_RULE=$(grep -Fc 'grid-template-columns: repeat(4, minmax(0, 1fr))' /tmp/blog-grid.html || true)"
+          echo "CTA_CLASS=$(grep -Fc 'emo-product-category-more__link' /tmp/blog-grid.html || true)"
+          echo "CTA_COPY=$(grep -Fc 'Ver todos los productos de' /tmp/blog-grid.html || true)"
+          grep -Fq 'elmercado-blog-product-category-more-010267' /tmp/blog-grid.html
+          grep -Fq 'grid-template-columns: repeat(4, minmax(0, 1fr))' /tmp/blog-grid.html
+          grep -Fq 'emo-product-category-more__link' /tmp/blog-grid.html
+          grep -Fq 'Ver todos los productos de' /tmp/blog-grid.html
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Selenium
+        run: python -m pip install --quiet selenium
+
+      - name: Verify responsive grid and CTA in Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+
+          url = f"https://www.elmercadodeorigen.com/jamon-iberico/?emo_browser_grid_verify={os.environ.get('GITHUB_RUN_ID','manual')}"
+          options = Options()
+          options.page_load_strategy = 'eager'
+          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,2200','--lang=es-ES'):
+              options.add_argument(arg)
+          driver = webdriver.Chrome(options=options)
+          driver.set_page_load_timeout(60)
+          try:
+              driver.get(url)
+              time.sleep(3)
+              grids = driver.find_elements(By.CSS_SELECTOR, 'main#primary.emo-article-page .emo-article-content ul.products, main#primary.emo-article-page .emo-article-content .wc-block-grid__products, main#primary.emo-article-page .emo-article-content .wc-block-product-template')
+              grids = [g for g in grids if len(g.find_elements(By.CSS_SELECTOR, ':scope > li')) >= 4]
+              if not grids:
+                  raise AssertionError('No product grid with at least four products found on live article')
+              grid = grids[0]
+              observed = []
+              for width, expected in ((1440,4),(900,2),(390,1)):
+                  driver.set_window_size(width,2200)
+                  time.sleep(0.8)
+                  cols = driver.execute_script("return getComputedStyle(arguments[0]).gridTemplateColumns.trim().split(/\\s+/).filter(Boolean).length", grid)
+                  observed.append((width, cols))
+                  if cols != expected:
+                      raise AssertionError(f'Viewport {width}px: expected {expected} columns, got {cols}')
+              driver.set_window_size(1440,2200)
+              time.sleep(0.8)
+              ctas = [x for x in driver.find_elements(By.CSS_SELECTOR,'.emo-product-category-more__link') if x.is_displayed() and x.text.strip()]
+              if not ctas:
+                  raise AssertionError('No visible category CTA found')
+              cta = ctas[0]
+              if 'Ver todos los productos de' not in cta.text:
+                  raise AssertionError(f'Unexpected CTA: {cta.text!r}')
+              href = cta.get_attribute('href') or ''
+              if not href.startswith('https://www.elmercadodeorigen.com/'):
+                  raise AssertionError(f'Unexpected CTA href: {href!r}')
+              driver.save_screenshot('/tmp/blog-product-grid-desktop.png')
+              print('LIVE_BROWSER_OK')
+              print('OBSERVED=' + ', '.join(f'{w}px:{c}' for w,c in observed))
+              print('CTA=' + cta.text)
+              print('CTA_HREF=' + href)
+          finally:
+              driver.quit()
+          PY
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-product-grid-live-010267
+          path: /tmp/blog-product-grid-desktop.png
+          if-no-files-found: ignore
