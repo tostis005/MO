@@ -1,0 +1,77 @@
+name: Blog consolidation batch 3 meat embutidos 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-consolidation-batch3-meat-embutidos-20260901.yml'
+      - '.github/scripts/blog-consolidation-batch3-meat-embutidos-20260901.php'
+      - '.github/scripts/emdo-blog-consolidation-redirects-batch3-20260901.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/blog-consolidation-batch3-meat-embutidos-20260901.php >/dev/null
+          php -l .github/scripts/emdo-blog-consolidation-redirects-batch3-20260901.php >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy cumulative redirects and run final consolidation
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REDIRECT_REMOTE="/tmp/emdo-blog-redirects-b3-${GITHUB_RUN_ID}.php"
+          MIGRATION_REMOTE="/tmp/emdo-blog-b3-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/emdo-blog-consolidation-redirects-batch3-20260901.php "$STAGING_USER@$STAGING_HOST:$REDIRECT_REMOTE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/blog-consolidation-batch3-meat-embutidos-20260901.php "$STAGING_USER@$STAGING_HOST:$MIGRATION_REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; cp '$REDIRECT_REMOTE' '$PROD_PATH/wp-content/mu-plugins/emdo-blog-consolidation-redirects.php'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/emdo-blog-consolidation-redirects.php' >/dev/null; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$MIGRATION_REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REDIRECT_REMOTE' '$MIGRATION_REMOTE'; exit \$rc"
+
+      - name: Verify all consolidation layers
+        shell: bash
+        run: |
+          set -euo pipefail
+          page(){ html="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO verifier' -H 'Cache-Control: no-cache' "$1?emdo_verify=${GITHUB_RUN_ID}")"; grep -Fq "$2" <<< "$html"; }
+          redir(){ h="$(curl -sS -D - -o /dev/null -A 'Mozilla/5.0 EMDO SEO verifier' -H 'Cache-Control: no-cache' "$1")"; s="$(awk 'toupper($1)~/^HTTP\//{c=$2}END{print c}'<<<"$h")"; l="$(awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"");print $2}'<<<"$h"|tail -n1)"; test "$s" = 301; case "$l" in "$2"|"$2"*) ;; *) echo "Bad redirect $1 -> $l" >&2; exit 10;; esac; }
+          page 'https://www.elmercadodeorigen.com/carne-picada-ternera-que-es-como-elegir-cocinar/' 'Carne picada, hamburguesa y “burger meat” no son exactamente lo mismo'
+          page 'https://www.elmercadodeorigen.com/como-descongelar-carne-correctamente-nevera-agua-fria-microondas/' 'Tres métodos seguros para descongelar carne'
+          page 'https://www.elmercadodeorigen.com/nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales/' 'Por qué tiene tanta proteína por 100 gramos'
+          page 'https://www.elmercadodeorigen.com/chorizo-vs-salchichon-diferencias-ingredientes-sabor-curacion/' 'Qué dice la norma española'
+          redir 'https://www.elmercadodeorigen.com/carne-picada-ternera-que-mirar-antes-comprar/' 'https://www.elmercadodeorigen.com/carne-picada-ternera-que-es-como-elegir-cocinar/'
+          redir 'https://www.elmercadodeorigen.com/como-descongelar-conservar-carne-ternera-correctamente/' 'https://www.elmercadodeorigen.com/como-descongelar-carne-correctamente-nevera-agua-fria-microondas/'
+          redir 'https://www.elmercadodeorigen.com/nutrientes-lomo-iberico-proteina-grasa-hierro-vitaminas-minerales/' 'https://www.elmercadodeorigen.com/nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales/'
+          redir 'https://www.elmercadodeorigen.com/chorizo-iberico-vs-salchichon-iberico-diferencias-nutricionales/' 'https://www.elmercadodeorigen.com/chorizo-vs-salchichon-diferencias-ingredientes-sabor-curacion/'
+          # Regression checks for earlier batches after replacing cumulative redirect plugin.
+          redir 'https://www.elmercadodeorigen.com/verduras-mas-vitamina-c-comparativa/' 'https://www.elmercadodeorigen.com/que-verduras-tienen-mas-vitamina-c/'
+          redir 'https://www.elmercadodeorigen.com/jamon-vs-paleta-iberica-diferencias-nutricionales/' 'https://www.elmercadodeorigen.com/jamon-o-paleta-diferencias-cual-elegir/'
+          echo 'BLOG_CONSOLIDATION_BATCH3_VERIFY_OK'
