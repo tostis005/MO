@@ -1,0 +1,186 @@
+name: AdSense browser delivery audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsense-browser-audit-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install browser tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet selenium
+          (google-chrome --version || chromium --version || chromium-browser --version)
+
+      - name: Reproduce South Africa visit and inspect AdSense network
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import time
+          import urllib.parse
+          import urllib.request
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          SITE = 'https://www.elmercadodeorigen.com'
+          posts_api = SITE + '/wp-json/wp/v2/posts?per_page=1&status=publish&_fields=link'
+          req = urllib.request.Request(posts_api, headers={'User-Agent': 'Mozilla/5.0'})
+          with urllib.request.urlopen(req, timeout=30) as response:
+              posts = json.load(response)
+          if not posts:
+              raise SystemExit('No published post returned by WordPress REST API')
+
+          post_url = posts[0]['link']
+          sep = '&' if '?' in post_url else '?'
+          audit_url = post_url + sep + 'adsense_debug=1&adsense_browser_audit=20260901'
+          print('POST_URL=' + post_url)
+
+          options = Options()
+          options.add_argument('--headless=new')
+          options.add_argument('--no-sandbox')
+          options.add_argument('--disable-dev-shm-usage')
+          options.add_argument('--disable-gpu')
+          options.add_argument('--window-size=1440,2200')
+          options.add_argument('--lang=en-ZA')
+          options.set_capability('goog:loggingPrefs', {'performance': 'ALL', 'browser': 'ALL'})
+
+          driver = webdriver.Chrome(options=options)
+          try:
+              driver.execute_cdp_cmd('Network.enable', {})
+              # Force only our same-origin eligibility fetch to ZA. Requests to
+              # Google remain untouched, so their HTTP result is authentic.
+              driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                  'source': r"""
+                  (() => {
+                    const nativeFetch = window.fetch;
+                    window.fetch = function(input, init) {
+                      const url = typeof input === 'string' ? input : (input && input.url) || '';
+                      if (url.indexOf('/wp-json/elmercado/v1/adsense-eligibility') !== -1) {
+                        init = Object.assign({}, init || {});
+                        const h = new Headers(init.headers || {});
+                        h.set('X-Country-Code', 'ZA');
+                        init.headers = h;
+                      }
+                      return nativeFetch.call(this, input, init);
+                    };
+                  })();
+                  """
+              })
+
+              driver.get(audit_url)
+              time.sleep(25)
+
+              state = driver.execute_script(r"""
+                const dbg = window.ElMercadoAdsenseGeoDebug || null;
+                const ag = window.adsbygoogle;
+                const scripts = Array.from(document.scripts)
+                  .map(s => s.src || '')
+                  .filter(Boolean)
+                  .filter(u => /googlesyndication|doubleclick|googleads/.test(u));
+                const ins = Array.from(document.querySelectorAll('ins.adsbygoogle')).map(el => ({
+                  status: el.getAttribute('data-ad-status'),
+                  client: el.getAttribute('data-ad-client'),
+                  slot: el.getAttribute('data-ad-slot'),
+                  width: el.getBoundingClientRect().width,
+                  height: el.getBoundingClientRect().height
+                }));
+                const iframes = Array.from(document.querySelectorAll('iframe')).map(f => ({
+                  id: f.id || '',
+                  name: f.name || '',
+                  src: f.src || '',
+                  width: f.getBoundingClientRect().width,
+                  height: f.getBoundingClientRect().height
+                })).filter(x => /google|doubleclick|ads/.test((x.id + ' ' + x.name + ' ' + x.src).toLowerCase()));
+                const resources = performance.getEntriesByType('resource').map(e => e.name)
+                  .filter(u => /googlesyndication|doubleclick|googleads|adsense/.test(u));
+                return {
+                  debug: dbg,
+                  pauseAdRequests: ag && typeof ag.pauseAdRequests !== 'undefined' ? ag.pauseAdRequests : null,
+                  adsbygoogleType: typeof ag,
+                  scripts,
+                  ins,
+                  iframes,
+                  resources,
+                  bodyTextHasDebug: document.body.innerText.indexOf('AdSense debug') !== -1
+                };
+              """)
+              print('BROWSER_STATE=' + json.dumps(state, ensure_ascii=False, sort_keys=True))
+
+              requests = {}
+              responses = []
+              for entry in driver.get_log('performance'):
+                  try:
+                      msg = json.loads(entry['message'])['message']
+                  except Exception:
+                      continue
+                  method = msg.get('method')
+                  params = msg.get('params', {})
+                  if method == 'Network.requestWillBeSent':
+                      request = params.get('request', {})
+                      url = request.get('url', '')
+                      if any(x in url for x in ('googlesyndication.com', 'doubleclick.net', 'googleads.', 'adsense.')):
+                          requests[params.get('requestId', url)] = {
+                              'url': url,
+                              'method': request.get('method')
+                          }
+                  elif method == 'Network.responseReceived':
+                      response = params.get('response', {})
+                      url = response.get('url', '')
+                      if any(x in url for x in ('googlesyndication.com', 'doubleclick.net', 'googleads.', 'adsense.')):
+                          responses.append({
+                              'url': url,
+                              'status': response.get('status'),
+                              'mimeType': response.get('mimeType'),
+                              'fromDiskCache': response.get('fromDiskCache', False),
+                              'fromServiceWorker': response.get('fromServiceWorker', False)
+                          })
+
+              print('GOOGLE_REQUEST_COUNT=' + str(len(requests)))
+              for item in requests.values():
+                  print('GOOGLE_REQUEST=' + json.dumps(item, sort_keys=True))
+              print('GOOGLE_RESPONSE_COUNT=' + str(len(responses)))
+              for item in responses:
+                  print('GOOGLE_RESPONSE=' + json.dumps(item, sort_keys=True))
+
+              console = driver.get_log('browser')
+              for entry in console:
+                  if entry.get('level') in ('SEVERE', 'WARNING') or 'ads' in entry.get('message', '').lower():
+                      print('BROWSER_CONSOLE=' + json.dumps(entry, ensure_ascii=False, sort_keys=True))
+
+              debug = state.get('debug') or {}
+              if debug.get('country') != 'ZA' or debug.get('showAds') is not True:
+                  print('CLASSIFICATION=GEO_ELIGIBILITY_FAILED')
+                  raise SystemExit(2)
+
+              ad_like_responses = [r for r in responses if '/pagead/ads' in r['url'] or 'googleads.g.doubleclick.net/pagead/' in r['url']]
+              ad_like_requests = [r for r in requests.values() if '/pagead/ads' in r['url'] or 'googleads.g.doubleclick.net/pagead/' in r['url']]
+              if not ad_like_requests:
+                  print('CLASSIFICATION=NO_AD_REQUEST')
+              elif any(int(r.get('status') or 0) == 403 for r in ad_like_responses):
+                  print('CLASSIFICATION=AD_REQUEST_HTTP_403')
+              elif any(int(r.get('status') or 0) == 200 for r in ad_like_responses):
+                  visible = bool(state.get('iframes')) or any((x.get('status') == 'filled' and (x.get('height') or 0) > 0) for x in state.get('ins', []))
+                  print('CLASSIFICATION=' + ('AD_RENDERED' if visible else 'AD_REQUEST_HTTP_200_NO_VISIBLE_AD'))
+              else:
+                  print('CLASSIFICATION=AD_REQUEST_OTHER_RESPONSE')
+          finally:
+              driver.quit()
+          PY
