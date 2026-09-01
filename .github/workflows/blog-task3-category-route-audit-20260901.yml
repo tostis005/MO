@@ -1,0 +1,71 @@
+name: Blog SEO task 3 category route audit 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-task3-category-route-audit-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit category route reciprocity and HTTP status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, subprocess, xml.etree.ElementTree as ET
+          base='https://www.elmercadodeorigen.com'
+          ua='Mozilla/5.0 EMDO SEO task3 category auditor'
+          def fetch(url, follow=True):
+              args=['curl','-sS','--retry','3','--retry-delay','2','-A',ua,'-H','Cache-Control: no-cache']
+              if follow: args.append('-L')
+              args += ['-w','\n__STATUS__=%{http_code}\n__EFFECTIVE__=%{url_effective}\n',url]
+              out=subprocess.check_output(args,text=True)
+              status=re.search(r'__STATUS__=(\d+)',out); eff=re.search(r'__EFFECTIVE__=([^\r\n]+)',out)
+              html=out.split('\n__STATUS__=')[0]
+              return html, int(status.group(1)) if status else 0, eff.group(1) if eff else ''
+          def hreflangs(html):
+              out={}
+              for tag in re.findall(r'<link\b[^>]*\bhreflang\s*=\s*["\'][^"\']+["\'][^>]*>',html,re.I):
+                  lm=re.search(r'\bhreflang\s*=\s*["\']([^"\']+)',tag,re.I)
+                  hm=re.search(r'\bhref\s*=\s*["\']([^"\']+)',tag,re.I)
+                  if lm and hm: out[lm.group(1).lower()]=hm.group(1)
+              return out
+          def canonical(html):
+              m=re.findall(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              if not m: m=re.findall(r'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']canonical["\']',html,re.I)
+              return m[:2]
+
+          xml,_,_=fetch(base+'/mdo-sitemap-blog-categories.xml')
+          try:
+              root=ET.fromstring(xml)
+              locs=[e.text.strip() for e in root.iter() if e.tag.endswith('loc') and e.text]
+          except Exception:
+              locs=[]
+          if not locs:
+              locs=[
+                base+'/category/carnes/', base+'/category/jamones-y-paletas/', base+'/category/hortalizas-y-verduras/',
+                base+'/category/aceites/', base+'/category/legumbres/', base+'/category/embutidos-y-curados/', base+'/category/conservas/'
+              ]
+          checked=0
+          for es in locs:
+              if not re.search(r'/category/[^/]+/$',es): continue
+              es_html,es_code,es_eff=fetch(es); eh=hreflangs(es_html); en=eh.get('en','')
+              if not en:
+                  print(f'EMDO_CAT_ROUTE es={es} es_code={es_code} en=MISSING')
+                  continue
+              en_html,en_code,en_eff=fetch(en); hh=hreflangs(en_html) if en_html else {}; ec=canonical(en_html) if en_html else []
+              back=hh.get('es-es') or hh.get('es') or ''
+              xd=hh.get('x-default','')
+              print(f'EMDO_CAT_ROUTE es={es} es_code={es_code} en={en} en_code={en_code} effective={en_eff} canonical={ec!r} back={back} xdefault={xd}')
+              checked += 1
+          print(f'EMDO_CAT_ROUTE_SUMMARY checked={checked}')
+          PY
