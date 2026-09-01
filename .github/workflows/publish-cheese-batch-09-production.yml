@@ -5,7 +5,8 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/scripts/cheese-batch-09-data.part*.b64'
+      - '.github/scripts/cheese-batch-09-data-a.json'
+      - '.github/scripts/cheese-batch-09-data-b.json'
       - '.github/scripts/publish-cheese-batch-09-production.php'
       - '.github/scripts/run-cheese-batch-09-production.php'
       - '.github/workflows/publish-cheese-batch-09-production.yml'
@@ -21,18 +22,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate signed editorial package
+      - name: Validate clean editorial package
         shell: bash
         run: |
           set -euo pipefail
-          for p in 1 2 3 4; do test -f ".github/scripts/cheese-batch-09-data.part${p}.b64"; done
-          cat .github/scripts/cheese-batch-09-data.part{1,2,3,4}.b64 | tr -d '[:space:]' > /tmp/cheese09.b64
-          test "$(wc -c < /tmp/cheese09.b64)" -eq 55204
-          base64 -d /tmp/cheese09.b64 > /tmp/cheese09.gz
-          echo "bafd66e707b033cef7f250c73cb6d8e461efc411d20571e34a418389591075e5  /tmp/cheese09.gz" | sha256sum -c -
-          gzip -dc /tmp/cheese09.gz > /tmp/cheese09.json
-          echo "38b23ba5ea25fbcc53953b5ae118e92c99e2903adf39ec0c1b6f560d0ed0ba37  /tmp/cheese09.json" | sha256sum -c -
-          python -c "import json; a=json.load(open('/tmp/cheese09.json')); assert len(a)==10; assert sorted(int(x['pos']) for x in a)==list(range(81,91)); assert len({x['slug'] for x in a})==10; assert len({x['en_slug'] for x in a})==10; assert all(len(x['sections_es'])>=6 and len(x['sections_en'])>=6 and len(x['sources'])>=2 for x in a); print('SIGNED_EDITORIAL_PACKAGE_OK=10')"
+          python - <<'PY'
+          import json, pathlib
+          base=pathlib.Path('.github/scripts')
+          articles=[]
+          for name in ('cheese-batch-09-data-a.json','cheese-batch-09-data-b.json'):
+              data=json.loads((base/name).read_text(encoding='utf-8'))
+              assert isinstance(data,list)
+              articles.extend(data)
+          required={'pos','title','slug','en_title','en_slug','excerpt','en_excerpt','lead_es','lead_en','facts_es','facts_en','sections_es','sections_en','faq_es','faq_en','conclusion_es','conclusion_en','related','sources'}
+          assert len(articles)==10
+          assert sorted(int(a['pos']) for a in articles)==list(range(81,91))
+          assert len({a['slug'] for a in articles})==10
+          assert len({a['en_slug'] for a in articles})==10
+          assert all(required <= a.keys() for a in articles)
+          assert all(len(a['sections_es'])>=6 and len(a['sections_en'])>=6 and len(a['sources'])>=2 for a in articles)
+          print('CLEAN_EDITORIAL_PACKAGE_OK=10')
+          PY
           php -l .github/scripts/publish-cheese-batch-09-production.php
           php -l .github/scripts/run-cheese-batch-09-production.php
           : "${STAGING_HOST:?}"
@@ -66,7 +76,8 @@ jobs:
           REMOTE_DIR="/tmp/emdo-cheese09-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
           sshpass -e scp $SCP_OPTIONS \
-            .github/scripts/cheese-batch-09-data.part{1,2,3,4}.b64 \
+            .github/scripts/cheese-batch-09-data-a.json \
+            .github/scripts/cheese-batch-09-data-b.json \
             .github/scripts/publish-cheese-batch-09-production.php \
             .github/scripts/run-cheese-batch-09-production.php \
             "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/"
@@ -85,42 +96,42 @@ jobs:
           set -euo pipefail
           base='https://www.elmercadodeorigen.com'
           es_slugs=(
-            'maduracion-queso-que-ocurre-sabor-aroma-textura-tiempo-humedad'
-            'lavado-cuajada-queso-que-es-acidez-humedad-textura'
-            'ph-acidez-queso-por-que-importan-cuajada-maduracion'
-            'humedad-queso-textura-maduracion-conservacion-actividad-agua'
-            'rendimiento-quesero-cuanta-leche-kilo-queso'
-            'suero-leche-queseria-que-es-composicion-usos'
-            'color-queso-blanco-amarillo-anaranjado-leche-pigmentos-corteza'
-            'tamano-formato-queso-influye-maduracion-corteza-textura'
-            'mohos-levaduras-queso-maduracion-cuando-normales-cuando-preocupan'
-            'como-transportar-queso-cadena-frio-viajes-envios-recibir'
+            'maduracion-queso-proteolisis-lipolisis-aroma-textura'
+            'lavado-cuajada-queso-que-es-por-que-se-hace-sabor-textura'
+            'ph-acidez-queso-que-miden-textura-sabor-seguridad'
+            'humedad-actividad-agua-queso-diferencias-textura-conservacion'
+            'cuanta-leche-hace-falta-kilo-queso-rendimiento-factores'
+            'suero-queso-que-es-que-contiene-usos-ricotta-requeson'
+            'por-que-queso-blanco-amarillo-anaranjado-color-leche-carotenoides'
+            'tamano-formato-queso-influye-maduracion-ruedas-piezas'
+            'mohos-levaduras-queso-maduracion-flora-deterioro'
+            'como-transportar-queso-cadena-frio-envios-viajes-recepcion'
           )
           en_slugs=(
-            'cheese-ripening-what-happens-flavour-aroma-texture-time-humidity'
-            'washed-curd-cheese-what-it-is-acidity-moisture-texture'
-            'cheese-ph-acidity-why-they-matter-curd-ripening'
-            'cheese-moisture-texture-ripening-storage-water-activity'
-            'cheese-yield-how-much-milk-one-kilogram-cheese'
-            'whey-cheesemaking-what-it-is-composition-uses'
-            'why-cheese-white-yellow-orange-milk-pigments-rind'
-            'cheese-size-format-affects-ripening-rind-texture'
-            'moulds-yeasts-cheese-ripening-normal-when-concern'
-            'how-transport-cheese-cold-chain-travel-shipping-arrival'
+            'cheese-ripening-proteolysis-lipolysis-aroma-texture'
+            'washing-cheese-curd-what-it-is-why-done-flavour-texture'
+            'ph-acidity-cheese-what-they-measure-texture-flavour-safety'
+            'moisture-water-activity-cheese-difference-texture-storage'
+            'how-much-milk-one-kilogram-cheese-yield-factors'
+            'cheese-whey-what-it-is-contains-uses-ricotta'
+            'why-cheese-white-yellow-orange-milk-carotenoids-rind-colouring'
+            'how-cheese-size-affects-ripening-wheels-small-formats-wedges'
+            'moulds-yeasts-cheese-ripening-flora-spoilage'
+            'how-transport-cheese-cold-chain-shipping-travel-receiving-order'
           )
           check_url(){ local url="$1" code; for attempt in 1 2 3 4; do code="$(curl -L -sS -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 45 "$url" || true)"; if [ "$code" = 200 ]; then echo "OK $url"; return 0; fi; sleep 4; done; echo "FAILED $code $url" >&2; return 1; }
           for s in "${es_slugs[@]}"; do check_url "$base/$s/"; done
           for s in "${en_slugs[@]}"; do check_url "$base/en/$s/"; done
           check_url "$base/category/quesos/"
           check_url "$base/en/journal/"
-          curl -L -sS --max-time 45 "$base/maduracion-queso-que-ocurre-sabor-aroma-textura-tiempo-humedad/?verify=$GITHUB_RUN_ID" -o /tmp/ripen.html
-          grep -Fq 'Proteólisis: por qué cambia la textura' /tmp/ripen.html
-          curl -L -sS --max-time 45 "$base/lavado-cuajada-queso-que-es-acidez-humedad-textura/?verify=$GITHUB_RUN_ID" -o /tmp/washed.html
-          grep -Fq 'No confundir con corteza lavada' /tmp/washed.html
-          curl -L -sS --max-time 45 "$base/rendimiento-quesero-cuanta-leche-kilo-queso/?verify=$GITHUB_RUN_ID" -o /tmp/yield.html
-          grep -Fq "Por qué no existe la cifra de 'diez litros' para todo" /tmp/yield.html
-          curl -L -sS --max-time 45 "$base/en/moulds-yeasts-cheese-ripening-normal-when-concern/?verify=$GITHUB_RUN_ID" -o /tmp/mould-en.html
-          grep -Fq 'Selected moulds as cheesemaking tools' /tmp/mould-en.html
-          curl -L -sS --max-time 45 "$base/en/how-transport-cheese-cold-chain-travel-shipping-arrival/?verify=$GITHUB_RUN_ID" -o /tmp/transport-en.html
-          grep -Fq 'Cold-chain needs depend on the cheese' /tmp/transport-en.html
+          curl -L -sS --max-time 45 "$base/maduracion-queso-proteolisis-lipolisis-aroma-textura/?verify=$GITHUB_RUN_ID" -o /tmp/ripen.html
+          grep -Fq 'Proteólisis: cómo cambia la red de proteínas' /tmp/ripen.html
+          curl -L -sS --max-time 45 "$base/lavado-cuajada-queso-que-es-por-que-se-hace-sabor-textura/?verify=$GITHUB_RUN_ID" -o /tmp/washed.html
+          grep -Fq 'Lavado de cuajada y lavado de corteza no son lo mismo' /tmp/washed.html
+          curl -L -sS --max-time 45 "$base/cuanta-leche-hace-falta-kilo-queso-rendimiento-factores/?verify=$GITHUB_RUN_ID" -o /tmp/yield.html
+          grep -Fq 'Por qué diez litros por kilo puede acertar y seguir siendo mala regla' /tmp/yield.html
+          curl -L -sS --max-time 45 "$base/en/moulds-yeasts-cheese-ripening-flora-spoilage/?verify=$GITHUB_RUN_ID" -o /tmp/mould-en.html
+          grep -Fq 'Cheese is an ecosystem, not a sterile paste' /tmp/mould-en.html
+          curl -L -sS --max-time 45 "$base/en/how-transport-cheese-cold-chain-shipping-travel-receiving-order/?verify=$GITHUB_RUN_ID" -o /tmp/transport-en.html
+          grep -Fq 'Cold chain does not mean one temperature for every cheese' /tmp/transport-en.html
           echo 'Cheese batch 09 public editorial verification OK'
