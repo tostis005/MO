@@ -2,16 +2,30 @@
 /**
  * AdSense geolocalizado para contenido editorial.
  *
- * La pagina puede estar cacheada, por lo que la decision geografica nunca se
- * imprime en el HTML. Un endpoint REST sin cache determina el pais de la
- * visita con WooCommerce y el navegador carga AdSense solo si ese pais no
- * esta cubierto por ninguna zona de envio activa.
+ * El codigo oficial de AdSense se imprime en el <head> de las entradas, pero
+ * las solicitudes de anuncios quedan pausadas por defecto. Un endpoint REST
+ * sin cache determina el pais de la visita con WooCommerce y el navegador
+ * solo reanuda las solicitudes si ese pais no esta cubierto por una zona de
+ * envio activa.
  *
  * @package ElMercadoDeOrigen
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
+}
+
+if ( ! defined( 'ELMERCADO_ADSENSE_PUBLISHER' ) ) {
+	define( 'ELMERCADO_ADSENSE_PUBLISHER', 'ca-pub-3168527008181132' );
+}
+
+/**
+ * Limita AdSense a entradas individuales publicadas del blog.
+ *
+ * @return bool
+ */
+function elmercado_adsense_is_blog_post_request(): bool {
+	return ! is_admin() && is_singular( 'post' ) && ! is_feed() && ! is_preview();
 }
 
 /**
@@ -112,7 +126,13 @@ function elmercado_adsense_get_shippable_countries(): array {
 		}
 	}
 
-	$shippable_countries = array_values( array_unique( array_filter( array_map( 'strtoupper', $shippable_countries ) ) ) );
+	$shippable_countries = array_values(
+		array_unique(
+			array_filter(
+				array_map( 'strtoupper', $shippable_countries )
+			)
+		)
+	);
 
 	return $shippable_countries;
 }
@@ -136,7 +156,10 @@ function elmercado_adsense_country_is_shippable( string $country ): bool {
 }
 
 /**
- * Obtiene el pais del visitante mediante la misma geolocalizacion de WooCommerce.
+ * Obtiene el pais del visitante mediante la geolocalizacion de WooCommerce.
+ *
+ * WooCommerce ya contempla X-Real-IP, X-Forwarded-For y cabeceras de pais de
+ * proxies/CDN antes de recurrir a su base/API de geolocalizacion.
  *
  * @return string Codigo ISO alfa-2 o cadena vacia si no puede determinarse.
  */
@@ -146,19 +169,19 @@ function elmercado_adsense_get_visitor_country(): string {
 	}
 
 	$location = WC_Geolocation::geolocate_ip();
-	$country  = isset( $location['country'] ) ? strtoupper( (string) $location['country'] ) : '';
+	$country  = isset( $location['country'] ) ? strtoupper( sanitize_text_field( (string) $location['country'] ) ) : '';
 
 	return 2 === strlen( $country ) ? $country : '';
 }
 
 /**
- * Endpoint publico: solo devuelve si esta visita puede recibir Auto Ads.
+ * Endpoint publico: devuelve si esta visita puede recibir Auto Ads.
  *
  * @return WP_REST_Response
  */
 function elmercado_adsense_rest_eligibility(): WP_REST_Response {
-	$country = elmercado_adsense_get_visitor_country();
-	$can_buy = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
+	$country  = elmercado_adsense_get_visitor_country();
+	$can_buy  = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
 	$show_ads = '' !== $country && false === $can_buy;
 
 	$response = new WP_REST_Response(
@@ -173,7 +196,7 @@ function elmercado_adsense_rest_eligibility(): WP_REST_Response {
 	$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, private' );
 	$response->header( 'Pragma', 'no-cache' );
 	$response->header( 'Expires', '0' );
-	$response->header( 'Vary', 'Cookie' );
+	$response->header( 'Vary', 'Cookie, X-Forwarded-For, X-Real-IP, CF-IPCountry, X-Country-Code' );
 
 	return $response;
 }
@@ -194,12 +217,41 @@ add_action(
 );
 
 /**
- * Carga el pequeno controlador solo en entradas individuales del blog.
- * Va en el head para iniciar la comprobacion geografica lo antes posible;
- * el tag de Google se inyecta inmediatamente despues si la visita es apta.
+ * Imprime el codigo oficial de Auto Ads en el head, pausado por defecto.
+ *
+ * Google documenta pauseAdRequests para cargar el tag sin enviar solicitudes
+ * hasta que la aplicacion decida reanudarlas. Esto mantiene el snippet en el
+ * HTML que rastrea AdSense y evita anuncios en paises donde si vendemos.
  */
-function elmercado_adsense_enqueue_geo_loader(): void {
-	if ( is_admin() || ! is_singular( 'post' ) ) {
+function elmercado_adsense_output_paused_head_code(): void {
+	if ( ! elmercado_adsense_is_blog_post_request() ) {
+		return;
+	}
+
+	$publisher = ELMERCADO_ADSENSE_PUBLISHER;
+	$src       = add_query_arg(
+		'client',
+		$publisher,
+		'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js'
+	);
+
+	echo "<script data-wcc=\"necessary\">\n";
+	echo 'window.adsbygoogle=window.adsbygoogle||[];';
+	echo 'window.adsbygoogle.pauseAdRequests=1;';
+	echo 'window.adsbygoogle.push({google_ad_client:' . wp_json_encode( $publisher ) . ',enable_page_level_ads:true});';
+	echo "\n</script>\n";
+	printf(
+		'<script async data-wcc="necessary" src="%1$s" crossorigin="anonymous"></script>' . "\n",
+		esc_url( $src )
+	);
+}
+add_action( 'wp_head', 'elmercado_adsense_output_paused_head_code', 2 );
+
+/**
+ * Carga el controlador geografico en el head inmediatamente despues del tag.
+ */
+function elmercado_adsense_enqueue_geo_controller(): void {
+	if ( ! elmercado_adsense_is_blog_post_request() ) {
 		return;
 	}
 
@@ -208,15 +260,14 @@ function elmercado_adsense_enqueue_geo_loader(): void {
 	$path   = ELMERCADO_THEME_PATH . '/assets/js/adsense-geo-010266.js';
 	$ver    = is_readable( $path ) ? (string) filemtime( $path ) : ELMERCADO_THEME_VERSION;
 
-	// No usar footer/defer: Auto Ads debe arrancar durante el procesamiento del head.
 	wp_enqueue_script( $handle, $src, array(), $ver, false );
 	wp_localize_script(
 		$handle,
 		'ElMercadoAdsenseGeo',
 		array(
 			'endpoint'  => esc_url_raw( rest_url( 'elmercado/v1/adsense-eligibility' ) ),
-			'publisher' => 'ca-pub-3168527008181132',
+			'publisher' => ELMERCADO_ADSENSE_PUBLISHER,
 		)
 	);
 }
-add_action( 'wp_enqueue_scripts', 'elmercado_adsense_enqueue_geo_loader', 40 );
+add_action( 'wp_enqueue_scripts', 'elmercado_adsense_enqueue_geo_controller', 40 );
