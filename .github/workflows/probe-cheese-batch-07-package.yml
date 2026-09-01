@@ -11,54 +11,51 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Locate missing chars by gzip offset
+      - name: Rank and recover missing chars
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import glob, hashlib, base64, gzip, json, itertools, string, zlib
-          files = sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))
-          parts = [open(f, encoding='utf-8').read().strip() for f in files]
-          payload = ''.join(parts)
-          target = 'e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'
-          alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + '+/'
-          if payload.endswith('='):
-              padded_damage = payload[:-1] + 'AA' + payload[-1:]
-          else:
-              padded_damage = payload + 'AA'
-          damaged = base64.b64decode(padded_damage, validate=True)
-          dec = zlib.decompressobj(31)
-          fail_at = None
-          for i in range(0, len(damaged), 8):
-              try:
-                  dec.decompress(damaged[i:i+8])
-              except zlib.error:
-                  fail_at = i
-                  break
-          if fail_at is None:
-              fail_at = len(damaged)
-          approx = int(fail_at * 4 / 3)
-          print(f'GZIP_FAIL_BYTE={fail_at}')
-          print(f'APPROX_B64_INDEX={approx}')
-          lo = max(0, approx - 128)
-          hi = min(len(parts[0]), approx + 128)
-          print(f'SEARCH_RANGE={lo}:{hi}')
-          suffix_all = ''.join(parts[1:])
-          p0 = parts[0]
-          for pos in range(lo, hi + 1):
-              left, right = p0[:pos], p0[pos:]
-              for a, b in itertools.product(alphabet, repeat=2):
-                  pair = a + b
-                  candidate = left + pair + right + suffix_all
-                  if hashlib.sha256(candidate.encode()).hexdigest() == target:
+          files=sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))
+          parts=[open(f,encoding='utf-8').read().strip() for f in files]
+          assert len(files)==8 and len(parts[0])==7998
+          p0=parts[0]; rest=''.join(parts[1:])
+          target='e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'
+          alphabet=string.ascii_uppercase+string.ascii_lowercase+string.digits+'+/'
+          probes=['AA','//','zz','00','AQ','Qk','gA','Mw']
+          def score(s):
+              try: raw=base64.b64decode(s,validate=True)
+              except Exception: return -1
+              d=zlib.decompressobj(31); out=0
+              for i in range(0,len(raw),32):
+                  try: out += len(d.decompress(raw[i:i+32]))
+                  except zlib.error: return out
+              try: out += len(d.flush())
+              except zlib.error: pass
+              return out
+          ranked=[]
+          for pos in range(0,len(p0)+1,2):
+              best=max(score(p0[:pos]+pair+p0[pos:]+rest) for pair in probes)
+              ranked.append((best,pos))
+          ranked.sort(reverse=True)
+          print('TOP_POSITIONS=' + ','.join(f'{p}:{s}' for s,p in ranked[:30]))
+          candidates=set()
+          for _,p in ranked[:30]:
+              for q in range(max(0,p-4),min(len(p0),p+4)+1): candidates.add(q)
+          print('BRUTE_POSITIONS='+str(len(candidates)))
+          for pos in sorted(candidates):
+              left,right=p0[:pos],p0[pos:]
+              for a,b in itertools.product(alphabet,repeat=2):
+                  pair=a+b
+                  candidate=left+pair+right+rest
+                  if hashlib.sha256(candidate.encode()).hexdigest()==target:
+                      data=json.loads(gzip.decompress(base64.b64decode(candidate,validate=True)))
+                      assert len(data)==10 and sorted(int(x['pos']) for x in data)==list(range(61,71))
                       print(f'RECOVERED_POS={pos}')
                       print(f'RECOVERED_PAIR={pair}')
-                      print('CONTEXT=' + left[-16:] + '[' + pair + ']' + right[:16])
-                      data = json.loads(gzip.decompress(base64.b64decode(candidate, validate=True)))
-                      assert len(data) == 10
-                      assert sorted(int(x['pos']) for x in data) == list(range(61, 71))
                       print('REPAIRED_JSON_OK=10')
                       raise SystemExit(0)
-          print('NO_MATCH_IN_RANGE')
+          print('NO_RANKED_MATCH')
           raise SystemExit(2)
           PY
