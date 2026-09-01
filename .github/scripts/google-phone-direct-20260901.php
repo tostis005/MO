@@ -11,7 +11,7 @@ if (!$key) return;
 $find_url = add_query_arg([
     'input' => '+34603029509',
     'inputtype' => 'phonenumber',
-    'fields' => 'place_id,name,formatted_address,rating,user_ratings_total',
+    'fields' => 'place_id,name,formatted_address',
     'language' => 'es',
     'key' => $key,
 ], 'https://maps.googleapis.com/maps/api/place/findplacefromtext/json');
@@ -25,8 +25,6 @@ $c = $j['candidates'][0] ?? [];
 echo 'FIND_PLACE_ID=' . ($c['place_id'] ?? '') . "\n";
 echo 'FIND_NAME=' . ($c['name'] ?? '') . "\n";
 echo 'FIND_ADDRESS=' . ($c['formatted_address'] ?? '') . "\n";
-echo 'FIND_RATING=' . ($c['rating'] ?? '') . "\n";
-echo 'FIND_REVIEWS=' . ($c['user_ratings_total'] ?? '') . "\n";
 $place_id = (string)($c['place_id'] ?? '');
 if ($place_id === '') return;
 $details_url = add_query_arg([
