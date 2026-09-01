@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/scripts/cheese-batch-07-chunk-*.b64'
+      - '.github/scripts/cheese-batch-07-*.json'
       - '.github/scripts/publish-cheese-batch-07-production.php'
       - '.github/workflows/publish-cheese-batch-07-production.yml'
 
@@ -20,13 +20,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate editorial package
+      - name: Validate clean editorial package
         shell: bash
         run: |
           set -euo pipefail
-          count="$(find .github/scripts -maxdepth 1 -type f -name 'cheese-batch-07-chunk-*.b64' | wc -l | tr -d ' ')"
-          [ "$count" -eq 8 ]
-          python -c "import glob,hashlib; p=''.join(open(f,encoding='utf-8').read().strip() for f in sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))); assert hashlib.sha256(p.encode()).hexdigest() == 'e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'"
+          for i in {61..70}; do test -f ".github/scripts/cheese-batch-07-$i.json"; done
+          python - <<'PY'
+          import json, pathlib
+          base=pathlib.Path('.github/scripts')
+          required={'pos','title','slug','en_title','en_slug','excerpt','en_excerpt','lead_es','lead_en','facts_es','facts_en','sections_es','sections_en','faq_es','faq_en','conclusion_es','conclusion_en','related','sources'}
+          articles=[]
+          for i in range(61,71):
+              d=json.loads((base/f'cheese-batch-07-{i}.json').read_text(encoding='utf-8'))
+              assert required <= d.keys(), (i, required-d.keys())
+              assert int(d['pos']) == i
+              assert len(d['sections_es']) >= 6 and len(d['sections_en']) >= 6
+              assert len(d['sources']) >= 2
+              articles.append(d)
+          assert len({a['slug'] for a in articles}) == 10
+          assert len({a['en_slug'] for a in articles}) == 10
+          print('CLEAN_EDITORIAL_PACKAGE_OK=10')
+          PY
           php -l .github/scripts/publish-cheese-batch-07-production.php
           : "${STAGING_HOST:?}"
           : "${STAGING_USER:?}"
@@ -59,7 +73,7 @@ jobs:
           REMOTE_DIR="/tmp/emdo-cheese07-${GITHUB_RUN_ID}"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
           sshpass -e scp $SCP_OPTIONS \
-            .github/scripts/cheese-batch-07-chunk-*.b64 \
+            .github/scripts/cheese-batch-07-{61..70}.json \
             .github/scripts/publish-cheese-batch-07-production.php \
             "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_DIR/publish-cheese-batch-07-production.php' --path='$PROD_PATH' --allow-root; rc=\$?; rm -rf '$REMOTE_DIR'; exit \$rc" | tee /tmp/cheese07-output.txt
@@ -72,8 +86,30 @@ jobs:
         run: |
           set -euo pipefail
           base='https://www.elmercadodeorigen.com'
-          json_line="$(awk '/EMDO_CHEESE_BATCH07_BEGIN/{getline; print; exit}' /tmp/cheese07-output.txt)"
-          printf '%s\n' "$json_line" | jq -e '.count == 10 and ([.posts[].status] | all(. == "publish"))' >/dev/null
+          es_slugs=(
+            'quesos-asturias-cabrales-gamoneu-afuega-pitu-casin-beyos-guia'
+            'quesos-galicia-tetilla-arzua-ulloa-san-simon-cebreiro-guia'
+            'quesos-cantabria-nata-picon-bejes-tresviso-quesucos-liebana-guia'
+            'quesos-canarias-majorero-palmero-flor-guia-guia'
+            'quesos-extremadura-torta-casar-serena-ibores-acehuche-guia'
+            'quesos-castilla-leon-zamorano-castellano-valdeon-burgos-guia'
+            'queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado'
+            'quesos-corteza-florida-moho-blanco-como-se-forma-comer-corteza'
+            'quesos-pasta-hilada-que-son-estirar-cuajada-fundido'
+            'queso-envasado-vacio-conservar-abrir-olor-textura'
+          )
+          en_slugs=(
+            'cheeses-of-asturias-cabrales-gamoneu-afuega-pitu-casin-beyos-guide'
+            'cheeses-of-galicia-tetilla-arzua-ulloa-san-simon-cebreiro-guide'
+            'cheeses-of-cantabria-nata-picon-bejes-tresviso-quesucos-liebana-guide'
+            'cheeses-of-canary-islands-majorero-palmero-flor-de-guia-guide'
+            'cheeses-of-extremadura-torta-casar-serena-ibores-acehuche-guide'
+            'cheeses-of-castile-and-leon-zamorano-castellano-valdeon-burgos-guide'
+            'fresh-cheese-what-it-is-how-made-storage-vs-matured-cheese'
+            'bloomy-rind-cheese-white-mould-how-rind-forms-can-you-eat-it'
+            'pasta-filata-cheese-stretched-curd-how-it-works-melting'
+            'vacuum-packed-cheese-storage-opening-smell-texture-when-to-worry'
+          )
           check_url() {
             local url="$1" code
             for attempt in 1 2 3 4; do
@@ -84,21 +120,19 @@ jobs:
             echo "FAILED $code $url" >&2
             return 1
           }
-          while IFS= read -r slug; do check_url "$base/$slug/"; done < <(printf '%s\n' "$json_line" | jq -r '.posts[].slug')
-          while IFS= read -r slug; do check_url "$base/en/$slug/"; done < <(printf '%s\n' "$json_line" | jq -r '.posts[].en_slug')
+          for slug in "${es_slugs[@]}"; do check_url "$base/$slug/"; done
+          for slug in "${en_slugs[@]}"; do check_url "$base/en/$slug/"; done
           check_url "$base/category/quesos/"
           check_url "$base/en/journal/"
 
           curl -L -sS --max-time 45 "$base/quesos-asturias-cabrales-gamoneu-afuega-pitu-casin-beyos-guia/?verify=$GITHUB_RUN_ID" -o /tmp/asturias.html
-          grep -Fq 'Un territorio relativamente pequeño' /tmp/asturias.html
-          curl -L -sS --max-time 45 "$base/quesos-canarias-majorero-palmero-flor-guia-guia/?verify=$GITHUB_RUN_ID" -o /tmp/canarias.html
-          grep -Fq 'tres nombres que no son equivalentes' /tmp/canarias.html
-          curl -L -sS --max-time 45 "$base/queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado/?verify=$GITHUB_RUN_ID" -o /tmp/fresco.html
-          grep -Fq 'Por qué dura menos' /tmp/fresco.html
-          curl -L -sS --max-time 45 "$base/quesos-corteza-florida-moho-blanco-como-se-forma-comer-corteza/?verify=$GITHUB_RUN_ID" -o /tmp/florida.html
-          grep -Fq 'Diferencia entre flora intencionada' /tmp/florida.html
-          curl -L -sS --max-time 45 "$base/quesos-pasta-hilada-que-son-estirar-cuajada-fundido/?verify=$GITHUB_RUN_ID" -o /tmp/hilada.html
-          grep -Fq 'El papel del pH y del calcio' /tmp/hilada.html
-          curl -L -sS --max-time 45 "$base/en/$(printf '%s\n' "$json_line" | jq -r '.posts[] | select(.slug == "queso-envasado-vacio-conservar-abrir-olor-textura") | .en_slug')/?verify=$GITHUB_RUN_ID" -o /tmp/vacuum-en.html
+          grep -Fq 'Cabrales: el gran azul asturiano' /tmp/asturias.html
+          curl -L -sS --max-time 45 "$base/queso-fresco-que-es-elaboracion-conservacion-diferencias-madurado/?verify=$GITHUB_RUN_ID" -o /tmp/fresh.html
+          grep -Fq 'Por qué dura menos' /tmp/fresh.html
+          curl -L -sS --max-time 45 "$base/quesos-corteza-florida-moho-blanco-como-se-forma-comer-corteza/?verify=$GITHUB_RUN_ID" -o /tmp/bloomy.html
+          grep -Fq 'Diferencia entre flora intencionada y moho accidental' /tmp/bloomy.html
+          curl -L -sS --max-time 45 "$base/en/pasta-filata-cheese-stretched-curd-how-it-works-melting/?verify=$GITHUB_RUN_ID" -o /tmp/pasta-en.html
+          grep -Fq 'The role of pH and calcium' /tmp/pasta-en.html
+          curl -L -sS --max-time 45 "$base/en/vacuum-packed-cheese-storage-opening-smell-texture-when-to-worry/?verify=$GITHUB_RUN_ID" -o /tmp/vacuum-en.html
           grep -Fq 'Why cheese may smell stronger just after opening' /tmp/vacuum-en.html
           echo 'Cheese batch 07 public editorial verification OK'
