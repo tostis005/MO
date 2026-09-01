@@ -4,6 +4,7 @@
 	var config = window.ElMercadoAdsenseGeo || {};
 	var eligible = false;
 	var loaded = false;
+	var debugMode = /(?:^|[?&])adsense_debug=1(?:&|$)/.test(window.location.search);
 	var debug = window.ElMercadoAdsenseGeoDebug = {
 		phase: 'initializing',
 		country: null,
@@ -13,14 +14,56 @@
 		error: null
 	};
 
+	function googleScriptExists() {
+		return !!document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]');
+	}
+
+	function renderDebugPanel() {
+		if (!debugMode || !document.body) {
+			return;
+		}
+
+		var panel = document.getElementById('elmercado-adsense-debug');
+		if (!panel) {
+			panel = document.createElement('div');
+			panel.id = 'elmercado-adsense-debug';
+			panel.setAttribute('role', 'status');
+			panel.style.cssText = 'position:fixed;z-index:2147483647;left:12px;bottom:12px;max-width:420px;padding:12px 14px;background:#111;color:#fff;font:13px/1.45 monospace;border-radius:6px;box-shadow:0 2px 14px rgba(0,0,0,.35);white-space:pre-wrap;word-break:break-word;';
+			document.body.appendChild(panel);
+		}
+
+		panel.textContent = [
+			'AdSense debug',
+			'phase: ' + debug.phase,
+			'country: ' + (debug.country || 'unknown'),
+			'can_buy: ' + String(debug.canBuy),
+			'show_ads: ' + String(debug.showAds),
+			'attempt: ' + String(debug.attempt),
+			'google_script: ' + (googleScriptExists() ? 'present' : 'absent'),
+			'adsbygoogle: ' + (typeof window.adsbygoogle !== 'undefined' ? 'present' : 'absent'),
+			'error: ' + (debug.error || 'none')
+		].join('\n');
+	}
+
 	function setPhase(phase) {
 		debug.phase = phase;
 		debug.updatedAt = new Date().toISOString();
+		renderDebugPanel();
+	}
+
+	if (debugMode) {
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', renderDebugPanel, { once: true });
+		} else {
+			renderDebugPanel();
+		}
+		window.setInterval(renderDebugPanel, 1000);
 	}
 
 	if (!config.endpoint || !config.publisher || typeof window.fetch !== 'function') {
 		setPhase('configuration_error');
 		debug.error = 'Missing endpoint, publisher or Fetch API';
+		renderDebugPanel();
 		return;
 	}
 
@@ -61,8 +104,10 @@
 			loaded = false;
 			setPhase('adsense_script_error');
 			debug.error = 'Google AdSense script failed to load';
+			renderDebugPanel();
 		};
 		document.head.appendChild(script);
+		renderDebugPanel();
 	}
 
 	function requestEligibility(attempt) {
