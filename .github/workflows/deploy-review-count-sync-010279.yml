@@ -71,7 +71,7 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" eval 'echo wp_json_encode(mdo_review_counts_refresh_010279(true));' --path='$PROD_PATH' --allow-root"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo wp_json_encode(mdo_review_counts_refresh_010279(true));' --path='$PROD_PATH' --allow-root"
 
       - name: Verify stored values, schedule and home output
         shell: bash
@@ -79,7 +79,7 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" eval '
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
             \$g=(int)get_option("mdo_google_review_count",0);
             \$t=(int)get_option("mdo_trustpilot_review_count",0);
             \$gu=(int)get_option("mdo_google_review_count_updated_at",0);
@@ -106,6 +106,5 @@ jobs:
           trust=bool(re.search(r'Trustpilot.{0,900}?\b%s\s+(?:opiniones|reseñas|reviews)\b'%t,text,re.I))
           print(f'HOME_REVIEW_CHECK google={g} visible_google={google} trustpilot={t} visible_trustpilot={trust}')
           if not (google and trust):
-              # Do not accept merely stored options: the home must consume them.
               raise SystemExit('home review badges are not consuming the dynamic options')
           PY
