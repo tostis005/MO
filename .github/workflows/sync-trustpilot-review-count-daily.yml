@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve production and supplier state
+      - name: Resolve production and supplier-cycle state
         id: state
         shell: bash
         env:
@@ -52,30 +52,35 @@ jobs:
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
           echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
 
-          STATE="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e;
-            wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1);
-            updated=\$(\"\$php_bin\" \"\$wp_bin\" option get mdo_trustpilot_review_count_updated_at --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null || printf 0);
-            count=\$(\"\$php_bin\" \"\$wp_bin\" option get mdo_trustpilot_review_count --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null || printf 0);
-            prefix=\$(\"\$php_bin\" \"\$wp_bin\" db prefix --path='$PROD_PATH' --allow-root 2>/dev/null);
-            pending=\$(\"\$php_bin\" \"\$wp_bin\" db query \"SELECT COUNT(*) FROM \${prefix}actionscheduler_actions WHERE hook IN ('mdo_supplier_sync_run_supplier','mdo_supplier_sync_scrape_product') AND status IN ('pending','in-progress')\" --skip-column-names --path='$PROD_PATH' --allow-root 2>/dev/null | tr -dc '0-9');
-            [ -n \"\$pending\" ] || pending=1;
-            recent=no; now=\$(date +%s);
-            case \"\$updated\" in *[!0-9]*|'') updated=0;; esac;
-            if [ \"\$updated\" -gt 0 ] && [ \$((now-updated)) -lt 86400 ]; then recent=yes; fi;
-            printf 'pending=%s trust_recent=%s trust_count=%s trust_updated=%s' \"\$pending\" \"\$recent\" \"\$count\" \"\$updated\"
-          ")"
-          echo "PRODUCTION_STATE $STATE"
+          remote_option() {
+            local option="$1"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get '$option' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null || printf 0"
+          }
+
+          TRUST_UPDATED="$(remote_option mdo_trustpilot_review_count_updated_at)"
+          TRUST_COUNT="$(remote_option mdo_trustpilot_review_count)"
+          CYCLE_READY="$(remote_option mdo_review_counts_supplier_cycle_ready_at)"
+          for v in TRUST_UPDATED TRUST_COUNT CYCLE_READY; do
+            value="${!v}"
+            case "$value" in *[!0-9]*|'') printf -v "$v" '%s' 0;; esac
+          done
+
+          NOW="$(date +%s)"
+          TRUST_RECENT=no
+          CYCLE_RECENT=no
+          if [ "$TRUST_UPDATED" -gt 0 ] && [ $((NOW-TRUST_UPDATED)) -lt 86400 ]; then TRUST_RECENT=yes; fi
+          if [ "$CYCLE_READY" -gt 0 ] && [ $((NOW-CYCLE_READY)) -lt 64800 ]; then CYCLE_RECENT=yes; fi
+          echo "PRODUCTION_STATE trust_count=$TRUST_COUNT trust_updated=$TRUST_UPDATED trust_recent=$TRUST_RECENT cycle_ready=$CYCLE_READY cycle_recent=$CYCLE_RECENT"
 
           if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-            if printf '%s' "$STATE" | grep -Fq 'trust_recent=yes'; then
+            if [ "$TRUST_RECENT" = yes ]; then
               echo 'skip=yes' >> "$GITHUB_OUTPUT"
               echo 'Trustpilot was refreshed during the last 24 hours.'
               exit 0
             fi
-            PENDING="$(printf '%s' "$STATE" | sed -n 's/.*pending=\([0-9][0-9]*\).*/\1/p')"
-            if [ -z "$PENDING" ] || [ "$PENDING" -gt 0 ]; then
+            if [ "$CYCLE_RECENT" != yes ]; then
               echo 'skip=yes' >> "$GITHUB_OUTPUT"
-              echo 'Supplier synchronization is still active; a later scheduled slot will retry.'
+              echo 'The supplier cycle has not yet published its completion marker; a later slot will retry.'
               exit 0
             fi
           fi
@@ -92,30 +97,20 @@ jobs:
           cat > trustpilot-count.js <<'JS'
           const { chromium } = require('playwright');
           (async () => {
-            const browser = await chromium.launch({
-              headless: true,
-              executablePath: '/usr/bin/google-chrome',
-              args: ['--no-sandbox']
-            });
-            const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'es-ES' });
-            await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com', {
-              waitUntil: 'domcontentloaded', timeout: 60000
-            }).catch(() => null);
+            const browser = await chromium.launch({headless:true, executablePath:'/usr/bin/google-chrome', args:['--no-sandbox']});
+            const page = await browser.newPage({viewport:{width:1280,height:900}, locale:'es-ES'});
+            await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com',{waitUntil:'domcontentloaded',timeout:60000}).catch(()=>null);
             await page.waitForTimeout(7000);
-            const data = await page.evaluate(() => ({
-              title: document.title,
-              text: (document.body?.innerText || '').replace(/\s+/g, ' ')
-            }));
-            const profileOk = /El Mercado de Origen/i.test(data.title) && /elmercadodeorigen\.com/i.test(data.title + ' ' + data.text);
-            const match = data.text.match(/El Mercado de Origen\s+Opiniones\s+([0-9][0-9.,]*)\b/i)
-              || data.text.match(/Opiniones\s+([0-9][0-9.,]*)\s*[•·]\s*[0-9][,.][0-9]/i);
-            if (!profileOk || !match) throw new Error('Trustpilot review count could not be validated.');
-            const count = Number(match[1].replace(/[^0-9]/g, ''));
-            if (!Number.isInteger(count) || count < 1 || count >= 1000000) throw new Error('Invalid Trustpilot count.');
-            console.log('TRUSTPILOT_COUNT=' + count);
-            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'count=' + count + '\n');
+            const data = await page.evaluate(() => ({title:document.title,text:(document.body?.innerText||'').replace(/\s+/g,' ')}));
+            const profileOk=/El Mercado de Origen/i.test(data.title)&&/elmercadodeorigen\.com/i.test(data.title+' '+data.text);
+            const match=data.text.match(/El Mercado de Origen\s+Opiniones\s+([0-9][0-9.,]*)\b/i)||data.text.match(/Opiniones\s+([0-9][0-9.,]*)\s*[•·]\s*[0-9][,.][0-9]/i);
+            if(!profileOk||!match) throw new Error('Trustpilot review count could not be validated.');
+            const count=Number(match[1].replace(/[^0-9]/g,''));
+            if(!Number.isInteger(count)||count<1||count>=1000000) throw new Error('Invalid Trustpilot count.');
+            console.log('TRUSTPILOT_COUNT='+count);
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT,'count='+count+'\n');
             await browser.close();
-          })().catch(error => { console.error(error); process.exit(1); });
+          })().catch(error=>{console.error(error);process.exit(1)});
           JS
           node trustpilot-count.js
 
@@ -144,13 +139,15 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          G="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get mdo_google_review_count --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null")"
-          T="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get mdo_trustpilot_review_count --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null")"
-          TU="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get mdo_trustpilot_review_count_updated_at --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null")"
+          remote_option() {
+            local option="$1"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get '$option' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null"
+          }
+          G="$(remote_option mdo_google_review_count)"
+          T="$(remote_option mdo_trustpilot_review_count)"
+          TU="$(remote_option mdo_trustpilot_review_count_updated_at)"
           case "$G:$T:$TU" in *[!0-9:]*|'') echo "Invalid stored values G=$G T=$T TU=$TU"; exit 21;; esac
-          test "$G" -gt 0
-          test "$T" -gt 0
-          test "$TU" -gt 0
+          test "$G" -gt 0; test "$T" -gt 0; test "$TU" -gt 0
           echo "STORED_REVIEW_COUNTS google=$G trustpilot=$T trust_updated=$TU"
 
           for lang in es en; do
@@ -165,11 +162,10 @@ jobs:
               raw=open(f'/tmp/home-{lang}.html','r',encoding='utf-8',errors='ignore').read()
               gm=re.search(r'data-google-reviews=["\'](\d+)["\']',raw)
               tm=re.search(r'data-trustpilot-reviews=["\'](\d+)["\']',raw)
-              text=html.unescape(re.sub(r'<[^>]+>',' ',raw))
-              text=re.sub(r'\s+',' ',text)
+              text=html.unescape(re.sub(r'<[^>]+>',' ',raw)); text=re.sub(r'\s+',' ',text)
               google=bool(re.search(rf'Google.*?\b{g}\s+(?:reseñas|reviews)\b',text,re.I))
               trust=bool(re.search(rf'Trustpilot.*?\b{t}\s+(?:opiniones|reseñas|reviews)\b',text,re.I))
               print(f'HOME_REVIEW_CHECK lang={lang} google={g} attr_google={gm.group(1) if gm else None} visible_google={google} trustpilot={t} attr_trust={tm.group(1) if tm else None} visible_trust={trust}')
-              if not gm or not tm or int(gm.group(1)) != g or int(tm.group(1)) != t or not google or not trust:
+              if not gm or not tm or int(gm.group(1))!=g or int(tm.group(1))!=t or not google or not trust:
                   raise SystemExit(f'{lang}: home does not consume stored review counts')
           PY
