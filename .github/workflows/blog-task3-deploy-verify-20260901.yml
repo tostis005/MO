@@ -1,0 +1,245 @@
+name: Blog SEO task 3 deploy and verify 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/emdo-task3-technical-seo-fixes-20260901.php'
+      - '.github/workflows/blog-task3-deploy-verify-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/emdo-task3-technical-seo-fixes-20260901.php >/dev/null
+          grep -Fq 'emdo_task3_final_html' .github/scripts/emdo-task3-technical-seo-fixes-20260901.php
+          grep -Fq "X-Robots-Tag: noindex, follow" .github/scripts/emdo-task3-technical-seo-fixes-20260901.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy production MU guard
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/emdo-task3-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/emdo-task3-technical-seo-fixes-20260901.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
+            cp '$REMOTE' '$PROD_PATH/wp-content/mu-plugins/0-emdo-task3-technical-seo-20260901.php'
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/0-emdo-task3-technical-seo-20260901.php' >/dev/null
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            rm -f '$REMOTE'
+            echo EMDO_TASK3_DEPLOY_OK
+          "
+
+      - name: Verify public SEO state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, subprocess, sys, xml.etree.ElementTree as ET
+          from urllib.parse import urlsplit
+
+          base='https://www.elmercadodeorigen.com'
+          ua='Mozilla/5.0 EMDO SEO task3 final verifier'
+          failures=[]
+
+          def body(url):
+              return subprocess.check_output(['curl','-fsSL','--retry','4','--retry-delay','2','-A',ua,'-H','Cache-Control: no-cache','-H','Pragma: no-cache',url],text=True)
+          def headers(url, follow=False):
+              args=['curl','-sS','-D','-','-o','/dev/null','--retry','4','--retry-delay','2','-A',ua,'-H','Cache-Control: no-cache']
+              if follow: args.append('-L')
+              args.append(url)
+              return subprocess.check_output(args,text=True)
+          def canonical(html):
+              m=re.findall(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              if not m: m=re.findall(r'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']canonical["\']',html,re.I)
+              return m
+          def robots(html):
+              return re.findall(r'<meta[^>]+name=["\']robots["\'][^>]+content=["\']([^"\']+)',html,re.I)
+          def hreflangs(html):
+              out={}
+              for tag in re.findall(r'<link\b[^>]*\bhreflang\s*=\s*["\'][^"\']+["\'][^>]*>',html,re.I):
+                  lm=re.search(r'\bhreflang\s*=\s*["\']([^"\']+)',tag,re.I)
+                  hm=re.search(r'\bhref\s*=\s*["\']([^"\']+)',tag,re.I)
+                  if lm and hm: out[lm.group(1).lower()]=hm.group(1)
+              return out
+          def xrobots(h):
+              return [x.strip().lower() for x in re.findall(r'(?im)^x-robots-tag:\s*([^\r\n]+)',h)]
+          def assert_true(ok,msg):
+              if not ok: failures.append(msg)
+
+          # Sitemap integrity.
+          root=body(base+'/sitemap_index.xml?emdo_task3_final=1')
+          try:
+              x=ET.fromstring(root)
+              children=[e.text.strip() for e in x.iter() if e.tag.endswith('loc') and e.text]
+          except Exception as exc:
+              children=[]; failures.append('sitemap index parse failed: '+str(exc))
+          urls=[]
+          for child in children:
+              try:
+                  cx=ET.fromstring(body(child+'?emdo_task3_final=1'))
+                  urls += [e.text.strip() for e in cx.iter() if e.tag.endswith('loc') and e.text]
+              except Exception as exc:
+                  failures.append('child sitemap failed '+child+': '+str(exc))
+          retired=[
+            'verduras-mas-vitamina-c-comparativa','verduras-mas-hierro-comparativa','verduras-mas-fibra-comparativa',
+            'tomates-como-elegir-madurez-conservar-usar-segun-receta','hortalizas-de-temporada-como-elegir-mejor',
+            'aove-filtrado-vs-sin-filtrar-diferencias','aove-pierde-propiedades-al-calentarlo-que-cambia-temperatura',
+            'legumbres-secas-remojo-coccion-como-elegir','100-75-50-iberico-que-significa-porcentaje',
+            'diferencias-nutricionales-jamon-100-75-50-iberico','jamon-iberico-o-paleta-iberica-diferencias-cual-elegir',
+            'jamon-vs-paleta-iberica-diferencias-nutricionales','jamon-iberico-vs-jamon-serrano-diferencias-nutricionales',
+            'jamon-iberico-bellota-vs-cebo-campo-vs-cebo-diferencias-nutricionales','jamon-pieza-entera-o-loncheado-como-elegir',
+            'bellota-cambia-grasa-jamon-iberico','por-que-jamon-bellota-tiene-mas-acido-oleico',
+            'carne-picada-ternera-que-mirar-antes-comprar','como-descongelar-conservar-carne-ternera-correctamente',
+            'nutrientes-lomo-iberico-proteina-grasa-hierro-vitaminas-minerales','chorizo-iberico-vs-salchichon-iberico-diferencias-nutricionales',
+            'cuanta-vitamina-e-tiene-aove','aove-omega-3-omega-6-perfil-grasas','aceite-oliva-tiene-colesterol',
+            'cuanta-grasa-saturada-tiene-aove','cuanto-hierro-tiene-lomo-iberico',
+            'grasa-lomo-iberico-saturada-monoinsaturada-poliinsaturada','cuanto-hierro-tiene-chorizo-iberico',
+            'grasa-chorizo-iberico-saturada-monoinsaturada-poliinsaturada'
+          ]
+          sitemap_retired=[u for u in urls if any('/'+s+'/' in u for s in retired)]
+          assert_true(len(children)==5,f'expected 5 child sitemaps, got {len(children)}')
+          assert_true(len(urls)>700,f'unexpectedly small sitemap: {len(urls)}')
+          assert_true(len(urls)==len(set(urls)),f'duplicate sitemap URLs: {len(urls)-len(set(urls))}')
+          assert_true(not sitemap_retired,f'retired URLs remain in sitemap: {sitemap_retired[:10]}')
+          assert_true(not [u for u in urls if '?' in u],'query URLs found in sitemap')
+          assert_true(not [u for u in urls if u.startswith('http://')],'http URLs found in sitemap')
+          assert_true(not [u for u in urls if urlsplit(u).netloc!='www.elmercadodeorigen.com'],'foreign/non-www hosts in sitemap')
+          print(f'EMDO_TASK3_FINAL_SITEMAP children={len(children)} urls={len(urls)} duplicates={len(urls)-len(set(urls))} retired={len(sitemap_retired)}')
+
+          # wp-sitemap must have one direct redirect to custom sitemap.
+          h=headers(base+'/wp-sitemap.xml')
+          codes=re.findall(r'(?im)^HTTP/\S+\s+(\d+)',h); locs=re.findall(r'(?im)^location:\s*([^\r\n]+)',h)
+          assert_true(codes and codes[-1]=='301','wp-sitemap is not 301')
+          assert_true(locs and locs[-1].strip()==base+'/sitemap_index.xml','wp-sitemap wrong destination')
+
+          # robots.txt policy.
+          rt=body(base+'/robots.txt?emdo_task3_final=1')
+          assert_true('Sitemap: '+base+'/sitemap_index.xml' in rt,'robots missing sitemap')
+          assert_true('Disallow: /*?*filter_' in rt,'robots missing filter_ crawl guard')
+          assert_true('Disallow: /*?*query_type_' in rt,'robots missing query_type crawl guard')
+
+          # Canonical + query cleanup.
+          aove=body(base+'/nutrientes-aceite-oliva-virgen-extra/?utm_source=task3-final')
+          ac=canonical(aove)
+          assert_true(ac==[base+'/nutrientes-aceite-oliva-virgen-extra/'],f'UTM canonical incorrect: {ac}')
+
+          # Search, feed, REST, author/date/category pagination and product tags.
+          search=body(base+'/?s=jamon'); sr=robots(search)
+          assert_true(any('noindex' in r.lower() for r in sr),f'search not noindex: {sr}')
+          for path in ['/feed/','/wp-json/']:
+              xr=xrobots(headers(base+path))
+              assert_true(any('noindex' in r for r in xr),f'{path} missing X-Robots noindex: {xr}')
+          for path in ['/author/admin-mercado/','/2026/08/','/category/aceites/page/2/']:
+              html=body(base+path); mr=robots(html); xr=xrobots(headers(base+path))
+              assert_true(any('noindex' in r.lower() and 'follow' in r.lower() for r in mr),f'{path} meta robots not noindex/follow: {mr}')
+              assert_true(any('noindex' in r and 'follow' in r for r in xr),f'{path} X-Robots not noindex/follow: {xr}')
+          tag=body(base+'/etiqueta-producto/iberico/'); tr=robots(tag); tx=xrobots(headers(base+'/etiqueta-producto/iberico/'))
+          assert_true(any('noindex' in r.lower() for r in tr),f'product tag lost noindex: {tr}')
+          assert_true(any('noindex' in r for r in tx),f'product tag lost X-Robots noindex: {tx}')
+
+          # Reciprocal hreflang across every public blog category in the custom category sitemap.
+          category_urls=[u for u in urls if '/category/' in u and '/categoria-producto/' not in u and '/en/' not in u]
+          # Keep only top-level blog category archives, not pagination (sitemap should not contain pagination anyway).
+          category_urls=[u for u in category_urls if re.search(r'/category/[^/]+/$',u)]
+          checked=0
+          for es in category_urls:
+              es_html=body(es); es_h=hreflangs(es_html); en=es_h.get('en','')
+              if not en: continue
+              en_html=body(en); en_h=hreflangs(en_html); en_c=canonical(en_html)
+              es_back=en_h.get('es-es') or en_h.get('es') or ''
+              xd=en_h.get('x-default','')
+              ok=(es_back.rstrip('/')==es.rstrip('/') and xd.rstrip('/')==es.rstrip('/') and en_c==[en])
+              print(f'EMDO_TASK3_HREFLANG_PAIR es={es} en={en} es_back={es_back} xdefault={xd} ok={int(ok)}')
+              assert_true(ok,f'hreflang pair failed: es={es} en={en} back={es_back} xd={xd} canonical={en_c}')
+              checked+=1
+          assert_true(checked>=7,f'expected at least 7 blog category hreflang pairs, got {checked}')
+          print(f'EMDO_TASK3_HREFLANG_SUMMARY checked={checked}')
+
+          # Every consolidation redirect must be exactly one hop to its final survivor.
+          redirects={
+            'verduras-mas-vitamina-c-comparativa':'que-verduras-tienen-mas-vitamina-c',
+            'verduras-mas-hierro-comparativa':'que-verduras-tienen-mas-hierro',
+            'verduras-mas-fibra-comparativa':'que-verduras-tienen-mas-fibra',
+            'tomates-como-elegir-madurez-conservar-usar-segun-receta':'tomate-como-elegir-conservar-usar-cada-tipo',
+            'hortalizas-de-temporada-como-elegir-mejor':'verduras-temporada-espana-calendario-meses-que-comprar',
+            'aove-filtrado-vs-sin-filtrar-diferencias':'aove-filtrado-o-sin-filtrar-diferencias',
+            'aove-pierde-propiedades-al-calentarlo-que-cambia-temperatura':'aove-pierde-propiedades-al-calentarlo-que-cambia-al-cocinar',
+            'legumbres-secas-remojo-coccion-como-elegir':'guia-cocinar-legumbres-secas-remojo-coccion-errores',
+            '100-75-50-iberico-que-significa-porcentaje':'50-75-100-iberico-que-significa-porcentaje-raza-etiqueta',
+            'diferencias-nutricionales-jamon-100-75-50-iberico':'50-75-100-iberico-que-significa-porcentaje-raza-etiqueta',
+            'jamon-iberico-o-paleta-iberica-diferencias-cual-elegir':'jamon-o-paleta-diferencias-cual-elegir',
+            'jamon-vs-paleta-iberica-diferencias-nutricionales':'jamon-o-paleta-diferencias-cual-elegir',
+            'jamon-iberico-vs-jamon-serrano-diferencias-nutricionales':'jamon-iberico-vs-jamon-serrano-diferencias-como-elegir',
+            'jamon-iberico-bellota-vs-cebo-campo-vs-cebo-diferencias-nutricionales':'jamon-bellota-cebo-campo-cebo-diferencias-tipos-jamon-iberico',
+            'jamon-pieza-entera-o-loncheado-como-elegir':'jamon-en-pieza-o-loncheado-al-vacio-ventajas-que-compensa',
+            'bellota-cambia-grasa-jamon-iberico':'acido-oleico-jamon-iberico-que-es-de-donde-procede',
+            'por-que-jamon-bellota-tiene-mas-acido-oleico':'acido-oleico-jamon-iberico-que-es-de-donde-procede',
+            'carne-picada-ternera-que-mirar-antes-comprar':'carne-picada-ternera-que-es-como-elegir-cocinar',
+            'como-descongelar-conservar-carne-ternera-correctamente':'como-descongelar-carne-correctamente-nevera-agua-fria-microondas',
+            'nutrientes-lomo-iberico-proteina-grasa-hierro-vitaminas-minerales':'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'chorizo-iberico-vs-salchichon-iberico-diferencias-nutricionales':'chorizo-vs-salchichon-diferencias-ingredientes-sabor-curacion',
+            'cuanta-vitamina-e-tiene-aove':'nutrientes-aceite-oliva-virgen-extra',
+            'aove-omega-3-omega-6-perfil-grasas':'nutrientes-aceite-oliva-virgen-extra',
+            'aceite-oliva-tiene-colesterol':'nutrientes-aceite-oliva-virgen-extra',
+            'cuanta-grasa-saturada-tiene-aove':'nutrientes-aceite-oliva-virgen-extra',
+            'cuanto-hierro-tiene-lomo-iberico':'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'grasa-lomo-iberico-saturada-monoinsaturada-poliinsaturada':'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'cuanto-hierro-tiene-chorizo-iberico':'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'grasa-chorizo-iberico-saturada-monoinsaturada-poliinsaturada':'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+          }
+          redirect_bad=[]
+          for old,dest in redirects.items():
+              out=subprocess.check_output(['curl','-sS','-o','/dev/null','--retry','3','--retry-delay','2','-A',ua,'-w','%{http_code}\t%{num_redirects}\t%{url_effective}','-L','--max-redirs','5',base+'/'+old+'/'],text=True).strip()
+              code,num,effective=out.split('\t')
+              ok=(code=='200' and num=='1' and effective.rstrip('/')==(base+'/'+dest).rstrip('/'))
+              if not ok: redirect_bad.append((old,dest,code,num,effective))
+          assert_true(not redirect_bad,f'redirect problems: {redirect_bad[:10]}')
+          print(f'EMDO_TASK3_REDIRECT_SUMMARY checked={len(redirects)} bad={len(redirect_bad)}')
+
+          # Probe WooCommerce shopper-state URLs; log their current policy for the audit record.
+          for path in ['/categoria-producto/jamones-paletas/?orderby=price','/categoria-producto/jamones-paletas/?min_price=50','/categoria-producto/jamones-paletas/?filter_marca=test']:
+              html=body(base+path); print(f'EMDO_TASK3_FACET path={path} canonical={canonical(html)!r} robots={robots(html)!r} xrobots={xrobots(headers(base+path))!r}')
+
+          if failures:
+              print('EMDO_TASK3_FINAL_FAILURES='+repr(failures))
+              sys.exit(1)
+          print('EMDO_TASK3_FINAL_VERIFY_OK')
+          PY
