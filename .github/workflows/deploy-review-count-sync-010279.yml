@@ -1,4 +1,4 @@
-name: Deploy dynamic review counts 0.10.280
+name: Deploy dynamic review counts 0.10.281
 
 on:
   push:
@@ -30,10 +30,11 @@ jobs:
           set -euo pipefail
           php -l mu-plugins/z-mdo-review-count-sync-010279.php
           php -l mu-plugins/mdo-home-external-reviews-20260819.php
-          grep -Fq 'Version: 0.10.280' mu-plugins/z-mdo-review-count-sync-010279.php
+          grep -Fq 'Version: 0.10.281' mu-plugins/z-mdo-review-count-sync-010279.php
           grep -Fq "get_option( 'mdo_google_review_count'" mu-plugins/mdo-home-external-reviews-20260819.php
           grep -Fq "get_option( 'mdo_trustpilot_review_count'" mu-plugins/mdo-home-external-reviews-20260819.php
           grep -Fq 'mdo_supplier_sync_dispatch' mu-plugins/z-mdo-review-count-sync-010279.php
+          grep -Fq 'mdo_review_counts_store_trustpilot_010281' mu-plugins/z-mdo-review-count-sync-010279.php
 
       - name: Deploy review modules to production
         shell: bash
@@ -74,18 +75,17 @@ jobs:
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
           echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
 
-      - name: Force production refresh
+      - name: Force Google production refresh
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo wp_json_encode(mdo_review_counts_refresh_010279(true));' --path='$PROD_PATH' --allow-root")"
-          echo "REFRESH_RESULT $RESULT"
+          RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo wp_json_encode(mdo_review_counts_refresh_google_010281(true));' --path='$PROD_PATH' --allow-root")"
+          echo "GOOGLE_REFRESH_RESULT $RESULT"
           echo "$RESULT" | grep -Fq '"google_ok":true'
-          echo "$RESULT" | grep -Fq '"trust_ok":true'
 
-      - name: Verify stored values, schedule and home output
+      - name: Verify options, coordination and home output
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -95,11 +95,10 @@ jobs:
             \$g=(int)get_option("mdo_google_review_count",0);
             \$t=(int)get_option("mdo_trustpilot_review_count",0);
             \$gu=(int)get_option("mdo_google_review_count_updated_at",0);
-            \$tu=(int)get_option("mdo_trustpilot_review_count_updated_at",0);
             \$hook=has_action("mdo_supplier_sync_dispatch","mdo_review_counts_after_dispatch_010279");
-            \$next=(did_action("action_scheduler_init") && function_exists("as_next_scheduled_action")) ? as_next_scheduled_action("mdo_review_counts_daily_fallback_010279",array(),"mdo-review-counts") : wp_next_scheduled("mdo_review_counts_daily_fallback_010279");
-            echo "google={\$g} trustpilot={\$t} google_updated={\$gu} trust_updated={\$tu} dispatcher_hook=".(false===\$hook?"no":"yes")." fallback_next=".(is_numeric(\$next)?wp_date("c",(int)\$next):"none");
-            if(\$g<1 || \$t<1 || \$gu<1 || \$tu<1 || false===\$hook){exit(17);} 
+            \$fallback=wp_next_scheduled("mdo_review_counts_daily_fallback_010279");
+            echo "google={\$g} trustpilot={\$t} google_updated={\$gu} dispatcher_hook=".(false===\$hook?"no":"yes")." fallback_next=".(is_numeric(\$fallback)?wp_date("c",(int)\$fallback):"none");
+            if(\$g<1 || \$t<1 || \$gu<1 || false===\$hook || !\$fallback){exit(17);} 
           ' --path='$PROD_PATH' --allow-root")"
           echo "REVIEW_STATE $STATE"
           G="$(printf '%s' "$STATE" | sed -n 's/.*google=\([0-9][0-9]*\).*/\1/p')"
@@ -119,14 +118,11 @@ jobs:
               raw=open(f'/tmp/home-{lang}.html','r',encoding='utf-8',errors='ignore').read()
               gm=re.search(r'data-google-reviews=["\'](\d+)["\']',raw)
               tm=re.search(r'data-trustpilot-reviews=["\'](\d+)["\']',raw)
-              if not gm or not tm:
-                  raise SystemExit(f'{lang}: dynamic review data attributes missing')
-              rendered_g=int(gm.group(1)); rendered_t=int(tm.group(1))
               text=html.unescape(re.sub(r'<[^>]+>',' ',raw))
               text=re.sub(r'\s+',' ',text)
               google=bool(re.search(rf'Google.*?\b{g}\s+(?:reseñas|reviews)\b',text,re.I))
               trust=bool(re.search(rf'Trustpilot.*?\b{t}\s+(?:opiniones|reseñas|reviews)\b',text,re.I))
-              print(f'HOME_REVIEW_CHECK lang={lang} option_google={g} rendered_google={rendered_g} visible_google={google} option_trustpilot={t} rendered_trustpilot={rendered_t} visible_trustpilot={trust}')
-              if rendered_g != g or rendered_t != t or not google or not trust:
+              print(f'HOME_REVIEW_CHECK lang={lang} google={g} attr_google={gm.group(1) if gm else None} visible_google={google} trustpilot={t} attr_trust={tm.group(1) if tm else None} visible_trust={trust}')
+              if not gm or not tm or int(gm.group(1)) != g or int(tm.group(1)) != t or not google or not trust:
                   raise SystemExit(f'{lang}: home is not consuming stored review counts')
           PY
