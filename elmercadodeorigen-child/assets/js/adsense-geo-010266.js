@@ -9,105 +9,33 @@
 		return;
 	}
 
-	function cookieValue(name) {
-		var prefix = encodeURIComponent(name) + '=';
-		var cookies = document.cookie ? document.cookie.split(';') : [];
-
-		for (var i = 0; i < cookies.length; i += 1) {
-			var item = cookies[i].trim();
-			if (item.indexOf(prefix) === 0) {
-				return decodeURIComponent(item.slice(prefix.length));
-			}
-		}
-		return '';
-	}
-
-	function consentCategoryGranted(categories, key) {
-		if (!categories) {
-			return false;
-		}
-
-		if (Array.isArray(categories)) {
-			return categories.indexOf(key) !== -1;
-		}
-
-		return categories[key] === true || categories[key] === 'yes' || categories[key] === 1 || categories[key] === '1';
-	}
-
-	function anyAdvertisingCategoryGranted(categories) {
-		return (
-			consentCategoryGranted(categories, 'advertisement') ||
-			consentCategoryGranted(categories, 'advertising') ||
-			consentCategoryGranted(categories, 'marketing') ||
-			consentCategoryGranted(categories, 'non_necessary') ||
-			consentCategoryGranted(categories, 'non-necessary')
-		);
-	}
-
-	function webToffeeConsentGranted() {
-		// WebToffee 3.x.
-		if (typeof window.getWccConsent === 'function') {
-			try {
-				var consent = window.getWccConsent();
-				if (consent && anyAdvertisingCategoryGranted(consent.categories)) {
-					return true;
-				}
-			} catch (error) {
-				// Seguimos con las comprobaciones compatibles con la version legacy.
-			}
-		}
-
-		// Compatibilidad con WebToffee legacy (Cookie Law Info).
-		if (window.CLI && window.CLI.consent && anyAdvertisingCategoryGranted(window.CLI.consent)) {
-			return true;
-		}
-
-		var consentCookies = [
-			'cookielawinfo-checkbox-advertisement',
-			'cookielawinfo-checkbox-advertising',
-			'cookielawinfo-checkbox-marketing',
-			'cookielawinfo-checkbox-non-necessary'
-		];
-
-		for (var i = 0; i < consentCookies.length; i += 1) {
-			if (cookieValue(consentCookies[i]).toLowerCase() === 'yes') {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	function loadAdsenseIfAllowed() {
-		if (!eligible || loaded || !webToffeeConsentGranted()) {
+	/**
+	 * Carga AdSense cuando la visita es geograficamente elegible.
+	 *
+	 * No hacemos una segunda puerta basada en la categoria "Advertisement" de
+	 * WebToffee: la CMP/TFC debe comunicar a Google la eleccion del visitante y
+	 * Google selecciona el modo permitido (personalizado, no personalizado o
+	 * limited ads). data-wcc="necessary" evita que el bloqueador automatico de
+	 * WebToffee retenga el propio tag de AdSense antes de que Google pueda leer
+	 * esas senales de privacidad.
+	 */
+	function loadAdsenseIfEligible() {
+		if (!eligible || loaded) {
 			return;
 		}
 
 		loaded = true;
+
 		var script = document.createElement('script');
 		script.async = true;
 		script.crossOrigin = 'anonymous';
+		script.setAttribute('data-wcc', 'necessary');
 		script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(config.publisher);
+		script.onerror = function () {
+			loaded = false;
+		};
 		document.head.appendChild(script);
 	}
-
-	// API moderna de WebToffee: reacciona al consentimiento sin recargar.
-	document.addEventListener('wcc_consent_update', function () {
-		window.setTimeout(loadAdsenseIfAllowed, 0);
-	});
-	document.addEventListener('_wccBannerVisible', function () {
-		window.setTimeout(loadAdsenseIfAllowed, 0);
-	});
-
-	// Fallback para configuraciones antiguas del banner, sin sustituir callbacks
-	// globales que puedan usar otras integraciones.
-	document.addEventListener('click', function (event) {
-		var target = event.target && event.target.closest ? event.target.closest('.cli_action_button, .wt-cli-accept-all-btn, .wt-cli-save-preferences-btn') : null;
-		if (target) {
-			window.setTimeout(loadAdsenseIfAllowed, 150);
-			window.setTimeout(loadAdsenseIfAllowed, 600);
-		}
-	});
 
 	fetch(config.endpoint, {
 		method: 'GET',
@@ -125,7 +53,7 @@
 		})
 		.then(function (data) {
 			eligible = data && data.show_ads === true;
-			loadAdsenseIfAllowed();
+			loadAdsenseIfEligible();
 		})
 		.catch(function () {
 			// Fallo seguro: si no podemos validar geografia, no cargamos AdSense.
