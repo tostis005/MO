@@ -11,6 +11,10 @@
 		showAds: null,
 		attempt: 0,
 		adRequestsPaused: true,
+		inArticlePlaceholders: 0,
+		inArticleRequested: 0,
+		inArticleFilled: 0,
+		inArticleError: null,
 		error: null
 	};
 
@@ -30,10 +34,18 @@
 		return queue.pauseAdRequests !== 0;
 	}
 
+	function updateInArticleDebug() {
+		debug.inArticlePlaceholders = document.querySelectorAll('.emo-inarticle-ad-slot[data-emo-inarticle-ad]').length;
+		debug.inArticleRequested = document.querySelectorAll('.emo-inarticle-ad-slot[data-emo-inarticle-hydrated="1"]').length;
+		debug.inArticleFilled = document.querySelectorAll('.emo-inarticle-ad-slot.is-filled').length;
+	}
+
 	function renderDebugPanel() {
 		if (!debugMode || !document.body) {
 			return;
 		}
+
+		updateInArticleDebug();
 
 		var panel = document.getElementById('elmercado-adsense-debug');
 		if (!panel) {
@@ -53,6 +65,10 @@
 			'show_ads: ' + String(debug.showAds),
 			'attempt: ' + String(debug.attempt),
 			'ad_requests_paused: ' + String(debug.adRequestsPaused),
+			'inarticle_placeholders: ' + String(debug.inArticlePlaceholders),
+			'inarticle_requested: ' + String(debug.inArticleRequested),
+			'inarticle_filled: ' + String(debug.inArticleFilled),
+			'inarticle_error: ' + (debug.inArticleError || 'none'),
 			'google_script: ' + (googleScriptExists() ? 'present' : 'absent'),
 			'adsbygoogle: ' + (typeof window.adsbygoogle !== 'undefined' ? 'present' : 'absent'),
 			'error: ' + (debug.error || 'none')
@@ -70,10 +86,80 @@
 		debug.adRequestsPaused = true;
 	}
 
+	function syncInArticleStatus(slot, ins) {
+		var status = ins.getAttribute('data-ad-status');
+		if (status === 'filled') {
+			slot.classList.add('is-filled');
+			slot.setAttribute('aria-hidden', 'false');
+		} else {
+			slot.classList.remove('is-filled');
+			slot.setAttribute('aria-hidden', 'true');
+		}
+		updateInArticleDebug();
+		renderDebugPanel();
+	}
+
+	function hydrateInArticleAds() {
+		if (!eligible || !config.inArticleSlot || !config.publisher) {
+			return;
+		}
+
+		var slots = Array.prototype.slice.call(
+			document.querySelectorAll('.emo-inarticle-ad-slot[data-emo-inarticle-ad]:not([data-emo-inarticle-hydrated])')
+		);
+
+		debug.inArticlePlaceholders = document.querySelectorAll('.emo-inarticle-ad-slot[data-emo-inarticle-ad]').length;
+
+		slots.forEach(function (slot) {
+			var ins = document.createElement('ins');
+			ins.className = 'adsbygoogle';
+			ins.style.display = 'block';
+			ins.style.textAlign = 'center';
+			ins.setAttribute('data-ad-layout', 'in-article');
+			ins.setAttribute('data-ad-format', 'fluid');
+			ins.setAttribute('data-ad-client', config.publisher);
+			ins.setAttribute('data-ad-slot', config.inArticleSlot);
+
+			slot.setAttribute('data-emo-inarticle-hydrated', '1');
+			slot.classList.add('is-requested');
+			slot.appendChild(ins);
+
+			var observer = new MutationObserver(function () {
+				syncInArticleStatus(slot, ins);
+			});
+			observer.observe(ins, {
+				attributes: true,
+				attributeFilter: ['data-ad-status']
+			});
+
+			try {
+				adsbygoogleQueue().push({});
+			} catch (error) {
+				debug.inArticleError = error && error.message ? error.message : String(error || 'unknown_error');
+				slot.classList.remove('is-requested');
+				slot.setAttribute('aria-hidden', 'true');
+			}
+
+			syncInArticleStatus(slot, ins);
+		});
+
+		updateInArticleDebug();
+		renderDebugPanel();
+	}
+
+	function scheduleInArticleAds() {
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', hydrateInArticleAds, { once: true });
+		} else {
+			hydrateInArticleAds();
+		}
+	}
+
 	function resumeAdRequests() {
 		adsbygoogleQueue().pauseAdRequests = 0;
 		debug.adRequestsPaused = false;
 		setPhase('ads_requests_resumed');
+		scheduleInArticleAds();
 	}
 
 	if (debugMode) {
