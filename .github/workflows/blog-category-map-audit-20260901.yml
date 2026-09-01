@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Read live taxonomies
+      - name: Read and verify live taxonomies
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -47,12 +47,66 @@ jobs:
             esac
           done
           : "${prod_path:?production path not found}"
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+          output=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
             $blog = get_terms(array("taxonomy"=>"category","hide_empty"=>false));
             usort($blog, fn($a,$b)=>strcmp($a->slug,$b->slug));
             foreach ($blog as $t) echo "BLOG_CATEGORY|{$t->slug}|{$t->name}|{$t->count}\n";
             $prod = get_terms(array("taxonomy"=>"product_cat","hide_empty"=>false));
             usort($prod, fn($a,$b)=>strcmp($a->slug,$b->slug));
             foreach ($prod as $t) echo "PRODUCT_CATEGORY|{$t->slug}|{$t->name}|{$t->count}\n";
-          '
+
+            $tests = array(
+              "aceite" => "aceites",
+              "aceites" => "aceites",
+              "carnes" => "carnes",
+              "conservas" => "conservas",
+              "embutidos" => "embutidos-y-curados",
+              "embutidos-y-curados" => "embutidos-y-curados",
+              "hortalizas-y-verduras" => "hortalizas-verduras",
+              "jamones-y-paletas" => "jamones-paletas",
+              "legumbres" => "legumbres",
+              "packs-y-lotes" => "packs-y-lotes",
+              "quesos" => "quesos"
+            );
+            foreach ($tests as $from => $expected) {
+              $actual = elmercado_blog_filter_product_category_slug_010277($from, 0);
+              echo "MAP|{$from}|{$actual}|" . ($actual === $expected ? "PASS" : "FAIL") . "\n";
+            }
+
+            foreach (array("jamones-y-paletas"=>"jamones-paletas", "hortalizas-y-verduras"=>"hortalizas-verduras") as $editorial => $expected) {
+              $term = get_term_by("slug", $editorial, "category");
+              if (!$term instanceof WP_Term) {
+                echo "ARTICLE_TEST|{$editorial}|NO_TERM|FAIL\n";
+                continue;
+              }
+              $posts = get_posts(array("post_type"=>"post", "post_status"=>"publish", "numberposts"=>1, "category"=>(int)$term->term_id));
+              if (empty($posts)) {
+                echo "ARTICLE_TEST|{$editorial}|NO_POST|FAIL\n";
+                continue;
+              }
+              $p = $posts[0];
+              setup_postdata($p);
+              $resolved = elmercado_blog_product_category_slug_010277((int)$p->ID);
+              $rendered = do_shortcode("[elmercado_dynamic_products category=\"{$resolved}\" heading=\"1\"]");
+              $ok = $resolved === $expected && false !== strpos($rendered, "data-product-category=\"{$expected}\"");
+              echo "ARTICLE_TEST|{$editorial}|{$p->ID}|{$resolved}|" . ($ok ? "PASS" : "FAIL") . "|" . get_permalink($p) . "\n";
+              wp_reset_postdata();
+            }
+
+            $jabugo_posts = get_posts(array("post_type"=>"post", "post_status"=>"publish", "numberposts"=>5, "s"=>"Jabugo"));
+            foreach ($jabugo_posts as $p) {
+              setup_postdata($p);
+              $resolved = elmercado_blog_product_category_slug_010277((int)$p->ID);
+              $rendered = do_shortcode("[elmercado_dynamic_products category=\"{$resolved}\" heading=\"1\"]");
+              $ok = "jamones-paletas" === $resolved && false !== strpos($rendered, "data-product-category=\"jamones-paletas\"");
+              echo "JABUGO_TEST|{$p->ID}|{$resolved}|" . ($ok ? "PASS" : "FAIL") . "|" . get_the_title($p) . "|" . get_permalink($p) . "\n";
+              wp_reset_postdata();
+            }
+          ' 2>/dev/null)
+          printf '%s\n' "$output"
+          ! grep -q '|FAIL' <<< "$output"
+          grep -qx 'MAP|jamones-y-paletas|jamones-paletas|PASS' <<< "$output"
+          grep -qx 'MAP|hortalizas-y-verduras|hortalizas-verduras|PASS' <<< "$output"
+          grep -q '^ARTICLE_TEST|jamones-y-paletas|[0-9].*|jamones-paletas|PASS|' <<< "$output"
+          grep -q '^ARTICLE_TEST|hortalizas-y-verduras|[0-9].*|hortalizas-verduras|PASS|' <<< "$output"
           REMOTE
