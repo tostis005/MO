@@ -60,10 +60,12 @@ jobs:
           done
           : "${prod_path:?production path not found}"
 
-          theme_path=$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo get_stylesheet_directory();' --path="$prod_path" --allow-root)
+          stylesheet=$("$php_bin" -d memory_limit=256M "$wp_bin" option get stylesheet --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
+          theme_path="$prod_path/wp-content/themes/$stylesheet"
           php_file="$theme_path/inc/adsense-geo-010266.php"
           js_file="$theme_path/assets/js/adsense-geo-010266.js"
 
+          echo "THEME=$stylesheet"
           test -f "$php_file"
           test -f "$js_file"
           "$php_bin" -l "$php_file"
@@ -85,7 +87,7 @@ jobs:
             foreach (["ES","FR","PT","DE","US","MX","GB"] as $country) {
               echo $country . "=" . (elmercado_adsense_country_is_shippable($country) ? "SHIP" : "ADS") . "\n";
             }
-          ')
+          ' 2>/dev/null)
           printf '%s\n' "$country_results"
           echo "$country_results" | grep -qx 'ES=SHIP'
           echo "$country_results" | grep -qx 'FR=SHIP'
@@ -99,9 +101,9 @@ jobs:
           post_url=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
             $ids = get_posts(["post_type" => "post", "post_status" => "publish", "numberposts" => 1, "fields" => "ids"]);
             if ($ids) echo get_permalink($ids[0]);
-          ')
+          ' 2>/dev/null)
           test -n "$post_url"
-          site_url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get home --path="$prod_path" --allow-root)
+          site_url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get home --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
           nonce=$(date +%s)
           post_html=$(curl -fsSL --max-time 20 "${post_url}?adsense_verify=${nonce}")
           home_html=$(curl -fsSL --max-time 20 "${site_url}/?adsense_verify=${nonce}")
