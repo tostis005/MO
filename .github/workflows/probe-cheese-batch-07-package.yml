@@ -11,40 +11,44 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Recover by gzip CRC and JSON integrity
+      - name: Recover with raw DEFLATE and stored CRC
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import glob,string,hashlib,base64,gzip,json,itertools
+          import glob,string,base64,zlib,struct,json,itertools,hashlib
           files=sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))
           parts=[open(f,encoding='utf-8').read().strip() for f in files]
           p0=parts[0]; rest=''.join(parts[1:])
           alphabet=string.ascii_uppercase+string.ascii_lowercase+string.digits+'+/'
           found=[]
-          for first,second in itertools.product(alphabet,repeat=2):
-              one=p0[:2862]+first+p0[2862:]
-              candidate=one[:3118]+second+one[3118:]+rest
-              try:
-                  raw=base64.b64decode(candidate,validate=True)
-                  text=gzip.decompress(raw).decode('utf-8')
-                  data=json.loads(text)
-              except Exception:
-                  continue
-              if len(data)!=10 or sorted(int(x.get('pos',0)) for x in data)!=list(range(61,71)):
-                  continue
-              found.append((first,second,hashlib.sha256(candidate.encode()).hexdigest(),data))
-          print('VALID_RECOVERIES='+str(len(found)))
-          for first,second,sha,data in found[:10]:
-              print('RECOVERY first=%s second=%s sha=%s'%(first,second,sha))
+          for p2 in range(3090,3141):
+              for first,second in itertools.product(alphabet,repeat=2):
+                  one=p0[:2862]+first+p0[2862:]
+                  candidate=one[:p2]+second+one[p2:]+rest
+                  try:
+                      raw=base64.b64decode(candidate,validate=True)
+                      # Package was produced with a standard gzip header; trailer stores CRC32 and ISIZE.
+                      stored_crc,stored_size=struct.unpack('<II',raw[-8:])
+                      out=zlib.decompress(raw[10:-8],-15)
+                  except Exception:
+                      continue
+                  if (zlib.crc32(out)&0xffffffff)!=stored_crc or (len(out)&0xffffffff)!=stored_size:
+                      continue
+                  try: data=json.loads(out.decode('utf-8'))
+                  except Exception: continue
+                  if len(data)!=10 or sorted(int(x.get('pos',0)) for x in data)!=list(range(61,71)): continue
+                  found.append((2862,first,p2,second,hashlib.sha256(candidate.encode()).hexdigest(),data))
+          print('CRC_VALID_RECOVERIES='+str(len(found)))
+          for p1,first,p2,second,sha,data in found[:10]:
+              print(f'RECOVERY p1={p1} first={first} p2={p2} second={second} sha={sha}')
               print('TITLES='+' | '.join(x['title'] for x in data))
-          if len(found)!=1:
-              raise SystemExit('Expected exactly one CRC-valid recovery')
-          first,second,sha,data=found[0]
-          print('RECOVERED_FIRST_POS=2862')
-          print('RECOVERED_FIRST_CHAR='+first)
-          print('RECOVERED_SECOND_POS_AFTER_FIRST=3118')
-          print('RECOVERED_SECOND_CHAR='+second)
-          print('RECOVERED_SHA256='+sha)
+          if len(found)!=1: raise SystemExit('Expected one CRC-valid recovery in second-position window')
+          p1,first,p2,second,sha,data=found[0]
+          print(f'RECOVERED_FIRST_POS={p1}')
+          print(f'RECOVERED_FIRST_CHAR={first}')
+          print(f'RECOVERED_SECOND_POS_AFTER_FIRST={p2}')
+          print(f'RECOVERED_SECOND_CHAR={second}')
+          print(f'RECOVERED_SHA256={sha}')
           print('REPAIRED_JSON_OK=10')
           PY
