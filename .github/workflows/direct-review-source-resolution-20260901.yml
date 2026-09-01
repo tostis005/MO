@@ -1,0 +1,196 @@
+name: Resolve direct Google and Trustpilot review sources
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/direct-review-source-resolution-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH and production path
+        id: prep
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "prod_path=$PROD_PATH" >> "$GITHUB_OUTPUT"
+          echo "port=$PORT" >> "$GITHUB_OUTPUT"
+
+      - name: Test Google Places API New directly
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          PROD_PATH: ${{ steps.prep.outputs.prod_path }}
+          PORT: ${{ steps.prep.outputs.port }}
+        run: |
+          set -euo pipefail
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          cat > /tmp/google-direct-resolution.php <<'PHP'
+          <?php
+          function mdo_find_google_api_key($value) {
+              if (is_string($value) && preg_match('/AIza[0-9A-Za-z_-]{20,}/', $value, $m)) return $m[0];
+              if (is_string($value)) {
+                  $maybe = maybe_unserialize($value);
+                  if ($maybe !== $value) return mdo_find_google_api_key($maybe);
+                  $json = json_decode($value, true);
+                  if (is_array($json)) return mdo_find_google_api_key($json);
+              }
+              if (is_array($value)) foreach ($value as $v) { $k = mdo_find_google_api_key($v); if ($k) return $k; }
+              if (is_object($value)) return mdo_find_google_api_key((array)$value);
+              return '';
+          }
+          function mdo_safe_google_post($key, $query) {
+              $response = wp_remote_post('https://places.googleapis.com/v1/places:searchText', [
+                  'timeout' => 25,
+                  'headers' => [
+                      'Content-Type' => 'application/json',
+                      'X-Goog-Api-Key' => $key,
+                      'X-Goog-FieldMask' => 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.websiteUri,places.nationalPhoneNumber,places.googleMapsUri',
+                  ],
+                  'body' => wp_json_encode(['textQuery' => $query, 'languageCode' => 'es']),
+              ]);
+              if (is_wp_error($response)) return ['error' => $response->get_error_code()];
+              return [
+                  'code' => wp_remote_retrieve_response_code($response),
+                  'json' => json_decode(wp_remote_retrieve_body($response), true),
+              ];
+          }
+          $key = mdo_find_google_api_key(get_option('grw_google_api_key', ''));
+          echo 'google_key_present=' . ($key ? 'yes' : 'no') . "\n";
+          if (!$key) exit;
+          $queries = [
+              'El Mercado de Origen',
+              'El Mercado de Origen elmercadodeorigen.com',
+              'El Mercado de Origen 603029509',
+              'El Mercado de Origen Madrid España',
+              'El Mercado de Origen Martín Soler 4 Madrid',
+          ];
+          foreach ($queries as $i => $query) {
+              echo "QUERY_" . ($i+1) . '=' . $query . "\n";
+              $r = mdo_safe_google_post($key, $query);
+              echo 'HTTP=' . ($r['code'] ?? '') . "\n";
+              if (!empty($r['error'])) { echo 'ERROR=' . $r['error'] . "\n"; continue; }
+              $json = $r['json'] ?? [];
+              if (!empty($json['error'])) {
+                  echo 'API_ERROR_CODE=' . ($json['error']['code'] ?? '') . "\n";
+                  echo 'API_ERROR_STATUS=' . ($json['error']['status'] ?? '') . "\n";
+                  echo 'API_ERROR_MESSAGE=' . preg_replace('/AIza[0-9A-Za-z_-]+/', '[redacted]', (string)($json['error']['message'] ?? '')) . "\n";
+                  continue;
+              }
+              $places = array_slice($json['places'] ?? [], 0, 5);
+              echo 'RESULTS=' . count($places) . "\n";
+              foreach ($places as $idx => $p) {
+                  echo 'PLACE_' . ($idx+1) . '_ID=' . ($p['id'] ?? '') . "\n";
+                  echo 'PLACE_' . ($idx+1) . '_NAME=' . ($p['displayName']['text'] ?? '') . "\n";
+                  echo 'PLACE_' . ($idx+1) . '_ADDRESS=' . ($p['formattedAddress'] ?? '') . "\n";
+                  echo 'PLACE_' . ($idx+1) . '_PHONE=' . ($p['nationalPhoneNumber'] ?? '') . "\n";
+                  echo 'PLACE_' . ($idx+1) . '_WEBSITE=' . ($p['websiteUri'] ?? '') . "\n";
+                  echo 'PLACE_' . ($idx+1) . '_RATING=' . ($p['rating'] ?? '') . "\n";
+                  echo 'PLACE_' . ($idx+1) . '_REVIEWS=' . ($p['userRatingCount'] ?? '') . "\n";
+                  echo 'PLACE_' . ($idx+1) . '_MAPS=' . ($p['googleMapsUri'] ?? '') . "\n";
+              }
+              if ($places) break;
+          }
+          PHP
+          sshpass -e scp $SCP_OPTIONS /tmp/google-direct-resolution.php "$STAGING_USER@$STAGING_HOST:/tmp/google-direct-resolution-${GITHUB_RUN_ID}.php"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '/tmp/google-direct-resolution-${GITHUB_RUN_ID}.php' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '/tmp/google-direct-resolution-${GITHUB_RUN_ID}.php'; exit \$rc" > google-direct-resolution-output.txt
+          cat google-direct-resolution-output.txt
+
+      - name: Test Trustpilot official profile with browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          cat > /tmp/trustpilot-direct-resolution.js <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+            const page = await browser.newPage({ locale: 'es-ES', userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' });
+            const response = await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com', { waitUntil: 'domcontentloaded', timeout: 90000 });
+            await page.waitForTimeout(3000);
+            const data = await page.evaluate(() => {
+              const html = document.documentElement.innerHTML;
+              const text = document.body?.innerText || '';
+              let count = null, rating = null;
+              const countPatterns = [
+                /"reviewCount"\s*:\s*"?(\d+)"?/i,
+                /"numberOfReviews"\s*:\s*"?(\d+)"?/i,
+                /(?:Ver las\s+)?([0-9][0-9.\s]*)\s+opiniones/i,
+                /\(([0-9][0-9.\s]*)\)\s*opiniones/i
+              ];
+              for (const re of countPatterns) {
+                const m = html.match(re) || text.match(re);
+                if (m) { const n = parseInt(m[1].replace(/\D/g, ''), 10); if (n > 0) { count = n; break; } }
+              }
+              const ratingPatterns = [
+                /"ratingValue"\s*:\s*"?([0-9]+(?:[.,][0-9]+)?)"?/i,
+                /"trustScore"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
+                /TrustScore:\s*([0-9]+(?:[.,][0-9]+)?)\s+sobre\s+5/i
+              ];
+              for (const re of ratingPatterns) {
+                const m = html.match(re) || text.match(re);
+                if (m) { rating = parseFloat(m[1].replace(',', '.')); if (rating > 0 && rating <= 5) break; }
+              }
+              return { count, rating, title: document.title, excerpt: text.slice(0, 800).replace(/\s+/g, ' ') };
+            });
+            console.log('HTTP=' + (response ? response.status() : ''));
+            console.log('TITLE=' + data.title);
+            console.log('TRUSTPILOT_REVIEW_COUNT=' + (data.count ?? ''));
+            console.log('TRUSTPILOT_RATING=' + (data.rating ?? ''));
+            console.log('EXCERPT=' + data.excerpt);
+            await browser.close();
+            if (!data.count) process.exitCode = 2;
+          })().catch(err => { console.error(String(err)); process.exit(1); });
+          JS
+          node /tmp/trustpilot-direct-resolution.js > trustpilot-direct-resolution-output.txt
+          cat trustpilot-direct-resolution-output.txt
+
+      - name: Commit safe source-resolution output
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch google-direct-resolution-output.txt trustpilot-direct-resolution-output.txt
+          cat google-direct-resolution-output.txt trustpilot-direct-resolution-output.txt > direct-review-source-resolution-output.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add direct-review-source-resolution-output.txt
+          git commit -m 'Record direct review source resolution' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
