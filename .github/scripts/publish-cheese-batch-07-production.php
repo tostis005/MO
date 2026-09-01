@@ -3,35 +3,17 @@
 if ( ! defined('ABSPATH') ) { exit; }
 const EMDO_CHEESE_BATCH07_MARKER = '2026-09-01.cheese-07.v1';
 
-function emdo_cheese07_load_chunks(): array {
-    $names = array(
-        'cheese-batch-07-chunk-00.b64',
-        'cheese-batch-07-chunk-01.b64',
-        'cheese-batch-07-chunk-02.b64',
-        'cheese-batch-07-chunk-03.b64',
-        'cheese-batch-07-chunk-04.b64',
-        'cheese-batch-07-chunk-05.b64',
-        'cheese-batch-07-chunk-06a.b64',
-        'cheese-batch-07-chunk-06b.b64'
-    );
-    $payload = '';
-    foreach ($names as $name) {
-        $part = file_get_contents(__DIR__ . '/' . $name);
-        if ($part === false) { throw new RuntimeException('Could not read editorial chunk: ' . $name); }
-        $payload .= trim($part);
-    }
-    if (hash('sha256', $payload) !== 'e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7') {
-        throw new RuntimeException('Editorial chunk checksum mismatch');
-    }
-    $decoded = base64_decode($payload, true);
-    if ($decoded === false) { throw new RuntimeException('Could not base64-decode editorial data'); }
-    $raw = gzdecode($decoded);
-    if ($raw === false) { throw new RuntimeException('Could not decompress editorial data'); }
+function emdo_cheese07_load_article(int $position): array {
+    $file = __DIR__ . '/cheese-batch-07-' . $position . '.json';
+    $raw = file_get_contents($file);
+    if ($raw === false) { throw new RuntimeException('Could not read editorial data: ' . basename($file)); }
     $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
-    if (!is_array($data)) { throw new RuntimeException('Invalid editorial data'); }
+    if (!is_array($data)) { throw new RuntimeException('Invalid editorial data: ' . basename($file)); }
+    if ((int)($data['pos'] ?? 0) !== $position) { throw new RuntimeException('Editorial position mismatch: ' . basename($file)); }
     return $data;
 }
-$articles = emdo_cheese07_load_chunks();
+$articles = array();
+foreach (range(61,70) as $position) { $articles[] = emdo_cheese07_load_article($position); }
 if (10 !== count($articles)) { throw new RuntimeException('Expected exactly 10 articles, got ' . count($articles)); }
 
 $required = array('pos','title','slug','en_title','en_slug','excerpt','en_excerpt','lead_es','lead_en','facts_es','facts_en','sections_es','sections_en','faq_es','faq_en','conclusion_es','conclusion_en','related','sources');
