@@ -1,0 +1,82 @@
+name: Visual verify live blog product grid 0.10.267
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-product-grid-visual-verify-010267.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Selenium
+        run: python -m pip install --quiet selenium
+
+      - name: Verify actual card positions and capture product section
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+
+          url = f"https://www.elmercadodeorigen.com/jamon-iberico/?emo_visual_grid_verify={os.environ.get('GITHUB_RUN_ID','manual')}"
+          options = Options()
+          options.page_load_strategy = 'eager'
+          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1700','--lang=es-ES'):
+              options.add_argument(arg)
+          driver = webdriver.Chrome(options=options)
+          driver.set_page_load_timeout(60)
+          try:
+              driver.get(url)
+              time.sleep(3)
+              grids = driver.find_elements(By.CSS_SELECTOR, 'main#primary.emo-article-page .emo-article-content ul.products, main#primary.emo-article-page .emo-article-content .wc-block-grid__products, main#primary.emo-article-page .emo-article-content .wc-block-product-template')
+              grid = next((g for g in grids if len(g.find_elements(By.CSS_SELECTOR, ':scope > li')) >= 4), None)
+              if grid is None:
+                  raise AssertionError('No live product grid with four cards found')
+              cards = grid.find_elements(By.CSS_SELECTOR, ':scope > li')[:4]
+              rects = [driver.execute_script('const r=arguments[0].getBoundingClientRect(); return {top:r.top,left:r.left,width:r.width,height:r.height};', c) for c in cards]
+              tops = [round(r['top'], 1) for r in rects]
+              lefts = [round(r['left'], 1) for r in rects]
+              widths = [round(r['width'], 1) for r in rects]
+              if max(tops) - min(tops) > 3:
+                  raise AssertionError(f'First four cards are not on one desktop row: tops={tops}')
+              if not all(lefts[i] < lefts[i+1] for i in range(3)):
+                  raise AssertionError(f'Cards do not progress left-to-right: lefts={lefts}')
+              ctas = [x for x in driver.find_elements(By.CSS_SELECTOR,'.emo-product-category-more__link') if x.is_displayed() and x.text.strip()]
+              if not ctas:
+                  raise AssertionError('Category CTA is not visible')
+              cta = ctas[0]
+              driver.execute_script("arguments[0].scrollIntoView({block:'start'}); window.scrollBy(0,-120);", grid)
+              time.sleep(1)
+              driver.save_screenshot('/tmp/blog-product-grid-section.png')
+              print('LIVE_VISUAL_OK')
+              print('CARD_TOPS=' + ','.join(map(str,tops)))
+              print('CARD_LEFTS=' + ','.join(map(str,lefts)))
+              print('CARD_WIDTHS=' + ','.join(map(str,widths)))
+              print('CTA=' + cta.text.replace('\n',' '))
+              print('CTA_HREF=' + (cta.get_attribute('href') or ''))
+          finally:
+              driver.quit()
+          PY
+
+      - name: Upload focused screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-product-grid-visual-010267
+          path: /tmp/blog-product-grid-section.png
+          if-no-files-found: error
