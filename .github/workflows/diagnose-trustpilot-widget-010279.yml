@@ -45,3 +45,4 @@ jobs:
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
           node tp.js
+          echo 'diagnostic-complete'
