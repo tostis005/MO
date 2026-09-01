@@ -49,12 +49,14 @@ jobs:
           : "${prod_path:?production path not found}"
           echo "PROD_PATH_FOUND"
 
+          theme_path=$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo get_stylesheet_directory();' --path="$prod_path" --allow-root)
+          echo "THEME_BASENAME=$(basename "$theme_path")"
+          echo "--- LIVE THEME VERSION ---"
+          grep -n "ELMERCADO_THEME_VERSION" "$theme_path/functions.php" | head -n1 || true
+          echo "LIVE_FUNCTIONS_SHA256=$(sha256sum "$theme_path/functions.php" | awk '{print $1}')"
+
           echo "--- COOKIE PLUGIN ---"
           "$php_bin" -d memory_limit=512M "$wp_bin" plugin get cookie-law-info --path="$prod_path" --fields=name,status,version --format=json --allow-root || true
-          plugin_dir="$prod_path/wp-content/plugins/cookie-law-info"
-          if [ -d "$plugin_dir" ]; then
-            grep -R -n -E 'wcc_consent_update|getWccConsent|CookieLawInfo_Accept_Callback|cookielawinfo-checkbox|cli_consent|non-necessary' "$plugin_dir/public" "$plugin_dir/lite" 2>/dev/null | head -n 80 || true
-          fi
 
           echo "--- WOOCOMMERCE GEO DEFAULT ---"
           "$php_bin" -d memory_limit=512M "$wp_bin" option get woocommerce_default_customer_address --path="$prod_path" --allow-root || true
