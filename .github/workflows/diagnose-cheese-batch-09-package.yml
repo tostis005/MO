@@ -1,0 +1,35 @@
+name: Diagnose cheese batch 09 package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-cheese-batch-09-package.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect package bytes
+        shell: bash
+        run: |
+          set -u
+          for p in 1 2 3 4; do
+            f=".github/scripts/cheese-batch-09-data.part${p}.b64"
+            echo "PART $p bytes=$(wc -c < "$f") sha=$(sha256sum "$f" | awk '{print $1}')"
+          done
+          cat .github/scripts/cheese-batch-09-data.part{1,2,3,4}.b64 | tr -d '[:space:]' > /tmp/cheese09.b64
+          echo "B64 bytes=$(wc -c < /tmp/cheese09.b64) sha=$(sha256sum /tmp/cheese09.b64 | awk '{print $1}')"
+          if base64 -d /tmp/cheese09.b64 > /tmp/cheese09.gz; then
+            echo "GZ bytes=$(wc -c < /tmp/cheese09.gz) sha=$(sha256sum /tmp/cheese09.gz | awk '{print $1}')"
+            if gzip -t /tmp/cheese09.gz; then
+              gzip -dc /tmp/cheese09.gz > /tmp/cheese09.json
+              echo "JSON bytes=$(wc -c < /tmp/cheese09.json) sha=$(sha256sum /tmp/cheese09.json | awk '{print $1}')"
+            else
+              echo 'GZIP_TEST_FAILED'
+            fi
+          else
+            echo 'BASE64_DECODE_FAILED'
+          fi
