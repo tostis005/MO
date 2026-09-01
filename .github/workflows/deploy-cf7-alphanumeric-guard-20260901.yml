@@ -1,0 +1,106 @@
+name: Deploy CF7 alphanumeric spam guard 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mu-plugins/mdo-cf7-alphanumeric-spam-guard-20260901.php'
+      - '.github/workflows/deploy-cf7-alphanumeric-guard-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l mu-plugins/mdo-cf7-alphanumeric-spam-guard-20260901.php >/dev/null
+          grep -Fq "Version: 1.0.0" mu-plugins/mdo-cf7-alphanumeric-spam-guard-20260901.php
+          grep -Fq "add_filter( 'wpcf7_spam', 'mdo_cf7_alnum_filter_spam', 18, 2 );" mu-plugins/mdo-cf7-alphanumeric-spam-guard-20260901.php
+
+      - name: Deploy to production and verify behavior
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp_bin" ] || exit 1
+            [ -n "$php_bin" ] || exit 1
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          FILE="mdo-cf7-alphanumeric-spam-guard-20260901.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/$FILE"
+          REMOTE="/tmp/$FILE-${GITHUB_RUN_ID}"
+          LOCAL_HASH="$(sha256sum "mu-plugins/$FILE" | cut -d' ' -f1)"
+
+          sshpass -e scp $SCP_OPTIONS "mu-plugins/$FILE" "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$REMOTE' >/dev/null; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$TARGET' ]; then cp -p '$TARGET' '$TARGET.bak-20260901'; fi; install -m 0644 '$REMOTE' '$TARGET'; rm -f '$REMOTE'"
+
+          REMOTE_HASH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sha256sum '$TARGET' | cut -d' ' -f1")"
+          test "$LOCAL_HASH" = "$REMOTE_HASH"
+
+          RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" eval '
+            echo \"version=\" . ( defined(\"MDO_CF7_ALNUM_GUARD_VERSION\") ? MDO_CF7_ALNUM_GUARD_VERSION : \"missing\" ) . PHP_EOL;
+            echo \"sample_name=\" . ( mdo_cf7_alnum_looks_generated_token(\"t2hOxq9YFe\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"sample_subject=\" . ( mdo_cf7_alnum_looks_generated_token(\"DWisEGDW2W\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"sample_message=\" . ( mdo_cf7_alnum_looks_generated_token(\"aBN1pnewdgFsyoDe6xTFiPPHzk6AB4U1jdMVAgZdNhy8P3IdEVM2H5g\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"legit_jose=\" . ( mdo_cf7_alnum_looks_generated_token(\"José\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"legit_prueba=\" . ( mdo_cf7_alnum_looks_generated_token(\"prueba\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"legit_message=\" . ( mdo_cf7_alnum_looks_generated_token(\"mensaje de prueba\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"legit_order_ref=\" . ( mdo_cf7_alnum_looks_generated_token(\"Pedido123\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            echo \"legit_product=\" . ( mdo_cf7_alnum_looks_generated_token(\"iPhone15Pro\") ? \"yes\" : \"no\" ) . PHP_EOL;
+            $fields = mdo_cf7_alnum_generated_fields(array(
+              \"your-name\" => \"t2hOxq9YFe\",
+              \"your-email\" => \"mackenzjecoaqdy2002@gmail.com\",
+              \"your-subject\" => \"DWisEGDW2W\",
+              \"your-message\" => \"aBN1pnewdgFsyoDe6xTFiPPHzk6AB4U1jdMVAgZdNhy8P3IdEVM2H5g\"
+            ));
+            echo \"sample_fields=\" . implode(\",\", $fields) . PHP_EOL;
+          ' --path='$PROD_PATH' --skip-themes --allow-root")"
+
+          echo "$RESULT"
+          grep -Fq 'version=1.0.0' <<<"$RESULT"
+          grep -Fq 'sample_name=yes' <<<"$RESULT"
+          grep -Fq 'sample_subject=yes' <<<"$RESULT"
+          grep -Fq 'sample_message=yes' <<<"$RESULT"
+          grep -Fq 'legit_jose=no' <<<"$RESULT"
+          grep -Fq 'legit_prueba=no' <<<"$RESULT"
+          grep -Fq 'legit_message=no' <<<"$RESULT"
+          grep -Fq 'legit_order_ref=no' <<<"$RESULT"
+          grep -Fq 'legit_product=no' <<<"$RESULT"
+          grep -Fq 'sample_fields=your-name,your-subject,your-message' <<<"$RESULT"
+          echo "production_hash_match=yes"
