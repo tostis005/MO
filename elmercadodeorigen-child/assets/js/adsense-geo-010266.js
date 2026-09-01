@@ -22,13 +22,34 @@
 		return '';
 	}
 
+	function consentCategoryGranted(categories, key) {
+		if (!categories) {
+			return false;
+		}
+
+		if (Array.isArray(categories)) {
+			return categories.indexOf(key) !== -1;
+		}
+
+		return categories[key] === true || categories[key] === 'yes' || categories[key] === 1 || categories[key] === '1';
+	}
+
+	function anyAdvertisingCategoryGranted(categories) {
+		return (
+			consentCategoryGranted(categories, 'advertisement') ||
+			consentCategoryGranted(categories, 'advertising') ||
+			consentCategoryGranted(categories, 'marketing') ||
+			consentCategoryGranted(categories, 'non_necessary') ||
+			consentCategoryGranted(categories, 'non-necessary')
+		);
+	}
+
 	function webToffeeConsentGranted() {
 		// WebToffee 3.x.
 		if (typeof window.getWccConsent === 'function') {
 			try {
 				var consent = window.getWccConsent();
-				var categories = consent && consent.categories ? consent.categories : {};
-				if (categories.advertisement === true || categories.marketing === true || categories.non_necessary === true) {
+				if (consent && anyAdvertisingCategoryGranted(consent.categories)) {
 					return true;
 				}
 			} catch (error) {
@@ -37,18 +58,13 @@
 		}
 
 		// Compatibilidad con WebToffee legacy (Cookie Law Info).
-		if (window.CLI && window.CLI.consent) {
-			if (
-				window.CLI.consent.advertisement === true ||
-				window.CLI.consent.marketing === true ||
-				window.CLI.consent.non_necessary === true
-			) {
-				return true;
-			}
+		if (window.CLI && window.CLI.consent && anyAdvertisingCategoryGranted(window.CLI.consent)) {
+			return true;
 		}
 
 		var consentCookies = [
 			'cookielawinfo-checkbox-advertisement',
+			'cookielawinfo-checkbox-advertising',
 			'cookielawinfo-checkbox-marketing',
 			'cookielawinfo-checkbox-non-necessary'
 		];
