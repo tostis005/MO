@@ -1,0 +1,227 @@
+name: Blog product grid and category CTA 0.10.267 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-product-grid-cta-010267-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate guarded release
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/functions.php >/dev/null
+          php -l elmercadodeorigen-child/inc/blog-product-category-more-010267.php >/dev/null
+          grep -Fq "ELMERCADO_THEME_VERSION', '0.10.267" elmercadodeorigen-child/functions.php
+          grep -Fq "inc/blog-product-category-more-010267.php" elmercadodeorigen-child/functions.php
+          grep -Fq 'grid-template-columns: repeat(4, minmax(0, 1fr))' elmercadodeorigen-child/inc/blog-product-category-more-010267.php
+          grep -Fq 'Ver todos los productos de %s' elmercadodeorigen-child/inc/blog-product-category-more-010267.php
+          : "${STAGING_HOST:?Missing STAGING_HOST secret}"
+          : "${STAGING_USER:?Missing STAGING_USER secret}"
+          : "${STAGING_PASSWORD:?Missing STAGING_PASSWORD secret}"
+
+      - name: Install SSH tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+      - name: Resolve live WordPress path
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "THEME_PATH=$PROD_PATH/wp-content/themes/elmercadodeorigen-child" >> "$GITHUB_ENV"
+
+      - name: Deploy only the guarded blog release
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          git show d0c108c2a636e4cfe6d36ee7e2dcf650471eafaa^:elmercadodeorigen-child/functions.php > /tmp/functions-before-010267.php
+          OLD_HASH="$(sha256sum /tmp/functions-before-010267.php | awk '{print $1}')"
+          NEW_HASH="$(sha256sum elmercadodeorigen-child/functions.php | awk '{print $1}')"
+          REMOTE_HASH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sha256sum '$THEME_PATH/functions.php' | awk '{print \\$1}'")"
+
+          if [ "$REMOTE_HASH" != "$OLD_HASH" ] && [ "$REMOTE_HASH" != "$NEW_HASH" ]; then
+            echo "Production functions.php differs from both the expected 0.10.266 and 0.10.267 versions; refusing to overwrite it." >&2
+            exit 9
+          fi
+
+          TMP_FUNCTIONS="/tmp/elmercado-functions-${GITHUB_RUN_ID}.php"
+          TMP_MODULE="/tmp/elmercado-blog-product-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/functions.php "$STAGING_USER@$STAGING_HOST:$TMP_FUNCTIONS"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/blog-product-category-more-010267.php "$STAGING_USER@$STAGING_HOST:$TMP_MODULE"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$THEME_PATH' '$TMP_FUNCTIONS' '$TMP_MODULE'" <<'REMOTE'
+          set -eu
+          theme_path="$1"
+          tmp_functions="$2"
+          tmp_module="$3"
+          php_bin="$(command -v php || true)"
+          if [ -z "$php_bin" ]; then
+            php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          fi
+          [ -x "$php_bin" ] || { echo 'No usable PHP CLI binary found.' >&2; exit 1; }
+          "$php_bin" -l "$tmp_functions" >/dev/null
+          "$php_bin" -l "$tmp_module" >/dev/null
+          mkdir -p "$theme_path/inc"
+          install -m 0644 "$tmp_module" "$theme_path/inc/blog-product-category-more-010267.php"
+          install -m 0644 "$tmp_functions" "$theme_path/functions.php"
+          rm -f "$tmp_functions" "$tmp_module"
+          "$php_bin" -l "$theme_path/functions.php" >/dev/null
+          "$php_bin" -l "$theme_path/inc/blog-product-category-more-010267.php" >/dev/null
+          grep -Fq "ELMERCADO_THEME_VERSION', '0.10.267" "$theme_path/functions.php"
+          grep -Fq 'grid-template-columns: repeat(4, minmax(0, 1fr))' "$theme_path/inc/blog-product-category-more-010267.php"
+          REMOTE
+
+      - name: Flush live WordPress caches
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sh -s -- '$PROD_PATH'" <<'REMOTE'
+          set -eu
+          wp_path="$1"
+          wp_bin="$(command -v wp || true)"
+          php_bin="$(command -v php || true)"
+          [ -n "$php_bin" ] || php_bin="$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1 || true)"
+          if [ -n "$wp_bin" ] && [ -x "$php_bin" ]; then
+            "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$wp_path" --allow-root >/dev/null 2>&1 || true
+            "$php_bin" -d memory_limit=512M "$wp_bin" eval 'do_action("litespeed_purge_all");' --path="$wp_path" --allow-root >/dev/null 2>&1 || true
+          fi
+          rm -f "$wp_path/wp-content/cache/elmercado-home-static/index.html" 2>/dev/null || true
+          REMOTE
+
+      - name: Verify live HTML has the release and CTA
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/?p=3327&emo_blog_grid_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO blog grid verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/blog-grid.html "$URL"
+          grep -Fq 'elmercado-blog-product-category-more-010267' /tmp/blog-grid.html
+          grep -Fq 'grid-template-columns: repeat(4, minmax(0, 1fr))' /tmp/blog-grid.html
+          grep -Fq 'emo-product-category-more__link' /tmp/blog-grid.html
+          grep -Fq 'Ver todos los productos de' /tmp/blog-grid.html
+          echo "LIVE_HTML_OK url=$URL cta_count=$(grep -Fc 'emo-product-category-more__link' /tmp/blog-grid.html)"
+
+      - name: Install Selenium
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install browser verifier
+        run: python -m pip install --quiet selenium
+
+      - name: Verify 4 / 2 / 1 columns and CTA in a real desktop browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+
+          url = f"https://www.elmercadodeorigen.com/?p=3327&emo_browser_grid_verify={os.environ.get('GITHUB_RUN_ID','manual')}"
+          options = Options()
+          options.page_load_strategy = 'eager'
+          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,2200','--lang=es-ES'):
+              options.add_argument(arg)
+
+          driver = webdriver.Chrome(options=options)
+          driver.set_page_load_timeout(60)
+          try:
+              driver.get(url)
+              time.sleep(2)
+              grids = driver.find_elements(By.CSS_SELECTOR, 'main#primary.emo-article-page .emo-article-content ul.products, main#primary.emo-article-page .emo-article-content .wc-block-grid__products, main#primary.emo-article-page .emo-article-content .wc-block-product-template')
+              grids = [g for g in grids if len(g.find_elements(By.CSS_SELECTOR, ':scope > li')) >= 4]
+              if not grids:
+                  raise AssertionError('No product grid with at least four products found on live article')
+              grid = grids[0]
+
+              expected = [(1440, 4), (900, 2), (390, 1)]
+              observed = []
+              for width, columns in expected:
+                  driver.set_window_size(width, 2200)
+                  time.sleep(0.5)
+                  count = driver.execute_script("return getComputedStyle(arguments[0]).gridTemplateColumns.trim().split(/\\s+/).filter(Boolean).length", grid)
+                  observed.append((width, count))
+                  if count != columns:
+                      raise AssertionError(f'Viewport {width}px: expected {columns} columns, got {count}')
+
+              driver.set_window_size(1440, 2200)
+              time.sleep(0.5)
+              ctas = driver.find_elements(By.CSS_SELECTOR, '.emo-product-category-more__link')
+              visible_ctas = [x for x in ctas if x.is_displayed() and x.text.strip()]
+              if not visible_ctas:
+                  raise AssertionError('No visible category CTA found on live article')
+              cta = visible_ctas[0]
+              if 'Ver todos los productos de' not in cta.text:
+                  raise AssertionError(f'Unexpected CTA copy: {cta.text!r}')
+              href = cta.get_attribute('href') or ''
+              if not href.startswith('https://www.elmercadodeorigen.com/'):
+                  raise AssertionError(f'Unexpected CTA URL: {href!r}')
+
+              driver.save_screenshot('/tmp/blog-product-grid-desktop.png')
+              print('LIVE_BROWSER_OK')
+              print('OBSERVED=' + ', '.join(f'{w}px:{c}' for w,c in observed))
+              print('CTA=' + cta.text)
+              print('CTA_HREF=' + href)
+          finally:
+              driver.quit()
+          PY
+
+      - name: Upload verification screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-product-grid-010267-verification
+          path: /tmp/blog-product-grid-desktop.png
+          if-no-files-found: ignore
