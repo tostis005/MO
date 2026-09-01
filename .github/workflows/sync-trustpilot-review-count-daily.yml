@@ -131,14 +131,15 @@ jobs:
         run: |
           set -euo pipefail
           : "${TRUSTPILOT_COUNT:?Trustpilot count missing}"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+          case "$TRUSTPILOT_COUNT" in *[!0-9]*|'') echo 'Invalid Trustpilot count'; exit 18;; esac
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; export MDO_TP_COUNT='$TRUSTPILOT_COUNT'; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
             if(!function_exists("mdo_review_counts_store_trustpilot_010281")){fwrite(STDERR,"review sync helper missing\\n");exit(19);}
             \$trust=(int)getenv("MDO_TP_COUNT");
             if(!mdo_review_counts_store_trustpilot_010281(\$trust)){fwrite(STDERR,"invalid trust count\\n");exit(20);}
             \$google=function_exists("mdo_review_counts_refresh_google_010281") ? mdo_review_counts_refresh_google_010281(false) : array();
             mdo_review_counts_purge_home_cache_010279();
             echo wp_json_encode(array("trustpilot"=>\$trust,"google"=>(int)get_option("mdo_google_review_count",0),"google_result"=>\$google));
-          ' --path='$PROD_PATH' --allow-root" MDO_TP_COUNT="$TRUSTPILOT_COUNT"
+          ' --path='$PROD_PATH' --allow-root"
 
       - name: Verify Spanish and English home
         if: steps.state.outputs.skip != 'yes'
