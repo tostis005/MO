@@ -217,11 +217,13 @@ add_action(
 );
 
 /**
- * Imprime el codigo oficial de Auto Ads en el head, pausado por defecto.
+ * Imprime el codigo moderno de Auto Ads en el head, pausado por defecto.
  *
- * Google documenta pauseAdRequests para cargar el tag sin enviar solicitudes
- * hasta que la aplicacion decida reanudarlas. Esto mantiene el snippet en el
- * HTML que rastrea AdSense y evita anuncios en paises donde si vendemos.
+ * El snippet moderno con ?client= inicializa Auto Ads por si solo. Antes de
+ * cargarlo fijamos pauseAdRequests=1 para que no solicite anuncios hasta que
+ * la geografia sea apta. No usamos la inicializacion antigua
+ * enable_page_level_ads porque mezclar ambos mecanismos provoca una doble
+ * inicializacion y Google la rechaza en tiempo de ejecucion.
  */
 function elmercado_adsense_output_paused_head_code(): void {
 	if ( ! elmercado_adsense_is_blog_post_request() ) {
@@ -238,7 +240,6 @@ function elmercado_adsense_output_paused_head_code(): void {
 	echo "<script data-wcc=\"necessary\">\n";
 	echo 'window.adsbygoogle=window.adsbygoogle||[];';
 	echo 'window.adsbygoogle.pauseAdRequests=1;';
-	echo 'window.adsbygoogle.push({google_ad_client:' . wp_json_encode( $publisher ) . ',enable_page_level_ads:true});';
 	echo "\n</script>\n";
 	printf(
 		'<script async data-wcc="necessary" src="%1$s" crossorigin="anonymous"></script>' . "\n",
