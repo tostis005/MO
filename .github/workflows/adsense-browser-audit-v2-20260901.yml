@@ -34,7 +34,7 @@ jobs:
           api = site + '/wp-json/wp/v2/posts?per_page=1&status=publish&_fields=link'
           with urllib.request.urlopen(urllib.request.Request(api, headers={'User-Agent':'Mozilla/5.0'}), timeout=30) as r:
               post = json.load(r)[0]['link']
-          url = post + ('&' if '?' in post else '?') + 'adsense_debug=1&browser_audit_v2=1'
+          url = post + ('&' if '?' in post else '?') + 'adsense_debug=1&browser_audit_v2=2'
           print('POST_URL=' + post, flush=True)
 
           o = Options()
@@ -74,6 +74,7 @@ jobs:
                   debug: window.ElMercadoAdsenseGeoDebug || null,
                   pause: a && typeof a.pauseAdRequests !== 'undefined' ? a.pauseAdRequests : null,
                   scripts: Array.from(document.scripts).map(x=>x.src||'').filter(x=>/googlesyndication|doubleclick|googleads/.test(x)),
+                  legacyInitScripts: Array.from(document.scripts).filter(x=>(x.textContent||'').includes('enable_page_level_ads')).map(x=>(x.textContent||'').slice(0,300)),
                   ins: Array.from(document.querySelectorAll('ins.adsbygoogle')).map(x=>({status:x.getAttribute('data-ad-status'),h:x.getBoundingClientRect().height,w:x.getBoundingClientRect().width})),
                   iframes: Array.from(document.querySelectorAll('iframe')).map(x=>({id:x.id||'',src:x.src||'',h:x.getBoundingClientRect().height,w:x.getBoundingClientRect().width})).filter(x=>/google|doubleclick|ads/.test((x.id+' '+x.src).toLowerCase()))
                 };
@@ -98,22 +99,27 @@ jobs:
               print('GOOGLE_RESPONSES=' + str(len(resps)), flush=True)
               for u,s in resps: print(f'RESP {s} {u}', flush=True)
 
+              console = []
               for e in d.get_log('browser'):
                   if e.get('level') in ('SEVERE','WARNING') or 'ads' in e.get('message','').lower():
+                      console.append(e)
                       print('CONSOLE ' + json.dumps(e, sort_keys=True), flush=True)
 
               dbg = state.get('debug') or {}
               adreq = [u for u in reqs if '/pagead/ads' in u or 'googleads.g.doubleclick.net/pagead/' in u]
               adresp = [(u,s) for u,s in resps if '/pagead/ads' in u or 'googleads.g.doubleclick.net/pagead/' in u]
+              visible = any(x.get('h',0) > 0 and x.get('w',0) > 0 for x in state.get('iframes',[])) or any(x.get('status') == 'filled' and x.get('h',0) > 0 for x in state.get('ins',[]))
+              duplicate_error = any('Only one' in e.get('message','') and 'enable_page_level_ads' in e.get('message','') for e in console)
               if dbg.get('country') != 'ZA' or dbg.get('showAds') is not True:
                   classification = 'GEO_FAILED'
+              elif duplicate_error:
+                  classification = 'DUPLICATE_AUTO_ADS_INIT'
               elif not adreq:
                   classification = 'NO_AD_REQUEST'
               elif any(s == 403 for _,s in adresp):
                   classification = 'HTTP_403'
               elif any(s == 200 for _,s in adresp):
-                  visible = bool(state.get('iframes')) or any(x.get('status') == 'filled' and x.get('h',0) > 0 for x in state.get('ins',[]))
-                  classification = 'AD_RENDERED' if visible else 'HTTP_200_NO_VISIBLE_AD'
+                  classification = 'AD_RENDERED' if visible else 'HTTP_200_UNFILLED_OR_NO_VISIBLE_AD'
               else:
                   classification = 'OTHER_RESPONSE'
               print('CLASSIFICATION=' + classification, flush=True)
