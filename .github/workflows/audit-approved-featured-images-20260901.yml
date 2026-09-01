@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/audit-approved-featured-images-20260901.yml'
+      - '.github/scripts/audit-approved-featured-images-20260901.php'
   workflow_dispatch:
 
 permissions:
@@ -64,7 +65,7 @@ jobs:
           printf '[]' > /tmp/public-checks.json
           while IFS=$'\t' read -r slug permalink thumbnail_url; do
             out="/tmp/${slug}.html"
-            code="$(curl -L -sS --connect-timeout 15 --max-time 45 --retry 2 --retry-delay 2 -A 'Mozilla/5.0 EMDO featured image audit' -o "$out" -w '%{http_code}' "${permalink}?emdo_featured_audit=${GITHUB_RUN_ID}" || true)"
+            code="$(curl -L -sS --connect-timeout 10 --max-time 25 --retry 1 --retry-delay 1 -A 'Mozilla/5.0 EMDO featured image audit' -o "$out" -w '%{http_code}' "${permalink}?emdo_featured_audit=${GITHUB_RUN_ID}" || true)"
             present=false
             if [ -n "$thumbnail_url" ] && [ "$code" = "200" ]; then
               basename="$(basename "${thumbnail_url%%\?*}")"
