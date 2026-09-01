@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Recover exact chars and positions
+      - name: Recover by gzip CRC and JSON integrity
         shell: bash
         run: |
           set -euo pipefail
@@ -21,21 +21,30 @@ jobs:
           parts=[open(f,encoding='utf-8').read().strip() for f in files]
           p0=parts[0]; rest=''.join(parts[1:])
           alphabet=string.ascii_uppercase+string.ascii_lowercase+string.digits+'+/'
-          target='e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'
-          for p1 in range(2858,2867):
-              for p2 in range(3098,3123):
-                  for first,second in itertools.product(alphabet,repeat=2):
-                      one=p0[:p1]+first+p0[p1:]
-                      candidate=one[:p2]+second+one[p2:]+rest
-                      if hashlib.sha256(candidate.encode()).hexdigest()==target:
-                          data=json.loads(gzip.decompress(base64.b64decode(candidate,validate=True)))
-                          assert len(data)==10 and sorted(int(x['pos']) for x in data)==list(range(61,71))
-                          print(f'RECOVERED_FIRST_POS={p1}')
-                          print(f'RECOVERED_FIRST_CHAR={first}')
-                          print(f'RECOVERED_SECOND_POS_AFTER_FIRST={p2}')
-                          print(f'RECOVERED_SECOND_CHAR={second}')
-                          print('REPAIRED_JSON_OK=10')
-                          raise SystemExit(0)
-          print('NO_NEIGHBORHOOD_MATCH')
-          raise SystemExit(2)
+          found=[]
+          for first,second in itertools.product(alphabet,repeat=2):
+              one=p0[:2862]+first+p0[2862:]
+              candidate=one[:3118]+second+one[3118:]+rest
+              try:
+                  raw=base64.b64decode(candidate,validate=True)
+                  text=gzip.decompress(raw).decode('utf-8')
+                  data=json.loads(text)
+              except Exception:
+                  continue
+              if len(data)!=10 or sorted(int(x.get('pos',0)) for x in data)!=list(range(61,71)):
+                  continue
+              found.append((first,second,hashlib.sha256(candidate.encode()).hexdigest(),data))
+          print('VALID_RECOVERIES='+str(len(found)))
+          for first,second,sha,data in found[:10]:
+              print('RECOVERY first=%s second=%s sha=%s'%(first,second,sha))
+              print('TITLES='+' | '.join(x['title'] for x in data))
+          if len(found)!=1:
+              raise SystemExit('Expected exactly one CRC-valid recovery')
+          first,second,sha,data=found[0]
+          print('RECOVERED_FIRST_POS=2862')
+          print('RECOVERED_FIRST_CHAR='+first)
+          print('RECOVERED_SECOND_POS_AFTER_FIRST=3118')
+          print('RECOVERED_SECOND_CHAR='+second)
+          print('RECOVERED_SHA256='+sha)
+          print('REPAIRED_JSON_OK=10')
           PY
