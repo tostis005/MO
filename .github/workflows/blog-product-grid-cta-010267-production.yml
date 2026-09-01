@@ -84,7 +84,7 @@ jobs:
           git show d0c108c2a636e4cfe6d36ee7e2dcf650471eafaa^:elmercadodeorigen-child/functions.php > /tmp/functions-before-010267.php
           OLD_HASH="$(sha256sum /tmp/functions-before-010267.php | awk '{print $1}')"
           NEW_HASH="$(sha256sum elmercadodeorigen-child/functions.php | awk '{print $1}')"
-          REMOTE_HASH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sha256sum '$THEME_PATH/functions.php' | awk '{print \\$1}'")"
+          REMOTE_HASH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "sha256sum '$THEME_PATH/functions.php' | cut -d ' ' -f1")"
 
           if [ "$REMOTE_HASH" != "$OLD_HASH" ] && [ "$REMOTE_HASH" != "$NEW_HASH" ]; then
             echo "Production functions.php differs from both the expected 0.10.266 and 0.10.267 versions; refusing to overwrite it." >&2
