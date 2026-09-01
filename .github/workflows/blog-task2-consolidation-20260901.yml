@@ -1,0 +1,138 @@
+name: Blog SEO task 2 consolidation 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/emdo-blog-task2-redirects-20260901.php'
+      - '.github/scripts/blog-task2-content-update-20260901.php'
+      - '.github/workflows/blog-task2-consolidation-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate task 2 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/emdo-blog-task2-redirects-20260901.php >/dev/null
+          php -l .github/scripts/blog-task2-content-update-20260901.php >/dev/null
+          grep -Fq 'EMDO-SEO-TASK2-AOVE-20260901' .github/scripts/blog-task2-content-update-20260901.php
+          grep -Fq 'EMDO-SEO-TASK2-POTASIO-20260901' .github/scripts/blog-task2-content-update-20260901.php
+          grep -Fq 'EMDO-SEO-TASK2-CALCIO-20260901' .github/scripts/blog-task2-content-update-20260901.php
+          grep -Fq 'EMDO-SEO-TASK2-LOMO-20260901' .github/scripts/blog-task2-content-update-20260901.php
+          grep -Fq 'EMDO-SEO-TASK2-CHORIZO-20260901' .github/scripts/blog-task2-content-update-20260901.php
+          grep -Fq "'cuanta-vitamina-e-tiene-aove' => 'nutrientes-aceite-oliva-virgen-extra'" .github/scripts/emdo-blog-task2-redirects-20260901.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy redirects and consolidate production content
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_REDIRECT="/tmp/emdo-blog-task2-redirects-${GITHUB_RUN_ID}.php"
+          REMOTE_UPDATE="/tmp/emdo-blog-task2-update-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/emdo-blog-task2-redirects-20260901.php "$STAGING_USER@$STAGING_HOST:$REMOTE_REDIRECT"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/blog-task2-content-update-20260901.php "$STAGING_USER@$STAGING_HOST:$REMOTE_UPDATE"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
+            cp '$REMOTE_REDIRECT' '$PROD_PATH/wp-content/mu-plugins/emdo-blog-task2-redirects-20260901.php'
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_UPDATE' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true
+            rm -f '$REMOTE_REDIRECT' '$REMOTE_UPDATE'
+          "
+
+      - name: Verify live pillars, kept satellites and 301 redirects
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+
+          verify_marker() {
+            local slug="$1" marker="$2"
+            local body
+            body="$(curl -fsSL --retry 4 --retry-delay 3 -A 'Mozilla/5.0 EMDO SEO task2 verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$BASE/$slug/?emdo_task2_verify=${GITHUB_RUN_ID}")"
+            grep -Fq "$marker" <<< "$body"
+          }
+
+          verify_301() {
+            local old="$1" dest="$2"
+            local headers code location
+            headers="$(curl -sS -D - -o /dev/null -A 'Mozilla/5.0 EMDO SEO task2 verifier' -H 'Cache-Control: no-cache' "$BASE/$old/?emdo_task2_verify=${GITHUB_RUN_ID}")"
+            code="$(awk 'toupper($1) ~ /^HTTP\// {c=$2} END {print c}' <<< "$headers")"
+            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/,""); print $2}' <<< "$headers" | tail -n1)"
+            test "$code" = '301'
+            test "$location" = "$BASE/$dest/"
+          }
+
+          verify_200() {
+            local slug="$1"
+            local code
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO task2 verifier' "$BASE/$slug/?emdo_task2_verify=${GITHUB_RUN_ID}")"
+            test "$code" = '200'
+          }
+
+          verify_marker 'nutrientes-aceite-oliva-virgen-extra' 'EMDO-SEO-TASK2-AOVE-20260901'
+          verify_marker 'verduras-mas-potasio-comparativa' 'EMDO-SEO-TASK2-POTASIO-20260901'
+          verify_marker 'verduras-mas-calcio-comparativa' 'EMDO-SEO-TASK2-CALCIO-20260901'
+          verify_marker 'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales' 'EMDO-SEO-TASK2-LOMO-20260901'
+          verify_marker 'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales' 'EMDO-SEO-TASK2-CHORIZO-20260901'
+
+          verify_200 'cuanta-proteina-tiene-lomo-iberico'
+          verify_200 'cuanta-proteina-tiene-chorizo-iberico'
+          verify_200 'cuanta-proteina-tiene-jamon-iberico'
+          verify_200 'cuanto-hierro-tiene-jamon-iberico'
+
+          verify_301 'cuanta-vitamina-e-tiene-aove' 'nutrientes-aceite-oliva-virgen-extra'
+          verify_301 'aove-omega-3-omega-6-perfil-grasas' 'nutrientes-aceite-oliva-virgen-extra'
+          verify_301 'aceite-oliva-tiene-colesterol' 'nutrientes-aceite-oliva-virgen-extra'
+          verify_301 'cuanta-grasa-saturada-tiene-aove' 'nutrientes-aceite-oliva-virgen-extra'
+          verify_301 'cuanto-hierro-tiene-lomo-iberico' 'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales'
+          verify_301 'grasa-lomo-iberico-saturada-monoinsaturada-poliinsaturada' 'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales'
+          verify_301 'cuanto-hierro-tiene-chorizo-iberico' 'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales'
+          verify_301 'grasa-chorizo-iberico-saturada-monoinsaturada-poliinsaturada' 'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales'
+
+          # Representative task-1 redirects must remain intact.
+          verify_301 'verduras-mas-vitamina-c-comparativa' 'que-verduras-tienen-mas-vitamina-c'
+          verify_301 'aove-filtrado-vs-sin-filtrar-diferencias' 'aove-filtrado-o-sin-filtrar-diferencias'
+
+          echo 'EMDO_TASK2_PUBLIC_VERIFY_OK'
