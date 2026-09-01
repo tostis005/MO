@@ -157,11 +157,14 @@ function elmercado_adsense_get_visitor_country(): string {
  * @return WP_REST_Response
  */
 function elmercado_adsense_rest_eligibility(): WP_REST_Response {
-	$country  = elmercado_adsense_get_visitor_country();
-	$show_ads = '' !== $country && ! elmercado_adsense_country_is_shippable( $country );
+	$country = elmercado_adsense_get_visitor_country();
+	$can_buy = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
+	$show_ads = '' !== $country && false === $can_buy;
 
 	$response = new WP_REST_Response(
 		array(
+			'country'  => $country,
+			'can_buy'  => $can_buy,
 			'show_ads' => $show_ads,
 		),
 		200
@@ -192,8 +195,8 @@ add_action(
 
 /**
  * Carga el pequeno controlador solo en entradas individuales del blog.
- * El script de Google no se encola aqui: se inyecta en cliente tras validar
- * geografia y consentimiento.
+ * Va en el head para iniciar la comprobacion geografica lo antes posible;
+ * el tag de Google se inyecta inmediatamente despues si la visita es apta.
  */
 function elmercado_adsense_enqueue_geo_loader(): void {
 	if ( is_admin() || ! is_singular( 'post' ) ) {
@@ -205,7 +208,8 @@ function elmercado_adsense_enqueue_geo_loader(): void {
 	$path   = ELMERCADO_THEME_PATH . '/assets/js/adsense-geo-010266.js';
 	$ver    = is_readable( $path ) ? (string) filemtime( $path ) : ELMERCADO_THEME_VERSION;
 
-	wp_enqueue_script( $handle, $src, array(), $ver, true );
+	// No usar footer/defer: Auto Ads debe arrancar durante el procesamiento del head.
+	wp_enqueue_script( $handle, $src, array(), $ver, false );
 	wp_localize_script(
 		$handle,
 		'ElMercadoAdsenseGeo',
