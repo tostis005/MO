@@ -1,0 +1,164 @@
+name: Daily direct Trustpilot review sync
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trustpilot-direct-daily-production-20260901.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trustpilot-direct-daily-production
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read official Trustpilot profile
+        id: trustpilot
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          cat > trustpilot-direct-daily.js <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({
+              headless: true,
+              executablePath: '/usr/bin/google-chrome',
+              args: ['--no-sandbox', '--disable-dev-shm-usage']
+            });
+            const page = await browser.newPage({
+              locale: 'es-ES',
+              userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+            });
+            const response = await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com', {
+              waitUntil: 'domcontentloaded', timeout: 90000
+            });
+            await page.waitForTimeout(3000);
+            const result = await page.evaluate(() => {
+              const html = document.documentElement.innerHTML;
+              const text = document.body?.innerText || '';
+              let count = null;
+              let rating = null;
+              const countPatterns = [
+                /"reviewCount"\s*:\s*"?(\d+)"?/i,
+                /"numberOfReviews"\s*:\s*"?(\d+)"?/i,
+                /Ver las\s+([0-9][0-9.\s]*)\s+opiniones/i,
+                /([0-9][0-9.\s]*)\s+opiniones/i
+              ];
+              outer: for (const source of [html, text]) {
+                for (const re of countPatterns) {
+                  const m = source.match(re);
+                  if (!m) continue;
+                  const n = parseInt(m[1].replace(/\D/g, ''), 10);
+                  if (n > 0 && n < 1000000) { count = n; break outer; }
+                }
+              }
+              const ratingPatterns = [
+                /"ratingValue"\s*:\s*"?([0-9]+(?:[.,][0-9]+)?)"?/i,
+                /"trustScore"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,
+                /TrustScore:\s*([0-9]+(?:[.,][0-9]+)?)\s+sobre\s+5/i,
+                /Opiniones\s+[0-9][0-9.\s]*\s*[•·]\s*([0-9]+(?:[.,][0-9]+)?)/i
+              ];
+              outer2: for (const source of [html, text]) {
+                for (const re of ratingPatterns) {
+                  const m = source.match(re);
+                  if (!m) continue;
+                  const n = parseFloat(m[1].replace(',', '.'));
+                  if (n > 0 && n <= 5) { rating = n; break outer2; }
+                }
+              }
+              return { count, rating, title: document.title };
+            });
+            console.log(JSON.stringify({
+              http: response ? response.status() : null,
+              count: result.count,
+              rating: result.rating,
+              title: result.title
+            }));
+            await browser.close();
+            if (!Number.isInteger(result.count) || result.count < 1 || result.count >= 1000000) process.exit(2);
+            if (typeof result.rating !== 'number' || result.rating < 1 || result.rating > 5) process.exit(3);
+            console.log(`MDO_COUNT=${result.count}`);
+            console.log(`MDO_RATING=${result.rating.toFixed(1)}`);
+          })().catch(error => {
+            console.error(String(error));
+            process.exit(1);
+          });
+          JS
+          node trustpilot-direct-daily.js | tee trustpilot-sync-result.txt
+          COUNT="$(grep '^MDO_COUNT=' trustpilot-sync-result.txt | tail -1 | cut -d= -f2)"
+          RATING="$(grep '^MDO_RATING=' trustpilot-sync-result.txt | tail -1 | cut -d= -f2)"
+          [[ "$COUNT" =~ ^[0-9]+$ ]] && [ "$COUNT" -gt 0 ] && [ "$COUNT" -lt 1000000 ]
+          [[ "$RATING" =~ ^[1-5]\.[0-9]$ ]]
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "rating=$RATING" >> "$GITHUB_OUTPUT"
+
+      - name: Persist validated Trustpilot values in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          TP_COUNT: ${{ steps.trustpilot.outputs.count }}
+          TP_RATING: ${{ steps.trustpilot.outputs.rating }}
+        run: |
+          set -euo pipefail
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          [[ "$TP_COUNT" =~ ^[0-9]+$ ]] && [ "$TP_COUNT" -gt 0 ] && [ "$TP_COUNT" -lt 1000000 ]
+          [[ "$TP_RATING" =~ ^[1-5]\.[0-9]$ ]]
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in *elmercadodeorigen.com*) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          cat > trustpilot-store.php <<PHP
+          <?php
+          \$count = ${TP_COUNT};
+          \$rating = ${TP_RATING};
+          if ( \$count < 1 || \$count >= 1000000 || \$rating < 1 || \$rating > 5 ) { throw new RuntimeException('Invalid validated Trustpilot values'); }
+          \$before = (int) get_option('mdo_trustpilot_review_count', 0);
+          if ( function_exists('mdo_review_counts_store_trustpilot_010281') ) {
+              mdo_review_counts_store_trustpilot_010281(\$count);
+          } else {
+              update_option('mdo_trustpilot_review_count', \$count, false);
+              update_option('mdo_trustpilot_review_count_updated_at', time(), false);
+          }
+          update_option('mdo_trustpilot_rating', \$rating, false);
+          update_option('mdo_trustpilot_review_source', 'trustpilot_official_profile', false);
+          update_option('mdo_trustpilot_review_source_url', 'https://es.trustpilot.com/review/elmercadodeorigen.com', false);
+          if ( \$before !== \$count && function_exists('mdo_review_counts_purge_home_cache_010279') ) {
+              mdo_review_counts_purge_home_cache_010279();
+          }
+          echo 'TRUSTPILOT_BEFORE=' . \$before . "\n";
+          echo 'TRUSTPILOT_AFTER=' . (int) get_option('mdo_trustpilot_review_count', 0) . "\n";
+          echo 'TRUSTPILOT_RATING=' . (string) get_option('mdo_trustpilot_rating', '') . "\n";
+          echo 'TRUSTPILOT_SOURCE=' . (string) get_option('mdo_trustpilot_review_source', '') . "\n";
+          PHP
+          REMOTE="/tmp/trustpilot-store-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS trustpilot-store.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
