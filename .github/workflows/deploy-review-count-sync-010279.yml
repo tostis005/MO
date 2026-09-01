@@ -1,10 +1,11 @@
-name: Deploy dynamic review counts 0.10.279
+name: Deploy dynamic review counts 0.10.280
 
 on:
   push:
     branches: [main]
     paths:
       - 'mu-plugins/z-mdo-review-count-sync-010279.php'
+      - 'mu-plugins/mdo-home-external-reviews-20260819.php'
       - '.github/workflows/deploy-review-count-sync-010279.yml'
   workflow_dispatch:
 
@@ -23,16 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate review sync module
+      - name: Validate review modules
         shell: bash
         run: |
           set -euo pipefail
           php -l mu-plugins/z-mdo-review-count-sync-010279.php
-          grep -Fq 'mdo_google_review_count' mu-plugins/z-mdo-review-count-sync-010279.php
-          grep -Fq 'mdo_trustpilot_review_count' mu-plugins/z-mdo-review-count-sync-010279.php
+          php -l mu-plugins/mdo-home-external-reviews-20260819.php
+          grep -Fq 'Version: 0.10.280' mu-plugins/z-mdo-review-count-sync-010279.php
+          grep -Fq "get_option( 'mdo_google_review_count'" mu-plugins/mdo-home-external-reviews-20260819.php
+          grep -Fq "get_option( 'mdo_trustpilot_review_count'" mu-plugins/mdo-home-external-reviews-20260819.php
           grep -Fq 'mdo_supplier_sync_dispatch' mu-plugins/z-mdo-review-count-sync-010279.php
 
-      - name: Deploy review sync module to production
+      - name: Deploy review modules to production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -56,22 +59,31 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          source='mu-plugins/z-mdo-review-count-sync-010279.php'
-          base="$(basename "$source")"
-          target="$PROD_PATH/wp-content/mu-plugins/$base"
-          remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-${GITHUB_RUN_ID}'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
+
+          for source in \
+            mu-plugins/z-mdo-review-count-sync-010279.php \
+            mu-plugins/mdo-home-external-reviews-20260819.php
+          do
+            base="$(basename "$source")"
+            target="$PROD_PATH/wp-content/mu-plugins/$base"
+            remote="/tmp/${base%.php}-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP_OPTIONS "$source" "$STAGING_USER@$STAGING_HOST:$remote"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; if [ -f '$target' ]; then cp '$target' '$target.bak-${GITHUB_RUN_ID}'; fi; install -m 0644 '$remote' '$target'; rm -f '$remote'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$target'"
+          done
+
           echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
           echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
 
-      - name: Force first production refresh
+      - name: Force production refresh
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo wp_json_encode(mdo_review_counts_refresh_010279(true));' --path='$PROD_PATH' --allow-root"
+          RESULT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo wp_json_encode(mdo_review_counts_refresh_010279(true));' --path='$PROD_PATH' --allow-root")"
+          echo "REFRESH_RESULT $RESULT"
+          echo "$RESULT" | grep -Fq '"google_ok":true'
+          echo "$RESULT" | grep -Fq '"trust_ok":true'
 
       - name: Verify stored values, schedule and home output
         shell: bash
@@ -79,32 +91,42 @@ jobs:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+          STATE="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
             \$g=(int)get_option("mdo_google_review_count",0);
             \$t=(int)get_option("mdo_trustpilot_review_count",0);
             \$gu=(int)get_option("mdo_google_review_count_updated_at",0);
             \$tu=(int)get_option("mdo_trustpilot_review_count_updated_at",0);
-            \$next=function_exists("as_next_scheduled_action") ? as_next_scheduled_action("mdo_review_counts_daily_fallback_010279",array(),"mdo-review-counts") : wp_next_scheduled("mdo_review_counts_daily_fallback_010279");
-            echo "REVIEW_OPTIONS google={\$g} trustpilot={\$t} google_updated={\$gu} trust_updated={\$tu} fallback_next=".(is_numeric(\$next)?wp_date("c",(int)\$next):"none").PHP_EOL;
-            if(\$g<1 || \$t<1 || \$gu<1 || \$tu<1){exit(17);} 
-          ' --path='$PROD_PATH' --allow-root"
+            \$hook=has_action("mdo_supplier_sync_dispatch","mdo_review_counts_after_dispatch_010279");
+            \$next=(did_action("action_scheduler_init") && function_exists("as_next_scheduled_action")) ? as_next_scheduled_action("mdo_review_counts_daily_fallback_010279",array(),"mdo-review-counts") : wp_next_scheduled("mdo_review_counts_daily_fallback_010279");
+            echo "google={\$g} trustpilot={\$t} google_updated={\$gu} trust_updated={\$tu} dispatcher_hook=".(false===\$hook?"no":"yes")." fallback_next=".(is_numeric(\$next)?wp_date("c",(int)\$next):"none");
+            if(\$g<1 || \$t<1 || \$gu<1 || \$tu<1 || false===\$hook){exit(17);} 
+          ' --path='$PROD_PATH' --allow-root")"
+          echo "REVIEW_STATE $STATE"
+          G="$(printf '%s' "$STATE" | sed -n 's/.*google=\([0-9][0-9]*\).*/\1/p')"
+          T="$(printf '%s' "$STATE" | sed -n 's/.*trustpilot=\([0-9][0-9]*\).*/\1/p')"
+          : "${G:?Google count missing}"
+          : "${T:?Trustpilot count missing}"
 
-          curl -L -sS --connect-timeout 10 --max-time 45 -A 'Mozilla/5.0 EMDO review verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "https://www.elmercadodeorigen.com/?mdo_review_verify=${GITHUB_RUN_ID}" -o /tmp/home.html
-          grep -o -m1 'mdo-review-counts-010279 google=[0-9]* trustpilot=[0-9]* updated=[^ ]*' /tmp/home.html
-          grep -Fq 'mdo-review-counts-010279 google=' /tmp/home.html
+          for cfg in es en; do
+            if [ "$cfg" = es ]; then URL="https://www.elmercadodeorigen.com/?mdo_review_verify=${GITHUB_RUN_ID}"; else URL="https://www.elmercadodeorigen.com/en/?mdo_review_verify=${GITHUB_RUN_ID}"; fi
+            curl -L -sS --connect-timeout 10 --max-time 45 -A 'Mozilla/5.0 EMDO review verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$URL" -o "/tmp/home-${cfg}.html"
+          done
 
-          python3 - <<'PY'
-          import re, html
-          raw=open('/tmp/home.html','r',encoding='utf-8',errors='ignore').read()
-          m=re.search(r'mdo-review-counts-010279 google=(\d+) trustpilot=(\d+)',raw)
-          if not m:
-              raise SystemExit('dynamic review marker missing')
-          g,t=map(int,m.groups())
-          text=html.unescape(re.sub(r'<[^>]+>',' ',raw))
-          text=re.sub(r'\s+',' ',text)
-          google=bool(re.search(r'Google.{0,900}?\b%s\s+(?:reseñas|reviews)\b'%g,text,re.I))
-          trust=bool(re.search(r'Trustpilot.{0,900}?\b%s\s+(?:opiniones|reseñas|reviews)\b'%t,text,re.I))
-          print(f'HOME_REVIEW_CHECK google={g} visible_google={google} trustpilot={t} visible_trustpilot={trust}')
-          if not (google and trust):
-              raise SystemExit('home review badges are not consuming the dynamic options')
+          G="$G" T="$T" python3 - <<'PY'
+          import os,re,html
+          g=int(os.environ['G']); t=int(os.environ['T'])
+          for lang in ('es','en'):
+              raw=open(f'/tmp/home-{lang}.html','r',encoding='utf-8',errors='ignore').read()
+              gm=re.search(r'data-google-reviews=["\'](\d+)["\']',raw)
+              tm=re.search(r'data-trustpilot-reviews=["\'](\d+)["\']',raw)
+              if not gm or not tm:
+                  raise SystemExit(f'{lang}: dynamic review data attributes missing')
+              rendered_g=int(gm.group(1)); rendered_t=int(tm.group(1))
+              text=html.unescape(re.sub(r'<[^>]+>',' ',raw))
+              text=re.sub(r'\s+',' ',text)
+              google=bool(re.search(rf'Google.*?\b{g}\s+(?:reseñas|reviews)\b',text,re.I))
+              trust=bool(re.search(rf'Trustpilot.*?\b{t}\s+(?:opiniones|reseñas|reviews)\b',text,re.I))
+              print(f'HOME_REVIEW_CHECK lang={lang} option_google={g} rendered_google={rendered_g} visible_google={google} option_trustpilot={t} rendered_trustpilot={rendered_t} visible_trustpilot={trust}')
+              if rendered_g != g or rendered_t != t or not google or not trust:
+                  raise SystemExit(f'{lang}: home is not consuming stored review counts')
           PY
