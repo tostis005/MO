@@ -11,31 +11,33 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Locate package corruption
+      - name: Recover missing boundary chars
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import glob, hashlib, base64, gzip, json
+          import glob, hashlib, base64, gzip, json, itertools, string
           files = sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))
           assert len(files) == 8, len(files)
           parts = [open(f, encoding='utf-8').read().strip() for f in files]
-          for f, part in zip(files, parts):
-              print(f'PART {f} len={len(part)} mod4={len(part)%4} sha={hashlib.sha256(part.encode()).hexdigest()}')
-          payload = ''.join(parts)
+          assert len(parts[0]) == 7998
+          assert all(len(x) == 8000 for x in parts[1:6])
+          assert len(parts[6]) == 3332 and len(parts[7]) == 3332
           target = 'e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'
-          print('CURRENT_SHA=' + hashlib.sha256(payload.encode()).hexdigest())
-          print('TOTAL_LEN=' + str(len(payload)))
-          for i in range(len(payload)):
-              candidate = payload[:i] + payload[i+1:]
+          alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + '+/'
+          prefix = parts[0]
+          suffix = ''.join(parts[1:])
+          for a, b in itertools.product(alphabet, repeat=2):
+              pair = a + b
+              candidate = prefix + pair + suffix
               if hashlib.sha256(candidate.encode()).hexdigest() == target:
-                  print(f'EXTRA_CHAR_INDEX={i}')
-                  print(f'EXTRA_CHAR={payload[i]}')
+                  print('RECOVERED_PAIR=' + pair)
+                  print('RECOVERED_CHUNK00_SUFFIX=' + prefix[-16:] + pair)
                   data = json.loads(gzip.decompress(base64.b64decode(candidate, validate=True)))
                   assert len(data) == 10
                   assert sorted(int(x['pos']) for x in data) == list(range(61, 71))
                   print('REPAIRED_JSON_OK=10')
                   raise SystemExit(0)
-          print('NO_SINGLE_EXTRA_CHAR_MATCH')
+          print('NO_BOUNDARY_PAIR_MATCH')
           raise SystemExit(2)
           PY
