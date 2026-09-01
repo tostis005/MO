@@ -49,8 +49,12 @@ jobs:
           : "${prod_path:?production path not found}"
           echo "PROD_PATH_FOUND"
 
-          echo "--- ACTIVE PLUGINS ---"
-          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --path="$prod_path" --status=active --field=name --allow-root || true
+          echo "--- COOKIE PLUGIN ---"
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin get cookie-law-info --path="$prod_path" --fields=name,status,version --format=json --allow-root || true
+          plugin_dir="$prod_path/wp-content/plugins/cookie-law-info"
+          if [ -d "$plugin_dir" ]; then
+            grep -R -n -E 'wcc_consent_update|getWccConsent|CookieLawInfo_Accept_Callback|cookielawinfo-checkbox|cli_consent|non-necessary' "$plugin_dir/public" "$plugin_dir/lite" 2>/dev/null | head -n 80 || true
+          fi
 
           echo "--- WOOCOMMERCE GEO DEFAULT ---"
           "$php_bin" -d memory_limit=512M "$wp_bin" option get woocommerce_default_customer_address --path="$prod_path" --allow-root || true
@@ -61,17 +65,11 @@ jobs:
             $zones = WC_Shipping_Zones::get_zones();
             foreach ($zones as $z) {
               echo "ZONE|" . $z["zone_id"] . "|" . $z["zone_name"] . "\n";
-              foreach ($z["zone_locations"] as $loc) {
-                echo "LOCATION|" . $loc->type . "|" . $loc->code . "\n";
-              }
-              foreach ($z["shipping_methods"] as $method) {
-                echo "METHOD|" . $method->id . "|" . $method->instance_id . "|" . ($method->enabled === "yes" ? "yes" : "no") . "\n";
-              }
+              foreach ($z["zone_locations"] as $loc) echo "LOCATION|" . $loc->type . "|" . $loc->code . "\n";
+              foreach ($z["shipping_methods"] as $method) echo "METHOD|" . $method->id . "|" . $method->instance_id . "|" . ($method->enabled === "yes" ? "yes" : "no") . "\n";
             }
             $rest = new WC_Shipping_Zone(0);
             echo "ZONE|0|" . $rest->get_zone_name() . "\n";
-            foreach ($rest->get_shipping_methods(false) as $method) {
-              echo "METHOD|" . $method->id . "|" . $method->instance_id . "|" . ($method->enabled === "yes" ? "yes" : "no") . "\n";
-            }
+            foreach ($rest->get_shipping_methods(false) as $method) echo "METHOD|" . $method->id . "|" . $method->instance_id . "|" . ($method->enabled === "yes" ? "yes" : "no") . "\n";
           ' || true
           REMOTE
