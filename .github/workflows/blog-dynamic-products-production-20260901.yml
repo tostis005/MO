@@ -1,0 +1,154 @@
+name: Deploy dynamic blog products to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'elmercadodeorigen-child/inc/blog-product-category-more-010267.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Validate release file
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='elmercadodeorigen-child/inc/blog-product-category-more-010267.php'
+          php -l "$FILE"
+          grep -q "add_shortcode( 'elmercado_dynamic_products'" "$FILE"
+          grep -q "elmercado_blog_dynamic_products_transform_content_010277" "$FILE"
+          grep -q "_elmercado_product_category" "$FILE"
+
+      - name: Deploy and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          FILE='elmercadodeorigen-child/inc/blog-product-category-more-010267.php'
+          EXPECTED_NEW_SHA=$(sha256sum "$FILE" | awk '{print $1}')
+          EXPECTED_OLD_SHA=$(git show HEAD^:"$FILE" | sha256sum | awk '{print $1}')
+          remote_file="/tmp/elmercado-blog-dynamic-products-${GITHUB_RUN_ID}.php"
+
+          sshpass -e scp $SCP_OPTIONS "$FILE" "$STAGING_USER@$STAGING_HOST:$remote_file"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$EXPECTED_NEW_SHA' '$EXPECTED_OLD_SHA' '$remote_file'" <<'REMOTE'
+          set -euo pipefail
+          expected_new_sha="$1"
+          expected_old_sha="$2"
+          remote_file="$3"
+
+          cleanup() { rm -f "$remote_file"; }
+          trap cleanup EXIT
+
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$wp_bin" ] || { echo "WP-CLI not found"; exit 1; }
+          [ -n "$php_bin" ] || { echo "PHP not found"; exit 1; }
+
+          prod_path=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) prod_path="$p"; break ;;
+            esac
+          done
+          : "${prod_path:?production path not found}"
+
+          stylesheet=$("$php_bin" -d memory_limit=256M "$wp_bin" option get stylesheet --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
+          theme_path="$prod_path/wp-content/themes/$stylesheet"
+          live_file="$theme_path/inc/blog-product-category-more-010267.php"
+
+          "$php_bin" -l "$remote_file"
+          grep -q "add_shortcode( 'elmercado_dynamic_products'" "$remote_file"
+          grep -q "elmercado_blog_dynamic_products_transform_content_010277" "$remote_file"
+
+          live_sha=$(sha256sum "$live_file" | awk '{print $1}')
+          echo "BLOG_PRODUCTS_SHA old_repo=$expected_old_sha new_repo=$expected_new_sha live=$live_sha"
+
+          if [ "$live_sha" = "$expected_new_sha" ]; then
+            echo "Dynamic blog products already deployed."
+          else
+            if [ "$live_sha" != "$expected_old_sha" ]; then
+              echo "Live dynamic-products module differs from both previous and current repository versions; refusing deployment."
+              exit 1
+            fi
+
+            stamp=$(date +%Y%m%d%H%M%S)
+            cp -p "$live_file" "${live_file}.bak-${stamp}"
+            install -m 0644 "$remote_file" "$live_file"
+          fi
+
+          deployed_sha=$(sha256sum "$live_file" | awk '{print $1}')
+          echo "BLOG_PRODUCTS_SHA repo=$expected_new_sha live=$deployed_sha"
+          test "$deployed_sha" = "$expected_new_sha"
+          "$php_bin" -l "$live_file"
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod_path" --allow-root >/dev/null 2>&1 || true
+
+          echo "--- RUNTIME CONTRACT ---"
+          contract=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+            echo "SHORTCODE=" . (shortcode_exists("elmercado_dynamic_products") ? "YES" : "NO") . "\n";
+            echo "FUTURE_EMPTY=" . ("" === trim(do_shortcode("[elmercado_dynamic_products category=\"categoria-futura-sin-productos-010277\" heading=\"1\"]")) ? "YES" : "NO") . "\n";
+            global $wpdb;
+            $post_id = (int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_type = '\''post'\'' AND post_status = '\''publish'\'' AND post_content LIKE '\''%[products%category=%'\'' ORDER BY ID DESC LIMIT 1");
+            if ($post_id > 0) {
+              $raw = (string) get_post_field("post_content", $post_id);
+              $transformed = elmercado_blog_dynamic_products_transform_content_010277($raw, $post_id);
+              echo "LEGACY_POST=" . $post_id . "\n";
+              echo "LEGACY_TRANSFORM=" . (false !== strpos($transformed, "[elmercado_dynamic_products") ? "YES" : "NO") . "\n";
+            } else {
+              echo "LEGACY_POST=NONE\n";
+              echo "LEGACY_TRANSFORM=SKIP\n";
+            }
+          ' 2>/dev/null)
+          printf '%s\n' "$contract"
+          grep -qx 'SHORTCODE=YES' <<< "$contract"
+          grep -qx 'FUTURE_EMPTY=YES' <<< "$contract"
+          if grep -q '^LEGACY_POST=[0-9]' <<< "$contract"; then
+            grep -qx 'LEGACY_TRANSFORM=YES' <<< "$contract"
+          fi
+
+          site_url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get home --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
+          post_url=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+            global $wpdb;
+            $post_id = (int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_type = '\''post'\'' AND post_status = '\''publish'\'' AND post_content LIKE '\''%[products%category=%'\'' ORDER BY ID DESC LIMIT 1");
+            if ($post_id > 0) echo get_permalink($post_id);
+          ' 2>/dev/null)
+
+          if [ -n "$post_url" ]; then
+            nonce=$(date +%s)
+            html=$(curl -fsSL --max-time 25 "${post_url}?blog_products_verify=${nonce}")
+            grep -q 'elmercado-blog-product-category-more-010277' <<< "$html"
+            echo "FRONTEND_POST=$post_url"
+          else
+            echo "FRONTEND_POST=SKIP_NO_LEGACY_SHORTCODE"
+          fi
+
+          echo "BLOG_DYNAMIC_PRODUCTS_PRODUCTION=PASS"
+          REMOTE
