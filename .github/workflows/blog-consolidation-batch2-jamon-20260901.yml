@@ -1,0 +1,85 @@
+name: Blog consolidation batch 2 jamon 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-consolidation-batch2-jamon-20260901.yml'
+      - '.github/scripts/blog-consolidation-batch2-jamon-20260901.php'
+      - '.github/scripts/emdo-blog-consolidation-redirects-batch2-20260901.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/blog-consolidation-batch2-jamon-20260901.php >/dev/null
+          php -l .github/scripts/emdo-blog-consolidation-redirects-batch2-20260901.php >/dev/null
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy cumulative redirects and run ham consolidation
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REDIRECT_REMOTE="/tmp/emdo-blog-redirects-b2-${GITHUB_RUN_ID}.php"
+          MIGRATION_REMOTE="/tmp/emdo-blog-b2-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/emdo-blog-consolidation-redirects-batch2-20260901.php "$STAGING_USER@$STAGING_HOST:$REDIRECT_REMOTE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/blog-consolidation-batch2-jamon-20260901.php "$STAGING_USER@$STAGING_HOST:$MIGRATION_REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; cp '$REDIRECT_REMOTE' '$PROD_PATH/wp-content/mu-plugins/emdo-blog-consolidation-redirects.php'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/emdo-blog-consolidation-redirects.php' >/dev/null; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$MIGRATION_REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REDIRECT_REMOTE' '$MIGRATION_REMOTE'; exit \$rc"
+
+      - name: Verify live ham pages and redirects
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_page() {
+            html="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO verifier' -H 'Cache-Control: no-cache' "$1?emdo_verify=${GITHUB_RUN_ID}")"
+            grep -Fq "$2" <<< "$html"
+          }
+          check_redirect() {
+            headers="$(curl -sS -D - -o /dev/null -A 'Mozilla/5.0 EMDO SEO verifier' -H 'Cache-Control: no-cache' "$1")"
+            status="$(awk 'toupper($1) ~ /^HTTP\// {c=$2} END {print c}' <<< "$headers")"
+            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/, ""); print $2}' <<< "$headers" | tail -n1)"
+            test "$status" = "301"
+            case "$location" in "$2"|"$2"*) ;; *) echo "Bad redirect $1 -> $location" >&2; exit 9 ;; esac
+          }
+          check_page 'https://www.elmercadodeorigen.com/50-75-100-iberico-que-significa-porcentaje-raza-etiqueta/' 'El porcentaje racial no dice si el cerdo comió bellota'
+          check_page 'https://www.elmercadodeorigen.com/jamon-o-paleta-diferencias-cual-elegir/' 'Jamón vs paleta ibérica: diferencias de un vistazo'
+          check_page 'https://www.elmercadodeorigen.com/jamon-iberico-vs-jamon-serrano-diferencias-como-elegir/' 'Qué significa realmente “ibérico”'
+          check_page 'https://www.elmercadodeorigen.com/jamon-bellota-cebo-campo-cebo-diferencias-tipos-jamon-iberico/' 'Bellota vs cebo de campo vs cebo: tabla rápida'
+          check_page 'https://www.elmercadodeorigen.com/jamon-en-pieza-o-loncheado-al-vacio-ventajas-que-compensa/' 'La pregunta clave: ¿cuánto tardarás en consumirlo?'
+          check_page 'https://www.elmercadodeorigen.com/acido-oleico-jamon-iberico-que-es-de-donde-procede/' 'Por qué se relaciona la bellota con el ácido oleico'
+          check_redirect 'https://www.elmercadodeorigen.com/100-75-50-iberico-que-significa-porcentaje/' 'https://www.elmercadodeorigen.com/50-75-100-iberico-que-significa-porcentaje-raza-etiqueta/'
+          check_redirect 'https://www.elmercadodeorigen.com/jamon-vs-paleta-iberica-diferencias-nutricionales/' 'https://www.elmercadodeorigen.com/jamon-o-paleta-diferencias-cual-elegir/'
+          check_redirect 'https://www.elmercadodeorigen.com/jamon-iberico-vs-jamon-serrano-diferencias-nutricionales/' 'https://www.elmercadodeorigen.com/jamon-iberico-vs-jamon-serrano-diferencias-como-elegir/'
+          check_redirect 'https://www.elmercadodeorigen.com/bellota-cambia-grasa-jamon-iberico/' 'https://www.elmercadodeorigen.com/acido-oleico-jamon-iberico-que-es-de-donde-procede/'
+          echo 'BLOG_CONSOLIDATION_BATCH2_VERIFY_OK'
