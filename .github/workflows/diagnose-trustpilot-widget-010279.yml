@@ -1,0 +1,47 @@
+name: Diagnose Trustpilot public widget data
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-trustpilot-widget-010279.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect Trustpilot profile in browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          cat > tp.js <<'JS'
+          const { chromium } = require('playwright');
+          (async()=>{
+            const browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
+            const page=await browser.newPage({viewport:{width:1280,height:900},locale:'es-ES'});
+            const seen=[];
+            page.on('request',req=>{ const u=req.url(); if(/trustpilot|trustbox|businessunit/i.test(u)) seen.push(u); });
+            const r=await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com',{waitUntil:'domcontentloaded',timeout:60000}).catch(()=>null);
+            await page.waitForTimeout(8000);
+            const data=await page.evaluate(()=>{
+              const html=document.documentElement.outerHTML;
+              const text=(document.body?.innerText||'').replace(/\s+/g,' ').slice(0,1200);
+              const ids=[...new Set((html.match(/[a-f0-9]{24}/gi)||[]))].slice(0,50);
+              const attrs=[...document.querySelectorAll('[data-businessunit-id]')].map(x=>x.getAttribute('data-businessunit-id'));
+              return {title:document.title,text,ids,attrs,htmlLength:html.length};
+            });
+            console.log('TP_PAGE',JSON.stringify(data));
+            console.log('TP_REQUESTS',JSON.stringify([...new Set(seen)].slice(0,100)));
+            console.log('STATUS',r?.status()||0);
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node tp.js
