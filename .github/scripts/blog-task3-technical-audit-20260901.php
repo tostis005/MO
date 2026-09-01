@@ -32,6 +32,22 @@ function emdo_task3_selected_option( string $name, array $wanted_keys ): array {
 	return $out;
 }
 
+function emdo_task3_sample_term( string $taxonomy ): ?array {
+	if ( ! taxonomy_exists( $taxonomy ) ) {
+		return null;
+	}
+	$terms = get_terms( array( 'taxonomy' => $taxonomy, 'hide_empty' => true, 'number' => 1, 'orderby' => 'count', 'order' => 'DESC' ) );
+	if ( is_wp_error( $terms ) || empty( $terms ) ) {
+		return null;
+	}
+	$url = get_term_link( $terms[0] );
+	return array(
+		'slug'  => $terms[0]->slug,
+		'count' => (int) $terms[0]->count,
+		'url'   => is_wp_error( $url ) ? null : $url,
+	);
+}
+
 $active_plugins = (array) get_option( 'active_plugins', array() );
 $mu_plugins     = array_keys( get_mu_plugins() );
 
@@ -77,14 +93,6 @@ foreach ( $retired as $slug ) {
 	$retired_state[ $slug ] = $row ?: null;
 }
 
-$sample_tag = null;
-if ( taxonomy_exists( 'post_tag' ) ) {
-	$terms = get_terms( array( 'taxonomy' => 'post_tag', 'hide_empty' => true, 'number' => 1, 'orderby' => 'count', 'order' => 'DESC' ) );
-	if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
-		$sample_tag = array( 'slug' => $terms[0]->slug, 'count' => (int) $terms[0]->count, 'url' => get_term_link( $terms[0] ) );
-	}
-}
-
 $sample_author = null;
 $author_id = (int) $wpdb->get_var( "SELECT post_author FROM {$wpdb->posts} WHERE post_status='publish' AND post_type='post' GROUP BY post_author ORDER BY COUNT(*) DESC LIMIT 1" );
 if ( $author_id > 0 ) {
@@ -94,6 +102,21 @@ if ( $author_id > 0 ) {
 		'slug' => $user ? $user->user_nicename : null,
 		'url'  => get_author_posts_url( $author_id ),
 	);
+}
+
+$aioseo_option = get_option( 'aioseo_options', null );
+$aioseo_summary = array( '_present' => null !== $aioseo_option, '_type' => gettype( $aioseo_option ) );
+if ( is_string( $aioseo_option ) ) {
+	$aioseo_summary['_length'] = strlen( $aioseo_option );
+	$decoded = json_decode( $aioseo_option, true );
+	if ( is_array( $decoded ) ) {
+		$aioseo_summary['_decoded_keys'] = array_keys( $decoded );
+		if ( isset( $decoded['searchAppearance'] ) && is_array( $decoded['searchAppearance'] ) ) {
+			$aioseo_summary['searchAppearance_keys'] = array_keys( $decoded['searchAppearance'] );
+		}
+	}
+} elseif ( is_array( $aioseo_option ) ) {
+	$aioseo_summary['_keys'] = array_keys( $aioseo_option );
 }
 
 $data = array(
@@ -114,14 +137,19 @@ $data = array(
 	'post_counts'         => $post_counts,
 	'taxonomy_counts'     => $taxonomy_counts,
 	'published_authors'   => $published_authors,
-	'sample_tag'          => $sample_tag,
+	'sample_post_tag'     => emdo_task3_sample_term( 'post_tag' ),
+	'sample_product_tag'  => emdo_task3_sample_term( 'product_tag' ),
+	'sample_category'     => emdo_task3_sample_term( 'category' ),
+	'sample_product_cat'  => emdo_task3_sample_term( 'product_cat' ),
 	'sample_author'       => $sample_author,
 	'sitemap_provider_options' => array(
+		'aioseo_names'    => emdo_task3_option_keys( '%aioseo%' ),
 		'wpseo_names'     => emdo_task3_option_keys( '%wpseo%' ),
 		'rankmath_names'  => array_merge( emdo_task3_option_keys( '%rank_math%' ), emdo_task3_option_keys( '%rank-math%' ) ),
 		'wpml_names'      => array_merge( emdo_task3_option_keys( '%icl_%' ), emdo_task3_option_keys( '%sitepress%' ) ),
 		'polylang_names'  => emdo_task3_option_keys( '%polylang%' ),
 	),
+	'aioseo_summary' => $aioseo_summary,
 	'yoast_titles_selected' => emdo_task3_selected_option(
 		'wpseo_titles',
 		array(
