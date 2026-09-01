@@ -1,0 +1,84 @@
+name: Fix empty related guides cheese
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/fix-empty-related-guides-cheese.php'
+      - '.github/workflows/fix-empty-related-guides-cheese.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/fix-empty-related-guides-cheese.php
+      - name: Apply fix in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE="/tmp/fix-empty-related-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/fix-empty-related-guides-cheese.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" | tee /tmp/related-fix.txt
+          grep -q 'EMDO_RELATED_GUIDES_FIX_BEGIN' /tmp/related-fix.txt
+          grep -q '"count":10' /tmp/related-fix.txt
+          grep -q 'EMDO_RELATED_GUIDES_FIX_END' /tmp/related-fix.txt
+      - name: Verify no empty headings publicly
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://www.elmercadodeorigen.com/queso-manchego-dop-que-es-como-se-elabora-reconocer-autentico/'
+            'https://www.elmercadodeorigen.com/tipos-de-queso-guia-leche-maduracion-pasta-corteza-elaboracion/'
+            'https://www.elmercadodeorigen.com/queso-tierno-semicurado-curado-viejo-anejo-diferencias/'
+            'https://www.elmercadodeorigen.com/queso-oveja-cabra-vaca-diferencias-como-elegir/'
+            'https://www.elmercadodeorigen.com/queso-leche-cruda-o-pasteurizada-diferencias-sabor-seguridad/'
+            'https://www.elmercadodeorigen.com/como-conservar-queso-correctamente-nevera-envoltorio-temperatura/'
+            'https://www.elmercadodeorigen.com/se-puede-congelar-queso-tipos-como-hacerlo/'
+            'https://www.elmercadodeorigen.com/como-cortar-servir-queso-temperatura-cuchillos-presentacion/'
+            'https://www.elmercadodeorigen.com/como-preparar-tabla-quesos-cantidades-orden-acompanamientos/'
+            'https://www.elmercadodeorigen.com/como-saber-queso-mal-estado-moho-olor-textura/'
+          )
+          for url in "${urls[@]}"; do
+            html="$(curl -L -sS --max-time 45 "${url}?related_fix=${GITHUB_RUN_ID}")"
+            python3 - "$url" <<'PY' <<< "$html"
+import re, sys
+url = sys.argv[1]
+html = sys.stdin.read()
+for heading in ('Guías relacionadas', 'Related guides'):
+    m = re.search(r'<h2>\s*'+re.escape(heading)+r'\s*</h2>(.*?)(?=<h2>|$)', html, re.I|re.S)
+    if m and '<a ' not in m.group(1).lower():
+        raise SystemExit(f'empty related heading on {url}')
+print('OK', url)
+PY
+          done
