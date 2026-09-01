@@ -1,0 +1,204 @@
+name: Blog SEO task 3 technical audit 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/blog-task3-technical-audit-20260901.php'
+      - '.github/workflows/blog-task3-technical-audit-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate audit script
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/blog-task3-technical-audit-20260901.php >/dev/null
+          grep -Fq 'EMDO_TASK3_AUDIT_20260901' .github/scripts/blog-task3-technical-audit-20260901.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Inspect production WordPress configuration
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REMOTE_AUDIT="/tmp/emdo-blog-task3-audit-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/blog-task3-technical-audit-20260901.php "$STAGING_USER@$STAGING_HOST:$REMOTE_AUDIT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            echo 'EMDO_TASK3_MU_FILES_BEGIN'
+            find '$PROD_PATH/wp-content/mu-plugins' -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort || true
+            echo 'EMDO_TASK3_MU_FILES_END'
+            \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_AUDIT' --path='$PROD_PATH' --allow-root
+            rm -f '$REMOTE_AUDIT'
+          "
+
+      - name: Probe robots, sitemaps, canonicals, hreflang and indexability
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://www.elmercadodeorigen.com'
+          UA='Mozilla/5.0 EMDO SEO task3 auditor'
+
+          probe() {
+            local path="$1"
+            local headers code location xrobots
+            headers="$(curl -sS -D - -o /dev/null --retry 3 --retry-delay 2 -A "$UA" -H 'Cache-Control: no-cache' "$BASE$path")"
+            code="$(awk 'toupper($1) ~ /^HTTP\// {c=$2} END {print c}' <<< "$headers")"
+            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/,""); print $2}' <<< "$headers" | tail -n1)"
+            xrobots="$(awk 'BEGIN{IGNORECASE=1} /^x-robots-tag:/ {sub(/\r$/,""); sub(/^[^:]+:[ ]*/,""); print}' <<< "$headers" | paste -sd ';' -)"
+            printf 'EMDO_TASK3_PROBE path=%s code=%s location=%s xrobots=%s\n' "$path" "$code" "$location" "$xrobots"
+          }
+
+          probe '/robots.txt'
+          probe '/sitemap_index.xml'
+          probe '/wp-sitemap.xml'
+          probe '/?s=jamon'
+          probe '/?author=1'
+          probe '/feed/'
+          probe '/wp-json/'
+
+          echo 'EMDO_TASK3_ROBOTS_BEGIN'
+          curl -fsSL --retry 3 -A "$UA" "$BASE/robots.txt?emdo_task3=${GITHUB_RUN_ID}" | sed -n '1,120p'
+          echo 'EMDO_TASK3_ROBOTS_END'
+
+          for endpoint in sitemap_index.xml wp-sitemap.xml; do
+            code="$(curl -sS -o "/tmp/$endpoint" -w '%{http_code}' --retry 3 --retry-delay 2 -A "$UA" "$BASE/$endpoint?emdo_task3=${GITHUB_RUN_ID}")"
+            echo "EMDO_TASK3_SITEMAP_ENDPOINT endpoint=$endpoint code=$code"
+            if [ "$code" = '200' ]; then
+              grep -oE '<loc>[^<]+' "/tmp/$endpoint" | sed 's#<loc>##' | head -40 || true
+            fi
+          done
+
+          python3 - <<'PY'
+          import re, subprocess, xml.etree.ElementTree as ET
+          from urllib.parse import urlsplit
+
+          base = 'https://www.elmercadodeorigen.com'
+          ua = 'Mozilla/5.0 EMDO SEO task3 auditor'
+          retired = [
+              'cuanta-vitamina-e-tiene-aove','aove-omega-3-omega-6-perfil-grasas',
+              'aceite-oliva-tiene-colesterol','cuanta-grasa-saturada-tiene-aove',
+              'cuanto-hierro-tiene-lomo-iberico','grasa-lomo-iberico-saturada-monoinsaturada-poliinsaturada',
+              'cuanto-hierro-tiene-chorizo-iberico','grasa-chorizo-iberico-saturada-monoinsaturada-poliinsaturada',
+              'verduras-mas-vitamina-c-comparativa','aove-filtrado-vs-sin-filtrar-diferencias'
+          ]
+
+          def curl(url):
+              return subprocess.check_output(['curl','-fsSL','--retry','3','--retry-delay','2','-A',ua,'-H','Cache-Control: no-cache',url], text=True)
+
+          def locs(xml_text):
+              try:
+                  root=ET.fromstring(xml_text)
+              except Exception:
+                  return []
+              return [el.text.strip() for el in root.iter() if el.tag.endswith('loc') and el.text]
+
+          try:
+              root_xml=curl(base+'/sitemap_index.xml?emdo_task3=1')
+              children=locs(root_xml)
+          except Exception:
+              children=[]
+          all_urls=[]
+          errors=[]
+          for child in children:
+              try:
+                  all_urls.extend(locs(curl(child)))
+              except Exception as exc:
+                  errors.append((child,str(exc)))
+          duplicate_count=len(all_urls)-len(set(all_urls))
+          retired_hits=[u for u in all_urls if any('/'+s+'/' in u for s in retired)]
+          query_hits=[u for u in all_urls if '?' in u]
+          http_hits=[u for u in all_urls if u.startswith('http://')]
+          non_www=[u for u in all_urls if urlsplit(u).netloc not in ('www.elmercadodeorigen.com','')]
+          print(f'EMDO_TASK3_SITEMAP_SUMMARY children={len(children)} urls={len(all_urls)} duplicates={duplicate_count} retired_hits={len(retired_hits)} query_hits={len(query_hits)} http_hits={len(http_hits)} foreign_hosts={len(non_www)} fetch_errors={len(errors)}')
+          if retired_hits: print('EMDO_TASK3_RETIRED_IN_SITEMAP='+repr(retired_hits[:30]))
+          if query_hits: print('EMDO_TASK3_QUERY_IN_SITEMAP='+repr(query_hits[:30]))
+          if errors: print('EMDO_TASK3_SITEMAP_FETCH_ERRORS='+repr(errors[:10]))
+
+          samples = [
+              '/',
+              '/nutrientes-aceite-oliva-virgen-extra/',
+              '/category/aceites/',
+              '/en/category/pulses/',
+              '/?s=jamon',
+              '/nutrientes-aceite-oliva-virgen-extra/?utm_source=task3-audit',
+          ]
+          for path in samples:
+              try:
+                  html=curl(base+path)
+              except Exception as exc:
+                  print(f'EMDO_TASK3_HTML path={path} fetch_error={exc}')
+                  continue
+              canon=re.findall(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              if not canon:
+                  canon=re.findall(r'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']canonical["\']',html,re.I)
+              robots=re.findall(r'<meta[^>]+name=["\']robots["\'][^>]+content=["\']([^"\']+)',html,re.I)
+              hreflang=re.findall(r'<link[^>]+rel=["\']alternate["\'][^>]+hreflang=["\']([^"\']+)["\'][^>]+href=["\']([^"\']+)',html,re.I)
+              if not hreflang:
+                  hreflang=re.findall(r'<link[^>]+hreflang=["\']([^"\']+)["\'][^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']alternate["\']',html,re.I)
+              print(f'EMDO_TASK3_HTML path={path} canonical_count={len(canon)} canonical={canon[:3]!r} robots={robots[:3]!r} hreflang_count={len(hreflang)} hreflang={hreflang[:12]!r}')
+          PY
+
+          # Every retired task-2 URL must be one direct redirect to its final destination.
+          python3 - <<'PY'
+          import subprocess
+          base='https://www.elmercadodeorigen.com'
+          ua='Mozilla/5.0 EMDO SEO task3 auditor'
+          redirects={
+            'cuanta-vitamina-e-tiene-aove':'nutrientes-aceite-oliva-virgen-extra',
+            'aove-omega-3-omega-6-perfil-grasas':'nutrientes-aceite-oliva-virgen-extra',
+            'aceite-oliva-tiene-colesterol':'nutrientes-aceite-oliva-virgen-extra',
+            'cuanta-grasa-saturada-tiene-aove':'nutrientes-aceite-oliva-virgen-extra',
+            'cuanto-hierro-tiene-lomo-iberico':'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'grasa-lomo-iberico-saturada-monoinsaturada-poliinsaturada':'nutrientes-lomo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'cuanto-hierro-tiene-chorizo-iberico':'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+            'grasa-chorizo-iberico-saturada-monoinsaturada-poliinsaturada':'nutrientes-chorizo-iberico-proteinas-grasas-hierro-vitaminas-minerales',
+          }
+          bad=0
+          for old,dest in redirects.items():
+              out=subprocess.check_output(['curl','-sS','-o','/dev/null','-A',ua,'-w','%{http_code}\t%{redirect_url}\t%{num_redirects}\t%{url_effective}','-L','--max-redirs','10',base+'/'+old+'/'],text=True).strip()
+              code,first_or_final,num,effective=out.split('\t')
+              ok=(code=='200' and effective.rstrip('/')==(base+'/'+dest).rstrip('/') and num=='1')
+              print(f'EMDO_TASK3_REDIRECT old={old} final={effective} redirects={num} final_code={code} ok={int(ok)}')
+              bad += 0 if ok else 1
+          print(f'EMDO_TASK3_REDIRECT_SUMMARY checked={len(redirects)} bad={bad}')
+          PY
