@@ -121,13 +121,13 @@ jobs:
             }
           ' 2>/dev/null)
           printf '%s\n' "$country_results"
-          echo "$country_results" | grep -qx 'ES=SHIP'
-          echo "$country_results" | grep -qx 'FR=SHIP'
-          echo "$country_results" | grep -qx 'PT=SHIP'
-          echo "$country_results" | grep -qx 'DE=SHIP'
-          echo "$country_results" | grep -qx 'US=ADS'
-          echo "$country_results" | grep -qx 'MX=ADS'
-          echo "$country_results" | grep -qx 'GB=ADS'
+          grep -qx 'ES=SHIP' <<< "$country_results"
+          grep -qx 'FR=SHIP' <<< "$country_results"
+          grep -qx 'PT=SHIP' <<< "$country_results"
+          grep -qx 'DE=SHIP' <<< "$country_results"
+          grep -qx 'US=ADS' <<< "$country_results"
+          grep -qx 'MX=ADS' <<< "$country_results"
+          grep -qx 'GB=ADS' <<< "$country_results"
 
           echo "--- FRONTEND SCOPE ---"
           post_url=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
@@ -139,12 +139,12 @@ jobs:
           nonce=$(date +%s)
           post_html=$(curl -fsSL --max-time 25 "${post_url}?adsense_verify=${nonce}")
           home_html=$(curl -fsSL --max-time 25 "${site_url}/?adsense_verify=${nonce}")
-          echo "$post_html" | grep -q 'adsense-geo-010266.js'
-          if echo "$home_html" | grep -q 'adsense-geo-010266.js'; then
+          grep -q 'adsense-geo-010266.js' <<< "$post_html"
+          if grep -q 'adsense-geo-010266.js' <<< "$home_html"; then
             echo "AdSense loader unexpectedly present on home"
             exit 1
           fi
-          if echo "$post_html" | grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js'; then
+          if grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' <<< "$post_html"; then
             echo "Raw AdSense script unexpectedly present in server-rendered post HTML"
             exit 1
           fi
