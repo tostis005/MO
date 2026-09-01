@@ -1,0 +1,18 @@
+name: Probe cheese batch 07 package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-cheese-batch-07-package.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate package and print hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c "import glob,hashlib,base64,gzip,json; fs=sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64')); assert len(fs)==8, len(fs); p=''.join(open(f,encoding='utf-8').read().strip() for f in fs); print('BATCH07_SHA256='+hashlib.sha256(p.encode()).hexdigest()); data=json.loads(gzip.decompress(base64.b64decode(p,validate=True))); assert len(data)==10; assert sorted(int(x['pos']) for x in data)==list(range(61,71)); print('BATCH07_JSON_OK=10')"
