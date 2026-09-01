@@ -21,7 +21,9 @@ jobs:
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
 
     steps:
-      - name: Inspect production WordPress setup
+      - uses: actions/checkout@v4
+
+      - name: Verify production implementation
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -33,11 +35,21 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          LOCAL_FUNCTIONS_SHA=$(sha256sum elmercadodeorigen-child/functions.php | awk '{print $1}')
+          LOCAL_PHP_SHA=$(sha256sum elmercadodeorigen-child/inc/adsense-geo-010266.php | awk '{print $1}')
+          LOCAL_JS_SHA=$(sha256sum elmercadodeorigen-child/assets/js/adsense-geo-010266.js | awk '{print $1}')
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$LOCAL_FUNCTIONS_SHA' '$LOCAL_PHP_SHA' '$LOCAL_JS_SHA'" <<'REMOTE'
           set -euo pipefail
+          expected_functions_sha="$1"
+          expected_php_sha="$2"
+          expected_js_sha="$3"
+
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$wp_bin" ] || { echo "WP-CLI not found"; exit 1; }
+
           prod_path=""
           for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
             p=$(dirname "$cfg")
@@ -47,31 +59,70 @@ jobs:
             esac
           done
           : "${prod_path:?production path not found}"
-          echo "PROD_PATH_FOUND"
 
           theme_path=$("$php_bin" -d memory_limit=512M "$wp_bin" eval 'echo get_stylesheet_directory();' --path="$prod_path" --allow-root)
-          echo "THEME_BASENAME=$(basename "$theme_path")"
-          echo "--- LIVE THEME VERSION ---"
-          grep -n "ELMERCADO_THEME_VERSION" "$theme_path/functions.php" | head -n1 || true
-          echo "LIVE_FUNCTIONS_SHA256=$(sha256sum "$theme_path/functions.php" | awk '{print $1}')"
+          php_file="$theme_path/inc/adsense-geo-010266.php"
+          js_file="$theme_path/assets/js/adsense-geo-010266.js"
 
-          echo "--- COOKIE PLUGIN ---"
-          "$php_bin" -d memory_limit=512M "$wp_bin" plugin get cookie-law-info --path="$prod_path" --fields=name,status,version --format=json --allow-root || true
+          test -f "$php_file"
+          test -f "$js_file"
+          "$php_bin" -l "$php_file"
 
-          echo "--- WOOCOMMERCE GEO DEFAULT ---"
-          "$php_bin" -d memory_limit=512M "$wp_bin" option get woocommerce_default_customer_address --path="$prod_path" --allow-root || true
+          live_functions_sha=$(sha256sum "$theme_path/functions.php" | awk '{print $1}')
+          live_php_sha=$(sha256sum "$php_file" | awk '{print $1}')
+          live_js_sha=$(sha256sum "$js_file" | awk '{print $1}')
 
-          echo "--- SHIPPING ZONES ---"
-          "$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
-            if (!class_exists("WC_Shipping_Zones")) { echo "NO_WOOCOMMERCE\n"; return; }
-            $zones = WC_Shipping_Zones::get_zones();
-            foreach ($zones as $z) {
-              echo "ZONE|" . $z["zone_id"] . "|" . $z["zone_name"] . "\n";
-              foreach ($z["zone_locations"] as $loc) echo "LOCATION|" . $loc->type . "|" . $loc->code . "\n";
-              foreach ($z["shipping_methods"] as $method) echo "METHOD|" . $method->id . "|" . $method->instance_id . "|" . ($method->enabled === "yes" ? "yes" : "no") . "\n";
+          echo "FUNCTIONS_SHA repo=$expected_functions_sha live=$live_functions_sha"
+          echo "PHP_SHA repo=$expected_php_sha live=$live_php_sha"
+          echo "JS_SHA repo=$expected_js_sha live=$live_js_sha"
+
+          test "$live_functions_sha" = "$expected_functions_sha"
+          test "$live_php_sha" = "$expected_php_sha"
+          test "$live_js_sha" = "$expected_js_sha"
+
+          echo "--- COUNTRY LOGIC ---"
+          country_results=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+            foreach (["ES","FR","PT","DE","US","MX","GB"] as $country) {
+              echo $country . "=" . (elmercado_adsense_country_is_shippable($country) ? "SHIP" : "ADS") . "\n";
             }
-            $rest = new WC_Shipping_Zone(0);
-            echo "ZONE|0|" . $rest->get_zone_name() . "\n";
-            foreach ($rest->get_shipping_methods(false) as $method) echo "METHOD|" . $method->id . "|" . $method->instance_id . "|" . ($method->enabled === "yes" ? "yes" : "no") . "\n";
-          ' || true
+          ')
+          printf '%s\n' "$country_results"
+          echo "$country_results" | grep -qx 'ES=SHIP'
+          echo "$country_results" | grep -qx 'FR=SHIP'
+          echo "$country_results" | grep -qx 'PT=SHIP'
+          echo "$country_results" | grep -qx 'DE=SHIP'
+          echo "$country_results" | grep -qx 'US=ADS'
+          echo "$country_results" | grep -qx 'MX=ADS'
+          echo "$country_results" | grep -qx 'GB=ADS'
+
+          echo "--- FRONTEND SCOPE ---"
+          post_url=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+            $ids = get_posts(["post_type" => "post", "post_status" => "publish", "numberposts" => 1, "fields" => "ids"]);
+            if ($ids) echo get_permalink($ids[0]);
+          ')
+          test -n "$post_url"
+          site_url=$("$php_bin" -d memory_limit=512M "$wp_bin" option get home --path="$prod_path" --allow-root)
+          nonce=$(date +%s)
+          post_html=$(curl -fsSL --max-time 20 "${post_url}?adsense_verify=${nonce}")
+          home_html=$(curl -fsSL --max-time 20 "${site_url}/?adsense_verify=${nonce}")
+
+          echo "$post_html" | grep -q 'adsense-geo-010266.js'
+          if echo "$home_html" | grep -q 'adsense-geo-010266.js'; then
+            echo "AdSense geo loader unexpectedly present on home"
+            exit 1
+          fi
+          if echo "$post_html" | grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js'; then
+            echo "Raw AdSense script unexpectedly present in server-rendered post HTML"
+            exit 1
+          fi
+
+          echo "--- REST ENDPOINT ---"
+          headers=$(mktemp)
+          body=$(mktemp)
+          curl -fsSL --max-time 20 -D "$headers" -o "$body" "${site_url}/wp-json/elmercado/v1/adsense-eligibility?verify=${nonce}"
+          cat "$body"
+          grep -Eiq '^cache-control:.*no-store' "$headers"
+          grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*(true|false)' "$body"
+
+          echo "AD_SENSE_GEO_VERIFICATION=PASS"
           REMOTE
