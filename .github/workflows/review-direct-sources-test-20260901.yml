@@ -137,7 +137,7 @@ jobs:
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '/tmp/review-direct-test-${GITHUB_RUN_ID}.php' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '/tmp/review-direct-test-${GITHUB_RUN_ID}.php'; exit \$rc" > review-direct-sources-output.txt
 
           echo '--- source files currently managing MDO review counters ---' >> review-direct-sources-output.txt
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "grep -RIl --exclude='*.log' --exclude='*.sql' -E 'mdo_google_review_count|mdo_trustpilot_review_count|mdo_home_external_reviews_version' '$PROD_PATH/wp-content' 2>/dev/null | head -n 50" >> review-direct-sources-output.txt || true
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "timeout 15s grep -RIl --include='*.php' -E 'mdo_google_review_count|mdo_trustpilot_review_count|mdo_home_external_reviews_version' '$PROD_PATH/wp-content/mu-plugins' '$PROD_PATH/wp-content/plugins' 2>/dev/null | head -n 50" >> review-direct-sources-output.txt || true
           cat review-direct-sources-output.txt
 
       - name: Commit safe test output
