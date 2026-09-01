@@ -1,0 +1,85 @@
+name: Audit approved featured images 20260901
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-approved-featured-images-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit live featured-image state
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true)
+            php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            [ -n "$wp" ] || exit 2
+            [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in
+                https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break ;;
+              esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"
+          REST="${INFO#*|}"
+          PHP="${REST%%|*}"
+          WP="${REST#*|}"
+          REMOTE="/tmp/emdo-featured-audit-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'"
+          sshpass -e scp -P "$PORT" -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 .github/scripts/audit-approved-featured-images-20260901.php "$STAGING_USER@$STAGING_HOST:$REMOTE/audit.php"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=512M '$WP' eval-file '$REMOTE/audit.php' --path='$PROD' --allow-root" > /tmp/featured-audit.json
+          cat /tmp/featured-audit.json
+          jq -e '.posts|length==6' /tmp/featured-audit.json >/dev/null
+
+          printf '[]' > /tmp/public-checks.json
+          while IFS=$'\t' read -r slug permalink thumbnail_url; do
+            out="/tmp/${slug}.html"
+            code="$(curl -L -sS --connect-timeout 15 --max-time 45 --retry 2 --retry-delay 2 -A 'Mozilla/5.0 EMDO featured image audit' -o "$out" -w '%{http_code}' "${permalink}?emdo_featured_audit=${GITHUB_RUN_ID}" || true)"
+            present=false
+            if [ -n "$thumbnail_url" ] && [ "$code" = "200" ]; then
+              basename="$(basename "${thumbnail_url%%\?*}")"
+              grep -Fq "$basename" "$out" && present=true || true
+            fi
+            jq --arg slug "$slug" --arg code "$code" --argjson present "$present" '. + [{slug:$slug,http:$code,image_present:$present}]' /tmp/public-checks.json > /tmp/public-next.json
+            mv /tmp/public-next.json /tmp/public-checks.json
+          done < <(jq -r '.posts[] | [.slug,.permalink,.thumbnail_url] | @tsv' /tmp/featured-audit.json)
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE'" || true
+          mkdir -p .deploy-status
+          jq -n --arg generated_at "$(date -u +%FT%TZ)" --slurpfile audit /tmp/featured-audit.json --slurpfile checks /tmp/public-checks.json '{generated_at:$generated_at,audit:$audit[0],public_checks:$checks[0]}' > .deploy-status/featured-images-audit-20260901.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .deploy-status/featured-images-audit-20260901.json
+          git commit -m 'Record approved featured image audit [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
