@@ -1,0 +1,140 @@
+name: Publish cheese batch 09 production v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-cheese-batch-09-production-v2.yml'
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate reconstructed signed package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64, gzip, hashlib, json, pathlib
+          base=pathlib.Path('.github/scripts')
+          p0=''.join((base/'cheese-batch-09-data-00.b64').read_text(encoding='utf-8').split())
+          p1=''.join((base/'cheese-batch-09-data-01.b64').read_text(encoding='utf-8').split())
+          p2=''.join((base/'cheese-batch-09-data-02.b64').read_text(encoding='utf-8').split())
+          assert len(p0)==19999, len(p0)
+          assert len(p1)==19999, len(p1)
+          assert len(p2)==16992, len(p2)
+          b64='H'+p0+'2'+p1+p2
+          assert len(b64)==56992
+          assert hashlib.sha256(b64.encode()).hexdigest()=='a00a670a84d252e895aa6db7e7cf8d00811188b7f6a56b2fb901d5b42a78b464'
+          gz=base64.b64decode(b64,validate=True)
+          assert hashlib.sha256(gz).hexdigest()=='2f8dd86be400bcd4c47879b6b6912c8ca068c87aeebd114e9a4780620d2b0dca'
+          raw=gzip.decompress(gz)
+          assert hashlib.sha256(raw).hexdigest()=='b6818260e040f09f8b42118a69f9822211b8d27a5c0e87e132958180013ec46d'
+          articles=json.loads(raw)
+          assert len(articles)==10
+          assert sorted(int(a['pos']) for a in articles)==list(range(81,91))
+          assert len({a['slug'] for a in articles})==10
+          assert len({a['en_slug'] for a in articles})==10
+          assert all(len(a['sections_es'])>=6 and len(a['sections_en'])>=6 for a in articles)
+          assert all(len(a['sources'])>=2 for a in articles)
+          print('SIGNED_RECONSTRUCTED_PACKAGE_OK=10')
+          PY
+          php -l .github/scripts/publish-cheese-batch-09-production.php
+          php -l .github/scripts/run-cheese-batch-09-production.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Publish ten Spanish and English articles
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          REMOTE_DIR="/tmp/emdo-cheese09-v2-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp $SCP_OPTIONS \
+            .github/scripts/cheese-batch-09-data-{00,01,02}.b64 \
+            .github/scripts/publish-cheese-batch-09-production.php \
+            .github/scripts/run-cheese-batch-09-production.php \
+            "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/"
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_DIR/run-cheese-batch-09-production.php' --path='$PROD_PATH' --allow-root; rc=\$?; rm -rf '$REMOTE_DIR'; exit \$rc" 2>&1 | tee /tmp/cheese09-v2-output.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then grep -F 'EMDO_CHEESE_BATCH09_ERROR:' /tmp/cheese09-v2-output.txt || true; exit "$rc"; fi
+          grep -q 'EMDO_CHEESE_BATCH09_BEGIN' /tmp/cheese09-v2-output.txt
+          grep -q '"count":10' /tmp/cheese09-v2-output.txt
+          grep -q 'EMDO_CHEESE_BATCH09_END' /tmp/cheese09-v2-output.txt
+
+      - name: Verify twenty public URLs and editorial details
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          es_slugs=(
+            'como-madura-queso-temperatura-humedad-microbiota-tiempo'
+            'lavado-cuajada-queso-que-es-como-cambia-sabor-textura'
+            'ph-acidez-queso-por-que-importan-textura-sabor-seguridad'
+            'humedad-queso-como-cambia-textura-maduracion-conservacion'
+            'cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento'
+            'suero-leche-queseria-que-es-que-ocurre-despues-hacer-queso'
+            'por-que-queso-blanco-amarillo-naranja-leche-maduracion-colorantes'
+            'tamano-formato-queso-como-influye-maduracion'
+            'mohos-levaduras-queso-intencionados-que-hacen-maduracion'
+            'como-transportar-queso-viaje-coche-avion-cadena-frio'
+          )
+          en_slugs=(
+            'how-cheese-ripens-temperature-humidity-microbiota-time'
+            'washed-curd-cheese-what-it-means-flavour-texture'
+            'ph-acidity-cheese-why-they-matter-texture-flavour-safety'
+            'moisture-cheese-how-it-changes-texture-ripening-storage'
+            'how-many-litres-milk-to-make-1-kg-cheese-yield'
+            'what-whey-is-cheesemaking-what-happens-after-cheese'
+            'why-cheese-white-yellow-orange-milk-ripening-colour'
+            'how-cheese-size-shape-affect-ripening'
+            'moulds-yeasts-cheese-intentional-what-they-do-ripening'
+            'how-to-transport-cheese-travel-car-plane-cold-chain'
+          )
+          check_url(){ local url="$1" code; for attempt in 1 2 3 4; do code="$(curl -L -sS -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 45 "$url" || true)"; if [ "$code" = 200 ]; then echo "OK $url"; return 0; fi; sleep 4; done; echo "FAILED $code $url" >&2; return 1; }
+          for s in "${es_slugs[@]}"; do check_url "$base/$s/"; done
+          for s in "${en_slugs[@]}"; do check_url "$base/en/$s/"; done
+          check_url "$base/category/quesos/"
+          check_url "$base/en/journal/"
+          curl -L -sS --max-time 45 "$base/como-madura-queso-temperatura-humedad-microbiota-tiempo/?verify=$GITHUB_RUN_ID" -o /tmp/ripen.html
+          grep -Fq 'Temperatura: acelerar demasiado' /tmp/ripen.html
+          curl -L -sS --max-time 45 "$base/lavado-cuajada-queso-que-es-como-cambia-sabor-textura/?verify=$GITHUB_RUN_ID" -o /tmp/washed.html
+          grep -Fq 'Lavado de cuajada y corteza lavada' /tmp/washed.html
+          curl -L -sS --max-time 45 "$base/cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento/?verify=$GITHUB_RUN_ID" -o /tmp/yield.html
+          grep -Fq 'Pastas prensadas y cocidas' /tmp/yield.html
+          curl -L -sS --max-time 45 "$base/en/why-cheese-white-yellow-orange-milk-ripening-colour/?verify=$GITHUB_RUN_ID" -o /tmp/colour-en.html
+          grep -Fq 'Permitted colours' /tmp/colour-en.html
+          curl -L -sS --max-time 45 "$base/en/how-to-transport-cheese-travel-car-plane-cold-chain/?verify=$GITHUB_RUN_ID" -o /tmp/travel-en.html
+          grep -Fq 'Car travel' /tmp/travel-en.html
+          echo 'Cheese batch 09 public editorial verification OK'
