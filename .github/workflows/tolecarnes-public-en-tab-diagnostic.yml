@@ -31,7 +31,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
+          set -uo pipefail
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
@@ -44,20 +44,20 @@ jobs:
             esac
           done
           : "${PROD_PATH:?production path not found}"
-          echo '=== ACTIVE_PLUGINS ==='
-          "$php_bin" "$wp_bin" plugin list --status=active --fields=name,status --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | sed -n '1,140p'
+          echo '=== ACTIVE_PLUGIN_OPTION ==='
+          "$php_bin" "$wp_bin" option get active_plugins --format=json --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
           echo '=== RELEVANT_CRON ==='
-          "$php_bin" "$wp_bin" cron event list --fields=hook,next_run_gmt,recurrence --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'hook|sync|store|vendor|product|review|trust|google|import|wcfm|feed|crawl' | sed -n '1,200p' || true
+          "$php_bin" "$wp_bin" cron event list --fields=hook,next_run_gmt,recurrence --format=csv --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null | grep -Ei 'hook|sync|store|vendor|product|review|trust|google|import|wcfm|feed|crawl' | sed -n '1,220p' || true
           echo '=== REVIEW_OPTION_NAMES ==='
           for term in google trust review place rating; do
             echo "-- $term --"
-            "$php_bin" "$wp_bin" option list --search="*${term}*" --fields=option_name --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | sed -n '1,120p' || true
+            "$php_bin" "$wp_bin" option list --search="*${term}*" --fields=option_name --format=csv --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null | sed -n '1,140p' || true
           done
           echo '=== RELEVANT_PHP_FILES ==='
           grep -RIl --include='*.php' -E 'Trustpilot|trustpilot|Google Reviews|google reviews|Places API|place_id|review[_ -]?count|sync.*product|product.*sync|vendor.*sync|sync.*vendor' "$PROD_PATH/wp-content" 2>/dev/null \
             | sed "s#^$PROD_PATH/##" \
             | grep -Ev '/cache/|/uploads/|/backup|\.bak' \
-            | sed -n '1,220p' || true
+            | sed -n '1,260p' || true
           echo '=== MU_PLUGIN_NAMES ==='
-          find "$PROD_PATH/wp-content/mu-plugins" -maxdepth 1 -type f -name '*.php' -printf '%f\n' 2>/dev/null | sort | grep -Ei 'sync|review|trust|google|vendor|product|store|cron|feed' | sed -n '1,180p' || true
+          find "$PROD_PATH/wp-content/mu-plugins" -maxdepth 1 -type f -name '*.php' -printf '%f\n' 2>/dev/null | sort | grep -Ei 'sync|review|trust|google|vendor|product|store|cron|feed' | sed -n '1,220p' || true
           REMOTE
