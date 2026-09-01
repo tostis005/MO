@@ -83,13 +83,12 @@ jobs:
             echo \"legit_message=\" . ( mdo_cf7_alnum_looks_generated_token(\"mensaje de prueba\") ? \"yes\" : \"no\" ) . PHP_EOL;
             echo \"legit_order_ref=\" . ( mdo_cf7_alnum_looks_generated_token(\"Pedido123\") ? \"yes\" : \"no\" ) . PHP_EOL;
             echo \"legit_product=\" . ( mdo_cf7_alnum_looks_generated_token(\"iPhone15Pro\") ? \"yes\" : \"no\" ) . PHP_EOL;
-            $fields = mdo_cf7_alnum_generated_fields(array(
+            echo \"sample_fields=\" . implode(\",\", mdo_cf7_alnum_generated_fields(array(
               \"your-name\" => \"t2hOxq9YFe\",
               \"your-email\" => \"mackenzjecoaqdy2002@gmail.com\",
               \"your-subject\" => \"DWisEGDW2W\",
               \"your-message\" => \"aBN1pnewdgFsyoDe6xTFiPPHzk6AB4U1jdMVAgZdNhy8P3IdEVM2H5g\"
-            ));
-            echo \"sample_fields=\" . implode(\",\", $fields) . PHP_EOL;
+            ))) . PHP_EOL;
           ' --path='$PROD_PATH' --skip-themes --allow-root")"
 
           echo "$RESULT"
