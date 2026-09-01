@@ -2,14 +2,14 @@
 /**
  * Plugin Name: MDO - Home External Reviews 2026-08-19
  * Description: Añade una franja ligera de prueba social con las valoraciones verificadas de Google y Trustpilot en la Home renovada.
- * Version: 1.0.2
+ * Version: 1.0.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.2';
+const MDO_HOME_EXTERNAL_REVIEWS_VERSION = '1.0.3';
 
 /**
  * Invalida la caché de Home una sola vez cuando cambia esta pieza.
@@ -45,12 +45,30 @@ function mdo_home_external_reviews_is_english_20260820(): bool {
 	return (bool) preg_match( '#^/en(?:/|$)#i', $path );
 }
 
+/** Los valores viven en opciones y se actualizan desde el sincronizador diario. */
+function mdo_home_google_review_count_20260901(): int {
+	if ( function_exists( 'mdo_google_review_count_010279' ) ) {
+		return mdo_google_review_count_010279();
+	}
+	return max( 0, (int) get_option( 'mdo_google_review_count', 303 ) );
+}
+
+function mdo_home_trustpilot_review_count_20260901(): int {
+	if ( function_exists( 'mdo_trustpilot_review_count_010279' ) ) {
+		return mdo_trustpilot_review_count_010279();
+	}
+	return max( 0, (int) get_option( 'mdo_trustpilot_review_count', 169 ) );
+}
+
 /**
- * Devuelve la franja de valoraciones. Las cifras se fijan aquí para no hacer
- * llamadas externas durante el render de la portada.
+ * Devuelve la franja de valoraciones leyendo siempre los recuentos persistidos.
+ * No se hace ninguna llamada externa durante el render de la portada.
  */
 function mdo_home_external_reviews_markup_20260819(): string {
 	$is_english = mdo_home_external_reviews_is_english_20260820();
+
+	$google_count = mdo_home_google_review_count_20260901();
+	$trust_count  = mdo_home_trustpilot_review_count_20260901();
 
 	$google_url     = 'https://www.google.com/search?q=El+Mercado+de+Origen+Google+rese%C3%B1as';
 	$trustpilot_url = $is_english
@@ -63,23 +81,27 @@ function mdo_home_external_reviews_markup_20260819(): string {
 	$opinion_word  = $is_english ? 'reviews' : 'opiniones';
 	$google_score  = $is_english ? '4.9' : '4,9';
 	$trust_score   = $is_english ? '4.6' : '4,6';
-	$google_aria   = $is_english ? 'Google: 4.9 out of 5, 303 reviews' : 'Google: 4,9 de 5, 303 reseñas';
-	$trust_aria    = $is_english ? 'Trustpilot: 4.6 out of 5, 169 reviews' : 'Trustpilot: 4,6 de 5, 169 opiniones';
+	$google_aria   = $is_english
+		? sprintf( 'Google: 4.9 out of 5, %d reviews', $google_count )
+		: sprintf( 'Google: 4,9 de 5, %d reseñas', $google_count );
+	$trust_aria = $is_english
+		? sprintf( 'Trustpilot: 4.6 out of 5, %d reviews', $trust_count )
+		: sprintf( 'Trustpilot: 4,6 de 5, %d opiniones', $trust_count );
 
-	return '<section class="mdo-review-proof" aria-label="' . esc_attr( $section_label ) . '">'
+	return '<section class="mdo-review-proof" aria-label="' . esc_attr( $section_label ) . '" data-google-reviews="' . esc_attr( (string) $google_count ) . '" data-trustpilot-reviews="' . esc_attr( (string) $trust_count ) . '">'
 		. '<div class="emo-shell mdo-review-proof__inner">'
 		. '<span class="mdo-review-proof__intro">' . esc_html( $intro ) . '</span>'
 		. '<div class="mdo-review-proof__sources">'
 		. '<a class="mdo-review-proof__source" href="' . esc_url( $google_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="' . esc_attr( $google_aria ) . '">'
 		. '<span class="mdo-review-proof__brand">Google</span>'
 		. '<span class="mdo-review-proof__score"><strong>' . esc_html( $google_score ) . '</strong><span class="mdo-review-proof__stars" aria-hidden="true">★★★★★</span></span>'
-		. '<small>303 ' . esc_html( $review_word ) . '</small>'
+		. '<small>' . esc_html( (string) $google_count ) . ' ' . esc_html( $review_word ) . '</small>'
 		. '</a>'
 		. '<span class="mdo-review-proof__divider" aria-hidden="true"></span>'
 		. '<a class="mdo-review-proof__source" href="' . esc_url( $trustpilot_url ) . '" target="_blank" rel="noopener noreferrer" aria-label="' . esc_attr( $trust_aria ) . '">'
 		. '<span class="mdo-review-proof__brand">Trustpilot</span>'
 		. '<span class="mdo-review-proof__score"><strong>' . esc_html( $trust_score ) . '</strong><span class="mdo-review-proof__stars" aria-hidden="true">★★★★★</span></span>'
-		. '<small>169 ' . esc_html( $opinion_word ) . '</small>'
+		. '<small>' . esc_html( (string) $trust_count ) . ' ' . esc_html( $opinion_word ) . '</small>'
 		. '</a>'
 		. '</div></div></section>';
 }
