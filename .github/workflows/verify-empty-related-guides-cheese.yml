@@ -1,0 +1,47 @@
+name: Verify empty related guides cheese
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-empty-related-guides-cheese.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify public cheese articles
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://www.elmercadodeorigen.com/queso-manchego-dop-que-es-como-se-elabora-reconocer-autentico/'
+            'https://www.elmercadodeorigen.com/tipos-de-queso-guia-leche-maduracion-pasta-corteza-elaboracion/'
+            'https://www.elmercadodeorigen.com/queso-tierno-semicurado-curado-viejo-anejo-diferencias/'
+            'https://www.elmercadodeorigen.com/queso-oveja-cabra-vaca-diferencias-como-elegir/'
+            'https://www.elmercadodeorigen.com/queso-leche-cruda-o-pasteurizada-diferencias-sabor-seguridad/'
+            'https://www.elmercadodeorigen.com/como-conservar-queso-correctamente-nevera-envoltorio-temperatura/'
+            'https://www.elmercadodeorigen.com/se-puede-congelar-queso-tipos-como-hacerlo/'
+            'https://www.elmercadodeorigen.com/como-cortar-servir-queso-temperatura-cuchillos-presentacion/'
+            'https://www.elmercadodeorigen.com/como-preparar-tabla-quesos-cantidades-orden-acompanamientos/'
+            'https://www.elmercadodeorigen.com/como-saber-queso-mal-estado-moho-olor-textura/'
+          )
+          for url in "${urls[@]}"; do
+            file="$(mktemp)"
+            curl -L -sS --max-time 45 "${url}?empty_related_check=${GITHUB_RUN_ID}" -o "$file"
+            python3 - "$url" "$file" <<'PY'
+import re, sys
+url, path = sys.argv[1], sys.argv[2]
+html = open(path, encoding='utf-8', errors='ignore').read()
+for heading in ('Guías relacionadas', 'Related guides'):
+    m = re.search(r'<h2>\s*'+re.escape(heading)+r'\s*</h2>(.*?)(?=<h2>|$)', html, re.I|re.S)
+    if m and '<a ' not in m.group(1).lower():
+        raise SystemExit(f'empty related heading on {url}')
+print('OK', url)
+PY
+            rm -f "$file"
+          done
