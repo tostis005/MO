@@ -53,7 +53,7 @@ $items = array(
     ),
     array(
         'slug' => 'conserva-vs-semiconserva-diferencia-por-que-necesita-frio',
-        'image_url' => 'https://images.pexels.com/photos/9797030/pexels-photo-9797030.jpeg',
+        'image_url' => 'https://images.pexels.com/photos/9797030/pexels-photo-9797030.jpeg?auto=compress&cs=tinysrgb&w=2400',
         'filename' => 'sardinas-conserva-towfiqu-barbhuiya.jpg',
         'title' => 'Sardinas en conserva con aceite',
         'alt' => 'Lata abierta de sardinas en aceite junto a un tenedor, sin etiquetas ni marcas comerciales visibles',
@@ -64,7 +64,7 @@ $items = array(
     ),
     array(
         'slug' => 'que-verduras-tienen-mas-fibra',
-        'image_url' => 'https://images.pexels.com/photos/29959934/pexels-photo-29959934.jpeg',
+        'image_url' => 'https://images.pexels.com/photos/29959934/pexels-photo-29959934.jpeg?auto=compress&cs=tinysrgb&w=2400',
         'filename' => 'verduras-frescas-barbara-medic.jpg',
         'title' => 'Verduras frescas sobre mármol',
         'alt' => 'Composición cenital de verduras frescas y hojas verdes sobre una superficie de mármol',
@@ -119,7 +119,7 @@ foreach ( $items as $item ) {
 
     set_post_thumbnail($post_id, $attachment_id);
     update_post_meta($post_id, '_emdo_editorial_image_approved_id', $attachment_id);
-    update_post_meta($post_id, '_emdo_editorial_image_approved_pexels_id', preg_replace('/\D+/', '', basename(dirname($item['image_url']))));
+    update_post_meta($post_id, '_emdo_editorial_image_approved_pexels_id', preg_replace('/\D+/', '', basename(dirname(preg_replace('/\?.*$/', '', $item['image_url']))))));
     update_post_meta($post_id, '_emdo_editorial_cover_brand_safe', '1');
 
     delete_post_meta($post_id, '_emdo_uses_default_featured');
