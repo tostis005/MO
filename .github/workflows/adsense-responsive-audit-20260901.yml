@@ -1,0 +1,140 @@
+name: AdSense responsive delivery audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsense-responsive-audit-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [desktop, mobile]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Selenium
+        run: python -m pip install --quiet selenium
+      - name: Inspect live Auto Ads on ${{ matrix.profile }}
+        env:
+          PROFILE: ${{ matrix.profile }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, time
+          from selenium import webdriver
+          from selenium.common.exceptions import TimeoutException
+          from selenium.webdriver.chrome.options import Options
+
+          profile = os.environ['PROFILE']
+          post = 'https://www.elmercadodeorigen.com/dop-jabugo-que-garantiza-territorio-como-reconocer-jamon/'
+          url = post + '?adsense_debug=1&responsive_audit=1&profile=' + profile
+          print('PROFILE=' + profile, flush=True)
+          print('POST_URL=' + post, flush=True)
+
+          o = Options()
+          o.page_load_strategy = 'eager'
+          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--lang=es-ES'):
+              o.add_argument(arg)
+          if profile == 'desktop':
+              o.add_argument('--window-size=1440,1200')
+          else:
+              o.add_experimental_option('mobileEmulation', {
+                  'deviceMetrics': {'width': 390, 'height': 844, 'pixelRatio': 3.0},
+                  'userAgent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
+              })
+          o.set_capability('goog:loggingPrefs', {'performance':'ALL','browser':'ALL'})
+
+          d = webdriver.Chrome(options=o)
+          d.set_page_load_timeout(60)
+          try:
+              d.execute_cdp_cmd('Network.enable', {})
+              # Force only our eligibility REST call to ZA. Google itself sees the runner.
+              d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': r"""
+                (() => {
+                  const f = window.fetch;
+                  window.fetch = function(input, init) {
+                    const u = typeof input === 'string' ? input : (input && input.url) || '';
+                    if (u.includes('/wp-json/elmercado/v1/adsense-eligibility')) {
+                      init = Object.assign({}, init || {});
+                      const h = new Headers(init.headers || {});
+                      h.set('X-Country-Code', 'ZA');
+                      init.headers = h;
+                    }
+                    return f.call(this, input, init);
+                  };
+                })();
+              """})
+              try:
+                  d.get(url)
+              except TimeoutException:
+                  print('PAGE_LOAD_TIMEOUT=1', flush=True)
+                  d.execute_script('window.stop();')
+
+              time.sleep(8)
+              # Scroll through the full article so lazy/viewport-sensitive Auto Ads get a chance.
+              total = d.execute_script('return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)')
+              vh = d.execute_script('return window.innerHeight')
+              y = 0
+              while y < total:
+                  d.execute_script('window.scrollTo(0, arguments[0])', y)
+                  time.sleep(1.2)
+                  y += max(300, int(vh * 0.75))
+                  total = d.execute_script('return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)')
+              d.execute_script('window.scrollTo(0, document.body.scrollHeight)')
+              time.sleep(10)
+
+              state = d.execute_script(r"""
+                const r = el => { const x=el.getBoundingClientRect(); return {x:x.x,y:x.y+scrollY,w:x.width,h:x.height}; };
+                const article = document.querySelector('.emo-article-content');
+                const auto = Array.from(document.querySelectorAll('.google-auto-placed, .adsbygoogle-noablate, ins.adsbygoogle'));
+                const unique = Array.from(new Set(auto));
+                return {
+                  ua: navigator.userAgent,
+                  viewport: {w:innerWidth,h:innerHeight,dpr:devicePixelRatio,docH:document.documentElement.scrollHeight},
+                  debug: window.ElMercadoAdsenseGeoDebug || null,
+                  article: article ? {rect:r(article), childCount:article.children.length, children:Array.from(article.children).slice(0,80).map((x,i)=>({i,tag:x.tagName,cls:x.className||'',text:(x.innerText||'').trim().slice(0,80),rect:r(x)}))} : null,
+                  adNodes: unique.map((x,i)=>({i,tag:x.tagName,id:x.id||'',cls:x.className||'',status:x.getAttribute('data-ad-status'),format:x.getAttribute('data-ad-format'),rect:r(x),parentTag:x.parentElement&&x.parentElement.tagName,parentCls:x.parentElement&&x.parentElement.className||''})),
+                  iframes: Array.from(document.querySelectorAll('iframe')).map((x,i)=>({i,id:x.id||'',src:x.src||'',rect:r(x),parentCls:x.parentElement&&x.parentElement.className||''})).filter(x=>/google|doubleclick|ads/.test((x.id+' '+x.src+' '+x.parentCls).toLowerCase()))
+                };
+              """)
+              print('STATE=' + json.dumps(state, ensure_ascii=False, sort_keys=True), flush=True)
+
+              reqs, resps = [], []
+              for e in d.get_log('performance'):
+                  try: m = json.loads(e['message'])['message']
+                  except Exception: continue
+                  p = m.get('params', {})
+                  if m.get('method') == 'Network.requestWillBeSent':
+                      u = p.get('request',{}).get('url','')
+                      if any(x in u for x in ('googlesyndication.com','doubleclick.net','googleads.','adsense.')):
+                          reqs.append(u)
+                  elif m.get('method') == 'Network.responseReceived':
+                      rr = p.get('response',{}); u = rr.get('url','')
+                      if any(x in u for x in ('googlesyndication.com','doubleclick.net','googleads.','adsense.')):
+                          resps.append((u, int(rr.get('status') or 0)))
+              adreq = [u for u in reqs if '/pagead/ads' in u or 'googleads.g.doubleclick.net/pagead/' in u]
+              adresp = [(u,s) for u,s in resps if '/pagead/ads' in u or 'googleads.g.doubleclick.net/pagead/' in u]
+              print('AD_REQUEST_COUNT=' + str(len(adreq)), flush=True)
+              for u in adreq:
+                  print('AD_REQ ' + u, flush=True)
+              print('AD_RESPONSE_COUNT=' + str(len(adresp)), flush=True)
+              for u,s in adresp:
+                  print(f'AD_RESP {s} {u}', flush=True)
+
+              for e in d.get_log('browser'):
+                  if e.get('level') in ('SEVERE','WARNING') or 'ads' in e.get('message','').lower():
+                      print('CONSOLE ' + json.dumps(e, sort_keys=True), flush=True)
+          finally:
+              d.quit()
+          PY
