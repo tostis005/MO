@@ -1,0 +1,85 @@
+name: Test direct Google Maps review lookup in browser
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/google-maps-browser-direct-test-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read Google Maps directly in Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          cat > google-maps-direct-test.js <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox','--disable-dev-shm-usage'] });
+            const page = await browser.newPage({ locale:'es-ES', userAgent:'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' });
+            const url = 'https://www.google.com/maps/search/?api=1&query=%2B34603029509&hl=es';
+            const response = await page.goto(url, { waitUntil:'domcontentloaded', timeout:90000 });
+            await page.waitForTimeout(4000);
+            for (const label of ['Aceptar todo','Accept all','Acepto']) {
+              const b = page.getByRole('button', {name: label, exact: true});
+              if (await b.count()) { try { await b.first().click({timeout:3000}); await page.waitForTimeout(2500); } catch {} }
+            }
+            const data = await page.evaluate(() => {
+              const text = document.body?.innerText || '';
+              const html = document.documentElement.innerHTML;
+              const aria = Array.from(document.querySelectorAll('[aria-label]')).map(el => el.getAttribute('aria-label') || '').filter(Boolean).join('\n');
+              let count = null, rating = null;
+              const countPatterns = [
+                /([0-9][0-9.\s]*)\s+reseñas/i,
+                /([0-9][0-9.\s]*)\s+reviews/i,
+                /\(([0-9][0-9.\s]*)\)\s*reseñas/i
+              ];
+              for (const source of [aria,text,html]) for (const re of countPatterns) {
+                const m=source.match(re); if (!m) continue; const n=parseInt(m[1].replace(/\D/g,''),10); if(n>0&&n<1000000){count=n;break;}
+                if(count) break;
+              }
+              const ratingPatterns = [
+                /([1-5](?:[,.][0-9])?)\s+estrellas/i,
+                /([1-5](?:[,.][0-9])?)\s+stars/i,
+                /([1-5](?:[,.][0-9])?)\s*\(([0-9][0-9.\s]*)\)/
+              ];
+              for (const source of [aria,text,html]) for (const re of ratingPatterns) {
+                const m=source.match(re); if(!m) continue; const n=parseFloat(m[1].replace(',','.')); if(n>=1&&n<=5){rating=n;break;}
+                if(rating) break;
+              }
+              return {title:document.title,href:location.href,count,rating,excerpt:text.slice(0,1600).replace(/\s+/g,' '),aria:aria.slice(0,2500).replace(/\s+/g,' ')};
+            });
+            console.log('HTTP='+(response?response.status():''));
+            console.log('TITLE='+data.title);
+            console.log('FINAL_URL='+data.href);
+            console.log('COUNT='+(data.count??''));
+            console.log('RATING='+(data.rating??''));
+            console.log('EXCERPT='+data.excerpt);
+            console.log('ARIA='+data.aria);
+            await browser.close();
+          })().catch(e=>{ console.error(String(e)); process.exit(1); });
+          JS
+          node google-maps-direct-test.js > google-maps-browser-direct-output.txt 2>&1
+          cat google-maps-browser-direct-output.txt
+      - name: Save safe result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch google-maps-browser-direct-output.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add google-maps-browser-direct-output.txt
+          git commit -m 'Record direct Google Maps browser result' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
