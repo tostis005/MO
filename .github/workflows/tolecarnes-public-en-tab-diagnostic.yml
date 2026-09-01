@@ -1,4 +1,4 @@
-name: Inspect production review and sync metadata 0.10.279
+name: Inspect supplier cycle completion hook 0.10.279
 
 on:
   push:
@@ -13,14 +13,14 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 8
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect production WordPress review and sync metadata
+      - name: Inspect supplier scheduler and review module
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -31,7 +31,7 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
-          set -uo pipefail
+          set -euo pipefail
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
@@ -44,20 +44,10 @@ jobs:
             esac
           done
           : "${PROD_PATH:?production path not found}"
-          echo '=== ACTIVE_PLUGIN_OPTION ==='
-          "$php_bin" "$wp_bin" option get active_plugins --format=json --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
-          echo '=== RELEVANT_CRON ==='
-          "$php_bin" "$wp_bin" cron event list --fields=hook,next_run_gmt,recurrence --format=csv --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null | grep -Ei 'hook|sync|store|vendor|product|review|trust|google|import|wcfm|feed|crawl' | sed -n '1,220p' || true
-          echo '=== REVIEW_OPTION_NAMES ==='
-          for term in google trust review place rating; do
-            echo "-- $term --"
-            "$php_bin" "$wp_bin" option list --search="*${term}*" --fields=option_name --format=csv --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null | sed -n '1,140p' || true
-          done
-          echo '=== RELEVANT_PHP_FILES ==='
-          grep -RIl --include='*.php' -E 'Trustpilot|trustpilot|Google Reviews|google reviews|Places API|place_id|review[_ -]?count|sync.*product|product.*sync|vendor.*sync|sync.*vendor' "$PROD_PATH/wp-content" 2>/dev/null \
-            | sed "s#^$PROD_PATH/##" \
-            | grep -Ev '/cache/|/uploads/|/backup|\.bak' \
-            | sed -n '1,260p' || true
-          echo '=== MU_PLUGIN_NAMES ==='
-          find "$PROD_PATH/wp-content/mu-plugins" -maxdepth 1 -type f -name '*.php' -printf '%f\n' 2>/dev/null | sort | grep -Ei 'sync|review|trust|google|vendor|product|store|cron|feed' | sed -n '1,220p' || true
+          echo '=== SCHEDULER ==='
+          sed -n '1,340p' "$PROD_PATH/wp-content/plugins/mdo-supplier-sync/includes/class-mdo-scheduler.php"
+          echo '=== REVIEW MODULE TAIL ==='
+          sed -n '1,420p' "$PROD_PATH/wp-content/mu-plugins/z-mdo-review-count-sync-010279.php"
+          echo '=== COUNTS ==='
+          for k in mdo_google_review_count_010279 mdo_trustpilot_review_count_010279 mdo_review_counts_last_sync_010279; do printf '%s=' "$k"; "$php_bin" "$wp_bin" option get "$k" --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || true; done
           REMOTE
