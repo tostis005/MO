@@ -1,0 +1,63 @@
+name: Verify cheese batch 01 editorial revision
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-cheese-batch-01-editorial-revision.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify revised public content
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+
+          fetch_page() {
+            local url="$1" file="$2" code
+            for attempt in 1 2 3 4; do
+              code="$(curl -L -sS -o "$file" -w '%{http_code}' --connect-timeout 15 --max-time 45 "$url" || true)"
+              if [ "$code" = '200' ]; then return 0; fi
+              sleep 4
+            done
+            echo "FAILED $code $url" >&2
+            return 1
+          }
+
+          fetch_page "$base/se-puede-congelar-queso-tipos-como-hacerlo/?editorial_verify=$GITHUB_RUN_ID" /tmp/freeze-es.html
+          grep -Fq '¿Por qué el queso queda quebradizo después de congelarlo?' /tmp/freeze-es.html
+          grep -Fq '¿Cómo conviene descongelar el queso?' /tmp/freeze-es.html
+          if grep -Fq '¿Más curación significa siempre mejor queso?' /tmp/freeze-es.html; then
+            echo 'Old generic FAQ still visible in freezing article' >&2
+            exit 1
+          fi
+
+          fetch_page "$base/en/can-you-freeze-cheese-which-types-freeze-best-how/?editorial_verify=$GITHUB_RUN_ID" /tmp/freeze-en.html
+          grep -Fq 'Why can cheese become crumbly after freezing?' /tmp/freeze-en.html
+          grep -Fq 'What is the best way to thaw cheese?' /tmp/freeze-en.html
+          if grep -Fq 'Does longer ageing always mean better cheese?' /tmp/freeze-en.html; then
+            echo 'Old generic English FAQ still visible' >&2
+            exit 1
+          fi
+
+          fetch_page "$base/tipos-de-queso-guia-leche-maduracion-pasta-corteza-elaboracion/?editorial_verify=$GITHUB_RUN_ID" /tmp/types-es.html
+          if grep -Fq '<h2>Preguntas relacionadas</h2>' /tmp/types-es.html || grep -Fq '¿Más curación significa siempre mejor queso?' /tmp/types-es.html; then
+            echo 'Types guide should not contain a forced FAQ block' >&2
+            exit 1
+          fi
+
+          fetch_page "$base/queso-oveja-cabra-vaca-diferencias-como-elegir/?editorial_verify=$GITHUB_RUN_ID" /tmp/milk-es.html
+          if grep -Fq '<h2>Preguntas relacionadas</h2>' /tmp/milk-es.html || grep -Fq '¿Conviene comprar la pieza más grande?' /tmp/milk-es.html; then
+            echo 'Milk-species guide should not contain a forced FAQ block' >&2
+            exit 1
+          fi
+
+          echo 'CHEESE_EDITORIAL_REVISION_PUBLIC_OK'
