@@ -3,7 +3,6 @@
 
 	var config = window.ElMercadoAdsenseGeo || {};
 	var eligible = false;
-	var loaded = false;
 	var debugMode = /(?:^|[?&])adsense_debug=1(?:&|$)/.test(window.location.search);
 	var debug = window.ElMercadoAdsenseGeoDebug = {
 		phase: 'initializing',
@@ -11,11 +10,24 @@
 		canBuy: null,
 		showAds: null,
 		attempt: 0,
+		adRequestsPaused: true,
 		error: null
 	};
 
+	function adsbygoogleQueue() {
+		window.adsbygoogle = window.adsbygoogle || [];
+		return window.adsbygoogle;
+	}
+
 	function googleScriptExists() {
-		return !!document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]');
+		return !!document.querySelector(
+			'script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]'
+		);
+	}
+
+	function isPaused() {
+		var queue = adsbygoogleQueue();
+		return queue.pauseAdRequests !== 0;
 	}
 
 	function renderDebugPanel() {
@@ -32,6 +44,7 @@
 			document.body.appendChild(panel);
 		}
 
+		debug.adRequestsPaused = isPaused();
 		panel.textContent = [
 			'AdSense debug',
 			'phase: ' + debug.phase,
@@ -39,6 +52,7 @@
 			'can_buy: ' + String(debug.canBuy),
 			'show_ads: ' + String(debug.showAds),
 			'attempt: ' + String(debug.attempt),
+			'ad_requests_paused: ' + String(debug.adRequestsPaused),
 			'google_script: ' + (googleScriptExists() ? 'present' : 'absent'),
 			'adsbygoogle: ' + (typeof window.adsbygoogle !== 'undefined' ? 'present' : 'absent'),
 			'error: ' + (debug.error || 'none')
@@ -51,6 +65,17 @@
 		renderDebugPanel();
 	}
 
+	function pauseAdRequests() {
+		adsbygoogleQueue().pauseAdRequests = 1;
+		debug.adRequestsPaused = true;
+	}
+
+	function resumeAdRequests() {
+		adsbygoogleQueue().pauseAdRequests = 0;
+		debug.adRequestsPaused = false;
+		setPhase('ads_requests_resumed');
+	}
+
 	if (debugMode) {
 		if (document.readyState === 'loading') {
 			document.addEventListener('DOMContentLoaded', renderDebugPanel, { once: true });
@@ -60,6 +85,10 @@
 		window.setInterval(renderDebugPanel, 1000);
 	}
 
+	// Seguridad por defecto: aunque otro script alterase el estado antes de
+	// resolver la geografia, mantenemos las solicitudes pausadas.
+	pauseAdRequests();
+
 	if (!config.endpoint || !config.publisher || typeof window.fetch !== 'function') {
 		setPhase('configuration_error');
 		debug.error = 'Missing endpoint, publisher or Fetch API';
@@ -67,55 +96,15 @@
 		return;
 	}
 
-	/**
-	 * Carga AdSense en cuanto la visita es geograficamente elegible.
-	 *
-	 * No hacemos una segunda puerta basada en la categoria "Advertisement" de
-	 * WebToffee: la CMP/TCF comunica a Google la eleccion del visitante y Google
-	 * selecciona el modo permitido. data-wcc="necessary" evita que el bloqueador
-	 * automatico de WebToffee retenga el propio tag antes de leer esas senales.
-	 */
-	function loadAdsenseIfEligible() {
-		if (!eligible || loaded) {
-			return;
-		}
-
-		var existing = document.querySelector('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]');
-		if (existing) {
-			loaded = true;
-			setPhase('adsense_already_present');
-			return;
-		}
-
-		loaded = true;
-		setPhase('adsense_loading');
-
-		var script = document.createElement('script');
-		script.async = true;
-		script.crossOrigin = 'anonymous';
-		script.setAttribute('data-wcc', 'necessary');
-		script.setAttribute('data-ad-client', config.publisher);
-		script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(config.publisher);
-		script.onload = function () {
-			loaded = true;
-			setPhase('adsense_loaded');
-		};
-		script.onerror = function () {
-			loaded = false;
-			setPhase('adsense_script_error');
-			debug.error = 'Google AdSense script failed to load';
-			renderDebugPanel();
-		};
-		document.head.appendChild(script);
-		renderDebugPanel();
-	}
-
 	function requestEligibility(attempt) {
 		debug.attempt = attempt;
 		debug.error = null;
 		setPhase('checking_eligibility');
 
-		fetch(config.endpoint, {
+		var separator = config.endpoint.indexOf('?') === -1 ? '?' : '&';
+		var url = config.endpoint + separator + '_adsense_geo=' + Date.now();
+
+		fetch(url, {
 			method: 'GET',
 			credentials: 'same-origin',
 			cache: 'no-store',
@@ -137,15 +126,15 @@
 
 				if (eligible) {
 					setPhase('eligible');
-					loadAdsenseIfEligible();
+					resumeAdRequests();
 				} else {
-					setPhase('not_eligible');
+					pauseAdRequests();
+					setPhase('not_eligible_ads_paused');
 				}
 			})
 			.catch(function (error) {
 				debug.error = error && error.message ? error.message : String(error || 'unknown_error');
 
-				// Un segundo intento evita que un fallo REST transitorio bloquee los ads.
 				if (attempt < 2) {
 					setPhase('eligibility_retry');
 					window.setTimeout(function () {
@@ -154,10 +143,9 @@
 					return;
 				}
 
-				// Si tampoco podemos validar la geografia al reintentar, mantenemos
-				// la regla comercial de no mostrar publicidad en un pais desconocido.
 				eligible = false;
-				setPhase('eligibility_error');
+				pauseAdRequests();
+				setPhase('eligibility_error_ads_paused');
 			});
 	}
 
