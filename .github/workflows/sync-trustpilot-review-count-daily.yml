@@ -1,0 +1,175 @@
+name: Sync Trustpilot review count after suppliers
+
+on:
+  schedule:
+    # Several guarded attempts: the first one after supplier work finishes wins.
+    # UTC slots cover the post-03:00 supplier window across CET/CEST.
+    - cron: '30 5,7,9,11,13 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-trustpilot-review-count-daily.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve production and supplier state
+        id: state
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          echo "SSH_OPTIONS=$SSH_OPTIONS" >> "$GITHUB_ENV"
+
+          STATE="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            \$pending=function_exists("mdo_review_counts_supplier_work_pending_010279") ? mdo_review_counts_supplier_work_pending_010279() : true;
+            \$updated=(int)get_option("mdo_trustpilot_review_count_updated_at",0);
+            \$today=\$updated>0 && wp_date("Y-m-d",\$updated)===wp_date("Y-m-d");
+            \$count=(int)get_option("mdo_trustpilot_review_count",0);
+            echo "pending=".(\$pending?"yes":"no")." trust_today=".(\$today?"yes":"no")." trust_count={\$count}";
+          ' --path='$PROD_PATH' --allow-root")"
+          echo "PRODUCTION_STATE $STATE"
+
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            if printf '%s' "$STATE" | grep -Fq 'trust_today=yes'; then
+              echo 'skip=yes' >> "$GITHUB_OUTPUT"
+              echo 'Trustpilot was already refreshed today.'
+              exit 0
+            fi
+            if printf '%s' "$STATE" | grep -Fq 'pending=yes'; then
+              echo 'skip=yes' >> "$GITHUB_OUTPUT"
+              echo 'Supplier synchronization is still active; a later scheduled slot will retry.'
+              exit 0
+            fi
+          fi
+          echo 'skip=no' >> "$GITHUB_OUTPUT"
+
+      - name: Read Trustpilot in a browser
+        id: trustpilot
+        if: steps.state.outputs.skip != 'yes'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          cat > trustpilot-count.js <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({
+              headless: true,
+              executablePath: '/usr/bin/google-chrome',
+              args: ['--no-sandbox']
+            });
+            const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'es-ES' });
+            await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com', {
+              waitUntil: 'domcontentloaded',
+              timeout: 60000
+            }).catch(() => null);
+            await page.waitForTimeout(7000);
+            const data = await page.evaluate(() => ({
+              title: document.title,
+              text: (document.body?.innerText || '').replace(/\s+/g, ' ')
+            }));
+            const profileOk = /El Mercado de Origen/i.test(data.title) && /elmercadodeorigen\.com/i.test(data.title + ' ' + data.text);
+            const match = data.text.match(/El Mercado de Origen\s+Opiniones\s+([0-9][0-9.,]*)\b/i)
+              || data.text.match(/Opiniones\s+([0-9][0-9.,]*)\s*[•·]\s*[0-9][,.][0-9]/i);
+            if (!profileOk || !match) {
+              throw new Error('Trustpilot profile loaded but review count could not be validated.');
+            }
+            const count = Number(match[1].replace(/[^0-9]/g, ''));
+            if (!Number.isInteger(count) || count < 1 || count >= 1000000) {
+              throw new Error('Invalid Trustpilot review count: ' + match[1]);
+            }
+            console.log('TRUSTPILOT_COUNT=' + count);
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'count=' + count + '\n');
+            await browser.close();
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          JS
+          node trustpilot-count.js
+
+      - name: Store live counts in WordPress
+        if: steps.state.outputs.skip != 'yes'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+          TRUSTPILOT_COUNT: ${{ steps.trustpilot.outputs.count }}
+        run: |
+          set -euo pipefail
+          : "${TRUSTPILOT_COUNT:?Trustpilot count missing}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            if(!function_exists("mdo_review_counts_store_trustpilot_010281")){fwrite(STDERR,"review sync helper missing\\n");exit(19);}
+            \$trust=(int)getenv("MDO_TP_COUNT");
+            if(!mdo_review_counts_store_trustpilot_010281(\$trust)){fwrite(STDERR,"invalid trust count\\n");exit(20);}
+            \$google=function_exists("mdo_review_counts_refresh_google_010281") ? mdo_review_counts_refresh_google_010281(false) : array();
+            mdo_review_counts_purge_home_cache_010279();
+            echo wp_json_encode(array("trustpilot"=>\$trust,"google"=>(int)get_option("mdo_google_review_count",0),"google_result"=>\$google));
+          ' --path='$PROD_PATH' --allow-root" MDO_TP_COUNT="$TRUSTPILOT_COUNT"
+
+      - name: Verify Spanish and English home
+        if: steps.state.outputs.skip != 'yes'
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          COUNTS="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval 'echo (int)get_option("mdo_google_review_count",0)." ".(int)get_option("mdo_trustpilot_review_count",0)." ".(int)get_option("mdo_trustpilot_review_count_updated_at",0);' --path='$PROD_PATH' --allow-root")"
+          read -r G T TU <<< "$COUNTS"
+          : "${G:?Google count missing}"
+          : "${T:?Trustpilot count missing}"
+          test "$TU" -gt 0
+
+          for lang in es en; do
+            if [ "$lang" = es ]; then URL="https://www.elmercadodeorigen.com/?review_daily_verify=${GITHUB_RUN_ID}"; else URL="https://www.elmercadodeorigen.com/en/?review_daily_verify=${GITHUB_RUN_ID}"; fi
+            curl -L -sS --connect-timeout 10 --max-time 45 -A 'Mozilla/5.0 EMDO review verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$URL" -o "/tmp/home-${lang}.html"
+          done
+
+          G="$G" T="$T" python3 - <<'PY'
+          import os,re,html
+          g=int(os.environ['G']); t=int(os.environ['T'])
+          for lang in ('es','en'):
+              raw=open(f'/tmp/home-{lang}.html','r',encoding='utf-8',errors='ignore').read()
+              gm=re.search(r'data-google-reviews=["\'](\d+)["\']',raw)
+              tm=re.search(r'data-trustpilot-reviews=["\'](\d+)["\']',raw)
+              text=html.unescape(re.sub(r'<[^>]+>',' ',raw))
+              text=re.sub(r'\s+',' ',text)
+              google=bool(re.search(rf'Google.*?\b{g}\s+(?:reseñas|reviews)\b',text,re.I))
+              trust=bool(re.search(rf'Trustpilot.*?\b{t}\s+(?:opiniones|reseñas|reviews)\b',text,re.I))
+              print(f'HOME_REVIEW_CHECK lang={lang} google={g} attr_google={gm.group(1) if gm else None} visible_google={google} trustpilot={t} attr_trust={tm.group(1) if tm else None} visible_trust={trust}')
+              if not gm or not tm or int(gm.group(1)) != g or int(tm.group(1)) != t or not google or not trust:
+                  raise SystemExit(f'{lang}: home does not consume stored review counts')
+          PY
