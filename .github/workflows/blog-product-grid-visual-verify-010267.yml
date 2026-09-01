@@ -23,7 +23,7 @@ jobs:
       - name: Install Selenium
         run: python -m pip install --quiet selenium
 
-      - name: Verify actual card positions and capture product section
+      - name: Verify actual card positions and capture grid element
         shell: bash
         run: |
           set -euo pipefail
@@ -60,9 +60,8 @@ jobs:
               if not ctas:
                   raise AssertionError('Category CTA is not visible')
               cta = ctas[0]
-              driver.execute_script("arguments[0].scrollIntoView({block:'start'}); window.scrollBy(0,-120);", grid)
-              time.sleep(1)
-              driver.save_screenshot('/tmp/blog-product-grid-section.png')
+              grid.screenshot('/tmp/blog-product-grid-element.png')
+              cta.screenshot('/tmp/blog-product-grid-cta.png')
               print('LIVE_VISUAL_OK')
               print('CARD_TOPS=' + ','.join(map(str,tops)))
               print('CARD_LEFTS=' + ','.join(map(str,lefts)))
@@ -73,10 +72,12 @@ jobs:
               driver.quit()
           PY
 
-      - name: Upload focused screenshot
+      - name: Upload focused screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: blog-product-grid-visual-010267
-          path: /tmp/blog-product-grid-section.png
+          path: |
+            /tmp/blog-product-grid-element.png
+            /tmp/blog-product-grid-cta.png
           if-no-files-found: error
