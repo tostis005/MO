@@ -1,0 +1,161 @@
+name: Deploy geo-aware AdSense to production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsense-geo-production-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/inc/adsense-geo-010266.php
+          node --check elmercadodeorigen-child/assets/js/adsense-geo-010266.js
+
+      - name: Deploy and verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          EXPECTED_FUNCTIONS_SHA=$(sha256sum elmercadodeorigen-child/functions.php | awk '{print $1}')
+          EXPECTED_PHP_SHA=$(sha256sum elmercadodeorigen-child/inc/adsense-geo-010266.php | awk '{print $1}')
+          EXPECTED_JS_SHA=$(sha256sum elmercadodeorigen-child/assets/js/adsense-geo-010266.js | awk '{print $1}')
+
+          remote_php="/tmp/elmercado-adsense-geo-010266-${GITHUB_RUN_ID}.php"
+          remote_js="/tmp/elmercado-adsense-geo-010266-${GITHUB_RUN_ID}.js"
+
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/adsense-geo-010266.php "$STAGING_USER@$STAGING_HOST:$remote_php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/js/adsense-geo-010266.js "$STAGING_USER@$STAGING_HOST:$remote_js"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "bash -s -- '$EXPECTED_FUNCTIONS_SHA' '$EXPECTED_PHP_SHA' '$EXPECTED_JS_SHA' '$remote_php' '$remote_js'" <<'REMOTE'
+          set -euo pipefail
+          expected_functions_sha="$1"
+          expected_php_sha="$2"
+          expected_js_sha="$3"
+          remote_php="$4"
+          remote_js="$5"
+
+          cleanup() { rm -f "$remote_php" "$remote_js"; }
+          trap cleanup EXIT
+
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$wp_bin" ] || { echo "WP-CLI not found"; exit 1; }
+
+          prod_path=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) prod_path="$p"; break ;;
+            esac
+          done
+          : "${prod_path:?production path not found}"
+
+          stylesheet=$("$php_bin" -d memory_limit=256M "$wp_bin" option get stylesheet --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
+          theme_path="$prod_path/wp-content/themes/$stylesheet"
+          functions_file="$theme_path/functions.php"
+          php_file="$theme_path/inc/adsense-geo-010266.php"
+          js_file="$theme_path/assets/js/adsense-geo-010266.js"
+
+          live_functions_sha=$(sha256sum "$functions_file" | awk '{print $1}')
+          echo "FUNCTIONS_SHA repo=$expected_functions_sha live=$live_functions_sha"
+          if [ "$live_functions_sha" != "$expected_functions_sha" ]; then
+            echo "Live functions.php differs from repository; refusing selective deployment."
+            exit 1
+          fi
+
+          "$php_bin" -l "$remote_php"
+          grep -q 'ca-pub-3168527008181132' "$remote_php"
+          grep -q 'anyAdvertisingCategoryGranted' "$remote_js"
+
+          stamp=$(date +%Y%m%d%H%M%S)
+          mkdir -p "$(dirname "$php_file")" "$(dirname "$js_file")"
+          [ ! -f "$php_file" ] || cp -p "$php_file" "${php_file}.bak-${stamp}"
+          [ ! -f "$js_file" ] || cp -p "$js_file" "${js_file}.bak-${stamp}"
+
+          install -m 0644 "$remote_php" "$php_file"
+          install -m 0644 "$remote_js" "$js_file"
+
+          live_php_sha=$(sha256sum "$php_file" | awk '{print $1}')
+          live_js_sha=$(sha256sum "$js_file" | awk '{print $1}')
+          echo "PHP_SHA repo=$expected_php_sha live=$live_php_sha"
+          echo "JS_SHA repo=$expected_js_sha live=$live_js_sha"
+          test "$live_php_sha" = "$expected_php_sha"
+          test "$live_js_sha" = "$expected_js_sha"
+          "$php_bin" -l "$php_file"
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" cache flush --path="$prod_path" --allow-root >/dev/null 2>&1 || true
+
+          echo "--- COUNTRY LOGIC ---"
+          country_results=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+            foreach (["ES","FR","PT","DE","US","MX","GB"] as $country) {
+              echo $country . "=" . (elmercado_adsense_country_is_shippable($country) ? "SHIP" : "ADS") . "\n";
+            }
+          ' 2>/dev/null)
+          printf '%s\n' "$country_results"
+          echo "$country_results" | grep -qx 'ES=SHIP'
+          echo "$country_results" | grep -qx 'FR=SHIP'
+          echo "$country_results" | grep -qx 'PT=SHIP'
+          echo "$country_results" | grep -qx 'DE=SHIP'
+          echo "$country_results" | grep -qx 'US=ADS'
+          echo "$country_results" | grep -qx 'MX=ADS'
+          echo "$country_results" | grep -qx 'GB=ADS'
+
+          echo "--- FRONTEND SCOPE ---"
+          post_url=$("$php_bin" -d memory_limit=512M "$wp_bin" eval --path="$prod_path" --allow-root '
+            $ids = get_posts(["post_type" => "post", "post_status" => "publish", "numberposts" => 1, "fields" => "ids"]);
+            if ($ids) echo get_permalink($ids[0]);
+          ' 2>/dev/null)
+          site_url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get home --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
+          test -n "$post_url"
+          nonce=$(date +%s)
+          post_html=$(curl -fsSL --max-time 25 "${post_url}?adsense_verify=${nonce}")
+          home_html=$(curl -fsSL --max-time 25 "${site_url}/?adsense_verify=${nonce}")
+          echo "$post_html" | grep -q 'adsense-geo-010266.js'
+          if echo "$home_html" | grep -q 'adsense-geo-010266.js'; then
+            echo "AdSense loader unexpectedly present on home"
+            exit 1
+          fi
+          if echo "$post_html" | grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js'; then
+            echo "Raw AdSense script unexpectedly present in server-rendered post HTML"
+            exit 1
+          fi
+
+          echo "--- REST ENDPOINT ---"
+          headers=$(mktemp)
+          body=$(mktemp)
+          curl -fsSL --max-time 25 -D "$headers" -o "$body" "${site_url}/wp-json/elmercado/v1/adsense-eligibility?verify=${nonce}"
+          cat "$body"
+          grep -Eiq '^cache-control:.*no-store' "$headers"
+          grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*(true|false)' "$body"
+
+          echo "ADSENSE_GEO_PRODUCTION=PASS"
+          REMOTE
