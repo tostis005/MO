@@ -31,7 +31,7 @@ jobs:
           php -l mu-plugins/mdo-cf7-rest-guard-20260828.php >/dev/null
           grep -Fq "Version: 1.0.1" mu-plugins/mdo-cf7-rest-guard-20260828.php
           grep -Fq "function mdo_cf7_rest_guard_token" mu-plugins/mdo-cf7-rest-guard-20260828.php
-          grep -Fq "wp_unslash( $_POST[ $field_name ] )" mu-plugins/mdo-cf7-rest-guard-20260828.php
+          grep -Fq 'wp_unslash( $_POST[ $field_name ] )' mu-plugins/mdo-cf7-rest-guard-20260828.php
 
       - name: Deploy to production and verify
         shell: bash
