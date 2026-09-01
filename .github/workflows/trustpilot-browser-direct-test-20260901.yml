@@ -1,0 +1,76 @@
+name: Trustpilot official profile browser test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trustpilot-browser-direct-test-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read Trustpilot official profile in Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          cat > trustpilot-browser-test.js <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({headless:true, executablePath:'/usr/bin/google-chrome', args:['--no-sandbox','--disable-dev-shm-usage']});
+            const page = await browser.newPage({locale:'es-ES', userAgent:'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'});
+            const response = await page.goto('https://es.trustpilot.com/review/elmercadodeorigen.com', {waitUntil:'domcontentloaded', timeout:90000});
+            await page.waitForTimeout(3000);
+            const result = await page.evaluate(() => {
+              const html = document.documentElement.innerHTML;
+              const text = document.body?.innerText || '';
+              let count = null, rating = null;
+              for (const source of [html,text]) {
+                for (const re of [/"reviewCount"\s*:\s*"?(\d+)"?/i,/"numberOfReviews"\s*:\s*"?(\d+)"?/i,/Ver las\s+([0-9][0-9.\s]*)\s+opiniones/i,/([0-9][0-9.\s]*)\s+opiniones/i]) {
+                  const m=source.match(re); if(!m) continue; const n=parseInt(m[1].replace(/\D/g,''),10); if(n>0&&n<1000000){count=n;break;}
+                }
+                if(count) break;
+              }
+              for (const source of [html,text]) {
+                for (const re of [/"ratingValue"\s*:\s*"?([0-9]+(?:[.,][0-9]+)?)"?/i,/"trustScore"\s*:\s*([0-9]+(?:\.[0-9]+)?)/i,/TrustScore:\s*([0-9]+(?:[.,][0-9]+)?)\s+sobre\s+5/i]) {
+                  const m=source.match(re); if(!m) continue; const n=parseFloat(m[1].replace(',','.')); if(n>0&&n<=5){rating=n;break;}
+                }
+                if(rating) break;
+              }
+              return {count,rating,title:document.title,excerpt:text.slice(0,600).replace(/\s+/g,' ')};
+            });
+            console.log('HTTP='+(response?response.status():''));
+            console.log('COUNT='+(result.count??''));
+            console.log('RATING='+(result.rating??''));
+            console.log('TITLE='+result.title);
+            console.log('EXCERPT='+result.excerpt);
+            await browser.close();
+            if(!result.count) process.exitCode=2;
+          })().catch(e=>{console.error(String(e));process.exit(1)});
+          JS
+          set +e
+          node trustpilot-browser-test.js > trustpilot-browser-direct-output.txt 2>&1
+          RC=$?
+          set -e
+          echo "RC=$RC" >> trustpilot-browser-direct-output.txt
+          cat trustpilot-browser-direct-output.txt
+      - name: Save safe result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          touch trustpilot-browser-direct-output.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add trustpilot-browser-direct-output.txt
+          git commit -m 'Record Trustpilot browser test result' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
