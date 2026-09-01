@@ -9,8 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ELMERCADO_THEME_VERSION', '0.10.266' );
-/* 0.10.266 añade AdSense geolocalizado y condicionado al consentimiento en entradas del blog. */
+define( 'ELMERCADO_THEME_VERSION', '0.10.267' );
+/* 0.10.267 ajusta los productos del blog a 4 → 2 → 1 y añade el acceso dinámico a su categoría. */
 define( 'ELMERCADO_THEME_PATH', get_stylesheet_directory() );
 define( 'ELMERCADO_THEME_URL', get_stylesheet_directory_uri() );
 
@@ -163,6 +163,7 @@ $elmercado_modules = array(
 	'inc/blog-editorial-body-class-010249.php',
 	'inc/blog-footer-layout-polish-010246.php',
 	'inc/blog-design-force-010250.php',
+	'inc/blog-product-category-more-010267.php',
 	'inc/blog-default-image-010264.php',
 	'inc/seo-meta-descriptions-010265.php',
 	'inc/adsense-geo-010266.php',
