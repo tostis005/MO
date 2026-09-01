@@ -12,8 +12,5 @@ foreach ($options as $name) {
     if (preg_match_all('/ChIJ[A-Za-z0-9_-]{10,}/', $text, $m)) {
         foreach ($m[0] as $id) $found[$id] = true;
     }
-    if (preg_match_all('/place_id["\'=: ]+([A-Za-z0-9_-]{15,})/i', $text, $m)) {
-        foreach ($m[1] as $id) $found[$id] = true;
-    }
 }
 echo 'PLACE_IDS=' . implode(',', array_keys($found)) . "\n";
