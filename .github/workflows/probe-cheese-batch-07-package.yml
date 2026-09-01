@@ -22,12 +22,16 @@ jobs:
           payload = ''.join(parts)
           target = 'e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'
           alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + '+/'
-          damaged = base64.b64decode(payload + '==', validate=True)
+          if payload.endswith('='):
+              padded_damage = payload[:-1] + 'AA' + payload[-1:]
+          else:
+              padded_damage = payload + 'AA'
+          damaged = base64.b64decode(padded_damage, validate=True)
           dec = zlib.decompressobj(31)
           fail_at = None
-          for i in range(0, len(damaged), 16):
+          for i in range(0, len(damaged), 8):
               try:
-                  dec.decompress(damaged[i:i+16])
+                  dec.decompress(damaged[i:i+8])
               except zlib.error:
                   fail_at = i
                   break
@@ -36,8 +40,8 @@ jobs:
           approx = int(fail_at * 4 / 3)
           print(f'GZIP_FAIL_BYTE={fail_at}')
           print(f'APPROX_B64_INDEX={approx}')
-          lo = max(0, approx - 96)
-          hi = min(len(parts[0]), approx + 96)
+          lo = max(0, approx - 128)
+          hi = min(len(parts[0]), approx + 128)
           print(f'SEARCH_RANGE={lo}:{hi}')
           suffix_all = ''.join(parts[1:])
           p0 = parts[0]
