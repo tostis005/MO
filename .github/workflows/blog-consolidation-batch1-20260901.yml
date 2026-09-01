@@ -1,0 +1,108 @@
+name: Blog consolidation batch 1 2026-09-01
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-consolidation-batch1-20260901.yml'
+      - '.github/scripts/blog-consolidation-batch1-20260901.php'
+      - '.github/scripts/emdo-blog-consolidation-redirects-20260901.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate consolidation files
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/blog-consolidation-batch1-20260901.php >/dev/null
+          php -l .github/scripts/emdo-blog-consolidation-redirects-20260901.php >/dev/null
+          grep -Fq "que-verduras-tienen-mas-vitamina-c" .github/scripts/blog-consolidation-batch1-20260901.php
+          grep -Fq "aove-filtrado-vs-sin-filtrar-diferencias" .github/scripts/emdo-blog-consolidation-redirects-20260901.php
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy redirects and consolidate production posts
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+
+          REDIRECT_REMOTE="/tmp/emdo-blog-consolidation-redirects-${GITHUB_RUN_ID}.php"
+          MIGRATION_REMOTE="/tmp/blog-consolidation-batch1-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/emdo-blog-consolidation-redirects-20260901.php "$STAGING_USER@$STAGING_HOST:$REDIRECT_REMOTE"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/blog-consolidation-batch1-20260901.php "$STAGING_USER@$STAGING_HOST:$MIGRATION_REMOTE"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; mkdir -p '$PROD_PATH/wp-content/mu-plugins'; cp '$REDIRECT_REMOTE' '$PROD_PATH/wp-content/mu-plugins/emdo-blog-consolidation-redirects.php'; php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$PROD_PATH/wp-content/mu-plugins/emdo-blog-consolidation-redirects.php' >/dev/null; wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$MIGRATION_REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REDIRECT_REMOTE' '$MIGRATION_REMOTE'; exit \$rc"
+
+      - name: Verify survivor pages and permanent redirects
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_page() {
+            url="$1"
+            needle="$2"
+            html="$(curl -fsSL --retry 3 --retry-delay 2 -A 'Mozilla/5.0 EMDO SEO consolidation verifier' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "${url}?emdo_verify=${GITHUB_RUN_ID}")"
+            grep -Fq "$needle" <<< "$html"
+          }
+
+          check_redirect() {
+            old="$1"
+            expected="$2"
+            headers="$(curl -sS -D - -o /dev/null -A 'Mozilla/5.0 EMDO SEO consolidation verifier' -H 'Cache-Control: no-cache' "$old")"
+            status="$(awk 'toupper($1) ~ /^HTTP\// {code=$2} END {print code}' <<< "$headers")"
+            location="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/\r$/, ""); print $2}' <<< "$headers" | tail -n1)"
+            test "$status" = "301"
+            case "$location" in
+              "$expected"|"$expected"*) ;;
+              *) echo "Unexpected redirect: $old -> $location (expected $expected)" >&2; exit 8 ;;
+            esac
+          }
+
+          check_page 'https://www.elmercadodeorigen.com/que-verduras-tienen-mas-vitamina-c/' 'Ranking de verduras con más vitamina C por 100 gramos'
+          check_page 'https://www.elmercadodeorigen.com/que-verduras-tienen-mas-hierro/' 'Cómo mejorar la absorción del hierro de las verduras'
+          check_page 'https://www.elmercadodeorigen.com/que-verduras-tienen-mas-fibra/' 'Por qué la alcachofa destaca'
+          check_page 'https://www.elmercadodeorigen.com/tomate-como-elegir-conservar-usar-cada-tipo/' 'Cómo saber si un tomate está maduro'
+          check_page 'https://www.elmercadodeorigen.com/verduras-temporada-espana-calendario-meses-que-comprar/' 'Calendario de verduras y hortalizas de temporada en España'
+          check_page 'https://www.elmercadodeorigen.com/aove-filtrado-o-sin-filtrar-diferencias/' 'AOVE filtrado vs sin filtrar: diferencias principales'
+          check_page 'https://www.elmercadodeorigen.com/aove-pierde-propiedades-al-calentarlo-que-cambia-al-cocinar/' 'Qué componentes del AOVE cambian al calentarlo'
+          check_page 'https://www.elmercadodeorigen.com/guia-cocinar-legumbres-secas-remojo-coccion-errores/' 'Tabla rápida: remojo y cocción de las principales legumbres'
+
+          check_redirect 'https://www.elmercadodeorigen.com/verduras-mas-vitamina-c-comparativa/' 'https://www.elmercadodeorigen.com/que-verduras-tienen-mas-vitamina-c/'
+          check_redirect 'https://www.elmercadodeorigen.com/verduras-mas-hierro-comparativa/' 'https://www.elmercadodeorigen.com/que-verduras-tienen-mas-hierro/'
+          check_redirect 'https://www.elmercadodeorigen.com/verduras-mas-fibra-comparativa/' 'https://www.elmercadodeorigen.com/que-verduras-tienen-mas-fibra/'
+          check_redirect 'https://www.elmercadodeorigen.com/aove-filtrado-vs-sin-filtrar-diferencias/' 'https://www.elmercadodeorigen.com/aove-filtrado-o-sin-filtrar-diferencias/'
+          check_redirect 'https://www.elmercadodeorigen.com/legumbres-secas-remojo-coccion-como-elegir/' 'https://www.elmercadodeorigen.com/guia-cocinar-legumbres-secas-remojo-coccion-errores/'
+          echo 'BLOG_CONSOLIDATION_BATCH1_VERIFY_OK'
