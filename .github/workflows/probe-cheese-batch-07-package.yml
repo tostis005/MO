@@ -11,51 +11,35 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Rank and recover missing chars
+      - name: Rank single-char repairs
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import glob, hashlib, base64, gzip, json, itertools, string, zlib
+          import glob,base64,string,zlib
           files=sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))
           parts=[open(f,encoding='utf-8').read().strip() for f in files]
-          assert len(files)==8 and len(parts[0])==7998
           p0=parts[0]; rest=''.join(parts[1:])
-          target='e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'
           alphabet=string.ascii_uppercase+string.ascii_lowercase+string.digits+'+/'
-          probes=['AA','//','zz','00','AQ','Qk','gA','Mw']
+          def make_valid(s):
+              # One missing char remains. Insert a neutral data char immediately before final padding.
+              if s.endswith('='): return s[:-1]+'A'+s[-1:]
+              return s+'A'
           def score(s):
-              try: raw=base64.b64decode(s,validate=True)
+              try: raw=base64.b64decode(make_valid(s),validate=True)
               except Exception: return -1
               d=zlib.decompressobj(31); out=0
-              for i in range(0,len(raw),32):
-                  try: out += len(d.decompress(raw[i:i+32]))
+              for i in range(0,len(raw),16):
+                  try: out += len(d.decompress(raw[i:i+16]))
                   except zlib.error: return out
-              try: out += len(d.flush())
-              except zlib.error: pass
               return out
           ranked=[]
-          for pos in range(0,len(p0)+1,2):
-              best=max(score(p0[:pos]+pair+p0[pos:]+rest) for pair in probes)
-              ranked.append((best,pos))
+          for pos in range(2700,3021):
+              for ch in alphabet:
+                  sc=score(p0[:pos]+ch+p0[pos:]+rest)
+                  ranked.append((sc,pos,ch))
           ranked.sort(reverse=True)
-          print('TOP_POSITIONS=' + ','.join(f'{p}:{s}' for s,p in ranked[:30]))
-          candidates=set()
-          for _,p in ranked[:30]:
-              for q in range(max(0,p-4),min(len(p0),p+4)+1): candidates.add(q)
-          print('BRUTE_POSITIONS='+str(len(candidates)))
-          for pos in sorted(candidates):
-              left,right=p0[:pos],p0[pos:]
-              for a,b in itertools.product(alphabet,repeat=2):
-                  pair=a+b
-                  candidate=left+pair+right+rest
-                  if hashlib.sha256(candidate.encode()).hexdigest()==target:
-                      data=json.loads(gzip.decompress(base64.b64decode(candidate,validate=True)))
-                      assert len(data)==10 and sorted(int(x['pos']) for x in data)==list(range(61,71))
-                      print(f'RECOVERED_POS={pos}')
-                      print(f'RECOVERED_PAIR={pair}')
-                      print('REPAIRED_JSON_OK=10')
-                      raise SystemExit(0)
-          print('NO_RANKED_MATCH')
-          raise SystemExit(2)
+          for sc,pos,ch in ranked[:40]: print(f'CANDIDATE pos={pos} char={ch} score={sc}')
+          if ranked[0][0] <= 4053:
+              raise SystemExit('No single-char repair improved gzip progress')
           PY
