@@ -11,33 +11,50 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Recover missing boundary chars
+      - name: Locate missing chars by gzip offset
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import glob, hashlib, base64, gzip, json, itertools, string
+          import glob, hashlib, base64, gzip, json, itertools, string, zlib
           files = sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))
-          assert len(files) == 8, len(files)
           parts = [open(f, encoding='utf-8').read().strip() for f in files]
-          assert len(parts[0]) == 7998
-          assert all(len(x) == 8000 for x in parts[1:6])
-          assert len(parts[6]) == 3332 and len(parts[7]) == 3332
+          payload = ''.join(parts)
           target = 'e1ec1b0c81e8d9e0946ed28489615cc6d77a308ebb2a4f11f1766304b14224d7'
           alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + '+/'
-          prefix = parts[0]
-          suffix = ''.join(parts[1:])
-          for a, b in itertools.product(alphabet, repeat=2):
-              pair = a + b
-              candidate = prefix + pair + suffix
-              if hashlib.sha256(candidate.encode()).hexdigest() == target:
-                  print('RECOVERED_PAIR=' + pair)
-                  print('RECOVERED_CHUNK00_SUFFIX=' + prefix[-16:] + pair)
-                  data = json.loads(gzip.decompress(base64.b64decode(candidate, validate=True)))
-                  assert len(data) == 10
-                  assert sorted(int(x['pos']) for x in data) == list(range(61, 71))
-                  print('REPAIRED_JSON_OK=10')
-                  raise SystemExit(0)
-          print('NO_BOUNDARY_PAIR_MATCH')
+          damaged = base64.b64decode(payload + '==', validate=True)
+          dec = zlib.decompressobj(31)
+          fail_at = None
+          for i in range(0, len(damaged), 16):
+              try:
+                  dec.decompress(damaged[i:i+16])
+              except zlib.error:
+                  fail_at = i
+                  break
+          if fail_at is None:
+              fail_at = len(damaged)
+          approx = int(fail_at * 4 / 3)
+          print(f'GZIP_FAIL_BYTE={fail_at}')
+          print(f'APPROX_B64_INDEX={approx}')
+          lo = max(0, approx - 96)
+          hi = min(len(parts[0]), approx + 96)
+          print(f'SEARCH_RANGE={lo}:{hi}')
+          suffix_all = ''.join(parts[1:])
+          p0 = parts[0]
+          for pos in range(lo, hi + 1):
+              left, right = p0[:pos], p0[pos:]
+              for a, b in itertools.product(alphabet, repeat=2):
+                  pair = a + b
+                  candidate = left + pair + right + suffix_all
+                  if hashlib.sha256(candidate.encode()).hexdigest() == target:
+                      print(f'RECOVERED_POS={pos}')
+                      print(f'RECOVERED_PAIR={pair}')
+                      print('CONTEXT=' + left[-16:] + '[' + pair + ']' + right[:16])
+                      data = json.loads(gzip.decompress(base64.b64decode(candidate, validate=True)))
+                      assert len(data) == 10
+                      assert sorted(int(x['pos']) for x in data) == list(range(61, 71))
+                      print('REPAIRED_JSON_OK=10')
+                      raise SystemExit(0)
+          print('NO_MATCH_IN_RANGE')
           raise SystemExit(2)
           PY
