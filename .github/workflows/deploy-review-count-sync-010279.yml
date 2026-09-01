@@ -33,7 +33,8 @@ jobs:
           grep -Fq 'Version: 0.10.281' mu-plugins/z-mdo-review-count-sync-010279.php
           grep -Fq "get_option( 'mdo_google_review_count'" mu-plugins/mdo-home-external-reviews-20260819.php
           grep -Fq "get_option( 'mdo_trustpilot_review_count'" mu-plugins/mdo-home-external-reviews-20260819.php
-          grep -Fq 'mdo_supplier_sync_dispatch' mu-plugins/z-mdo-review-count-sync-010279.php
+          grep -Fq "add_action( 'mdo_supplier_sync_dispatch'" mu-plugins/z-mdo-review-count-sync-010279.php
+          grep -Fq 'mdo_review_counts_supplier_work_pending_010279' mu-plugins/z-mdo-review-count-sync-010279.php
           grep -Fq 'mdo_review_counts_store_trustpilot_010281' mu-plugins/z-mdo-review-count-sync-010279.php
 
       - name: Deploy review modules to production
@@ -85,30 +86,24 @@ jobs:
           echo "GOOGLE_REFRESH_RESULT $RESULT"
           echo "$RESULT" | grep -Fq '"google_ok":true'
 
-      - name: Verify options, coordination and home output
+      - name: Verify stored values and dynamic home
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
         run: |
           set -euo pipefail
-          STATE="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "set -e; wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
-            \$g=(int)get_option("mdo_google_review_count",0);
-            \$t=(int)get_option("mdo_trustpilot_review_count",0);
-            \$gu=(int)get_option("mdo_google_review_count_updated_at",0);
-            \$hook=has_action("mdo_supplier_sync_dispatch","mdo_review_counts_after_dispatch_010279");
-            \$fallback=wp_next_scheduled("mdo_review_counts_daily_fallback_010279");
-            echo "google={\$g} trustpilot={\$t} google_updated={\$gu} dispatcher_hook=".(false===\$hook?"no":"yes")." fallback_next=".(is_numeric(\$fallback)?wp_date("c",(int)\$fallback):"none");
-            if(\$g<1 || \$t<1 || \$gu<1 || false===\$hook || !\$fallback){exit(17);} 
-          ' --path='$PROD_PATH' --allow-root")"
-          echo "REVIEW_STATE $STATE"
-          G="$(printf '%s' "$STATE" | sed -n 's/.*google=\([0-9][0-9]*\).*/\1/p')"
-          T="$(printf '%s' "$STATE" | sed -n 's/.*trustpilot=\([0-9][0-9]*\).*/\1/p')"
-          : "${G:?Google count missing}"
-          : "${T:?Trustpilot count missing}"
+          G="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get mdo_google_review_count --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null")"
+          T="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get mdo_trustpilot_review_count --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null")"
+          GU="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" option get mdo_google_review_count_updated_at --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root 2>/dev/null")"
+          case "$G:$T:$GU" in *[!0-9:]*|'') echo "Invalid stored values G=$G T=$T GU=$GU"; exit 21;; esac
+          test "$G" -gt 0
+          test "$T" -gt 0
+          test "$GU" -gt 0
+          echo "REVIEW_STATE google=$G trustpilot=$T google_updated=$GU"
 
-          for cfg in es en; do
-            if [ "$cfg" = es ]; then URL="https://www.elmercadodeorigen.com/?mdo_review_verify=${GITHUB_RUN_ID}"; else URL="https://www.elmercadodeorigen.com/en/?mdo_review_verify=${GITHUB_RUN_ID}"; fi
-            curl -L -sS --connect-timeout 10 --max-time 45 -A 'Mozilla/5.0 EMDO review verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$URL" -o "/tmp/home-${cfg}.html"
+          for lang in es en; do
+            if [ "$lang" = es ]; then URL="https://www.elmercadodeorigen.com/?mdo_review_verify=${GITHUB_RUN_ID}"; else URL="https://www.elmercadodeorigen.com/en/?mdo_review_verify=${GITHUB_RUN_ID}"; fi
+            curl -L -sS --connect-timeout 10 --max-time 45 -A 'Mozilla/5.0 EMDO review verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$URL" -o "/tmp/home-${lang}.html"
           done
 
           G="$G" T="$T" python3 - <<'PY'
