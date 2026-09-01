@@ -1,0 +1,122 @@
+name: AdSense browser delivery audit v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsense-browser-audit-v2-20260901.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Selenium
+        run: python -m pip install --quiet selenium
+      - name: Inspect live AdSense requests as South Africa
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, time, urllib.request
+          from selenium import webdriver
+          from selenium.common.exceptions import TimeoutException
+          from selenium.webdriver.chrome.options import Options
+
+          site = 'https://www.elmercadodeorigen.com'
+          api = site + '/wp-json/wp/v2/posts?per_page=1&status=publish&_fields=link'
+          with urllib.request.urlopen(urllib.request.Request(api, headers={'User-Agent':'Mozilla/5.0'}), timeout=30) as r:
+              post = json.load(r)[0]['link']
+          url = post + ('&' if '?' in post else '?') + 'adsense_debug=1&browser_audit_v2=1'
+          print('POST_URL=' + post, flush=True)
+
+          o = Options()
+          o.page_load_strategy = 'eager'
+          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,2200','--lang=en-ZA'):
+              o.add_argument(arg)
+          o.set_capability('goog:loggingPrefs', {'performance':'ALL','browser':'ALL'})
+          d = webdriver.Chrome(options=o)
+          d.set_page_load_timeout(60)
+          try:
+              d.execute_cdp_cmd('Network.enable', {})
+              d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': r"""
+                (() => {
+                  const f = window.fetch;
+                  window.fetch = function(input, init) {
+                    const u = typeof input === 'string' ? input : (input && input.url) || '';
+                    if (u.includes('/wp-json/elmercado/v1/adsense-eligibility')) {
+                      init = Object.assign({}, init || {});
+                      const h = new Headers(init.headers || {});
+                      h.set('X-Country-Code', 'ZA');
+                      init.headers = h;
+                    }
+                    return f.call(this, input, init);
+                  };
+                })();
+              """})
+              try:
+                  d.get(url)
+              except TimeoutException:
+                  print('PAGE_LOAD_TIMEOUT=1', flush=True)
+                  d.execute_script('window.stop();')
+              time.sleep(20)
+
+              state = d.execute_script(r"""
+                const a = window.adsbygoogle;
+                return {
+                  debug: window.ElMercadoAdsenseGeoDebug || null,
+                  pause: a && typeof a.pauseAdRequests !== 'undefined' ? a.pauseAdRequests : null,
+                  scripts: Array.from(document.scripts).map(x=>x.src||'').filter(x=>/googlesyndication|doubleclick|googleads/.test(x)),
+                  ins: Array.from(document.querySelectorAll('ins.adsbygoogle')).map(x=>({status:x.getAttribute('data-ad-status'),h:x.getBoundingClientRect().height,w:x.getBoundingClientRect().width})),
+                  iframes: Array.from(document.querySelectorAll('iframe')).map(x=>({id:x.id||'',src:x.src||'',h:x.getBoundingClientRect().height,w:x.getBoundingClientRect().width})).filter(x=>/google|doubleclick|ads/.test((x.id+' '+x.src).toLowerCase()))
+                };
+              """)
+              print('STATE=' + json.dumps(state, sort_keys=True), flush=True)
+
+              reqs, resps = [], []
+              for e in d.get_log('performance'):
+                  try: m = json.loads(e['message'])['message']
+                  except Exception: continue
+                  p = m.get('params', {})
+                  if m.get('method') == 'Network.requestWillBeSent':
+                      u = p.get('request',{}).get('url','')
+                      if any(x in u for x in ('googlesyndication.com','doubleclick.net','googleads.','adsense.')):
+                          reqs.append(u)
+                  elif m.get('method') == 'Network.responseReceived':
+                      r = p.get('response',{}); u = r.get('url','')
+                      if any(x in u for x in ('googlesyndication.com','doubleclick.net','googleads.','adsense.')):
+                          resps.append((u, int(r.get('status') or 0)))
+              print('GOOGLE_REQUESTS=' + str(len(reqs)), flush=True)
+              for u in reqs: print('REQ ' + u, flush=True)
+              print('GOOGLE_RESPONSES=' + str(len(resps)), flush=True)
+              for u,s in resps: print(f'RESP {s} {u}', flush=True)
+
+              for e in d.get_log('browser'):
+                  if e.get('level') in ('SEVERE','WARNING') or 'ads' in e.get('message','').lower():
+                      print('CONSOLE ' + json.dumps(e, sort_keys=True), flush=True)
+
+              dbg = state.get('debug') or {}
+              adreq = [u for u in reqs if '/pagead/ads' in u or 'googleads.g.doubleclick.net/pagead/' in u]
+              adresp = [(u,s) for u,s in resps if '/pagead/ads' in u or 'googleads.g.doubleclick.net/pagead/' in u]
+              if dbg.get('country') != 'ZA' or dbg.get('showAds') is not True:
+                  classification = 'GEO_FAILED'
+              elif not adreq:
+                  classification = 'NO_AD_REQUEST'
+              elif any(s == 403 for _,s in adresp):
+                  classification = 'HTTP_403'
+              elif any(s == 200 for _,s in adresp):
+                  visible = bool(state.get('iframes')) or any(x.get('status') == 'filled' and x.get('h',0) > 0 for x in state.get('ins',[]))
+                  classification = 'AD_RENDERED' if visible else 'HTTP_200_NO_VISIBLE_AD'
+              else:
+                  classification = 'OTHER_RESPONSE'
+              print('CLASSIFICATION=' + classification, flush=True)
+          finally:
+              d.quit()
+          PY
