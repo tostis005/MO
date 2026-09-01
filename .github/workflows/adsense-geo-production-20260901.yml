@@ -94,7 +94,12 @@ jobs:
 
           "$php_bin" -l "$remote_php"
           grep -q 'ca-pub-3168527008181132' "$remote_php"
-          grep -q 'anyAdvertisingCategoryGranted' "$remote_js"
+          grep -q "data-wcc', 'necessary" "$remote_js"
+          grep -q 'loadAdsenseIfEligible' "$remote_js"
+          if grep -q 'webToffeeConsentGranted' "$remote_js"; then
+            echo "Legacy consent gate still present in AdSense loader"
+            exit 1
+          fi
 
           stamp=$(date +%Y%m%d%H%M%S)
           mkdir -p "$(dirname "$php_file")" "$(dirname "$js_file")"
