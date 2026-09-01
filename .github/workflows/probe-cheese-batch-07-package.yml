@@ -11,65 +11,30 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Recover with parsed gzip header and stored CRC
+      - name: Inspect aligned candidate trailer
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import glob,string,base64,zlib,struct,json,itertools,hashlib
+          import glob,base64,zlib,struct
           files=sorted(glob.glob('.github/scripts/cheese-batch-07-chunk-*.b64'))
           parts=[open(f,encoding='utf-8').read().strip() for f in files]
           p0=parts[0]; rest=''.join(parts[1:])
-          alphabet=string.ascii_uppercase+string.ascii_lowercase+string.digits+'+/'
-          def header_end(raw):
-              if len(raw)<18 or raw[:2]!=b'\x1f\x8b' or raw[2]!=8: raise ValueError('not gzip')
-              flg=raw[3]; i=10
-              if flg & 4:
-                  xlen=struct.unpack('<H',raw[i:i+2])[0]; i+=2+xlen
-              if flg & 8:
-                  i=raw.index(b'\0',i)+1
-              if flg & 16:
-                  i=raw.index(b'\0',i)+1
-              if flg & 2: i+=2
-              return i,flg
-          # Print actual header structure from a syntactically aligned candidate.
-          one=p0[:2862]+'A'+p0[2862:]
-          sample=one[:3118]+'A'+one[3118:]+rest
-          raw=base64.b64decode(sample,validate=True)
-          hend,flg=header_end(raw)
-          print(f'GZIP_FLG={flg} HEADER_END={hend} HEADER_HEX={raw[:hend].hex()}')
-          found=[]
-          for p1 in range(2856,2869):
-              for p2 in range(3088,3143):
-                  for first,second in itertools.product(alphabet,repeat=2):
-                      one=p0[:p1]+first+p0[p1:]
-                      candidate=one[:p2]+second+one[p2:]+rest
-                      try:
-                          raw=base64.b64decode(candidate,validate=True)
-                          hend,_=header_end(raw)
-                          stored_crc,stored_size=struct.unpack('<II',raw[-8:])
-                          out=zlib.decompress(raw[hend:-8],-15)
-                      except Exception:
-                          continue
-                      if (zlib.crc32(out)&0xffffffff)!=stored_crc or (len(out)&0xffffffff)!=stored_size:
-                          continue
-                      try: data=json.loads(out.decode('utf-8'))
-                      except Exception: continue
-                      if len(data)!=10 or sorted(int(x.get('pos',0)) for x in data)!=list(range(61,71)): continue
-                      found.append((p1,first,p2,second,hashlib.sha256(candidate.encode()).hexdigest(),data))
-                      print(f'FOUND p1={p1} first={first} p2={p2} second={second} sha={found[-1][4]}')
-                      if len(found)>1: break
-                  if len(found)>1: break
-              if len(found)>1: break
-          print('CRC_VALID_RECOVERIES='+str(len(found)))
-          if len(found)!=1: raise SystemExit('Expected exactly one CRC-valid recovery')
-          p1,first,p2,second,sha,data=found[0]
-          print('TITLES='+' | '.join(x['title'] for x in data))
-          print('SLUGS='+' | '.join(x['slug'] for x in data))
-          print(f'RECOVERED_FIRST_POS={p1}')
-          print(f'RECOVERED_FIRST_CHAR={first}')
-          print(f'RECOVERED_SECOND_POS_AFTER_FIRST={p2}')
-          print(f'RECOVERED_SECOND_CHAR={second}')
-          print(f'RECOVERED_SHA256={sha}')
-          print('REPAIRED_JSON_OK=10')
+          one=p0[:2862]+'t'+p0[2862:]
+          candidate=one[:3118]+'0'+one[3118:]+rest
+          raw=base64.b64decode(candidate,validate=True)
+          print('RAW_LEN='+str(len(raw)))
+          print('GZIP_MAGIC='+raw[:4].hex()+' FLG='+str(raw[3]))
+          print('TRAILER_HEX='+raw[-8:].hex())
+          print('STORED_CRC=%08x STORED_ISIZE=%d'%struct.unpack('<II',raw[-8:]))
+          d=zlib.decompressobj(31); out=b''; err=''
+          try:
+              out=d.decompress(raw)+d.flush()
+          except Exception as e:
+              err=repr(e)
+          print('OUT_LEN='+str(len(out)))
+          print('OUT_CRC=%08x'%(zlib.crc32(out)&0xffffffff))
+          print('ERR='+err)
+          print('OUT_PREFIX='+out[:120].decode('utf-8','replace'))
+          print('OUT_SUFFIX='+out[-200:].decode('utf-8','replace'))
           PY
