@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/adsense-geo-production-20260901.yml'
+      - 'elmercadodeorigen-child/inc/adsense-geo-010266.php'
+      - 'elmercadodeorigen-child/assets/js/adsense-geo-010266.js'
+      - 'elmercadodeorigen-child/functions.php'
   workflow_dispatch:
 
 permissions:
@@ -96,6 +99,7 @@ jobs:
           grep -q 'ca-pub-3168527008181132' "$remote_php"
           grep -q "data-wcc', 'necessary" "$remote_js"
           grep -q 'loadAdsenseIfEligible' "$remote_js"
+          grep -q 'ElMercadoAdsenseGeoDebug' "$remote_js"
           if grep -q 'webToffeeConsentGranted' "$remote_js"; then
             echo "Legacy consent gate still present in AdSense loader"
             exit 1
@@ -145,6 +149,8 @@ jobs:
           post_html=$(curl -fsSL --max-time 25 "${post_url}?adsense_verify=${nonce}")
           home_html=$(curl -fsSL --max-time 25 "${site_url}/?adsense_verify=${nonce}")
           grep -q 'adsense-geo-010266.js' <<< "$post_html"
+          head_html="${post_html%%</head>*}"
+          grep -q 'adsense-geo-010266.js' <<< "$head_html"
           if grep -q 'adsense-geo-010266.js' <<< "$home_html"; then
             echo "AdSense loader unexpectedly present on home"
             exit 1
