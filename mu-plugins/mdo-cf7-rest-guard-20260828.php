@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Contact Form 7 REST-safe Guard
- * Description: Closes direct Contact Form 7 REST submission bypasses by validating anti-spam data from the WPCF7_Submission instance rather than relying on raw $_POST metadata.
- * Version: 1.0.0
+ * Description: Closes direct Contact Form 7 REST submission bypasses while allowing browser challenge fields that CF7 may omit from canonical posted data.
+ * Version: 1.0.1
  * Author: El Mercado de Origen
  */
 
@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-const MDO_CF7_REST_GUARD_VERSION = '1.0.0';
+const MDO_CF7_REST_GUARD_VERSION = '1.0.1';
 
 /**
  * Get the active Contact Form 7 submission instance.
@@ -87,6 +87,31 @@ function mdo_cf7_rest_guard_form_id( $submission, $posted_data ) {
 }
 
 /**
+ * Read the signed guard token.
+ *
+ * CF7 deliberately normalizes posted data to fields declared in the form template.
+ * The MDO browser challenge is appended as a hidden field by JavaScript, so some CF7
+ * versions omit it from WPCF7_Submission::get_posted_data() even though the browser
+ * sent it in the multipart request. Prefer canonical data when available, then fall
+ * back only for this one signed field to the raw request. The token still has to pass
+ * form-ID, age, nonce, signature and replay validation below.
+ */
+function mdo_cf7_rest_guard_token( $posted_data, $field_name ) {
+    if ( isset( $posted_data[ $field_name ] ) && is_scalar( $posted_data[ $field_name ] ) ) {
+        $token = sanitize_text_field( (string) $posted_data[ $field_name ] );
+        if ( '' !== $token ) {
+            return $token;
+        }
+    }
+
+    if ( isset( $_POST[ $field_name ] ) && is_scalar( $_POST[ $field_name ] ) ) {
+        return sanitize_text_field( (string) wp_unslash( $_POST[ $field_name ] ) );
+    }
+
+    return '';
+}
+
+/**
  * Detect multiple independent random-looking human text fields using the detector
  * installed by the main MDO CF7 guard. One suspicious field alone never blocks.
  */
@@ -151,19 +176,15 @@ function mdo_cf7_rest_guard_filter( $spam, $submission = null ) {
 
     $form_id = mdo_cf7_rest_guard_form_id( $submission, $posted_data );
     if ( ! $form_id ) {
-        // A genuine CF7 submission always has a contact-form context. Fail closed if
-        // an automated request reaches the spam hook without one.
         mdo_cf7_rest_guard_log( $submission, 'Missing Contact Form 7 form context.' );
         return true;
     }
 
     $field_name = defined( 'MDO_CF7_GUARD_FIELD' ) ? MDO_CF7_GUARD_FIELD : '_mdo_cf7_guard';
-    $token      = isset( $posted_data[ $field_name ] ) && is_scalar( $posted_data[ $field_name ] )
-        ? sanitize_text_field( (string) $posted_data[ $field_name ] )
-        : '';
+    $token      = mdo_cf7_rest_guard_token( $posted_data, $field_name );
 
     if ( '' === $token ) {
-        mdo_cf7_rest_guard_log( $submission, 'Missing browser challenge in canonical CF7 submission data.' );
+        mdo_cf7_rest_guard_log( $submission, 'Missing browser challenge.' );
         return true;
     }
 
@@ -212,6 +233,4 @@ function mdo_cf7_rest_guard_filter( $spam, $submission = null ) {
 }
 
 // Modern Contact Form 7 passes the WPCF7_Submission object as the second argument.
-// Accepted args=2 is essential: it lets us inspect the canonical submission data and
-// closes the direct-REST bypass that raw $_POST-only checks can miss.
 add_filter( 'wpcf7_spam', 'mdo_cf7_rest_guard_filter', 19, 2 );
