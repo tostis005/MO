@@ -34,19 +34,33 @@ jobs:
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
           SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
-          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); if grep -q "elmercadodeorigen.com" "$cfg" 2>/dev/null; then printf "%s" "$p"; break; fi; done')"
-          if [ -z "$PROD_PATH" ]; then
-            PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'find /var/www/vhosts -maxdepth 5 -type d -path "*elmercadodeorigen.com/httpdocs" 2>/dev/null | head -n1')"
-          fi
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
           : "${PROD_PATH:?production path not found}"
           REMOTE="/tmp/google-classic-direct-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/google-classic-direct-resolution-20260901.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php); \"\$php_bin\" \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > google-classic-direct-output.txt
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > google-classic-direct-output.txt 2>&1
+          RC=$?
+          set -e
+          echo "RUN_RC=$RC" >> google-classic-direct-output.txt
           cat google-classic-direct-output.txt
       - name: Save safe result
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
+          touch google-classic-direct-output.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add google-classic-direct-output.txt
