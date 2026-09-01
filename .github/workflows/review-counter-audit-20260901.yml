@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   audit:
@@ -47,12 +47,11 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" > review-counter-audit-output.txt <<'REMOTE'
           set -euo pipefail
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          echo "PROD_PATH=$PROD_PATH"
           echo '--- active plugins relevant to reviews/google/trust ---'
           "$php_bin" "$wp_bin" plugin list --path="$PROD_PATH" --allow-root --status=active --format=csv 2>/dev/null | grep -Ei 'google|trust|review|place|elementor|cron' || true
 
@@ -60,23 +59,33 @@ jobs:
           FRONT_ID=$("$php_bin" "$wp_bin" option get page_on_front --path="$PROD_PATH" --allow-root 2>/dev/null || true)
           echo "FRONT_ID=${FRONT_ID:-none}"
           if [ -n "${FRONT_ID:-}" ] && [ "$FRONT_ID" != 0 ]; then
-            echo '--- front page content review markers ---'
-            "$php_bin" "$wp_bin" post get "$FRONT_ID" --field=post_content --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Eio '.{0,100}(google|trustpilot|reseñ|review|opiniones|valoraciones|294|169).{0,180}' | head -n 80 || true
-            echo '--- elementor data review markers ---'
-            "$php_bin" "$wp_bin" post meta get "$FRONT_ID" _elementor_data --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Eio '.{0,120}(google|trustpilot|reseñ|review|opiniones|valoraciones|294|169).{0,220}' | head -n 120 || true
+            echo '--- front page review markers ---'
+            "$php_bin" "$wp_bin" post meta get "$FRONT_ID" _elementor_data --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Eio '.{0,90}(google|trustpilot|reseñ|review|opiniones|valoraciones|294|169).{0,150}' | head -n 80 || true
           fi
 
-          echo '--- configured credential names only (values hidden) ---'
+          echo '--- configured credential names only; values hidden ---'
           CFG="$PROD_PATH/wp-config.php"
           if [ -f "$CFG" ]; then
             grep -Eio "define\([[:space:]]*['\"][A-Z0-9_]*(GOOGLE|PLACES|MAPS|TRUSTPILOT)[A-Z0-9_]*['\"]" "$CFG" | sed -E "s/define\([[:space:]]*['\"]//" | sort -u || true
           fi
           env | cut -d= -f1 | grep -Ei 'GOOGLE|PLACES|MAPS|TRUSTPILOT' | sort -u || true
 
-          echo '--- option names relevant to review sources (values hidden) ---'
+          echo '--- option names relevant to review sources; values hidden ---'
           PREFIX=$("$php_bin" "$wp_bin" db prefix --path="$PROD_PATH" --allow-root 2>/dev/null || echo wp_)
           "$php_bin" "$wp_bin" db query "SELECT option_name FROM ${PREFIX}options WHERE option_name REGEXP 'google|place|maps|trustpilot|trustindex|review' ORDER BY option_name LIMIT 250;" --skip-column-names --path="$PROD_PATH" --allow-root 2>/dev/null || true
 
           echo '--- cron review/source markers ---'
           "$php_bin" "$wp_bin" cron event list --fields=hook,next_run_gmt,recurrence --format=csv --path="$PROD_PATH" --allow-root 2>/dev/null | grep -Ei 'google|trust|review|sync|feed' || true
           REMOTE
+          cat review-counter-audit-output.txt
+
+      - name: Commit safe audit output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add review-counter-audit-output.txt
+          git commit -m 'Record safe review counter audit output' || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main
