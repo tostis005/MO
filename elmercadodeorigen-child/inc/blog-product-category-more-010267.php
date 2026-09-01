@@ -25,10 +25,66 @@ function elmercado_blog_products_is_english_010277(): bool {
 }
 
 /**
- * Normaliza una categoría comercial y permite ajustar casos excepcionales.
+ * Mapa único de correspondencia: categoría editorial/alias -> product_cat.
+ *
+ * Este es el único punto que hay que ampliar si en el futuro una categoría del
+ * blog y su categoría comercial no comparten slug. Los slugs iguales se dejan
+ * también explícitos para que el contrato sea fácil de auditar.
+ *
+ * Inventario de producción revisado el 2026-09-01:
+ * - aceite / aceites              -> aceites
+ * - carnes                        -> carnes
+ * - conservas                     -> conservas
+ * - embutidos / embutidos-y-curados -> embutidos-y-curados
+ * - hortalizas-y-verduras         -> hortalizas-verduras
+ * - jamones-y-paletas             -> jamones-paletas
+ * - legumbres                     -> legumbres
+ * - naranjas                      -> naranjas
+ * - packs-y-lotes                 -> packs-y-lotes
+ * - quesos                        -> quesos
+ *
+ * @return array<string,string>
+ */
+function elmercado_blog_product_category_map_010277(): array {
+	$map = array(
+		'aceite'                 => 'aceites',
+		'aceites'                => 'aceites',
+		'carnes'                 => 'carnes',
+		'conservas'              => 'conservas',
+		'embutidos'              => 'embutidos-y-curados',
+		'embutidos-y-curados'    => 'embutidos-y-curados',
+		'hortalizas-y-verduras'  => 'hortalizas-verduras',
+		'hortalizas-verduras'    => 'hortalizas-verduras',
+		'jamones-y-paletas'      => 'jamones-paletas',
+		'jamones-paletas'        => 'jamones-paletas',
+		'legumbres'              => 'legumbres',
+		'naranjas'               => 'naranjas',
+		'packs-y-lotes'          => 'packs-y-lotes',
+		'quesos'                 => 'quesos',
+	);
+
+	$map = (array) apply_filters( 'elmercado_blog_product_category_map', $map );
+	$normalized = array();
+	foreach ( $map as $editorial_slug => $product_slug ) {
+		$editorial_slug = sanitize_title( (string) $editorial_slug );
+		$product_slug   = sanitize_title( (string) $product_slug );
+		if ( '' !== $editorial_slug && '' !== $product_slug ) {
+			$normalized[ $editorial_slug ] = $product_slug;
+		}
+	}
+
+	return $normalized;
+}
+
+/**
+ * Normaliza una categoría comercial y aplica el mapa de correspondencias.
  */
 function elmercado_blog_filter_product_category_slug_010277( string $slug, int $post_id, string $explicit = '' ): string {
 	$slug = sanitize_title( $slug );
+	$map  = elmercado_blog_product_category_map_010277();
+	if ( isset( $map[ $slug ] ) ) {
+		$slug = $map[ $slug ];
+	}
 	$slug = (string) apply_filters( 'elmercado_blog_product_category_slug', $slug, $post_id, $explicit );
 	return sanitize_title( $slug );
 }
@@ -52,9 +108,13 @@ function elmercado_blog_product_category_candidates_010277( int $post_id ): arra
 		'nutricion',
 		'recetas',
 		'guias',
+		'guias-de-compra',
+		'guias-y-consejos',
 		'consejos',
 		'comparativas',
 		'gastronomia',
+		'cocina-y-producto',
+		'despensa',
 	);
 	$ignored = (array) apply_filters( 'elmercado_blog_noncommercial_categories', $ignored, $post_id );
 	$ignored = array_values( array_unique( array_map( 'sanitize_title', $ignored ) ) );
@@ -100,8 +160,8 @@ function elmercado_blog_product_category_candidates_010277( int $post_id ): arra
  * Orden:
  * 1) categoría declarada por un shortcode histórico;
  * 2) meta opcional _elmercado_product_category;
- * 3) categoría editorial que ya exista como product_cat;
- * 4) primera categoría editorial comercial aunque aún no exista en WooCommerce.
+ * 3) categoría editorial mapeada que ya exista como product_cat;
+ * 4) primera categoría editorial comercial mapeada aunque aún no exista.
  *
  * El último punto es el que permite publicar hoy artículos de Quesos y que el
  * bloque aparezca automáticamente cuando se cree la categoría/productos.
@@ -138,17 +198,21 @@ function elmercado_blog_product_category_slug_010277( int $post_id, string $expl
 		return '';
 	}
 
-	/* Si WooCommerce ya conoce alguna candidata, esa gana sobre cualquier otra. */
+	/* Si WooCommerce ya conoce alguna candidata tras mapearla, esa gana. */
 	if ( taxonomy_exists( 'product_cat' ) ) {
 		foreach ( $candidates as $candidate ) {
-			$term = get_term_by( 'slug', $candidate, 'product_cat' );
+			$mapped_candidate = elmercado_blog_filter_product_category_slug_010277( $candidate, $post_id );
+			if ( '' === $mapped_candidate ) {
+				continue;
+			}
+			$term = get_term_by( 'slug', $mapped_candidate, 'product_cat' );
 			if ( $term instanceof WP_Term ) {
-				return elmercado_blog_filter_product_category_slug_010277( $candidate, $post_id );
+				return $mapped_candidate;
 			}
 		}
 	}
 
-	/* Categoría futura: queda preparada aunque todavía no exista en WooCommerce. */
+	/* Categoría futura: queda preparada y ya normalizada por el mapa. */
 	return elmercado_blog_filter_product_category_slug_010277( $candidates[0], $post_id );
 }
 
