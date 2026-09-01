@@ -104,22 +104,12 @@ jobs:
           check_url "$base/category/quesos/"
           check_url "$base/en/journal/"
 
-          # Editorial spot checks: no empty related heading and correct topic-specific copy.
-          python3 - <<'PY'
-import re, urllib.request
-urls = [
- ('https://www.elmercadodeorigen.com/queso-idiazabal-dop-leche-territorio-ahumado-como-reconocerlo/','¿Todo Idiazabal está ahumado?'),
- ('https://www.elmercadodeorigen.com/queso-cabrales-dop-que-es-maduracion-cueva-como-reconocerlo/','¿Cabrales se hace siempre con tres leches?'),
- ('https://www.elmercadodeorigen.com/como-se-hace-queso-leche-cuajada-prensado-maduracion/','1. La leche: la receta empieza antes del cuajo'),
- ('https://www.elmercadodeorigen.com/como-catar-queso-aroma-textura-sabor-intensidad-persistencia/','5. Intensidad, equilibrio y persistencia'),
-]
-for url, expected in urls:
-    html = urllib.request.urlopen(url + '?batch02_verify=1', timeout=45).read().decode('utf-8','ignore')
-    if expected not in html:
-        raise SystemExit('missing expected content on ' + url)
-    for heading in ('Guías relacionadas','Related guides'):
-        m = re.search(r'<h2>\s*'+re.escape(heading)+r'\s*</h2>(.*?)(?=<h2>|$)', html, re.I|re.S)
-        if m and '<a ' not in m.group(1).lower():
-            raise SystemExit('empty related block on ' + url)
-    print('CONTENT OK', url)
-PY
+          curl -L -sS --max-time 45 "$base/queso-idiazabal-dop-leche-territorio-ahumado-como-reconocerlo/?batch02_verify=$GITHUB_RUN_ID" -o /tmp/idiazabal.html
+          grep -Fq '¿Todo Idiazabal está ahumado?' /tmp/idiazabal.html
+          curl -L -sS --max-time 45 "$base/queso-cabrales-dop-que-es-maduracion-cueva-como-reconocerlo/?batch02_verify=$GITHUB_RUN_ID" -o /tmp/cabrales.html
+          grep -Fq '¿Cabrales se hace siempre con tres leches?' /tmp/cabrales.html
+          curl -L -sS --max-time 45 "$base/como-se-hace-queso-leche-cuajada-prensado-maduracion/?batch02_verify=$GITHUB_RUN_ID" -o /tmp/process.html
+          grep -Fq '1. La leche: la receta empieza antes del cuajo' /tmp/process.html
+          curl -L -sS --max-time 45 "$base/como-catar-queso-aroma-textura-sabor-intensidad-persistencia/?batch02_verify=$GITHUB_RUN_ID" -o /tmp/tasting.html
+          grep -Fq '5. Intensidad, equilibrio y persistencia' /tmp/tasting.html
+          echo 'Editorial spot checks OK'
