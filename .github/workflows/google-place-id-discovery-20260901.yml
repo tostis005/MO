@@ -45,7 +45,11 @@ jobs:
           : "${PROD_PATH:?production path not found}"
           REMOTE="/tmp/google-place-id-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/google-place-id-discovery-20260901.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > google-place-id-output.txt
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp || true); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" > google-place-id-output.txt 2>&1
+          RC=$?
+          set -e
+          echo "RUN_RC=$RC" >> google-place-id-output.txt
           cat google-place-id-output.txt
       - name: Save safe result
         if: always()
