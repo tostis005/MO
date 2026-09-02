@@ -3,9 +3,10 @@ name: Validate authority gaps package v2 2026-09-02
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - '.github/scripts/authority-gaps-validation-trigger-20260902.txt'
+      - .github/scripts/authority-gaps-validation-trigger-20260902.txt
 
 permissions:
   contents: read
@@ -15,38 +16,5 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Diagnose and reconstruct package
-        shell: bash
-        run: |
-          set -u
-          python - <<'PY'
-          from pathlib import Path
-          for n in (1,2):
-              s=''.join(Path(f'.github/scripts/authority-gaps-20260902.part{n}.b64').read_text().split())
-              bad=[(i,c) for i,c in enumerate(s) if c not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=']
-              print('PART%d_LEN=%d MOD4=%d EQ=%d HEAD=%s TAIL=%s BAD=%s' % (n,len(s),len(s)%4,s.count('='),s[:24],s[-48:],bad[:10]))
-              if '=' in s: print('PART%d_FIRST_EQ=%d LAST_EQ=%d' % (n,s.find('='),s.rfind('=')))
-          PY
-          set +e
-          tr -d '[:space:]' < .github/scripts/authority-gaps-20260902.part1.b64 | base64 -d > /tmp/p1.bin 2>/tmp/p1.err; r1=$?
-          tr -d '[:space:]' < .github/scripts/authority-gaps-20260902.part2.b64 | base64 -d > /tmp/p2.bin 2>/tmp/p2.err; r2=$?
-          echo "SEPARATE_DECODE_RC=$r1,$r2 SIZE=$(wc -c </tmp/p1.bin),$(wc -c </tmp/p2.bin)"
-          cat /tmp/p1.err /tmp/p2.err || true
-          cat /tmp/p1.bin /tmp/p2.bin > /tmp/separate.gz
-          gzip -t /tmp/separate.gz; echo "SEPARATE_GZIP_RC=$?"
-          cat .github/scripts/authority-gaps-20260902.part1.b64 .github/scripts/authority-gaps-20260902.part2.b64 | tr -d '[:space:]' | base64 -d > /tmp/joined.gz 2>/tmp/joined.err; rj=$?
-          echo "JOINED_DECODE_RC=$rj SIZE=$(wc -c </tmp/joined.gz)"
-          cat /tmp/joined.err || true
-          gzip -t /tmp/joined.gz; echo "JOINED_GZIP_RC=$?"
-          set -e
-          if gzip -t /tmp/separate.gz 2>/dev/null; then gzip -dc /tmp/separate.gz > /tmp/pkg.json; mode=separate; elif gzip -t /tmp/joined.gz 2>/dev/null; then gzip -dc /tmp/joined.gz > /tmp/pkg.json; mode=joined; else echo NO_VALID_RECONSTRUCTION; exit 7; fi
-          echo "MODE=$mode"
-          python - <<'PY'
-          import json,hashlib
-          raw=open('/tmp/pkg.json','rb').read(); data=json.loads(raw)
-          print('COUNT='+str(len(data))); print('SHA256='+hashlib.sha256(raw).hexdigest()); print('KEYS='+','.join(sorted(set().union(*(set(x.keys()) for x in data)))))
-          for i,a in enumerate(data,1): print('ITEM=%d|POS=%s|TOPIC=%s|CATEGORY=%s|SLUG=%s|EN=%s|TITLE=%s' % (i,a.get('pos'),a.get('topic'),a.get('category'),a.get('slug'),a.get('en_slug'),a.get('title')))
-          assert len(data)==21
-          assert len({a['slug'] for a in data})==21
-          assert len({a['en_slug'] for a in data})==21
-          PY
+      - name: Diagnose package
+        run: python .github/scripts/diagnose-authority-gaps-payload-20260902.py
