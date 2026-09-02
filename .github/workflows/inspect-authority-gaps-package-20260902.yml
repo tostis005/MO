@@ -1,0 +1,40 @@
+name: Validate authority gaps editorial package 2026-09-02
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-authority-gaps-package-20260902.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and inspect package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/scripts/authority-gaps-20260902.part1.b64 .github/scripts/authority-gaps-20260902.part2.b64 | tr -d '[:space:]' > /tmp/authority-gaps.b64
+          base64 -d /tmp/authority-gaps.b64 > /tmp/authority-gaps.json.gz
+          gzip -t /tmp/authority-gaps.json.gz
+          gzip -dc /tmp/authority-gaps.json.gz > /tmp/authority-gaps.json
+          python - <<'PY'
+          import json, hashlib
+          p='/tmp/authority-gaps.json'
+          raw=open(p,'rb').read()
+          data=json.loads(raw)
+          assert isinstance(data,list), type(data)
+          print('COUNT=',len(data))
+          print('JSON_SHA256=',hashlib.sha256(raw).hexdigest())
+          print('TOP_KEYS=',sorted(set().union(*(set(a.keys()) for a in data))))
+          for i,a in enumerate(data,1):
+              print('ITEM',i,'POS=',a.get('pos'),'TOPIC=',a.get('topic'),'CATEGORY=',a.get('category'),'SLUG=',a.get('slug'),'EN_SLUG=',a.get('en_slug'),'TITLE=',a.get('title'))
+          assert len(data)==21
+          assert len({a.get('slug') for a in data})==21
+          assert len({a.get('en_slug') for a in data})==21
+          PY
