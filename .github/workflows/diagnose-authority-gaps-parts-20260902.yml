@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/diagnose-authority-gaps-parts-20260902.yml'
       - '.github/scripts/authority-gaps-diagnostic-trigger-20260902.txt'
 
 permissions:
@@ -21,14 +22,12 @@ jobs:
           set -u
           python - <<'PY'
           from pathlib import Path
-          import re
           for n in (1,2):
               p=Path(f'.github/scripts/authority-gaps-20260902.part{n}.b64')
               s=''.join(p.read_text().split())
               bad=[(i,c) for i,c in enumerate(s) if c not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=']
               print(f'PART{n}_LEN={len(s)} MOD4={len(s)%4} EQ={s.count("=")} HEAD={s[:24]} TAIL={s[-48:]} BAD={bad[:10]}')
-              if '=' in s:
-                  print(f'PART{n}_FIRST_EQ={s.find("=")} LAST_EQ={s.rfind("=")}')
+              if '=' in s: print(f'PART{n}_FIRST_EQ={s.find("=")} LAST_EQ={s.rfind("=")}')
           PY
           set +e
           tr -d '[:space:]' < .github/scripts/authority-gaps-20260902.part1.b64 | base64 -d > /tmp/p1.bin 2>/tmp/p1.err; r1=$?
