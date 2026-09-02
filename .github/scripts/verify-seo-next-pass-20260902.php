@@ -1,6 +1,39 @@
 <?php
 if (!defined('ABSPATH')) exit;
 function emdo_v_words($s){ preg_match_all('/[\p{L}\p{N}]+/u',wp_strip_all_tags((string)$s),$m); return count($m[0]); }
+function emdo_v_schema_state($url){
+ $state=['url'=>$url,'http_code'=>0,'has_blogposting'=>false,'blogposting_author'=>null,'has_org_author_ref'=>false,'has_person_author_node'=>false,'has_datePublished'=>false,'has_dateModified'=>false,'has_article_published_og'=>false,'has_placeholder_text'=>false,'has_visible_date_hide_css'=>false,'jsonld_types'=>[]];
+ $r=wp_remote_get(add_query_arg('emdo_verify',time(),$url),['timeout'=>20,'redirection'=>2,'headers'=>['Cache-Control'=>'no-cache']]);
+ if(is_wp_error($r)){ $state['error']=$r->get_error_message(); return $state; }
+ $state['http_code']=(int)wp_remote_retrieve_response_code($r); $body=(string)wp_remote_retrieve_body($r);
+ $state['has_article_published_og']=strpos($body,'article:published_time')!==false;
+ $state['has_placeholder_text']=stripos($body,'Imagen provisional del blog de El Mercado de Origen')!==false;
+ $state['has_visible_date_hide_css']=strpos($body,'emdo-evergreen-visible-date-20260902')!==false;
+ if(preg_match_all('/<script[^>]+type=["\']application\/ld\+json["\'][^>]*>(.*?)<\/script>/is',$body,$mm)){
+  foreach($mm[1] as $raw){
+   $j=json_decode(html_entity_decode($raw,ENT_QUOTES|ENT_HTML5,'UTF-8'),true); if(!is_array($j)) continue;
+   $nodes=isset($j['@graph'])&&is_array($j['@graph'])?$j['@graph']:[$j];
+   foreach($nodes as $node){
+    if(!is_array($node)||empty($node['@type'])) continue;
+    $types=(array)$node['@type']; foreach($types as $type)$state['jsonld_types'][]=$type;
+    $lower=array_map('strtolower',$types);
+    if(array_intersect($lower,['article','blogposting','newsarticle'])){
+     $state['has_blogposting']=true;
+     $state['blogposting_author']=$node['author']??null;
+     $author_id=is_array($state['blogposting_author'])?($state['blogposting_author']['@id']??''):'';
+     $state['has_org_author_ref']=rtrim((string)$author_id,'/')===rtrim(home_url('/'),'\/') . '/#organization';
+     if(isset($node['datePublished']))$state['has_datePublished']=true;
+     if(isset($node['dateModified']))$state['has_dateModified']=true;
+    }
+    if(in_array('person',$lower,true)){
+     $name=trim(wp_strip_all_tags((string)($node['name']??''))); $id=(string)($node['@id']??'');
+     if($name==='El Mercado de Origen'||str_contains($id,'/author/admin-mercado/'))$state['has_person_author_node']=true;
+    }
+   }
+  }
+ }
+ return $state;
+}
 $errors=[];
 $cat_ids=[439,440,441,442,443,444,438,450,445];
 $cats=[];
@@ -34,31 +67,18 @@ foreach($slugs as $slug){
 $alt=(string)get_post_meta(13442,'_wp_attachment_image_alt',true);
 if($alt!=='') $errors[]='Placeholder alt not empty';
 
-$schema=['sample'=>null,'http_code'=>0,'has_blogposting'=>false,'has_org_author_ref'=>false,'has_person_author_node'=>false,'has_datePublished'=>false,'has_dateModified'=>false,'has_article_published_og'=>false,'has_placeholder_text'=>false,'jsonld_types'=>[]];
+$schema=[];
 if($posts){
- $sample=$posts[0]['es_url']; $schema['sample']=$sample;
- $r=wp_remote_get($sample,['timeout'=>20,'redirection'=>2,'headers'=>['Cache-Control'=>'no-cache']]);
- if(is_wp_error($r)){ $errors[]='Sample HTTP failed: '.$r->get_error_message(); }
- else {
-   $schema['http_code']=(int)wp_remote_retrieve_response_code($r); $body=(string)wp_remote_retrieve_body($r);
-   if($schema['http_code']!==200) $errors[]='Sample HTTP code '.$schema['http_code'];
-   $schema['has_blogposting']=strpos($body,'"@type":"BlogPosting"')!==false;
-   $schema['has_org_author_ref']=strpos($body,home_url('/').'#organization')!==false;
-   $schema['has_person_author_node']=strpos($body,'"@type":"Person"')!==false && strpos($body,'#author')!==false;
-   $schema['has_datePublished']=strpos($body,'datePublished')!==false;
-   $schema['has_dateModified']=strpos($body,'dateModified')!==false;
-   $schema['has_article_published_og']=strpos($body,'article:published_time')!==false;
-   $schema['has_placeholder_text']=stripos($body,'Imagen provisional del blog de El Mercado de Origen')!==false;
-   if(preg_match_all('/<script[^>]+type=["\']application\/ld\+json["\'][^>]*>(.*?)<\/script>/is',$body,$mm)){
-     foreach($mm[1] as $raw){ $j=json_decode(html_entity_decode($raw,ENT_QUOTES|ENT_HTML5,'UTF-8'),true); if(!is_array($j)) continue; $nodes=isset($j['@graph'])&&is_array($j['@graph'])?$j['@graph']:[$j]; foreach($nodes as $node){ if(isset($node['@type'])) $schema['jsonld_types'][]=$node['@type']; } }
-   }
-   if(!$schema['has_blogposting']) $errors[]='Schema missing BlogPosting';
-   if(!$schema['has_org_author_ref']) $errors[]='Schema missing Organization author ref';
-   if($schema['has_person_author_node']) $errors[]='Schema still has Person author node';
-   if($schema['has_datePublished']) $errors[]='Schema still has datePublished';
-   if($schema['has_dateModified']) $errors[]='Schema still has dateModified';
-   if($schema['has_article_published_og']) $errors[]='OpenGraph still has article:published_time';
-   if($schema['has_placeholder_text']) $errors[]='Frontend still exposes placeholder text';
+ foreach([['lang'=>'es','url'=>$posts[0]['es_url']],['lang'=>'en','url'=>$posts[0]['en_url']]] as $sample){
+  $s=emdo_v_schema_state($sample['url']); $s['lang']=$sample['lang']; $schema[]=$s;
+  if(($s['http_code']??0)!==200)$errors[]='Sample HTTP failed '.$sample['lang'];
+  if(!$s['has_blogposting'])$errors[]='Schema missing BlogPosting '.$sample['lang'];
+  if(!$s['has_org_author_ref'])$errors[]='BlogPosting author is not Organization '.$sample['lang'];
+  if($s['has_person_author_node'])$errors[]='Schema still has brand Person author '.$sample['lang'];
+  if(!$s['has_datePublished'])$errors[]='Schema missing truthful datePublished '.$sample['lang'];
+  if(!$s['has_dateModified'])$errors[]='Schema missing truthful dateModified '.$sample['lang'];
+  if(!$s['has_visible_date_hide_css'])$errors[]='Visible evergreen date CSS missing '.$sample['lang'];
+  if($s['has_placeholder_text'])$errors[]='Frontend still exposes placeholder text '.$sample['lang'];
  }
 }
 
