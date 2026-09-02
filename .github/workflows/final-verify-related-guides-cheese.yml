@@ -11,6 +11,13 @@ permissions:
   contents: read
 
 jobs:
+  diagnose_authority_gaps:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose authority gaps editorial package
+        run: python .github/scripts/diagnose-authority-gaps-payload-20260902.py
+
   verify:
     runs-on: ubuntu-24.04
     steps:
@@ -34,14 +41,14 @@ jobs:
             tmp="$(mktemp)"
             curl -L -sS --max-time 45 "${url}?rg_final=${GITHUB_RUN_ID}" -o "$tmp"
             python3 - "$url" "$tmp" <<'PY'
-import re, sys
-url, path = sys.argv[1], sys.argv[2]
-html = open(path, 'r', encoding='utf-8', errors='ignore').read()
-for heading in ('Guías relacionadas', 'Related guides'):
-    for m in re.finditer(r'<h2>\s*'+re.escape(heading)+r'\s*</h2>(.*?)(?=<h2>|$)', html, re.I|re.S):
-        if '<a ' not in m.group(1).lower():
-            raise SystemExit(f'Empty related heading: {url}')
-print('OK', url)
-PY
+          import re, sys
+          url, path = sys.argv[1], sys.argv[2]
+          html = open(path, 'r', encoding='utf-8', errors='ignore').read()
+          for heading in ('Guías relacionadas', 'Related guides'):
+              for m in re.finditer(r'<h2>\s*'+re.escape(heading)+r'\s*</h2>(.*?)(?=<h2>|$)', html, re.I|re.S):
+                  if '<a ' not in m.group(1).lower():
+                      raise SystemExit(f'Empty related heading: {url}')
+          print('OK', url)
+          PY
             rm -f "$tmp"
           done
