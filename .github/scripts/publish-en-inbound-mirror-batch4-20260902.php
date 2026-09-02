@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) exit;
 $targets=[13029,13068,13360,13364,13409,13453,13507,13707,13711,13715,13717,13719];
 $marker='<!-- emdo-en-inbound-mirror-20260902-b4 -->';
 function emdo_b4_en_url($id){$s=(string)get_post_meta($id,'_en_US_post_name',true);return $s?rtrim(home_url('/'),'/').'/en/'.trim($s,'/').'/':'';}
-function emdo_b4_insert($html,$block){foreach(['~<h2\b[^>]*>\s*(?:Sources|Sources and references|References|Source|Related products|Related guides)\b~iu'] as $p){if(preg_match($p,$html,$m,PREG_OFFSET_CAPTURE))return substr($html,0,$m[0][1]).$block."\n".substr($html,$m[0][1]);}return rtrim($html)."\n\n".$block;}
+function emdo_b4_insert($html,$block){foreach(['~<h2\\b[^>]*>\\s*(?:Sources|Sources and references|References|Source|Related products|Related guides)\\b~iu'] as $p){if(preg_match($p,$html,$m,PREG_OFFSET_CAPTURE))return substr($html,0,$m[0][1]).$block."\n".substr($html,$m[0][1]);}return rtrim($html)."\n\n".$block;}
 $posts=get_posts(['post_type'=>'post','post_status'=>'publish','numberposts'=>-1,'orderby'=>'ID','order'=>'ASC']);
 $donor_targets=[];$unmatched=[];
 foreach($targets as $tid){$tp=get_post($tid);if(!$tp||$tp->post_status!=='publish'||get_post_meta($tid,'_en_US_published',true)!=='1'){$unmatched[]=['target'=>$tid,'reason'=>'target unavailable'];continue;}$esurl=get_permalink($tid);$enurl=emdo_b4_en_url($tid);$entitle=(string)get_post_meta($tid,'_en_US_post_title',true);$chosen=null;
