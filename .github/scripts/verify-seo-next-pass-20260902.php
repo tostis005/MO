@@ -21,7 +21,8 @@ function emdo_v_schema_state($url){
      $state['has_blogposting']=true;
      $state['blogposting_author']=$node['author']??null;
      $author_id=is_array($state['blogposting_author'])?($state['blogposting_author']['@id']??''):'';
-     $state['has_org_author_ref']=rtrim((string)$author_id,'/')===rtrim(home_url('/'),'\/') . '/#organization';
+     $author_parts=wp_parse_url((string)$author_id); $site_parts=wp_parse_url(home_url('/'));
+     $state['has_org_author_ref']=!empty($author_parts['host'])&&!empty($site_parts['host'])&&strtolower($author_parts['host'])===strtolower($site_parts['host'])&&str_ends_with((string)$author_id,'/#organization');
      if(isset($node['datePublished']))$state['has_datePublished']=true;
      if(isset($node['dateModified']))$state['has_dateModified']=true;
     }
