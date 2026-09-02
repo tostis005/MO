@@ -1,17 +1,121 @@
-name: Verify empty related guides cheese
+name: Publish authority gaps production 2026-09-02
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch:
+    paths:
+      - '.github/scripts/authority-gaps-production-trigger-20260902.txt'
 
 permissions:
   contents: read
 
 jobs:
-  validate_authority_gaps:
+  publish:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build and validate complete authority gaps package
-        run: python .github/scripts/build-authority-gaps-package-20260902.py /tmp/authority-gaps-all.json
+
+      - name: Build and validate 21-article bilingual package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/build-authority-gaps-package-20260902.py /tmp/authority-gaps-all.json
+          python - <<'PY'
+          import json
+          a=json.load(open('/tmp/authority-gaps-all.json',encoding='utf-8'))
+          assert len(a)==21
+          assert sum(x['category']=='quesos' for x in a)==13
+          assert sum(x['category']=='aceites' for x in a)==8
+          assert all(len(x['sections_es'])>=6 and len(x['sections_en'])>=6 for x in a)
+          print('FINAL_EDITORIAL_PACKAGE_OK=21')
+          PY
+          php -l .github/scripts/publish-authority-gaps-20260902.php
+          php -l .github/scripts/run-authority-gaps-20260902.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Publish to production WordPress
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          REMOTE_DIR="/tmp/emdo-authority-gaps-${GITHUB_RUN_ID}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE_DIR'"
+          sshpass -e scp $SCP_OPTIONS /tmp/authority-gaps-all.json "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/authority-gaps-all.json"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/publish-authority-gaps-20260902.php .github/scripts/run-authority-gaps-20260902.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DIR/"
+          set +e
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_DIR/run-authority-gaps-20260902.php' --path='$PROD_PATH' --allow-root; rc=\$?; rm -rf '$REMOTE_DIR'; exit \$rc" 2>&1 | tee /tmp/authority-gaps-publish.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            grep -F 'EMDO_AUTHORITY_GAPS_ERROR:' /tmp/authority-gaps-publish.txt || true
+            exit "$rc"
+          fi
+          grep -Fq 'EMDO_AUTHORITY_GAPS_BEGIN' /tmp/authority-gaps-publish.txt
+          grep -Fq '"count":21' /tmp/authority-gaps-publish.txt
+          grep -Fq '"cheese":13' /tmp/authority-gaps-publish.txt
+          grep -Fq '"oils":8' /tmp/authority-gaps-publish.txt
+          grep -Fq 'EMDO_AUTHORITY_GAPS_END' /tmp/authority-gaps-publish.txt
+
+      - name: Verify production database and 42 public language URLs
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          COUNT="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=256M \"\$wp_bin\" post list --path='$PROD_PATH' --post_type=post --post_status=publish --meta_key='_emdo_authority_gaps_20260902' --meta_value='2026-09-02.authority-gaps.v1' --format=count --skip-plugins --skip-themes --allow-root 2>/dev/null")"
+          echo "PRODUCTION_MARKER_COUNT=$COUNT"
+          test "$COUNT" = "21"
+          python - <<'PY' > /tmp/authority-gap-urls.txt
+          import json
+          base='https://www.elmercadodeorigen.com'
+          for a in json.load(open('/tmp/authority-gaps-all.json',encoding='utf-8')):
+              print(f"{base}/{a['slug']}/")
+              print(f"{base}/en/{a['en_slug']}/")
+          PY
+          test "$(wc -l < /tmp/authority-gap-urls.txt)" -eq 42
+          check_url(){
+            local url="$1" code=''
+            for attempt in 1 2 3 4 5; do
+              code="$(curl -L -sS -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 50 -H 'Cache-Control: no-cache' "$url?emdo_verify=${GITHUB_RUN_ID}" || true)"
+              if [ "$code" = 200 ]; then echo "OK $url"; return 0; fi
+              sleep 4
+            done
+            echo "FAILED $code $url" >&2; return 1
+          }
+          while IFS= read -r url; do check_url "$url"; done < /tmp/authority-gap-urls.txt
+          curl -L -sS --max-time 50 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/queso-garrotxa-igp-origen-elaboracion-caracteristicas/?verify=${GITHUB_RUN_ID}" -o /tmp/garrotxa.html
+          grep -Fq 'Qué protege realmente la IGP Garrotxa' /tmp/garrotxa.html
+          curl -L -sS --max-time 50 -H 'Cache-Control: no-cache' "https://www.elmercadodeorigen.com/aceites-andalucia-zonas-productoras-dop-variedades-perfiles-sabor/?verify=${GITHUB_RUN_ID}" -o /tmp/andalucia-oil.html
+          grep -Fq 'doce DOP de aceite' /tmp/andalucia-oil.html
+          echo 'AUTHORITY_GAPS_PRODUCTION_VERIFY_OK=21_POSTS_42_URLS'
