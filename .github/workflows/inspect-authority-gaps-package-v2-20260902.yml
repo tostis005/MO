@@ -1,0 +1,37 @@
+name: Validate authority gaps package v2 2026-09-02
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/authority-gaps-validation-trigger-20260902.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and inspect package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/scripts/authority-gaps-20260902.part1.b64 .github/scripts/authority-gaps-20260902.part2.b64 | tr -d '[:space:]' > /tmp/pkg.b64
+          base64 -d /tmp/pkg.b64 > /tmp/pkg.gz
+          gzip -t /tmp/pkg.gz
+          gzip -dc /tmp/pkg.gz > /tmp/pkg.json
+          python - <<'PY'
+          import json,hashlib
+          raw=open('/tmp/pkg.json','rb').read(); data=json.loads(raw)
+          print('COUNT='+str(len(data)))
+          print('SHA256='+hashlib.sha256(raw).hexdigest())
+          print('KEYS='+','.join(sorted(set().union(*(set(a.keys()) for a in data)))))
+          for i,a in enumerate(data,1):
+              print(f"ITEM={i}|POS={a.get('pos')}|TOPIC={a.get('topic')}|CATEGORY={a.get('category')}|SLUG={a.get('slug')}|EN={a.get('en_slug')}|TITLE={a.get('title')}")
+          assert len(data)==21
+          assert len({a['slug'] for a in data})==21
+          assert len({a['en_slug'] for a in data})==21
+          PY
