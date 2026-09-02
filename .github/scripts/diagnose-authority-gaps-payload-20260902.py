@@ -1,31 +1,42 @@
 from pathlib import Path
-import base64, gzip, json, hashlib, sys
+import base64, json, hashlib, zlib, sys
 
 parts=[]
 for n in (1,2):
     s=''.join(Path(f'.github/scripts/authority-gaps-20260902.part{n}.b64').read_text().split())
-    bad=[(i,c) for i,c in enumerate(s) if c not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=']
-    print(f'PART{n}_LEN={len(s)} MOD4={len(s)%4} EQ={s.count("=")} HEAD={s[:24]} TAIL={s[-48:]} BAD={bad[:10]}')
     parts.append(s)
-
 joined=''.join(parts)
 padded=joined + ('=' * ((-len(joined)) % 4))
-print(f'JOINED_LEN={len(joined)} PADDED_LEN={len(padded)} ADDED_PADDING={len(padded)-len(joined)}')
+raw=base64.b64decode(padded, validate=True)
+print(f'BASE64_BYTES={len(raw)}')
+obj=zlib.decompressobj(31)
+out=b''
 try:
-    raw=base64.b64decode(padded, validate=True)
-    print('BASE64_OK=1 BYTES='+str(len(raw)))
-    decoded=gzip.decompress(raw)
-    print('GZIP_OK=1 JSON_BYTES='+str(len(decoded)))
+    out += obj.decompress(raw)
+    out += obj.flush()
 except Exception as e:
-    print('DECODE_ERROR='+repr(e))
-    sys.exit(7)
-
-data=json.loads(decoded)
-print('COUNT='+str(len(data)))
-print('SHA256='+hashlib.sha256(decoded).hexdigest())
-print('KEYS='+','.join(sorted(set().union(*(set(x.keys()) for x in data)))))
-for i,a in enumerate(data,1):
-    print(f'ITEM={i}|POS={a.get("pos")}|TOPIC={a.get("topic")}|CATEGORY={a.get("category")}|SLUG={a.get("slug")}|EN={a.get("en_slug")}|TITLE={a.get("title")}')
-assert len(data)==21
-assert len({a['slug'] for a in data})==21
-assert len({a['en_slug'] for a in data})==21
+    print('ZLIB_ERROR='+repr(e))
+print(f'DECOMPRESSED_BYTES={len(out)} EOF={obj.eof} UNUSED={len(obj.unused_data)} UNCONSUMED={len(obj.unconsumed_tail)}')
+text=out.decode('utf-8',errors='replace')
+print('START='+text[:200].replace('\n','\\n'))
+print('END='+text[-2000:].replace('\n','\\n'))
+try:
+    data=json.loads(text)
+    print('JSON_COMPLETE=1 COUNT='+str(len(data)))
+    for i,a in enumerate(data,1): print(f'ITEM={i}|POS={a.get("pos")}|SLUG={a.get("slug")}|EN={a.get("en_slug")}|TITLE={a.get("title")}')
+except Exception as e:
+    print('JSON_COMPLETE=0 ERROR='+repr(e))
+    # Recover complete top-level objects from an array prefix.
+    dec=json.JSONDecoder(); idx=0; items=[]
+    while idx < len(text) and text[idx].isspace(): idx+=1
+    if idx < len(text) and text[idx]=='[': idx+=1
+    while True:
+        while idx < len(text) and (text[idx].isspace() or text[idx]==','): idx+=1
+        if idx>=len(text) or text[idx]==']': break
+        try:
+            val,end=dec.raw_decode(text,idx); items.append(val); idx=end
+        except Exception as err:
+            print('RECOVERY_STOP_INDEX='+str(idx)+' ERROR='+repr(err)); break
+    print('RECOVERED_COMPLETE_ITEMS='+str(len(items)))
+    for i,a in enumerate(items,1): print(f'RECOVERED={i}|POS={a.get("pos")}|SLUG={a.get("slug")}|EN={a.get("en_slug")}|TITLE={a.get("title")}')
+    print('PARTIAL_OBJECT_PREFIX='+text[idx:idx+4000].replace('\n','\\n'))
