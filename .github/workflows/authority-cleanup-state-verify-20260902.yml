@@ -1,0 +1,52 @@
+name: Authority cleanup final state verification 2026-09-02
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.cleanup-triggers/authority-cleanup-state-verify-20260902.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Verify cleanup state read-only
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval '
+            function wcx(\$h){preg_match_all(\"/[\\p{L}\\p{N}]+(?:[’\\x27-][\\p{L}\\p{N}]+)*/u\",wp_strip_all_tags((string)\$h),\$m);return count(\$m[0]);}
+            \$canon=[14040,14041,14042,14043,14044,14045,14046,14047,14048,14049]; \$dup=[14061,14062,14063,14064,14065,14066,14067,14068,14069,14070]; \$regional=[14088,14089,14090,14091,14092,14093,14094,14095,14096,14097,14098,14099,14100]; \$trash=[12863,12866,12867,12977,13027,13091,13349,13486,13705,13712,13713,13714,13739,13740,13744,13745,13746,13758,13763];
+            \$o=[\"canon\"=>[],\"dup\"=>[],\"regional\"=>[],\"trash\"=>[],\"redirects\"=>get_option(\"emdo_authority_redirects_20260902\",[]),\"backup_present\"=>get_option(\"emdo_authority_cleanup_backup_20260902\",false)!==false];
+            foreach(\$canon as \$id) \$o[\"canon\"][]=[\"id\"=>\$id,\"status\"=>get_post_status(\$id),\"marker\"=>get_post_meta(\$id,\"_emdo_cannibalization_cleanup_20260902\",true),\"es\"=>wcx(get_post_field(\"post_content\",\$id)),\"en\"=>wcx(get_post_meta(\$id,\"_en_US_post_content\",true))];
+            foreach(\$dup as \$id) \$o[\"dup\"][]=[\"id\"=>\$id,\"status\"=>get_post_status(\$id),\"en_pub\"=>get_post_meta(\$id,\"_en_US_published\",true),\"target\"=>get_post_meta(\$id,\"_emdo_redirect_target\",true)];
+            foreach(\$regional as \$id) \$o[\"regional\"][]=[\"id\"=>\$id,\"status\"=>get_post_status(\$id),\"marker\"=>get_post_meta(\$id,\"_emdo_cannibalization_cleanup_20260902\",true),\"es\"=>wcx(get_post_field(\"post_content\",\$id)),\"en\"=>wcx(get_post_meta(\$id,\"_en_US_post_content\",true))];
+            foreach(\$trash as \$id) \$o[\"trash\"][]=[\"id\"=>\$id,\"status\"=>get_post_status(\$id)];
+            \$o[\"pairing_marker\"]=get_post_meta(14083,\"_emdo_cannibalization_cleanup_20260902\",true); echo \"STATE_BEGIN\\n\".wp_json_encode(\$o,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES).\"\\nSTATE_END\\n\";
+          ' --path='$PROD_PATH' --allow-root"
+
+          base='https://www.elmercadodeorigen.com'
+          es_old=(maduracion-queso-proteolisis-lipolisis-aroma-textura lavado-cuajada-queso-que-es-por-que-se-hace-sabor-textura ph-acidez-queso-que-miden-textura-sabor-seguridad humedad-actividad-agua-queso-diferencias-textura-conservacion cuanta-leche-hace-falta-kilo-queso-rendimiento-factores suero-queso-que-es-que-contiene-usos-ricotta-requeson por-que-queso-blanco-amarillo-anaranjado-color-leche-carotenoides tamano-formato-queso-influye-maduracion-ruedas-piezas mohos-levaduras-queso-maduracion-flora-deterioro como-transportar-queso-cadena-frio-envios-viajes-recepcion)
+          for slug in "${es_old[@]}"; do code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 40 "$base/$slug/?state=$GITHUB_RUN_ID"); loc=$(curl -sS -I --max-time 40 "$base/$slug/?state=$GITHUB_RUN_ID" | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,\"\");print substr($0,11);exit}'); echo "REDIRECT_ES $code $slug -> $loc"; done
+          echo 'STATE_HTTP_CHECK_DONE'
