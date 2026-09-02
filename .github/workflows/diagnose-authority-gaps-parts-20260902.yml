@@ -1,0 +1,52 @@
+name: Diagnose authority gaps payload encoding 2026-09-02
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/authority-gaps-diagnostic-trigger-20260902.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect payload parts and reconstruction modes
+        shell: bash
+        run: |
+          set -u
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          for n in (1,2):
+              p=Path(f'.github/scripts/authority-gaps-20260902.part{n}.b64')
+              s=''.join(p.read_text().split())
+              bad=[(i,c) for i,c in enumerate(s) if c not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=']
+              print(f'PART{n}_LEN={len(s)} MOD4={len(s)%4} EQ={s.count("=")} HEAD={s[:24]} TAIL={s[-48:]} BAD={bad[:10]}')
+              if '=' in s:
+                  print(f'PART{n}_FIRST_EQ={s.find("=")} LAST_EQ={s.rfind("=")}')
+          PY
+          set +e
+          tr -d '[:space:]' < .github/scripts/authority-gaps-20260902.part1.b64 | base64 -d > /tmp/p1.bin 2>/tmp/p1.err; r1=$?
+          tr -d '[:space:]' < .github/scripts/authority-gaps-20260902.part2.b64 | base64 -d > /tmp/p2.bin 2>/tmp/p2.err; r2=$?
+          echo "SEPARATE_DECODE_RC=$r1,$r2 SIZE=$(wc -c </tmp/p1.bin),$(wc -c </tmp/p2.bin)"
+          cat /tmp/p1.err /tmp/p2.err || true
+          cat /tmp/p1.bin /tmp/p2.bin > /tmp/separate.gz
+          gzip -t /tmp/separate.gz; echo "SEPARATE_GZIP_RC=$?"
+          cat .github/scripts/authority-gaps-20260902.part1.b64 .github/scripts/authority-gaps-20260902.part2.b64 | tr -d '[:space:]' | base64 -d > /tmp/joined.gz 2>/tmp/joined.err; rj=$?
+          echo "JOINED_DECODE_RC=$rj SIZE=$(wc -c </tmp/joined.gz)"
+          cat /tmp/joined.err || true
+          gzip -t /tmp/joined.gz; echo "JOINED_GZIP_RC=$?"
+          set -e
+          if gzip -t /tmp/separate.gz 2>/dev/null; then gzip -dc /tmp/separate.gz > /tmp/pkg.json; mode=separate; elif gzip -t /tmp/joined.gz 2>/dev/null; then gzip -dc /tmp/joined.gz > /tmp/pkg.json; mode=joined; else echo NO_VALID_RECONSTRUCTION; exit 7; fi
+          echo "MODE=$mode"
+          python - <<'PY'
+          import json,hashlib
+          raw=open('/tmp/pkg.json','rb').read(); data=json.loads(raw)
+          print('COUNT='+str(len(data))); print('SHA256='+hashlib.sha256(raw).hexdigest()); print('KEYS='+','.join(sorted(set().union(*(set(x.keys()) for x in data)))))
+          for i,a in enumerate(data,1): print(f"ITEM={i}|POS={a.get('pos')}|TOPIC={a.get('topic')}|CATEGORY={a.get('category')}|SLUG={a.get('slug')}|EN={a.get('en_slug')}|TITLE={a.get('title')}")
+          PY
