@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: EMDO AIOSEO Blog Author
- * Description: Uses El Mercado de Origen (Organization) as the Article author in AIOSEO schema.
+ * Description: Uses El Mercado de Origen (Organization) as the Article author in AIOSEO schema and keeps evergreen dates out of the visible post header.
  * Version: 2026.09.02
  */
 
@@ -42,6 +42,21 @@ add_filter(
 		}
 
 		return array_values( $schema );
+	},
+	100
+);
+
+add_action(
+	'wp_head',
+	static function (): void {
+		if ( ! is_singular( 'post' ) ) {
+			return;
+		}
+		?>
+		<style id="emdo-evergreen-visible-date-20260902">
+			.emo-article-hero__meta > span:first-of-type { display: none !important; }
+		</style>
+		<?php
 	},
 	100
 );
