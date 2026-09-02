@@ -44,6 +44,6 @@ jobs:
           : "${PROD_PATH:?production path not found}"
           REMOTE="/tmp/emdo-seo-evergreen-verify-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/verify-seo-next-pass-20260902.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root 2>/dev/null; rc=\$?; rm -f '$REMOTE'; exit \$rc" | tee /tmp/evergreen-verify.txt
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" 2>&1 | tee /tmp/evergreen-verify.txt
           grep -Fq 'EMDO_SEO_NEXT_VERIFY_BEGIN' /tmp/evergreen-verify.txt
           grep -Fq 'EMDO_SEO_NEXT_VERIFY_END' /tmp/evergreen-verify.txt
