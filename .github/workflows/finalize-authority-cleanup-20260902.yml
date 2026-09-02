@@ -1,0 +1,86 @@
+name: Finalize authority cleanup production 2026-09-02
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.cleanup-triggers/finalize-authority-cleanup-20260902.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate patch
+        run: php -l .github/scripts/finalize-authority-cleanup-20260902.php
+      - name: Apply final editorial patch
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true); php_bin=$(command -v php || true); [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break ;; esac; done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          echo "PROD_PATH=$PROD_PATH" >> "$GITHUB_ENV"
+          REMOTE="/tmp/emdo-finalize-authority-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/finalize-authority-cleanup-20260902.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" 2>&1 | tee /tmp/finalize-authority.txt
+          grep -Fq 'EMDO_FINALIZE_BEGIN' /tmp/finalize-authority.txt
+          grep -Fq '"redirect_count":20' /tmp/finalize-authority.txt
+          grep -Fq 'EMDO_FINALIZE_END' /tmp/finalize-authority.txt
+      - name: Verify all redirects and public canonicals
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://www.elmercadodeorigen.com'
+          check_redirect(){
+            local old="$1" target="$2" got code url
+            got="$(curl -sS -o /dev/null --max-time 45 -w '%{http_code}|%{redirect_url}' "$base/$old/?verify=$GITHUB_RUN_ID")"
+            code="${got%%|*}"; url="${got#*|}"
+            echo "REDIRECT $code $old -> $url"
+            test "$code" = 301
+            test "$url" = "$base/$target/"
+          }
+          check_redirect 'maduracion-queso-proteolisis-lipolisis-aroma-textura' 'como-madura-queso-temperatura-humedad-microbiota-tiempo'
+          check_redirect 'lavado-cuajada-queso-que-es-por-que-se-hace-sabor-textura' 'lavado-cuajada-queso-que-es-como-cambia-sabor-textura'
+          check_redirect 'ph-acidez-queso-que-miden-textura-sabor-seguridad' 'ph-acidez-queso-por-que-importan-textura-sabor-seguridad'
+          check_redirect 'humedad-actividad-agua-queso-diferencias-textura-conservacion' 'humedad-queso-como-cambia-textura-maduracion-conservacion'
+          check_redirect 'cuanta-leche-hace-falta-kilo-queso-rendimiento-factores' 'cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento'
+          check_redirect 'suero-queso-que-es-que-contiene-usos-ricotta-requeson' 'suero-leche-queseria-que-es-que-ocurre-despues-hacer-queso'
+          check_redirect 'por-que-queso-blanco-amarillo-anaranjado-color-leche-carotenoides' 'por-que-queso-blanco-amarillo-naranja-leche-maduracion-colorantes'
+          check_redirect 'tamano-formato-queso-influye-maduracion-ruedas-piezas' 'tamano-formato-queso-como-influye-maduracion'
+          check_redirect 'mohos-levaduras-queso-maduracion-flora-deterioro' 'mohos-levaduras-queso-intencionados-que-hacen-maduracion'
+          check_redirect 'como-transportar-queso-cadena-frio-envios-viajes-recepcion' 'como-transportar-queso-viaje-coche-avion-cadena-frio'
+          check_redirect 'en/cheese-ripening-proteolysis-lipolysis-aroma-texture' 'en/how-cheese-ripens-temperature-humidity-microbiota-time'
+          check_redirect 'en/washing-cheese-curd-what-it-is-why-done-flavour-texture' 'en/washed-curd-cheese-what-it-means-flavour-texture'
+          check_redirect 'en/ph-acidity-cheese-what-they-measure-texture-flavour-safety' 'en/ph-acidity-cheese-why-they-matter-texture-flavour-safety'
+          check_redirect 'en/moisture-water-activity-cheese-difference-texture-storage' 'en/moisture-cheese-how-it-changes-texture-ripening-storage'
+          check_redirect 'en/how-much-milk-one-kilogram-cheese-yield-factors' 'en/how-many-litres-milk-to-make-1-kg-cheese-yield'
+          check_redirect 'en/cheese-whey-what-it-is-contains-uses-ricotta' 'en/what-whey-is-cheesemaking-what-happens-after-cheese'
+          check_redirect 'en/why-cheese-white-yellow-orange-milk-carotenoids-rind-colouring' 'en/why-cheese-white-yellow-orange-milk-ripening-colour'
+          check_redirect 'en/how-cheese-size-affects-ripening-wheels-small-formats-wedges' 'en/how-cheese-size-shape-affect-ripening'
+          check_redirect 'en/moulds-yeasts-cheese-ripening-flora-spoilage' 'en/moulds-yeasts-cheese-intentional-what-they-do-ripening'
+          check_redirect 'en/how-transport-cheese-cold-chain-shipping-travel-receiving-order' 'en/how-to-transport-cheese-travel-car-plane-cold-chain'
+          canon=(como-madura-queso-temperatura-humedad-microbiota-tiempo lavado-cuajada-queso-que-es-como-cambia-sabor-textura ph-acidez-queso-por-que-importan-textura-sabor-seguridad humedad-queso-como-cambia-textura-maduracion-conservacion cuantos-litros-leche-hacen-falta-1-kg-queso-rendimiento suero-leche-queseria-que-es-que-ocurre-despues-hacer-queso por-que-queso-blanco-amarillo-naranja-leche-maduracion-colorantes tamano-formato-queso-como-influye-maduracion mohos-levaduras-queso-intencionados-que-hacen-maduracion como-transportar-queso-viaje-coche-avion-cadena-frio)
+          for slug in "${canon[@]}"; do code=$(curl -L -sS -o /dev/null --max-time 45 -w '%{http_code}' "$base/$slug/?verify=$GITHUB_RUN_ID"); echo "CANON $code $slug"; test "$code" = 200; done
+          regional=(quesos-andalucia-variedades-zonas-productoras-tradicion-quesera quesos-sierra-grazalema-cabra-payoya-origen-tipos-caracteristicas quesos-cataluna-garrotxa-alt-urgell-variedades-tradicionales quesos-aragon-variedades-tradicionales-zonas-queseras quesos-la-rioja-camerano-elaboraciones-tradicionales quesos-comunidad-valenciana-variedades-tradicion-quesera principales-zonas-productoras-aceite-oliva-espana-como-cambia-aove-origen aceites-andalucia-zonas-productoras-dop-variedades-perfiles-sabor aceites-jaen-zonas-denominaciones-origen-variedades-caracteristicas aceites-cordoba-zonas-denominaciones-origen-variedades-caracteristicas aceites-castilla-la-mancha-zonas-denominaciones-origen-variedades aceites-extremadura-zonas-denominaciones-origen-variedades aceites-cataluna-aragon-zonas-denominaciones-origen-variedades)
+          for slug in "${regional[@]}"; do code=$(curl -L -sS -o /dev/null --max-time 45 -w '%{http_code}' "$base/$slug/?verify=$GITHUB_RUN_ID"); echo "REGIONAL $code $slug"; test "$code" = 200; done
+          echo 'AUTHORITY_CLEANUP_FINAL_HTTP_OK'
