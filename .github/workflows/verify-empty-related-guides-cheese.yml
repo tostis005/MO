@@ -9,9 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  diagnose_authority_gaps:
+  validate_authority_gaps:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Diagnose authority gaps editorial package
-        run: python .github/scripts/diagnose-authority-gaps-payload-20260902.py
+      - name: Build and validate complete authority gaps package
+        run: python .github/scripts/build-authority-gaps-package-20260902.py /tmp/authority-gaps-all.json
