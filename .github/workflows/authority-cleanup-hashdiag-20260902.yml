@@ -1,0 +1,29 @@
+name: Authority cleanup payload hash diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.cleanup-triggers/authority-cleanup-hashdiag-20260902.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          set -u
+          sha256sum .github/scripts/cleanup-authority-cannibalization-20260902.part*.b64 || true
+          cat .github/scripts/cleanup-authority-cannibalization-20260902.part{1,2,3,4}.b64 > /tmp/x.b64
+          echo B64_LEN=$(wc -c < /tmp/x.b64)
+          base64 -d /tmp/x.b64 > /tmp/x.gz; echo BASE64_RC=$?
+          sha256sum /tmp/x.gz || true
+          gzip -dc /tmp/x.gz > /tmp/x.php; echo GZIP_RC=$?
+          sha256sum /tmp/x.php || true
+          wc -c /tmp/x.php || true
+          php -l /tmp/x.php || true
