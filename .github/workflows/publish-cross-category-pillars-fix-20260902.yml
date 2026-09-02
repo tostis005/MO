@@ -37,14 +37,14 @@ jobs:
             wp_bin=$(command -v wp || true); php_bin=$(command -v php || true)
             [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
-              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              p=$(dirname "$cfg"); url=$("$php_bin" -d memory_limit=256M "$wp_bin" --path="$p" --skip-plugins --skip-themes --allow-root option get siteurl 2>/dev/null || true)
               case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
             done
           ')"
           : "${PROD_PATH:?production path not found}"
           REMOTE="/tmp/emdo-cross-pillars-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/publish-cross-category-pillars-20260902.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc" 2>&1 | tee /tmp/cross-pillars.txt
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=1024M \"\$wp_bin\" --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root eval-file '$REMOTE'; rc=\$?; rm -f '$REMOTE'; exit \$rc" 2>&1 | tee /tmp/cross-pillars.txt
           grep -Fq 'EMDO_CROSS_CATEGORY_PILLARS_BEGIN' /tmp/cross-pillars.txt
           grep -Fq 'EMDO_CROSS_CATEGORY_PILLARS_END' /tmp/cross-pillars.txt
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1 || true"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root cache flush >/dev/null 2>&1 || true"
