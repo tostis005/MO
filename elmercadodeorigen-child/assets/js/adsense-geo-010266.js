@@ -3,6 +3,7 @@
 
 	var config = window.ElMercadoAdsenseGeo || {};
 	var eligible = false;
+	var googleScriptPromise = null;
 	var debugMode = /(?:^|[?&])adsense_debug=1(?:&|$)/.test(window.location.search);
 	var debug = window.ElMercadoAdsenseGeoDebug = {
 		phase: 'initializing',
@@ -27,6 +28,36 @@
 		return !!document.querySelector(
 			'script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]'
 		);
+	}
+
+	function loadGoogleScript() {
+		if (googleScriptExists()) {
+			return Promise.resolve();
+		}
+
+		if (googleScriptPromise) {
+			return googleScriptPromise;
+		}
+
+		if (!config.publisher) {
+			return Promise.reject(new Error('Missing AdSense publisher'));
+		}
+
+		googleScriptPromise = new Promise(function (resolve, reject) {
+			var script = document.createElement('script');
+			script.async = true;
+			script.crossOrigin = 'anonymous';
+			script.setAttribute('data-emo-adsense-dynamic', '1');
+			script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(config.publisher);
+			script.addEventListener('load', resolve, { once: true });
+			script.addEventListener('error', function () {
+				googleScriptPromise = null;
+				reject(new Error('AdSense script failed to load'));
+			}, { once: true });
+			(document.head || document.documentElement).appendChild(script);
+		});
+
+		return googleScriptPromise;
 	}
 
 	function isPaused() {
@@ -100,7 +131,7 @@
 	}
 
 	function hydrateInArticleAds() {
-		if (!eligible || !config.inArticleSlot || !config.publisher) {
+		if (!eligible || !config.inArticleSlot || !config.publisher || !googleScriptExists()) {
 			return;
 		}
 
@@ -155,11 +186,22 @@
 		}
 	}
 
-	function resumeAdRequests() {
+	function activateAds() {
 		adsbygoogleQueue().pauseAdRequests = 0;
 		debug.adRequestsPaused = false;
-		setPhase('ads_requests_resumed');
-		scheduleInArticleAds();
+		setPhase('eligible_loading_adsense');
+
+		loadGoogleScript()
+			.then(function () {
+				setPhase('adsense_loaded');
+				scheduleInArticleAds();
+			})
+			.catch(function (error) {
+				eligible = false;
+				pauseAdRequests();
+				debug.error = error && error.message ? error.message : String(error || 'unknown_error');
+				setPhase('adsense_load_error');
+			});
 	}
 
 	if (debugMode) {
@@ -171,8 +213,8 @@
 		window.setInterval(renderDebugPanel, 1000);
 	}
 
-	// Seguridad por defecto: aunque otro script alterase el estado antes de
-	// resolver la geografia, mantenemos las solicitudes pausadas.
+	// Seguridad por defecto. No se descarga ningun recurso de Google hasta que
+	// el endpoint confirme expresamente show_ads=true.
 	pauseAdRequests();
 
 	if (!config.endpoint || !config.publisher || typeof window.fetch !== 'function') {
@@ -212,10 +254,10 @@
 
 				if (eligible) {
 					setPhase('eligible');
-					resumeAdRequests();
+					activateAds();
 				} else {
 					pauseAdRequests();
-					setPhase('not_eligible_ads_paused');
+					setPhase('not_eligible_no_adsense');
 				}
 			})
 			.catch(function (error) {
@@ -231,7 +273,7 @@
 
 				eligible = false;
 				pauseAdRequests();
-				setPhase('eligibility_error_ads_paused');
+				setPhase('eligibility_error_no_adsense');
 			});
 	}
 
