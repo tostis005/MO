@@ -1,0 +1,140 @@
+name: Patch blog regression source 0.10.285
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-regression-source-010285.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          # single.php: semantic div + four cards.
+          p = Path('elmercadodeorigen-child/single.php')
+          s = p.read_text()
+          s = s.replace('<section class="emo-related-reading">', '<div class="emo-related-reading" data-emo-related-root="1">', 1)
+          s = s.replace('<div class="emo-journal-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(245px, 100%), 1fr)) !important;">', '<div class="emo-journal-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr)) !important;">', 1)
+          old_end = '\t\t\t</section>\n\t\t<?php endif; ?>\n\t\t<?php wp_reset_postdata(); ?>'
+          new_end = '\t\t\t</div>\n\t\t<?php endif; ?>\n\t\t<?php wp_reset_postdata(); ?>'
+          if old_end in s:
+              s = s.replace(old_end, new_end, 1)
+          p.write_text(s)
+
+          # style.css: restore wide related shell.
+          p = Path('elmercadodeorigen-child/style.css')
+          s = p.read_text()
+          s = s.replace('Single article: align related reading with the 800px editorial column on desktop.', 'Single article: related stories keep enough width for four desktop cards.', 1)
+          s = s.replace('width: min(800px, calc(100% - 32px));', 'width: min(1180px, calc(100% - 32px));', 1)
+          s = s.replace('max-width: 800px;', 'max-width: 1180px;', 1)
+          p.write_text(s)
+
+          # editorial.css: four related cards on desktop.
+          p = Path('elmercadodeorigen-child/assets/css/editorial.css')
+          s = p.read_text()
+          old = '.emo-related-reading .emo-journal-grid {\n\tgrid-template-columns: repeat(3, minmax(0, 1fr));\n}'
+          new = '.emo-related-reading .emo-journal-grid {\n\tgrid-template-columns: repeat(4, minmax(0, 1fr));\n}'
+          if old in s:
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          # Final footer geometry overrides the old 800px rule from single-post.php.
+          p = Path('elmercadodeorigen-child/inc/blog-design-force-010250.php')
+          s = p.read_text()
+          old = '''\t\t\thtml body main#primary.emo-article-page .emo-related-reading .emo-journal-grid {
+\t\t\t\tdisplay: grid !important;
+\t\t\t\twidth: min(100%, 1040px) !important;
+\t\t\t\tmax-width: 1040px !important;
+\t\t\t\tgrid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+\t\t\t\tgap: 20px !important;
+\t\t\t\tmargin: 0 auto !important;
+\t\t\t}'''
+          new = '''\t\t\thtml body.single-post main#primary.emo-article-page > .emo-related-reading > .emo-shell {
+\t\t\t\twidth: min(100%, 1180px) !important;
+\t\t\t\tmax-width: 1180px !important;
+\t\t\t\tmargin-left: auto !important;
+\t\t\t\tmargin-right: auto !important;
+\t\t\t}
+
+\t\t\thtml body main#primary.emo-article-page .emo-related-reading .emo-journal-grid {
+\t\t\t\tdisplay: grid !important;
+\t\t\t\twidth: min(100%, 1040px) !important;
+\t\t\t\tmax-width: 1040px !important;
+\t\t\t\tgrid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+\t\t\t\tgap: 20px !important;
+\t\t\t\tmargin: 0 auto !important;
+\t\t\t}'''
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise SystemExit('related grid anchor missing')
+          p.write_text(s)
+
+          # Footer rhythm: remove the margin that was reintroduced after the third paragraph.
+          p = Path('elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php')
+          s = p.read_text()
+          marker = 'BLOG_NEWSLETTER_TOP_GAP_FINAL_010285'
+          if marker not in s:
+              anchor = '''\t\t\thtml body.single-post article.emo-entry-standard .emo-article-content > p {
+\t\t\t\tmargin-top: 0 !important;
+\t\t\t\tmargin-bottom: 1.05em !important;
+\t\t\t}
+'''
+              extra = anchor + '''
+\t\t\t/* BLOG_NEWSLETTER_TOP_GAP_FINAL_010285 */
+\t\t\thtml body.single-post article.emo-entry-standard .emo-article-content > p:has(+ .emo-inline-special-anchor + .emo-inline-newsletter),
+\t\t\thtml body.single-post article.emo-entry-standard .emo-article-content > p:has(+ .emo-inline-newsletter-anchor) {
+\t\t\t\tmargin-bottom: 6px !important;
+\t\t\t}
+
+\t\t\thtml body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter-anchor {
+\t\t\t\tmargin: 0 !important;
+\t\t\t\tpadding: 0 !important;
+\t\t\t}
+
+\t\t\thtml body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter {
+\t\t\t\tmargin-top: 0 !important;
+\t\t\t\tpadding-top: 10px !important;
+\t\t\t}
+
+\t\t\thtml body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter h3 {
+\t\t\t\tmargin-top: 0 !important;
+\t\t\t\tpadding-top: 0 !important;
+\t\t\t}
+'''
+              if anchor not in s:
+                  raise SystemExit('newsletter rhythm anchor missing')
+              s = s.replace(anchor, extra, 1)
+          p.write_text(s)
+          PY
+
+          php -l elmercadodeorigen-child/single.php
+          php -l elmercadodeorigen-child/inc/blog-design-force-010250.php
+          php -l elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          grep -Fq 'BLOG_NEWSLETTER_TOP_GAP_FINAL_010285' elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          grep -Fq 'repeat(4, minmax(0, 1fr)) !important;' elmercadodeorigen-child/single.php
+          grep -Fq 'max-width: 1180px !important;' elmercadodeorigen-child/inc/blog-design-force-010250.php
+
+      - name: Commit source fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/single.php elmercadodeorigen-child/style.css elmercadodeorigen-child/assets/css/editorial.css elmercadodeorigen-child/inc/blog-design-force-010250.php elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          git commit -m 'Restore four related articles and tighten newsletter top gap'
+          git push origin HEAD:main
