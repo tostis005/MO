@@ -25,48 +25,53 @@ jobs:
           p = Path('elmercadodeorigen-child/inc/adsense-geo-010266.php')
           s = p.read_text()
           anchor = "function elmercado_adsense_get_visitor_country(): string {"
-          helper = """/**
- * Evita inicializar AdSense en territorios donde Google exige CMP TCF.
- * Hasta conectar CookieYes como CMP TCF certificada, no servimos anuncios en
- * EEE, Reino Unido ni Suiza para mantener un unico banner de consentimiento.
- */
-function elmercado_adsense_country_requires_tcf_010283( string $country ): bool {
-\tstatic $countries = array(
-\t\t'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
-\t\t'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',
-\t\t'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'GB', 'CH',
-\t);
-\n\treturn in_array( strtoupper( trim( $country ) ), $countries, true );
-}
-
-"""
+          helper = "\n".join([
+              "/**",
+              " * Evita inicializar AdSense en territorios donde Google exige CMP TCF.",
+              " * Hasta conectar CookieYes como CMP TCF certificada, no servimos anuncios en",
+              " * EEE, Reino Unido ni Suiza para mantener un unico banner de consentimiento.",
+              " */",
+              "function elmercado_adsense_country_requires_tcf_010283( string $country ): bool {",
+              "\tstatic $countries = array(",
+              "\t\t'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',",
+              "\t\t'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',",
+              "\t\t'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'GB', 'CH',",
+              "\t);",
+              "",
+              "\treturn in_array( strtoupper( trim( $country ) ), $countries, true );",
+              "}",
+              "",
+              "",
+          ])
           if 'elmercado_adsense_country_requires_tcf_010283' not in s:
               if anchor not in s:
                   raise SystemExit('visitor country anchor missing')
               s = s.replace(anchor, helper + anchor, 1)
 
-          old = """\t$country  = elmercado_adsense_get_visitor_country();
-\t$can_buy  = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
-\t$show_ads = '' !== $country && false === $can_buy;
-
-\t$response = new WP_REST_Response(
-\t\tarray(
-\t\t\t'country'  => $country,
-\t\t\t'can_buy'  => $can_buy,
-\t\t\t'show_ads' => $show_ads,
-"""
-          new = """\t$country      = elmercado_adsense_get_visitor_country();
-\t$can_buy      = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
-\t$requires_tcf = '' !== $country && elmercado_adsense_country_requires_tcf_010283( $country );
-\t$show_ads     = '' !== $country && false === $can_buy && ! $requires_tcf;
-
-\t$response = new WP_REST_Response(
-\t\tarray(
-\t\t\t'country'      => $country,
-\t\t\t'can_buy'      => $can_buy,
-\t\t\t'requires_tcf' => $requires_tcf,
-\t\t\t'show_ads'     => $show_ads,
-"""
+          old = "\n".join([
+              "\t$country  = elmercado_adsense_get_visitor_country();",
+              "\t$can_buy  = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;",
+              "\t$show_ads = '' !== $country && false === $can_buy;",
+              "",
+              "\t$response = new WP_REST_Response(",
+              "\t\tarray(",
+              "\t\t\t'country'  => $country,",
+              "\t\t\t'can_buy'  => $can_buy,",
+              "\t\t\t'show_ads' => $show_ads,",
+          ])
+          new = "\n".join([
+              "\t$country      = elmercado_adsense_get_visitor_country();",
+              "\t$can_buy      = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;",
+              "\t$requires_tcf = '' !== $country && elmercado_adsense_country_requires_tcf_010283( $country );",
+              "\t$show_ads     = '' !== $country && false === $can_buy && ! $requires_tcf;",
+              "",
+              "\t$response = new WP_REST_Response(",
+              "\t\tarray(",
+              "\t\t\t'country'      => $country,",
+              "\t\t\t'can_buy'      => $can_buy,",
+              "\t\t\t'requires_tcf' => $requires_tcf,",
+              "\t\t\t'show_ads'     => $show_ads,",
+          ])
           if old in s:
               s = s.replace(old, new, 1)
           elif "'requires_tcf' => $requires_tcf" not in s:
