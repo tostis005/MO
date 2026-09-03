@@ -31,7 +31,7 @@ function elmercado_blog_newsletter_copy(): array {
 			'button'      => 'Subscribe',
 			'consent'     => 'I agree to receive emails from El Mercado de Origen. I can unsubscribe at any time.',
 			'privacy'     => 'Privacy policy',
-			'success'     => 'Check your inbox to confirm your subscription.',
+			'success'     => 'Thank you. You are now subscribed.',
 			'already'     => 'You are already subscribed.',
 			'error'       => 'We could not process your subscription. Please try again.',
 		);
@@ -46,7 +46,7 @@ function elmercado_blog_newsletter_copy(): array {
 		'button'      => 'Suscribirme',
 		'consent'     => 'Acepto recibir correos de El Mercado de Origen. Puedo darme de baja en cualquier momento.',
 		'privacy'     => 'Política de privacidad',
-		'success'     => 'Revisa tu correo para confirmar la suscripción.',
+		'success'     => 'Gracias. Ya estás suscrito.',
 		'already'     => 'Ya estás suscrito.',
 		'error'       => 'No hemos podido procesar la suscripción. Inténtalo de nuevo.',
 	);
@@ -61,12 +61,11 @@ function elmercado_blog_newsletter_available(): bool {
 
 /**
  * Construye el formulario de suscripcion a FluentCRM.
+ *
+ * El formulario se renderiza siempre. La disponibilidad real de FluentCRM se
+ * valida al enviar para que una carga tardia del plugin nunca oculte el opt-in.
  */
 function elmercado_blog_newsletter_html( int $post_id ): string {
-	if ( ! elmercado_blog_newsletter_available() ) {
-		return '';
-	}
-
 	$copy        = elmercado_blog_newsletter_copy();
 	$privacy_url = get_privacy_policy_url();
 	$status      = isset( $_GET['emo_newsletter'] ) ? sanitize_key( wp_unslash( $_GET['emo_newsletter'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -88,9 +87,11 @@ function elmercado_blog_newsletter_html( int $post_id ): string {
 	ob_start();
 	?>
 	<aside id="emo-newsletter" class="emo-inline-commerce emo-inline-newsletter" data-emo-commerce="newsletter" hidden aria-hidden="true">
-		<span class="emo-inline-newsletter__eyebrow"><?php echo esc_html( $copy['eyebrow'] ); ?></span>
-		<h3><?php echo esc_html( $copy['title'] ); ?></h3>
-		<p class="emo-inline-newsletter__body"><?php echo esc_html( $copy['body'] ); ?></p>
+		<div class="emo-inline-newsletter__intro">
+			<span class="emo-inline-newsletter__eyebrow"><?php echo esc_html( $copy['eyebrow'] ); ?></span>
+			<h3><?php echo esc_html( $copy['title'] ); ?></h3>
+			<p class="emo-inline-newsletter__body"><?php echo esc_html( $copy['body'] ); ?></p>
+		</div>
 
 		<?php if ( '' !== $message ) : ?>
 			<p class="emo-inline-newsletter__notice" role="status"><?php echo esc_html( $message ); ?></p>
@@ -190,7 +191,7 @@ function elmercado_blog_inject_inline_commercial_blocks( string $content_html ):
 }
 
 /**
- * Procesa la suscripcion publica y la envia a FluentCRM con doble opt-in.
+ * Procesa la suscripcion publica y guarda el contacto como suscrito en un paso.
  */
 function elmercado_blog_handle_subscription(): void {
 	$redirect = isset( $_POST['redirect_to'] ) ? wp_unslash( $_POST['redirect_to'] ) : home_url( '/' );
@@ -215,16 +216,20 @@ function elmercado_blog_handle_subscription(): void {
 			if ( $contact && isset( $contact->status ) && 'subscribed' === (string) $contact->status ) {
 				$result = 'already';
 			} else {
+				/*
+				 * El formulario exige consentimiento explicito. FluentCRM permite usar
+				 * forceUpdate=true en este caso para que una re-suscripcion voluntaria
+				 * pueda devolver el contacto directamente a "subscribed".
+				 */
 				$contact = $contact_api ? $contact_api->createOrUpdate(
 					array(
 						'email'  => $email,
-						'status' => 'pending',
+						'status' => 'subscribed',
 					),
 					true
 				) : false;
 
-				if ( $contact && method_exists( $contact, 'sendDoubleOptinEmail' ) ) {
-					$contact->sendDoubleOptinEmail();
+				if ( $contact ) {
 					$result = 'success';
 				}
 			}
