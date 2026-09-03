@@ -123,8 +123,8 @@ function elmercado_blog_newsletter_html( int $post_id ): string {
 			<p class="emo-inline-newsletter__notice" role="status"><?php echo esc_html( $message ); ?></p>
 		<?php endif; ?>
 
-		<form class="emo-inline-newsletter__form" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
-			<input type="hidden" name="action" value="elmercado_blog_subscribe">
+		<form class="emo-inline-newsletter__form" action="<?php echo esc_url( $redirect_url ); ?>" method="post">
+			<input type="hidden" name="emo_newsletter_submit" value="1">
 			<input type="hidden" name="redirect_to" value="<?php echo esc_url( $redirect_url ); ?>">
 			<?php echo wp_nonce_field( 'elmercado_blog_subscribe', 'emo_newsletter_nonce', true, false ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 			<div class="emo-inline-newsletter__honeypot" aria-hidden="true">
@@ -269,5 +269,14 @@ function elmercado_blog_handle_subscription(): void {
 	exit;
 }
 
-add_action( 'admin_post_elmercado_blog_subscribe', 'elmercado_blog_handle_subscription' );
-add_action( 'admin_post_nopriv_elmercado_blog_subscribe', 'elmercado_blog_handle_subscription' );
+/**
+ * Procesa solo los POST del formulario incrustado en la propia entrada.
+ */
+function elmercado_blog_maybe_handle_subscription(): void {
+	$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : '';
+	$is_submit      = isset( $_POST['emo_newsletter_submit'] ) && '1' === (string) wp_unslash( $_POST['emo_newsletter_submit'] );
+
+	if ( 'POST' === $request_method && $is_submit ) {
+		elmercado_blog_handle_subscription();
+	}
+}
