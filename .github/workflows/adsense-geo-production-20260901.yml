@@ -32,8 +32,10 @@ jobs:
           set -euo pipefail
           php -l elmercadodeorigen-child/inc/adsense-geo-010266.php
           node --check elmercadodeorigen-child/assets/js/adsense-geo-010266.js
-          grep -q 'pauseAdRequests=1' elmercadodeorigen-child/inc/adsense-geo-010266.php
-          grep -q 'pauseAdRequests = 0' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
+          grep -q 'ca-pub-3168527008181132' elmercadodeorigen-child/inc/adsense-geo-010266.php
+          grep -q 'loadGoogleScript' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
+          grep -q 'eligible_loading_adsense' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
+          grep -q 'not_eligible_no_adsense' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
 
       - name: Deploy and verify production
         shell: bash
@@ -99,10 +101,10 @@ jobs:
 
           "$php_bin" -l "$remote_php"
           grep -q 'ca-pub-3168527008181132' "$remote_php"
-          grep -q 'pauseAdRequests=1' "$remote_php"
           grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' "$remote_php"
-          grep -q 'pauseAdRequests = 0' "$remote_js"
-          grep -q 'not_eligible_ads_paused' "$remote_js"
+          grep -q 'loadGoogleScript' "$remote_js"
+          grep -q 'eligible_loading_adsense' "$remote_js"
+          grep -q 'not_eligible_no_adsense' "$remote_js"
           grep -q 'ElMercadoAdsenseGeoDebug' "$remote_js"
 
           stamp=$(date +%Y%m%d%H%M%S)
@@ -152,15 +154,16 @@ jobs:
           head_html="${post_html%%</head>*}"
 
           grep -q 'adsense-geo-010266.js' <<< "$head_html"
-          grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3168527008181132' <<< "$head_html"
-          grep -q 'pauseAdRequests=1' <<< "$head_html"
-          grep -q 'data-wcc="necessary"' <<< "$head_html"
+          if grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' <<< "$head_html"; then
+            echo "AdSense loader is still eager on the initial blog HTML"
+            exit 1
+          fi
 
           if grep -q 'adsense-geo-010266.js' <<< "$home_html"; then
             echo "AdSense geo controller unexpectedly present on home"
             exit 1
           fi
-          if grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3168527008181132' <<< "$home_html"; then
+          if grep -q 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' <<< "$home_html"; then
             echo "AdSense loader unexpectedly present on home"
             exit 1
           fi
