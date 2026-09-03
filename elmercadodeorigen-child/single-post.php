@@ -52,16 +52,33 @@ if ( is_readable( $inline_commerce_module ) ) {
 					box-sizing: border-box !important;
 				}
 
+				/*
+				 * Opt-in horizontal: ocupa todo el ancho util de la columna de lectura.
+				 * No depende de anchos heredados de formularios o plugins.
+				 */
 				body.single-post .emo-inline-newsletter {
-					padding: clamp(24px, 4vw, 34px) !important;
+					display: block;
+					width: 100% !important;
+					max-width: none !important;
+					min-width: 0 !important;
+					padding: clamp(22px, 3vw, 30px) !important;
 					background: #f6f1e8 !important;
 					border: 1px solid rgba(13, 33, 27, 0.12) !important;
-					border-radius: 20px !important;
+					border-radius: 16px !important;
+					box-sizing: border-box !important;
+				}
+
+				body.single-post .emo-inline-newsletter__intro,
+				body.single-post .emo-inline-newsletter__form,
+				body.single-post .emo-inline-newsletter__row {
+					width: 100% !important;
+					max-width: none !important;
+					box-sizing: border-box !important;
 				}
 
 				body.single-post .emo-inline-newsletter__eyebrow {
 					display: block;
-					margin-bottom: 8px;
+					margin-bottom: 7px;
 					font-size: 12px;
 					font-weight: 700;
 					letter-spacing: .09em;
@@ -69,13 +86,13 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				body.single-post .emo-inline-newsletter h3 {
-					margin: 0 0 10px !important;
-					font-size: clamp(24px, 3.2vw, 32px) !important;
-					line-height: 1.16 !important;
+					margin: 0 0 8px !important;
+					font-size: clamp(21px, 2.7vw, 28px) !important;
+					line-height: 1.18 !important;
 				}
 
 				body.single-post .emo-inline-newsletter__body {
-					margin: 0 0 20px !important;
+					margin: 0 0 17px !important;
 				}
 
 				body.single-post .emo-inline-newsletter__row {
@@ -85,20 +102,22 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				body.single-post .emo-inline-newsletter__row input[type="email"] {
+					width: 100% !important;
 					min-width: 0;
 					flex: 1 1 auto;
-					min-height: 48px;
+					min-height: 50px;
 					margin: 0 !important;
 					padding: 11px 14px !important;
 					background: #fff !important;
 					border: 1px solid rgba(13, 33, 27, 0.2) !important;
 					border-radius: 10px !important;
+					box-sizing: border-box !important;
 				}
 
 				body.single-post .emo-inline-newsletter__row button {
-					min-height: 48px;
+					min-height: 50px;
 					margin: 0 !important;
-					padding: 11px 20px !important;
+					padding: 11px 22px !important;
 					border-radius: 10px !important;
 					white-space: nowrap;
 				}
@@ -107,7 +126,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 					display: flex;
 					gap: 9px;
 					align-items: flex-start;
-					margin-top: 13px;
+					margin-top: 12px;
 					font-size: 12px;
 					line-height: 1.45;
 				}
@@ -142,6 +161,10 @@ if ( is_readable( $inline_commerce_module ) ) {
 						margin: 28px 0 !important;
 					}
 
+					body.single-post .emo-inline-newsletter {
+						padding: 20px 18px !important;
+					}
+
 					body.single-post .emo-inline-newsletter__row {
 						flex-direction: column;
 					}
@@ -159,6 +182,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 	add_action(
 		'wp_footer',
 		static function (): void {
+			$eligibility_endpoint = esc_url_raw( rest_url( 'elmercado/v1/adsense-eligibility' ) );
 			?>
 			<script id="elmercado-blog-inline-commerce-runtime-010268">
 			(function () {
@@ -168,6 +192,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 				var specialAnchor = document.querySelector('[data-emo-special-anchor]');
 				var newsletterAnchor = document.querySelector('[data-emo-newsletter-anchor]');
 				var newsletter = document.querySelector('[data-emo-commerce="newsletter"]');
+				var eligibilityEndpoint = <?php echo wp_json_encode( $eligibility_endpoint ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
 
 				if (!main || !specialAnchor) {
 					return;
@@ -229,17 +254,52 @@ if ( is_readable( $inline_commerce_module ) ) {
 					return true;
 				}
 
+				/*
+				 * El opt-in no espera ya al controlador de AdSense. Consulta por su cuenta
+				 * el mismo endpoint sin cache; asi los optimizadores de JS no pueden dejar
+				 * el formulario oculto en paises vendibles como Espana.
+				 */
+				function resolveDirectly() {
+					if (!eligibilityEndpoint || typeof window.fetch !== 'function') {
+						return Promise.reject(new Error('Eligibility unavailable'));
+					}
+
+					var separator = eligibilityEndpoint.indexOf('?') === -1 ? '?' : '&';
+					var url = eligibilityEndpoint + separator + '_blog_optin_geo=' + Date.now();
+
+					return fetch(url, {
+						method: 'GET',
+						credentials: 'same-origin',
+						cache: 'no-store',
+						headers: { 'Accept': 'application/json' }
+					}).then(function (response) {
+						if (!response.ok) {
+							throw new Error('Eligibility HTTP ' + response.status);
+						}
+						return response.json();
+					}).then(function (data) {
+						if (!data || typeof data.can_buy !== 'boolean') {
+							throw new Error('Eligibility country unknown');
+						}
+						applyEligibility(data.can_buy === true);
+						return true;
+					});
+				}
+
 				if (resolveFromGeoDebug()) {
 					return;
 				}
 
-				var attempts = 0;
-				var timer = window.setInterval(function () {
-					attempts += 1;
-					if (resolveFromGeoDebug() || attempts >= 60) {
-						window.clearInterval(timer);
-					}
-				}, 100);
+				resolveDirectly().catch(function () {
+					/* Ultimo recurso: da unos segundos al controlador geografico existente. */
+					var attempts = 0;
+					var timer = window.setInterval(function () {
+						attempts += 1;
+						if (resolveFromGeoDebug() || attempts >= 80) {
+							window.clearInterval(timer);
+						}
+					}, 100);
+				});
 			}());
 			</script>
 			<?php
