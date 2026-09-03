@@ -31,8 +31,12 @@ add_action(
 				padding: 0 !important;
 			}
 
+			/*
+			 * Un pequeño margen directo garantiza que el aire superior se perciba
+			 * aunque cambie la estructura entre el párrafo y el bloque.
+			 */
 			html body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter {
-				margin-top: 0 !important;
+				margin-top: 4px !important;
 				padding-top: 9px !important;
 			}
 
