@@ -14,6 +14,91 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Normaliza un codigo de pais procedente del proxy/CDN.
+ */
+function elmercado_blog_normalize_country_code( $value ): string {
+	$country = strtoupper( trim( sanitize_text_field( (string) $value ) ) );
+
+	if ( ! preg_match( '/^[A-Z]{2}$/', $country ) ) {
+		return '';
+	}
+
+	// Valores especiales de Cloudflare que no representan un pais real.
+	if ( in_array( $country, array( 'XX', 'T1' ), true ) ) {
+		return '';
+	}
+
+	return $country;
+}
+
+/**
+ * Obtiene el pais para el opt-in priorizando cabeceras del proxy/CDN.
+ *
+ * WooCommerce queda como respaldo. Esta ruta es independiente del controlador
+ * de AdSense para que un fallo de aquel no pueda ocultar el formulario.
+ */
+function elmercado_blog_get_visitor_country(): string {
+	$server_keys = array(
+		'HTTP_CF_IPCOUNTRY',
+		'HTTP_CLOUDFRONT_VIEWER_COUNTRY',
+		'HTTP_X_COUNTRY_CODE',
+		'GEOIP_COUNTRY_CODE',
+	);
+
+	foreach ( $server_keys as $key ) {
+		if ( empty( $_SERVER[ $key ] ) ) {
+			continue;
+		}
+
+		$country = elmercado_blog_normalize_country_code( wp_unslash( $_SERVER[ $key ] ) );
+		if ( '' !== $country ) {
+			return $country;
+		}
+	}
+
+	if ( class_exists( 'WC_Geolocation' ) ) {
+		$location = WC_Geolocation::geolocate_ip();
+		$country  = isset( $location['country'] ) ? elmercado_blog_normalize_country_code( $location['country'] ) : '';
+
+		if ( '' !== $country ) {
+			return $country;
+		}
+	}
+
+	return '';
+}
+
+/**
+ * Respuesta geografica sin cache ligada a la propia plantilla del post.
+ *
+ * Se usa como segunda via para el opt-in y evita depender del endpoint de
+ * AdSense. Al ejecutarse al principio de single-post.php todavia no hay salida.
+ */
+function elmercado_blog_maybe_serve_geo_eligibility(): void {
+	$is_geo_request = isset( $_GET['emo_blog_optin_geo'] ) && '1' === (string) wp_unslash( $_GET['emo_blog_optin_geo'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	if ( ! $is_geo_request ) {
+		return;
+	}
+
+	$country = elmercado_blog_get_visitor_country();
+	$can_buy = null;
+
+	if ( '' !== $country && function_exists( 'elmercado_adsense_country_is_shippable' ) ) {
+		$can_buy = elmercado_adsense_country_is_shippable( $country );
+	}
+
+	nocache_headers();
+	wp_send_json(
+		array(
+			'country' => $country,
+			'can_buy' => $can_buy,
+		),
+		200
+	);
+}
+elmercado_blog_maybe_serve_geo_eligibility();
+
+/**
  * Devuelve textos del bloque de suscripcion segun el idioma activo.
  *
  * @return array<string,string>
@@ -84,9 +169,11 @@ function elmercado_blog_newsletter_html( int $post_id ): string {
 		$redirect_url = home_url( '/' );
 	}
 
+	$geo_endpoint = add_query_arg( 'emo_blog_optin_geo', '1', $redirect_url );
+
 	ob_start();
 	?>
-	<aside id="emo-newsletter" class="emo-inline-commerce emo-inline-newsletter" data-emo-commerce="newsletter" hidden aria-hidden="true">
+	<aside id="emo-newsletter" class="emo-inline-commerce emo-inline-newsletter" data-emo-commerce="newsletter" aria-hidden="false">
 		<div class="emo-inline-newsletter__intro">
 			<span class="emo-inline-newsletter__eyebrow"><?php echo esc_html( $copy['eyebrow'] ); ?></span>
 			<h3><?php echo esc_html( $copy['title'] ); ?></h3>
@@ -121,6 +208,76 @@ function elmercado_blog_newsletter_html( int $post_id ): string {
 			</label>
 		</form>
 	</aside>
+	<script data-emo-newsletter-geo-fallback>
+	(function () {
+		'use strict';
+
+		var endpoint = <?php echo wp_json_encode( esc_url_raw( $geo_endpoint ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
+
+		function setVisible(element, visible) {
+			if (!element) {
+				return;
+			}
+			element.hidden = !visible;
+			element.setAttribute('aria-hidden', visible ? 'false' : 'true');
+		}
+
+		function apply(canBuy) {
+			var newsletter = document.getElementById('emo-newsletter');
+			var special = document.querySelector('[data-emo-special-anchor]');
+			var hasSpecial = special && special.getAttribute('data-emo-has-special') === '1';
+
+			// Solo una negativa expresa oculta el opt-in. Si la geo falla o queda
+			// indeterminada, no volvemos a castigar al usuario con un bloque invisible.
+			setVisible(newsletter, canBuy !== false);
+			if (special) {
+				setVisible(special, canBuy === true && hasSpecial);
+			}
+		}
+
+		function resolve() {
+			var newsletter = document.getElementById('emo-newsletter');
+			if (!newsletter) {
+				return;
+			}
+
+			// El HTML nace visible para evitar que cualquier optimizador/defer de JS
+			// convierta un fallo tecnico en un opt-in permanentemente oculto.
+			setVisible(newsletter, true);
+
+			if (!endpoint || typeof window.fetch !== 'function') {
+				return;
+			}
+
+			var separator = endpoint.indexOf('?') === -1 ? '?' : '&';
+			fetch(endpoint + separator + '_emo_geo_ts=' + Date.now(), {
+				method: 'GET',
+				credentials: 'same-origin',
+				cache: 'no-store',
+				headers: { 'Accept': 'application/json' }
+			}).then(function (response) {
+				if (!response.ok) {
+					throw new Error('Geo HTTP ' + response.status);
+				}
+				return response.json();
+			}).then(function (data) {
+				if (!data || typeof data.can_buy !== 'boolean') {
+					apply(null);
+					return;
+				}
+				apply(data.can_buy === true);
+			}).catch(function () {
+				apply(null);
+			});
+		}
+
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', resolve, { once: true });
+		} else {
+			window.setTimeout(resolve, 0);
+		}
+	}());
+	</script>
 	<?php
 	return trim( (string) ob_get_clean() );
 }
@@ -153,20 +310,23 @@ function elmercado_blog_offset_after_paragraph( string $html, int $paragraph ): 
  * vigente, mueve el newsletter al ancla posterior y coloca el especial primero.
  */
 function elmercado_blog_inject_inline_commercial_blocks( string $content_html ): string {
-	if ( ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() ) {
+	if ( ! is_singular( 'post' ) ) {
+		return $content_html;
+	}
+
+	// Idempotencia basada en el propio HTML: evita que una llamada secundaria de
+	// the_content "consuma" el unico intento valido de inyeccion del post real.
+	if ( false !== strpos( $content_html, 'data-emo-commerce="newsletter"' ) ) {
 		return $content_html;
 	}
 
 	$post_id = get_the_ID();
 	if ( $post_id < 1 ) {
+		$post_id = (int) get_queried_object_id();
+	}
+	if ( $post_id < 1 ) {
 		return $content_html;
 	}
-
-	static $injected = array();
-	if ( isset( $injected[ $post_id ] ) ) {
-		return $content_html;
-	}
-	$injected[ $post_id ] = true;
 
 	$newsletter_html = elmercado_blog_newsletter_html( $post_id );
 	$early_html      = '<div class="emo-inline-commerce emo-inline-special-anchor" data-emo-commerce="special" data-emo-special-anchor hidden aria-hidden="true"></div>' . $newsletter_html;
