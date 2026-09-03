@@ -156,6 +156,20 @@ if ( is_readable( $inline_commerce_module ) ) {
 					display: none;
 				}
 
+				/*
+				 * Por encima de 1100px entra la fila de cuatro tarjetas. La capa historica
+				 * del blog fuerza entonces el shell a 100%; esta regla mas especifica
+				 * mantiene el bloque centrado con el mismo ancho exterior del articulo.
+				 */
+				@media (min-width: 1101px) {
+					html body.single-post main#primary.emo-article-page > .emo-related-reading > .emo-shell {
+						width: min(100%, 800px) !important;
+						max-width: 800px !important;
+						margin-left: auto !important;
+						margin-right: auto !important;
+					}
+				}
+
 				@media (max-width: 640px) {
 					body.single-post .emo-inline-commerce {
 						margin: 28px 0 !important;
