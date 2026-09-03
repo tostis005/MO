@@ -41,7 +41,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 
 				body.single-post .emo-inline-commerce {
 					box-sizing: border-box;
-					margin: 36px 0 !important;
+					margin: 26px 0 !important;
 				}
 
 				body.single-post .emo-inline-special-anchor > * {
@@ -53,18 +53,21 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				/*
-				 * Opt-in horizontal: ocupa todo el ancho util de la columna de lectura.
-				 * No depende de anchos heredados de formularios o plugins.
+				 * Opt-in editorial compacto: una franja discreta integrada en la lectura,
+				 * sin tarjeta pesada ni volumen visual innecesario.
 				 */
 				body.single-post .emo-inline-newsletter {
 					display: block;
 					width: 100% !important;
 					max-width: none !important;
 					min-width: 0 !important;
-					padding: clamp(22px, 3vw, 30px) !important;
-					background: #f6f1e8 !important;
-					border: 1px solid rgba(13, 33, 27, 0.12) !important;
-					border-radius: 16px !important;
+					padding: 14px 0 !important;
+					background: transparent !important;
+					border: 0 !important;
+					border-top: 1px solid rgba(13, 33, 27, 0.14) !important;
+					border-bottom: 1px solid rgba(13, 33, 27, 0.14) !important;
+					border-radius: 0 !important;
+					box-shadow: none !important;
 					box-sizing: border-box !important;
 				}
 
@@ -76,28 +79,35 @@ if ( is_readable( $inline_commerce_module ) ) {
 					box-sizing: border-box !important;
 				}
 
+				body.single-post .emo-inline-newsletter__intro {
+					display: flex;
+					align-items: baseline;
+					flex-wrap: wrap;
+					gap: 3px 9px;
+					margin: 0 0 9px !important;
+				}
+
 				body.single-post .emo-inline-newsletter__eyebrow {
-					display: block;
-					margin-bottom: 7px;
-					font-size: 12px;
-					font-weight: 700;
-					letter-spacing: .09em;
-					text-transform: uppercase;
+					display: none !important;
 				}
 
 				body.single-post .emo-inline-newsletter h3 {
-					margin: 0 0 8px !important;
-					font-size: clamp(21px, 2.7vw, 28px) !important;
-					line-height: 1.18 !important;
+					margin: 0 !important;
+					font-size: 15px !important;
+					line-height: 1.32 !important;
+					font-weight: 700 !important;
 				}
 
 				body.single-post .emo-inline-newsletter__body {
-					margin: 0 0 17px !important;
+					margin: 0 !important;
+					font-size: 12px !important;
+					line-height: 1.45 !important;
+					opacity: .72;
 				}
 
 				body.single-post .emo-inline-newsletter__row {
 					display: flex;
-					gap: 10px;
+					gap: 8px;
 					align-items: stretch;
 				}
 
@@ -105,42 +115,46 @@ if ( is_readable( $inline_commerce_module ) ) {
 					width: 100% !important;
 					min-width: 0;
 					flex: 1 1 auto;
-					min-height: 50px;
+					min-height: 40px;
 					margin: 0 !important;
-					padding: 11px 14px !important;
+					padding: 8px 11px !important;
 					background: #fff !important;
 					border: 1px solid rgba(13, 33, 27, 0.2) !important;
-					border-radius: 10px !important;
+					border-radius: 7px !important;
 					box-sizing: border-box !important;
+					font-size: 13px !important;
 				}
 
 				body.single-post .emo-inline-newsletter__row button {
-					min-height: 50px;
+					min-height: 40px;
 					margin: 0 !important;
-					padding: 11px 22px !important;
-					border-radius: 10px !important;
+					padding: 8px 16px !important;
+					border-radius: 7px !important;
 					white-space: nowrap;
+					font-size: 13px !important;
 				}
 
 				body.single-post .emo-inline-newsletter__consent {
 					display: flex;
-					gap: 9px;
+					gap: 7px;
 					align-items: flex-start;
-					margin-top: 12px;
-					font-size: 12px;
-					line-height: 1.45;
+					margin-top: 7px;
+					font-size: 10.5px;
+					line-height: 1.35;
+					opacity: .78;
 				}
 
 				body.single-post .emo-inline-newsletter__consent input {
-					margin-top: 3px;
+					margin-top: 2px;
 					flex: 0 0 auto;
 				}
 
 				body.single-post .emo-inline-newsletter__notice {
-					margin: 0 0 16px !important;
-					padding: 10px 12px !important;
-					background: rgba(255, 255, 255, .72) !important;
-					border-radius: 9px !important;
+					margin: 0 0 9px !important;
+					padding: 7px 9px !important;
+					background: rgba(13, 33, 27, .045) !important;
+					border-radius: 6px !important;
+					font-size: 12px !important;
 					font-weight: 600;
 				}
 
@@ -157,10 +171,18 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				/*
-				 * Por encima de 1100px entra la fila de cuatro tarjetas. La capa historica
-				 * del blog fuerza entonces el shell a 100%; esta regla mas especifica
-				 * mantiene el bloque centrado con el mismo ancho exterior del articulo.
+				 * Lecturas relacionadas no debe heredar reglas editoriales destinadas a
+				 * elementos semanticos internos del articulo. El runtime convierte su
+				 * section historico en div y estas reglas fijan su geometria explicitamente.
 				 */
+				html body.single-post main#primary.emo-article-page .emo-related-reading {
+					width: 100% !important;
+					max-width: none !important;
+					margin-left: 0 !important;
+					margin-right: 0 !important;
+					box-sizing: border-box !important;
+				}
+
 				@media (min-width: 1101px) {
 					html body.single-post main#primary.emo-article-page > .emo-related-reading > .emo-shell {
 						width: min(100%, 800px) !important;
@@ -172,11 +194,19 @@ if ( is_readable( $inline_commerce_module ) ) {
 
 				@media (max-width: 640px) {
 					body.single-post .emo-inline-commerce {
-						margin: 28px 0 !important;
+						margin: 22px 0 !important;
 					}
 
 					body.single-post .emo-inline-newsletter {
-						padding: 20px 18px !important;
+						padding: 13px 0 !important;
+					}
+
+					body.single-post .emo-inline-newsletter__intro {
+						display: block;
+					}
+
+					body.single-post .emo-inline-newsletter h3 {
+						margin-bottom: 3px !important;
 					}
 
 					body.single-post .emo-inline-newsletter__row {
@@ -211,6 +241,38 @@ if ( is_readable( $inline_commerce_module ) ) {
 				if (!main || !specialAnchor) {
 					return;
 				}
+
+				/*
+				 * Algunas capas editoriales de escritorio aplican reglas genericas a
+				 * .emo-article-content > :is(..., section). Lecturas relacionadas no es
+				 * contenido editorial del cuerpo, asi que normalizamos su section a div y
+				 * evitamos que esas reglas de anchura/margen la desplacen.
+				 */
+				function normalizeRelatedElement(element) {
+					if (!element || element.tagName !== 'SECTION' || !element.parentNode) {
+						return element;
+					}
+
+					var replacement = document.createElement('div');
+					Array.prototype.forEach.call(element.attributes, function (attribute) {
+						replacement.setAttribute(attribute.name, attribute.value);
+					});
+					replacement.setAttribute('data-emo-related-normalized', '1');
+
+					while (element.firstChild) {
+						replacement.appendChild(element.firstChild);
+					}
+
+					element.parentNode.replaceChild(replacement, element);
+					return replacement;
+				}
+
+				Array.prototype.forEach.call(
+					document.querySelectorAll('section.emo-related-reading'),
+					function (section) {
+						normalizeRelatedElement(section);
+					}
+				);
 
 				var article = null;
 				var related = null;
