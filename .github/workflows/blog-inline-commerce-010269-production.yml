@@ -115,7 +115,7 @@ jobs:
             echo 'BLOG_NEWSLETTER_PUBLIC_ABORT: newsletter has a real hidden attribute' >&2
             exit 7
           fi
-          if grep -E '<script[^>]+src=["'"'][^"'"']*pagead2\.googlesyndication\.com/pagead/js/adsbygoogle\.js' /tmp/blog.html >/dev/null; then
+          if grep -Fq 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' /tmp/blog.html; then
             echo 'BLOG_ADSENSE_PUBLIC_ABORT: AdSense is still loaded eagerly before geo eligibility' >&2
             exit 9
           fi
