@@ -132,7 +132,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 		'wp_head',
 		static function (): void {
 			?>
-			<style id="elmercado-blog-inline-commerce-010280">
+			<style id="elmercado-blog-inline-commerce-010281">
 				body.single-post main#primary.emo-article-page > article.emo-article ~ *:not(.emo-related-reading) {
 					display: none !important;
 				}
@@ -143,6 +143,12 @@ if ( is_readable( $inline_commerce_module ) ) {
 
 				body.single-post .emo-inline-commerce {
 					box-sizing: border-box;
+				}
+
+				/* Reduce tambien el margen del parrafo inmediatamente anterior. */
+				body.single-post .emo-article-content > p:has(+ .emo-inline-special-anchor),
+				body.single-post .emo-article-content > p:has(+ .emo-inline-newsletter-anchor) {
+					margin-bottom: 8px !important;
 				}
 
 				body.single-post .emo-inline-special-anchor > * {
@@ -162,8 +168,8 @@ if ( is_readable( $inline_commerce_module ) ) {
 					width: min(100%, 900px) !important;
 					max-width: 900px !important;
 					min-width: 0 !important;
-					margin: 20px auto !important;
-					padding: 20px 22px !important;
+					margin: 8px auto 18px !important;
+					padding: 14px 22px 18px !important;
 					background: #f6f1e8 !important;
 					border: 1px solid rgba(13, 33, 27, 0.11) !important;
 					border-radius: 14px !important;
@@ -284,8 +290,8 @@ if ( is_readable( $inline_commerce_module ) ) {
 					body.single-post .emo-inline-newsletter {
 						width: 100% !important;
 						max-width: 100% !important;
-						margin: 18px auto !important;
-						padding: 18px 16px !important;
+						margin: 8px auto 16px !important;
+						padding: 14px 16px 16px !important;
 					}
 
 					body.single-post .emo-inline-newsletter h3 {
