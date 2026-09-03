@@ -10,6 +10,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/*
+ * AdSense no debe cargarse en el primer pintado. El controlador geografico
+ * insertara su script solo si la visita pertenece a un pais no vendible.
+ * Esto evita inicializar el CMP publicitario de Google donde no hay anuncios.
+ */
+remove_action( 'wp_head', 'elmercado_adsense_output_paused_head_code', 2 );
+
 $inline_commerce_module = __DIR__ . '/inc/blog-inline-commerce-010268.php';
 if ( is_readable( $inline_commerce_module ) ) {
 	require_once $inline_commerce_module;
@@ -17,6 +24,105 @@ if ( is_readable( $inline_commerce_module ) ) {
 	if ( function_exists( 'elmercado_blog_maybe_handle_subscription' ) ) {
 		elmercado_blog_maybe_handle_subscription();
 	}
+
+	/*
+	 * Los articulos historicos incluyen a veces <section> como hijo directo del
+	 * cuerpo de lectura. Eso impide que sus h2, p y listas hereden las mismas
+	 * reglas que el resto de hijos directos. Desempaquetamos solo esas secciones
+	 * editoriales de primer nivel y preservamos wrappers funcionales de producto.
+	 */
+	if ( ! function_exists( 'elmercado_blog_flatten_top_level_sections_010280' ) ) {
+		function elmercado_blog_flatten_top_level_sections_010280( string $content_html ): string {
+			if ( ! is_singular( 'post' ) || false === stripos( $content_html, '<section' ) ) {
+				return $content_html;
+			}
+
+			if ( ! class_exists( 'DOMDocument' ) || ! class_exists( 'DOMXPath' ) ) {
+				return $content_html;
+			}
+
+			$dom      = new DOMDocument( '1.0', 'UTF-8' );
+			$previous = libxml_use_internal_errors( true );
+			$loaded   = $dom->loadHTML(
+				'<?xml encoding="utf-8" ?><div id="emo-editorial-root-010280">' . $content_html . '</div>',
+				LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+			);
+
+			if ( ! $loaded ) {
+				libxml_clear_errors();
+				libxml_use_internal_errors( $previous );
+				return $content_html;
+			}
+
+			$root = $dom->getElementById( 'emo-editorial-root-010280' );
+			if ( ! $root instanceof DOMElement ) {
+				libxml_clear_errors();
+				libxml_use_internal_errors( $previous );
+				return $content_html;
+			}
+
+			$children = array();
+			foreach ( $root->childNodes as $child ) {
+				$children[] = $child;
+			}
+
+			$xpath   = new DOMXPath( $dom );
+			$changed = false;
+
+			foreach ( $children as $child ) {
+				if ( ! $child instanceof DOMElement || 'section' !== strtolower( $child->tagName ) ) {
+					continue;
+				}
+
+				$classes = trim( (string) $child->getAttribute( 'class' ) );
+				if (
+					'' !== $classes
+					&& preg_match(
+						'/(?:^|\s)(?:woocommerce|products|wp-block-[^\s]+|wc-block-[^\s]+|emo-related-products[^\s]*|emo-inline-[^\s]+)(?:\s|$)/i',
+						$classes
+					)
+				) {
+					continue;
+				}
+
+				/* Conserva anclas existentes trasladando el id al primer encabezado. */
+				$section_id = trim( (string) $child->getAttribute( 'id' ) );
+				if ( '' !== $section_id ) {
+					$heading = $xpath->query( './/*[self::h2 or self::h3 or self::h4 or self::h5 or self::h6]', $child );
+					if ( $heading instanceof DOMNodeList && $heading->length > 0 ) {
+						$target = $heading->item( 0 );
+						if ( $target instanceof DOMElement && ! $target->hasAttribute( 'id' ) ) {
+							$target->setAttribute( 'id', $section_id );
+						}
+					}
+				}
+
+				while ( $child->firstChild ) {
+					$root->insertBefore( $child->firstChild, $child );
+				}
+				$root->removeChild( $child );
+				$changed = true;
+			}
+
+			if ( ! $changed ) {
+				libxml_clear_errors();
+				libxml_use_internal_errors( $previous );
+				return $content_html;
+			}
+
+			$flattened = '';
+			foreach ( $root->childNodes as $child ) {
+				$flattened .= (string) $dom->saveHTML( $child );
+			}
+
+			libxml_clear_errors();
+			libxml_use_internal_errors( $previous );
+
+			return '' !== $flattened ? $flattened : $content_html;
+		}
+	}
+
+	add_filter( 'the_content', 'elmercado_blog_flatten_top_level_sections_010280', 34 );
 
 	if ( function_exists( 'elmercado_blog_inject_inline_commercial_blocks' ) ) {
 		add_filter( 'the_content', 'elmercado_blog_inject_inline_commercial_blocks', 35 );
@@ -26,7 +132,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 		'wp_head',
 		static function (): void {
 			?>
-			<style id="elmercado-blog-inline-commerce-010270">
+			<style id="elmercado-blog-inline-commerce-010280">
 				body.single-post main#primary.emo-article-page > article.emo-article ~ *:not(.emo-related-reading) {
 					display: none !important;
 				}
@@ -49,15 +155,14 @@ if ( is_readable( $inline_commerce_module ) ) {
 
 				/*
 				 * Mismo ancho de lectura que los párrafos en escritorio: 900 px.
-				 * Recupera el fondo suave de la versión anterior sin volver a convertir
-				 * el opt-in en una tarjeta visualmente pesada.
+				 * El margen exterior es simetrico y algo menor para integrarlo mejor.
 				 */
 				body.single-post .emo-inline-newsletter {
 					display: block;
 					width: min(100%, 900px) !important;
 					max-width: 900px !important;
 					min-width: 0 !important;
-					margin: 28px auto !important;
+					margin: 20px auto !important;
 					padding: 20px 22px !important;
 					background: #f6f1e8 !important;
 					border: 1px solid rgba(13, 33, 27, 0.11) !important;
@@ -179,7 +284,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 					body.single-post .emo-inline-newsletter {
 						width: 100% !important;
 						max-width: 100% !important;
-						margin: 24px auto !important;
+						margin: 18px auto !important;
 						padding: 18px 16px !important;
 					}
 
@@ -210,7 +315,7 @@ if ( is_readable( $inline_commerce_module ) ) {
 		'wp_footer',
 		static function (): void {
 			?>
-			<script id="elmercado-blog-inline-commerce-runtime-010270">
+			<script id="elmercado-blog-inline-commerce-runtime-010280">
 			(function () {
 				'use strict';
 
