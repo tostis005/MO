@@ -1,0 +1,315 @@
+name: Blog regression fix 0.10.285 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-regression-fix-010285-production.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch blog source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              s = p.read_text()
+              if new in s:
+                  return
+              if old not in s:
+                  raise SystemExit(f'{label}: anchor not found in {path}')
+              p.write_text(s.replace(old, new, 1))
+
+          # 1) Newsletter: remove the residual top gap and keep bottom breathing room.
+          p = Path('elmercadodeorigen-child/single-post.php')
+          s = p.read_text()
+          s = s.replace('margin: 8px auto 18px !important;', 'margin: 0 auto 16px !important;', 1)
+          s = s.replace('padding: 14px 22px 18px !important;', 'padding: 10px 22px 16px !important;', 1)
+          s = s.replace('margin: 8px auto 16px !important;', 'margin: 0 auto 14px !important;', 1)
+          s = s.replace('padding: 14px 16px 16px !important;', 'padding: 10px 16px 14px !important;', 1)
+          old_related_shell = '''@media (min-width: 1101px) {
+					html body.single-post main#primary.emo-article-page > .emo-related-reading > .emo-shell {
+						width: min(100%, 800px) !important;
+						max-width: 800px !important;
+						margin-left: auto !important;
+						margin-right: auto !important;
+					}
+				}'''
+          new_related_shell = '''@media (min-width: 1101px) {
+					html body.single-post main#primary.emo-article-page > .emo-related-reading > .emo-shell {
+						width: min(100%, 1180px) !important;
+						max-width: 1180px !important;
+						margin-left: auto !important;
+						margin-right: auto !important;
+					}
+				}'''
+          if old_related_shell in s:
+              s = s.replace(old_related_shell, new_related_shell, 1)
+          elif new_related_shell not in s:
+              raise SystemExit('single-post related shell anchor missing')
+          p.write_text(s)
+
+          # 2) Related reading is a real div in the template and always 4 columns on desktop.
+          p = Path('elmercadodeorigen-child/single.php')
+          s = p.read_text()
+          s = s.replace(
+              '<section class="emo-related-reading">',
+              '<div class="emo-related-reading" data-emo-related-root="1">',
+              1
+          )
+          s = s.replace(
+              '<div class="emo-journal-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(245px, 100%), 1fr)) !important;">',
+              '<div class="emo-journal-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr)) !important;">',
+              1
+          )
+          related_end = '\t\t\t</section>\n\t\t<?php endif; ?>\n\t\t<?php wp_reset_postdata(); ?>'
+          related_end_new = '\t\t\t</div>\n\t\t<?php endif; ?>\n\t\t<?php wp_reset_postdata(); ?>'
+          if related_end in s:
+              s = s.replace(related_end, related_end_new, 1)
+          elif related_end_new not in s:
+              raise SystemExit('single.php related closing tag anchor missing')
+          p.write_text(s)
+
+          # 3) Remove the historical 800px shell restriction from the stylesheet.
+          replace_once(
+              'elmercadodeorigen-child/style.css',
+              '''/* Single article: align related reading with the 800px editorial column on desktop. */
+@media (min-width: 981px) {
+	body.single-post .emo-related-reading > .emo-shell {
+		width: min(800px, calc(100% - 32px));
+		max-width: 800px;
+		margin-left: auto;
+		margin-right: auto;
+	}
+}''',
+              '''/* Single article: related stories keep enough width for four desktop cards. */
+@media (min-width: 981px) {
+	body.single-post .emo-related-reading > .emo-shell {
+		width: min(1180px, calc(100% - 32px));
+		max-width: 1180px;
+		margin-left: auto;
+		margin-right: auto;
+	}
+}''',
+              'style related shell'
+          )
+
+          # 4) Keep the base editorial contract at four columns too.
+          replace_once(
+              'elmercadodeorigen-child/assets/css/editorial.css',
+              '''.emo-related-reading .emo-journal-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}''',
+              '''.emo-related-reading .emo-journal-grid {
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+}''',
+              'editorial related grid'
+          )
+
+          # 5) Final geometry layer: 1180px shell and four cards on desktop.
+          p = Path('elmercadodeorigen-child/inc/blog-design-force-010250.php')
+          s = p.read_text()
+          old_grid = '''			html body main#primary.emo-article-page .emo-related-reading .emo-journal-grid {
+				display: grid !important;
+				width: min(100%, 1040px) !important;
+				max-width: 1040px !important;
+				grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+				gap: 20px !important;
+				margin: 0 auto !important;
+			}'''
+          new_grid = '''			html body.single-post main#primary.emo-article-page > .emo-related-reading > .emo-shell {
+				width: min(100%, 1180px) !important;
+				max-width: 1180px !important;
+				margin-left: auto !important;
+				margin-right: auto !important;
+			}
+
+			html body main#primary.emo-article-page .emo-related-reading .emo-journal-grid {
+				display: grid !important;
+				width: min(100%, 1040px) !important;
+				max-width: 1040px !important;
+				grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+				gap: 20px !important;
+				margin: 0 auto !important;
+			}'''
+          if old_grid in s:
+              s = s.replace(old_grid, new_grid, 1)
+          elif new_grid not in s:
+              raise SystemExit('blog-design-force related grid anchor missing')
+          p.write_text(s)
+
+          # 6) The footer rhythm was re-adding space after the previous paragraph.
+          p = Path('elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php')
+          s = p.read_text()
+          anchor = '''			html body.single-post article.emo-entry-standard .emo-article-content > p {
+				margin-top: 0 !important;
+				margin-bottom: 1.05em !important;
+			}
+'''
+          addition = anchor + '''
+			/* BLOG_NEWSLETTER_TOP_GAP_FINAL_010285 */
+			html body.single-post article.emo-entry-standard .emo-article-content > p:has(+ .emo-inline-special-anchor + .emo-inline-newsletter),
+			html body.single-post article.emo-entry-standard .emo-article-content > p:has(+ .emo-inline-newsletter-anchor) {
+				margin-bottom: 6px !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter-anchor {
+				margin: 0 !important;
+				padding: 0 !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter {
+				margin-top: 0 !important;
+				padding-top: 10px !important;
+			}
+
+			html body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter h3 {
+				margin-top: 0 !important;
+				padding-top: 0 !important;
+			}
+'''
+          if 'BLOG_NEWSLETTER_TOP_GAP_FINAL_010285' not in s:
+              if anchor not in s:
+                  raise SystemExit('footer rhythm paragraph anchor missing')
+              s = s.replace(anchor, addition, 1)
+          p.write_text(s)
+
+          # 7) Keep the main blog production workflow aligned with the new source.
+          p = Path('.github/workflows/blog-inline-commerce-010269-production.yml')
+          s = p.read_text()
+          for path_line in [
+              "      - 'elmercadodeorigen-child/single.php'\n",
+              "      - 'elmercadodeorigen-child/style.css'\n",
+              "      - 'elmercadodeorigen-child/assets/css/editorial.css'\n",
+              "      - 'elmercadodeorigen-child/inc/blog-design-force-010250.php'\n",
+              "      - 'elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php'\n",
+              "      - 'elmercadodeorigen-child/inc/adsense-geo-010266.php'\n",
+          ]:
+              if path_line not in s:
+                  trigger_anchor = "      - 'elmercadodeorigen-child/single-post.php'\n"
+                  s = s.replace(trigger_anchor, trigger_anchor + path_line, 1)
+
+          s = s.replace(
+              "          php -l elmercadodeorigen-child/single-post.php\n",
+              "          php -l elmercadodeorigen-child/single-post.php\n          php -l elmercadodeorigen-child/single.php\n          php -l elmercadodeorigen-child/inc/blog-design-force-010250.php\n          php -l elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php\n          php -l elmercadodeorigen-child/inc/adsense-geo-010266.php\n",
+              1
+          )
+          s = s.replace(
+              "          grep -Fq 'margin: 20px auto !important' /tmp/blog.html\n",
+              "          grep -Fq 'BLOG_NEWSLETTER_TOP_GAP_FINAL_010285' /tmp/blog.html\n          grep -Fq 'grid-template-columns: repeat(4, minmax(0, 1fr)) !important;' /tmp/blog.html\n",
+              1
+          )
+          p.write_text(s)
+          PY
+
+          php -l elmercadodeorigen-child/single-post.php
+          php -l elmercadodeorigen-child/single.php
+          php -l elmercadodeorigen-child/inc/blog-design-force-010250.php
+          php -l elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          php -l elmercadodeorigen-child/inc/adsense-geo-010266.php
+          grep -Fq 'BLOG_NEWSLETTER_TOP_GAP_FINAL_010285' elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php
+          grep -Fq 'repeat(4, minmax(0, 1fr)) !important;' elmercadodeorigen-child/single.php
+          grep -Fq 'max-width: 1180px !important;' elmercadodeorigen-child/single-post.php
+          grep -Fq '$show_ads     = '\'''''\'' !== $country && false === $can_buy;' elmercadodeorigen-child/inc/adsense-geo-010266.php
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            elmercadodeorigen-child/single-post.php \
+            elmercadodeorigen-child/single.php \
+            elmercadodeorigen-child/style.css \
+            elmercadodeorigen-child/assets/css/editorial.css \
+            elmercadodeorigen-child/inc/blog-design-force-010250.php \
+            elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php \
+            .github/workflows/blog-inline-commerce-010269-production.yml
+          if ! git diff --cached --quiet; then
+            git commit -m 'Fix blog related grid and newsletter spacing'
+            git push origin HEAD:main
+          fi
+
+      - name: Deploy fixed blog files and restored AdSense
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp); php=$(command -v php || true); [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg"); u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac
+            done
+          ')"
+          : "${PROD_PATH:?production path not found}"
+          T="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$T/inc' '$T/assets/css'"
+
+          sshpass -e scp $SCP elmercadodeorigen-child/single-post.php "$STAGING_USER@$STAGING_HOST:$T/single-post.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/single.php "$STAGING_USER@$STAGING_HOST:$T/single.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/style.css "$STAGING_USER@$STAGING_HOST:$T/style.css"
+          sshpass -e scp $SCP elmercadodeorigen-child/assets/css/editorial.css "$STAGING_USER@$STAGING_HOST:$T/assets/css/editorial.css"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/blog-design-force-010250.php "$STAGING_USER@$STAGING_HOST:$T/inc/blog-design-force-010250.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/blog-footer-layout-polish-010246.php "$STAGING_USER@$STAGING_HOST:$T/inc/blog-footer-layout-polish-010246.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/inc/adsense-geo-010266.php "$STAGING_USER@$STAGING_HOST:$T/inc/adsense-geo-010266.php"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$T/single-post.php'; \"\$php_bin\" -l '$T/single.php'; \"\$php_bin\" -l '$T/inc/blog-design-force-010250.php'; \"\$php_bin\" -l '$T/inc/blog-footer-layout-polish-010246.php'; \"\$php_bin\" -l '$T/inc/adsense-geo-010266.php'; wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+
+      - name: Verify public blog and AdSense eligibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://www.elmercadodeorigen.com/cuanto-tiempo-marinar-carne-ternera-horas-sal-acidez/?emo_blog_verify=${GITHUB_RUN_ID}"
+          curl -fsSL --retry 4 --retry-delay 2 -A 'Mozilla/5.0 EMDO blog regression verifier' -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' -o /tmp/blog.html "$URL"
+
+          grep -Fq 'BLOG_NEWSLETTER_TOP_GAP_FINAL_010285' /tmp/blog.html
+          grep -Fq 'margin: 0 auto 16px !important;' /tmp/blog.html
+          grep -Fq 'padding: 10px 22px 16px !important;' /tmp/blog.html
+          grep -Fq 'grid-template-columns: repeat(4, minmax(0, 1fr)) !important;' /tmp/blog.html
+          grep -Fq 'data-emo-related-root="1"' /tmp/blog.html
+          if grep -Fq '<section class="emo-related-reading"' /tmp/blog.html; then
+            echo 'RELATED_SECTION_STILL_PRESENT' >&2
+            exit 7
+          fi
+
+          BASE='https://www.elmercadodeorigen.com/wp-json/elmercado/v1/adsense-eligibility'
+          for C in GB NO IE; do
+            BODY=$(curl -fsSL --retry 3 -H "X-Country-Code: $C" "$BASE?verify=${GITHUB_RUN_ID}$C")
+            echo "$C $BODY"
+            grep -Eq '"can_buy"[[:space:]]*:[[:space:]]*false' <<< "$BODY"
+            grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*true' <<< "$BODY"
+          done
+          for C in ES CH; do
+            BODY=$(curl -fsSL --retry 3 -H "X-Country-Code: $C" "$BASE?verify=${GITHUB_RUN_ID}$C")
+            echo "$C $BODY"
+            grep -Eq '"can_buy"[[:space:]]*:[[:space:]]*true' <<< "$BODY"
+            grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*false' <<< "$BODY"
+          done
+          echo 'BLOG_REGRESSION_FIX_010285=PASS'
