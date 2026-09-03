@@ -33,3 +33,10 @@ Requires PHP: 8.0
 		text-align: left !important;
 	}
 }
+
+/* Single article: align related reading with the 800px editorial column on desktop. */
+@media (min-width: 981px) {
+	body.single-post .emo-related-reading > .emo-shell {
+		width: min(800px, calc(100% - 32px));
+	}
+}
