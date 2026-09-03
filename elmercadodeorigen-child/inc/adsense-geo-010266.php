@@ -167,6 +167,21 @@ function elmercado_adsense_country_is_shippable( string $country ): bool {
  *
  * @return string Codigo ISO alfa-2 o cadena vacia si no puede determinarse.
  */
+/**
+ * Evita inicializar AdSense en territorios donde Google exige CMP TCF.
+ * Hasta conectar CookieYes como CMP TCF certificada, no servimos anuncios en
+ * EEE, Reino Unido ni Suiza para mantener un unico banner de consentimiento.
+ */
+function elmercado_adsense_country_requires_tcf_010283( string $country ): bool {
+	static $countries = array(
+		'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
+		'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',
+		'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'GB', 'CH',
+	);
+
+	return in_array( strtoupper( trim( $country ) ), $countries, true );
+}
+
 function elmercado_adsense_get_visitor_country(): string {
 	if ( ! class_exists( 'WC_Geolocation' ) ) {
 		return '';
@@ -184,15 +199,17 @@ function elmercado_adsense_get_visitor_country(): string {
  * @return WP_REST_Response
  */
 function elmercado_adsense_rest_eligibility(): WP_REST_Response {
-	$country  = elmercado_adsense_get_visitor_country();
-	$can_buy  = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
-	$show_ads = '' !== $country && false === $can_buy;
+	$country      = elmercado_adsense_get_visitor_country();
+	$can_buy      = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
+	$requires_tcf = '' !== $country && elmercado_adsense_country_requires_tcf_010283( $country );
+	$show_ads     = '' !== $country && false === $can_buy && ! $requires_tcf;
 
 	$response = new WP_REST_Response(
 		array(
-			'country'  => $country,
-			'can_buy'  => $can_buy,
-			'show_ads' => $show_ads,
+			'country'      => $country,
+			'can_buy'      => $can_buy,
+			'requires_tcf' => $requires_tcf,
+			'show_ads'     => $show_ads,
 		),
 		200
 	);
