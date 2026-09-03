@@ -7,6 +7,7 @@ on:
       - '.github/workflows/blog-inline-commerce-010269-production.yml'
       - 'elmercadodeorigen-child/single-post.php'
       - 'elmercadodeorigen-child/inc/blog-inline-commerce-010268.php'
+      - 'elmercadodeorigen-child/assets/js/adsense-geo-010266.js'
   workflow_dispatch:
 
 permissions:
@@ -25,19 +26,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate PHP
+      - name: Validate PHP and JavaScript
         shell: bash
         run: |
           set -euo pipefail
           php -l elmercadodeorigen-child/single-post.php
           php -l elmercadodeorigen-child/inc/blog-inline-commerce-010268.php
+          node --check elmercadodeorigen-child/assets/js/adsense-geo-010266.js
           grep -Fq 'id="emo-newsletter"' elmercadodeorigen-child/inc/blog-inline-commerce-010268.php
           grep -Fq 'emo_blog_optin_geo' elmercadodeorigen-child/inc/blog-inline-commerce-010268.php
           grep -Fq 'Mantente informado de todas nuestras novedades' elmercadodeorigen-child/single-post.php
           grep -Fq 'data-emo-related-root="1"' elmercadodeorigen-child/single-post.php
+          grep -Fq 'elmercado_blog_flatten_top_level_sections_010280' elmercadodeorigen-child/single-post.php
+          grep -Fq 'loadGoogleScript' elmercadodeorigen-child/assets/js/adsense-geo-010266.js
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
-      - name: Deploy blog template and inline commerce module
+      - name: Deploy blog template, inline commerce and geo controller
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -64,11 +68,12 @@ jobs:
           : "${PROD_PATH:?production path not found}"
 
           THEME_PATH="$PROD_PATH/wp-content/themes/elmercadodeorigen-child"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$THEME_PATH/inc'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "mkdir -p '$THEME_PATH/inc' '$THEME_PATH/assets/js'"
           sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/single-post.php "$STAGING_USER@$STAGING_HOST:$THEME_PATH/single-post.php"
           sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/inc/blog-inline-commerce-010268.php "$STAGING_USER@$STAGING_HOST:$THEME_PATH/inc/blog-inline-commerce-010268.php"
+          sshpass -e scp $SCP_OPTIONS elmercadodeorigen-child/assets/js/adsense-geo-010266.js "$STAGING_USER@$STAGING_HOST:$THEME_PATH/assets/js/adsense-geo-010266.js"
 
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$THEME_PATH/single-post.php'; \"\$php_bin\" -l '$THEME_PATH/inc/blog-inline-commerce-010268.php'"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$THEME_PATH/single-post.php'; \"\$php_bin\" -l '$THEME_PATH/inc/blog-inline-commerce-010268.php'; grep -Fq 'loadGoogleScript' '$THEME_PATH/assets/js/adsense-geo-010266.js'"
 
       - name: Flush WordPress cache
         shell: bash
@@ -90,7 +95,7 @@ jobs:
           ')"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-      - name: Verify public newsletter markup
+      - name: Verify public blog markup and deferred ads
         shell: bash
         run: |
           set -euo pipefail
@@ -101,6 +106,7 @@ jobs:
           grep -Fq 'data-emo-special-anchor' /tmp/blog.html
           grep -Fq 'Mantente informado de todas nuestras novedades' /tmp/blog.html
           grep -Fq 'data-emo-related-root="1"' /tmp/blog.html
+          grep -Fq 'margin: 20px auto !important' /tmp/blog.html
           if grep -Fq '<section class="emo-related-reading"' /tmp/blog.html; then
             echo 'BLOG_RELATED_PUBLIC_ABORT: related reading is still rendered as section' >&2
             exit 8
@@ -109,5 +115,10 @@ jobs:
             echo 'BLOG_NEWSLETTER_PUBLIC_ABORT: newsletter has a real hidden attribute' >&2
             exit 7
           fi
+          if grep -E '<script[^>]+src=["'"'][^"'"']*pagead2\.googlesyndication\.com/pagead/js/adsbygoogle\.js' /tmp/blog.html >/dev/null; then
+            echo 'BLOG_ADSENSE_PUBLIC_ABORT: AdSense is still loaded eagerly before geo eligibility' >&2
+            exit 9
+          fi
           echo 'BLOG_NEWSLETTER_PUBLIC_OK'
           echo 'BLOG_RELATED_PUBLIC_OK'
+          echo 'BLOG_ADSENSE_DEFERRED_PUBLIC_OK'
