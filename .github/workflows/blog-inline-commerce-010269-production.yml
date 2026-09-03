@@ -33,6 +33,8 @@ jobs:
           php -l elmercadodeorigen-child/inc/blog-inline-commerce-010268.php
           grep -Fq 'id="emo-newsletter"' elmercadodeorigen-child/inc/blog-inline-commerce-010268.php
           grep -Fq 'emo_blog_optin_geo' elmercadodeorigen-child/inc/blog-inline-commerce-010268.php
+          grep -Fq 'Mantente informado de todas nuestras novedades' elmercadodeorigen-child/single-post.php
+          grep -Fq 'data-emo-related-root="1"' elmercadodeorigen-child/single-post.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
       - name: Deploy blog template and inline commerce module
@@ -97,8 +99,15 @@ jobs:
           grep -Fq 'id="emo-newsletter"' /tmp/blog.html
           grep -Fq 'data-emo-newsletter-geo-fallback' /tmp/blog.html
           grep -Fq 'data-emo-special-anchor' /tmp/blog.html
+          grep -Fq 'Mantente informado de todas nuestras novedades' /tmp/blog.html
+          grep -Fq 'data-emo-related-root="1"' /tmp/blog.html
+          if grep -Fq '<section class="emo-related-reading"' /tmp/blog.html; then
+            echo 'BLOG_RELATED_PUBLIC_ABORT: related reading is still rendered as section' >&2
+            exit 8
+          fi
           if grep -E 'id="emo-newsletter"[^>]*[[:space:]]hidden([[:space:]>])' /tmp/blog.html >/dev/null; then
             echo 'BLOG_NEWSLETTER_PUBLIC_ABORT: newsletter has a real hidden attribute' >&2
             exit 7
           fi
           echo 'BLOG_NEWSLETTER_PUBLIC_OK'
+          echo 'BLOG_RELATED_PUBLIC_OK'
