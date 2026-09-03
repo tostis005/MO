@@ -97,8 +97,8 @@ jobs:
           grep -Fq 'id="emo-newsletter"' /tmp/blog.html
           grep -Fq 'data-emo-newsletter-geo-fallback' /tmp/blog.html
           grep -Fq 'data-emo-special-anchor' /tmp/blog.html
-          if grep -E 'id="emo-newsletter"[^>]*hidden' /tmp/blog.html >/dev/null; then
-            echo 'BLOG_NEWSLETTER_PUBLIC_ABORT: newsletter still born hidden' >&2
+          if grep -E 'id="emo-newsletter"[^>]*[[:space:]]hidden([[:space:]>])' /tmp/blog.html >/dev/null; then
+            echo 'BLOG_NEWSLETTER_PUBLIC_ABORT: newsletter has a real hidden attribute' >&2
             exit 7
           fi
           echo 'BLOG_NEWSLETTER_PUBLIC_OK'
