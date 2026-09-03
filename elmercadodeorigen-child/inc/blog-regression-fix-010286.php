@@ -20,10 +20,10 @@ add_action(
 		}
 		?>
 		<style id="elmercado-blog-regression-fix-010286">
-			/* El párrafo anterior no vuelve a sumar 1.05em encima del opt-in. */
+			/* El párrafo anterior conserva una separación breve y controlada antes del opt-in. */
 			html body.single-post article.emo-entry-standard .emo-article-content > p:has(+ .emo-inline-special-anchor + .emo-inline-newsletter),
 			html body.single-post article.emo-entry-standard .emo-article-content > p:has(+ .emo-inline-newsletter-anchor) {
-				margin-bottom: 5px !important;
+				margin-bottom: 11px !important;
 			}
 
 			html body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter-anchor {
