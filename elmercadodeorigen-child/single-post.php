@@ -22,15 +22,11 @@ if ( is_readable( $inline_commerce_module ) ) {
 		add_filter( 'the_content', 'elmercado_blog_inject_inline_commercial_blocks', 35 );
 	}
 
-	/*
-	 * Oculta desde el primer pintado el especial que single.php deja tras el
-	 * articulo. En el footer se mueve al ancla interior antes de poder mostrarse.
-	 */
 	add_action(
 		'wp_head',
 		static function (): void {
 			?>
-			<style id="elmercado-blog-inline-commerce-010268">
+			<style id="elmercado-blog-inline-commerce-010270">
 				body.single-post main#primary.emo-article-page > article.emo-article ~ *:not(.emo-related-reading) {
 					display: none !important;
 				}
@@ -41,7 +37,6 @@ if ( is_readable( $inline_commerce_module ) ) {
 
 				body.single-post .emo-inline-commerce {
 					box-sizing: border-box;
-					margin: 26px 0 !important;
 				}
 
 				body.single-post .emo-inline-special-anchor > * {
@@ -53,20 +48,20 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				/*
-				 * Opt-in editorial compacto: una franja discreta integrada en la lectura,
-				 * sin tarjeta pesada ni volumen visual innecesario.
+				 * Mismo ancho de lectura que los párrafos en escritorio: 900 px.
+				 * Recupera el fondo suave de la versión anterior sin volver a convertir
+				 * el opt-in en una tarjeta visualmente pesada.
 				 */
 				body.single-post .emo-inline-newsletter {
 					display: block;
-					width: 100% !important;
-					max-width: none !important;
+					width: min(100%, 900px) !important;
+					max-width: 900px !important;
 					min-width: 0 !important;
-					padding: 14px 0 !important;
-					background: transparent !important;
-					border: 0 !important;
-					border-top: 1px solid rgba(13, 33, 27, 0.14) !important;
-					border-bottom: 1px solid rgba(13, 33, 27, 0.14) !important;
-					border-radius: 0 !important;
+					margin: 28px auto !important;
+					padding: 20px 22px !important;
+					background: #f6f1e8 !important;
+					border: 1px solid rgba(13, 33, 27, 0.11) !important;
+					border-radius: 14px !important;
 					box-shadow: none !important;
 					box-sizing: border-box !important;
 				}
@@ -80,29 +75,21 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				body.single-post .emo-inline-newsletter__intro {
-					display: flex;
-					align-items: baseline;
-					flex-wrap: wrap;
-					gap: 3px 9px;
-					margin: 0 0 9px !important;
+					display: block;
+					margin: 0 0 13px !important;
 				}
 
-				body.single-post .emo-inline-newsletter__eyebrow {
+				body.single-post .emo-inline-newsletter__eyebrow,
+				body.single-post .emo-inline-newsletter__body {
 					display: none !important;
 				}
 
 				body.single-post .emo-inline-newsletter h3 {
 					margin: 0 !important;
-					font-size: 15px !important;
-					line-height: 1.32 !important;
+					font-size: clamp(21px, 2vw, 25px) !important;
+					line-height: 1.2 !important;
 					font-weight: 700 !important;
-				}
-
-				body.single-post .emo-inline-newsletter__body {
-					margin: 0 !important;
-					font-size: 12px !important;
-					line-height: 1.45 !important;
-					opacity: .72;
+					letter-spacing: -0.02em !important;
 				}
 
 				body.single-post .emo-inline-newsletter__row {
@@ -115,21 +102,21 @@ if ( is_readable( $inline_commerce_module ) ) {
 					width: 100% !important;
 					min-width: 0;
 					flex: 1 1 auto;
-					min-height: 40px;
+					min-height: 42px;
 					margin: 0 !important;
-					padding: 8px 11px !important;
+					padding: 9px 12px !important;
 					background: #fff !important;
 					border: 1px solid rgba(13, 33, 27, 0.2) !important;
-					border-radius: 7px !important;
+					border-radius: 8px !important;
 					box-sizing: border-box !important;
 					font-size: 13px !important;
 				}
 
 				body.single-post .emo-inline-newsletter__row button {
-					min-height: 40px;
+					min-height: 42px;
 					margin: 0 !important;
-					padding: 8px 16px !important;
-					border-radius: 7px !important;
+					padding: 9px 17px !important;
+					border-radius: 8px !important;
 					white-space: nowrap;
 					font-size: 13px !important;
 				}
@@ -138,10 +125,10 @@ if ( is_readable( $inline_commerce_module ) ) {
 					display: flex;
 					gap: 7px;
 					align-items: flex-start;
-					margin-top: 7px;
+					margin-top: 8px;
 					font-size: 10.5px;
 					line-height: 1.35;
-					opacity: .78;
+					opacity: .76;
 				}
 
 				body.single-post .emo-inline-newsletter__consent input {
@@ -150,10 +137,10 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				body.single-post .emo-inline-newsletter__notice {
-					margin: 0 0 9px !important;
-					padding: 7px 9px !important;
-					background: rgba(13, 33, 27, .045) !important;
-					border-radius: 6px !important;
+					margin: 0 0 10px !important;
+					padding: 8px 10px !important;
+					background: rgba(255, 255, 255, .68) !important;
+					border-radius: 7px !important;
 					font-size: 12px !important;
 					font-weight: 600;
 				}
@@ -170,14 +157,10 @@ if ( is_readable( $inline_commerce_module ) ) {
 					display: none;
 				}
 
-				/*
-				 * Lecturas relacionadas no debe heredar reglas editoriales destinadas a
-				 * elementos semanticos internos del articulo. El runtime convierte su
-				 * section historico en div y estas reglas fijan su geometria explicitamente.
-				 */
+				/* La raíz de relacionados ya sale como div desde PHP, nunca como section. */
 				html body.single-post main#primary.emo-article-page .emo-related-reading {
 					width: 100% !important;
-					max-width: none !important;
+					max-width: 100% !important;
 					margin-left: 0 !important;
 					margin-right: 0 !important;
 					box-sizing: border-box !important;
@@ -193,20 +176,15 @@ if ( is_readable( $inline_commerce_module ) ) {
 				}
 
 				@media (max-width: 640px) {
-					body.single-post .emo-inline-commerce {
-						margin: 22px 0 !important;
-					}
-
 					body.single-post .emo-inline-newsletter {
-						padding: 13px 0 !important;
-					}
-
-					body.single-post .emo-inline-newsletter__intro {
-						display: block;
+						width: 100% !important;
+						max-width: 100% !important;
+						margin: 24px auto !important;
+						padding: 18px 16px !important;
 					}
 
 					body.single-post .emo-inline-newsletter h3 {
-						margin-bottom: 3px !important;
+						font-size: 20px !important;
 					}
 
 					body.single-post .emo-inline-newsletter__row {
@@ -223,12 +201,16 @@ if ( is_readable( $inline_commerce_module ) ) {
 		1
 	);
 
+	/*
+	 * Sólo mueve el especial existente al cuerpo del artículo. La resolución
+	 * geográfica y la visibilidad del newsletter las gestiona el fallback del
+	 * propio módulo, que nace visible y sólo se oculta ante un can_buy=false.
+	 */
 	add_action(
 		'wp_footer',
 		static function (): void {
-			$eligibility_endpoint = esc_url_raw( rest_url( 'elmercado/v1/adsense-eligibility' ) );
 			?>
-			<script id="elmercado-blog-inline-commerce-runtime-010268">
+			<script id="elmercado-blog-inline-commerce-runtime-010270">
 			(function () {
 				'use strict';
 
@@ -236,43 +218,10 @@ if ( is_readable( $inline_commerce_module ) ) {
 				var specialAnchor = document.querySelector('[data-emo-special-anchor]');
 				var newsletterAnchor = document.querySelector('[data-emo-newsletter-anchor]');
 				var newsletter = document.querySelector('[data-emo-commerce="newsletter"]');
-				var eligibilityEndpoint = <?php echo wp_json_encode( $eligibility_endpoint ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>;
 
 				if (!main || !specialAnchor) {
 					return;
 				}
-
-				/*
-				 * Algunas capas editoriales de escritorio aplican reglas genericas a
-				 * .emo-article-content > :is(..., section). Lecturas relacionadas no es
-				 * contenido editorial del cuerpo, asi que normalizamos su section a div y
-				 * evitamos que esas reglas de anchura/margen la desplacen.
-				 */
-				function normalizeRelatedElement(element) {
-					if (!element || element.tagName !== 'SECTION' || !element.parentNode) {
-						return element;
-					}
-
-					var replacement = document.createElement('div');
-					Array.prototype.forEach.call(element.attributes, function (attribute) {
-						replacement.setAttribute(attribute.name, attribute.value);
-					});
-					replacement.setAttribute('data-emo-related-normalized', '1');
-
-					while (element.firstChild) {
-						replacement.appendChild(element.firstChild);
-					}
-
-					element.parentNode.replaceChild(replacement, element);
-					return replacement;
-				}
-
-				Array.prototype.forEach.call(
-					document.querySelectorAll('section.emo-related-reading'),
-					function (section) {
-						normalizeRelatedElement(section);
-					}
-				);
 
 				var article = null;
 				var related = null;
@@ -302,80 +251,11 @@ if ( is_readable( $inline_commerce_module ) ) {
 
 				specialAnchor.setAttribute('data-emo-has-special', moved > 0 ? '1' : '0');
 
-				function setVisible(element, visible) {
-					if (!element) {
-						return;
-					}
-					element.hidden = !visible;
-					element.setAttribute('aria-hidden', visible ? 'false' : 'true');
+				if (newsletter && /(?:^|[?&])emo_newsletter=/.test(window.location.search)) {
+					window.setTimeout(function () {
+						newsletter.scrollIntoView({ block: 'center' });
+					}, 0);
 				}
-
-				function applyEligibility(canBuy) {
-					setVisible(specialAnchor, canBuy && moved > 0);
-					setVisible(newsletter, canBuy && !!newsletter);
-
-					if (canBuy && newsletter && /(?:^|[?&])emo_newsletter=/.test(window.location.search)) {
-						window.setTimeout(function () {
-							newsletter.scrollIntoView({ block: 'center' });
-						}, 0);
-					}
-				}
-
-				function resolveFromGeoDebug() {
-					var geo = window.ElMercadoAdsenseGeoDebug;
-					if (!geo || typeof geo.canBuy !== 'boolean') {
-						return false;
-					}
-					applyEligibility(geo.canBuy === true);
-					return true;
-				}
-
-				/*
-				 * El opt-in no espera ya al controlador de AdSense. Consulta por su cuenta
-				 * el mismo endpoint sin cache; asi los optimizadores de JS no pueden dejar
-				 * el formulario oculto en paises vendibles como Espana.
-				 */
-				function resolveDirectly() {
-					if (!eligibilityEndpoint || typeof window.fetch !== 'function') {
-						return Promise.reject(new Error('Eligibility unavailable'));
-					}
-
-					var separator = eligibilityEndpoint.indexOf('?') === -1 ? '?' : '&';
-					var url = eligibilityEndpoint + separator + '_blog_optin_geo=' + Date.now();
-
-					return fetch(url, {
-						method: 'GET',
-						credentials: 'same-origin',
-						cache: 'no-store',
-						headers: { 'Accept': 'application/json' }
-					}).then(function (response) {
-						if (!response.ok) {
-							throw new Error('Eligibility HTTP ' + response.status);
-						}
-						return response.json();
-					}).then(function (data) {
-						if (!data || typeof data.can_buy !== 'boolean') {
-							throw new Error('Eligibility country unknown');
-						}
-						applyEligibility(data.can_buy === true);
-						return true;
-					});
-				}
-
-				if (resolveFromGeoDebug()) {
-					return;
-				}
-
-				resolveDirectly().catch(function () {
-					/* Ultimo recurso: da unos segundos al controlador geografico existente. */
-					var attempts = 0;
-					var timer = window.setInterval(function () {
-						attempts += 1;
-						if (resolveFromGeoDebug() || attempts >= 80) {
-							window.clearInterval(timer);
-						}
-					}, 100);
-				});
 			}());
 			</script>
 			<?php
@@ -384,4 +264,48 @@ if ( is_readable( $inline_commerce_module ) ) {
 	);
 }
 
+/*
+ * single.php sigue siendo la plantilla base, pero su HTML se normaliza en el
+ * servidor antes de enviarlo al navegador. De este modo relacionados nunca
+ * llega al cliente como <section> y no puede heredar ninguna regla global de
+ * .emo-article-content > :is(..., section).
+ */
+ob_start();
 require __DIR__ . '/single.php';
+$rendered_post = (string) ob_get_clean();
+
+$rendered_post = preg_replace(
+	'~<section\b([^>]*\bclass=(?:"[^"]*\bemo-related-reading\b[^"]*"|\'[^\']*\bemo-related-reading\b[^\']*\')[^>]*)>(.*?)</section>~isu',
+	'<div$1 data-emo-related-root="1">$2</div>',
+	$rendered_post,
+	1
+);
+
+$is_english       = 0 === strpos( strtolower( (string) determine_locale() ), 'en' );
+$newsletter_title = $is_english
+	? 'Stay up to date with all our latest news'
+	: 'Mantente informado de todas nuestras novedades';
+
+$rendered_post = preg_replace_callback(
+	'~(<aside\b[^>]*\bid="emo-newsletter"[^>]*>.*?<h3>).*?(</h3>)~isu',
+	static function ( array $matches ) use ( $newsletter_title ): string {
+		return $matches[1] . esc_html( $newsletter_title ) . $matches[2];
+	},
+	$rendered_post,
+	1
+);
+
+$rendered_post = preg_replace(
+	'~<span\b[^>]*class="emo-inline-newsletter__eyebrow"[^>]*>.*?</span>~isu',
+	'',
+	$rendered_post,
+	1
+);
+$rendered_post = preg_replace(
+	'~<p\b[^>]*class="emo-inline-newsletter__body"[^>]*>.*?</p>~isu',
+	'',
+	$rendered_post,
+	1
+);
+
+echo $rendered_post; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
