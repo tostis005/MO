@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/blog-hotfix-010286-production.yml'
+      - 'elmercadodeorigen-child/inc/blog-regression-fix-010286.php'
 
 permissions:
   contents: read
@@ -33,6 +34,7 @@ jobs:
           grep -Fq 'data-emo-related-root="1"' elmercadodeorigen-child/single.php
           grep -Fq 'repeat(4, minmax(0, 1fr)) !important;' elmercadodeorigen-child/single.php
           grep -Fq 'elmercado-blog-regression-fix-010286' elmercadodeorigen-child/inc/blog-regression-fix-010286.php
+          grep -Fq 'margin-bottom: 11px !important;' elmercadodeorigen-child/inc/blog-regression-fix-010286.php
 
       - name: Deploy and flush cache
         shell: bash
@@ -75,7 +77,7 @@ jobs:
           grep -Fq 'elmercado-blog-regression-fix-010286' /tmp/blog.html
           grep -Fq 'grid-template-columns: repeat(4, minmax(0, 1fr)) !important;' /tmp/blog.html
           grep -Fq 'data-emo-related-root="1"' /tmp/blog.html
-          grep -Fq 'margin-bottom: 5px !important;' /tmp/blog.html
+          grep -Fq 'margin-bottom: 11px !important;' /tmp/blog.html
           grep -Fq 'padding-top: 9px !important;' /tmp/blog.html
           if grep -Fq '<section class="emo-related-reading"' /tmp/blog.html; then
             echo 'RELATED_SECTION_STILL_PRESENT' >&2
