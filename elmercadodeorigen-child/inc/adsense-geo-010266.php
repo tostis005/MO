@@ -168,9 +168,9 @@ function elmercado_adsense_country_is_shippable( string $country ): bool {
  * @return string Codigo ISO alfa-2 o cadena vacia si no puede determinarse.
  */
 /**
- * Evita inicializar AdSense en territorios donde Google exige CMP TCF.
- * Hasta conectar CookieYes como CMP TCF certificada, no servimos anuncios en
- * EEE, Reino Unido ni Suiza para mantener un unico banner de consentimiento.
+ * Clasifica territorios donde Google puede requerir consentimiento TCF.
+ * Este dato es informativo: la publicidad se decide exclusivamente segun si
+ * WooCommerce permite comprar/enviar al pais de la visita.
  */
 function elmercado_adsense_country_requires_tcf_010283( string $country ): bool {
 	static $countries = array(
@@ -202,7 +202,7 @@ function elmercado_adsense_rest_eligibility(): WP_REST_Response {
 	$country      = elmercado_adsense_get_visitor_country();
 	$can_buy      = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;
 	$requires_tcf = '' !== $country && elmercado_adsense_country_requires_tcf_010283( $country );
-	$show_ads     = '' !== $country && false === $can_buy && ! $requires_tcf;
+	$show_ads     = '' !== $country && false === $can_buy;
 
 	$response = new WP_REST_Response(
 		array(
