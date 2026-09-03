@@ -1,0 +1,120 @@
+name: Newsletter spacing and CMP diagnostic 0.10.281
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/newsletter-spacing-cmp-diagnostic-010281.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tighten newsletter top spacing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('elmercadodeorigen-child/single-post.php')
+          text = path.read_text()
+
+          old = """\t\t\t\tbody.single-post .emo-inline-commerce {\n\t\t\t\t\tbox-sizing: border-box;\n\t\t\t\t}\n\n\t\t\t\tbody.single-post .emo-inline-special-anchor > * {"""
+          new = """\t\t\t\tbody.single-post .emo-inline-commerce {\n\t\t\t\t\tbox-sizing: border-box;\n\t\t\t\t}\n\n\t\t\t\t/* Reduce tambien el margen del parrafo inmediatamente anterior. */\n\t\t\t\tbody.single-post .emo-article-content > p:has(+ .emo-inline-special-anchor),\n\t\t\t\tbody.single-post .emo-article-content > p:has(+ .emo-inline-newsletter-anchor) {\n\t\t\t\t\tmargin-bottom: 8px !important;\n\t\t\t\t}\n\n\t\t\t\tbody.single-post .emo-inline-special-anchor > * {"""
+          if old not in text:
+              raise SystemExit('spacing insertion anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = """\t\t\t\t\tmargin: 20px auto !important;\n\t\t\t\t\tpadding: 20px 22px !important;"""
+          new = """\t\t\t\t\tmargin: 8px auto 18px !important;\n\t\t\t\t\tpadding: 14px 22px 18px !important;"""
+          if old not in text:
+              raise SystemExit('desktop newsletter spacing not found')
+          text = text.replace(old, new, 1)
+
+          old = """\t\t\t\t\t\tmargin: 18px auto !important;\n\t\t\t\t\t\tpadding: 18px 16px !important;"""
+          new = """\t\t\t\t\t\tmargin: 8px auto 16px !important;\n\t\t\t\t\t\tpadding: 14px 16px 16px !important;"""
+          if old not in text:
+              raise SystemExit('mobile newsletter spacing not found')
+          text = text.replace(old, new, 1)
+
+          text = text.replace('elmercado-blog-inline-commerce-010280', 'elmercado-blog-inline-commerce-010281', 1)
+          path.write_text(text)
+          PY
+
+          php -l elmercadodeorigen-child/single-post.php
+          grep -Fq 'margin: 8px auto 18px !important' elmercadodeorigen-child/single-post.php
+          grep -Fq 'p:has(+ .emo-inline-special-anchor)' elmercadodeorigen-child/single-post.php
+
+      - name: Commit spacing fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/single-post.php
+          if git diff --cached --quiet; then
+            echo 'No spacing changes needed'
+            exit 0
+          fi
+          git commit -m 'Tighten newsletter top spacing'
+          git push origin HEAD:main
+
+  inspect-cmp:
+    runs-on: ubuntu-24.04
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - name: Inspect active consent tooling in production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+          [ -n "$wp_bin" ] || { echo 'WP-CLI not found'; exit 1; }
+
+          prod_path=""
+          for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path '*/httpdocs/wp-config.php' 2>/dev/null); do
+            p=$(dirname "$cfg")
+            url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+            case "$url" in
+              https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) prod_path="$p"; break ;;
+            esac
+          done
+          : "${prod_path:?production path not found}"
+
+          echo '--- ACTIVE PLUGINS ---'
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --path="$prod_path" --status=active --fields=name,version --format=csv --allow-root
+
+          echo '--- CONSENT-LIKE PLUGINS ---'
+          "$php_bin" -d memory_limit=512M "$wp_bin" plugin list --path="$prod_path" --fields=name,status,version --format=csv --allow-root \
+            | grep -Ei 'cookie|consent|gdpr|complianz|iubenda|cookieyes|real-cookie|wcc|privacy' || true
+
+          site_url=$("$php_bin" -d memory_limit=256M "$wp_bin" option get home --path="$prod_path" --skip-plugins --skip-themes --allow-root 2>/dev/null)
+          tmp=$(mktemp)
+          curl -fsSL --max-time 25 -A 'Mozilla/5.0 EMDO consent diagnostic' "${site_url}/?cmp_diag=$(date +%s)" -o "$tmp"
+          echo '--- PUBLIC CONSENT MARKERS ---'
+          grep -Eoi '.{0,80}(cmplz|cookieyes|cky-|iubenda|cookie-law|cookie_notice|consent|data-wcc).{0,120}' "$tmp" | head -n 80 || true
+          REMOTE
