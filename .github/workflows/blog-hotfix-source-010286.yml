@@ -1,0 +1,41 @@
+name: Register blog hotfix 0.10.286
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blog-hotfix-source-010286.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Register module and normalize related markup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -c 'from pathlib import Path; p=Path("elmercadodeorigen-child/functions.php"); s=p.read_text(); a="\t\x27inc/blog-design-force-010250.php\x27,\n"; n=a+"\t\x27inc/blog-regression-fix-010286.php\x27,\n"; s=s if "blog-regression-fix-010286.php" in s else s.replace(a,n,1); p.write_text(s)'
+          python -c 'from pathlib import Path; p=Path("elmercadodeorigen-child/single.php"); s=p.read_text(); s=s.replace("<section class=\"emo-related-reading\">","<div class=\"emo-related-reading\" data-emo-related-root=\"1\">",1); s=s.replace("repeat(auto-fit, minmax(min(245px, 100%), 1fr)) !important;","repeat(4, minmax(0, 1fr)) !important;",1); old="\t\t\t</section>\n\t\t<?php endif; ?>\n\t\t<?php wp_reset_postdata(); ?>"; new="\t\t\t</div>\n\t\t<?php endif; ?>\n\t\t<?php wp_reset_postdata(); ?>"; s=s.replace(old,new,1); p.write_text(s)'
+          php -l elmercadodeorigen-child/functions.php
+          php -l elmercadodeorigen-child/single.php
+          php -l elmercadodeorigen-child/inc/blog-regression-fix-010286.php
+          grep -Fq "inc/blog-regression-fix-010286.php" elmercadodeorigen-child/functions.php
+          grep -Fq 'data-emo-related-root="1"' elmercadodeorigen-child/single.php
+          grep -Fq 'repeat(4, minmax(0, 1fr)) !important;' elmercadodeorigen-child/single.php
+
+      - name: Commit source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elmercadodeorigen-child/functions.php elmercadodeorigen-child/single.php
+          git commit -m 'Register final blog regression fixes'
+          git push origin HEAD:main
