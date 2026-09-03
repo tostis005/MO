@@ -1,4 +1,4 @@
-name: AdSense TCF regions source 0.10.283
+name: Restore AdSense monetization 0.10.284
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Patch AdSense eligibility
+      - name: Restore AdSense eligibility by shipping country
         shell: bash
         run: |
           set -euo pipefail
@@ -24,62 +24,27 @@ jobs:
           from pathlib import Path
           p = Path('elmercadodeorigen-child/inc/adsense-geo-010266.php')
           s = p.read_text()
-          anchor = "function elmercado_adsense_get_visitor_country(): string {"
-          helper = "\n".join([
-              "/**",
-              " * Evita inicializar AdSense en territorios donde Google exige CMP TCF.",
-              " * Hasta conectar CookieYes como CMP TCF certificada, no servimos anuncios en",
-              " * EEE, Reino Unido ni Suiza para mantener un unico banner de consentimiento.",
-              " */",
-              "function elmercado_adsense_country_requires_tcf_010283( string $country ): bool {",
-              "\tstatic $countries = array(",
-              "\t\t'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',",
-              "\t\t'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',",
-              "\t\t'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'GB', 'CH',",
-              "\t);",
-              "",
-              "\treturn in_array( strtoupper( trim( $country ) ), $countries, true );",
-              "}",
-              "",
-              "",
-          ])
-          if 'elmercado_adsense_country_requires_tcf_010283' not in s:
-              if anchor not in s:
-                  raise SystemExit('visitor country anchor missing')
-              s = s.replace(anchor, helper + anchor, 1)
 
-          old = "\n".join([
-              "\t$country  = elmercado_adsense_get_visitor_country();",
-              "\t$can_buy  = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;",
-              "\t$show_ads = '' !== $country && false === $can_buy;",
-              "",
-              "\t$response = new WP_REST_Response(",
-              "\t\tarray(",
-              "\t\t\t'country'  => $country,",
-              "\t\t\t'can_buy'  => $can_buy,",
-              "\t\t\t'show_ads' => $show_ads,",
-          ])
-          new = "\n".join([
-              "\t$country      = elmercado_adsense_get_visitor_country();",
-              "\t$can_buy      = '' !== $country ? elmercado_adsense_country_is_shippable( $country ) : null;",
-              "\t$requires_tcf = '' !== $country && elmercado_adsense_country_requires_tcf_010283( $country );",
-              "\t$show_ads     = '' !== $country && false === $can_buy && ! $requires_tcf;",
-              "",
-              "\t$response = new WP_REST_Response(",
-              "\t\tarray(",
-              "\t\t\t'country'      => $country,",
-              "\t\t\t'can_buy'      => $can_buy,",
-              "\t\t\t'requires_tcf' => $requires_tcf,",
-              "\t\t\t'show_ads'     => $show_ads,",
-          ])
-          if old in s:
-              s = s.replace(old, new, 1)
-          elif "'requires_tcf' => $requires_tcf" not in s:
-              raise SystemExit('eligibility block missing')
+          old_line = "\t$show_ads     = '' !== $country && false === $can_buy && ! $requires_tcf;"
+          new_line = "\t$show_ads     = '' !== $country && false === $can_buy;"
+          if old_line in s:
+              s = s.replace(old_line, new_line, 1)
+          elif new_line not in s:
+              raise SystemExit('AdSense eligibility line not found')
+
+          s = s.replace(
+              " * Evita inicializar AdSense en territorios donde Google exige CMP TCF.\n * Hasta conectar CookieYes como CMP TCF certificada, no servimos anuncios en\n * EEE, Reino Unido ni Suiza para mantener un unico banner de consentimiento.",
+              " * Clasifica territorios donde Google puede requerir consentimiento TCF.\n * Este dato es informativo: la publicidad se decide exclusivamente segun si\n * WooCommerce permite comprar/enviar al pais de la visita."
+          )
+
           p.write_text(s)
           PY
           php -l elmercadodeorigen-child/inc/adsense-geo-010266.php
-          grep -Fq 'elmercado_adsense_country_requires_tcf_010283' elmercadodeorigen-child/inc/adsense-geo-010266.php
+          grep -Fq '$show_ads     = '\'''''\'' !== $country && false === $can_buy;' elmercadodeorigen-child/inc/adsense-geo-010266.php
+          if grep -Fq 'false === $can_buy && ! $requires_tcf' elmercadodeorigen-child/inc/adsense-geo-010266.php; then
+            echo 'TCF exclusion still present' >&2
+            exit 1
+          fi
       - name: Commit source
         shell: bash
         run: |
@@ -87,5 +52,9 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add elmercadodeorigen-child/inc/adsense-geo-010266.php
-          git commit -m 'Avoid AdSense CMP popup in TCF regions'
+          if git diff --cached --quiet; then
+            echo 'Source already restored'
+            exit 0
+          fi
+          git commit -m 'Restore AdSense in all non-shipping countries'
           git push origin HEAD:main
