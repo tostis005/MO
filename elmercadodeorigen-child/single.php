@@ -328,7 +328,7 @@ while ( have_posts() ) :
 		<?php endif; ?>
 
 		<?php if ( $related->have_posts() ) : ?>
-			<section class="emo-related-reading">
+			<div class="emo-related-reading" data-emo-related-root="1">
 				<div class="emo-shell">
 					<header class="emo-related-reading__heading">
 						<div>
@@ -337,7 +337,7 @@ while ( have_posts() ) :
 						</div>
 						<a class="emo-text-link" href="<?php echo esc_url( elmercado_blog_url() ); ?>"><?php esc_html_e( 'Ver todos los artículos', 'elmercadodeorigen' ); ?> <span aria-hidden="true">→</span></a>
 					</header>
-					<div class="emo-journal-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(245px, 100%), 1fr)) !important;">
+					<div class="emo-journal-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr)) !important;">
 						<?php
 						while ( $related->have_posts() ) :
 							$related->the_post();
@@ -346,7 +346,7 @@ while ( have_posts() ) :
 						?>
 					</div>
 				</div>
-			</section>
+			</div>
 		<?php endif; ?>
 		<?php wp_reset_postdata(); ?>
 	</main>

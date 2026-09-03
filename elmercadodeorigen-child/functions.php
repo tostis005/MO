@@ -163,6 +163,7 @@ $elmercado_modules = array(
 	'inc/blog-editorial-body-class-010249.php',
 	'inc/blog-footer-layout-polish-010246.php',
 	'inc/blog-design-force-010250.php',
+	'inc/blog-regression-fix-010286.php',
 	'inc/blog-product-category-more-010267.php',
 	'inc/blog-default-image-010264.php',
 	'inc/seo-meta-descriptions-010265.php',
