@@ -38,5 +38,8 @@ Requires PHP: 8.0
 @media (min-width: 981px) {
 	body.single-post .emo-related-reading > .emo-shell {
 		width: min(800px, calc(100% - 32px));
+		max-width: 800px;
+		margin-left: auto;
+		margin-right: auto;
 	}
 }
