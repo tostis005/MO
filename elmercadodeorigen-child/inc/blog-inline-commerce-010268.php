@@ -2,10 +2,9 @@
 /**
  * Bloques comerciales editoriales para entradas del blog.
  *
- * Inserta el especial vigente y/o la captacion de correo dentro del cuerpo
- * del articulo. Ambos bloques nacen ocultos y solo se muestran en el navegador
- * cuando la comprobacion geografica confirma que WooCommerce permite comprar
- * desde el pais de la visita.
+ * Prepara anclas dentro del cuerpo del articulo y un formulario de captacion.
+ * El especial vigente no se vuelve a renderizar: el JavaScript geografico mueve
+ * al ancla temprana el bloque que single.php ya imprime antes de relacionados.
  *
  * @package ElMercadoDeOrigen
  */
@@ -61,33 +60,7 @@ function elmercado_blog_newsletter_available(): bool {
 }
 
 /**
- * Captura el HTML del especial vigente ya usado por la web.
- */
-function elmercado_blog_current_special_html(): string {
-	if ( ! class_exists( 'MDO_Home_Featured_Special' ) || ! is_callable( array( 'MDO_Home_Featured_Special', 'render' ) ) ) {
-		return '';
-	}
-
-	try {
-		ob_start();
-		$returned = MDO_Home_Featured_Special::render();
-		$echoed   = (string) ob_get_clean();
-		$returned = is_string( $returned ) ? $returned : '';
-
-		return trim( $echoed . $returned );
-	} catch ( Throwable $exception ) {
-		if ( ob_get_level() > 0 ) {
-			ob_end_clean();
-		}
-		return '';
-	}
-}
-
-/**
  * Construye el formulario de suscripcion a FluentCRM.
- *
- * Se usa doble opt-in: el alta no queda confirmada hasta que el propietario
- * del correo valida el mensaje que recibe.
  */
 function elmercado_blog_newsletter_html( int $post_id ): string {
 	if ( ! elmercado_blog_newsletter_available() ) {
@@ -173,43 +146,39 @@ function elmercado_blog_offset_after_paragraph( string $html, int $paragraph ): 
 }
 
 /**
- * Inserta especial/newsletter en posiciones calculadas sobre el HTML original.
+ * Inserta las anclas en posiciones calculadas sobre el HTML original.
+ *
+ * El newsletter nace junto al ancla temprana. Si JavaScript detecta un especial
+ * vigente, mueve el newsletter al ancla posterior y coloca el especial primero.
  */
-function elmercado_blog_inject_inline_commercial_blocks( string $content_html, int $post_id ): string {
-	$special_html    = elmercado_blog_current_special_html();
-	$newsletter_html = elmercado_blog_newsletter_html( $post_id );
-	$placements      = array();
-
-	if ( '' !== $special_html ) {
-		$placements[] = array(
-			'paragraph' => 3,
-			'html'      => '<div class="emo-inline-commerce emo-inline-special" data-emo-commerce="special" hidden aria-hidden="true">' . $special_html . '</div>',
-		);
-
-		if ( '' !== $newsletter_html ) {
-			$placements[] = array(
-				'paragraph' => 7,
-				'html'      => $newsletter_html,
-			);
-		}
-	} elseif ( '' !== $newsletter_html ) {
-		$placements[] = array(
-			'paragraph' => 3,
-			'html'      => $newsletter_html,
-		);
-	}
-
-	if ( empty( $placements ) ) {
+function elmercado_blog_inject_inline_commercial_blocks( string $content_html ): string {
+	if ( ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() ) {
 		return $content_html;
 	}
 
+	$post_id = get_the_ID();
+	if ( $post_id < 1 ) {
+		return $content_html;
+	}
+
+	static $injected = array();
+	if ( isset( $injected[ $post_id ] ) ) {
+		return $content_html;
+	}
+	$injected[ $post_id ] = true;
+
+	$newsletter_html = elmercado_blog_newsletter_html( $post_id );
+	$early_html      = '<div class="emo-inline-commerce emo-inline-special-anchor" data-emo-commerce="special" data-emo-special-anchor hidden aria-hidden="true"></div>' . $newsletter_html;
+	$later_html      = '<div class="emo-inline-newsletter-anchor" data-emo-newsletter-anchor></div>';
+	$early_offset    = elmercado_blog_offset_after_paragraph( $content_html, 3 );
+	$later_offset    = elmercado_blog_offset_after_paragraph( $content_html, 7 );
+
 	$by_offset = array();
-	foreach ( $placements as $placement ) {
-		$offset = elmercado_blog_offset_after_paragraph( $content_html, (int) $placement['paragraph'] );
-		if ( ! isset( $by_offset[ $offset ] ) ) {
-			$by_offset[ $offset ] = '';
-		}
-		$by_offset[ $offset ] .= (string) $placement['html'];
+	$by_offset[ $early_offset ] = $early_html;
+	if ( isset( $by_offset[ $later_offset ] ) ) {
+		$by_offset[ $later_offset ] .= $later_html;
+	} else {
+		$by_offset[ $later_offset ] = $later_html;
 	}
 
 	krsort( $by_offset, SORT_NUMERIC );
