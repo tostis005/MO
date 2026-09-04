@@ -448,6 +448,27 @@ function elmercado_adsense_inarticle_styles_010278(): void {
 			width: 100%;
 			text-align: center;
 		}
+
+		/* ADSENSE_UNFILLED_COLLAPSE_010289
+		 * Google puede reservar altura para bloques sin inventario. Si el propio
+		 * AdSense confirma data-ad-status=unfilled, retiramos ese hueco. No se
+		 * toca filled ni unfill-optimized.
+		 */
+		body.single-post ins.adsbygoogle[data-ad-status="unfilled"] {
+			display: none !important;
+			height: 0 !important;
+			min-height: 0 !important;
+			margin: 0 !important;
+			padding: 0 !important;
+		}
+
+		body.single-post .emo-inarticle-ad-slot:has(> ins.adsbygoogle[data-ad-status="unfilled"]) {
+			display: none !important;
+			height: 0 !important;
+			min-height: 0 !important;
+			margin: 0 !important;
+			padding: 0 !important;
+		}
 	</style>
 	<?php
 }

@@ -62,7 +62,9 @@
 
 	function isPaused() {
 		var queue = adsbygoogleQueue();
-		return queue.pauseAdRequests !== 0;
+		// ADSENSE_PAUSE_DEBUG_010289: solo un 1 explicito significa pausado.
+		// Tras inicializarse Google puede retirar la propiedad del array.
+		return queue.pauseAdRequests === 1;
 	}
 
 	function updateInArticleDebug() {
