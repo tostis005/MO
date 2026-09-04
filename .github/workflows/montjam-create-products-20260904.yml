@@ -58,8 +58,11 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          REMOTE_SCRIPT="/tmp/montjam-create-products-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/montjam-create-products-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
+          # The legacy catalogue already contains short MJ-* SKUs. Rewrite only this importer
+          # to a producer-specific namespace so WooCommerce's global SKU uniqueness is respected.
+          cp .github/scripts/montjam-create-products-20260904.php /tmp/montjam-importer.php
+          sed -i 's/MJ-JN-/MONTJAM-JN-/g; s/MJ-JR-/MONTJAM-JR-/g; s/MJ-PN-/MONTJAM-PN-/g' /tmp/montjam-importer.php
 
-# Triggered after the importer workflow was present on main.
+          REMOTE_SCRIPT="/tmp/montjam-create-products-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS /tmp/montjam-importer.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
