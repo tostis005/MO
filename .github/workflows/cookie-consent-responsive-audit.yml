@@ -71,10 +71,15 @@ jobs:
                   if banner_r['x'] < -2 or banner_r['right'] > inner_w + 2:
                       raise AssertionError(f'{label}: banner overflows viewport: {banner_r}, innerWidth={inner_w}')
 
-                  container = banner.find_element(By.CSS_SELECTOR, '.cli-bar-btn_container')
+                  bar = d.find_element(By.CSS_SELECTOR, '.cli-bar-container.cli-style-v2')
+                  container = d.find_element(By.CSS_SELECTOR, '.cli-bar-container.cli-style-v2 .cli-bar-btn_container')
                   buttons = container.find_elements(By.CSS_SELECTOR, '.cli_settings_button,[data-cli_action="reject"],[data-cli_action="accept"]')
                   if len(buttons) != 3:
                       raise AssertionError(f'{label}: expected 3 action buttons, got {len(buttons)}')
+
+                  bar_r = rect(d, bar)
+                  if bar_r['x'] < -2 or bar_r['right'] > inner_w + 2:
+                      raise AssertionError(f'{label}: inner cookie bar overflows viewport: {bar_r}, innerWidth={inner_w}')
 
                   rs = [rect(d, b) for b in buttons]
                   tops = [r['y'] for r in rs]
@@ -103,7 +108,7 @@ jobs:
                       if max(widths) - min(widths) > 4:
                           raise AssertionError(f'{label}: mobile/tablet actions are not equal width: {rs}')
 
-                  print(f'{label}=PASS innerWidth={inner_w} banner={banner_r} buttons={rs}', flush=True)
+                  print(f'{label}=PASS innerWidth={inner_w} bar={bar_r} buttons={rs}', flush=True)
               finally:
                   d.quit()
           PY
