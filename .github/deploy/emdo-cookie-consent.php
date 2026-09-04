@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO Cookie Consent Bridge
  * Description: Bridges CookieYes consent to Google Consent Mode and Meta signals.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -110,6 +110,21 @@ function emdo_output_consent_bootstrap() {
 				if (name === '_ga' || name.indexOf('_ga_') === 0 || name === '_fbp') expireCookie(name);
 			});
 		}
+
+		/*
+		 * CookieYes legacy treats the banner's Accept action as "save current
+		 * category selection". Since non-necessary cookies now start unchecked,
+		 * make the explicit Accept button mean "accept non-necessary cookies".
+		 * The capture listener runs before CookieYes handles the same click.
+		 */
+		document.addEventListener('click', function (event) {
+			var node = event.target && event.target.closest ? event.target.closest('[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn') : null;
+			if (!node) return;
+			var checkbox = document.getElementById('wt-cli-checkbox-non-necessary');
+			if (!checkbox || checkbox.checked) return;
+			checkbox.checked = true;
+			checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+		}, true);
 	})();
 	</script>
 	<?php
