@@ -1,9 +1,10 @@
 <?php
 /**
- * Slightly compacts the Home hero on desktop only.
+ * Desktop-only refinements for the Home hero and featured Special.
  *
- * Keeps tablet/mobile untouched and only reduces the excess vertical space
- * between the hero content/producer collage and the following white section.
+ * Keeps tablet/mobile untouched, reduces the excess vertical space below the
+ * hero and makes the featured Special media fill its card without leaving an
+ * empty strip below square product imagery.
  *
  * @package ElMercadoDeOrigen
  */
@@ -23,6 +24,27 @@ add_action(
 			@media (min-width: 1101px) {
 				body.home .emo-home > .emo-hero {
 					padding-bottom: clamp(3.25rem, 4.4vw, 4.25rem) !important;
+				}
+
+				body.home .mdo-home-featured-special__card.has-media {
+					align-items: stretch;
+				}
+
+				body.home .mdo-home-featured-special__media {
+					display: flex;
+					height: 100%;
+					min-height: 100%;
+					overflow: hidden;
+				}
+
+				body.home .mdo-home-featured-special__media img {
+					display: block;
+					width: 100% !important;
+					height: 100% !important;
+					min-height: 100% !important;
+					max-height: none !important;
+					object-fit: cover;
+					object-position: center center;
 				}
 			}
 		</style>
