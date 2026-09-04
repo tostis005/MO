@@ -1,41 +1,48 @@
 <?php
 if (!defined('ABSPATH')) exit(1);
 
-function show_callable($hook,$prio,$fn){
-    $name=''; $ref=null;
-    try{
-        if(is_string($fn)){ $name=$fn; if(function_exists($fn)) $ref=new ReflectionFunction($fn); }
-        elseif(is_array($fn)){ $name=(is_object($fn[0])?get_class($fn[0]):(string)$fn[0]).'::'.$fn[1]; $ref=new ReflectionMethod($fn[0],$fn[1]); }
-        elseif($fn instanceof Closure){ $name='Closure'; $ref=new ReflectionFunction($fn); }
-        elseif(is_object($fn) && method_exists($fn,'__invoke')){ $name=get_class($fn).'::__invoke'; $ref=new ReflectionMethod($fn,'__invoke'); }
-    }catch(Throwable $e){}
-    echo "CALLBACK {$hook} {$prio} {$name}";
-    if($ref) echo ' FILE='.$ref->getFileName().' LINES='.$ref->getStartLine().'-'.$ref->getEndLine();
-    echo "\n";
+function dump_lines($label,$path,$start=1,$end=9999){
+  echo "===== {$label} {$path} =====\n";
+  $lines=@file($path,FILE_IGNORE_NEW_LINES);
+  if(!$lines){echo "MISSING\n";return;}
+  $end=min($end,count($lines));
+  for($i=max(1,$start);$i<=$end;$i++) echo $i.': '.$lines[$i-1]."\n";
 }
-
-foreach(['MDO_Home_Featured_Special','MDO_Specials'] as $cls){
-  if(class_exists($cls)){
-    $r=new ReflectionClass($cls);
-    echo "CLASS {$cls} FILE=".$r->getFileName().' LINES='.$r->getStartLine().'-'.$r->getEndLine()."\n";
+function grep_context($label,$path,$patterns,$radius=8){
+  echo "===== {$label} {$path} =====\n";
+  $lines=@file($path,FILE_IGNORE_NEW_LINES); if(!$lines){echo "MISSING\n";return;}
+  $printed=[];
+  foreach($lines as $i=>$line){
+    $hit=false; foreach($patterns as $p){if(stripos($line,$p)!==false){$hit=true;break;}}
+    if(!$hit)continue;
+    for($j=max(0,$i-$radius);$j<=min(count($lines)-1,$i+$radius);$j++){
+      if(isset($printed[$j]))continue; $printed[$j]=1; echo ($j+1).': '.$lines[$j]."\n";
+    }
+    echo "---\n";
   }
 }
 
-global $wp_filter;
-foreach(['the_content','wp_enqueue_scripts','wp_head','wp_footer','template_include','template_redirect'] as $hook){
- if(empty($wp_filter[$hook])) continue;
- foreach($wp_filter[$hook]->callbacks as $prio=>$callbacks){ foreach($callbacks as $cb){ show_callable($hook,$prio,$cb['function']); }}
-}
+$plugin=WP_PLUGIN_DIR.'/mdo-supplier-sync/includes/';
+dump_lines('FEATURED_SPECIAL_CLASS',$plugin.'class-mdo-home-featured-special.php',1,220);
+grep_context('SPECIALS_CLASS',$plugin.'class-mdo-specials.php',['register_post_type','_emdo_','meta_box','save_post','emdo_special','orderby','menu_order','date_query'],12);
 
-$roots=[WP_CONTENT_DIR.'/mu-plugins',get_stylesheet_directory(),WP_PLUGIN_DIR];
-$patterns=['emdo-home__hero','Una forma distinta de elegir','NUESTRA SELECCIÓN','MDO_Home_Featured_Special','class MDO_Specials','emdo_special'];
-foreach($roots as $root){
- if(!is_dir($root)) continue;
- $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS));
- foreach($it as $f){
-  if(!$f->isFile()||$f->getSize()>1500000) continue; $ext=strtolower($f->getExtension()); if(!in_array($ext,['php','css','js'],true)) continue;
-  $p=$f->getPathname(); if(strpos($p,'/vendor/')!==false||strpos($p,'/node_modules/')!==false||strpos($p,'/cache/')!==false) continue;
-  $txt=@file_get_contents($p); if($txt===false) continue;
-  foreach($patterns as $pat){ if(stripos($txt,$pat)!==false){ echo "SOURCE_MATCH {$pat} FILE={$p}\n"; break; }}
- }
+$theme=get_stylesheet_directory().'/inc/';
+dump_lines('HERO_BALANCE',$theme.'home-hero-cart-balance-010119.php',1,120);
+dump_lines('HOME_RHYTHM',$theme.'home-rhythm-final-01099.php',1,100);
+grep_context('HOME_COPY_DEFINITIVE',$theme.'home-copy-definitive-010165.php',['NUESTRA SELECCIÓN','hero','Origen','emdo-home','productores','producer','vendor'],16);
+
+grep_context('HOME_CRITICAL',WP_CONTENT_DIR.'/mu-plugins/elmercado-home-critical-path-010254.php',['hero','min-height','padding','margin','producer','vendor'],10);
+grep_context('HOME_RESPONSIVE_VENDORS',WP_CONTENT_DIR.'/mu-plugins/elmercado-home-responsive-vendors-010253.php',['hero','min-height','padding','margin','producer','vendor'],10);
+grep_context('HOME_VENDORS_RESPONSIVE',WP_CONTENT_DIR.'/mu-plugins/elmercado-home-vendors-responsive-010252.php',['hero','min-height','padding','margin','producer','vendor'],10);
+
+$r=wp_remote_get(home_url('/'),['timeout'=>30,'redirection'=>3,'headers'=>['Cache-Control'=>'no-cache']]);
+if(!is_wp_error($r)){
+  $html=wp_remote_retrieve_body($r);
+  foreach(['NUESTRA SELECCIÓN','Una forma distinta de elegir','Origen','mdo-home-special','emdo-special','Especial'] as $needle){
+    $pos=stripos($html,$needle);
+    if($pos!==false){
+      $a=max(0,$pos-1600); $frag=substr($html,$a,3200);
+      echo "===== HOME_HTML_CONTEXT {$needle} =====\n".$frag."\n";
+    }
+  }
 }
