@@ -1,0 +1,81 @@
+name: Montjam green ham update 20260904
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/montjam-green-ham-update-20260904.yml'
+      - '.github/scripts/montjam-green-ham-update-20260904.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate script
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/montjam-green-ham-update-20260904.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Update green-label ham in production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?Could not locate production WordPress}"
+
+          REMOTE="/tmp/montjam-green-ham-update-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/montjam-green-ham-update-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l '$REMOTE'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$REMOTE'
+          "
+
+          PRODUCT_URL="https://www.elmercadodeorigen.com/producto/jamon-cebo-de-campo-iberico-50-montjam/?mdo_verify=${GITHUB_RUN_ID}"
+          HTML="/tmp/montjam-green-${GITHUB_RUN_ID}.html"
+          curl -LfsS --max-time 45 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$PRODUCT_URL" -o "$HTML"
+          grep -Eq '219([,.]78|&[a-z]+;78)' "$HTML" || grep -Fq '219.78' "$HTML"
+          grep -Eq '8([–-]|&ndash;)8[,\.]5' "$HTML" || grep -Fq '8-8.5' "$HTML"
+          echo "PUBLIC_GREEN_HAM_VERIFY: price_219_78=1 size_8_8_5=1"
