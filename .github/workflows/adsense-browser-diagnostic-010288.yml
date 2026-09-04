@@ -1,0 +1,99 @@
+name: AdSense browser diagnostic 0.10.288
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/adsense-browser-diagnostic-010288.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inspect public endpoint and ads.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== eligibility from runner ==='
+          curl -fsSL --retry 3 'https://www.elmercadodeorigen.com/wp-json/elmercado/v1/adsense-eligibility?diag=010288' || true
+          echo
+          echo '=== ads.txt ==='
+          curl -sSIL --retry 3 'https://www.elmercadodeorigen.com/ads.txt' | sed -n '1,20p' || true
+          curl -fsSL --retry 3 'https://www.elmercadodeorigen.com/ads.txt' | head -n 30 || true
+          echo
+          echo '=== robots.txt relevant lines ==='
+          curl -fsSL --retry 3 'https://www.elmercadodeorigen.com/robots.txt' | grep -Ei 'ads|google|user-agent|disallow|allow' | head -n 80 || true
+
+      - name: Run desktop and mobile browser diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -z "$CHROME" ]; then
+            echo 'Chrome/Chromium not found' >&2
+            exit 2
+          fi
+          "$CHROME" --version
+
+          BASE='https://www.elmercadodeorigen.com/cuanto-tiempo-marinar-carne-ternera-horas-sal-acidez/?adsense_debug=1&diag=010288'
+
+          "$CHROME" \
+            --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --window-size=1365,900 --virtual-time-budget=18000 \
+            --dump-dom "${BASE}&device=desktop" > /tmp/desktop.html 2>/tmp/desktop.err || true
+
+          "$CHROME" \
+            --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --window-size=390,844 \
+            --user-agent='Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' \
+            --virtual-time-budget=18000 \
+            --dump-dom "${BASE}&device=mobile" > /tmp/mobile.html 2>/tmp/mobile.err || true
+
+          python - <<'PY'
+          import html, re
+          from pathlib import Path
+
+          def inspect(label, path):
+              s = Path(path).read_text(errors='ignore')
+              print(f'=== {label} ===')
+              print('html_bytes=', len(s))
+              print('geo_config=', 'ElMercadoAdsenseGeo' in s)
+              print('dynamic_adsense_script=', 'data-emo-adsense-dynamic="1"' in s)
+              print('adsense_script_any=', 'pagead2.googlesyndication.com/pagead/js/adsbygoogle.js' in s)
+              print('placeholders=', len(re.findall(r'data-emo-inarticle-ad=', s)))
+              print('hydrated=', len(re.findall(r'data-emo-inarticle-hydrated="1"', s)))
+              print('filled=', len(re.findall(r'data-ad-status="filled"', s)))
+              print('unfilled=', len(re.findall(r'data-ad-status="unfilled"', s)))
+              print('unfill_optimized=', len(re.findall(r'data-ad-status="unfill-optimized"', s)))
+              print('google_iframes=', len(re.findall(r'google_ads_iframe|aswift_', s)))
+              panel = re.search(r'<div[^>]+id="elmercado-adsense-debug"[^>]*>(.*?)</div>', s, re.S|re.I)
+              if panel:
+                  txt = re.sub(r'<[^>]+>', '', panel.group(1))
+                  print('debug_panel=')
+                  print(html.unescape(txt).strip())
+              else:
+                  print('debug_panel=ABSENT')
+              for m in re.finditer(r'<ins\b[^>]*class="[^"]*adsbygoogle[^"]*"[^>]*>', s, re.I):
+                  tag = m.group(0)
+                  attrs = {}
+                  for k in ['data-ad-status','data-adsbygoogle-status','style','data-ad-slot','data-ad-format']:
+                      mm = re.search(r'%s="([^"]*)"' % re.escape(k), tag, re.I)
+                      if mm: attrs[k] = mm.group(1)
+                  print('ins=', attrs)
+              print()
+
+          inspect('desktop', '/tmp/desktop.html')
+          inspect('mobile', '/tmp/mobile.html')
+          PY
+
+          echo '=== Chrome stderr desktop (tail) ==='
+          tail -n 80 /tmp/desktop.err || true
+          echo '=== Chrome stderr mobile (tail) ==='
+          tail -n 80 /tmp/mobile.err || true
