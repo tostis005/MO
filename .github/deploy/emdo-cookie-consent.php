@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO Cookie Consent Bridge
  * Description: Bridges CookieYes consent to Google Consent Mode and Meta signals.
- * Version: 1.0.2
+ * Version: 1.0.3
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -60,6 +60,103 @@ add_filter(
 	},
 	-9999
 );
+
+/**
+ * Keep the legacy CookieYes banner tidy at every viewport. The original plugin
+ * styles were designed around fewer actions and can stagger three buttons on
+ * narrow screens. Desktop keeps a compact action row; tablet/mobile stack the
+ * message above one straight row of three equal actions.
+ */
+function emdo_output_consent_styles() {
+	?>
+	<style id="emdo-cookie-consent-responsive">
+	#cookie-law-info-bar,
+	#cookie-law-info-bar * {
+		box-sizing: border-box;
+	}
+	#cookie-law-info-bar .cli-bar-container {
+		display: flex !important;
+		align-items: center !important;
+		justify-content: space-between !important;
+		gap: 18px !important;
+		width: 100% !important;
+	}
+	#cookie-law-info-bar .cli-bar-message {
+		flex: 1 1 auto !important;
+		width: auto !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		text-align: left !important;
+	}
+	#cookie-law-info-bar .cli-bar-btn_container {
+		flex: 0 0 auto !important;
+		display: flex !important;
+		align-items: center !important;
+		justify-content: flex-end !important;
+		flex-wrap: nowrap !important;
+		gap: 8px !important;
+		width: auto !important;
+		margin: 0 !important;
+		padding: 0 !important;
+	}
+	#cookie-law-info-bar .cli-bar-btn_container .cli_action_button,
+	#cookie-law-info-bar .cli-bar-btn_container .cli_settings_button {
+		display: inline-flex !important;
+		align-items: center !important;
+		justify-content: center !important;
+		float: none !important;
+		transform: none !important;
+		width: auto !important;
+		min-width: 0 !important;
+		max-width: none !important;
+		min-height: 40px !important;
+		margin: 0 !important;
+		line-height: 1.2 !important;
+		white-space: nowrap !important;
+		text-align: center !important;
+	}
+
+	@media (max-width: 900px) {
+		#cookie-law-info-bar .cli-bar-container {
+			flex-direction: column !important;
+			align-items: stretch !important;
+			gap: 12px !important;
+		}
+		#cookie-law-info-bar .cli-bar-message {
+			width: 100% !important;
+		}
+		#cookie-law-info-bar .cli-bar-btn_container {
+			display: grid !important;
+			grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+			align-items: stretch !important;
+			justify-content: stretch !important;
+			gap: 8px !important;
+			width: 100% !important;
+		}
+		#cookie-law-info-bar .cli-bar-btn_container .cli_action_button,
+		#cookie-law-info-bar .cli-bar-btn_container .cli_settings_button {
+			width: 100% !important;
+			min-height: 42px !important;
+			padding: 10px 6px !important;
+			font-size: 13px !important;
+		}
+	}
+
+	@media (max-width: 359px) {
+		#cookie-law-info-bar .cli-bar-btn_container {
+			gap: 6px !important;
+		}
+		#cookie-law-info-bar .cli-bar-btn_container .cli_action_button,
+		#cookie-law-info-bar .cli-bar-btn_container .cli_settings_button {
+			padding-left: 3px !important;
+			padding-right: 3px !important;
+			font-size: 12px !important;
+		}
+	}
+	</style>
+	<?php
+}
+add_action( 'wp_head', 'emdo_output_consent_styles', 99999 );
 
 /**
  * Google Consent Mode must run before MonsterInsights outputs its GA4 config.
