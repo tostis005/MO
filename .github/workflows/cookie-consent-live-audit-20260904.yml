@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/cookie-consent-live-audit-20260904.yml'
+      - '.github/deploy/emdo-cookie-consent.php'
+      - '.github/scripts/cookie-consent-config-20260904.php'
+      - '.github/workflows/cookie-consent-fix-20260904-production.yml'
   workflow_dispatch:
 
 permissions:
