@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO Cookie Consent Bridge
  * Description: Bridges CookieYes consent to Google Consent Mode and Meta signals.
- * Version: 1.0.1
+ * Version: 1.0.2
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -79,6 +79,7 @@ function emdo_output_consent_bootstrap() {
 	});
 	(function () {
 		'use strict';
+		var secure = location.protocol === 'https:' ? '; Secure' : '';
 		function readCookie(name) {
 			var prefix = name + '=';
 			var parts = document.cookie ? document.cookie.split(';') : [];
@@ -87,6 +88,9 @@ function emdo_output_consent_bootstrap() {
 				if (item.indexOf(prefix) === 0) return decodeURIComponent(item.substring(prefix.length));
 			}
 			return '';
+		}
+		function writeCookie(name, value) {
+			document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax' + secure;
 		}
 		function expireCookie(name) {
 			var expires = 'Thu, 01 Jan 1970 00:00:00 GMT';
@@ -102,8 +106,7 @@ function emdo_output_consent_bootstrap() {
 			'ad_user_data': state,
 			'ad_personalization': state
 		});
-		var secure = location.protocol === 'https:' ? '; Secure' : '';
-		document.cookie = 'wc_facebook_signals_state=' + (granted ? 'active' : 'held') + '; path=/; max-age=31536000; SameSite=Lax' + secure;
+		writeCookie('wc_facebook_signals_state', granted ? 'active' : 'held');
 		if (!granted && document.cookie) {
 			document.cookie.split(';').forEach(function (part) {
 				var name = part.split('=')[0].trim();
@@ -112,18 +115,32 @@ function emdo_output_consent_bootstrap() {
 		}
 
 		/*
-		 * CookieYes legacy treats the banner's Accept action as "save current
-		 * category selection". Since non-necessary cookies now start unchecked,
-		 * make the explicit Accept button mean "accept non-necessary cookies".
-		 * The capture listener runs before CookieYes handles the same click.
+		 * CookieYes legacy treats the banner Accept action as "save current
+		 * category selection". With non-necessary cookies correctly unchecked by
+		 * default, that made the prominent Accept button behave like Reject.
+		 * Intercept only the main banner Accept action and persist an explicit
+		 * accept-all decision. The settings modal remains granular.
 		 */
 		document.addEventListener('click', function (event) {
 			var node = event.target && event.target.closest ? event.target.closest('[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn') : null;
-			if (!node) return;
-			var checkbox = document.getElementById('wt-cli-checkbox-non-necessary');
-			if (!checkbox || checkbox.checked) return;
-			checkbox.checked = true;
-			checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+			if (!node || !node.closest('#cookie-law-info-bar')) return;
+
+			event.preventDefault();
+			event.stopImmediatePropagation();
+
+			writeCookie('cookielawinfo-checkbox-necessary', 'yes');
+			writeCookie('cookielawinfo-checkbox-non-necessary', 'yes');
+			writeCookie('viewed_cookie_policy', 'yes');
+			writeCookie('CookieLawInfoConsent', 'eyJuZWNlc3NhcnkiOnRydWUsIm5vbi1uZWNlc3NhcnkiOnRydWV9');
+			writeCookie('wc_facebook_signals_state', 'active');
+			gtag('consent', 'update', {
+				'analytics_storage': 'granted',
+				'ad_storage': 'granted',
+				'ad_user_data': 'granted',
+				'ad_personalization': 'granted'
+			});
+
+			window.setTimeout(function () { window.location.reload(); }, 50);
 		}, true);
 	})();
 	</script>
