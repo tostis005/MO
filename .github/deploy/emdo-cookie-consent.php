@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO Cookie Consent Bridge
  * Description: Bridges CookieYes consent to Google Consent Mode and Meta signals.
- * Version: 1.0.4
+ * Version: 1.0.5
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -50,73 +50,92 @@ add_filter(
 	-9999
 );
 
-/**
- * Keep the legacy CookieYes banner tidy at every viewport. CookieYes can move
- * its inner container when switching to the mobile presentation, so these
- * selectors deliberately target the legacy banner classes themselves instead
- * of relying on them remaining descendants of #cookie-law-info-bar.
- */
 function emdo_output_consent_styles() {
 	?>
 	<style id="emdo-cookie-consent-responsive">
 	#cookie-law-info-bar,
-	#cookie-law-info-bar *,
-	.cli-bar-container.cli-style-v2,
-	.cli-bar-container.cli-style-v2 * {
-		box-sizing: border-box;
+	#cookie-law-info-bar * {
+		box-sizing: border-box !important;
 	}
-	.cli-bar-container.cli-style-v2 {
+	#cookie-law-info-bar {
+		width: min(980px, calc(100% - 24px)) !important;
+		max-width: 980px !important;
+		left: 50% !important;
+		right: auto !important;
+		transform: translateX(-50%) !important;
+		padding: 14px 16px !important;
+		margin: 0 !important;
+	}
+	#cookie-law-info-bar > .emdo-cookie-layout,
+	#cookie-law-info-bar > span.emdo-cookie-layout {
 		display: flex !important;
 		align-items: center !important;
 		justify-content: space-between !important;
 		gap: 18px !important;
 		width: 100% !important;
-	}
-	.cli-bar-container.cli-style-v2 .cli-bar-message {
-		flex: 1 1 auto !important;
-		width: auto !important;
 		margin: 0 !important;
 		padding: 0 !important;
 		text-align: left !important;
 	}
-	.cli-bar-container.cli-style-v2 .cli-bar-btn_container {
+	#cookie-law-info-bar .emdo-cookie-message {
+		flex: 1 1 auto !important;
+		min-width: 0 !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		line-height: 1.45 !important;
+	}
+	#cookie-law-info-bar .emdo-cookie-message .cli-plugin-main-link {
+		display: inline !important;
+		margin: 0 0 0 4px !important;
+		padding: 0 !important;
+		white-space: nowrap !important;
+	}
+	#cookie-law-info-bar .emdo-cookie-actions {
 		flex: 0 0 auto !important;
 		display: flex !important;
-		align-items: center !important;
+		align-items: stretch !important;
 		justify-content: flex-end !important;
 		flex-wrap: nowrap !important;
 		gap: 8px !important;
-		width: auto !important;
 		margin: 0 !important;
 		padding: 0 !important;
 	}
-	.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_action_button,
-	.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_settings_button {
+	#cookie-law-info-bar .emdo-cookie-actions .cli_action_button,
+	#cookie-law-info-bar .emdo-cookie-actions .cli_settings_button {
 		display: inline-flex !important;
 		align-items: center !important;
 		justify-content: center !important;
 		float: none !important;
+		position: static !important;
 		transform: none !important;
 		width: auto !important;
-		min-width: 0 !important;
+		min-width: 78px !important;
 		max-width: none !important;
 		min-height: 40px !important;
+		height: auto !important;
 		margin: 0 !important;
+		padding: 9px 12px !important;
 		line-height: 1.2 !important;
 		white-space: nowrap !important;
 		text-align: center !important;
+		vertical-align: middle !important;
 	}
 
-	@media (max-width: 900px) {
-		.cli-bar-container.cli-style-v2 {
+	@media (max-width: 760px) {
+		#cookie-law-info-bar {
+			width: calc(100% - 20px) !important;
+			padding: 13px 14px !important;
+		}
+		#cookie-law-info-bar > .emdo-cookie-layout,
+		#cookie-law-info-bar > span.emdo-cookie-layout {
 			flex-direction: column !important;
 			align-items: stretch !important;
 			gap: 12px !important;
 		}
-		.cli-bar-container.cli-style-v2 .cli-bar-message {
+		#cookie-law-info-bar .emdo-cookie-message {
 			width: 100% !important;
 		}
-		.cli-bar-container.cli-style-v2 .cli-bar-btn_container {
+		#cookie-law-info-bar .emdo-cookie-actions {
 			display: grid !important;
 			grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 			align-items: stretch !important;
@@ -124,21 +143,26 @@ function emdo_output_consent_styles() {
 			gap: 8px !important;
 			width: 100% !important;
 		}
-		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_action_button,
-		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_settings_button {
+		#cookie-law-info-bar .emdo-cookie-actions .cli_action_button,
+		#cookie-law-info-bar .emdo-cookie-actions .cli_settings_button {
 			width: 100% !important;
+			min-width: 0 !important;
 			min-height: 42px !important;
-			padding: 10px 6px !important;
+			padding: 10px 5px !important;
 			font-size: 13px !important;
 		}
 	}
 
 	@media (max-width: 359px) {
-		.cli-bar-container.cli-style-v2 .cli-bar-btn_container {
+		#cookie-law-info-bar {
+			width: calc(100% - 16px) !important;
+			padding: 12px !important;
+		}
+		#cookie-law-info-bar .emdo-cookie-actions {
 			gap: 6px !important;
 		}
-		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_action_button,
-		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_settings_button {
+		#cookie-law-info-bar .emdo-cookie-actions .cli_action_button,
+		#cookie-law-info-bar .emdo-cookie-actions .cli_settings_button {
 			padding-left: 3px !important;
 			padding-right: 3px !important;
 			font-size: 12px !important;
@@ -164,6 +188,7 @@ function emdo_output_consent_bootstrap() {
 	(function () {
 		'use strict';
 		var secure = location.protocol === 'https:' ? '; Secure' : '';
+
 		function readCookie(name) {
 			var prefix = name + '=';
 			var parts = document.cookie ? document.cookie.split(';') : [];
@@ -173,15 +198,48 @@ function emdo_output_consent_bootstrap() {
 			}
 			return '';
 		}
+
 		function writeCookie(name, value) {
 			document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax' + secure;
 		}
+
 		function expireCookie(name) {
 			var expires = 'Thu, 01 Jan 1970 00:00:00 GMT';
 			document.cookie = name + '=; expires=' + expires + '; path=/; SameSite=Lax';
 			document.cookie = name + '=; expires=' + expires + '; path=/; domain=.elmercadodeorigen.com; SameSite=Lax';
 			document.cookie = name + '=; expires=' + expires + '; path=/; domain=www.elmercadodeorigen.com; SameSite=Lax';
 		}
+
+		function normalizeCookieBanner() {
+			var banner = document.getElementById('cookie-law-info-bar');
+			if (!banner) return;
+			var root = banner.querySelector(':scope > span');
+			if (!root || root.classList.contains('emdo-cookie-layout')) return;
+
+			var settings = root.querySelector('.cli_settings_button');
+			var reject = root.querySelector('[data-cli_action="reject"],#cookie_action_close_header_reject,.wt-cli-reject-btn');
+			var accept = root.querySelector('[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn');
+			if (!settings || !reject || !accept) return;
+
+			var actionNodes = [settings, reject, accept];
+			var message = document.createElement('div');
+			message.className = 'emdo-cookie-message';
+			Array.prototype.slice.call(root.childNodes).forEach(function (node) {
+				if (node.nodeType === 1 && actionNodes.indexOf(node) !== -1) return;
+				message.appendChild(node);
+			});
+
+			var actions = document.createElement('div');
+			actions.className = 'emdo-cookie-actions';
+			actions.appendChild(settings);
+			actions.appendChild(reject);
+			actions.appendChild(accept);
+
+			root.classList.add('emdo-cookie-layout');
+			root.appendChild(message);
+			root.appendChild(actions);
+		}
+
 		var granted = readCookie('viewed_cookie_policy') === 'yes' && readCookie('cookielawinfo-checkbox-non-necessary') === 'yes';
 		var state = granted ? 'granted' : 'denied';
 		gtag('consent', 'update', {
@@ -197,6 +255,13 @@ function emdo_output_consent_bootstrap() {
 				if (name === '_ga' || name.indexOf('_ga_') === 0 || name === '_fbp') expireCookie(name);
 			});
 		}
+
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', normalizeCookieBanner);
+		} else {
+			normalizeCookieBanner();
+		}
+		new MutationObserver(normalizeCookieBanner).observe(document.documentElement, { childList: true, subtree: true });
 
 		document.addEventListener('click', function (event) {
 			var node = event.target && event.target.closest ? event.target.closest('[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn') : null;
