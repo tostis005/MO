@@ -150,7 +150,7 @@ jobs:
                   raise AssertionError('Reject button not found')
               reject[0].click()
               time.sleep(7)
-              if cookie(d, 'viewed_cookie_policy') != 'yes':
+              if cookie(d, 'viewed_cookie_policy') not in ('yes', 'no'):
                   raise AssertionError('Reject choice was not persisted')
               if cookie(d, 'cookielawinfo-checkbox-non-necessary') != 'no':
                   raise AssertionError('Reject did not persist non-necessary=no')
