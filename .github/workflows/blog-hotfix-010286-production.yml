@@ -35,6 +35,8 @@ jobs:
           grep -Fq 'repeat(4, minmax(0, 1fr)) !important;' elmercadodeorigen-child/single.php
           grep -Fq 'elmercado-blog-regression-fix-010286' elmercadodeorigen-child/inc/blog-regression-fix-010286.php
           grep -Fq 'margin-bottom: 11px !important;' elmercadodeorigen-child/inc/blog-regression-fix-010286.php
+          grep -Fq 'elmercado-related-reading-responsive-010287' elmercadodeorigen-child/inc/blog-regression-fix-010286.php
+          grep -Fq "grid.style.removeProperty('grid-template-columns');" elmercadodeorigen-child/inc/blog-regression-fix-010286.php
 
       - name: Deploy and flush cache
         shell: bash
@@ -66,7 +68,7 @@ jobs:
           sshpass -e scp $SCP elmercadodeorigen-child/single.php "$STAGING_USER@$STAGING_HOST:$T/single.php"
           sshpass -e scp $SCP elmercadodeorigen-child/inc/blog-regression-fix-010286.php "$STAGING_USER@$STAGING_HOST:$T/inc/blog-regression-fix-010286.php"
           sshpass -e scp $SCP elmercadodeorigen-child/inc/adsense-geo-010266.php "$STAGING_USER@$STAGING_HOST:$T/inc/adsense-geo-010266.php"
-          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$T/functions.php'; \"\$php_bin\" -l '$T/single.php'; \"\$php_bin\" -l '$T/inc/blog-regression-fix-010286.php'; \"\$php_bin\" -l '$T/inc/adsense-geo-010266.php'; wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" -l '$T/functions.php'; \"\$php_bin\" -l '$T/single.php'; \"\$php_bin\" -l '$T/inc/blog-regression-fix-010286.php'; \"\$php_bin\" -l '$T/inc/adsense-geo-010266.php'; grep -Fq 'elmercado-related-reading-responsive-010287' '$T/inc/blog-regression-fix-010286.php'; wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
       - name: Verify production
         shell: bash
@@ -79,6 +81,10 @@ jobs:
           grep -Fq 'data-emo-related-root="1"' /tmp/blog.html
           grep -Fq 'margin-bottom: 11px !important;' /tmp/blog.html
           grep -Fq 'padding-top: 9px !important;' /tmp/blog.html
+          grep -Fq 'elmercado-related-reading-responsive-010287' /tmp/blog.html
+          grep -Fq "grid.style.removeProperty('grid-template-columns');" /tmp/blog.html
+          grep -Fq '@media (max-width: 1100px)' /tmp/blog.html
+          grep -Fq '@media (max-width: 560px)' /tmp/blog.html
           if grep -Fq '<section class="emo-related-reading"' /tmp/blog.html; then
             echo 'RELATED_SECTION_STILL_PRESENT' >&2
             exit 7
@@ -97,4 +103,4 @@ jobs:
             grep -Eq '"can_buy"[[:space:]]*:[[:space:]]*true' <<< "$BODY"
             grep -Eq '"show_ads"[[:space:]]*:[[:space:]]*false' <<< "$BODY"
           done
-          echo 'BLOG_HOTFIX_010286=PASS'
+          echo 'BLOG_HOTFIX_RESPONSIVE_010287=PASS'
