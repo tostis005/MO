@@ -1,0 +1,88 @@
+name: Home special render diagnose 20260904
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-special-render-diagnose-20260904.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect production Home special renderer and cache
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?Could not locate production WordPress}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo '=== MATCHING FILES ==='
+          grep -RIl --exclude='*.map' --exclude-dir='node_modules' --exclude-dir='vendor' -E 'elmercado-home-static|_mdo_promo_featured_home|mdo_promotion|MDO_Specials|featured_home' \
+            "$PROD_PATH/wp-content/mu-plugins" \
+            "$PROD_PATH/wp-content/themes" \
+            "$PROD_PATH/wp-content/plugins/mdo-supplier-sync" 2>/dev/null | sed 's#^#MATCH_FILE:#' | head -n 120
+
+          echo '=== MATCHING LINES ==='
+          grep -RIn --exclude='*.map' --exclude-dir='node_modules' --exclude-dir='vendor' -E 'elmercado-home-static|_mdo_promo_featured_home|mdo_promotion|featured_home' \
+            "$PROD_PATH/wp-content/mu-plugins" \
+            "$PROD_PATH/wp-content/themes" \
+            "$PROD_PATH/wp-content/plugins/mdo-supplier-sync" 2>/dev/null | head -n 260 || true
+
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          echo '=== ACTIVE FEATURED PROMOTIONS ==='
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            $q = new WP_Query(["post_type"=>"mdo_promotion","post_status"=>"publish","posts_per_page"=>-1,"meta_key"=>"_mdo_promo_featured_home","meta_value"=>"1"]);
+            foreach($q->posts as $p){
+              $status = class_exists("MDO_Specials") ? MDO_Specials::status($p->ID) : "no-class";
+              echo "FEATURED:" . $p->ID . "|" . $status . "|" . $p->post_title . PHP_EOL;
+            }
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE
+
+          echo '=== ANONYMOUS CURRENT SPECIAL CHECK ==='
+          curl -LfsS --max-time 45 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' 'https://www.elmercadodeorigen.com/' -o /tmp/home-anon.html
+          python3 - <<'PY'
+          from pathlib import Path
+          html=Path('/tmp/home-anon.html').read_text(errors='ignore')
+          title='Jamón de bellota 100% ibérico Montjam · 6–6,5 kg por 225 €'
+          print('EXACT_CURRENT_PROMO_TITLE_PRESENT:', title in html)
+          for needle in ['14310','mdo-promotion','mdo_promotion','featured_home','225 €','225 &euro;','225&nbsp;€','Montjam']:
+              print('MARKER', needle, html.find(needle))
+          idx=html.find('Montjam')
+          if idx>=0:
+              print('MONTJAM_CONTEXT:', html[max(0,idx-350):idx+700].replace('\n',' ')[:1100])
+          PY
