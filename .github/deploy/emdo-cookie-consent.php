@@ -2,7 +2,7 @@
 /**
  * Plugin Name: EMDO Cookie Consent Bridge
  * Description: Bridges CookieYes consent to Google Consent Mode and Meta signals.
- * Version: 1.0.5
+ * Version: 1.0.6
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -124,32 +124,66 @@ function emdo_output_consent_styles() {
 	@media (max-width: 760px) {
 		#cookie-law-info-bar {
 			width: calc(100% - 20px) !important;
-			padding: 13px 14px !important;
+			padding: 14px !important;
 		}
 		#cookie-law-info-bar > .emdo-cookie-layout,
 		#cookie-law-info-bar > span.emdo-cookie-layout {
 			flex-direction: column !important;
 			align-items: stretch !important;
-			gap: 12px !important;
+			gap: 10px !important;
 		}
 		#cookie-law-info-bar .emdo-cookie-message {
 			width: 100% !important;
+			font-size: 13px !important;
+			line-height: 1.42 !important;
+		}
+		#cookie-law-info-bar .emdo-cookie-message .cli-plugin-main-link {
+			white-space: normal !important;
 		}
 		#cookie-law-info-bar .emdo-cookie-actions {
 			display: grid !important;
-			grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
 			align-items: stretch !important;
 			justify-content: stretch !important;
 			gap: 8px !important;
 			width: 100% !important;
 		}
-		#cookie-law-info-bar .emdo-cookie-actions .cli_action_button,
 		#cookie-law-info-bar .emdo-cookie-actions .cli_settings_button {
+			grid-column: 1 / -1 !important;
+			justify-self: start !important;
+			width: auto !important;
+			min-width: 0 !important;
+			min-height: 22px !important;
+			padding: 0 !important;
+			margin: 0 0 1px !important;
+			border: 0 !important;
+			background: transparent !important;
+			box-shadow: none !important;
+			font-size: 13px !important;
+			font-weight: 600 !important;
+			line-height: 1.35 !important;
+			text-decoration: underline !important;
+			text-underline-offset: 2px !important;
+		}
+		#cookie-law-info-bar .emdo-cookie-actions [data-cli_action="reject"],
+		#cookie-law-info-bar .emdo-cookie-actions [data-cli_action="accept"] {
 			width: 100% !important;
 			min-width: 0 !important;
-			min-height: 42px !important;
-			padding: 10px 5px !important;
-			font-size: 13px !important;
+			min-height: 44px !important;
+			padding: 10px 12px !important;
+			margin: 0 !important;
+			font-size: 14px !important;
+			font-weight: 600 !important;
+		}
+		#cookie-law-info-bar .emdo-cookie-actions [data-cli_action="reject"] {
+			border: 1px solid #11250a !important;
+			background: #ffffff !important;
+			color: #11250a !important;
+		}
+		#cookie-law-info-bar .emdo-cookie-actions [data-cli_action="accept"] {
+			border: 1px solid #11250a !important;
+			background: #11250a !important;
+			color: #ffffff !important;
 		}
 	}
 
@@ -161,11 +195,11 @@ function emdo_output_consent_styles() {
 		#cookie-law-info-bar .emdo-cookie-actions {
 			gap: 6px !important;
 		}
-		#cookie-law-info-bar .emdo-cookie-actions .cli_action_button,
-		#cookie-law-info-bar .emdo-cookie-actions .cli_settings_button {
-			padding-left: 3px !important;
-			padding-right: 3px !important;
-			font-size: 12px !important;
+		#cookie-law-info-bar .emdo-cookie-actions [data-cli_action="reject"],
+		#cookie-law-info-bar .emdo-cookie-actions [data-cli_action="accept"] {
+			padding-left: 8px !important;
+			padding-right: 8px !important;
+			font-size: 13px !important;
 		}
 	}
 	</style>
