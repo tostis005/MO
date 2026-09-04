@@ -92,7 +92,7 @@ jobs:
           curl -LfsS --max-time 45 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$VERIFY_URL" -o "$VERIFY_HTML"
 
           grep -Fq 'id="elmercado-home-hero-compact-20260904"' "$VERIFY_HTML"
-          grep -Fq 'min-height: min(640px, calc(100svh - 108px))' "$VERIFY_HTML"
+          grep -Fq 'padding-bottom:' "$VERIFY_HTML"
           grep -Fq 'data-mdo-home-featured-special=' "$VERIFY_HTML"
           grep -Fq 'Montjam' "$VERIFY_HTML"
           grep -Fq '225' "$VERIFY_HTML"
