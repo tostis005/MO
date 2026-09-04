@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Inspect WordPress plugins and relevant option names
+      - name: Inspect CookieYes settings safely
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -34,13 +34,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends sshpass >/dev/null
           PORT="${STAGING_PORT:-22}"
           SSH_OPTIONS="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
-
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
-          [ -n "$wp_bin" ] || { echo "WP_CLI_NOT_FOUND"; exit 2; }
           PROD_PATH=""
           for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
             p=$(dirname "$cfg")
@@ -50,18 +48,15 @@ jobs:
             esac
           done
           : "${PROD_PATH:?production path not found}"
-          echo "ACTIVE_PLUGINS_BEGIN"
-          "$php_bin" -d memory_limit=256M "$wp_bin" plugin list --path="$PROD_PATH" --status=active --fields=name,version --format=table --skip-themes --allow-root
-          echo "ACTIVE_PLUGINS_END"
-          echo "RELEVANT_OPTION_NAMES_BEGIN"
-          "$php_bin" -d memory_limit=256M "$wp_bin" db query "SELECT option_name FROM wp_options WHERE option_name REGEXP 'cookie|consent|analytics|gtag|google|site_kit' ORDER BY option_name" --path="$PROD_PATH" --skip-column-names --allow-root 2>/dev/null | head -n 120 || true
-          echo "RELEVANT_OPTION_NAMES_END"
-          echo "COOKIEYES_FILES_BEGIN"
-          find "$PROD_PATH/wp-content/plugins" -maxdepth 2 -type f \( -name '*.php' -o -name '*.js' \) 2>/dev/null | grep -Ei 'cookie-law-info|cookieyes' | head -n 30 || true
-          echo "COOKIEYES_FILES_END"
+          for opt in 'CookieLawInfo-0.9' 'cookielawinfo_necessary_settings' 'cookielawinfo_thirdparty_settings'; do
+            echo "OPTION_BEGIN=$opt"
+            "$php_bin" -d memory_limit=256M "$wp_bin" eval "echo wp_json_encode(get_option('$opt'), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);" --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
+            echo
+            echo "OPTION_END=$opt"
+          done
           REMOTE
 
-      - name: Inspect live browser before consent
+      - name: Inspect live CookieYes controls and consent cookies
         shell: bash
         run: |
           set -euo pipefail
@@ -70,32 +65,29 @@ jobs:
           import json, time
           from selenium import webdriver
           from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
 
-          o=Options(); o.page_load_strategy='eager'
-          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1600','--lang=es-ES'):
-              o.add_argument(arg)
-          o.set_capability('goog:loggingPrefs', {'performance':'ALL'})
-          d=webdriver.Chrome(options=o)
-          try:
+          def make_driver():
+              o=Options(); o.page_load_strategy='eager'
+              for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1600','--lang=es-ES'):
+                  o.add_argument(arg)
+              d=webdriver.Chrome(options=o)
+              d.set_page_load_timeout(60)
               d.execute_cdp_cmd('Network.enable', {})
               d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {'Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache'}})
-              d.get('https://www.elmercadodeorigen.com/?consent_diag=20260904')
-              time.sleep(8)
-              state=d.execute_script(r'''return {
-                scripts:Array.from(document.scripts).map(s=>({src:s.src||'',id:s.id||'',type:s.type||'',head:(s.textContent||'').trim().slice(0,240)})).filter(x=>/google|gtag|analytics|cookie|consent|site.?kit|gtm/i.test(x.src+' '+x.id+' '+x.head)).slice(0,80),
-                cookies:document.cookie,
-                banner:Array.from(document.querySelectorAll('[class*="cookie"],[id*="cookie"],[class*="cky"],[id*="cky"]')).filter(e=>e.offsetWidth||e.offsetHeight).map(e=>(e.innerText||'').trim().replace(/\s+/g,' ').slice(0,800)).filter(Boolean).slice(0,10)
-              };''')
-              print('LIVE_STATE=' + json.dumps(state,ensure_ascii=False))
-              req=[]
-              for e in d.get_log('performance'):
-                  try:m=json.loads(e['message'])['message']
-                  except:continue
-                  if m.get('method')=='Network.requestWillBeSent':
-                      u=m.get('params',{}).get('request',{}).get('url','')
-                      if any(x in u.lower() for x in ('google-analytics.com','googletagmanager.com','googleadservices.com','doubleclick.net')):
-                          req.append(u)
-              print('GOOGLE_REQUESTS=' + json.dumps(req[:40],ensure_ascii=False))
+              return d
+
+          d=make_driver()
+          try:
+              d.get('https://www.elmercadodeorigen.com/?consent_diag=controls')
+              time.sleep(6)
+              controls=d.execute_script(r'''return Array.from(document.querySelectorAll('#cookie-law-info-bar a,#cookie-law-info-bar button,.cli-modal a,.cli-modal button,input[type="checkbox"]')).map(e=>({tag:e.tagName,id:e.id||'',cls:e.className||'',text:(e.innerText||e.value||'').trim(),dataAction:e.getAttribute('data-cli_action')||'',name:e.name||'',checked:!!e.checked}));''')
+              print('CONTROLS=' + json.dumps(controls,ensure_ascii=False))
+              print('FRESH_COOKIES=' + d.execute_script('return document.cookie'))
+              accepts=d.find_elements(By.CSS_SELECTOR, '[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn')
+              if accepts:
+                  accepts[0].click(); time.sleep(2)
+                  print('AFTER_ACCEPT_COOKIES=' + d.execute_script('return document.cookie'))
           finally:
               d.quit()
           PY
