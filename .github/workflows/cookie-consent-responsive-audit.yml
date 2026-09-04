@@ -14,55 +14,111 @@ permissions:
 jobs:
   responsive-audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --quiet selenium
-      - name: Inspect mobile CookieYes DOM
+      - name: Verify banner layout at exact viewports
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, time
+          import time
           from selenium import webdriver
           from selenium.webdriver.chrome.options import Options
           from selenium.webdriver.common.by import By
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
 
-          o = Options(); o.page_load_strategy = 'eager'
-          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--lang=es-ES','--window-size=320,800'):
-              o.add_argument(arg)
-          d = webdriver.Chrome(options=o)
-          d.set_page_load_timeout(60)
-          d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {
-              'Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache','Pragma':'no-cache'
-          }})
-          try:
-              d.get('https://www.elmercadodeorigen.com/?cookie_dom_audit=' + str(time.time_ns()))
-              time.sleep(8)
-              print('INNER_WIDTH=' + str(d.execute_script('return window.innerWidth')), flush=True)
-              banner = d.find_element(By.ID, 'cookie-law-info-bar')
-              print('BANNER_DISPLAYED=' + str(banner.is_displayed()), flush=True)
-              print('BANNER_OUTER_HTML_START', flush=True)
-              print((banner.get_attribute('outerHTML') or '')[:20000], flush=True)
-              print('BANNER_OUTER_HTML_END', flush=True)
-              candidates = d.execute_script("""
-                return Array.from(document.querySelectorAll('a,button,[role="button"],[id*="cookie"],[class*="cli"],[class*="cookie"]'))
-                  .map(el => {
-                    const r=el.getBoundingClientRect(), s=getComputedStyle(el);
-                    return {
-                      tag:el.tagName,id:el.id,cls:String(el.className||''),
-                      text:(el.textContent||'').trim().replace(/\\s+/g,' ').slice(0,160),
-                      x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),
-                      display:s.display,visibility:s.visibility,position:s.position
-                    };
-                  })
-                  .filter(x => x.w > 0 && x.h > 0 && x.display !== 'none' && x.visibility !== 'hidden');
-              """)
-              print('VISIBLE_COOKIE_CANDIDATES_START', flush=True)
-              print(json.dumps(candidates, ensure_ascii=False, indent=2)[:30000], flush=True)
-              print('VISIBLE_COOKIE_CANDIDATES_END', flush=True)
-          finally:
-              d.quit()
+          BASE = 'https://www.elmercadodeorigen.com/'
+          VIEWPORTS = [
+              ('mobile-320', 320, 800),
+              ('mobile-360', 360, 800),
+              ('mobile-375', 375, 812),
+              ('mobile-390', 390, 844),
+              ('tablet-768', 768, 1024),
+              ('desktop-1024', 1024, 900),
+              ('desktop-1440', 1440, 1000),
+          ]
+
+          def make_driver(label, width, height):
+              o = Options(); o.page_load_strategy = 'eager'
+              for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--lang=es-ES','--window-size=1200,1000'):
+                  o.add_argument(arg)
+              d = webdriver.Chrome(options=o)
+              d.set_page_load_timeout(60)
+              d.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+                  'width': width,
+                  'height': height,
+                  'deviceScaleFactor': 1,
+                  'mobile': False,
+              })
+              d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {
+                  'Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache','Pragma':'no-cache'
+              }})
+              d.get(BASE + '?cookie_layout_audit=' + label + '-' + str(time.time_ns()))
+              WebDriverWait(d, 30).until(EC.visibility_of_element_located((By.ID, 'cookie-law-info-bar')))
+              WebDriverWait(d, 15).until(lambda drv: 'emdo-cookie-layout' in drv.find_element(By.CSS_SELECTOR, '#cookie-law-info-bar > span').get_attribute('class'))
+              return d
+
+          def rect(d, el):
+              return d.execute_script('const r=arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};', el)
+
+          for label, width, height in VIEWPORTS:
+              d = make_driver(label, width, height)
+              try:
+                  inner_w = d.execute_script('return window.innerWidth')
+                  if inner_w != width:
+                      raise AssertionError(f'{label}: expected innerWidth={width}, got {inner_w}')
+
+                  banner = d.find_element(By.ID, 'cookie-law-info-bar')
+                  actions = d.find_element(By.CSS_SELECTOR, '#cookie-law-info-bar .emdo-cookie-actions')
+                  message = d.find_element(By.CSS_SELECTOR, '#cookie-law-info-bar .emdo-cookie-message')
+                  buttons = actions.find_elements(By.CSS_SELECTOR, '.cli_settings_button,[data-cli_action="reject"],[data-cli_action="accept"]')
+                  if len(buttons) != 3:
+                      raise AssertionError(f'{label}: expected 3 action buttons, got {len(buttons)}')
+
+                  br = rect(d, banner)
+                  ar = rect(d, actions)
+                  rs = [rect(d, b) for b in buttons]
+
+                  if br['x'] < -2 or br['right'] > inner_w + 2:
+                      raise AssertionError(f'{label}: banner overflows viewport: {br}')
+                  if d.execute_script('return arguments[0].scrollWidth > arguments[0].clientWidth + 2', banner):
+                      raise AssertionError(f'{label}: banner has horizontal overflow')
+                  if d.execute_script('return arguments[0].scrollWidth > arguments[0].clientWidth + 2', message):
+                      raise AssertionError(f'{label}: message has horizontal overflow')
+
+                  tops = [r['y'] for r in rs]
+                  if max(tops) - min(tops) > 3:
+                      raise AssertionError(f'{label}: buttons are staggered/diagonal: {rs}')
+
+                  ordered = sorted(rs, key=lambda r: r['x'])
+                  for left, right in zip(ordered, ordered[1:]):
+                      if left['right'] > right['x'] + 1:
+                          raise AssertionError(f'{label}: buttons overlap: {rs}')
+
+                  for r in rs:
+                      if r['x'] < ar['x'] - 2 or r['right'] > ar['right'] + 2:
+                          raise AssertionError(f'{label}: button outside action row: actions={ar}, buttons={rs}')
+                      if r['height'] < 38:
+                          raise AssertionError(f'{label}: action is too short: {rs}')
+
+                  text_overflow = d.execute_script('return arguments[0].map(el => ({text:el.textContent.trim(), clientWidth:el.clientWidth, scrollWidth:el.scrollWidth}));', buttons)
+                  for item in text_overflow:
+                      if item['scrollWidth'] > item['clientWidth'] + 2:
+                          raise AssertionError(f'{label}: button text overflows: {text_overflow}')
+
+                  if width <= 760:
+                      widths = [r['width'] for r in rs]
+                      if max(widths) - min(widths) > 3:
+                          raise AssertionError(f'{label}: mobile buttons are not equal width: {rs}')
+                      if ar['width'] < br['width'] * 0.8:
+                          raise AssertionError(f'{label}: mobile action row is unexpectedly narrow: banner={br}, actions={ar}')
+
+                  print(f'{label}=PASS width={inner_w} banner={br} actions={ar} buttons={rs}', flush=True)
+              finally:
+                  d.quit()
           PY
