@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/montjam-special-and-home-hero-20260904.yml'
       - '.github/scripts/montjam-featured-special-20260904.php'
+      - '.github/scripts/montjam-special-dedupe-20260904.php'
       - 'elmercadodeorigen-child/mu-plugins/elmercado-home-hero-compact-20260904.php'
   workflow_dispatch:
 
@@ -28,6 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l .github/scripts/montjam-featured-special-20260904.php
+          php -l .github/scripts/montjam-special-dedupe-20260904.php
           php -l elmercadodeorigen-child/mu-plugins/elmercado-home-hero-compact-20260904.php
           : "${STAGING_HOST:?}"
           : "${STAGING_USER:?}"
@@ -63,10 +65,12 @@ jobs:
           : "${PROD_PATH:?Could not locate production WordPress}"
 
           REMOTE_TASK="/tmp/montjam-featured-special-${GITHUB_RUN_ID}.php"
+          REMOTE_DEDUPE="/tmp/montjam-special-dedupe-${GITHUB_RUN_ID}.php"
           REMOTE_HERO="/tmp/elmercado-home-hero-compact-${GITHUB_RUN_ID}.php"
           TARGET_HERO="$PROD_PATH/wp-content/mu-plugins/elmercado-home-hero-compact-20260904.php"
 
           sshpass -e scp $SCP .github/scripts/montjam-featured-special-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE_TASK"
+          sshpass -e scp $SCP .github/scripts/montjam-special-dedupe-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE_DEDUPE"
           sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-hero-compact-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE_HERO"
 
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
@@ -82,9 +86,10 @@ jobs:
             \"\$php_bin\" -l '$TARGET_HERO'
 
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_TASK' --path='$PROD_PATH' --allow-root
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_DEDUPE' --path='$PROD_PATH' --allow-root
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
 
-            rm -f '$REMOTE_TASK' '$REMOTE_HERO'
+            rm -f '$REMOTE_TASK' '$REMOTE_DEDUPE' '$REMOTE_HERO'
           "
 
           VERIFY_URL="https://www.elmercadodeorigen.com/?mdo_verify=${GITHUB_RUN_ID}"
