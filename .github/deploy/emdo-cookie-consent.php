@@ -2,16 +2,11 @@
 /**
  * Plugin Name: EMDO Cookie Consent Bridge
  * Description: Bridges CookieYes consent to Google Consent Mode and Meta signals.
- * Version: 1.0.3
+ * Version: 1.0.4
  */
 
 defined( 'ABSPATH' ) || exit;
 
-/**
- * Return true only after CookieYes has recorded an explicit acceptance of
- * non-necessary cookies. The category cookie alone is not sufficient because
- * legacy CookieYes previously preselected it before the visitor made a choice.
- */
 function emdo_nonnecessary_consent_granted() {
 	$viewed = isset( $_COOKIE['viewed_cookie_policy'] ) ? sanitize_text_field( wp_unslash( $_COOKIE['viewed_cookie_policy'] ) ) : '';
 	$choice = isset( $_COOKIE['cookielawinfo-checkbox-non-necessary'] ) ? sanitize_text_field( wp_unslash( $_COOKIE['cookielawinfo-checkbox-non-necessary'] ) ) : '';
@@ -19,10 +14,6 @@ function emdo_nonnecessary_consent_granted() {
 	return 'yes' === $viewed && 'yes' === $choice;
 }
 
-/**
- * Synchronize the first-party state consumed by Meta for WooCommerce before
- * ordinary plugins initialise their trackers.
- */
 function emdo_sync_meta_signal_cookie() {
 	$state = emdo_nonnecessary_consent_granted() ? 'active' : 'held';
 	$_COOKIE['wc_facebook_signals_state'] = $state;
@@ -43,7 +34,6 @@ function emdo_sync_meta_signal_cookie() {
 }
 emdo_sync_meta_signal_cookie();
 
-/** Keep Meta Pixel/CAPI held until CookieYes has explicit consent. */
 add_filter(
 	'facebook_signals_held',
 	function () {
@@ -52,7 +42,6 @@ add_filter(
 	-9999
 );
 
-/** Do not render/initialise the Meta integration pixel before consent. */
 add_filter(
 	'facebook_for_woocommerce_integration_pixel_enabled',
 	function ( $enabled ) {
@@ -62,33 +51,35 @@ add_filter(
 );
 
 /**
- * Keep the legacy CookieYes banner tidy at every viewport. The original plugin
- * styles were designed around fewer actions and can stagger three buttons on
- * narrow screens. Desktop keeps a compact action row; tablet/mobile stack the
- * message above one straight row of three equal actions.
+ * Keep the legacy CookieYes banner tidy at every viewport. CookieYes can move
+ * its inner container when switching to the mobile presentation, so these
+ * selectors deliberately target the legacy banner classes themselves instead
+ * of relying on them remaining descendants of #cookie-law-info-bar.
  */
 function emdo_output_consent_styles() {
 	?>
 	<style id="emdo-cookie-consent-responsive">
 	#cookie-law-info-bar,
-	#cookie-law-info-bar * {
+	#cookie-law-info-bar *,
+	.cli-bar-container.cli-style-v2,
+	.cli-bar-container.cli-style-v2 * {
 		box-sizing: border-box;
 	}
-	#cookie-law-info-bar .cli-bar-container {
+	.cli-bar-container.cli-style-v2 {
 		display: flex !important;
 		align-items: center !important;
 		justify-content: space-between !important;
 		gap: 18px !important;
 		width: 100% !important;
 	}
-	#cookie-law-info-bar .cli-bar-message {
+	.cli-bar-container.cli-style-v2 .cli-bar-message {
 		flex: 1 1 auto !important;
 		width: auto !important;
 		margin: 0 !important;
 		padding: 0 !important;
 		text-align: left !important;
 	}
-	#cookie-law-info-bar .cli-bar-btn_container {
+	.cli-bar-container.cli-style-v2 .cli-bar-btn_container {
 		flex: 0 0 auto !important;
 		display: flex !important;
 		align-items: center !important;
@@ -99,8 +90,8 @@ function emdo_output_consent_styles() {
 		margin: 0 !important;
 		padding: 0 !important;
 	}
-	#cookie-law-info-bar .cli-bar-btn_container .cli_action_button,
-	#cookie-law-info-bar .cli-bar-btn_container .cli_settings_button {
+	.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_action_button,
+	.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_settings_button {
 		display: inline-flex !important;
 		align-items: center !important;
 		justify-content: center !important;
@@ -117,15 +108,15 @@ function emdo_output_consent_styles() {
 	}
 
 	@media (max-width: 900px) {
-		#cookie-law-info-bar .cli-bar-container {
+		.cli-bar-container.cli-style-v2 {
 			flex-direction: column !important;
 			align-items: stretch !important;
 			gap: 12px !important;
 		}
-		#cookie-law-info-bar .cli-bar-message {
+		.cli-bar-container.cli-style-v2 .cli-bar-message {
 			width: 100% !important;
 		}
-		#cookie-law-info-bar .cli-bar-btn_container {
+		.cli-bar-container.cli-style-v2 .cli-bar-btn_container {
 			display: grid !important;
 			grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 			align-items: stretch !important;
@@ -133,8 +124,8 @@ function emdo_output_consent_styles() {
 			gap: 8px !important;
 			width: 100% !important;
 		}
-		#cookie-law-info-bar .cli-bar-btn_container .cli_action_button,
-		#cookie-law-info-bar .cli-bar-btn_container .cli_settings_button {
+		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_action_button,
+		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_settings_button {
 			width: 100% !important;
 			min-height: 42px !important;
 			padding: 10px 6px !important;
@@ -143,11 +134,11 @@ function emdo_output_consent_styles() {
 	}
 
 	@media (max-width: 359px) {
-		#cookie-law-info-bar .cli-bar-btn_container {
+		.cli-bar-container.cli-style-v2 .cli-bar-btn_container {
 			gap: 6px !important;
 		}
-		#cookie-law-info-bar .cli-bar-btn_container .cli_action_button,
-		#cookie-law-info-bar .cli-bar-btn_container .cli_settings_button {
+		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_action_button,
+		.cli-bar-container.cli-style-v2 .cli-bar-btn_container .cli_settings_button {
 			padding-left: 3px !important;
 			padding-right: 3px !important;
 			font-size: 12px !important;
@@ -158,10 +149,6 @@ function emdo_output_consent_styles() {
 }
 add_action( 'wp_head', 'emdo_output_consent_styles', 99999 );
 
-/**
- * Google Consent Mode must run before MonsterInsights outputs its GA4 config.
- * The browser-side cookie check also makes the behaviour safe on cached HTML.
- */
 function emdo_output_consent_bootstrap() {
 	?>
 	<script id="emdo-consent-mode-bootstrap">
@@ -211,13 +198,6 @@ function emdo_output_consent_bootstrap() {
 			});
 		}
 
-		/*
-		 * CookieYes legacy treats the banner Accept action as "save current
-		 * category selection". With non-necessary cookies correctly unchecked by
-		 * default, that made the prominent Accept button behave like Reject.
-		 * Intercept only the main banner Accept action and persist an explicit
-		 * accept-all decision. The settings modal remains granular.
-		 */
 		document.addEventListener('click', function (event) {
 			var node = event.target && event.target.closest ? event.target.closest('[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn') : null;
 			if (!node || !node.closest('#cookie-law-info-bar')) return;
