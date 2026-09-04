@@ -51,17 +51,18 @@ jobs:
           wp_bin=$(command -v wp || true)
           php_bin=$(command -v php || true)
           [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp() { "$php_bin" -d memory_limit=512M "$wp_bin" "$@"; }
 
           echo '=== CACHE ENVIRONMENT ==='
-          "$php_bin" "$wp_bin" eval 'echo "WP_CACHE=" . (defined("WP_CACHE") && WP_CACHE ? "1" : "0") . PHP_EOL; echo "advanced_cache=" . (is_file(WP_CONTENT_DIR . "/advanced-cache.php") ? "1" : "0") . PHP_EOL; echo "object_cache=" . (is_file(WP_CONTENT_DIR . "/object-cache.php") ? "1" : "0") . PHP_EOL;' --path="$PROD_PATH" --skip-themes --allow-root
-          "$php_bin" "$wp_bin" plugin list --status=active --field=name --path="$PROD_PATH" --allow-root | sed 's/^/ACTIVE_PLUGIN: /'
+          wp eval 'echo "WP_CACHE=" . (defined("WP_CACHE") && WP_CACHE ? "1" : "0") . PHP_EOL; echo "advanced_cache=" . (is_file(WP_CONTENT_DIR . "/advanced-cache.php") ? "1" : "0") . PHP_EOL; echo "object_cache=" . (is_file(WP_CONTENT_DIR . "/object-cache.php") ? "1" : "0") . PHP_EOL;' --path="$PROD_PATH" --skip-themes --allow-root
+          wp plugin list --status=active --field=name --path="$PROD_PATH" --allow-root | sed 's/^/ACTIVE_PLUGIN: /'
           if [ -f "$PROD_PATH/wp-content/advanced-cache.php" ]; then
             echo 'ADVANCED_CACHE_HEAD:'
             grep -E -i -m 8 'plugin|cache|rocket|litespeed|w3|super|fastest|cloudflare|sg' "$PROD_PATH/wp-content/advanced-cache.php" || true
           fi
 
           echo '=== CURRENT PROMOTIONS ==='
-          "$php_bin" "$wp_bin" eval '
+          wp eval '
             $q = new WP_Query(["post_type"=>"mdo_promotion","post_status"=>["publish","draft","pending","future","private"],"posts_per_page"=>-1,"orderby"=>"ID","order"=>"ASC"]);
             foreach ($q->posts as $p) {
               $row = [
