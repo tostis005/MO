@@ -1,0 +1,98 @@
+name: Home special cache diagnose 20260904
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-special-cache-diagnose-20260904.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose production Home special cache
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?Could not locate production WordPress}"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          wp_bin=$(command -v wp || true)
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+
+          echo '=== CACHE ENVIRONMENT ==='
+          "$php_bin" "$wp_bin" eval 'echo "WP_CACHE=" . (defined("WP_CACHE") && WP_CACHE ? "1" : "0") . PHP_EOL; echo "advanced_cache=" . (is_file(WP_CONTENT_DIR . "/advanced-cache.php") ? "1" : "0") . PHP_EOL; echo "object_cache=" . (is_file(WP_CONTENT_DIR . "/object-cache.php") ? "1" : "0") . PHP_EOL;' --path="$PROD_PATH" --skip-themes --allow-root
+          "$php_bin" "$wp_bin" plugin list --status=active --field=name --path="$PROD_PATH" --allow-root | sed 's/^/ACTIVE_PLUGIN: /'
+          if [ -f "$PROD_PATH/wp-content/advanced-cache.php" ]; then
+            echo 'ADVANCED_CACHE_HEAD:'
+            grep -E -i -m 8 'plugin|cache|rocket|litespeed|w3|super|fastest|cloudflare|sg' "$PROD_PATH/wp-content/advanced-cache.php" || true
+          fi
+
+          echo '=== CURRENT PROMOTIONS ==='
+          "$php_bin" "$wp_bin" eval '
+            $q = new WP_Query(["post_type"=>"mdo_promotion","post_status"=>["publish","draft","pending","future","private"],"posts_per_page"=>-1,"orderby"=>"ID","order"=>"ASC"]);
+            foreach ($q->posts as $p) {
+              $row = [
+                "id"=>$p->ID,
+                "title"=>$p->post_title,
+                "status"=>$p->post_status,
+                "featured_home"=>get_post_meta($p->ID,"_mdo_promo_featured_home",true),
+                "enabled"=>get_post_meta($p->ID,"_mdo_promo_enabled",true),
+                "start"=>get_post_meta($p->ID,"_mdo_promo_start",true),
+                "end"=>get_post_meta($p->ID,"_mdo_promo_end",true),
+                "product_id"=>(int)get_post_meta($p->ID,"_mdo_promo_product_id",true),
+              ];
+              echo "PROMO:" . wp_json_encode($row, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . PHP_EOL;
+            }
+          ' --path="$PROD_PATH" --allow-root
+
+          echo '=== HOME STATIC CACHE ==='
+          find "$PROD_PATH/wp-content/uploads/elmercado-home-static" -maxdepth 2 -type f -printf 'STATIC_FILE:%p size=%s mtime=%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null || true
+          REMOTE
+
+          echo '=== ANONYMOUS HOME HTTP ==='
+          plain_h=/tmp/home-plain-h.txt
+          plain_b=/tmp/home-plain.html
+          bust_h=/tmp/home-bust-h.txt
+          bust_b=/tmp/home-bust.html
+          curl -LfsS --max-time 45 -D "$plain_h" -o "$plain_b" 'https://www.elmercadodeorigen.com/'
+          curl -LfsS --max-time 45 -D "$bust_h" -o "$bust_b" "https://www.elmercadodeorigen.com/?mdo_special_cache_diag=${GITHUB_RUN_ID}"
+          grep -Ei '^(HTTP/|age:|cache-control:|cf-cache-status:|x-cache:|x-litespeed-cache:|x-rocket-nginx-serving-static:|x-el-mercado-home-fresh:|server:|vary:)' "$plain_h" | sed 's/^/PLAIN_HEADER: /' || true
+          grep -Ei '^(HTTP/|age:|cache-control:|cf-cache-status:|x-cache:|x-litespeed-cache:|x-rocket-nginx-serving-static:|x-el-mercado-home-fresh:|server:|vary:)' "$bust_h" | sed 's/^/BUST_HEADER: /' || true
+          echo "PLAIN_SHA256:$(sha256sum "$plain_b" | awk '{print $1}')"
+          echo "BUST_SHA256:$(sha256sum "$bust_b" | awk '{print $1}')"
+          echo "PLAIN_SPECIAL_MARKERS:$(grep -Eio 'mdo[_-]promotion|mdo[_-]promo|especial|Montjam' "$plain_b" | sort -fu | tr '\n' ',' || true)"
+          echo "BUST_SPECIAL_MARKERS:$(grep -Eio 'mdo[_-]promotion|mdo[_-]promo|especial|Montjam' "$bust_b" | sort -fu | tr '\n' ',' || true)"
+          echo 'HOME_SPECIAL_CACHE_DIAGNOSE_DONE'
