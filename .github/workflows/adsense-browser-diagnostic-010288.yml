@@ -13,7 +13,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
@@ -22,14 +22,14 @@ jobs:
         run: |
           set -euo pipefail
           echo '=== eligibility from runner ==='
-          curl -fsSL --retry 3 'https://www.elmercadodeorigen.com/wp-json/elmercado/v1/adsense-eligibility?diag=010288' || true
+          curl -fsSL --max-time 20 --retry 2 'https://www.elmercadodeorigen.com/wp-json/elmercado/v1/adsense-eligibility?diag=010288b' || true
           echo
           echo '=== ads.txt ==='
-          curl -sSIL --retry 3 'https://www.elmercadodeorigen.com/ads.txt' | sed -n '1,20p' || true
-          curl -fsSL --retry 3 'https://www.elmercadodeorigen.com/ads.txt' | head -n 30 || true
+          curl -sSIL --max-time 20 --retry 2 'https://www.elmercadodeorigen.com/ads.txt' | sed -n '1,20p' || true
+          curl -fsSL --max-time 20 --retry 2 'https://www.elmercadodeorigen.com/ads.txt' | head -n 30 || true
           echo
           echo '=== robots.txt relevant lines ==='
-          curl -fsSL --retry 3 'https://www.elmercadodeorigen.com/robots.txt' | grep -Ei 'ads|google|user-agent|disallow|allow' | head -n 80 || true
+          curl -fsSL --max-time 20 --retry 2 'https://www.elmercadodeorigen.com/robots.txt' | grep -Ei 'ads|google|user-agent|disallow|allow' | head -n 80 || true
 
       - name: Run desktop and mobile browser diagnostics
         shell: bash
@@ -42,18 +42,18 @@ jobs:
           fi
           "$CHROME" --version
 
-          BASE='https://www.elmercadodeorigen.com/cuanto-tiempo-marinar-carne-ternera-horas-sal-acidez/?adsense_debug=1&diag=010288'
+          BASE='https://www.elmercadodeorigen.com/cuanto-tiempo-marinar-carne-ternera-horas-sal-acidez/?adsense_debug=1&diag=010288b'
 
-          "$CHROME" \
+          timeout 40s "$CHROME" \
             --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
-            --window-size=1365,900 --virtual-time-budget=18000 \
+            --window-size=1365,900 --virtual-time-budget=12000 \
             --dump-dom "${BASE}&device=desktop" > /tmp/desktop.html 2>/tmp/desktop.err || true
 
-          "$CHROME" \
+          timeout 40s "$CHROME" \
             --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
             --window-size=390,844 \
             --user-agent='Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' \
-            --virtual-time-budget=18000 \
+            --virtual-time-budget=12000 \
             --dump-dom "${BASE}&device=mobile" > /tmp/mobile.html 2>/tmp/mobile.err || true
 
           python - <<'PY'
@@ -61,7 +61,8 @@ jobs:
           from pathlib import Path
 
           def inspect(label, path):
-              s = Path(path).read_text(errors='ignore')
+              p = Path(path)
+              s = p.read_text(errors='ignore') if p.exists() else ''
               print(f'=== {label} ===')
               print('html_bytes=', len(s))
               print('geo_config=', 'ElMercadoAdsenseGeo' in s)
@@ -94,6 +95,6 @@ jobs:
           PY
 
           echo '=== Chrome stderr desktop (tail) ==='
-          tail -n 80 /tmp/desktop.err || true
+          tail -n 60 /tmp/desktop.err || true
           echo '=== Chrome stderr mobile (tail) ==='
-          tail -n 80 /tmp/mobile.err || true
+          tail -n 60 /tmp/mobile.err || true
