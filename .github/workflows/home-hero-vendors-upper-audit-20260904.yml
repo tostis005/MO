@@ -1,0 +1,64 @@
+name: Home hero vendors upper audit 20260904
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-hero-vendors-upper-audit-20260904.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit live responsive hero
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          : "${CHROME:?Chrome/Chromium not found}"
+          npm install --no-save --silent puppeteer-core@24.16.0
+          CHROME_BIN="$CHROME" RUN_ID="$GITHUB_RUN_ID" node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const widths = [1024, 1025, 1100, 1180, 1280, 1366, 1440, 1600];
+          (async () => {
+            const browser = await puppeteer.launch({executablePath: process.env.CHROME_BIN, headless:true, args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu']});
+            try {
+              for (const width of widths) {
+                const page = await browser.newPage();
+                await page.setViewport({width,height:1200,deviceScaleFactor:1});
+                await page.goto(`https://www.elmercadodeorigen.com/?mdo_upper_audit=${process.env.RUN_ID}-${width}`, {waitUntil:'domcontentloaded',timeout:60000});
+                await page.waitForSelector('.emo-hero__visual--vendors.emo-vendor-count-5',{timeout:30000});
+                await new Promise(r => setTimeout(r, 1200));
+                const data = await page.evaluate(() => {
+                  const visual = document.querySelector('.emo-hero__visual--vendors.emo-vendor-count-5');
+                  const vr = visual.getBoundingClientRect();
+                  const cards = [...visual.querySelectorAll('.emo-hero-card')].map(card => {
+                    const r=card.getBoundingClientRect(), img=card.querySelector('img'), ir=img?.getBoundingClientRect(), cap=card.querySelector('figcaption'), cps=cap?getComputedStyle(cap):null;
+                    return {name:card.querySelector('figcaption strong')?.textContent?.trim()||'',x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height),ratio:+(r.width/Math.max(1,r.height)).toFixed(2),imgWidth:ir?Math.round(ir.width):0,imgHeight:ir?Math.round(ir.height):0,objectFit:img?getComputedStyle(img).objectFit:'',captionDisplay:cps?.display||'',captionVisibility:cps?.visibility||'',captionOpacity:cps?.opacity||''};
+                  });
+                  return {visual:{x:Math.round(vr.x),y:Math.round(vr.y),width:Math.round(vr.width),height:Math.round(vr.height)},cards};
+                });
+                console.log('HERO_UPPER_GEOMETRY',width,JSON.stringify(data));
+                if(data.cards.length!==5) throw new Error(`${width}: expected 5 cards`);
+                for(const c of data.cards){
+                  if(c.width<100||c.height<100) throw new Error(`${width}: ${c.name} too small ${c.width}x${c.height}`);
+                  if(c.imgWidth<c.width-3||c.imgHeight<c.height-3) throw new Error(`${width}: ${c.name} image not filling card`);
+                  if(c.objectFit!=='cover') throw new Error(`${width}: ${c.name} object-fit ${c.objectFit}`);
+                  if(c.captionDisplay==='none'||c.captionVisibility==='hidden'||c.captionOpacity==='0') throw new Error(`${width}: ${c.name} caption hidden`);
+                }
+                const m=data.cards.find(c=>c.name==='Montjam');
+                const half=data.cards.find(c=>c.name==='1957');
+                if(!m||!half) throw new Error(`${width}: required cards missing`);
+                if(width<=1024 && m.width < half.width*1.7) throw new Error(`${width}: Montjam not spanning both columns (${m.width} vs ${half.width})`);
+                if(width>=1025 && m.ratio<1.7) throw new Error(`${width}: Montjam too tall/narrow ratio=${m.ratio}`);
+                await page.close();
+              }
+              console.log('HERO_UPPER_AUDIT_SUCCESS');
+            } finally { await browser.close(); }
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
