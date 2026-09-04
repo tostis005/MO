@@ -1,0 +1,118 @@
+name: Home Special cache fix 20260904
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-special-cache-fix-20260904.yml'
+      - 'elmercadodeorigen-child/mu-plugins/mdo-home-special-cache-invalidator-20260904.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate cache invalidator
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/mu-plugins/mdo-home-special-cache-invalidator-20260904.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy and purge stale Home cache
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"; break ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?Could not locate production WordPress}"
+
+          REMOTE="/tmp/mdo-home-special-cache-invalidator-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/mdo-home-special-cache-invalidator-20260904.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/mdo-home-special-cache-invalidator-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "PROD_PATH='$PROD_PATH' REMOTE='$REMOTE' TARGET='$TARGET' bash -s" <<'REMOTE_SHELL'
+          set -euo pipefail
+          php_bin=$(command -v php || true)
+          [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+          wp_bin=$(command -v wp || true)
+          "$php_bin" -l "$REMOTE"
+          mkdir -p "$(dirname "$TARGET")"
+          if [ -f "$TARGET" ]; then cp -a "$TARGET" "$TARGET.bak-${GITHUB_RUN_ID:-manual}"; fi
+          cp "$REMOTE" "$TARGET"
+          rm -f "$REMOTE"
+          "$php_bin" -l "$TARGET"
+
+          "$php_bin" -d memory_limit=512M "$wp_bin" eval '
+            if (!function_exists("mdo_home_special_purge_cache_20260904")) { throw new Exception("cache invalidator not loaded"); }
+            $checks = [
+              "save_post_mdo_promotion" => has_action("save_post_mdo_promotion"),
+              "transition_post_status" => has_action("transition_post_status"),
+              "updated_post_meta" => has_action("updated_post_meta"),
+              "deleted_post_meta" => has_action("deleted_post_meta"),
+            ];
+            echo "HOOKS:" . wp_json_encode($checks) . PHP_EOL;
+            mdo_home_special_purge_cache_20260904();
+            global $wpdb;
+            $count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE '_transient_elmercado_home_%' OR option_name LIKE '_transient_timeout_elmercado_home_%'");
+            echo "HOME_TRANSIENT_OPTIONS_AFTER_PURGE:" . $count . PHP_EOL;
+            $file = WP_CONTENT_DIR . "/uploads/elmercado-home-static/index.html";
+            echo "STATIC_HTML_AFTER_PURGE:" . (is_file($file) ? "1" : "0") . PHP_EOL;
+            if ($count !== 0 || is_file($file)) { throw new Exception("Home cache purge incomplete"); }
+          ' --path="$PROD_PATH" --allow-root
+          REMOTE_SHELL
+
+      - name: Verify anonymous Home receives current Special
+        run: |
+          set -euo pipefail
+          expected='Jamón de bellota 100% ibérico Montjam · 6–6,5 kg por 225 €'
+
+          curl -LfsS --max-time 60 -D /tmp/home-first-h.txt -o /tmp/home-first.html 'https://www.elmercadodeorigen.com/'
+          sleep 2
+          curl -LfsS --max-time 60 -D /tmp/home-second-h.txt -o /tmp/home-second.html 'https://www.elmercadodeorigen.com/'
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import html
+          expected='Jamón de bellota 100% ibérico Montjam · 6–6,5 kg por 225 €'
+          for label,path in [('FIRST','/tmp/home-first.html'),('SECOND','/tmp/home-second.html')]:
+              text=html.unescape(Path(path).read_text(errors='ignore'))
+              ok=expected in text and 'data-mdo-home-featured-special="14310"' in text
+              print(f'{label}_CURRENT_SPECIAL_PRESENT:{1 if ok else 0}')
+              if not ok:
+                  raise SystemExit(f'{label}: current Montjam Special missing from anonymous Home')
+          PY
+
+          grep -Ei '^(HTTP/|x-el-mercado-cache:|x-el-mercado-home-fresh:|cache-control:|vary:)' /tmp/home-first-h.txt | sed 's/^/FIRST_HEADER: /' || true
+          grep -Ei '^(HTTP/|x-el-mercado-cache:|x-el-mercado-home-fresh:|cache-control:|vary:)' /tmp/home-second-h.txt | sed 's/^/SECOND_HEADER: /' || true
+          echo 'HOME_SPECIAL_CACHE_FIX_SUCCESS'
