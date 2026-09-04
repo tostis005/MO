@@ -42,8 +42,8 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 	object-position: 50% 50%;
 }
 
-/* Wide desktop / landscape tablet: an editorial mosaic matched to banner ratios. */
-@media (min-width: 1025px) {
+/* Wide desktop: an editorial mosaic matched to each producer banner ratio. */
+@media (min-width: 1181px) {
 	body.home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		display: grid !important;
 		grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
@@ -84,8 +84,19 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 	}
 }
 
-/* Intermediate widths: remove the tiny/low collage cells and use five substantial tiles. */
-@media (min-width: 600px) and (max-width: 1024px) {
+/*
+ * Tablet and intermediate widths. The base theme keeps a two-column hero until
+ * 991px, which leaves only ~425px for five cards around 1024px. Force the hero
+ * to one column through 1180px and give every producer a substantial tile.
+ */
+@media (min-width: 600px) and (max-width: 1180px) {
+	body.home .emo-hero__grid {
+		grid-template-columns: minmax(0, 1fr) !important;
+		gap: clamp(1.6rem, 3.5vw, 2.5rem) !important;
+	}
+	body.home .emo-hero__copy {
+		max-width: 820px !important;
+	}
 	body.home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		display: grid !important;
 		width: min(100%, 680px) !important;
@@ -113,9 +124,15 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 		grid-row: 3 !important;
 	}
 	body.home .emo-hero__visual--vendors .emo-hero-card figcaption {
+		display: flex !important;
+		visibility: visible !important;
+		opacity: 1 !important;
 		padding: .85rem .95rem !important;
 	}
 	body.home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
+		display: block !important;
+		visibility: visible !important;
+		opacity: 1 !important;
 		font-size: .82rem !important;
 		line-height: 1.18 !important;
 	}
