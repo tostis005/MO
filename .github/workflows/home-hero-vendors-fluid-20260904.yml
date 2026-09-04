@@ -1,0 +1,169 @@
+name: Home hero vendors fluid 20260904
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/home-hero-vendors-fluid-20260904.yml'
+      - 'elmercadodeorigen-child/mu-plugins/elmercado-home-hero-vendors-fluid-20260904.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate responsive layer
+        run: |
+          set -euo pipefail
+          php -l elmercadodeorigen-child/mu-plugins/elmercado-home-hero-vendors-fluid-20260904.php
+          : "${STAGING_HOST:?}"
+          : "${STAGING_USER:?}"
+          : "${STAGING_PASSWORD:?}"
+
+      - name: Deploy responsive hero layer to production
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass >/dev/null
+
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p $PORT"
+          SCP="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -P $PORT"
+
+          PROD_PATH="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp_bin=$(command -v wp || true)
+            php_bin=$(command -v php || true)
+            [ -n "$php_bin" ] || php_bin=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null | sort -Vr | head -n1)
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$url" in
+                https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com)
+                  printf "%s" "$p"
+                  break
+                  ;;
+              esac
+            done
+          ')"
+          : "${PROD_PATH:?Could not locate production WordPress}"
+
+          REMOTE="/tmp/elmercado-home-hero-vendors-fluid-${GITHUB_RUN_ID}.php"
+          TARGET="$PROD_PATH/wp-content/mu-plugins/elmercado-home-hero-vendors-fluid-20260904.php"
+          sshpass -e scp $SCP elmercadodeorigen-child/mu-plugins/elmercado-home-hero-vendors-fluid-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "
+            set -e
+            php_bin=\$(command -v php || true)
+            [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
+            wp_bin=\$(command -v wp)
+            \"\$php_bin\" -l '$REMOTE'
+            mkdir -p '$PROD_PATH/wp-content/mu-plugins'
+            if [ -f '$TARGET' ]; then cp -a '$TARGET' '$TARGET.bak-${GITHUB_RUN_ID}'; fi
+            cp '$REMOTE' '$TARGET'
+            \"\$php_bin\" -l '$TARGET'
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            rm -f '$REMOTE'
+          "
+
+          VERIFY_URL="https://www.elmercadodeorigen.com/?mdo_hero_fluid_verify=${GITHUB_RUN_ID}"
+          VERIFY_HTML="/tmp/home-hero-fluid-${GITHUB_RUN_ID}.html"
+          curl -LfsS --max-time 45 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$VERIFY_URL" -o "$VERIFY_HTML"
+          grep -Fq 'id="elmercado-home-hero-vendors-fluid-20260904"' "$VERIFY_HTML"
+          grep -Fq 'emo-vendor-count-5' "$VERIFY_HTML"
+          grep -Fq 'Montjam' "$VERIFY_HTML"
+          echo "PUBLIC_HTML_VERIFY: responsive_css=1 vendor_count_5=1 montjam=1"
+
+      - name: Audit hero geometry at responsive widths
+        run: |
+          set -euo pipefail
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          : "${CHROME:?Chrome/Chromium not found on runner}"
+          npm install --no-save --silent puppeteer-core@24.16.0
+          CHROME_BIN="$CHROME" RUN_ID="$GITHUB_RUN_ID" node <<'NODE'
+          const puppeteer = require('puppeteer-core');
+          const chrome = process.env.CHROME_BIN;
+          const runId = process.env.RUN_ID;
+          const widths = [360, 390, 430, 599, 600, 768, 900, 1024, 1025, 1180, 1366, 1440];
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              executablePath: chrome,
+              headless: true,
+              args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            });
+            try {
+              for (const width of widths) {
+                const page = await browser.newPage();
+                await page.setViewport({ width, height: 1200, deviceScaleFactor: 1 });
+                const url = `https://www.elmercadodeorigen.com/?mdo_hero_geometry=${runId}-${width}`;
+                await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+                await page.waitForSelector('.emo-hero__visual--vendors.emo-vendor-count-5', { timeout: 30000 });
+                const data = await page.evaluate(() => {
+                  const visual = document.querySelector('.emo-hero__visual--vendors.emo-vendor-count-5');
+                  const vr = visual.getBoundingClientRect();
+                  const cards = [...visual.querySelectorAll('.emo-hero-card')].map((card, index) => {
+                    const r = card.getBoundingClientRect();
+                    const img = card.querySelector('img');
+                    const ir = img ? img.getBoundingClientRect() : null;
+                    const caption = card.querySelector('figcaption');
+                    const cs = getComputedStyle(card);
+                    const ims = img ? getComputedStyle(img) : null;
+                    const cps = caption ? getComputedStyle(caption) : null;
+                    return {
+                      index: index + 1,
+                      name: card.querySelector('figcaption strong')?.textContent?.trim() || '',
+                      x: Math.round(r.x), y: Math.round(r.y),
+                      width: Math.round(r.width), height: Math.round(r.height),
+                      ratio: +(r.width / Math.max(1, r.height)).toFixed(2),
+                      display: cs.display,
+                      imgWidth: ir ? Math.round(ir.width) : 0,
+                      imgHeight: ir ? Math.round(ir.height) : 0,
+                      naturalWidth: img?.naturalWidth || 0,
+                      naturalHeight: img?.naturalHeight || 0,
+                      objectFit: ims?.objectFit || '',
+                      captionDisplay: cps?.display || '',
+                      captionVisibility: cps?.visibility || '',
+                      captionOpacity: cps?.opacity || ''
+                    };
+                  });
+                  return {
+                    visual: { x: Math.round(vr.x), y: Math.round(vr.y), width: Math.round(vr.width), height: Math.round(vr.height) },
+                    cards
+                  };
+                });
+
+                if (data.cards.length !== 5) throw new Error(`width ${width}: expected 5 cards, got ${data.cards.length}`);
+                for (const c of data.cards) {
+                  if (c.width < 100 || c.height < 110) throw new Error(`width ${width}: ${c.name} too small ${c.width}x${c.height}`);
+                  if (c.imgWidth < c.width - 2 || c.imgHeight < c.height - 2) throw new Error(`width ${width}: ${c.name} image does not fill card`);
+                  if (c.captionDisplay === 'none' || c.captionVisibility === 'hidden' || c.captionOpacity === '0') throw new Error(`width ${width}: ${c.name} caption hidden`);
+                  if (c.objectFit !== 'cover') throw new Error(`width ${width}: ${c.name} object-fit=${c.objectFit}`);
+                }
+                const montjam = data.cards.find(c => c.name === 'Montjam');
+                if (!montjam) throw new Error(`width ${width}: Montjam card missing`);
+                if (width <= 1024 && montjam.width < data.visual.width * 0.9) throw new Error(`width ${width}: Montjam is not full-width`);
+                if (width <= 599 && montjam.ratio < 2.0) throw new Error(`width ${width}: Montjam banner is not wide enough (${montjam.ratio})`);
+                if (width >= 1025 && montjam.ratio < 1.8) throw new Error(`width ${width}: desktop Montjam crop is too portrait (${montjam.ratio})`);
+
+                console.log('HERO_GEOMETRY', width, JSON.stringify(data));
+                await page.close();
+              }
+              console.log('HERO_RESPONSIVE_AUDIT_SUCCESS');
+            } finally {
+              await browser.close();
+            }
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
