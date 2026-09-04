@@ -21,19 +21,19 @@ function elmercado_home_hero_vendors_fluid_is_front_20260904(): bool {
 function elmercado_home_hero_vendors_fluid_css_20260904(): string {
 	return <<<'CSS'
 /* elmercado-home-hero-vendors-fluid-20260904 */
-body.home .emo-hero__visual--vendors {
+html body.home .emo-home .emo-hero__visual--vendors {
 	min-width: 0 !important;
 	isolation: isolate;
 }
-body.home .emo-hero__visual--vendors .emo-hero-card,
-body.home .emo-hero__visual--vendors .emo-hero-card figure,
-body.home .emo-hero__visual--vendors .emo-hero-card img {
+html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card,
+html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figure,
+html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 	min-width: 0;
 }
-body.home .emo-hero__visual--vendors .emo-hero-card figure {
+html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figure {
 	height: 100% !important;
 }
-body.home .emo-hero__visual--vendors .emo-hero-card img {
+html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 	display: block !important;
 	width: 100% !important;
 	height: 100% !important;
@@ -44,39 +44,39 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 
 /* Wide desktop: an editorial mosaic matched to each producer banner ratio. */
 @media (min-width: 1181px) {
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		display: grid !important;
 		grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
 		grid-template-rows: repeat(12, 32px) !important;
 		gap: 0 !important;
 		transform: translateY(-24px) !important;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 {
 		grid-column: 1 / 6 !important;
 		grid-row: 1 / 8 !important;
 		transform: rotate(-1deg) !important;
 		z-index: 2;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2 {
 		grid-column: 6 / 13 !important;
 		grid-row: 1 / 6 !important;
 		transform: rotate(.8deg) !important;
 		z-index: 3;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3 {
 		grid-column: 1 / 6 !important;
 		grid-row: 8 / 13 !important;
 		transform: rotate(-.35deg) !important;
 		z-index: 3;
 	}
 	/* Montjam is a 1920x800 banner: keep it genuinely wide instead of portrait-cropping it. */
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4 {
 		grid-column: 6 / 13 !important;
 		grid-row: 6 / 10 !important;
 		transform: rotate(.2deg) !important;
 		z-index: 2;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 {
 		grid-column: 8 / 13 !important;
 		grid-row: 9 / 13 !important;
 		transform: rotate(.9deg) !important;
@@ -90,14 +90,14 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
  * to one column through 1180px and give every producer a substantial tile.
  */
 @media (min-width: 600px) and (max-width: 1180px) {
-	body.home .emo-hero__grid {
+	html body.home .emo-home .emo-hero__grid {
 		grid-template-columns: minmax(0, 1fr) !important;
 		gap: clamp(1.6rem, 3.5vw, 2.5rem) !important;
 	}
-	body.home .emo-hero__copy {
+	html body.home .emo-home .emo-hero__copy {
 		max-width: 820px !important;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		display: grid !important;
 		width: min(100%, 680px) !important;
 		margin: .35rem auto 0 !important;
@@ -109,27 +109,27 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 		gap: clamp(10px, 1.8vw, 16px) !important;
 		transform: none !important;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card {
 		grid-column: auto !important;
 		grid-row: auto !important;
 		min-height: 0 !important;
 		transform: none !important;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 { grid-column: 1 !important; grid-row: 1 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2 { grid-column: 2 !important; grid-row: 1 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3 { grid-column: 1 !important; grid-row: 2 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 { grid-column: 2 !important; grid-row: 2 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 { grid-column: 1 !important; grid-row: 1 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2 { grid-column: 2 !important; grid-row: 1 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3 { grid-column: 1 !important; grid-row: 2 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 { grid-column: 2 !important; grid-row: 2 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4 {
 		grid-column: 1 / -1 !important;
 		grid-row: 3 !important;
 	}
-	body.home .emo-hero__visual--vendors .emo-hero-card figcaption {
+	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption {
 		display: flex !important;
 		visibility: visible !important;
 		opacity: 1 !important;
 		padding: .85rem .95rem !important;
 	}
-	body.home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
+	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
 		display: block !important;
 		visibility: visible !important;
 		opacity: 1 !important;
@@ -140,7 +140,7 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 
 /* Phones: two clean rows plus a full-width Montjam banner. All five remain visible. */
 @media (max-width: 599px) {
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		display: grid !important;
 		width: 100% !important;
 		margin: .15rem auto 0 !important;
@@ -152,31 +152,31 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 		gap: 10px !important;
 		transform: none !important;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card {
 		grid-column: auto !important;
 		grid-row: auto !important;
 		min-height: 0 !important;
 		border-radius: 14px !important;
 		transform: none !important;
 	}
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 { grid-column: 1 !important; grid-row: 1 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2 { grid-column: 2 !important; grid-row: 1 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3 { grid-column: 1 !important; grid-row: 2 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 { grid-column: 2 !important; grid-row: 2 !important; }
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 { grid-column: 1 !important; grid-row: 1 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--2 { grid-column: 2 !important; grid-row: 1 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--3 { grid-column: 1 !important; grid-row: 2 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--5 { grid-column: 2 !important; grid-row: 2 !important; }
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--4 {
 		grid-column: 1 / -1 !important;
 		grid-row: 3 !important;
 	}
-	body.home .emo-hero__visual--vendors .emo-hero-card figcaption {
+	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption {
 		display: flex !important;
 		visibility: visible !important;
 		opacity: 1 !important;
 		padding: .62rem .7rem !important;
 	}
-	body.home .emo-hero__visual--vendors .emo-hero-card figcaption span {
+	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption span {
 		display: none !important;
 	}
-	body.home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
+	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
 		display: block !important;
 		visibility: visible !important;
 		opacity: 1 !important;
@@ -187,14 +187,14 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 }
 
 @media (max-width: 374px) {
-	body.home .emo-hero__visual--vendors.emo-vendor-count-5 {
+	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		gap: 8px !important;
 		grid-template-rows: 126px 126px 122px !important;
 	}
-	body.home .emo-hero__visual--vendors .emo-hero-card figcaption {
+	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption {
 		padding: .55rem .62rem !important;
 	}
-	body.home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
+	html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card figcaption strong {
 		font-size: .72rem !important;
 	}
 }
@@ -202,9 +202,9 @@ CSS;
 }
 
 /*
- * The legacy dynamic Home renderer prints its collage <style> inside the body,
- * after wp_head. Printing this final override in wp_footer places it later in
- * the cascade, so equal-specificity !important legacy rules cannot win again.
+ * The legacy Home renderer also emits collage rules with !important. Keep this
+ * layer at the very end of the public Home markup and give it deliberately
+ * higher selector specificity so the responsive geometry is deterministic.
  */
 add_action(
 	'wp_footer',
