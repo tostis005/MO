@@ -20,7 +20,7 @@ jobs:
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - name: Inspect Meta consent hooks in installed plugin
+      - name: Read installed Meta consent implementation
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -45,7 +45,13 @@ jobs:
           done
           : "${PROD_PATH:?production path not found}"
           FB="$PROD_PATH/wp-content/plugins/facebook-for-woocommerce"
-          echo META_SIGNALS_BEGIN
-          grep -RInE "should_hold_signals|hold_signals|signals_state|integration_pixel_enabled|FacebookSignalsState::hold|apply_filters\(" "$FB/includes" "$FB/facebook-commerce.php" "$FB/facebook-commerce-events-tracker.php" 2>/dev/null | grep -Ei "signal|pixel_enabled|hold" | head -n 120 || true
-          echo META_SIGNALS_END
+          echo SIGNALS_PHP_BEGIN
+          sed -n '1,175p' "$FB/includes/Signals.php"
+          echo SIGNALS_PHP_END
+          echo SIGNAL_STATE_BEGIN
+          sed -n '1,155p' "$FB/includes/Events/FacebookSignalsState.php"
+          echo SIGNAL_STATE_END
+          echo COMMERCE_HOOK_BEGIN
+          sed -n '360,415p' "$FB/facebook-commerce.php"
+          echo COMMERCE_HOOK_END
           REMOTE
