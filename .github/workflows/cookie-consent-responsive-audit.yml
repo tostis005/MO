@@ -76,13 +76,14 @@ jobs:
                   banner = d.find_element(By.ID, 'cookie-law-info-bar')
                   actions = d.find_element(By.CSS_SELECTOR, '#cookie-law-info-bar .emdo-cookie-actions')
                   message = d.find_element(By.CSS_SELECTOR, '#cookie-law-info-bar .emdo-cookie-message')
-                  buttons = actions.find_elements(By.CSS_SELECTOR, '.cli_settings_button,[data-cli_action="reject"],[data-cli_action="accept"]')
-                  if len(buttons) != 3:
-                      raise AssertionError(f'{label}: expected 3 action buttons, got {len(buttons)}')
+                  settings = actions.find_element(By.CSS_SELECTOR, '.cli_settings_button')
+                  reject = actions.find_element(By.CSS_SELECTOR, '[data-cli_action="reject"]')
+                  accept = actions.find_element(By.CSS_SELECTOR, '[data-cli_action="accept"]')
+                  buttons = [settings, reject, accept]
 
                   br = rect(d, banner)
-                  ar = rect(d, actions)
-                  rs = [rect(d, b) for b in buttons]
+                  acr = rect(d, actions)
+                  sr, rr, ar = [rect(d, b) for b in buttons]
 
                   if br['x'] < -2 or br['right'] > inner_w + 2:
                       raise AssertionError(f'{label}: banner overflows viewport: {br}')
@@ -91,34 +92,42 @@ jobs:
                   if d.execute_script('return arguments[0].scrollWidth > arguments[0].clientWidth + 2', message):
                       raise AssertionError(f'{label}: message has horizontal overflow')
 
-                  tops = [r['y'] for r in rs]
-                  if max(tops) - min(tops) > 3:
-                      raise AssertionError(f'{label}: buttons are staggered/diagonal: {rs}')
-
-                  ordered = sorted(rs, key=lambda r: r['x'])
-                  for left, right in zip(ordered, ordered[1:]):
-                      if left['right'] > right['x'] + 1:
-                          raise AssertionError(f'{label}: buttons overlap: {rs}')
-
-                  for r in rs:
-                      if r['x'] < ar['x'] - 2 or r['right'] > ar['right'] + 2:
-                          raise AssertionError(f'{label}: button outside action row: actions={ar}, buttons={rs}')
-                      if r['height'] < 38:
-                          raise AssertionError(f'{label}: action is too short: {rs}')
+                  for r in (sr, rr, ar):
+                      if r['x'] < acr['x'] - 2 or r['right'] > acr['right'] + 2:
+                          raise AssertionError(f'{label}: action outside group: group={acr}, action={r}')
 
                   text_overflow = d.execute_script('return arguments[0].map(el => ({text:el.textContent.trim(), clientWidth:el.clientWidth, scrollWidth:el.scrollWidth}));', buttons)
                   for item in text_overflow:
                       if item['scrollWidth'] > item['clientWidth'] + 2:
-                          raise AssertionError(f'{label}: button text overflows: {text_overflow}')
+                          raise AssertionError(f'{label}: action text overflows: {text_overflow}')
 
                   if width <= 760:
-                      widths = [r['width'] for r in rs]
-                      if max(widths) - min(widths) > 3:
-                          raise AssertionError(f'{label}: mobile buttons are not equal width: {rs}')
-                      if ar['width'] < br['width'] * 0.8:
-                          raise AssertionError(f'{label}: mobile action row is unexpectedly narrow: banner={br}, actions={ar}')
+                      if sr['bottom'] > rr['y'] + 2 or sr['bottom'] > ar['y'] + 2:
+                          raise AssertionError(f'{label}: settings should sit above main actions: settings={sr}, reject={rr}, accept={ar}')
+                      if abs(rr['y'] - ar['y']) > 3:
+                          raise AssertionError(f'{label}: reject/accept are staggered: reject={rr}, accept={ar}')
+                      if abs(rr['width'] - ar['width']) > 3:
+                          raise AssertionError(f'{label}: reject/accept widths differ: reject={rr}, accept={ar}')
+                      if rr['right'] > ar['x'] + 1:
+                          raise AssertionError(f'{label}: reject/accept overlap: reject={rr}, accept={ar}')
+                      if rr['height'] < 42 or ar['height'] < 42:
+                          raise AssertionError(f'{label}: main actions are too short: reject={rr}, accept={ar}')
+                      if sr['height'] < 18:
+                          raise AssertionError(f'{label}: settings link is too short: settings={sr}')
+                      if acr['width'] < br['width'] * 0.8:
+                          raise AssertionError(f'{label}: mobile action group is unexpectedly narrow: banner={br}, actions={acr}')
+                  else:
+                      tops = [sr['y'], rr['y'], ar['y']]
+                      if max(tops) - min(tops) > 3:
+                          raise AssertionError(f'{label}: desktop/tablet actions are staggered: settings={sr}, reject={rr}, accept={ar}')
+                      ordered = sorted((sr, rr, ar), key=lambda r: r['x'])
+                      for left, right in zip(ordered, ordered[1:]):
+                          if left['right'] > right['x'] + 1:
+                              raise AssertionError(f'{label}: desktop/tablet actions overlap: {ordered}')
+                      if min(sr['height'], rr['height'], ar['height']) < 38:
+                          raise AssertionError(f'{label}: desktop/tablet action is too short: settings={sr}, reject={rr}, accept={ar}')
 
-                  print(f'{label}=PASS width={inner_w} banner={br} actions={ar} buttons={rs}', flush=True)
+                  print(f'{label}=PASS width={inner_w} banner={br} actions={acr} settings={sr} reject={rr} accept={ar}', flush=True)
               finally:
                   d.quit()
           PY
