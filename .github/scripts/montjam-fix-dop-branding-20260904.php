@@ -49,7 +49,6 @@ foreach ($specs as $product_id => $spec) {
     $post = get_post($product_id);
     if (!$post || $post->post_type !== 'product') throw new RuntimeException('Product not found: ' . $product_id);
 
-    // Capture and remove the wrong-brand imagery from the product and Media Library.
     $attachment_ids = [];
     $thumb = (int)get_post_thumbnail_id($product_id);
     if ($thumb) $attachment_ids[] = $thumb;
@@ -76,7 +75,6 @@ foreach ($specs as $product_id => $spec) {
     update_post_meta($product_id, '_yoast_wpseo_metadesc', $spec['meta']);
     update_post_meta($product_id, '_yoast_wpseo_focuskw', $spec['focus']);
 
-    // Remove any remaining Onofre reference from metadata belonging to these products only.
     $meta_rows = $wpdb->get_results($wpdb->prepare("SELECT meta_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id=%d", $product_id), ARRAY_A);
     foreach ($meta_rows as $m) {
         $decoded = maybe_unserialize($m['meta_value']);
@@ -84,7 +82,6 @@ foreach ($specs as $product_id => $spec) {
         if ($new !== $decoded) update_metadata_by_mid('post', (int)$m['meta_id'], $new);
     }
 
-    // Ensure child variation titles/meta do not retain the other brand.
     $product = wc_get_product($product_id);
     $children = $product ? array_map('intval', $product->get_children()) : [];
     foreach ($children as $child_id) {
@@ -104,7 +101,6 @@ foreach ($specs as $product_id => $spec) {
         }
     }
 
-    // Remove any assigned taxonomy term referring to Onofre, without deleting global terms.
     foreach (get_object_taxonomies('product') as $taxonomy) {
         $assigned = wp_get_object_terms($product_id, $taxonomy, ['fields'=>'all']);
         if (is_wp_error($assigned)) continue;
@@ -115,7 +111,6 @@ foreach ($specs as $product_id => $spec) {
         }
     }
 
-    // Ensure Montjam producer remains assigned when the taxonomy exists.
     if (taxonomy_exists('pa_productor')) {
         $montjam_term = get_term_by('slug', 'montjam', 'pa_productor');
         if (!$montjam_term) $montjam_term = get_term_by('name', 'Montjam', 'pa_productor');
@@ -126,7 +121,6 @@ foreach ($specs as $product_id => $spec) {
     wc_delete_product_transients($product_id);
     clean_post_cache($product_id);
 
-    // Hard verification.
     $fresh = get_post($product_id);
     $check_blob = implode(' ', [
         $fresh->post_title,
