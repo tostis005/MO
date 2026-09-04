@@ -13,18 +13,14 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 8
     env:
       STAGING_HOST: ${{ secrets.STAGING_HOST }}
       STAGING_PORT: ${{ secrets.STAGING_PORT }}
       STAGING_USER: ${{ secrets.STAGING_USER }}
       STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Inspect CookieYes settings safely
+      - name: Inspect Meta consent hooks in installed plugin
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -48,46 +44,8 @@ jobs:
             esac
           done
           : "${PROD_PATH:?production path not found}"
-          for opt in 'CookieLawInfo-0.9' 'cookielawinfo_necessary_settings' 'cookielawinfo_thirdparty_settings'; do
-            echo "OPTION_BEGIN=$opt"
-            "$php_bin" -d memory_limit=256M "$wp_bin" eval "echo wp_json_encode(get_option('$opt'), JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);" --path="$PROD_PATH" --skip-plugins --skip-themes --allow-root 2>/dev/null || true
-            echo
-            echo "OPTION_END=$opt"
-          done
+          FB="$PROD_PATH/wp-content/plugins/facebook-for-woocommerce"
+          echo META_SIGNALS_BEGIN
+          grep -RInE "should_hold_signals|hold_signals|signals_state|integration_pixel_enabled|FacebookSignalsState::hold|apply_filters\(" "$FB/includes" "$FB/facebook-commerce.php" "$FB/facebook-commerce-events-tracker.php" 2>/dev/null | grep -Ei "signal|pixel_enabled|hold" | head -n 120 || true
+          echo META_SIGNALS_END
           REMOTE
-
-      - name: Inspect live CookieYes controls and consent cookies
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --quiet selenium
-          python - <<'PY'
-          import json, time
-          from selenium import webdriver
-          from selenium.webdriver.chrome.options import Options
-          from selenium.webdriver.common.by import By
-
-          def make_driver():
-              o=Options(); o.page_load_strategy='eager'
-              for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1600','--lang=es-ES'):
-                  o.add_argument(arg)
-              d=webdriver.Chrome(options=o)
-              d.set_page_load_timeout(60)
-              d.execute_cdp_cmd('Network.enable', {})
-              d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {'Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache'}})
-              return d
-
-          d=make_driver()
-          try:
-              d.get('https://www.elmercadodeorigen.com/?consent_diag=controls')
-              time.sleep(6)
-              controls=d.execute_script(r'''return Array.from(document.querySelectorAll('#cookie-law-info-bar a,#cookie-law-info-bar button,.cli-modal a,.cli-modal button,input[type="checkbox"]')).map(e=>({tag:e.tagName,id:e.id||'',cls:e.className||'',text:(e.innerText||e.value||'').trim(),dataAction:e.getAttribute('data-cli_action')||'',name:e.name||'',checked:!!e.checked}));''')
-              print('CONTROLS=' + json.dumps(controls,ensure_ascii=False))
-              print('FRESH_COOKIES=' + d.execute_script('return document.cookie'))
-              accepts=d.find_elements(By.CSS_SELECTOR, '[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn')
-              if accepts:
-                  accepts[0].click(); time.sleep(2)
-                  print('AFTER_ACCEPT_COOKIES=' + d.execute_script('return document.cookie'))
-          finally:
-              d.quit()
-          PY
