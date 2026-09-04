@@ -82,18 +82,19 @@ jobs:
             \"\$php_bin\" -l '$TARGET_HERO'
 
             \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_TASK' --path='$PROD_PATH' --allow-root
-            \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
+            \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root || true
 
             rm -f '$REMOTE_TASK' '$REMOTE_HERO'
           "
 
           VERIFY_URL="https://www.elmercadodeorigen.com/?mdo_verify=${GITHUB_RUN_ID}"
-          HTML="$(curl -LfsS --max-time 45 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$VERIFY_URL")"
+          VERIFY_HTML="/tmp/montjam-home-${GITHUB_RUN_ID}.html"
+          curl -LfsS --max-time 45 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$VERIFY_URL" -o "$VERIFY_HTML"
 
-          printf '%s' "$HTML" | grep -Fq 'id="elmercado-home-hero-compact-20260904"'
-          printf '%s' "$HTML" | grep -Fq 'min-height: min(640px, calc(100svh - 108px))'
-          printf '%s' "$HTML" | grep -Fq 'data-mdo-home-featured-special='
-          printf '%s' "$HTML" | grep -Fq 'Montjam'
-          printf '%s' "$HTML" | grep -Fq '225'
+          grep -Fq 'id="elmercado-home-hero-compact-20260904"' "$VERIFY_HTML"
+          grep -Fq 'min-height: min(640px, calc(100svh - 108px))' "$VERIFY_HTML"
+          grep -Fq 'data-mdo-home-featured-special=' "$VERIFY_HTML"
+          grep -Fq 'Montjam' "$VERIFY_HTML"
+          grep -Fq '225' "$VERIFY_HTML"
 
           echo "PUBLIC_HOME_VERIFY: hero_compact=1 special=1 montjam=1 price_225=1"
