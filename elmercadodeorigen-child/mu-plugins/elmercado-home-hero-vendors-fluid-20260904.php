@@ -42,14 +42,19 @@ html body.home .emo-home .emo-hero__visual--vendors .emo-hero-card img {
 	object-position: 50% 50%;
 }
 
-/* Wide desktop: an editorial mosaic matched to each producer banner ratio. */
+/* Wide desktop: a tighter hero with the producer mosaic optically centered. */
 @media (min-width: 1181px) {
+	html body.home .emo-home > .emo-hero {
+		min-height: auto !important;
+		padding-bottom: clamp(1.75rem, 2.4vw, 2.4rem) !important;
+	}
+
 	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 {
 		display: grid !important;
 		grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
 		grid-template-rows: repeat(12, 32px) !important;
 		gap: 0 !important;
-		transform: translateY(-24px) !important;
+		transform: translateY(8px) !important;
 	}
 	html body.home .emo-home .emo-hero__visual--vendors.emo-vendor-count-5 .emo-hero-card--1 {
 		grid-column: 1 / 6 !important;
