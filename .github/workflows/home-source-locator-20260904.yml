@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/home-source-locator-20260904.yml'
       - '.github/scripts/home-source-locator-20260904.php'
+      - '.github/scripts/home-source-reflection-20260904.php'
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,7 +23,7 @@ jobs:
       - name: Validate
         run: |
           set -euo pipefail
-          php -l .github/scripts/home-source-locator-20260904.php
+          php -l .github/scripts/home-source-reflection-20260904.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
       - name: Locate live sources
         env:
@@ -39,6 +40,6 @@ jobs:
             for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do p=$(dirname "$cfg"); url=$("$php_bin" "$wp_bin" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true); case "$url" in https://www.elmercadodeorigen.com|http://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://elmercadodeorigen.com) printf "%s" "$p"; break;; esac; done
           ')"
           : "${PROD_PATH:?}"
-          REMOTE="/tmp/home-source-locator-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP .github/scripts/home-source-locator-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
+          REMOTE="/tmp/home-source-reflection-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP .github/scripts/home-source-reflection-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE"
           sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE'; exit \$rc"
