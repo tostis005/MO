@@ -1,11 +1,11 @@
-name: EMDO specials audit 20260904
+name: EMDO promotion source audit 20260904
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/emdo-specials-audit-20260904.yml'
-      - '.github/scripts/emdo-specials-audit-20260904.php'
+      - '.github/scripts/emdo-promotion-source-audit-20260904.php'
   workflow_dispatch:
 
 permissions:
@@ -26,9 +26,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          php -l .github/scripts/emdo-specials-audit-20260904.php
+          php -l .github/scripts/emdo-promotion-source-audit-20260904.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
-      - name: Audit specials backend in production
+      - name: Audit promotion source in production
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -48,6 +48,6 @@ jobs:
             done
           ')"
           : "${PROD_PATH:?production path not found}"
-          REMOTE_SCRIPT="/tmp/emdo-specials-audit-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS .github/scripts/emdo-specials-audit-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
+          REMOTE_SCRIPT="/tmp/emdo-promotion-source-${GITHUB_RUN_ID}.php"
+          sshpass -e scp $SCP_OPTIONS .github/scripts/emdo-promotion-source-audit-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE_SCRIPT"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_SCRIPT' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_SCRIPT'; exit \$rc"
