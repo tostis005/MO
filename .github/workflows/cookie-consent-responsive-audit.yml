@@ -1,0 +1,109 @@
+name: Audit CookieYes responsive layout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cookie-consent-responsive-audit.yml'
+      - '.github/deploy/emdo-cookie-consent.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  responsive-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium
+      - name: Verify banner layout across viewports
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+
+          BASE = 'https://www.elmercadodeorigen.com/'
+          VIEWPORTS = [
+              ('mobile-320', 320, 800),
+              ('mobile-375', 375, 812),
+              ('mobile-390', 390, 844),
+              ('tablet-768', 768, 1024),
+              ('desktop-1024', 1024, 900),
+              ('desktop-1440', 1440, 1000),
+          ]
+
+          def driver_for(label, width, height):
+              o = Options(); o.page_load_strategy = 'eager'
+              for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--lang=es-ES'):
+                  o.add_argument(arg)
+              o.add_argument(f'--window-size={width},{height}')
+              d = webdriver.Chrome(options=o)
+              d.set_page_load_timeout(60)
+              d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {
+                  'Accept-Language': 'es-ES,es;q=0.9',
+                  'Cache-Control': 'no-cache',
+                  'Pragma': 'no-cache'
+              }})
+              d.get(BASE + '?cookie_layout_audit=' + label + '-' + str(time.time_ns()))
+              time.sleep(6)
+              return d
+
+          def rect(d, el):
+              return d.execute_script('const r=arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};', el)
+
+          for label, width, height in VIEWPORTS:
+              d = driver_for(label, width, height)
+              try:
+                  inner_w = d.execute_script('return window.innerWidth')
+                  banner = d.find_element(By.ID, 'cookie-law-info-bar')
+                  if not banner.is_displayed():
+                      raise AssertionError(f'{label}: banner hidden')
+
+                  banner_r = rect(d, banner)
+                  if banner_r['x'] < -2 or banner_r['right'] > inner_w + 2:
+                      raise AssertionError(f'{label}: banner overflows viewport: {banner_r}, innerWidth={inner_w}')
+
+                  container = banner.find_element(By.CSS_SELECTOR, '.cli-bar-btn_container')
+                  buttons = container.find_elements(By.CSS_SELECTOR, '.cli_settings_button,[data-cli_action="reject"],[data-cli_action="accept"]')
+                  if len(buttons) != 3:
+                      raise AssertionError(f'{label}: expected 3 action buttons, got {len(buttons)}')
+
+                  rs = [rect(d, b) for b in buttons]
+                  tops = [r['y'] for r in rs]
+                  if max(tops) - min(tops) > 4:
+                      raise AssertionError(f'{label}: buttons are staggered/diagonal: {rs}')
+
+                  ordered = sorted(rs, key=lambda r: r['x'])
+                  for left, right in zip(ordered, ordered[1:]):
+                      if left['right'] > right['x'] + 1:
+                          raise AssertionError(f'{label}: buttons overlap: {rs}')
+
+                  cr = rect(d, container)
+                  for r in rs:
+                      if r['x'] < cr['x'] - 2 or r['right'] > cr['right'] + 2:
+                          raise AssertionError(f'{label}: button outside action row: {rs}, container={cr}')
+                      if r['width'] < 60 or r['height'] < 36:
+                          raise AssertionError(f'{label}: action too small: {rs}')
+
+                  overflow = d.execute_script('return arguments[0].map(el => ({text:el.textContent.trim(), clientWidth:el.clientWidth, scrollWidth:el.scrollWidth}));', buttons)
+                  for item in overflow:
+                      if item['scrollWidth'] > item['clientWidth'] + 3:
+                          raise AssertionError(f'{label}: button text overflows: {overflow}')
+
+                  if inner_w <= 900:
+                      widths = [r['width'] for r in rs]
+                      if max(widths) - min(widths) > 4:
+                          raise AssertionError(f'{label}: mobile/tablet actions are not equal width: {rs}')
+
+                  print(f'{label}=PASS innerWidth={inner_w} banner={banner_r} buttons={rs}', flush=True)
+              finally:
+                  d.quit()
+          PY
