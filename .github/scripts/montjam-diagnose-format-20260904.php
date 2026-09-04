@@ -1,24 +1,13 @@
 <?php
 if (!defined('ABSPATH')) { exit(1); }
-$roots=[];
-foreach(glob(WP_PLUGIN_DIR.'/*yith*product*add*') as $d){ if(is_dir($d)) $roots[]=$d; }
-foreach(glob(WP_PLUGIN_DIR.'/*yith*wapo*') as $d){ if(is_dir($d) && !in_array($d,$roots,true)) $roots[]=$d; }
-echo 'YITH_ROOTS: '.wp_json_encode($roots,JSON_UNESCAPED_SLASHES)."\n";
-$needles=['transient','cache','blocks_assoc','get_blocks','show_in_products'];
-foreach($roots as $root){
-  $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS));
-  foreach($it as $f){
-    if(!$f->isFile() || strtolower($f->getExtension())!=='php') continue;
-    $path=$f->getPathname();
-    $lines=@file($path); if(!$lines) continue;
-    foreach($lines as $i=>$line){
-      $low=strtolower($line);
-      foreach($needles as $n){
-        if(strpos($low,$n)!==false){
-          echo 'MATCH: '.str_replace(ABSPATH,'',$path).':'.($i+1).':'.trim($line)."\n";
-          break;
-        }
-      }
-    }
-  }
+$root=WP_PLUGIN_DIR.'/yith-woocommerce-product-add-ons/includes';
+$files=[
+  $root.'/class-yith-wapo-db.php'=>[175,390],
+  $root.'/class-yith-wapo-front.php'=>[480,545],
+  $root.'/class-yith-wapo.php'=>[440,535],
+];
+foreach($files as $path=>$range){
+  echo "FILE: ".str_replace(ABSPATH,'',$path)."\n";
+  $lines=@file($path); if(!$lines){echo "MISSING\n";continue;}
+  for($i=$range[0];$i<=$range[1] && $i<=count($lines);$i++) echo $i.':'.$lines[$i-1];
 }
