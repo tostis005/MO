@@ -2,8 +2,8 @@
 /**
  * Correcciones finales y acotadas del artículo individual 0.10.286.
  *
- * Restaura cuatro lecturas relacionadas en escritorio y elimina el espacio
- * residual que las capas históricas vuelven a introducir antes del opt-in.
+ * Restaura cuatro lecturas relacionadas en escritorio, mantiene su rejilla
+ * responsive y controla el espacio residual antes del opt-in.
  *
  * @package ElMercadoDeOrigen
  */
@@ -31,10 +31,6 @@ add_action(
 				padding: 0 !important;
 			}
 
-			/*
-			 * Un pequeño margen directo garantiza que el aire superior se perciba
-			 * aunque cambie la estructura entre el párrafo y el bloque.
-			 */
 			html body.single-post article.emo-entry-standard .emo-article-content .emo-inline-newsletter {
 				margin-top: 4px !important;
 				padding-top: 9px !important;
@@ -75,6 +71,20 @@ add_action(
 				}
 			}
 		</style>
+		<script id="elmercado-related-reading-responsive-010287">
+		(() => {
+			'use strict';
+			/*
+			 * single.php heredó un grid-template-columns inline con !important.
+			 * Se elimina únicamente esa propiedad para que las media queries finales
+			 * puedan gobernar 4 -> 2 -> 1 columnas según el ancho de pantalla.
+			 */
+			const grid = document.querySelector('main#primary.emo-article-page .emo-related-reading .emo-journal-grid');
+			if (grid && grid.style) {
+				grid.style.removeProperty('grid-template-columns');
+			}
+		})();
+		</script>
 		<?php
 	},
 	PHP_INT_MAX
