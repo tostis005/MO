@@ -61,30 +61,61 @@ foreach ($ids as $uid) {
     msd_out('USERMETA_' . $uid, $clean);
 }
 
-$tables = $wpdb->get_col("SHOW TABLES LIKE '" . $wpdb->esc_like($wpdb->prefix) . "%wcfm%shipping%'");
-if (!$tables) {
-    $tables = $wpdb->get_col("SHOW TABLES LIKE '" . $wpdb->esc_like($wpdb->prefix) . "%shipping%'");
-}
+$wcfm_locations = $wpdb->prefix . 'wcfm_marketplace_shipping_zone_locations';
+$wcfm_methods   = $wpdb->prefix . 'wcfm_marketplace_shipping_zone_methods';
+$tables = [$wcfm_locations, $wcfm_methods];
 msd_out('SHIPPING_TABLES', $tables);
 foreach ($tables as $table) {
+    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) continue;
     $cols = $wpdb->get_results("DESCRIBE `$table`", ARRAY_A);
     msd_out('TABLE_SCHEMA_' . $table, $cols);
     $colnames = array_column($cols, 'Field');
-    $vendor_col = null;
-    foreach (['vendor_id','user_id','seller_id','store_id'] as $cand) {
-        if (in_array($cand, $colnames, true)) { $vendor_col = $cand; break; }
-    }
-    if ($vendor_col) {
+    if (in_array('vendor_id', $colnames, true)) {
         foreach ($ids as $uid) {
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM `$table` WHERE `$vendor_col`=%d ORDER BY 1", $uid), ARRAY_A);
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM `$table` WHERE vendor_id=%d ORDER BY 1", $uid), ARRAY_A);
             if ($rows) msd_out('ROWS_' . $table . '_' . $uid, $rows);
         }
-    } else {
-        $rows = $wpdb->get_results("SELECT * FROM `$table` LIMIT 100", ARRAY_A);
-        if ($rows) msd_out('ROWS_' . $table, $rows);
     }
 }
 
-$plugins = get_option('active_plugins', []);
-$wcfm = array_values(array_filter($plugins, function($p){ return stripos($p, 'wcfm') !== false; }));
-msd_out('ACTIVE_WCFM_PLUGINS', $wcfm);
+// Map every WooCommerce zone currently used by Hidalgo de la Jara (vendor 6).
+$core_zones = $wpdb->prefix . 'woocommerce_shipping_zones';
+$core_locs  = $wpdb->prefix . 'woocommerce_shipping_zone_locations';
+$core_methods = $wpdb->prefix . 'woocommerce_shipping_zone_methods';
+$hidalgo_zone_ids = array_map('intval', $wpdb->get_col($wpdb->prepare(
+    "SELECT DISTINCT zone_id FROM `$wcfm_methods` WHERE vendor_id=%d AND is_enabled=1 ORDER BY zone_id",
+    6
+)));
+msd_out('HIDALGO_ZONE_IDS', $hidalgo_zone_ids);
+foreach ($hidalgo_zone_ids as $zone_id) {
+    $zone = $wpdb->get_row($wpdb->prepare("SELECT * FROM `$core_zones` WHERE zone_id=%d", $zone_id), ARRAY_A);
+    $locs = $wpdb->get_results($wpdb->prepare(
+        "SELECT location_code, location_type FROM `$core_locs` WHERE zone_id=%d ORDER BY location_type, location_code",
+        $zone_id
+    ), ARRAY_A);
+    $global_methods = $wpdb->get_results($wpdb->prepare(
+        "SELECT instance_id, method_id, method_order, is_enabled FROM `$core_methods` WHERE zone_id=%d ORDER BY method_order, instance_id",
+        $zone_id
+    ), ARRAY_A);
+    $hid_methods = $wpdb->get_results($wpdb->prepare(
+        "SELECT instance_id, method_id, is_enabled, settings FROM `$wcfm_methods` WHERE vendor_id=%d AND zone_id=%d ORDER BY instance_id",
+        6, $zone_id
+    ), ARRAY_A);
+    foreach ($hid_methods as &$m) $m['settings_decoded'] = maybe_unserialize($m['settings']);
+    unset($m);
+    msd_out('ZONE_' . $zone_id, [
+        'zone' => $zone,
+        'locations' => $locs,
+        'global_methods' => $global_methods,
+        'hidalgo_methods' => $hid_methods,
+    ]);
+}
+
+// Also show any current Montjam zone methods, if they exist.
+$montjam_methods = $wpdb->get_results($wpdb->prepare(
+    "SELECT instance_id, method_id, zone_id, is_enabled, settings FROM `$wcfm_methods` WHERE vendor_id=%d ORDER BY zone_id, instance_id",
+    (int)$montjam->ID
+), ARRAY_A);
+foreach ($montjam_methods as &$m) $m['settings_decoded'] = maybe_unserialize($m['settings']);
+unset($m);
+msd_out('MONTJAM_METHODS', $montjam_methods);
