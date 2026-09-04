@@ -50,14 +50,45 @@ foreach ( $products as $product ) {
 }
 
 echo "=== HOME SPECIAL RENDER ===\n";
+$special_file = '';
 if ( class_exists( 'MDO_Home_Featured_Special' ) ) {
     try {
         $ref = new ReflectionClass( 'MDO_Home_Featured_Special' );
-        echo 'CLASS_FILE=' . $ref->getFileName() . "\n";
+        $special_file = (string) $ref->getFileName();
+        echo 'CLASS_FILE=' . $special_file . "\n";
     } catch ( Throwable $e ) {
         echo 'CLASS_REFLECTION_ERROR=' . $e->getMessage() . "\n";
     }
     echo MDO_Home_Featured_Special::render() . "\n";
 } else {
     echo "MDO_Home_Featured_Special missing\n";
+}
+
+if ( $special_file ) {
+    $plugin_root = dirname( dirname( $special_file ) );
+    echo "=== FEATURED SPECIAL STYLE MATCHES ===\n";
+    $matches = 0;
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($plugin_root, FilesystemIterator::SKIP_DOTS));
+    foreach ( $it as $file ) {
+        if ( ! $file->isFile() ) { continue; }
+        $ext = strtolower( pathinfo( $file->getFilename(), PATHINFO_EXTENSION ) );
+        if ( ! in_array( $ext, ['php','css'], true ) ) { continue; }
+        $path = $file->getPathname();
+        $text = @file_get_contents( $path );
+        if ( false === $text || false === strpos( $text, 'mdo-home-featured-special__' ) ) { continue; }
+        echo 'STYLE_FILE=' . $path . "\n";
+        $lines = preg_split('/\R/', $text);
+        foreach ( $lines as $i => $line ) {
+            if ( false !== strpos( $line, 'mdo-home-featured-special__' ) ) {
+                $start = max(0, $i - 4);
+                $end = min(count($lines) - 1, $i + 12);
+                for ( $j = $start; $j <= $end; $j++ ) {
+                    echo sprintf("%05d %s\n", $j + 1, $lines[$j]);
+                }
+                echo "---\n";
+                $matches++;
+                if ( $matches >= 25 ) { break 2; }
+            }
+        }
+    }
 }
