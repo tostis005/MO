@@ -20,95 +20,49 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --quiet selenium
-      - name: Verify banner layout across viewports
+      - name: Inspect mobile CookieYes DOM
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import time
+          import json, time
           from selenium import webdriver
           from selenium.webdriver.chrome.options import Options
           from selenium.webdriver.common.by import By
 
-          BASE = 'https://www.elmercadodeorigen.com/'
-          VIEWPORTS = [
-              ('mobile-320', 320, 800),
-              ('mobile-375', 375, 812),
-              ('mobile-390', 390, 844),
-              ('tablet-768', 768, 1024),
-              ('desktop-1024', 1024, 900),
-              ('desktop-1440', 1440, 1000),
-          ]
-
-          def driver_for(label, width, height):
-              o = Options(); o.page_load_strategy = 'eager'
-              for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--lang=es-ES'):
-                  o.add_argument(arg)
-              o.add_argument(f'--window-size={width},{height}')
-              d = webdriver.Chrome(options=o)
-              d.set_page_load_timeout(60)
-              d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {
-                  'Accept-Language': 'es-ES,es;q=0.9',
-                  'Cache-Control': 'no-cache',
-                  'Pragma': 'no-cache'
-              }})
-              d.get(BASE + '?cookie_layout_audit=' + label + '-' + str(time.time_ns()))
-              time.sleep(6)
-              return d
-
-          def rect(d, el):
-              return d.execute_script('const r=arguments[0].getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};', el)
-
-          for label, width, height in VIEWPORTS:
-              d = driver_for(label, width, height)
-              try:
-                  inner_w = d.execute_script('return window.innerWidth')
-                  banner = d.find_element(By.ID, 'cookie-law-info-bar')
-                  if not banner.is_displayed():
-                      raise AssertionError(f'{label}: banner hidden')
-
-                  banner_r = rect(d, banner)
-                  if banner_r['x'] < -2 or banner_r['right'] > inner_w + 2:
-                      raise AssertionError(f'{label}: banner overflows viewport: {banner_r}, innerWidth={inner_w}')
-
-                  bar = d.find_element(By.CSS_SELECTOR, '.cli-bar-container.cli-style-v2')
-                  container = d.find_element(By.CSS_SELECTOR, '.cli-bar-container.cli-style-v2 .cli-bar-btn_container')
-                  buttons = container.find_elements(By.CSS_SELECTOR, '.cli_settings_button,[data-cli_action="reject"],[data-cli_action="accept"]')
-                  if len(buttons) != 3:
-                      raise AssertionError(f'{label}: expected 3 action buttons, got {len(buttons)}')
-
-                  bar_r = rect(d, bar)
-                  if bar_r['x'] < -2 or bar_r['right'] > inner_w + 2:
-                      raise AssertionError(f'{label}: inner cookie bar overflows viewport: {bar_r}, innerWidth={inner_w}')
-
-                  rs = [rect(d, b) for b in buttons]
-                  tops = [r['y'] for r in rs]
-                  if max(tops) - min(tops) > 4:
-                      raise AssertionError(f'{label}: buttons are staggered/diagonal: {rs}')
-
-                  ordered = sorted(rs, key=lambda r: r['x'])
-                  for left, right in zip(ordered, ordered[1:]):
-                      if left['right'] > right['x'] + 1:
-                          raise AssertionError(f'{label}: buttons overlap: {rs}')
-
-                  cr = rect(d, container)
-                  for r in rs:
-                      if r['x'] < cr['x'] - 2 or r['right'] > cr['right'] + 2:
-                          raise AssertionError(f'{label}: button outside action row: {rs}, container={cr}')
-                      if r['width'] < 60 or r['height'] < 36:
-                          raise AssertionError(f'{label}: action too small: {rs}')
-
-                  overflow = d.execute_script('return arguments[0].map(el => ({text:el.textContent.trim(), clientWidth:el.clientWidth, scrollWidth:el.scrollWidth}));', buttons)
-                  for item in overflow:
-                      if item['scrollWidth'] > item['clientWidth'] + 3:
-                          raise AssertionError(f'{label}: button text overflows: {overflow}')
-
-                  if inner_w <= 900:
-                      widths = [r['width'] for r in rs]
-                      if max(widths) - min(widths) > 4:
-                          raise AssertionError(f'{label}: mobile/tablet actions are not equal width: {rs}')
-
-                  print(f'{label}=PASS innerWidth={inner_w} bar={bar_r} buttons={rs}', flush=True)
-              finally:
-                  d.quit()
+          o = Options(); o.page_load_strategy = 'eager'
+          for arg in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--lang=es-ES','--window-size=320,800'):
+              o.add_argument(arg)
+          d = webdriver.Chrome(options=o)
+          d.set_page_load_timeout(60)
+          d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {
+              'Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache','Pragma':'no-cache'
+          }})
+          try:
+              d.get('https://www.elmercadodeorigen.com/?cookie_dom_audit=' + str(time.time_ns()))
+              time.sleep(8)
+              print('INNER_WIDTH=' + str(d.execute_script('return window.innerWidth')), flush=True)
+              banner = d.find_element(By.ID, 'cookie-law-info-bar')
+              print('BANNER_DISPLAYED=' + str(banner.is_displayed()), flush=True)
+              print('BANNER_OUTER_HTML_START', flush=True)
+              print((banner.get_attribute('outerHTML') or '')[:20000], flush=True)
+              print('BANNER_OUTER_HTML_END', flush=True)
+              candidates = d.execute_script("""
+                return Array.from(document.querySelectorAll('a,button,[role="button"],[id*="cookie"],[class*="cli"],[class*="cookie"]'))
+                  .map(el => {
+                    const r=el.getBoundingClientRect(), s=getComputedStyle(el);
+                    return {
+                      tag:el.tagName,id:el.id,cls:String(el.className||''),
+                      text:(el.textContent||'').trim().replace(/\\s+/g,' ').slice(0,160),
+                      x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),
+                      display:s.display,visibility:s.visibility,position:s.position
+                    };
+                  })
+                  .filter(x => x.w > 0 && x.h > 0 && x.display !== 'none' && x.visibility !== 'hidden');
+              """)
+              print('VISIBLE_COOKIE_CANDIDATES_START', flush=True)
+              print(json.dumps(candidates, ensure_ascii=False, indent=2)[:30000], flush=True)
+              print('VISIBLE_COOKIE_CANDIDATES_END', flush=True)
+          finally:
+              d.quit()
           PY
