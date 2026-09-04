@@ -20,10 +20,9 @@ add_action(
 		}
 		?>
 		<style id="elmercado-home-hero-compact-20260904">
-			@media (min-width: 992px) {
-				body.home.elmercado-child-theme .emo-home > .emo-hero {
-					min-height: min(640px, calc(100svh - 108px)) !important;
-					padding-bottom: clamp(2.75rem, 3.5vw, 4rem) !important;
+			@media (min-width: 1101px) {
+				body.home .emo-home > .emo-hero {
+					padding-bottom: clamp(3.25rem, 4.4vw, 4.25rem) !important;
 				}
 			}
 		</style>
