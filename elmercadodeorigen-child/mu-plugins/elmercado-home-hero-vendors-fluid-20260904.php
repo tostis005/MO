@@ -201,34 +201,20 @@ body.home .emo-hero__visual--vendors .emo-hero-card img {
 CSS;
 }
 
-/**
- * Start first so this is the outermost Home buffer. It receives the final HTML
- * after the legacy Home renderer has injected its own style, then appends this
- * override immediately before </head> so these rules win deterministically.
+/*
+ * The legacy dynamic Home renderer prints its collage <style> inside the body,
+ * after wp_head. Printing this final override in wp_footer places it later in
+ * the cascade, so equal-specificity !important legacy rules cannot win again.
  */
 add_action(
-	'template_redirect',
+	'wp_footer',
 	static function (): void {
 		if ( ! elmercado_home_hero_vendors_fluid_is_front_20260904() ) {
 			return;
 		}
-
-		ob_start(
-			static function ( string $html ): string {
-				if ( '' === $html || false === strpos( $html, 'emo-hero__visual--vendors' ) ) {
-					return $html;
-				}
-				if ( false !== strpos( $html, 'id="elmercado-home-hero-vendors-fluid-20260904"' ) ) {
-					return $html;
-				}
-				$style = '<style id="elmercado-home-hero-vendors-fluid-20260904">' . elmercado_home_hero_vendors_fluid_css_20260904() . '</style>';
-				$head_end = strpos( $html, '</head>' );
-				if ( false !== $head_end ) {
-					return substr_replace( $html, $style, $head_end, 0 );
-				}
-				return $style . $html;
-			}
-		);
+		?>
+		<style id="elmercado-home-hero-vendors-fluid-20260904"><?php echo elmercado_home_hero_vendors_fluid_css_20260904(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></style>
+		<?php
 	},
-	-200000
+	PHP_INT_MAX
 );
