@@ -6,7 +6,6 @@ on:
     paths:
       - '.github/workflows/montjam-create-products-20260904.yml'
       - '.github/scripts/montjam-create-products-20260904.php'
-      - '.github/scripts/montjam-adjustments-20260904.php'
   workflow_dispatch:
 
 permissions:
@@ -33,7 +32,7 @@ jobs:
           php -l .github/scripts/montjam-adjustments-20260904.php
           : "${STAGING_HOST:?}"; : "${STAGING_USER:?}"; : "${STAGING_PASSWORD:?}"
 
-      - name: Create Montjam products in production and apply final adjustments
+      - name: Create Montjam products when missing and apply final adjustments
         shell: bash
         env:
           SSHPASS: ${{ secrets.STAGING_PASSWORD }}
@@ -60,18 +59,22 @@ jobs:
           ')"
           : "${PROD_PATH:?production path not found}"
 
-          # Keep the legacy source importer safe to rerun: use globally unique SKUs and
-          # normalize the brand spelling at runtime so it cannot recreate Mont Jam/mont-jam.
-          cp .github/scripts/montjam-create-products-20260904.php /tmp/montjam-importer.php
-          sed -i 's/MJ-JN-/MONTJAM-JN-/g; s/MJ-JR-/MONTJAM-JR-/g; s/MJ-PN-/MONTJAM-PN-/g; s/Mont Jam/Montjam/g; s/mont-jam/montjam/g' /tmp/montjam-importer.php
+          # This importer was designed for initial creation. Once all three catalogue items
+          # exist, do not recreate variations (WooCommerce SKUs are global); just apply the
+          # idempotent final adjustment below.
+          if sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" \"\$wp_bin\" eval 'foreach ([\"jamon-de-bellota-100-iberico-montjam\",\"jamon-de-bellota-iberico-50-montjam\",\"paleta-de-bellota-100-iberica-montjam\"] as \$slug) { if (!get_page_by_path(\$slug, OBJECT, \"product\")) { exit(1); } }' --path='$PROD_PATH' --skip-plugins --skip-themes --allow-root >/dev/null 2>&1"; then
+            echo "Montjam catalogue already exists; skipping initial importer."
+          else
+            # Keep legacy source safe for first creation: unique SKUs and exact brand spelling.
+            cp .github/scripts/montjam-create-products-20260904.php /tmp/montjam-importer.php
+            sed -i 's/MJ-JN-/MONTJAM-JN-/g; s/MJ-JR-/MONTJAM-JR-/g; s/MJ-PN-/MONTJAM-PN-/g; s/Mont Jam/Montjam/g; s/mont-jam/montjam/g' /tmp/montjam-importer.php
+            REMOTE_IMPORTER="/tmp/montjam-create-products-${GITHUB_RUN_ID}.php"
+            sshpass -e scp $SCP_OPTIONS /tmp/montjam-importer.php "$STAGING_USER@$STAGING_HOST:$REMOTE_IMPORTER"
+            sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_IMPORTER' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_IMPORTER'; exit \$rc"
+          fi
 
-          REMOTE_IMPORTER="/tmp/montjam-create-products-${GITHUB_RUN_ID}.php"
-          sshpass -e scp $SCP_OPTIONS /tmp/montjam-importer.php "$STAGING_USER@$STAGING_HOST:$REMOTE_IMPORTER"
-          sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=768M \"\$wp_bin\" eval-file '$REMOTE_IMPORTER' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_IMPORTER'; exit \$rc"
-
-          # The final adjustment is deliberately run after every importer execution. It keeps
-          # descriptions free of changeable format choices and expands YITH associations to
-          # every variation so the FORMATO selector does not disappear after variation AJAX.
+          # Always finish by enforcing exact Montjam spelling, stable SEO copy and YITH
+          # associations for parent + every variation so FORMATO survives variation AJAX.
           REMOTE_ADJUST="/tmp/montjam-adjustments-${GITHUB_RUN_ID}.php"
           sshpass -e scp $SCP_OPTIONS .github/scripts/montjam-adjustments-20260904.php "$STAGING_USER@$STAGING_HOST:$REMOTE_ADJUST"
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); wp_bin=\$(command -v wp); \"\$php_bin\" -d memory_limit=512M \"\$wp_bin\" eval-file '$REMOTE_ADJUST' --path='$PROD_PATH' --allow-root; rc=\$?; rm -f '$REMOTE_ADJUST'; exit \$rc"
