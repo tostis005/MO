@@ -1,0 +1,93 @@
+name: Audit live cookie consent 20260904
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cookie-consent-live-audit-20260904.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet selenium
+      - name: Test fresh reject and accept flows
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+
+          BASE='https://www.elmercadodeorigen.com/'
+          def start(label):
+              o=Options(); o.page_load_strategy='eager'
+              for a in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--window-size=1440,1600','--lang=es-ES'):
+                  o.add_argument(a)
+              o.set_capability('goog:loggingPrefs', {'performance':'ALL'})
+              d=webdriver.Chrome(options=o); d.set_page_load_timeout(60)
+              d.execute_cdp_cmd('Network.enable', {})
+              d.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers':{'Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache'}})
+              d.get(BASE+'?cookie_live_audit='+label+'-'+str(time.time_ns())); time.sleep(6)
+              return d
+          def val(d,n):
+              c=d.get_cookie(n); return c['value'] if c else None
+          def names(d): return {c['name'] for c in d.get_cookies()}
+          def blocked(d,label):
+              bad=sorted(n for n in names(d) if n=='_ga' or n.startswith('_ga_') or n=='_fbp')
+              if bad: raise AssertionError(f'{label}: tracking cookies before consent: {bad}')
+              if val(d,'wc_facebook_signals_state')!='held': raise AssertionError(f'{label}: Meta not held')
+
+          d=start('fresh')
+          try:
+              banner=d.find_element(By.ID,'cookie-law-info-bar')
+              print('FRESH_BANNER='+repr(banner.text),flush=True)
+              if not banner.is_displayed(): raise AssertionError('fresh banner hidden')
+              for text in ('Aceptar','Rechazar','Configurar','Política de cookies'):
+                  if text not in banner.text: raise AssertionError('missing '+text)
+              if d.find_element(By.ID,'wt-cli-checkbox-non-necessary').is_selected(): raise AssertionError('non-necessary preselected')
+              blocked(d,'fresh')
+              print('FRESH=PASS',flush=True)
+          finally: d.quit()
+
+          d=start('reject')
+          try:
+              d.find_element(By.CSS_SELECTOR,'[data-cli_action="reject"],#cookie_action_close_header_reject,.wt-cli-reject-btn').click(); time.sleep(6)
+              viewed=val(d,'viewed_cookie_policy'); choice=val(d,'cookielawinfo-checkbox-non-necessary'); info=val(d,'CookieLawInfoConsent')
+              print(f'REJECT_STATE viewed={viewed!r} choice={choice!r} consent={info!r}',flush=True)
+              if viewed not in ('yes','no') or choice!='no': raise AssertionError('reject not persisted')
+              blocked(d,'reject')
+              print('REJECT=PASS',flush=True)
+          finally: d.quit()
+
+          d=start('accept')
+          try:
+              d.find_element(By.CSS_SELECTOR,'[data-cli_action="accept"],#cookie_action_close_header,.wt-cli-accept-btn').click(); time.sleep(9)
+              viewed=val(d,'viewed_cookie_policy'); choice=val(d,'cookielawinfo-checkbox-non-necessary')
+              print(f'ACCEPT_STATE viewed={viewed!r} choice={choice!r} meta={val(d,"wc_facebook_signals_state")!r}',flush=True)
+              if viewed!='yes' or choice!='yes': raise AssertionError('accept not persisted')
+              ns=names(d)
+              if not any(n=='_ga' or n.startswith('_ga_') for n in ns): raise AssertionError('GA cookies missing after consent')
+              if val(d,'wc_facebook_signals_state')!='active': raise AssertionError('Meta not active after consent')
+              req=[]
+              for e in d.get_log('performance'):
+                  try:m=json.loads(e['message'])['message']
+                  except Exception:continue
+                  if m.get('method')=='Network.requestWillBeSent':
+                      u=m.get('params',{}).get('request',{}).get('url','')
+                      if 'google-analytics.com/g/collect' in u:req.append(u)
+              if not req: raise AssertionError('GA collect missing after consent')
+              print('ACCEPT_TRACKERS='+','.join(sorted(n for n in ns if n=='_ga' or n.startswith('_ga_') or n=='_fbp')),flush=True)
+              print('ACCEPT=PASS',flush=True)
+          finally:d.quit()
+          PY
