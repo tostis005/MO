@@ -115,7 +115,7 @@ $es = array(
 	'benefit'    => 'Elige la pieza de 6 a 6,5 kg y disfruta de este jamón de bellota 100% ibérico de Montjam por 225 €.',
 	'content'    => '<p>Una ocasión para disfrutar de uno de los grandes ibéricos de Montjam: jamón de bellota 100% ibérico, en pieza de 6 a 6,5 kg, por 225 €.</p><p>Selecciona el peso de 6 a 6,5 kg en la ficha del producto.</p>',
 	'cta_label'  => 'Ver el jamón',
-	'conditions' => 'Precio correspondiente a la variante de 6 a 6,5 kg del jamón de bellota 100% ibérico Montjam.',
+	'conditions' => 'Precio correspondiente a la variante de 6 a 6,5 kg del jamón de bellota 100% ibérico Montjam. Especial válido hasta el 30 de septiembre de 2026 incluido.',
 );
 $en = array(
 	'title'      => 'Montjam 100% Iberian acorn-fed ham · 6–6.5 kg for €225',
@@ -125,7 +125,7 @@ $en = array(
 	'benefit'    => 'Choose the 6–6.5 kg piece and enjoy this Montjam 100% Iberian acorn-fed ham for €225.',
 	'content'    => '<p>A special opportunity to enjoy Montjam 100% Iberian acorn-fed ham: a 6–6.5 kg whole piece for €225.</p><p>Select the 6–6.5 kg weight on the product page.</p>',
 	'cta_label'  => 'View the ham',
-	'conditions' => 'Price applies to the 6–6.5 kg variation of Montjam 100% Iberian acorn-fed ham.',
+	'conditions' => 'Price applies to the 6–6.5 kg variation of Montjam 100% Iberian acorn-fed ham. Special valid through 30 September 2026 inclusive.',
 );
 
 if ( ! $post_id ) {
@@ -159,7 +159,7 @@ $shared = array(
 	'_mdo_promo_type'             => $type,
 	'_mdo_promo_supplier_id'      => $supplier_id,
 	'_mdo_promo_start'            => current_time( 'Y-m-d' ),
-	'_mdo_promo_end'              => '',
+	'_mdo_promo_end'              => '2026-09-30',
 	'_mdo_promo_coupon'           => '',
 	'_mdo_promo_product_ids'      => (string) MDO_MONTJAM_PRODUCT_ID,
 	'_mdo_promo_image_product_id' => MDO_MONTJAM_PRODUCT_ID,
@@ -202,7 +202,8 @@ $render = class_exists( 'MDO_Home_Featured_Special' ) ? (string) MDO_Home_Featur
 $render_ok = '' !== $render
 	&& false !== strpos( $render, 'data-mdo-home-featured-special="' . $post_id . '"' )
 	&& false !== strpos( $render, 'Montjam' )
-	&& false !== strpos( $render, '225' );
+	&& false !== strpos( $render, '225' )
+	&& false !== strpos( $render, '30 de septiembre de 2026' );
 
 $result = array(
 	'post_id'       => $post_id,
@@ -212,6 +213,7 @@ $result = array(
 	'title'         => get_the_title( $post_id ),
 	'permalink'     => MDO_Specials::permalink( $post_id, 'es' ),
 	'cta_url'       => get_post_meta( $post_id, '_mdo_promo_cta_url', true ),
+	'end'           => get_post_meta( $post_id, '_mdo_promo_end', true ),
 	'product_id'    => MDO_MONTJAM_PRODUCT_ID,
 	'variation_id'  => MDO_MONTJAM_VARIATION_ID,
 	'variation_price' => $price,
