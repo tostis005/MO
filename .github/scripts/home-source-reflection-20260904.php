@@ -8,7 +8,7 @@ function dump_lines($label,$path,$start=1,$end=9999){
   $end=min($end,count($lines));
   for($i=max(1,$start);$i<=$end;$i++) echo $i.': '.$lines[$i-1]."\n";
 }
-function grep_context($label,$path,$patterns,$radius=8){
+function grep_context($label,$path,$patterns,$radius=10){
   echo "===== {$label} {$path} =====\n";
   $lines=@file($path,FILE_IGNORE_NEW_LINES); if(!$lines){echo "MISSING\n";return;}
   $printed=[];
@@ -22,27 +22,35 @@ function grep_context($label,$path,$patterns,$radius=8){
   }
 }
 
-$plugin=WP_PLUGIN_DIR.'/mdo-supplier-sync/includes/';
-dump_lines('FEATURED_SPECIAL_CLASS',$plugin.'class-mdo-home-featured-special.php',1,220);
-grep_context('SPECIALS_CLASS',$plugin.'class-mdo-specials.php',['register_post_type','_emdo_','meta_box','save_post','emdo_special','orderby','menu_order','date_query'],12);
+$inc=get_stylesheet_directory().'/inc/';
+grep_context('HOME_REFRESH',$inc.'home-refresh.php',['emo-hero','hero__grid','hero__visual','hero__proof','padding','min-height'],16);
+grep_context('HOME_RHYTHM',$inc.'home-rhythm-final-01099.php',['emo-hero','padding','min-height'],12);
+grep_context('HERO_BALANCE',$inc.'home-hero-cart-balance-010119.php',['emo-hero','padding','min-height'],10);
 
-$theme=get_stylesheet_directory().'/inc/';
-dump_lines('HERO_BALANCE',$theme.'home-hero-cart-balance-010119.php',1,120);
-dump_lines('HOME_RHYTHM',$theme.'home-rhythm-final-01099.php',1,100);
-grep_context('HOME_COPY_DEFINITIVE',$theme.'home-copy-definitive-010165.php',['NUESTRA SELECCIÓN','hero','Origen','emdo-home','productores','producer','vendor'],16);
+// Search all small live child-theme and MU-plugin style-producing files for desktop hero sizing rules.
+$roots=[get_stylesheet_directory().'/inc',WP_CONTENT_DIR.'/mu-plugins'];
+foreach($roots as $root){
+  if(!is_dir($root)) continue;
+  $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS));
+  foreach($it as $f){
+    if(!$f->isFile() || $f->getSize()>500000 || strtolower($f->getExtension())!=='php') continue;
+    $txt=@file_get_contents($f->getPathname()); if($txt===false || stripos($txt,'emo-hero')===false) continue;
+    grep_context('HERO_SOURCE',$f->getPathname(),['.emo-hero {','.emo-hero{','emo-hero__grid','emo-hero__visual','emo-hero__proof','min-height','padding-bottom'],8);
+  }
+}
 
-grep_context('HOME_CRITICAL',WP_CONTENT_DIR.'/mu-plugins/elmercado-home-critical-path-010254.php',['hero','min-height','padding','margin','producer','vendor'],10);
-grep_context('HOME_RESPONSIVE_VENDORS',WP_CONTENT_DIR.'/mu-plugins/elmercado-home-responsive-vendors-010253.php',['hero','min-height','padding','margin','producer','vendor'],10);
-grep_context('HOME_VENDORS_RESPONSIVE',WP_CONTENT_DIR.'/mu-plugins/elmercado-home-vendors-responsive-010252.php',['hero','min-height','padding','margin','producer','vendor'],10);
-
-$r=wp_remote_get(home_url('/'),['timeout'=>30,'redirection'=>3,'headers'=>['Cache-Control'=>'no-cache']]);
+$r=wp_remote_get(home_url('/'),['timeout'=>30,'redirection'=>3,'headers'=>['Cache-Control'=>'no-cache','Pragma'=>'no-cache']]);
 if(!is_wp_error($r)){
   $html=wp_remote_retrieve_body($r);
-  foreach(['NUESTRA SELECCIÓN','Una forma distinta de elegir','Origen','mdo-home-special','emdo-special','Especial'] as $needle){
-    $pos=stripos($html,$needle);
-    if($pos!==false){
-      $a=max(0,$pos-1600); $frag=substr($html,$a,3200);
-      echo "===== HOME_HTML_CONTEXT {$needle} =====\n".$frag."\n";
+  if(preg_match_all('~<style\\b[^>]*>(.*?)</style>~is',$html,$m)){
+    $n=0;
+    foreach($m[1] as $style){
+      if(stripos($style,'.emo-hero')===false) continue;
+      $n++;
+      echo "===== RENDERED_HERO_STYLE_BLOCK {$n} =====\n".$style."\n";
     }
   }
+  $marker='data-mdo-home-featured-special=';
+  $pos=strpos($html,$marker);
+  if($pos!==false) echo "===== FEATURED_SPECIAL_RENDER =====\n".substr($html,max(0,$pos-1000),3500)."\n";
 }
