@@ -1,7 +1,7 @@
 <?php
 /**
  * One-purpose production update for Montjam producer About copy.
- * This script only updates pv_shop_description for one unambiguous Montjam vendor user.
+ * Montjam is a WCFM vendor, whose public About tab reads the _store_description user meta.
  */
 if ( ! defined( 'ABSPATH' ) ) {
     exit( 1 );
@@ -23,61 +23,34 @@ Junto a esas piezas, Montjam trabaja diferentes categorías de ibérico, desde j
 Cuatro generaciones después, Montjam continúa elaborando sus productos desde El Repilado, manteniendo como eje de su trabajo aquello que ha definido históricamente a esta zona de Huelva: experiencia, tiempo y unas condiciones naturales especialmente ligadas a la maduración del jamón ibérico.
 TEXT;
 
-function emdo_montjam_match_key( $value ) {
-    $value = remove_accents( strtolower( (string) $value ) );
-    return (string) preg_replace( '/[^a-z0-9]+/', '', $value );
-}
-
-$vendors = get_users(
-    array(
-        'role'   => 'wc_product_vendors_admin_vendor',
-        'fields' => array( 'ID', 'display_name', 'user_login', 'user_email', 'user_nicename' ),
-    )
-);
-
-$matches = array();
-foreach ( $vendors as $vendor ) {
-    $haystack = implode(
-        ' ',
-        array(
-            (string) $vendor->display_name,
-            (string) $vendor->user_login,
-            (string) $vendor->user_email,
-            (string) $vendor->user_nicename,
-        )
-    );
-    $key = emdo_montjam_match_key( $haystack );
-    if ( false !== strpos( $key, 'montjam' ) || false !== strpos( $key, 'montham' ) ) {
-        $matches[] = $vendor;
-    }
-}
-
-if ( 1 !== count( $matches ) ) {
-    fwrite( STDERR, 'MONTJAM_ABOUT_ABORT: expected exactly one vendor match, found ' . count( $matches ) . "\n" );
-    foreach ( $matches as $match ) {
-        fwrite( STDERR, sprintf( "MATCH id=%d login=%s display=%s nicename=%s\n", (int) $match->ID, $match->user_login, $match->display_name, $match->user_nicename ) );
-    }
+$vendor = get_user_by( 'login', 'montjam' );
+if ( ! $vendor instanceof WP_User ) {
+    fwrite( STDERR, "MONTJAM_ABOUT_ABORT: user login montjam not found\n" );
     exit( 2 );
 }
 
-$vendor = $matches[0];
-$vendor_id = (int) $vendor->ID;
-$previous = (string) get_user_meta( $vendor_id, 'pv_shop_description', true );
-
-$result = update_user_meta( $vendor_id, 'pv_shop_description', $about );
-if ( false === $result && $previous !== $about ) {
-    fwrite( STDERR, "MONTJAM_ABOUT_ABORT: update_user_meta failed\n" );
+if ( ! in_array( 'wcfm_vendor', (array) $vendor->roles, true ) ) {
+    fwrite( STDERR, sprintf( "MONTJAM_ABOUT_ABORT: user id=%d login=%s is not wcfm_vendor; roles=%s\n", (int) $vendor->ID, $vendor->user_login, implode( ',', (array) $vendor->roles ) ) );
     exit( 3 );
 }
 
-$saved = (string) get_user_meta( $vendor_id, 'pv_shop_description', true );
-if ( $saved !== $about ) {
-    fwrite( STDERR, "MONTJAM_ABOUT_ABORT: verification mismatch after save\n" );
+$vendor_id = (int) $vendor->ID;
+$previous = (string) get_user_meta( $vendor_id, '_store_description', true );
+
+$result = update_user_meta( $vendor_id, '_store_description', $about );
+if ( false === $result && $previous !== $about ) {
+    fwrite( STDERR, "MONTJAM_ABOUT_ABORT: update_user_meta(_store_description) failed\n" );
     exit( 4 );
 }
 
+$saved = (string) get_user_meta( $vendor_id, '_store_description', true );
+if ( $saved !== $about ) {
+    fwrite( STDERR, "MONTJAM_ABOUT_ABORT: verification mismatch after save\n" );
+    exit( 5 );
+}
+
 printf(
-    "MONTJAM_ABOUT_OK id=%d login=%s display=%s nicename=%s chars=%d previous_chars=%d\n",
+    "MONTJAM_ABOUT_OK id=%d login=%s display=%s nicename=%s meta=_store_description chars=%d previous_chars=%d\n",
     $vendor_id,
     $vendor->user_login,
     $vendor->display_name,
