@@ -1,0 +1,51 @@
+name: Update Montjam About (Production)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/scripts/update-montjam-about-20260905.php'
+
+jobs:
+  update-about:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload update script
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT }}
+          source: ".github/scripts/update-montjam-about-20260905.php"
+          target: "/tmp/"
+          strip_components: 2
+
+      - name: Apply Montjam About update
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT }}
+          script_stop: true
+          script: |
+            set -eu
+
+            WP_ROOT="${{ secrets.PRODUCTION_PATH }}"
+            if [ -z "$WP_ROOT" ]; then
+              WP_ROOT="${{ secrets.STAGING_PATH }}"
+            fi
+            if [ -z "$WP_ROOT" ]; then
+              echo "PRODUCTION_PATH is empty and STAGING_PATH fallback is empty" >&2
+              exit 1
+            fi
+
+            WP="wp --path=$WP_ROOT"
+
+            $WP eval-file /tmp/update-montjam-about-20260905.php
+            rm -f /tmp/update-montjam-about-20260905.php
