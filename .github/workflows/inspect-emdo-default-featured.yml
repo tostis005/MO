@@ -52,7 +52,7 @@ jobs:
           }
           $generic=get_posts(array("post_type"=>"attachment","post_status"=>"inherit","posts_per_page"=>20,"fields"=>"ids","meta_key"=>"_wp_attachment_image_alt","meta_value"=>"Imagen provisional del blog de El Mercado de Origen"));
           $generic_rows=array(); foreach($generic as $gid){$generic_rows[]=array("thumbnail_id"=>(int)$gid,"title"=>get_the_title($gid),"url"=>(string)wp_get_attachment_url($gid),"alt"=>(string)get_post_meta($gid,"_wp_attachment_image_alt",true));}
-          echo json_encode(array("marked_posts"=>count($rows),"attachments"=>$attachments,"generic_alt_matches"=>$generic_rows,"sample"=>array_slice($rows,0,20)),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),"\n";
+          echo "EMDO_DEFAULT_IMAGE_RESULT=" . json_encode(array("marked_posts"=>count($rows),"attachments"=>$attachments,"generic_alt_matches"=>$generic_rows,"sample"=>array_slice($rows,0,20)),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n";
           PHP
           wp=$(command -v wp || true); php=$(command -v php || true)
           [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1)
@@ -64,5 +64,5 @@ jobs:
             case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
           done
           [ -n "$prod" ] || exit 4
-          "$php" "$wp" eval-file /tmp/emdo-inspect-default-featured.php --path="$prod" --allow-root
+          "$php" -d memory_limit=768M "$wp" eval-file /tmp/emdo-inspect-default-featured.php --path="$prod" --allow-root
           rm -f /tmp/emdo-inspect-default-featured.php'
