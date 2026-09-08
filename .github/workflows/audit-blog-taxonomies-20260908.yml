@@ -46,7 +46,8 @@ jobs:
             export PATH="$(dirname "$php"):$PATH"
             echo "=== BLOG_CATEGORIES ==="
             "$php" "$wp" term list category --path="$prod" --allow-root --skip-plugins --skip-themes --fields=term_id,name,slug,count --format=table
-            echo "=== PRODUCT_CATEGORIES ==="
-            "$php" "$wp" term list product_cat --path="$prod" --allow-root --skip-plugins --skip-themes --fields=term_id,name,slug,count --format=table
+            echo "=== PRODUCT_CATEGORIES_DB ==="
+            prefix=$("$php" "$wp" db prefix --path="$prod" --allow-root --skip-plugins --skip-themes)
+            "$php" "$wp" db query "SELECT t.term_id,t.name,t.slug,tt.count FROM ${prefix}terms t JOIN ${prefix}term_taxonomy tt ON tt.term_id=t.term_id WHERE tt.taxonomy='product_cat' ORDER BY t.name" --path="$prod" --allow-root --skip-plugins --skip-themes --table
             echo "TAXONOMY_AUDIT_OK"
           '
