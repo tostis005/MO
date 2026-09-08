@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
- * Description: Removes duplicated in-content H1s, defers the inline newsletter and applies data-led SERP copy to the highest-opportunity blog posts.
- * Version: 2026.09.08.3
+ * Description: Removes duplicated in-content H1s, defers the inline newsletter, applies data-led SERP copy and reinforces contextual internal links to the highest-opportunity blog posts.
+ * Version: 2026.09.08.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -171,3 +171,121 @@ function mdo_blog_seo_top3_description_20260908( $description ): string {
     return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
 }
 add_filter( 'aioseo_description', 'mdo_blog_seo_top3_description_20260908', 20 );
+
+/**
+ * Reinforce the three highest-opportunity URLs with contextual internal links.
+ * Rules are deliberately conservative: each source gets at most one link to a
+ * given target, an existing target link always wins, and only an exact visible
+ * phrase is replaced. Nothing is written back to post_content.
+ */
+function mdo_blog_seo_internal_links_20260908( $content ): string {
+    $content = (string) $content;
+
+    if ( ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() ) {
+        return $content;
+    }
+
+    $slug = mdo_blog_seo_current_slug_20260908();
+    if ( '' === $slug ) {
+        return $content;
+    }
+
+    $lentils = 'https://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/';
+    $beef    = 'https://www.elmercadodeorigen.com/en/how-much-protein-in-beef/';
+    $chick   = 'https://www.elmercadodeorigen.com/garbanzos-tiempo-remojo-cuanto-tardan-cocerse/';
+
+    $rules = array(
+        'hay-que-tirar-agua-remojo-legumbres-se-puede-aprovechar' => array(
+            array(
+                'target' => $chick,
+                'needle' => 'Los garbanzos suelen beneficiarse de un remojo largo.',
+                'replace' => 'Los garbanzos suelen beneficiarse de <a href="' . $chick . '">un remojo largo</a>.',
+            ),
+            array(
+                'target' => $lentils,
+                'needle' => 'Muchas lentejas no necesitan remojo para cocinarse bien.',
+                'replace' => '<a href="' . $lentils . '">Muchas lentejas no necesitan remojo para cocinarse bien</a>.',
+            ),
+        ),
+        'remojo-legumbres-pierden-nutrientes' => array(
+            array(
+                'target' => $chick,
+                'needle' => 'Garbanzos y muchas alubias suelen beneficiarse de un remojo nocturno',
+                'replace' => '<a href="' . $chick . '">Garbanzos</a> y muchas alubias suelen beneficiarse de un remojo nocturno',
+            ),
+            array(
+                'target' => $lentils,
+                'needle' => 'las lentejas pequeñas a menudo pueden cocinarse sin remojo',
+                'replace' => '<a href="' . $lentils . '">las lentejas pequeñas a menudo pueden cocinarse sin remojo</a>',
+            ),
+        ),
+        'por-que-legumbres-quedan-duras-se-rompen-pierden-piel' => array(
+            array(
+                'target' => $lentils,
+                'needle' => 'Las lentejas, según variedad y tamaño, a menudo pueden cocinarse sin remojo',
+                'replace' => '<a href="' . $lentils . '">Las lentejas, según variedad y tamaño, a menudo pueden cocinarse sin remojo</a>',
+            ),
+        ),
+        'garbanzos-agua-caliente-o-fria-remojo-coccion' => array(
+            array(
+                'target' => $chick,
+                'needle' => 'el tiempo de remojo',
+                'replace' => '<a href="' . $chick . '">el tiempo de remojo</a>',
+            ),
+        ),
+        'beef-nutrients-protein-iron-zinc-vitamins' => array(
+            array(
+                'target' => $beef,
+                'needle' => 'roughly 20–21 g protein per 100 g',
+                'replace' => '<a href="' . $beef . '">roughly 20–21 g protein per 100 g</a>',
+            ),
+        ),
+        'high-protein-foods-meat-legumes-cured-products' => array(
+            array(
+                'target' => $beef,
+                'needle' => '20.7 g of protein per 100 g for lean beef',
+                'replace' => '<a href="' . $beef . '">20.7 g of protein per 100 g for lean beef</a>',
+            ),
+        ),
+        'how-much-iron-in-beef' => array(
+            array(
+                'target' => $beef,
+                'needle' => 'Lean beef provides about 20.7 g of protein per 100 g in the FEN reference',
+                'replace' => 'Lean beef provides <a href="' . $beef . '">about 20.7 g of protein per 100 g</a> in the FEN reference',
+            ),
+        ),
+        'how-much-meat-to-plan-per-person-by-cut-and-recipe' => array(
+            array(
+                'target' => $beef,
+                'needle' => 'about 180–250 grams raw per adult',
+                'replace' => '<a href="' . $beef . '">about 180–250 grams raw per adult</a>',
+            ),
+        ),
+    );
+
+    if ( empty( $rules[ $slug ] ) ) {
+        return $content;
+    }
+
+    foreach ( $rules[ $slug ] as $rule ) {
+        $target = (string) $rule['target'];
+        $needle = (string) $rule['needle'];
+        $replace = (string) $rule['replace'];
+
+        if ( false !== strpos( $content, $target ) || false === strpos( $content, $needle ) ) {
+            continue;
+        }
+
+        $position = strpos( $content, $needle );
+        if ( false === $position ) {
+            continue;
+        }
+
+        $content = substr( $content, 0, $position )
+            . $replace
+            . substr( $content, $position + strlen( $needle ) );
+    }
+
+    return $content;
+}
+add_filter( 'the_content', 'mdo_blog_seo_internal_links_20260908', 42 );
