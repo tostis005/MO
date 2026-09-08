@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/blog-master-gap-05-*.b64'
+      - '.github/scripts/publish-blog-master-gap-05-production.php'
       - '.github/workflows/validate-blog-master-gap-05-package.yml'
   workflow_dispatch:
 
@@ -17,10 +18,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Validate package
+      - name: Validate package and publisher
         shell: bash
         run: |
           set -euo pipefail
+          php -l .github/scripts/publish-blog-master-gap-05-production.php
           python3 - <<'PY'
           import base64,gzip,hashlib,json,pathlib,re
           base=pathlib.Path('.github/scripts')
@@ -37,12 +39,11 @@ jobs:
           print('DECODED_SHA256='+dec_sha)
           assert dec_sha=='a401a869f6063541f6256b96b2c88733eda7320c9c447f8340d465324e48cc42', dec_sha
           articles=json.loads(decoded.decode('utf-8'))
-          print('COUNT='+str(len(articles)))
           expected=[33,35,36,37,40,42,43,44,45,46]
           positions=sorted(int(a['pos']) for a in articles)
+          print('COUNT='+str(len(articles)))
           print('POSITIONS='+','.join(map(str,positions)))
-          assert len(articles)==10
-          assert positions==expected
+          assert len(articles)==10 and positions==expected
           required={
             'pos','title','slug','excerpt','content','seo_title','seo_description','focus_keyword',
             'en_title','en_slug','en_excerpt','en_content','en_seo_title','en_seo_description','en_focus_keyword',
@@ -63,19 +64,17 @@ jobs:
           allowed_blog={'hortalizas-y-verduras','carnes','jamones-y-paletas','guias-y-consejos'}
           allowed_product={'hortalizas-verduras','carnes','jamones-paletas','packs-y-lotes'}
           for a in sorted(articles,key=lambda x:int(x['pos'])):
-              assert required <= set(a), (a.get('pos'),sorted(required-set(a)))
+              assert required <= set(a)
               pos=int(a['pos'])
-              assert a['title']==expected_titles[pos], (pos,a['title'])
-              assert '<!-- EMDO_RELATED_PRODUCTS -->' in a['content']
-              assert '<!-- EMDO_RELATED_PRODUCTS -->' in a['en_content']
+              assert a['title']==expected_titles[pos]
+              assert '<!-- EMDO_RELATED_PRODUCTS -->' in a['content'] and '<!-- EMDO_RELATED_PRODUCTS -->' in a['en_content']
               es=len(re.findall(r"\b\w+\b",re.sub(r'<[^>]+>',' ',a['content']),flags=re.UNICODE))
               en=len(re.findall(r"\b[A-Za-z][A-Za-z'-]*\b",re.sub(r'<[^>]+>',' ',a['en_content'])))
               assert es>=850 and en>=750,(pos,es,en)
-              assert a['category_slug'] in allowed_blog,(pos,a['category_slug'])
-              assert a['product_cat_slug'] in allowed_product,(pos,a['product_cat_slug'])
-              print(f"ARTICLE pos={pos} es={es} en={en} cat={a['category_slug']} product={a['product_cat_slug']} slug={a['slug']} title={a['title']}")
-          assert len({a['slug'] for a in articles})==10
-          assert len({a['en_slug'] for a in articles})==10
+              assert a['category_slug'] in allowed_blog and a['product_cat_slug'] in allowed_product
+              print(f"ARTICLE pos={pos} es={es} en={en} cat={a['category_slug']} product={a['product_cat_slug']} slug={a['slug']}")
+          assert len({a['slug'] for a in articles})==10 and len({a['en_slug'] for a in articles})==10
           print('PACKAGE_OK=10')
           PY
-          echo 'VALIDATION_WORKFLOW_REV=3'
+          echo 'PUBLISHER_SYNTAX_OK=1'
+          echo 'VALIDATION_WORKFLOW_REV=4'
