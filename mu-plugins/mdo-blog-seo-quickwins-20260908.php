@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
- * Description: Removes a duplicated in-content H1 when it repeats the post title and moves the inline newsletter below the initial answer section.
- * Version: 2026.09.08.2
+ * Description: Removes duplicated in-content H1s, defers the inline newsletter and applies data-led SERP copy to the highest-opportunity blog posts.
+ * Version: 2026.09.08.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -69,8 +69,7 @@ add_filter( 'the_content', 'mdo_blog_seo_remove_duplicate_content_h1_20260908', 
  * The inline-commerce module inserts the newsletter after paragraph 3 and a
  * dedicated later anchor after paragraph 7. Keep the existing special block at
  * its early position, but place the newsletter inside the later anchor so the
- * search visitor receives the answer first. The existing geo/special runtime
- * continues to work because the newsletter id and data attributes are intact.
+ * search visitor receives the answer first.
  */
 function mdo_blog_seo_defer_newsletter_20260908( $content ): string {
     $content = (string) $content;
@@ -121,3 +120,54 @@ function mdo_blog_seo_defer_newsletter_20260908( $content ): string {
     return $moved;
 }
 add_filter( 'the_content', 'mdo_blog_seo_defer_newsletter_20260908', 36 );
+
+/**
+ * Return the current post slug only on a front-end singular post request.
+ */
+function mdo_blog_seo_current_slug_20260908(): string {
+    if ( is_admin() || ! is_singular( 'post' ) ) {
+        return '';
+    }
+
+    $post_id = (int) get_queried_object_id();
+    if ( $post_id <= 0 ) {
+        return '';
+    }
+
+    return (string) get_post_field( 'post_name', $post_id );
+}
+
+/**
+ * Search Console quick wins, 2026-09-08.
+ * These override only the SERP title; visible article titles and URLs stay put.
+ */
+function mdo_blog_seo_top3_title_20260908( $title ): string {
+    $slug = mdo_blog_seo_current_slug_20260908();
+
+    $titles = array(
+        'hay-que-poner-lentejas-en-remojo-cuanto-tiempo' => '¿Las lentejas se remojan? Cuánto tiempo dejarlas en remojo',
+        'how-much-protein-in-beef'                       => 'Beef protein per 100g: how much protein is in beef?',
+        'garbanzos-tiempo-remojo-cuanto-tardan-cocerse' => 'Tiempo de remojo de los garbanzos: 8–12 horas y cocción',
+    );
+
+    return isset( $titles[ $slug ] ) ? $titles[ $slug ] : (string) $title;
+}
+add_filter( 'aioseo_title', 'mdo_blog_seo_top3_title_20260908', 20 );
+
+/**
+ * Search Console quick wins, 2026-09-08.
+ * Descriptions answer the dominant query immediately and preserve factual
+ * wording already supported by each article.
+ */
+function mdo_blog_seo_top3_description_20260908( $description ): string {
+    $slug = mdo_blog_seo_current_slug_20260908();
+
+    $descriptions = array(
+        'hay-que-poner-lentejas-en-remojo-cuanto-tiempo' => 'La mayoría de las lentejas no necesitan remojo. Descubre cuáles se cocinan directamente, cuándo conviene remojarlas y durante cuánto tiempo.',
+        'how-much-protein-in-beef'                       => 'Beef provides about 20–21 g of protein per 100 g raw. Compare 100 g, 150 g and 200 g servings, plus lean, cooked and minced beef.',
+        'garbanzos-tiempo-remojo-cuanto-tardan-cocerse' => 'Los garbanzos suelen necesitar 8–12 horas de remojo. Consulta tiempos de cocción en olla tradicional y rápida, agua, sal y qué hacer si siguen duros.',
+    );
+
+    return isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : (string) $description;
+}
+add_filter( 'aioseo_description', 'mdo_blog_seo_top3_description_20260908', 20 );
