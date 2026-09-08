@@ -45,39 +45,17 @@ jobs:
           set -euo pipefail
           wp=$(command -v wp || true); php=$(command -v php || true)
           [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1)
-          for slug in \
-            hay-que-poner-lentejas-en-remojo-cuanto-tiempo \
-            how-much-protein-in-beef \
-            garbanzos-tiempo-remojo-cuanto-tardan-cocerse
-          do
+          for slug in hay-que-poner-lentejas-en-remojo-cuanto-tiempo how-much-protein-in-beef garbanzos-tiempo-remojo-cuanto-tardan-cocerse; do
             echo "===== $slug ====="
-            "$php" "$wp" eval '
-              global $wpdb;
-              $slug = getenv("TARGET_SLUG");
-              $post = get_page_by_path($slug, OBJECT, "post");
-              if (!$post) { echo "NOT_FOUND\n"; return; }
-              echo "ID=".$post->ID."\n";
-              echo "TITLE=".$post->post_title."\n";
-              echo "STATUS=".$post->post_status."\n";
-              echo "PERMALINK=".get_permalink($post->ID)."\n";
-              preg_match_all("~<(h1|p)\\b[^>]*>(.*?)</\\1\\s*>~isu", $post->post_content, $m, PREG_SET_ORDER);
-              $n = 0;
-              foreach ($m as $block) {
-                  $text = trim(preg_replace("~\\s+~u", " ", wp_strip_all_tags($block[2])));
-                  if ($text === "") continue;
-                  echo strtoupper($block[1])."=".$text."\n";
-                  $n++;
-                  if ($n >= 6) break;
-              }
-              $table = $wpdb->prefix . "aioseo_posts";
-              $exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
-              if ($exists === $table) {
-                  $row = $wpdb->get_row($wpdb->prepare("SELECT title, description, canonical_url, robots_default FROM {$table} WHERE post_id=%d LIMIT 1", $post->ID), ARRAY_A);
-                  echo "AIOSEO=".wp_json_encode($row, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)."\n";
-              } else {
-                  echo "AIOSEO_TABLE=ABSENT\n";
-              }
-              echo "CONTENT_H1_COUNT=".preg_match_all("~<h1\\b~iu", $post->post_content)."\n";
-            ' --path="$PROD_PATH" --allow-root 2>&1 TARGET_SLUG="$slug" || true
+            id=$("$php" "$wp" post list --post_type=post --name="$slug" --post_status=any --field=ID --path="$PROD_PATH" --allow-root | head -n1)
+            if [ -z "$id" ]; then echo 'NOT_FOUND'; continue; fi
+            echo "ID=$id"
+            echo -n 'TITLE='; "$php" "$wp" post get "$id" --field=post_title --path="$PROD_PATH" --allow-root
+            echo -n 'STATUS='; "$php" "$wp" post get "$id" --field=post_status --path="$PROD_PATH" --allow-root
+            echo -n 'PERMALINK='; "$php" "$wp" post url "$id" --path="$PROD_PATH" --allow-root
+            tmp=$(mktemp)
+            "$php" "$wp" post get "$id" --field=post_content --path="$PROD_PATH" --allow-root > "$tmp"
+            "$php" -r '$s=file_get_contents($argv[1]); preg_match_all("~<(h1|p)\\b[^>]*>(.*?)</\\1\\s*>~isu",$s,$m,PREG_SET_ORDER); $n=0; foreach($m as $b){$t=trim(preg_replace("~\\s+~u"," ",strip_tags($b[2]))); if($t==="")continue; echo strtoupper($b[1])."=".$t.PHP_EOL; if(++$n>=6)break;} echo "CONTENT_H1_COUNT=".preg_match_all("~<h1\\b~iu",$s).PHP_EOL;' "$tmp"
+            rm -f "$tmp"
           done
           REMOTE
