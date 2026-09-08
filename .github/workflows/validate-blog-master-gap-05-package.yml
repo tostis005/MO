@@ -74,3 +74,4 @@ jobs:
           assert len({a['en_slug'] for a in articles})==10
           print('PACKAGE_OK=10')
           PY
+          echo 'VALIDATION_WORKFLOW_REV=2'
