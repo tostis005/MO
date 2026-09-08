@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MDO Blog SEO Quick Wins 2026-09-08
  * Description: Removes a duplicated in-content H1 when it repeats the post title and moves the inline newsletter below the initial answer section.
- * Version: 2026.09.08.1
+ * Version: 2026.09.08.2
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
