@@ -25,6 +25,7 @@ jobs:
           import urllib.request
           from bs4 import BeautifulSoup
 
+          # External render check: verify the final HTML seen by crawlers.
           targets = {
               'lentils': '/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/',
               'chickpeas': '/garbanzos-tiempo-remojo-cuanto-tardan-cocerse/',
