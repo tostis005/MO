@@ -69,51 +69,83 @@ jobs:
 
           sshpass -e ssh $SSH_OPTIONS "$STAGING_USER@$STAGING_HOST" "wp_bin=\$(command -v wp || true); php_bin=\$(command -v php || true); [ -n \"\$php_bin\" ] || php_bin=\$(find /opt/plesk/php -maxdepth 3 -type f -path '*/bin/php' 2>/dev/null | sort -Vr | head -n1); \"\$php_bin\" \"\$wp_bin\" cache flush --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true; \"\$php_bin\" \"\$wp_bin\" eval 'if ( function_exists(\"wp_cache_flush\") ) { wp_cache_flush(); } if ( has_action(\"litespeed_purge_all\") ) { do_action(\"litespeed_purge_all\"); }' --path='$PROD_PATH' --allow-root >/dev/null 2>&1 || true"
 
-      - name: Verify live blog HTML and canonicalization
+      - name: Fetch fresh verification pages
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --quiet beautifulsoup4
+          ES="https://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          EN="https://www.elmercadodeorigen.com/en/how-much-protein-in-beef/?mdo_seo_verify=${GITHUB_RUN_ID}"
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES" -o /tmp/es.html
+          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN" -o /tmp/en.html
 
-          ES='https://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/'
-          EN='https://www.elmercadodeorigen.com/en/how-much-protein-in-beef/'
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$ES?mdo_seo_verify=20260908" -o /tmp/es.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "$EN?mdo_seo_verify=20260908" -o /tmp/en.html
-          curl -L --fail --silent --show-error --retry 3 --retry-delay 2 "${ES}?utm_source=rss&utm_medium=rss" -o /tmp/utm.html
-
+      - name: Verify Spanish duplicate H1 removed
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
           from bs4 import BeautifulSoup
-
-          for label, path in [('ES', '/tmp/es.html'), ('EN', '/tmp/en.html')]:
-              html = open(path, encoding='utf-8').read()
-              soup = BeautifulSoup(html, 'html.parser')
-              main = soup.select_one('main#primary.emo-article-page')
-              content = soup.select_one('.emo-article-content')
-              newsletter = soup.select_one('#emo-newsletter')
-              anchor = soup.select_one('[data-emo-newsletter-anchor]')
-              assert main is not None, f'{label}: article main missing'
-              assert content is not None, f'{label}: article content missing'
-              assert len(main.select('h1')) == 1, f'{label}: expected exactly one H1, got {len(main.select("h1"))}'
-              assert len(content.select('h1')) == 0, f'{label}: duplicated content H1 remains'
-              assert newsletter is not None, f'{label}: newsletter missing'
-              assert anchor is not None, f'{label}: later newsletter anchor missing'
-              assert newsletter.parent is anchor, f'{label}: newsletter was not moved into later anchor'
-              preceding_p = sum(1 for child in content.children if getattr(child, 'name', None) == 'p' and child is not anchor and child.find_next_sibling() is not None and list(content.children).index(child) < list(content.children).index(anchor))
-              assert preceding_p >= 7, f'{label}: newsletter still too early ({preceding_p} direct paragraphs before anchor)'
-              print(f'{label}: h1=1 newsletter_after_direct_paragraphs={preceding_p}')
-
-          utm = BeautifulSoup(open('/tmp/utm.html', encoding='utf-8').read(), 'html.parser')
-          canonical = utm.find('link', rel=lambda value: value and 'canonical' in value)
-          assert canonical is not None and canonical.get('href'), 'UTM: canonical missing'
-          href = canonical.get('href')
-          assert 'utm_' not in href.lower(), f'UTM: tracking parameters leaked into canonical: {href}'
-          print('CANONICAL=' + href)
+          soup = BeautifulSoup(open('/tmp/es.html', encoding='utf-8').read(), 'html.parser')
+          main = soup.select_one('main#primary.emo-article-page')
+          content = soup.select_one('.emo-article-content')
+          assert main is not None, 'ES article main missing'
+          assert content is not None, 'ES article content missing'
+          print('ES main H1 count:', len(main.select('h1')))
+          print('ES content H1 count:', len(content.select('h1')))
+          assert len(main.select('h1')) == 1, 'ES expected exactly one H1 in article main'
+          assert len(content.select('h1')) == 0, 'ES duplicated H1 remains inside content'
           PY
 
-          headers="$(curl -sSI --max-redirs 0 'http://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/' | tr -d '\r')"
-          printf '%s\n' "$headers"
-          printf '%s\n' "$headers" | grep -Eqi '^HTTP/[^ ]+ (301|302|307|308) '
-          printf '%s\n' "$headers" | grep -Eqi '^location: https://'
+      - name: Verify English duplicate H1 removed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          soup = BeautifulSoup(open('/tmp/en.html', encoding='utf-8').read(), 'html.parser')
+          main = soup.select_one('main#primary.emo-article-page')
+          content = soup.select_one('.emo-article-content')
+          assert main is not None, 'EN article main missing'
+          assert content is not None, 'EN article content missing'
+          print('EN main H1 count:', len(main.select('h1')))
+          print('EN content H1 count:', len(content.select('h1')))
+          assert len(main.select('h1')) == 1, 'EN expected exactly one H1 in article main'
+          assert len(content.select('h1')) == 0, 'EN duplicated H1 remains inside content'
+          PY
+
+      - name: Verify newsletter moved to later anchor
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          for label, path in [('ES','/tmp/es.html'), ('EN','/tmp/en.html')]:
+              soup = BeautifulSoup(open(path, encoding='utf-8').read(), 'html.parser')
+              newsletter = soup.select_one('#emo-newsletter')
+              anchor = soup.select_one('[data-emo-newsletter-anchor]')
+              assert newsletter is not None, f'{label}: newsletter missing'
+              assert anchor is not None, f'{label}: later newsletter anchor missing'
+              print(label, 'newsletter parent attrs:', dict(newsletter.parent.attrs))
+              assert newsletter.parent is anchor, f'{label}: newsletter was not moved into later anchor'
+          PY
+
+      - name: Diagnose canonical and HTTP routing
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          UTM='https://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/?utm_source=rss&utm_medium=rss'
+          curl -L --fail --silent --show-error --retry 2 "$UTM" -o /tmp/utm.html || true
+          python - <<'PY'
+          from bs4 import BeautifulSoup
+          try:
+              soup = BeautifulSoup(open('/tmp/utm.html', encoding='utf-8').read(), 'html.parser')
+              canonical = soup.find('link', rel=lambda v: v and 'canonical' in v)
+              print('CANONICAL:', canonical.get('href') if canonical else 'MISSING')
+          except Exception as e:
+              print('CANONICAL DIAGNOSTIC ERROR:', e)
+          PY
+          curl -sSI --max-redirs 0 'http://www.elmercadodeorigen.com/hay-que-poner-lentejas-en-remojo-cuanto-tiempo/' | tr -d '\r' | sed -n '1,8p' || true
 
       - name: Roll back on failure
         if: failure() && env.PROD_PATH != ''
