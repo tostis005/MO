@@ -1,0 +1,76 @@
+name: Validate blog master gap 05 package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/blog-master-gap-05-*.b64'
+      - '.github/workflows/validate-blog-master-gap-05-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,pathlib,re
+          base=pathlib.Path('.github/scripts')
+          parts=[base/f'blog-master-gap-05-{i}.b64' for i in range(1,4)]
+          for p in parts:
+              assert p.exists() and p.stat().st_size>0, f'missing/empty {p}'
+          encoded=''.join(p.read_text(encoding='utf-8').strip() for p in parts)
+          compressed=base64.b64decode(encoded,validate=True)
+          print('COMPRESSED_SHA256='+hashlib.sha256(compressed).hexdigest())
+          decoded=gzip.decompress(compressed)
+          print('DECODED_SHA256='+hashlib.sha256(decoded).hexdigest())
+          articles=json.loads(decoded.decode('utf-8'))
+          print('COUNT='+str(len(articles)))
+          expected=[33,35,36,37,40,42,43,44,45,46]
+          positions=sorted(int(a['pos']) for a in articles)
+          print('POSITIONS='+','.join(map(str,positions)))
+          assert len(articles)==10
+          assert positions==expected
+          required={
+            'pos','title','slug','excerpt','content','seo_title','seo_description','focus_keyword',
+            'en_title','en_slug','en_excerpt','en_content','en_seo_title','en_seo_description','en_focus_keyword',
+            'category_slug','category_name','product_cat_slug','product_cat_name','related_heading','en_related_heading'
+          }
+          expected_titles={
+            33:'Hortalizas de raíz, hoja, fruto, flor, bulbo y tallo: cómo se clasifican y qué alimentos pertenecen a cada grupo',
+            35:'Por qué algunas verduras saben amargas: variedad, madurez y compuestos naturales',
+            36:'Por qué algunas frutas y hortalizas se oscurecen al cortarlas: qué es la oxidación enzimática',
+            37:'Cómo influyen el tamaño y el grado de madurez en el sabor y la textura de una hortaliza',
+            40:'Carne con hueso o deshuesada: diferencias de rendimiento, cocción y precio real',
+            42:'Jamón entero, deshuesado o loncheado: cómo cambia el rendimiento y el coste real de cada formato',
+            43:'Cómo comparar el precio real de los alimentos: precio por kilo, hueso, merma, peso escurrido y parte aprovechable',
+            44:'Productor, elaborador, fabricante, envasador y distribuidor: cómo saber quién está realmente detrás de un alimento',
+            45:'Artesano, tradicional, gourmet, premium y selección: qué significan realmente estas palabras en alimentación',
+            46:'DOP, IGP y ETG: diferencias y qué garantiza realmente cada sello de calidad',
+          }
+          allowed_blog={'hortalizas-y-verduras','carnes','jamones-y-paletas','guias-y-consejos'}
+          allowed_product={'hortalizas-verduras','carnes','jamones-paletas','packs-y-lotes'}
+          for a in sorted(articles,key=lambda x:int(x['pos'])):
+              assert required <= set(a), (a.get('pos'),sorted(required-set(a)))
+              pos=int(a['pos'])
+              assert a['title']==expected_titles[pos], (pos,a['title'])
+              assert '<!-- EMDO_RELATED_PRODUCTS -->' in a['content']
+              assert '<!-- EMDO_RELATED_PRODUCTS -->' in a['en_content']
+              es=len(re.findall(r"\b\w+\b",re.sub(r'<[^>]+>',' ',a['content']),flags=re.UNICODE))
+              en=len(re.findall(r"\b[A-Za-z][A-Za-z'-]*\b",re.sub(r'<[^>]+>',' ',a['en_content'])))
+              assert es>=850 and en>=750,(pos,es,en)
+              assert a['category_slug'] in allowed_blog,(pos,a['category_slug'])
+              assert a['product_cat_slug'] in allowed_product,(pos,a['product_cat_slug'])
+              print(f"ARTICLE pos={pos} es={es} en={en} cat={a['category_slug']} product={a['product_cat_slug']} slug={a['slug']} title={a['title']}")
+          assert len({a['slug'] for a in articles})==10
+          assert len({a['en_slug'] for a in articles})==10
+          print('PACKAGE_OK=10')
+          PY
