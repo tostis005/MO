@@ -1,0 +1,156 @@
+name: Publish blog master gap batch 05 v3 production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-blog-master-gap-05v3-production.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_PORT: ${{ secrets.STAGING_PORT }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_PASSWORD: ${{ secrets.STAGING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate immutable package and scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l .github/scripts/publish-blog-master-gap-05-production.php
+          php -l .github/scripts/verify-blog-master-gap-05-production.php
+          php -l .github/scripts/rollback-blog-master-gap-05-production.php
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,pathlib,re
+          b=pathlib.Path('.github/scripts')
+          enc=''.join((b/f'blog-master-gap-05-{i}.b64').read_text(encoding='utf-8').strip() for i in range(1,5))
+          comp=base64.b64decode(enc,validate=True)
+          assert hashlib.sha256(comp).hexdigest()=='dbc5bf02234f06037bee506aab77c0e272de91a519dbd8b1c006c41ed2969b7f'
+          raw=gzip.decompress(comp)
+          assert hashlib.sha256(raw).hexdigest()=='a401a869f6063541f6256b96b2c88733eda7320c9c447f8340d465324e48cc42'
+          a=json.loads(raw.decode('utf-8'))
+          assert len(a)==10 and sorted(int(x['pos']) for x in a)==[33,35,36,37,40,42,43,44,45,46]
+          assert len({x['slug'] for x in a})==10 and len({x['en_slug'] for x in a})==10
+          for x in a:
+              es=len(re.findall(r'\b\w+\b',re.sub(r'<[^>]+>',' ',x['content']),flags=re.UNICODE))
+              en=len(re.findall(r"\b[A-Za-z][A-Za-z'-]*\b",re.sub(r'<[^>]+>',' ',x['en_content'])))
+              assert es>=850 and en>=750
+          pathlib.Path('/tmp/gap05.json').write_text(json.dumps(a,ensure_ascii=False),encoding='utf-8')
+          print('EDITORIAL_PACKAGE_OK=10')
+          PY
+
+      - name: Publish and independently verify production
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.STAGING_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends sshpass jq >/dev/null
+          PORT="${STAGING_PORT:-22}"
+          SSH="-o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT"
+          SCP="-P $PORT -o BatchMode=no -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          UA='Mozilla/5.0 EMDO safe gap05 v3 verification'
+          CRITICAL=(
+            'https://www.elmercadodeorigen.com/'
+            'https://www.elmercadodeorigen.com/tienda/'
+            'https://www.elmercadodeorigen.com/blog/'
+            'https://www.elmercadodeorigen.com/category/hortalizas-y-verduras/'
+            'https://www.elmercadodeorigen.com/category/carnes/'
+            'https://www.elmercadodeorigen.com/category/jamones-y-paletas/'
+            'https://www.elmercadodeorigen.com/category/guias-y-consejos/'
+          )
+          health() {
+            phase="$1"; shift
+            for url in "$@"; do
+              f="/tmp/health-$(echo "$phase-$url"|tr '/:?&=' '_')"
+              c="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$f" -w '%{http_code}' "${url}?emdo_health=${GITHUB_RUN_ID}-${phase}")"
+              [ "$c" = '200' ]; [ "$(wc -c < "$f")" -gt 5000 ]; grep -qi '</html>' "$f"
+              echo "health_ok phase=$phase http=$c url=$url"
+            done
+          }
+          health pre "${CRITICAL[@]}"
+
+          INFO="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" '
+            wp=$(command -v wp || true); php=$(command -v php || true)
+            [ -n "$php" ] || php=$(find /opt/plesk/php -maxdepth 3 -type f -path "*/bin/php" 2>/dev/null|sort -Vr|head -n1)
+            [ -n "$wp" ] || exit 2; [ -n "$php" ] || exit 3
+            prod=""
+            for cfg in $(find /var/www/vhosts "$HOME" -maxdepth 7 -type f -path "*/httpdocs/wp-config.php" 2>/dev/null); do
+              p=$(dirname "$cfg")
+              u=$("$php" "$wp" option get siteurl --path="$p" --skip-plugins --skip-themes --allow-root 2>/dev/null || true)
+              case "$u" in https://www.elmercadodeorigen.com|https://elmercadodeorigen.com|http://www.elmercadodeorigen.com|http://elmercadodeorigen.com) prod="$p"; break;; esac
+            done
+            [ -n "$prod" ] || exit 4
+            printf "%s|%s|%s" "$prod" "$php" "$wp"
+          ')"
+          PROD="${INFO%%|*}"; R="${INFO#*|}"; PHP="${R%%|*}"; WP="${R#*|}"
+          REMOTE="/tmp/emdo-gap05v3-${GITHUB_RUN_ID}"
+          mapfile -t SLUGS < <(jq -r '.[].slug' /tmp/gap05.json)
+
+          for slug in "${SLUGS[@]}"; do
+            ids="$(sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' post list --path='$PROD' --allow-root --post_type=post --name='$slug' --post_status=any --format=ids 2>/dev/null || true")"
+            [ -z "${ids// /}" ] || { echo "Safety stop: existing slug $slug ($ids)" >&2; exit 10; }
+          done
+          echo 'PREFLIGHT_SLUGS_CLEAN=10'
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "mkdir -p '$REMOTE'; rm -f /tmp/emdo-gap05-verify.json"
+          sshpass -e scp $SCP .github/scripts/blog-master-gap-05-{1,2,3,4}.b64 .github/scripts/publish-blog-master-gap-05-production.php .github/scripts/verify-blog-master-gap-05-production.php .github/scripts/rollback-blog-master-gap-05-production.php "$STAGING_USER@$STAGING_HOST:$REMOTE/"
+
+          ROLLBACK_ACTIVE=1
+          rollback() {
+            rc=$?
+            if [ "${ROLLBACK_ACTIVE:-0}" = '1' ]; then
+              echo 'ROLLBACK_ACTIVE=1: marker-scoped rollback' >&2
+              set +e
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/rollback-blog-master-gap-05-production.php' --path='$PROD' --allow-root" >/tmp/rollback.stdout 2>/tmp/rollback.stderr || true
+              sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true; rm -rf '$REMOTE' /tmp/emdo-gap05-verify.json" >/dev/null 2>&1 || true
+              health rollback "${CRITICAL[@]}" || true
+              set -e
+            fi
+            exit "$rc"
+          }
+          trap rollback ERR
+
+          trap - ERR; set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/publish-blog-master-gap-05-production.php' --path='$PROD' --allow-root" >/tmp/publisher.stdout 2>/tmp/publisher.stderr
+          PUBLISH_RC=$?
+          set -e; trap rollback ERR
+          echo "publisher_rc=$PUBLISH_RC stdout_bytes=$(wc -c </tmp/publisher.stdout) stderr_bytes=$(wc -c </tmp/publisher.stderr)"
+          [ "$PUBLISH_RC" -eq 0 ]
+
+          trap - ERR; set +e
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' -d memory_limit=768M '$WP' eval-file '$REMOTE/verify-blog-master-gap-05-production.php' --path='$PROD' --allow-root" >/tmp/verifier.stdout 2>/tmp/verifier.stderr
+          VERIFY_RC=$?
+          set -e; trap rollback ERR
+          echo "verifier_rc=$VERIFY_RC stdout_bytes=$(wc -c </tmp/verifier.stdout) stderr_bytes=$(wc -c </tmp/verifier.stderr)"
+          [ "$VERIFY_RC" -eq 0 ]
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "test -s /tmp/emdo-gap05-verify.json && cat /tmp/emdo-gap05-verify.json" >/tmp/result.json
+          jq -e '.verified==true and .count==10 and .default_featured_image_id==13442 and (.errors|length)==0 and (.posts|length)==10 and ([.posts[].thumbnail_id]|all(.==13442))' /tmp/result.json >/dev/null
+          echo 'WORDPRESS_STATE_OK=10'
+
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "export PATH='$(dirname "$PHP")':\$PATH; '$PHP' '$WP' cache flush --path='$PROD' --allow-root >/dev/null 2>&1 || true; '$PHP' '$WP' rocket clean --confirm --path='$PROD' --allow-root >/dev/null 2>&1 || true"
+          while IFS=$'\t' read -r pos id slug en_slug title en_title category product; do
+            es="https://www.elmercadodeorigen.com/${slug}/"; en="https://www.elmercadodeorigen.com/en/${en_slug}/"
+            ef="/tmp/es-$id"; nf="/tmp/en-$id"
+            ec="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$ef" -w '%{http_code}' "${es}?emdo_verify=$GITHUB_RUN_ID")"
+            [ "$ec" = '200' ]; [ "$(wc -c < "$ef")" -gt 5000 ]; grep -qi '</html>' "$ef"; grep -Fq "$title" "$ef"
+            nc="$(curl -L -sS --retry 3 --retry-delay 2 -A "$UA" -o "$nf" -w '%{http_code}' "${en}?emdo_verify=$GITHUB_RUN_ID")"
+            [ "$nc" = '200' ]; [ "$(wc -c < "$nf")" -gt 5000 ]; grep -qi '</html>' "$nf"; grep -Fq "$en_title" "$nf"
+            echo "post_ok pos=$pos id=$id es=$es en=$en category=$category products=$product"
+          done < <(jq -r '.posts[]|[.position,.id,.slug,.en_slug,.title,.en_title,.category_slug,.product_cat]|@tsv' /tmp/result.json)
+
+          health post "${CRITICAL[@]}"
+          ROLLBACK_ACTIVE=0; trap - ERR
+          sshpass -e ssh $SSH "$STAGING_USER@$STAGING_HOST" "rm -rf '$REMOTE' /tmp/emdo-gap05-verify.json"
+          echo 'ROLLBACK_ACTIVE=0'
+          echo 'SAFE_PUBLICATION_OK: batch 05 positions 33,35,36,37,40,42,43,44,45,46; 10 ES + 10 EN; image 13442; independent WordPress state, public URLs and health verified.'
